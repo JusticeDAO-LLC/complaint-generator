@@ -1,0 +1,36 @@
+[[BACKENDS]]
+id="openai-davinci"
+type = "openai"
+api_key = "sk-hhmt0YZxBvLUyBolMj93330e0WVy5upUdsQKA2cE"
+engine = "text-davinci-002"
+temperature = 0
+top_p = 1
+max_tokens = 1952
+presence_penalty = 0.45
+frequency_penalty = 0.65
+best_of = 1
+
+
+[[BACKENDS]]
+id="openai-ada"
+type = "openai"
+api_key = "sk-hhmt0YZxBvLUyBolMj93330e0WVy5upUdsQKA2cE"
+engine = "text-ada-001"
+temperature = 0
+top_p = 1
+max_tokens = 1952
+presence_penalty = 0.45
+frequency_penalty = 0.65
+best_of = 1
+
+
+[MEDIATOR]
+backends = ["openai-ada"]
+
+
+[APPLICATION]
+type = "cli"
+
+
+[LOG]
+level = "WARN"
