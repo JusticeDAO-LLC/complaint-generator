@@ -1,0 +1,1 @@
+This is whehre the CLI application will put saved mediator states by default. It is recommended to not commit this directory.
