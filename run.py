@@ -1,7 +1,7 @@
 from turtle import back
 import toml
 from lib.log import init_logging, make_logger
-from backends import OpenAIBackend
+from backends import OpenAIBackend, WorkstationBackend
 from mediator import Mediator
 from applications import CLI
 
@@ -36,12 +36,14 @@ for backend_id in config_mediator['backends']:
 
 	if backend_config['type'] == 'openai':
 		backend = OpenAIBackend(**backend_config)
+	elif backend_config['type'] == 'workstation':
+		backend = WorkstationBackend(**backend_config)
 
 	backends.append(backend)
 
 
 #test backend
-#print(backends[0].prompt('What is 4 + 4?'))
+print(backends[1].prompt('What is 4 + 4?'))
 
 
 mediator = Mediator(backends=backends)

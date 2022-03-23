@@ -6,9 +6,9 @@ from .exceptions import UserPresentableException
 class Mediator:
 	def __init__(self, backends):
 		self.backends = backends
-		self.state = None
+		self.reset()
 
-	def new(self):
+	def reset(self):
 		self.state = State()
 
 	def resume(self, state):
@@ -32,6 +32,8 @@ class Mediator:
 				return user_promps['genesis']
 			else:
 				self.state.genesis_statement = text
+
+		
 
 		
 

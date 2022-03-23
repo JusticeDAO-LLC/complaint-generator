@@ -18,7 +18,9 @@ class CLI:
 		print('')
 		print('commands are:')
 		self.print_commands()
+		print('')
 
+		self.feed()
 		self.loop()
 
 
@@ -47,8 +49,8 @@ class CLI:
 		parts = line.split(' ')
 		command = parts[0]
 
-		if command == 'new':
-			self.mediator.new()
+		if command == 'reset':
+			self.mediator.reset()
 			self.feed()
 		elif command == 'save':
 			self.save()
@@ -61,7 +63,7 @@ class CLI:
 
 	def save(self):
 		state = self.mediator.get_state()
-		date = datetime.strftime(datetime.now(), '%d-%m-%Y %H:%M:%S')
+		date = datetime.strftime(datetime.now(), '%d-%m-%Y %H+%M+%S')
 		peek = state['genesis_statement'][0:20]
 		file = 'statefiles/%s %s.json' % (date, peek)
 		
@@ -112,6 +114,6 @@ class CLI:
 		print('\033[91m%s\033[0m' % text)
 
 	def print_commands(self):
-		print('!new        starts a new complaint flow')
+		print('!reset      wipe current state and start over')
 		print('!resume     resumes from a statefile from disk')
 		print('!save       saves current state to disk')

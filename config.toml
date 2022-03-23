@@ -24,8 +24,21 @@ frequency_penalty = 0.65
 best_of = 1
 
 
+[[BACKENDS]]
+id="workstation-t5"
+type = "workstation"
+model = "t5"
+max_length = 100
+
+[[BACKENDS]]
+id="workstation-gptj"
+type = "workstation"
+model = "gptj"
+max_length = 100
+
+
 [MEDIATOR]
-backends = ["openai-ada"]
+backends = ["openai-ada", "workstation-t5"]
 
 
 [APPLICATION]
