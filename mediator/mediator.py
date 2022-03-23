@@ -58,8 +58,17 @@ class Mediator:
 			self.complaint.generate()
 			self.inquiries.generate()
 
+			if self.inquiries.is_complete():
+				return self.finalize()
+
 		return self.inquiries.get_next()['question']
 
+
+	def finalize(self):
+		raise UserPresentableException(
+			'not-implemented',
+			'The Q&A has been completed. The follow-up flow has not yet been implemented.'
+		)
 
 
 	def query_backend(self, prompt):

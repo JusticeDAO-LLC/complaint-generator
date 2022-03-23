@@ -47,5 +47,8 @@ class Inquiries:
 			})
 
 
+	def is_complete():
+		return False
+
 	def same_question(self, a, b):
 		return False
