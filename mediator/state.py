@@ -2,18 +2,21 @@ class State:
 	@classmethod
 	def from_serialized(cls, serialized):
 		state = cls()
-		state.genesis_statement = serialized['genesis_statement']
-		state.answers = serialized['answers']
+		state.inquiries = serialized['inquiries']
+		state.complaint = serialized['complaint']
+		state.log = serialized['log']
 
 		return state
 		
 
 	def __init__(self):
-		self.genesis_statement = None
-		self.answers = []
+		self.inquiries = []
+		self.complaint = None
+		self.log = []
 
 	def serialize(self):
 		return {
-			'genesis_statement': self.genesis_statement,
-			'answers': self.answers
+			'inquiries': self.inquiries,
+			'complaint': self.complaint,
+			'log': self.log
 		}

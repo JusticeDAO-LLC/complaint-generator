@@ -11,7 +11,7 @@ class OpenAIBackend:
 
 		del self.config['type']
 
-	def prompt(self, text):
+	def __call__(self, text):
 		r = requests.post(
 			'https://api.openai.com/v1/engines/%s/completions' % self.engine, 
 			headers={
@@ -23,5 +23,8 @@ class OpenAIBackend:
 
 		data = json.loads(r.text)
 
-		return data['choices'][0]['text'].strip()
+		try:
+			return data['choices'][0]['text'].strip()
+		except Exception as exception:
+			raise Exception('empty-response')
 

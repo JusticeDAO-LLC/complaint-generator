@@ -11,7 +11,7 @@ class WorkstationBackend:
 		del self.config['type']
 
 
-	def prompt(self, text):
+	def __call__(self, text):
 		r = requests.post(
 			'https://%s.justicedao.biz/generate' % self.model, 
 			headers={
@@ -20,9 +20,7 @@ class WorkstationBackend:
 			data=json.dumps({'prompt': text, **self.config})
 		)
 
-		print(r.text)
-
 		data = json.loads(r.text)
 
-		return data
+		return data['output']
 

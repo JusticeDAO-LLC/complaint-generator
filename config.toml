@@ -18,7 +18,7 @@ api_key = "sk-hhmt0YZxBvLUyBolMj93330e0WVy5upUdsQKA2cE"
 engine = "text-ada-001"
 temperature = 0
 top_p = 1
-max_tokens = 1952
+max_tokens = 500
 presence_penalty = 0.45
 frequency_penalty = 0.65
 best_of = 1
@@ -38,7 +38,7 @@ max_length = 100
 
 
 [MEDIATOR]
-backends = ["openai-ada", "workstation-t5"]
+backends = ["openai-davinci"]
 
 
 [APPLICATION]

@@ -43,7 +43,7 @@ for backend_id in config_mediator['backends']:
 
 
 #test backend
-print(backends[1].prompt('What is 4 + 4?'))
+#print(backends[1]('What is 4 + 4?'))
 
 
 mediator = Mediator(backends=backends)

@@ -43,6 +43,10 @@ class CLI:
 			self.print_response(self.mediator.io(text))
 		except UserPresentableException as exception:
 			self.print_error(exception.description)
+		except Exception as exception:
+			self.print_error('error occured: %s' % exception)
+			print('\ninternal state may be corrupted. proceed with caution.')
+
 
 
 	def interpret_command(self, line):
@@ -64,11 +68,11 @@ class CLI:
 	def save(self):
 		state = self.mediator.get_state()
 		date = datetime.strftime(datetime.now(), '%d-%m-%Y %H+%M+%S')
-		peek = state['genesis_statement'][0:20]
+		peek = state['inquiries'][0]['answer'][0:20]
 		file = 'statefiles/%s %s.json' % (date, peek)
 		
 		with open(file, 'w') as f:
-			json.dump(state, f)
+			json.dump(state, f, indent=4)
 
 		print('[wrote statefile to %s]' % file)
 
