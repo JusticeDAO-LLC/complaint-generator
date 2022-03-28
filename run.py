@@ -1,7 +1,7 @@
 from turtle import back
 import toml
 from lib.log import init_logging, make_logger
-from backends import OpenAIBackend, WorkstationBackend
+from backends import OpenAIBackend, WorkstationBackendModels, WorkstationBackendDatabases
 from mediator import Mediator
 from applications import CLI
 
