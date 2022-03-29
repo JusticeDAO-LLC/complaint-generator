@@ -1,4 +1,5 @@
 import json
+from urllib import request
 from lib.log import make_logger
 from mediator.exceptions import UserPresentableException
 from datetime import datetime
@@ -26,17 +27,28 @@ class CLI:
 
 	def loop(self):
 		while True:
-			text = input('\n> ')
+			if self.mediator.state.username is None:
+				self.mediator.state.username = input('Username:\n> ')
+			
+			if self.mediator.state.password is None:
+				self.mediator.state.password = input('Password:\n> ')
 
-			print('')
+			if self.mediator.state.hashed_username is None or self.mediator.state.hashed_password is None:
+				profile = self.mediator.state.load_profile(self,{"username": self.mediator.state.username, "password": self.mediator.state.password})
+			
+			last_question = self.mediator.state.last_question
+
+			text = input( last_question + '> ')
+			self.mediator.state.answered_questions["last_question"] = text
 
 			if text == '':
 				self.feed()
 			elif text[0] != '!':
 				self.feed(text)
 			else:
-				self.interpret_command(text[1:])
+				self.interpret_command(self, text[str( last_question + '> ').__len__():])
 			
+			self.mediator.state.store_profile(self, profile)
 
 	def feed(self, text=None):
 		try:
@@ -65,43 +77,17 @@ class CLI:
 			self.print_commands()
 
 
-	def save(self):
-		state = self.mediator.get_state()
-		date = datetime.strftime(datetime.now(), '%d-%m-%Y %H+%M+%S')
-		peek = state['inquiries'][0]['answer'][0:20]
-		file = 'statefiles/%s %s.json' % (date, peek)
-		
-		with open(file, 'w') as f:
-			json.dump(state, f, indent=4)
-
-		print('[wrote statefile to %s]' % file)
-
-
+	def save(self, data):
+		request = dict({"username": self.mediator.state.username, "password": self.mediator.state.password})
+		profile = self.mediator.state.load_profile(self,request)
+		profile["data"] = data
+		profile["data"]["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+		self.mediator.state.store_profile(self,profile)
+		print("Profile saved")
+	
 	def resume(self):
-		files = list(glob('statefiles/*.json'))
-
-		if len(files) == 0:
-			self.print_error('no statefiles')
-			return
-
-		print('available files:')
-
-		for i, file in enumerate(files):
-			print('[%i] %s' % (i+1, file))
-
-		while True:
-			choice = input('\npick a file (1-%i): ' % len(files))
-
-			try:
-				index = int(choice)
-				file = files[index - 1]
-				break
-			except:
-				continue
-
-		with open(file) as f:
-			self.mediator.set_state(json.load(f))
-			
+		request = dict({"username": self.mediator.state.username, "password": self.mediator.state.password})
+		profile = self.mediator.state.load_profile(self,request)
 		print('')
 		print('[resumed state]')
 		print('')
