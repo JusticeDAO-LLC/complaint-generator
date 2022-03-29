@@ -27,13 +27,13 @@ class CLI:
 
 	def loop(self):
 		while True:
-			if self.mediator.state.username is None:
+			if self.mediator.state.username is None and self.mediator.state.hashed_username is None:
 				self.mediator.state.username = input('Username:\n> ')
 			
-			if self.mediator.state.password is None:
+			if self.mediator.state.password is None and self.mediator.state.hashed_password is None:
 				self.mediator.state.password = input('Password:\n> ')
 
-			if self.mediator.state.hashed_username is None or self.mediator.state.hashed_password is None:
+			if self.mediator.state.hashed_username is not None or self.mediator.state.hashed_password is not None:
 				profile = self.mediator.state.load_profile(self,{"username": self.mediator.state.username, "password": self.mediator.state.password})
 			
 			last_question = self.mediator.state.last_question
