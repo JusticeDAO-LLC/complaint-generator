@@ -4,8 +4,10 @@ from lib2to3.pytree import _Results
 import profile
 from readline import append_history_file
 from urllib import response
-
-
+import json
+import datetime
+import glob
+import requests
 
 class State:
 	@classmethod		
@@ -85,23 +87,27 @@ class State:
 				'Content-Type': 'application/json'
 			},
 			data=json.dumps({'request': request})
+		)
+
 		response  = json.loads(r.text)
 		if "err" in response:
 			self.log.append(response["err"])			
 		else:
-			response_results = response["results"]
+			results = response["results"]
 			for result in results:
 				setattr(self, result, results[result])
 			
-			return response_results
+			return results
 		
 	def store_profile(self, request):
-
 		profile_fields = "complaint_summary, complaint, log, username, password, hashed_password, hashed_username,	last_question, answered_questions, questions, data"
 		profile_fields_list = profile_fields.split(", ")
 		profile = {}
-		for i in range(0, len(profile_fields_list)):
-			profile[profile_fields_list[i]] = getattr(self, profile_fields_list[i])
+
+		for field in fields(self):
+			if field.name in profile_fields_list:
+				if getattr(self, field.name) is not None:
+					profile[field.name] = getattr(self, field.name)		
 
 		r = requests.post(
 			'https://10.10.0.10:1792/store_profile',
@@ -109,9 +115,12 @@ class State:
 				'Content-Type': 'application/json'
 			},
 			data=json.dumps({'request': profile})
+		)
+
 		response  = json.loads(r.text)
 		if "err" in response:
 			self.log.append(response["err"])
+			print("Err: " + response["err"])
 		else:
 			return response
 
@@ -122,6 +131,7 @@ class State:
 				'Content-Type': 'application/json'
 			},
 			data=json.dumps({'request': request})
+		)
 		response  = json.loads(r.text)
 		return response
 
@@ -132,6 +142,7 @@ class State:
 				'Content-Type': 'application/json'
 			},
 			data=json.dumps({'request': request})
+		)
 		response  = json.loads(r.text)
 		return response
 
@@ -142,6 +153,7 @@ class State:
 				'Content-Type': 'application/json'
 			},
 			data=json.dumps({'request': request})
+		)
 		response  = json.loads(r.text)
 		return response
 
