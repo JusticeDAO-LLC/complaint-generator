@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Lex Publicus</title>
+    <!-- Latest compiled and minified CSS -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <!-- jQuery library -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <style>
+        #Err {
+            background-color: lightcoral;
+            color: crimson;
+            display: none;
+            padding-bottom: 20px;
+            padding-top: 20px;
+            width: 93%;
+            margin: auto;
+        }
+        
+        #submit_button {
+            display: block;
+        }
+        
+        .card {
+            position: absolute;
+            width: 95%;
+            height: 80%;
+            box-shadow: 0px 0px 5px gray;
+            left: 2.5%;
+            top: 5%;
+        }
+        
+        #user-form {
+            position: absolute;
+            top: 20%;
+            /* left: 50%; */
+            /* transform: translateX(-50%); */
+            padding: auto;
+            text-align: center;
+            align-content: center;
+            margin: auto;
+            width: 100%;
+        }
+        
+        .row {
+            margin: auto;
+            display: block;
+        }
+        
+        #user-form input {
+            width: 400px;
+        }
+        
+        #user-form button {
+            /* position: absolute; */
+            margin-left: 2px;
+            width: 400px;
+        }
+    </style>
+</head>
+<script>
+    hostname = "http://localhost:1792";
+
+
+    function create_profile(username, password, email) {
+
+        $.ajaxSetup({
+            async: false
+        }); //execute synchronously
+        var returnData = null; //define returnData outside the scope of the callback function
+        $.ajax({
+            type: "POST",
+            contentType: 'application/json',
+            url: hostname + "/create_profile",
+            data: '{"request": {"username" : "' + username + '", "password": "' + password + '", "email": ' + email + '"}}',
+            dataType: 'json',
+            async: false,
+            success: function(data) {
+                returnData = data;
+            }
+        });
+
+
+        $.ajaxSetup({
+            async: true
+        }); //return to default setting
+
+        return returnData;
+    }
+
+
+
+
+    function load_profile(username, password, email) {
+
+        $.ajaxSetup({
+            async: false
+        }); //execute synchronously
+        var returnData = null; //define returnData outside the scope of the callback function
+        $.ajax({
+            type: "POST",
+            contentType: 'application/json',
+            url: hostname + "/load_profile",
+            data: '{"request": {"username" : "' + username + '", "password": "' + password + '"}}',
+            dataType: 'json',
+            async: false,
+            success: function(data) {
+                returnData = data;
+            }
+        });
+
+
+        $.ajaxSetup({
+            async: true
+        }); //return to default setting
+
+        // window.location.href = "/load_profile";
+        return returnData;
+    }
+
+    function show_error(message) {
+        form_field = $("#Err").html();
+        form_field = "<span>" + message + "</span>";
+        $("#Err").html(form_field);
+        $("#Err").show();
+    }
+
+
+    $(document).ready(function() {
+        $("#user-form").on("submit", function(e) {
+            e.preventDefault();
+
+            if (current_username == "" || current_password == "") {
+                $("#Err").text("Please enter a username and password");
+                $("#Err").show();
+            } else {
+                var current_username = $("#username_input").val();
+                var current_password = $("#password_input").val();
+
+            }
+
+            if ($("#email_input").val() == "") {
+                var current_email = null;
+            } else {
+                var current_email = $("#email_input").val();
+            }
+
+            if ($("#password_input_verify").val() == "") {
+                var current_password_verify = null;
+            } else {
+                var current_password_verify = $("#password_input_verify").val();
+            }
+
+
+            var domain = "http://localhost:1792";
+            results = "";
+
+            //if current_username and current_password are not empty
+
+            if ((current_username) && (current_password) && (!(current_email) || !(current_password_verify))) {
+                data = {
+                    "username": current_username,
+                    "password": current_password
+                };
+                results = load_profile(current_username, current_password);
+                // results = JSON.parse(results);
+                // alert(results);
+                // alert(JSON.stringify(results));
+                if (results["results"]["Err"] == "No profile" && current_password_verify == null) {
+
+                    form_fields = $("#user-form #form_fields ").html();
+                    form_fields = form_fields + '<input type="text" class="form-control" id="password_input_verify" placeholder="Reenter your password"></br>';
+                    form_fields = form_fields + '<input type="text" class="form-control" id="email_input" placeholder="Enter Your Email"></br>';
+                    $("#user-form #form_fields ").html(form_fields);
+
+                    form_field = $("#submit_button").html();
+                    form_field = form_field.replace("Start Chat", "Create Account");
+                    $("#submit_button").html(form_field);
+
+                    show_error("No Account Found</br> Resubmit to Create Account")
+                }
+
+                result = JSON.stringify(results);
+                // alert(result);
+            } else {
+                if (current_password != current_password_verify) {
+                    show_error("Passwords do not match");
+                } else if (!(current_email.includes("@")) || !(current_email.includes("."))) {
+                    show_error("Please enter a valid email");
+                } else if (current_password < 8) {
+                    show_error("Password must be at least 8 characters");
+                } else if (current_username.length < 8) {
+                    show_error("Username must be at least 8 characters");
+                } else if ((current_password.match(/[A-Z]/).length == 0)) {
+                    show_error("Password must contain at least one uppercase letter");
+                } else if (!(current_password.match(/[a-z]/))) {
+                    show_error("Password must contain at least one lowercase letter");
+                } else if (!(current_password.match(/[0-9]/))) {
+                    show_error("Password must contain at least one number");
+                } else if (!(current_password.match(/[!@#$%^&*]/))) {
+                    show_error("Password must contain at least one special character");
+                } else {
+                    // results = create_profile(current_username, current_password, current_email);
+                    // result = JSON.stringify(results);
+                    // alert(result);
+                    $("#Err").hide();
+                    alert("Success")
+
+                }
+
+            }
+        });
+    });
+</script>
+
+<body>
+    <div class="chat-body card">
+        <div class="card-body">
+            <h4 class="card-title text-center">Lex Publicus Chat Bot</h4>
+            <h4 class="card-title text-center">Complaint Generator </h4>
+            <hr>
+            <form class="form-inline" id="user-form">
+                <div class="row">
+                    <div id="form_fields" class="col">
+                        <input type="text" class="form-control" id="username_input" placeholder="Enter your username">
+                        <br/>
+                        <input type="text" class="form-control" id="password_input" placeholder="Enter your password">
+                        <br/>
+                    </div>
+                    <div id="submit_button">
+                        <button id="start " type="submit " class="btn btn-primary ">Start Chat</button>
+                    </div>
+                    <div id="Err">
+                        <br/>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+
+</html>

@@ -27,15 +27,17 @@ class CLI:
 
 	def loop(self):
 		while True:
-			if self.mediator.state.username is None and self.mediator.state.hashed_username is None:
-				self.mediator.state.username = input('Username:\n> ')
 			
-			if self.mediator.state.password is None and self.mediator.state.hashed_password is None:
-				self.mediator.state.password = input('Password:\n> ')
-
-			if self.mediator.state.hashed_username is not None or self.mediator.state.hashed_password is not None:
+			if self.mediator.state.hashed_username is not None and self.mediator.state.hashed_password is not None:
+				profile = self.mediator.state.load_profile(self,{"hashed_username": self.mediator.state.hashed_username, "hashed_password": self.mediator.state.hashed_password})
+			else:
+				if self.mediator.state.username is None:	
+					self.mediator.state.username = input('Username:\n> ')
+			
+				if self.mediator.state.password is None:
+					self.mediator.state.password = input('Password:\n> ')
 				profile = self.mediator.state.load_profile(self,{"username": self.mediator.state.username, "password": self.mediator.state.password})
-			
+
 			last_question = self.mediator.state.last_question
 
 			text = input( last_question + '> ')
@@ -47,7 +49,8 @@ class CLI:
 				self.feed(text)
 			else:
 				self.interpret_command(self, text[str( last_question + '> ').__len__():])
-			
+
+			self.mediator.state.last_question.pop(0)
 			self.mediator.state.store_profile(self, profile)
 
 	def feed(self, text=None):

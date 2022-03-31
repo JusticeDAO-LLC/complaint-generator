@@ -5,6 +5,12 @@ from backends import OpenAIBackend, WorkstationBackendModels, WorkstationBackend
 from mediator import Mediator
 from applications import CLI
 
+from fastapi import (
+    FastAPI, WebSocket, WebSocketDisconnect,
+    Request
+)
+from typing import List
+
 
 
 with open('config.toml') as f:
