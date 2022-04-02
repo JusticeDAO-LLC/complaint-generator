@@ -49,6 +49,10 @@
             top: 20px;
             left: 20px;
         }
+        
+        body {
+            background-color: transparent;
+        }
     </style>
     <script>
         hostname = "http://localhost:1792";
@@ -90,7 +94,7 @@
 
         $(document).ready(function() {
             cookies = "";
-
+            $("body").css("background-color", "transparent");
             $.ajax({
                 url: "/cookies",
                 type: "get",
@@ -137,7 +141,7 @@
     </script>
 </head>
 
-<body>
+<body style="background-color: transparent;">
     <div class="chat-body card">
         <div class="card-body">
             <strong id="profile"></strong>
