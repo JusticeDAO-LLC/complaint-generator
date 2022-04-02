@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>ChatApp</title>
+    <title>Lex Publicus ChatApp</title>
     <!-- Latest compiled and minified CSS -->
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <!-- jQuery library -->
@@ -51,12 +51,62 @@
         }
     </style>
     <script>
-        $(document).ready(function() {
-            var current_user;
-            $.get("/api/current_user", function(response) {
-                current_user = response;
-                $("#profile").text(current_user);
+        hostname = "http://localhost:1792";
+
+        function load_profile(username, password, email) {
+
+            $.ajaxSetup({
+                async: false
+            }); //execute synchronously
+            var returnData = null; //define returnData outside the scope of the callback function
+            $.ajax({
+                type: "POST",
+                contentType: 'application/json',
+                url: hostname + "/load_profile",
+                data: '{"request": {"username" : "' + username + '", "password": "' + password + '"}}',
+                dataType: 'json',
+                async: false,
+                success: function(data) {
+                    returnData = data;
+                }
             });
+
+
+            $.ajaxSetup({
+                async: true
+            }); //return to default setting
+            data = JSON.parse(returnData[0]["data"]);
+            // alert(data)
+            // alert(JSON.stringify((returnData)[0]["data"]));
+            if (returnData[0]["data"]) {
+                // window.location.href = "/chat";
+                return data;
+            } else if (returnData = ["Err"]) {
+                return returnData = ["Err"];
+            }
+            return returnData;
+        }
+
+
+        $(document).ready(function() {
+            cookies = "";
+
+            $.ajax({
+                url: "/cookies",
+                type: "get",
+                async: false,
+                data: {},
+                success: function(data) {
+                    // alert(data);
+                    cookies = data;
+                }
+            });
+            // alert(JSON.parse(cookies));
+            hashed_username = JSON.parse(cookies)["hashed_username"];
+            hashed_password = JSON.parse(cookies)["hashed_password"];
+            // alert(hashed_username);
+            profile = load_profile(hashed_username, hashed_password);
+            // alert(JSON.stringify(profile));
             var receiver = "";
             // create websocket
             var socket = new WebSocket("ws://127.0.0.1:8000/api/chat");
@@ -80,7 +130,7 @@
                     };
                     socket.send(JSON.stringify(data));
                     $("input").val("");
-                    document.cookie = 'X-Authorization=; path=/;';
+                    // document.cookie = 'X-Authorization=; path=/;';
                 }
             });
         });
@@ -91,7 +141,7 @@
     <div class="chat-body card">
         <div class="card-body">
             <strong id="profile"></strong>
-            <h4 class="card-title text-center"> Chat App </h4>
+            <h4 class="card-title text-center"> Lex Publicus Chat App </h4>
             <hr>
             <div id="messages">
             </div>

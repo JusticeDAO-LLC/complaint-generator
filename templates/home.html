@@ -74,7 +74,7 @@
             type: "POST",
             contentType: 'application/json',
             url: hostname + "/create_profile",
-            data: '{"request": {"username" : "' + username + '", "password": "' + password + '", "email": ' + email + '"}}',
+            data: '{"request": {"username" : "' + username + '", "password": "' + password + '", "email": "' + email + '"}}',
             dataType: 'json',
             async: false,
             success: function(data) {
@@ -87,10 +87,14 @@
             async: true
         }); //return to default setting
 
+        if (returnData["results"]["status_code"] == 200) {
+            // window.location(hostname + "/chat");
+            return returnData["results"];
+        } else {
+            return returnData["results"];
+        }
         return returnData;
     }
-
-
 
 
     function load_profile(username, password, email) {
@@ -115,8 +119,15 @@
         $.ajaxSetup({
             async: true
         }); //return to default setting
-
-        // window.location.href = "/load_profile";
+        data = JSON.parse(returnData[0]["data"]);
+        // alert(data)
+        // alert(JSON.stringify((returnData)[0]["data"]));
+        if (returnData[0]["data"]) {
+            window.location.href = "/chat";
+            return data;
+        } else if (returnData = ["Err"]) {
+            return returnData = ["Err"];
+        }
         return returnData;
     }
 
@@ -162,54 +173,56 @@
             if ((current_username) && (current_password) && (!(current_email) || !(current_password_verify))) {
                 data = {
                     "username": current_username,
-                    "password": current_password
                 };
                 results = load_profile(current_username, current_password);
                 // results = JSON.parse(results);
                 // alert(results);
                 // alert(JSON.stringify(results));
-                if (results["results"]["Err"] == "No profile" && current_password_verify == null) {
+                if (results["results"]) {
+                    if ((results["results"]["Err"] == "No profile") && (current_password_verify == null)) {
+                        form_fields = $("#user-form #form_fields ").html();
+                        form_fields = form_fields + '<input type="text" class="form-control" id="password_input_verify" placeholder="Reenter your password"></br>';
+                        form_fields = form_fields + '<input type="text" class="form-control" id="email_input" placeholder="Enter Your Email"></br>';
+                        $("#user-form #form_fields ").html(form_fields);
 
-                    form_fields = $("#user-form #form_fields ").html();
-                    form_fields = form_fields + '<input type="text" class="form-control" id="password_input_verify" placeholder="Reenter your password"></br>';
-                    form_fields = form_fields + '<input type="text" class="form-control" id="email_input" placeholder="Enter Your Email"></br>';
-                    $("#user-form #form_fields ").html(form_fields);
+                        form_field = $("#submit_button").html();
+                        form_field = form_field.replace("Start Chat", "Create Account");
+                        $("#submit_button").html(form_field);
 
-                    form_field = $("#submit_button").html();
-                    form_field = form_field.replace("Start Chat", "Create Account");
-                    $("#submit_button").html(form_field);
+                        show_error("No Account Found</br> Resubmit to Create Account")
+                    } else if ((results["results"]["hashed_password"]) && (results["results"]["hashed_username"]) && (results["results"]["data"])) {
+                        window.location.href = domain + "/chat";
 
-                    show_error("No Account Found</br> Resubmit to Create Account")
+
+                    } else {
+                        if (current_password != current_password_verify) {
+                            show_error("Passwords do not match");
+                        } else if (!(current_email.includes("@")) || !(current_email.includes("."))) {
+                            show_error("Please enter a valid email");
+                        } else if (current_password < 8) {
+                            show_error("Password must be at least 8 characters");
+                        } else if (current_username.length < 8) {
+                            show_error("Username must be at least 8 characters");
+                        } else if ((current_password.match(/[A-Z]/).length == 0)) {
+                            show_error("Password must contain at least one uppercase letter");
+                        } else if (!(current_password.match(/[a-z]/))) {
+                            show_error("Password must contain at least one lowercase letter");
+                        } else if (!(current_password.match(/[0-9]/))) {
+                            show_error("Password must contain at least one number");
+                        } else if (!(current_password.match(/[!@#$%^&*]/))) {
+                            show_error("Password must contain at least one special character");
+                        } else {
+                            results = create_profile(current_username, current_password, current_email);
+                            result = JSON.stringify(results);
+                            alert(result);
+                            $("#Err").hide();
+                            alert("Success")
+                                //window.location.href = hostname + "/chat";
+
+                        }
+
+                    }
                 }
-
-                result = JSON.stringify(results);
-                // alert(result);
-            } else {
-                if (current_password != current_password_verify) {
-                    show_error("Passwords do not match");
-                } else if (!(current_email.includes("@")) || !(current_email.includes("."))) {
-                    show_error("Please enter a valid email");
-                } else if (current_password < 8) {
-                    show_error("Password must be at least 8 characters");
-                } else if (current_username.length < 8) {
-                    show_error("Username must be at least 8 characters");
-                } else if ((current_password.match(/[A-Z]/).length == 0)) {
-                    show_error("Password must contain at least one uppercase letter");
-                } else if (!(current_password.match(/[a-z]/))) {
-                    show_error("Password must contain at least one lowercase letter");
-                } else if (!(current_password.match(/[0-9]/))) {
-                    show_error("Password must contain at least one number");
-                } else if (!(current_password.match(/[!@#$%^&*]/))) {
-                    show_error("Password must contain at least one special character");
-                } else {
-                    // results = create_profile(current_username, current_password, current_email);
-                    // result = JSON.stringify(results);
-                    // alert(result);
-                    $("#Err").hide();
-                    alert("Success")
-
-                }
-
             }
         });
     });
