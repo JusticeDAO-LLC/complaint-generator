@@ -1,20 +1,26 @@
-from fastapi import (
-    FastAPI, WebSocket, WebSocketDisconnect, Request, Response
-)
-from typing import List
-from pydantic import BaseModel
-from fastapi.templating import Jinja2Templates
+from re import search
+import jwt
+from jwt import PyJWTError
+from fastapi import FastAPI, Request, HTTPException, BackgroundTasks, Cookie, WebSocket, WebSocketDisconnect, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import HTMLResponse
+from datetime import datetime, timedelta
+from starlette.status import HTTP_403_FORBIDDEN
+from starlette.responses import RedirectResponse, Response, JSONResponse
+from starlette.requests import Request
+import sys
+import os
+import json
+import this
+import uvicorn
 
 app = FastAPI()
-
-# locate templates
-templates = Jinja2Templates(directory="templates")
 
 
 @app.get("/home", response_class=HTMLResponse)
 async def read_items(request: Request ):
     template = ""
-    filename = os.getcwd() + "/templates/home.html"
+    filename = os.getcwd() + "/complaint-generator/templates/home.html"
     if os.path.isfile(filename):
         with open(filename, "r") as f:
             template = f.read()
@@ -23,7 +29,7 @@ async def read_items(request: Request ):
 @app.get("/chat", response_class=HTMLResponse)
 async def read_items(request: Request ):
     template = ""
-    filename = os.getcwd() + "/templates/chat.html"
+    filename = os.getcwd() + "/complaint-generator/templates/chat.html"
 
     if os.path.isfile(filename):
         with open(filename, "r") as f:
@@ -33,7 +39,7 @@ async def read_items(request: Request ):
 @app.get("/", response_class=HTMLResponse)
 async def read_items(request: Request ):
     template = ""
-    filename = os.getcwd() + "/templates/index.html"
+    filename = os.getcwd() + "/complaint-generator/templates/index.html"
 
     if os.path.isfile(filename):
         with open(filename, "r") as f:
@@ -43,7 +49,7 @@ async def read_items(request: Request ):
 @app.get("", response_class=HTMLResponse)
 async def read_items(request: Request ):
     template = ""
-    filename = os.getcwd() + "/templates/index.html"
+    filename = os.getcwd() + "/complaint-generator/templates/index.html"
 
     if os.path.isfile(filename):
         with open(filename, "r") as f:
@@ -112,6 +118,7 @@ async def chat(websocket: WebSocket):
         await manager.connect(websocket, hashed_username)
         response = {
             "hashed_username": hashed_username,
+            "user": "bot",
             "message": "got connected"
         }
 
@@ -130,3 +137,17 @@ async def chat(websocket: WebSocket):
 
 
 manager = SocketManager()
+
+
+
+###################################
+#  								  #
+#   Do not copy this text below	  #
+# 								  #
+###################################
+
+
+
+def __init__(self, app):
+    self.app = app
+    uvicorn.run(app, host="0.0.0.0", port=1792)

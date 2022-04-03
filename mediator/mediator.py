@@ -16,7 +16,7 @@ class Mediator:
 
 	def reset(self):
 		self.state = State()
-		self.inquiries.register(user_prompts['genesis_question'])
+		# self.inquiries.register(user_prompts['genesis_question'])
 
 
 	def resume(self, state):

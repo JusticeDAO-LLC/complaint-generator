@@ -1,10 +1,14 @@
+from re import S
 import spacy
-from .strings import model_prompts
+# import sys
+# sys.path.append('../mediator')
+
+from mediator import strings 
 
 
 class Inquiries:
 	def __init__(self, mediator):
-		self.nlp = spacy.load('en_core_web_sm')
+		# self.nlp = spacy.load('en_core_web_sm')
 		self.m = mediator
 
 	def get_next(self):
@@ -20,31 +24,31 @@ class Inquiries:
 				.format(complaint=self.m.state.complaint)
 		)
 
-		doc = self.nlp(block)
+		# doc = self.nlp(block)
 
-		for sent in doc.sents:
-			sent = [word for word in sent if not word.is_space]
+		# for sent in doc.sents:
+		# 	sent = [word for word in sent if not word.is_space]
 
-			if sent[-1].text != '?':
-				continue
+		# 	if sent[-1].text != '?':
+		# 		continue
 
-			self.register(' '.join([word.text for word in sent]))
+		# 	self.register(' '.join([word.text for word in sent]))
 
+   
+	# def register(self, question):
+	# 	is_unique = True
 
-	def register(self, question):
-		is_unique = True
+	# 	for other in self.m.state.inquiries:
+	# 		if self.same_question(question, other['question']):
+	# 			other['alternative_questions'].append(question)
+	# 			is_unique = False
 
-		for other in self.m.state.inquiries:
-			if self.same_question(question, other['question']):
-				other['alternative_questions'].append(question)
-				is_unique = False
-
-		if is_unique:
-			self.m.state.inquiries.append({
-				'question': question,
-				'alternative_questions': [],
-				'answer': None
-			})
+	# 	if is_unique:
+	# 		self.m.state.inquiries.append({
+	# 			'question': question,
+	# 			'alternative_questions': [],
+	# 			'answer': None
+	# 		})
 
 
 	def is_complete():

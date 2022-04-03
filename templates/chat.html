@@ -55,7 +55,7 @@
         }
     </style>
     <script>
-        hostname = "http://localhost:1792";
+        hostname = "localhost:1792";
 
         function load_profile(username, password, email) {
 
@@ -66,7 +66,7 @@
             $.ajax({
                 type: "POST",
                 contentType: 'application/json',
-                url: hostname + "/load_profile",
+                url: "http://" + hostname + "/load_profile",
                 data: '{"request": {"username" : "' + username + '", "password": "' + password + '"}}',
                 dataType: 'json',
                 async: false,
@@ -113,12 +113,12 @@
             // alert(JSON.stringify(profile));
             var receiver = "";
             // create websocket
-            var socket = new WebSocket("ws://127.0.0.1:8000/api/chat");
+            var socket = new WebSocket("ws://" + hostname + "/api/chat");
             socket.onmessage = function(event) {
                 var parent = $("#messages");
                 var data = JSON.parse(event.data);
                 var sender = data['sender'];
-                if (sender == current_user)
+                if (sender == hashed_username)
                     sender = "You";
                 var message = data['message']
                 var content = "<p><strong>" + sender + " </strong> <span> " + message + "</span></p>";
@@ -129,7 +129,7 @@
                 var message = $("input").val();
                 if (message) {
                     data = {
-                        "sender": current_user,
+                        "sender": hashed_username,
                         "message": message
                     };
                     socket.send(JSON.stringify(data));

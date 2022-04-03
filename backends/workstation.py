@@ -26,8 +26,8 @@ class WorkstationBackendModels:
 class WorkstationBackendDatabases:
 	def __init__(self, id, model, **config):
 		self.id = id
-		# self.model = model
-		# self.config = config
+		self.model = model
+		self.config = config
 
 		del self.config['type']
 

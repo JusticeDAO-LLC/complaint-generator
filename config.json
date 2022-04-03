@@ -1,0 +1,49 @@
+{
+    "BACKENDS": [{
+            "id": "openai-davinci",
+            "type": "openai",
+            "api_key": "sk-hhmt0YZxBvLUyBolMj93330e0WVy5upUdsQKA2cE",
+            "engine": "text-davinci-002",
+            "temperature": 0,
+            "top_p": 1,
+            "max_tokens": 1952,
+            "presence_penalty": 0.45,
+            "frequency_penalty": 0.65,
+            "best_of": 1
+        },
+        {
+            "id": "openai-ada",
+            "type": "openai",
+            "api_key": "sk-hhmt0YZxBvLUyBolMj93330e0WVy5upUdsQKA2cE",
+            "engine": "text-ada-001",
+            "temperature": 0,
+            "top_p": 1,
+            "max_tokens": 500,
+            "presence_penalty": 0.45,
+            "frequency_penalty": 0.65,
+            "best_of": 1
+        }, {
+            "id": "workstation-t5",
+            "type": "workstation",
+            "model": "t5",
+            "max_length": 100
+        }, {
+            "id": "workstation-gptj",
+            "type": "workstation",
+            "model": "gptj",
+            "max_length": 100
+        }
+    ],
+    "MEDIATOR": {
+        "backends": ["openai-davinci", "openai-ada", "workstation-t5", "workstation-gptj"]
+    },
+    "APPLICATION": {
+        "type": {
+            "server": "SERVER",
+            "cli": "CLI"
+        }
+    },
+    "LOG": {
+        "level": "WARN"
+    }
+}
