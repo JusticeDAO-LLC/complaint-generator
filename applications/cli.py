@@ -36,7 +36,7 @@ class CLI:
 			
 				if self.mediator.state.password is None:
 					self.mediator.state.password = input('Password:\n> ')
-				profile = self.mediator.state.load_profile(self,{"username": self.mediator.state.username, "password": self.mediator.state.password})
+				profile = self.mediator.state.load_profile(self, {"request", {"username": self.mediator.state.username, "password": self.mediator.state.password}})
 
 			last_question = self.mediator.state.last_question
 

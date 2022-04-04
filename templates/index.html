@@ -13,6 +13,42 @@
             background-color: #eeeeee;
         }
         
+        p {
+            font-size: large;
+            line-height: 1.5;
+            margin-left: 1em;
+            margin-right: 1em;
+        }
+        
+        .info {
+            margin-top: 40px;
+        }
+        
+        .search {
+            margin: auto;
+            width: 650px;
+        }
+        
+        .search input {
+            width: 400px;
+            float: left;
+            display: inline;
+        }
+        
+        .search label {
+            margin-top: .5em;
+            margin-right: .5em;
+            font-size: large;
+            font-weight: bolder;
+            float: left;
+            display: inline;
+        }
+        
+        .search button {
+            float: right;
+            display: inline;
+        }
+        
         #chat_icon img {
             width: 128px;
             height: 128px;
@@ -187,8 +223,32 @@
 </script>
 
 <body>
-    <div>
-        <h2 class="card-title text-center">JusticeDAO Whitepaper</h4>
+    <div class="search">
+
+        <form action="search" method="post">
+            <div class="form-group">
+                <label for="search">Search for Citation</label>
+                <input type="text" class="form-control" id="search" aria-describedby="searchHelp" placeholder="Enter search term e.g. U.S. v. Stevens 559 U.S. 460" name="search"> <button type="submit" class="btn btn-primary">search</button>
+            </div>
+        </form>
+    </div>
+    <div class="card info">
+        <br/>
+        <div id="card-body">
+            <h2 class="card-title text-center">JusticeDAO Complaint Generator</h4>
+                <p> This is a demo of a AI chat application, meant to make it easier for people to interact with the JusticeDAO platform, to help organize and track their complaints.
+                </p>
+                <p> To begin the chat, please enter your username and password, which is used to encrypt your chat session and store it on the server. Start by telling the bot your complaint, and it will ask you a series of questions, based upon the previous
+                    questions, andbased upon the original complaint.
+                </p>
+                <p> Its sole purpose is to assist the person with developing the facts of their complaint, and it is not designed to be a substitute for a lawyer.It will then use the information you have provided to auto-fill in a pro-se complaint PDF with
+                    the US district courts, if the case is within its jurisdiction. The application will then generate a PDF of the complaint, and assist you with electronically filing the complaint, and sending it to the appropriate court.
+                </p>
+                <p> It is up to you to make sure that the information that you have provided is accurate, and that you have the legal authority to file the complaint. Because you are filing these documents under the penalty of perjury, you should not use
+                    the platform to pretend to be Mickey Mouse suing Donald Duck for example. However be aware that you will have to pay for the court fees, and that the court may not accept your complaint, and may even deny it altogether, or sanction
+                    individuals for abuse of the courts.
+                </p>
+        </div>
     </div>
     <div id="chatbox">
         <iframe src="/home/">  </iframe>

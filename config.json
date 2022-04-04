@@ -39,8 +39,7 @@
     },
     "APPLICATION": {
         "type": {
-            "server": "SERVER",
-            "cli": "CLI"
+            "server": "server"
         }
     },
     "LOG": {

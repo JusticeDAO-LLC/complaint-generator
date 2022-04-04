@@ -6,11 +6,10 @@ def install_pip_package(package_string):
 import json
 from lib.log import init_logging, make_logger
 from backends import OpenAIBackend, WorkstationBackendModels, WorkstationBackendDatabases
-from mediator import Mediator
+from mediator import Mediator, Inquiries, Complaint, State 
 from applications import CLI
 from applications import SERVER
 
-from server import __init__
 
 
 
@@ -52,14 +51,14 @@ for backend_id in config_mediator['backends']:
 #test backend
 #print(backends[1]('What is 4 + 4?'))
 
-
+# inquiries = Inquiries(hashed_username = hashed_username, hashed_password = hashed_password, token = token)
 mediator = Mediator(backends=backends)
 
 for type in config_application['type']:
 	if type == 'cli':
 		application = CLI(mediator)
 	elif type == 'server':
-		application = SERVER(mediator)
+		application = SERVER.__init__(mediator)
 	else:
 		log.error('unknown application type: %s' % type)
 		exit(-1)

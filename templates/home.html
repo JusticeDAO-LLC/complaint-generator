@@ -61,7 +61,7 @@
     </style>
 </head>
 <script>
-    hostname = "http://localhost:1792";
+    hostname = "localhost:19000";
 
 
     function create_profile(username, password, email) {
@@ -73,7 +73,7 @@
         $.ajax({
             type: "POST",
             contentType: 'application/json',
-            url: hostname + "/create_profile",
+            url: "/create_profile",
             data: '{"request": {"username" : "' + username + '", "password": "' + password + '", "email": "' + email + '"}}',
             dataType: 'json',
             async: false,
@@ -106,7 +106,7 @@
         $.ajax({
             type: "POST",
             contentType: 'application/json',
-            url: hostname + "/load_profile",
+            url: "/load_profile",
             data: '{"request": {"username" : "' + username + '", "password": "' + password + '"}}',
             dataType: 'json',
             async: false,
