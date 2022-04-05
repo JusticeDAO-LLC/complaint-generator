@@ -10,9 +10,6 @@ from mediator import Mediator, Inquiries, Complaint, State
 from applications import CLI
 from applications import SERVER
 
-
-
-
 with open('config.json') as f:
 	config = json.load(f)
 	config_backends = config['BACKENDS']
@@ -64,3 +61,4 @@ for type in config_application['type']:
 		exit(-1)
 
 	application.run()
+	
