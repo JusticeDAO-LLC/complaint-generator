@@ -123,12 +123,16 @@
         $.ajaxSetup({
             async: true
         }); //return to default setting
-
-        if (returnData["results"]["status_code"] == 200) {
-            // window.location(hostname + "/chat");
-            return returnData["results"];
-        } else {
-            return returnData["results"];
+        // alert(returnData)
+        if (returnData != null) {
+            if ("Err" in returnData) {
+                // alert("This Create Err: " + JSON.stringify(returnData));
+                show_error(returnData);
+                return returnData;
+            } else {
+                // window.location(hostname + "/chat");
+                return returnData;
+            }
         }
         return returnData;
     }
@@ -160,10 +164,12 @@
         //alert(returnData[0]["body"]);
         //data = returnData[0]["data"];
         // alert(JSON.stringify(returnData));
-        if (returnData["Err"].length == 0) {
-            // show_error(returnData["Err"]);
+        if ("Err" in returnData) {
+            // alert("This Login Err: " + JSON.stringify(returnData));
+            show_error(returnData["Err"]);
             return returnData;
         } else {
+            // window.location();
             return returnData;
         }
         return returnData;
@@ -174,9 +180,12 @@
         form_field = "<span>" + message + "</span>";
         $("#Err").html(form_field);
         $("#Err").show();
-        alert(message)
+        // alert(message)
     }
 
+    function returnFalse() {
+        return false;
+    }
 
     $(document).ready(function() {
 
@@ -195,11 +204,10 @@
         //     $("#create-form .form_fields").show();
         // });
 
-        $("#create-form").click(function(e) {
+        $("#create-form button").click(function(e) {
             if ($("#create-form .form_fields").is(":visible")) {
                 mySubmitCreate();
-                alert("form is visible");
-                return None;
+                return false;
             } else {
                 $(".form_fields").hide();
                 $("#create-form .form_fields").show();
@@ -209,11 +217,10 @@
 
 
 
-        $("#login-form").click(function(e) {
+        $("#login-form button").click(function(e) {
             if ($("#login-form .form_fields").is(":visible")) {
                 mySubmitLogin();
-                alert("form is visible");
-                return None;
+                return false;
             } else {
                 $(".form_fields").hide();
                 $("#login-form .form_fields").show();
@@ -222,10 +229,9 @@
 
 
 
-        $("#reset-form").click(function(e) {
+        $("#reset-form button").click(function(e) {
             if ($("#reset-form .form_fields").is(":visible")) {
                 mySubmitReset();
-                alert("form is visible");
                 return None;
             } else {
                 $(".form_fields").hide();
@@ -234,162 +240,89 @@
         });
 
 
-        // $("#login-form").on("submit", function(e) {
-        //     e.preventDefault();
-        //     alert(JSON.stringify(this))
-        //     if (current_username == "" || current_password == "") {
-        //         $("#Err").text("Please enter a username and password");
-        //         $("#Err").show();
-        //     } else {
-        //         var current_username = $("#username_input").val();
-        //         var current_password = $("#password_input").val();
-        //     }
 
-        //     if ($("#email_input").val() == "") {
-        //         var current_email = null;
-        //     } else {
-        //         var current_email = $("#email_input").val();
-        //     }
+        function mySubmitLogin() {
+            username = $("#login-form .username_input").val();
+            password = $("#login-form .password_input").val();
+            results = load_profile(username, password);
+            if ("results" in results) {
+                if ("Err" in results["results"]) {
+                    show_error(results["results"]["Err"]);
+                    return results["results"]["Err"];
+                }
+                if ((results["results"]["hashed_password"].length != 0) && (results["results"]["hashed_username"].length != 0) && (results["results"]["data"].length != 0)) {
+                    window.location.href = "/chat";
+                    return results["results"];
+                }
+            }
+            if ("Err" in results) {
+                show_error(results["Err"]);
+                return results["Err"];
+            } else {
+                window.location.href = "/chat";
+            }
+        }
 
-        //     if ($("#password_input_verify").val() == "") {
-        //         var current_password_verify = null;
-        //     } else {
-        //         var current_password_verify = $("#password_input_verify").val();
-        //     }
 
 
-        //     var domain = "http://localhost:19000";
-        //     results = "";
 
-        //     //if current_username and current_password are not empty
+        function mySubmitCreate() {
+            username = $("#create-form .username_input").val();
+            password = $("#create-form .password_input").val();
+            password_verify = $("#create-form .password_verify_input").val();
+            email = $("#create-form .email_input").val();
+            // alert(username + " " + password + " " + password_verify + " " + email);
+            if (password != password_verify) {
+                show_error("Passwords do not match");
+            } else if (!(email.includes("@")) || !(email.includes("."))) {
+                show_error("Please enter a valid email");
+            } else if (password < 8) {
+                show_error("Password must be at least 8 characters");
+            } else if (username.length < 8) {
+                show_error("Username must be at least 8 characters");
+            } else if ((password.match(/[A-Z]/).length == 0)) {
+                show_error("Password must contain at least one uppercase letter");
+            } else if (!(password.match(/[a-z]/))) {
+                show_error("Password must contain at least one lowercase letter");
+            } else if (!(password.match(/[0-9]/))) {
+                show_error("Password must contain at least one number");
+            } else if (!(password.match(/[!@#$%^&*]/))) {
+                show_error("Password must contain at least one special character");
+            } else {
+                results = create_profile(username, password, email);
+                result = JSON.stringify(results);
+                // alert(result);
+                $("#Err").hide();
+                if ("Err" in results) {
+                    show_error(results["Err"]);
+                    return results;
+                } else {
+                    // alert("Success")
+                    // alert("results: " + JSON.stringify(results));
+                    // alert("hashed_password: " + results["hashed_password"] + " hashed_username: " + results["hashed_username"]);
+                    response = load_profile(results["hashed_username"], results["hashed_password"]);
+                    if ("Err" in response) {
+                        // alert("Load Err: " + response["Err"]);
+                        show_error(response["Err"]);
+                        return response;
+                    } else {
+                        window.location.href = "/chat";
+                        return response
+                    }
+                }
+            }
 
-        //     if ((current_username) && (current_password) && (!(current_email) || !(current_password_verify))) {
-        //         data = {
-        //             "username": current_username,
-        //         };
-        //         results = load_profile(current_username, current_password);
-        //         // results = JSON.parse(results);
-        //         // alert(results);
-        //         // alert(JSON.stringify(results));
-        //         if (results["results"]) {
-        //             if ((results["results"]["Err"] == "No profile") && (current_password_verify == null)) {
-        //                 form_fields = $("#user-form #form_fields ").html();
-        //                 form_fields = form_fields + '<input type="text" class="form-control" id="password_input_verify" placeholder="Reenter your password"></br>';
-        //                 form_fields = form_fields + '<input type="text" class="form-control" id="email_input" placeholder="Enter Your Email"></br>';
-        //                 $("#user-form #form_fields ").html(form_fields);
+            function mySubmitReset() {
+                username = $("#reset-form .username_input").val();
+                email = $("#reset-form .email_input").val();
 
-        //                 form_field = $("#submit_button").html();
-        //                 form_field = form_field.replace("Start Chat", "Create Account");
-        //                 $("#submit_button").html(form_field);
+                return false
+            }
 
-        //                 show_error("No Account Found</br> Resubmit to Create Account")
-        //             } else if ((results["results"]["hashed_password"]) && (results["results"]["hashed_username"]) && (results["results"]["data"])) {
-        //                 window.location.href = domain + "/chat";
-        //                 return
-        //             }
+        }
 
-        //         }
-        //         return
-        //     } else {
-        //         alert("create profile");
-        //         if (current_password != current_password_verify) {
-        //             show_error("Passwords do not match");
-        //         } else if (!(current_email.includes("@")) || !(current_email.includes("."))) {
-        //             show_error("Please enter a valid email");
-        //         } else if (current_password < 8) {
-        //             show_error("Password must be at least 8 characters");
-        //         } else if (current_username.length < 8) {
-        //             show_error("Username must be at least 8 characters");
-        //         } else if ((current_password.match(/[A-Z]/).length == 0)) {
-        //             show_error("Password must contain at least one uppercase letter");
-        //         } else if (!(current_password.match(/[a-z]/))) {
-        //             show_error("Password must contain at least one lowercase letter");
-        //         } else if (!(current_password.match(/[0-9]/))) {
-        //             show_error("Password must contain at least one number");
-        //         } else if (!(current_password.match(/[!@#$%^&*]/))) {
-        //             show_error("Password must contain at least one special character");
-        //         } else {
-        //             results = create_profile(current_username, current_password, current_email);
-        //             result = JSON.stringify(results);
-        //             alert(result);
-        //             $("#Err").hide();
-        //             alert("Success")
-        //                 //window.location.href = hostname + "/chat";
 
-        //         }
-
-        //     }
-
-        // });
     });
-
-    function mySubmitLogin() {
-        username = $("#login-form .username_input").val();
-        password = $("#login-form .password_input").val();
-        results = load_profile(username, password);
-        if ("results" in results) {
-            if ("Err" in results["results"]) {
-                show_error(results["results"]["Err"]);
-                return results["results"]["Err"];
-            }
-            if ((results["results"]["hashed_password"].length != 0) && (results["results"]["hashed_username"].length != 0) && (results["results"]["data"].length != 0)) {
-                window.location.href = domain + "/chat";
-                return results["results"];
-            }
-        }
-        if ("Err" in results) {
-            show_error(results["Err"]);
-            return results["Err"];
-        }
-    }
-
-
-
-
-    function mySubmitCreate() {
-        username = $("#create-form .username_input").val();
-        password = $("#create-form .password_input").val();
-        password_verify = $("#create-form .password_verify_input").val();
-        email = $("#create-form .email_input").val();
-
-        if (password != password_verify) {
-            show_error("Passwords do not match");
-        } else if (!(current_email.includes("@")) || !(current_email.includes("."))) {
-            show_error("Please enter a valid email");
-        } else if (current_password < 8) {
-            show_error("Password must be at least 8 characters");
-        } else if (current_username.length < 8) {
-            show_error("Username must be at least 8 characters");
-        } else if ((current_password.match(/[A-Z]/).length == 0)) {
-            show_error("Password must contain at least one uppercase letter");
-        } else if (!(current_password.match(/[a-z]/))) {
-            show_error("Password must contain at least one lowercase letter");
-        } else if (!(current_password.match(/[0-9]/))) {
-            show_error("Password must contain at least one number");
-        } else if (!(current_password.match(/[!@#$%^&*]/))) {
-            show_error("Password must contain at least one special character");
-        } else {
-            results = create_profile(username, password, email);
-            result = JSON.stringify(results);
-            alert(result);
-            $("#Err").hide();
-            alert("Success")
-            window.location.href = hostname + "/chat";
-            return false
-        }
-
-        function mySubmitReset() {
-            username = $("#reset-form .username_input").val();
-            email = $("#reset-form .email_input").val();
-
-            return false
-        }
-
-    }
-
-    function returnFalse() {
-        return false;
-    }
 </script>
 
 <body style="background-color: transparent; overflow: hidden;">
@@ -403,10 +336,10 @@
                     <div class="col form_fields">
                         <input type="text" class="form-control username_input" placeholder="Enter your username ">
                         <br/>
-                        <input type="text" class="form-control password_input" placeholder="Enter your password ">
+                        <input type="password" class="form-control password_input" placeholder="Enter your password ">
                         <br/>
                     </div>
-                    <div class="submit_button ">
+                    <div class="submit_button">
                         <button type="submit" class="btn btn-primary start">Start Chat</button>
                     </div>
                 </div>
@@ -416,9 +349,9 @@
                     <div class="col form_fields">
                         <input type="text" class="form-control username_input" placeholder="Enter your username ">
                         <br/>
-                        <input type="text" class="form-control password_input" placeholder="Enter your password ">
+                        <input type="password" class="form-control password_input" placeholder="Enter your password ">
                         <br/>
-                        <input type="text" class="form-control password_verify_input" placeholder="Verify your password ">
+                        <input type="password" class="form-control password_verify_input" placeholder="Verify your password ">
                         <br/>
                         <input type="text" class="form-control email_input" placeholder="Enter your email ">
                         <br/>
@@ -434,7 +367,7 @@
                         <input type="text " class="form-control username_input" placeholder="Enter your username ">
                         <br/> OR
                         <br/>
-                        <input type="text " class="form-control email_input" placeholder="Enter your email address ">
+                        <input type="password " class="form-control email_input" placeholder="Enter your email address ">
                         <br/>
                     </div>
                     <div class="submit_button">

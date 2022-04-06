@@ -206,28 +206,34 @@ class SERVER:
                     )
                     pass
 
-                result = r.text
+            result = r.text
+            if type(result) is str:
                 if "{" in r.text:
                     result = json.loads(r.text)
-                    pass
+            if type(result) is dict:
                 if "Err" in result.keys():
-                    return {"Err": result["Err"]}
-                else:
-                    access_token_expires = timedelta(minutes=1440)
-                    access_token = create_access_token(
-                        data={"hashed_username": hashed_username  , "hashed_password" : hashed_password }, expires_delta=access_token_expires
-                    )
-                    token = jsonable_encoder(access_token)
-                    result["token"] = token
-                    response =  Response(status_code=200, content=json.dumps(result))
+                    return result
+            if type(result) is list:
+                result = result[0]
+                pass
 
-                    # cookies =set_cookie({"hashed_username": hashed_username, "hash_password" : hashed_password, "token", token})
-                    response.set_cookie(key="token", value=token)
-                    response.set_cookie(key="hashed_username", value=result["hashed_username"])
-                    response.set_cookie(key="hashed_password", value=result["hashed_password"])
-                    response.data = json.dumps(result)
-                    return(response)
-            return
+            result_data = json.loads(result["data"])
+
+            access_token_expires = timedelta(minutes=1440)
+            access_token = create_access_token(
+                data={"hashed_username": result_data["hashed_username"]  , "hashed_password" : result_data["hashed_password"] }, expires_delta=access_token_expires
+            )
+            token = jsonable_encoder(access_token)
+            result["token"] = token
+            response =  Response(status_code=200, content=json.dumps(result))
+
+            # cookies =set_cookie({"hashed_username": hashed_username, "hash_password" : hashed_password, "token", token})
+            response.set_cookie(key="token", value=token)
+            response.set_cookie(key="hashed_username", value=result_data["hashed_username"])
+            response.set_cookie(key="hashed_password", value=result_data["hashed_password"])
+            response.data = json.dumps(result_data)
+            return(response)
+    
             
         @app.post("/create_profile")
         async def root(request: Request, response: Response):
@@ -249,36 +255,40 @@ class SERVER:
                 data=json.dumps({"request" : params_json["request"]})
             )
             result = r.text
-        
-            if "{" in r.text:
-                result = json.loads(r.text)[0]
+            if type(result) is str:
+                if "{" in r.text:
+                    result = json.loads(r.text)
+            if type(result) is dict:
+                if "Err" in result.keys():
+                    return result
+            if type(result) is list:
+                result = result[0]
+                pass
 
-            data2 = json.loads(result["data"])
-            if "Err" not in data2.keys():
-                    
-                if "hashed_username" in data2.keys():
-                    hashed_username = data2["hashed_username"]
+            result_data = json.loads(result["data"])
 
-                if "hashed_password" in data2.keys():
-                    hashed_password = data2["hashed_password"]
+            if "hashed_username" in result_data.keys():
+                hashed_username = result_data["hashed_username"]
 
-                access_token_expires = timedelta(minutes=1440)
-                access_token = create_access_token(
-                    data={"hashed_username": hashed_username  , "hashed_password" : hashed_password }, expires_delta=access_token_expires
-                )
+            if "hashed_password" in result_data.keys():
+                hashed_password = result_data["hashed_password"]
 
-                token = jsonable_encoder(access_token)
-                data2["token"] = token
-                response =  Response(status_code=200, content=json.dumps(data2))
+            access_token_expires = timedelta(minutes=1440)
+            access_token = create_access_token(
+                data={"hashed_username": hashed_username  , "hashed_password" : hashed_password }, expires_delta=access_token_expires
+            )
 
-                # cookies =set_cookie({"hashed_username": hashed_username, "hash_password" : hashed_password, "token", token})
-                response.set_cookie(key="token", value=token)
-                response.set_cookie(key="hashed_username", value=data2["hashed_username"])
-                response.set_cookie(key="hashed_password", value=data2["hashed_password"])
-                response.data = json.dumps(data2)
-                return(response)
-            else:
-                return {"results" : {"Err": data2["Err"]}}            
+            token = jsonable_encoder(access_token)
+            result_data["token"] = token
+            response =  Response(status_code=200, content=json.dumps(result_data))
+
+            # cookies =set_cookie({"hashed_username": hashed_username, "hash_password" : hashed_password, "token", token})
+            response.set_cookie(key="token", value=token)
+            response.set_cookie(key="hashed_username", value=result_data["hashed_username"])
+            response.set_cookie(key="hashed_password", value=result_data["hashed_password"])
+            response.data = json.dumps(result_data)
+            return(response)
+
 
 
         @app.post("/store_profile")
