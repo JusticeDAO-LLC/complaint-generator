@@ -192,7 +192,7 @@ class SERVER:
                         headers={
                             'Content-Type': 'application/json',
                         }, 
-                        data=json.dumps({"hashed_password" : {"hashed_password": params_json["request"]["username"], "hashed_password" : params_json["request"]["hashed_password"]}})
+                        data=json.dumps({"request" : {"hashed_password": params_json["request"]["hashed_password"], "hashed_username" : params_json["request"]["hashed_username"]}})
                     )
                     pass
 
@@ -218,7 +218,7 @@ class SERVER:
                 pass
 
             result_data = json.loads(result["data"])
-
+            mediator.state.data = result_data
             access_token_expires = timedelta(minutes=1440)
             access_token = create_access_token(
                 data={"hashed_username": result_data["hashed_username"]  , "hashed_password" : result_data["hashed_password"] }, expires_delta=access_token_expires
@@ -338,17 +338,21 @@ class SERVER:
             if token:
                 await manager.connect(websocket, hashed_username)
                 response = {
-                    "hashed_username": hashed_username,
-                    "user": "bot",
+                    "sender": "Bot:",
                     "message": "got connected"
                 }
 
                 await manager.broadcast(response)
                 try:
                     while True:
+                        reply = ""
                         data = await websocket.receive_json()
-                        output = dict({"token": "token", "data": data, "hashed_username": hashed_username, "hashed_password": hashed_password})
+                        mediator.state.load_profile(dict({"results":{ "hashed_username": hashed_username, "hashed_password":hashed_password}}))
+                        mediator.state.message(data)
                         await manager.broadcast(data)
+                        await manager.broadcast(mediator.state.response())
+                        mediator.state.store_profile(dict({"results":{ "hashed_username": hashed_username, "hashed_password":hashed_password}}))
+                        
 
                 except WebSocketDisconnect:
                     manager.disconnect(websocket, token)
@@ -386,6 +390,5 @@ class SERVER:
     #   Do not copy this text below	  #
     # 								  #
     ###################################
-
-
+#lambda expression
 

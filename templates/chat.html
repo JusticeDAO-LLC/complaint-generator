@@ -18,6 +18,19 @@
             top: 5%;
         }
         
+        #Err {
+            background-color: lightcoral;
+            color: crimson;
+            display: none;
+            padding-bottom: 20px;
+            padding-top: 20px;
+            width: 93%;
+            margin: auto;
+            padding: auto;
+            width: 200px;
+            text-align: center;
+        }
+        
         #chat-form {
             position: absolute;
             top: 90%;
@@ -66,8 +79,8 @@
             $.ajax({
                 type: "POST",
                 contentType: 'application/json',
-                url: "http://" + hostname + "/load_profile",
-                data: '{"request": {"username" : "' + username + '", "password": "' + password + '"}}',
+                url: "/load_profile",
+                data: '{"request": {"hashed_username" : "' + username + '", "hashed_password": "' + password + '"}}',
                 dataType: 'json',
                 async: false,
                 success: function(data) {
@@ -75,22 +88,32 @@
                 }
             });
 
-
+            // alert(JSON.stringify(returnData));
             $.ajaxSetup({
                 async: true
             }); //return to default setting
-            data = JSON.parse(returnData[0]["data"]);
-            // alert(data)
-            // alert(JSON.stringify((returnData)[0]["data"]));
-            if (returnData[0]["data"]) {
-                // window.location.href = "/chat";
-                return data;
-            } else if (returnData = ["Err"]) {
-                return returnData = ["Err"];
+            //alert(JSON.stringify(returnData));
+            //alert(returnData[0]["body"]);
+            //data = returnData[0]["data"];
+            // alert(JSON.stringify(returnData));
+            if ("Err" in returnData) {
+                // alert("This Login Err: " + JSON.stringify(returnData));
+                show_error(returnData["Err"]);
+                return returnData;
+            } else {
+                // window.location();
+                return returnData;
             }
             return returnData;
         }
 
+        function show_error(message) {
+            form_field = $("#Err").html();
+            form_field = "<span>" + message + "</span>";
+            $("#Err").html(form_field);
+            $("#Err").show();
+            // alert(message)
+        }
 
         $(document).ready(function() {
             cookies = "";
@@ -147,6 +170,11 @@
             <strong id="profile"></strong>
             <h4 class="card-title text-center"> Lex Publicus Chat App </h4>
             <hr>
+            <div class="Err">
+                <div id="Err">
+                    <br/>
+                </div>
+            </div>
             <div id="messages">
             </div>
             <form class="form-inline" id="chat-form">

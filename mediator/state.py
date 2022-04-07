@@ -8,6 +8,7 @@ import json
 import datetime
 import glob
 import requests
+import datetime 
 
 class State:
 	@classmethod		
@@ -21,10 +22,21 @@ class State:
 		self.hashed_password = None
 		self.hashed_username = None
 		self.last_question = None
+		self.last_message = None
 		self.answered_questions = {}
 		self.questions = {}
 		self.data = {}
+		self.chat_history = []
 
+		self.hostname = "http://10.10.0.10:1792"
+		self.hostname2 = "http://localhost:19000"
+
+	def response(self):
+		response_message = dict({"sender": "Bot:","message":"response"})
+		if "chat_history" not in self.data:
+			self.data["chat_history"] = []
+		self.data["chat_history"].append(response_message)
+		return response_message
 
 	def resume(self):
 		files = list(glob('statefiles/*.json'))
@@ -81,60 +93,78 @@ class State:
 
 	
 	def load_profile(self, request):
-		r = requests.post(
-			'https://10.10.0.10:1792/load_profile',
-			headers={
-				'Content-Type': 'application/json'
-			},
-			data=json.dumps({'request': request})
-		)
+		if "hashed_username" in request["results"]:
+			hashed_username = request["results"]["hashed_username"]
+		if "hashed_password" in request["results"]:
+			hashed_password = request["results"]["hashed_password"]
+		if hashed_username is not None and hashed_password is not None:
+			r = requests.post(
+				self.hostname + '/load_profile',
+				headers={
+					'Content-Type': 'application/json'
+				},
+				data=json.dumps({'request': {"hashed_username": hashed_username, "hashed_password": hashed_password}})
+			)
 
-		response  = json.loads(r.text)
-		if "err" in response:
-			self.log.append(response["err"])			
-		else:
-			results = response["results"]
-			for result in results:
-				setattr(self, result, results[result])
+			if "{" in r.text:
+				response  = json.loads(r.text)
+			if type(response) is list:
+				response = response[0]
+			if "Err" in response:
+				self.log.append(response["Err"])
+				return ({"Err": response["Err"]})
+			else:
+				resultsData = json.loads(response["data"])
+				for result in resultsData:
+					self.data[result] = resultsData[result]
+				return resultsData
 			
-			return results
-		
-	def store_profile(self, request):
-		profile_fields = "complaint_summary, complaint, log, username, password, hashed_password, hashed_username,	last_question, answered_questions, questions, data"
-		profile_fields_list = profile_fields.split(", ")
-		profile = {}
-
-		for field in fields(self):
-			if field.name in profile_fields_list:
-				if getattr(self, field.name) is not None:
-					profile[field.name] = getattr(self, field.name)		
-
-		r = requests.post(
-			'https://10.10.0.10:1792/store_profile',
-			headers={
-				'Content-Type': 'application/json'
-			},
-			data=json.dumps({'request': profile})
-		)
-
-		response  = json.loads(r.text)
-		if "err" in response:
-			self.log.append(response["err"])
-			print("Err: " + response["err"])
 		else:
-			return response
+			self.log.append("No username or password provided")
+			return ({"Err": "No username or password provided"})
 
-	def create_profile(self, request):
-		r = requests.post(
-			'https://10.10.0.10:1792/store_profile',
-			headers={
-				'Content-Type': 'application/json'
-			},
-			data=json.dumps({'request': request})
-		)
-		response  = json.loads(r.text)
-		return response
+	def get_class_attributes(self):
+		return [field.name for field in fields(self)]
 
+
+	def get_class_attributes_with_values(self):
+		return {field.name: getattr(self, field.name) for field in fields(self)}
+
+
+
+	def store_profile(self, request):
+		store_data = dict()
+		if "hashed_username" in request["results"]:
+			hashed_username = request["results"]["hashed_username"]
+		if "hashed_password" in request["results"]:
+			hashed_password = request["results"]["hashed_password"]
+		if hashed_username is not None and hashed_password is not None:
+			for item in self.data:
+				store_data[item] = self.data[item]
+			r = requests.post(
+				self.hostname + '/store_profile',
+				headers={
+					'Content-Type': 'application/json'
+				},
+				data=json.dumps({'request': {"hashed_username": hashed_username, "hashed_password": hashed_password, "data": store_data}})
+			)
+
+			if "{" in r.text:
+				response  = json.loads(r.text)
+				if type(response) is list:
+					response = response[0]				
+				if "Err" in response:
+					self.log.append(response["Err"])
+					return ({"Err": response["Err"]})
+				else:
+					if "data" in response:
+						resultsData = json.loads(response["data"])
+						return resultsData
+			
+		else:
+			self.log.append("No username or password provided")
+			return ({"Err": "No username or password provided"})
+			
 	def recover_profile(self, request):
 		r = requests.post(
 			'https://10.10.0.10:1792/recover_profile',
@@ -159,3 +189,6 @@ class State:
 
 
 
+	def message(self, message):
+		self.chat_history.append({"from" : "Me", "message": message, "timestamp": datetime.datetime.now()})
+		return None

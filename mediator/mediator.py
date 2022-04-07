@@ -18,18 +18,20 @@ class Mediator:
 		self.state = State()
 		# self.inquiries.register(user_prompts['genesis_question'])
 
-
 	def resume(self, state):
 		self.state = state
 
 
 	def get_state(self):
+		state = self.state.serialize()
 		return self.state.serialize()
 
 
 	def set_state(self, serialized):
 		self.state = State.from_serialized(serialized)
 
+	def response(self):
+		return "I'm sorry, I don't understand. Please try again."
 
 	def io(self, text):
 		self.log('user_input', text=text)

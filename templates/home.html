@@ -164,15 +164,59 @@
         //alert(returnData[0]["body"]);
         //data = returnData[0]["data"];
         // alert(JSON.stringify(returnData));
-        if ("Err" in returnData) {
-            // alert("This Login Err: " + JSON.stringify(returnData));
-            show_error(returnData["Err"]);
-            return returnData;
-        } else {
-            // window.location();
+        if (returnData != null) {
+            if ("Err" in returnData) {
+                // alert("This Login Err: " + JSON.stringify(returnData));
+                show_error(returnData["Err"]);
+                return returnData;
+            } else {
+                // window.location();
+                return returnData;
+            }
             return returnData;
         }
-        return returnData;
+    }
+
+    function load_cookies() {
+
+        $.ajaxSetup({
+            async: false
+        }); //execute synchronously
+        var returnData = null; //define returnData outside the scope of the callback function
+        $.ajax({
+            type: "GET",
+            contentType: 'application/json',
+            url: "/cookies",
+            dataType: 'json',
+            async: false,
+            success: function(data) {
+                returnData = data;
+            }
+        });
+
+        // alert(JSON.stringify(returnData));
+        $.ajaxSetup({
+            async: true
+        }); //return to default setting
+        //alert(JSON.stringify(returnData));
+        //alert(returnData[0]["body"]);
+        //data = returnData[0]["data"];
+        // alert(JSON.stringify(returnData));
+        if (returnData != null) {
+            if ("Err" in returnData) {
+                // alert("This Login Err: " + JSON.stringify(returnData));
+                show_error(returnData["Err"]);
+                return {
+                    "Err": returnData["Err"]
+                };
+            } else if ("hashed_username" in returnData && "hashed_password" in returnData && "token" in returnData) {
+
+
+                // window.location();
+                return returnData;
+            }
+            return returnData;
+        }
     }
 
     function show_error(message) {
@@ -188,6 +232,18 @@
     }
 
     $(document).ready(function() {
+
+
+        cookies = load_cookies();
+        if ("Err" in cookies) {
+            show_error(cookies["Err"]);
+            return;
+        } else {
+            if ("hashed_username" in cookies && "hashed_password" in cookies && "token" in cookies) {
+                window.location = "/chat";
+            }
+
+        }
 
         // $("#reset-form").on("submit", function(e) {
         //     $(".form_fields").hide();
