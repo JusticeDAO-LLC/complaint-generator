@@ -1,1 +1,108 @@
- 
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Profile Data</title>
+    <!-- Latest compiled and minified CSS -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <!-- jQuery library -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <style>
+
+    </style>
+    <script>
+        hostname = "localhost:19000";
+
+        function load_profile(username, password, email) {
+
+            $.ajaxSetup({
+                async: false
+            }); //execute synchronously
+            var returnData = null; //define returnData outside the scope of the callback function
+            $.ajax({
+                type: "POST",
+                contentType: 'application/json',
+                url: "/load_profile",
+                data: '{"request": {"hashed_username" : "' + username + '", "hashed_password": "' + password + '"}}',
+                dataType: 'json',
+                async: false,
+                success: function(data) {
+                    returnData = data;
+                }
+            });
+
+            // alert(JSON.stringify(returnData));
+            $.ajaxSetup({
+                async: true
+            }); //return to default setting
+            //alert(JSON.stringify(returnData));
+            //alert(returnData[0]["body"]);
+            //data = returnData[0]["data"];
+            // alert(JSON.stringify(returnData));
+            if ("Err" in returnData) {
+                // alert("This Login Err: " + JSON.stringify(returnData));
+                show_error(returnData["Err"]);
+                return returnData;
+            } else {
+                // window.location();
+                return returnData;
+            }
+            return returnData;
+        }
+
+        function show_error(message) {
+            form_field = $("#Err").html();
+            form_field = "<span>" + message + "</span>";
+            $("#Err").html(form_field);
+            $("#Err").show();
+            // alert(message)
+        }
+
+        $(document).ready(function() {
+            cookies = "";
+            $("body").css("background-color", "transparent");
+            $.ajax({
+                url: "/cookies",
+                type: "get",
+                async: false,
+                data: {},
+                success: function(data) {
+                    // alert(data);
+                    cookies = data;
+                }
+            });
+            // alert(JSON.parse(cookies));
+            hashed_username = JSON.parse(cookies)["hashed_username"];
+            hashed_password = JSON.parse(cookies)["hashed_password"];
+            // alert(hashed_username);
+            profile = load_profile(hashed_username, hashed_password);
+            // console.log(JSON.stringify(profile));
+            // alert(JSON.stringify(profile));
+            testdata = profile["data"];
+            testdata = JSON.parse(testdata);
+            chat_history = testdata["chat_history"];
+            alert(JSON.stringify(testdata));
+            console.log(JSON.stringify(testdata));
+            console.log(JSON.stringify(testdata["data"]["chat_history"]));
+            $("#profile_data").html(JSON.stringify(testdata));
+
+        });
+    </script>
+</head>
+
+<body>
+    <div class="Err">
+        <div id="Err">
+            <br/>
+        </div>
+        <div id="profile_data">
+
+        </div>
+
+
+
+</body>
+
+
+</html>
