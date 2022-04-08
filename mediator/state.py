@@ -14,8 +14,9 @@ class State:
 	@classmethod		
 
 	def __init__(self):
+		self.data_fields = list(str("complaint_summary original_complaint log username password hashed_username hashed_password chat_history questions answered_questions last_question last_message").split(" "))
 		self.complaint_summary = None
-		self.complaint = None
+		self.original_complaint = None
 		self.log = []
 		self.username = None
 		self.password = None
@@ -32,10 +33,10 @@ class State:
 		self.hostname2 = "http://localhost:19000"
 
 	def response(self):
-		response_message = dict({"sender": "Bot:","message":"response"})
+		response_message = dict({"sender": "Bot","message":"response"})
 		if "chat_history" not in self.data:
 			self.data["chat_history"] = []
-		self.data["chat_history"].append(response_message)
+		self.chat_history.append(response_message)
 		return response_message
 
 	def resume(self):
@@ -139,8 +140,8 @@ class State:
 		if "hashed_password" in request["results"]:
 			hashed_password = request["results"]["hashed_password"]
 		if hashed_username is not None and hashed_password is not None:
-			for item in self.data:
-				store_data[item] = self.data[item]
+			for item in self.data_fields:
+				store_data[item] = self.__getattribute__(item)
 			r = requests.post(
 				self.hostname + '/store_profile',
 				headers={
@@ -190,5 +191,5 @@ class State:
 
 
 	def message(self, message):
-		self.chat_history.append({"from" : "Me", "message": message, "timestamp": datetime.datetime.now()})
+		self.chat_history.append( message)
 		return None

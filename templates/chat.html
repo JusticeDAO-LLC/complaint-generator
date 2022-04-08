@@ -133,7 +133,15 @@
             hashed_password = JSON.parse(cookies)["hashed_password"];
             // alert(hashed_username);
             profile = load_profile(hashed_username, hashed_password);
+            // console.log(JSON.stringify(profile));
             // alert(JSON.stringify(profile));
+            testdata = profile["data"];
+            testdata = JSON.parse(testdata);
+            chat_history = testdata["chat_history"];
+            alert(JSON.stringify(chat_history));
+            console.log(JSON.stringify(testdata));
+            console.log(JSON.stringify(testdata["data"]["chat_history"]));
+
             var receiver = "";
             // create websocket
             var socket = new WebSocket("ws://" + hostname + "/api/chat");
@@ -146,7 +154,22 @@
                 var message = data['message']
                 var content = "<p><strong>" + sender + " </strong> <span> " + message + "</span></p>";
                 parent.append(content);
+                if ("chat_history" in testdata["data"]) {
+
+                    for (i = 0; i < testdata["data"]["chat_history"].length; i++) {
+                        if (testdata["data"]["chat_history"][i]["sender"] == hashed_username) {
+                            testdata["data"]["chat_history"][i]["sender"] = "You"
+                        }
+                        chatblock = "<p><strong>" + testdata["data"]["chat_history"][i]["sender"] + ": </strong> <span> " + testdata["data"]["chat_history"][i]["message"] + "</span></p>";
+                        $("#messages").append(chatblock);
+                        console.log(chatblock);
+                    }
+                }
             };
+
+
+
+
             $("#chat-form").on("submit", function(e) {
                 e.preventDefault();
                 var message = $("input").val();

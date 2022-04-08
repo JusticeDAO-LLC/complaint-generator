@@ -339,7 +339,7 @@ class SERVER:
                 await manager.connect(websocket, hashed_username)
                 response = {
                     "sender": "Bot:",
-                    "message": "got connected"
+                    "message": "Please state your legal complaint"
                 }
 
                 await manager.broadcast(response)
