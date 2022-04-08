@@ -62,3 +62,4 @@ for type in config_application['type']:
 
 	application.run()
 	
+
