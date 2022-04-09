@@ -57,6 +57,21 @@
     <script>
         hostname = "localhost:19000";
 
+        function document_print(window) {
+            $("input").css("border", "none");
+            $("textarea").css("border", "none");
+            $("button").css("border", "none");
+            $("select").css("border", "none");
+            $("#print").css("display", "none");
+            window.print();
+            $("input").css("border", "solid 1px #000");
+            $("textarea").css("border", "solid 1px #000");
+            $("button").css("border", "solid 1px #000");
+            $("select").css("border", "solid 1px #000");
+            $("#print").css("display", "inline");
+            return;
+        }
+
         function load_profile(username, password) {
 
             $.ajaxSetup({
@@ -94,6 +109,7 @@
             return returnData;
         }
 
+
         function store_profile(username, password, profile) {
 
             $.ajaxSetup({
@@ -126,6 +142,7 @@
             //alert(returnData[0]["body"]);
             //data = returnData[0]["data"];
             // alert(JSON.stringify(returnData));
+
             if (returnData != null) {
                 if ("Err" in returnData) {
                     // alert("This Login Err: " + JSON.stringify(returnData));
@@ -307,6 +324,7 @@
             testdata = profile["data"];
             testdata = JSON.parse(testdata);
             chat_history = testdata["chat_history"];
+
             // alert(JSON.stringify(testdata));
             // console.log(JSON.stringify(testdata));
             // console.log(JSON.stringify(testdata["data"]["chat_history"]));
@@ -330,6 +348,7 @@
                 $("#jury-trial-yes").prop("checked", false);
                 $("#jury-trial-no").prop("checked", true);
             });
+            // document_print(window)
         });
     </script>
 </head>
@@ -411,7 +430,7 @@
 
         </select><br/><select id="division_name" name="division_name">
             <option value=""></option>
-        </select> DIVISION</h6>
+        </select> DIVISION</h6> <button id="print" onclick="document_print(window)" style="position: absolute; float: right; right: 20px; top: 20px;">Print</button>
             <div id="complaint-header">
                 <div class="left complaint-header-cell">
                     <span id="plaintiff-name" class="plaintiff-name">
