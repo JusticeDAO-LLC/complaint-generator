@@ -57,7 +57,7 @@
     <script>
         hostname = "localhost:19000";
 
-        function load_profile(username, password, email) {
+        function load_profile(username, password) {
 
             $.ajaxSetup({
                 async: false
@@ -94,12 +94,191 @@
             return returnData;
         }
 
+        function store_profile(username, password, profile) {
+
+            $.ajaxSetup({
+                async: false
+            }); //execute synchronously
+            var returnData = null; //define returnData outside the scope of the callback function
+
+            profile = {
+                "hashed_username": username,
+                "hashed_password": password,
+                "data": profile["data"]
+            }
+            $.ajax({
+                type: "POST",
+                contentType: 'application/json',
+                url: "/store_profile",
+                data: '{"request": ' + JSON.stringify(profile) + '}',
+                dataType: 'json',
+                async: false,
+                success: function(data) {
+                    returnData = data;
+                }
+            });
+
+            // alert(JSON.stringify(returnData));
+            $.ajaxSetup({
+                async: true
+            }); //return to default setting
+            //alert(JSON.stringify(returnData));
+            //alert(returnData[0]["body"]);
+            //data = returnData[0]["data"];
+            // alert(JSON.stringify(returnData));
+            if (returnData != null) {
+                if ("Err" in returnData) {
+                    // alert("This Login Err: " + JSON.stringify(returnData));
+                    show_error(returnData["Err"]);
+                    return returnData;
+                } else {
+                    // window.location();
+                    return returnData;
+                }
+                return returnData;
+            }
+        }
+
         function show_error(message) {
             form_field = $("#Err").html();
             form_field = "<span>" + message + "</span>";
             $("#Err").html(form_field);
             $("#Err").show();
             // alert(message)
+        }
+
+        function populate_template(populate) {
+
+            if (populate == true) {
+                for (var key in data) {
+                    if (data.hasOwnProperty(key)) {
+                        $("#" + key).val(data[key]);
+                    }
+                }
+            }
+        }
+
+        function load_complaint() {
+            plaintiff_name = Array();
+            $('input[name^="plaintiff_name[]"]').each(
+                function(key, value) {
+                    plaintiff_name.push(this.value);
+                });
+
+            defendant_name = Array();
+
+            $('input[name^="defendant_name[]"]').each(
+                function(key, value) {
+                    defendant_name.push(this.value);
+                });
+
+            defendant_state = Array();
+
+            $('input[name^="defendant_state[]"]').each(
+                function(key, value) {
+                    defendant_state.push(this.value);
+                });
+
+            plaintiff_state = Array();
+
+            $('input[name^="plaintiff_state[]"]').each(
+                function(key, value) {
+                    plaintiff_state.push(this.value);
+                });
+
+            plaintiff_zip = Array();
+            $('input[name^="plaintiff_zip[]"]').each(
+                function(key, value) {
+                    plaintiff_zip.push(this.value);
+                });
+            defendant_zip = Array();
+            $('input[name^="defendant_zip[]"]').each(
+                function(key, value) {
+                    defendant_zip.push(this.value);
+                });
+
+            plaintiff_address = Array();
+            $('input[name^="plaintiff_address[]"]').each(
+                function(key, value) {
+                    plaintiff_address.push(this.value);
+                });
+
+            defendant_address = Array();
+            $('input[name^="defendant_address[]"]').each(
+                function(key, value) {
+                    defendant_address.push(this.value);
+                });
+            defendant_phone = Array();
+            $('input[name^="defendant_phone[]"]').each(
+                function(key, value) {
+                    defendant_phone.push(this.value);
+                });
+            plaintiff_phone = Array();
+            $('input[name^="plaintiff_phone[]"]').each(
+                function(key, value) {
+                    plaintiff_phone.push(this.value);
+                });
+
+            plaintiff_email_address = Array();
+            $('input[name^="plaintiff_email_address[]"]').each(
+                function(key, value) {
+                    plaintiff_email_address.push(this.value);
+                });
+
+            defendant_email_address = Array();
+            $('input[name^="defendant_email_address[]"]').each(
+                function(key, value) {
+                    defendant_email_address.push(this.value);
+                });
+
+            data = {
+                    "court-title": $("#court-title").val(),
+                    "complaint-number": $("#complaint-number").val(),
+                    "plaintiff-name": $("#plaintiff-name").val(),
+                    "defendant-name": $("#defendant-name").val(),
+                    "jury-demand": $("#jury-trial-yes").val(),
+                    "plaintiff_name": plaintiff_name,
+                    "defendant_name": defendant_name,
+                    "plaintiff_address": plaintiff_address,
+                    "defendant_address": defendant_address,
+
+                    "plaintiff_state": plaintiff_state,
+                    "defendant_state": defendant_state,
+                    "plaintiff_zip": plaintiff_zip,
+                    "defendant_zip": defendant_zip,
+                    "plaintiff_phone": plaintiff_phone,
+                    "defendant_phone": defendant_phone,
+                    "plaintiff_email_address": plaintiff_email_address,
+                    "defendant_email_address": defendant_email_address,
+                    "federal_question": $("#federal_question").val(),
+                    "diversity_citizenship": $("#diversity_citizenship").val(),
+                    "federal_statutes": $("#federal_statutes").val(),
+                    "plaintiff_is_person": $("#plaintiff_is_person").val(),
+                    "plaintiff_is_corporation": $("#plaintiff_is_corporation").val(),
+                    "defendant_is_person": $("#defendant_is_person").val(),
+                    "defendant_is_corporation": $("#defendant_is_corporation").val(),
+                    "plaintiff_state": $("#plaintiff_state").val(),
+                    "defendant_state": $("#defendant_state").val(),
+                    "amount_controversy": $("#amount_controversy").val(),
+                    "claim": $("#claim").val(),
+                    "relief": $("#relief").val(),
+                    "date_signed": $("#date_signed").val(),
+                    "signature": $("#signature").val(),
+                    "plaintiff_name": $("#plaintiff_name").val(),
+                    "attorney_signature": $("#attorney_signature").val(),
+                    "attorney_name": $("#attorney_name").val(),
+                    "attorney_bar_number": $("#attorney_bar_number").val(),
+                    "attorney_law_firm": $("#attorney_law_firm").val(),
+                    "attorney_address": $("#attorney_address").val(),
+                    "attorney_state": $("#attorney_state").val(),
+                    "attorney_zip": $("#attorney_zip").val(),
+                    "attorney_phone_number": $("#attorney_phone_number").val(),
+                    "attorney_email_address": $("#attorney_email_address").val(),
+                    "plaintiff_is": $("#plaintiff_is").val(),
+                    "defendant_is": $("#defendant_is").val(),
+                }
+                // alert(JSON.stringify(data));
+            return (data)
         }
 
         $(document).ready(function() {
@@ -122,6 +301,8 @@
             profile = load_profile(hashed_username, hashed_password);
             // console.log(JSON.stringify(profile));
             // alert(JSON.stringify(profile));
+            profile["data"]["complaint"] = load_complaint();
+            store_profile(hashed_username, hashed_password, profile);
             testdata = profile["data"];
             testdata = JSON.parse(testdata);
             chat_history = testdata["chat_history"];
@@ -129,7 +310,25 @@
             // console.log(JSON.stringify(testdata));
             // console.log(JSON.stringify(testdata["data"]["chat_history"]));
             $("#profile_data").html(JSON.stringify(testdata));
+            $("#complaint").on("keyup", function(e) {
+                profile["data"]["complaint"] = load_complaint();
+                store_profile(hashed_username, hashed_password, profile);
+            });
 
+            $("input").on("click", function(e) {
+                profile["data"]["complaint"] = load_complaint();
+                store_profile(hashed_username, hashed_password, profile);
+            });
+
+            $("#jury-trial-yes").on("click", function(e) {
+                $("#jury-trial-yes").prop("checked", true);
+                $("#jury-trial-no").prop("checked", false);
+            });
+
+            $("#jury-trial-no").on("click", function(e) {
+                $("#jury-trial-yes").prop("checked", false);
+                $("#jury-trial-no").prop("checked", true);
+            });
         });
     </script>
 </head>
@@ -144,45 +343,112 @@
 
     </div>
     <div id="complaint">
-        <h6 class="court-title"> IN THE ________ DISTRICT OF ________ <br/> ________ DIVISION</h6>
-        <div id="complaint-header">
-            <div class="left complaint-header-cell">
-                <span id="plaintiff-name" class="plaintiff-name">
-                John Doe
-                </span>
-                <h6>Plaintiff</h6>
-                vs.
-                <br/>
-                <span id="defendant-name" class="defendant-name">
-                John Doe
-                </span>
-                <h6>Defendant</h6>
-            </div>
-            <div class="right complaint-header-cell">
-                <h6>Case No.</h6>
+        <form id="complaint_form" onsubmit="return returnFalse(event);">
+            <h6 class="court-title"> IN THE US DISTRICT COURT FOR THE
+                <select id="district_name" name="district_name">
+                <option value="Northern">Northern</option>
+                <option value="Southern">Southern</option>
+                <option value="Eastern">Eastern</option>
+                <option value="Western">Western</option>
+            </select> DISTRICT OF <select name="jurisdiction_state" id="jurisdiction_state">
+            <option value="AL">Alabama</option>
+            <option value="AK">Alaska</option>
+            <option value="AZ">Arizona</option>
+            <option value="AR">Arkansas</option>
+            <option value="CA">California</option>
+            <option value="CO">Colorado</option>
+            <option value="CT">Connecticut</option>
+            <option value="DE">Delaware</option>
+            <option value="DC">District of Columbia</option>
+            <option value="FL">Florida</option>
+            <option value="GA">Georgia</option>
+            <option value="HI">Hawaii</option>
+            <option value="ID">Idaho</option>
+            <option value="IL">Illinois</option>
+            <option value="IN">Indiana</option>
+            <option value="IA">Iowa</option>
+            <option value="KS">Kansas</option>
+            <option value="KY">Kentucky</option>
+            <option value="LA">Louisiana</option>
+            <option value="ME">Maine</option>
+            <option value="MD">Maryland</option>
+            <option value="MA">Massachusetts</option>
+            <option value="MI">Michigan</option>
+            <option value="MN">Minnesota</option>
+            <option value="MS">Mississippi</option>
+            <option value="MO">Missouri</option>
+            <option value="MT">Montana</option>
+            <option value="NE">Nebraska</option>
+            <option value="NV">Nevada</option>
+            <option value="NH">New Hampshire</option>
+            <option value="NJ">New Jersey</option>
+            <option value="NM">New Mexico</option>
+            <option value="NY">New York</option>
+            <option value="NC">North Carolina</option>
+            <option value="ND">North Dakota</option>
+            <option value="OH">Ohio</option>
+            <option value="OK">Oklahoma</option>
+            <option value="OR">Oregon</option>
+            <option value="PA">Pennsylvania</option>
+            <option value="RI">Rhode Island</option>
+            <option value="SC">South Carolina</option>
+            <option value="SD">South Dakota</option>
+            <option value="TN">Tennessee</option>
+            <option value="TX">Texas</option>
+            <option value="UT">Utah</option>
+            <option value="VT">Vermont</option>
+            <option value="VA">Virginia</option>
+            <option value="WA">Washington</option>
+            <option value="WV">West Virginia</option>
+            <option value="WI">Wisconsin</option>
+            <option value="WY">Wyoming</option>
+            <option value="AS">American Samoa</option>
+            <option value="GU">Guam</option>
+            <option value="MP">Northern Mariana Islands</option>
+            <option value="PR">Puerto Rico</option>
+            <option value="VI">Virgin Islands</option>
 
-                <span id="complaint-number" class="complaint-number">
+        </select><br/><select id="division_name" name="division_name">
+            <option value=""></option>
+        </select> DIVISION</h6>
+            <div id="complaint-header">
+                <div class="left complaint-header-cell">
+                    <span id="plaintiff-name" class="plaintiff-name">
+                John Doe
+                </span>
+                    <h6>Plaintiff</h6>
+                    vs.
+                    <br/>
+                    <span id="defendant-name" class="defendant-name">
+                John Doe
+                </span>
+                    <h6>Defendant</h6>
+                </div>
+                <div class="right complaint-header-cell">
+                    <h6>Case No.</h6>
+
+                    <span id="complaint-number" class="complaint-number">
                     
                 </span>
-                <br/> Verified Complaint
-                <br/>
-                <span>Jury Trial <br/>
+                    <br/> Verified Complaint
+                    <br/>
+                    <span>Jury Trial <br/>
                     <input type="checkbox" id="jury-trial-yes" name="jury-trial-yes"  class="jury-trial" >  <label for="jury-trial-yes">Yes</label>
                     <input type="checkbox" id="jury-trial-no" name="jury-trial-no"  class="jury-trial" >  <label for="jury-trial-no">No</label>
                 </span>
+                </div>
             </div>
-        </div>
 
-        <div id="complaint_body">
-            <ul>
-                <li>
-                    <h6>I. The Parties to This Complaint</h6>
-                    <ul>
-                        <h6>A. The plaintiff(s)</h6>
-                        <label for="plaintiff_name[]" class="plaintiff_name">Name : </label><input type="text" name="plaintiff_name[]" id="defendant_name" class="plaintiff_name" value=" "><br/>
-                        <label for="plaintiff_address[]" class="plaintiff_address">Street Address : </label><input type="text" name="plaintiff_address[]" id="plaintiff_address" class="plaintiff_address" value=" "><br/>
-                        <label for="plaintiff_state" class="plaintiff_state">State : </label>
-                        <select name="plaintiff_state[]" id="plaintiff_state">
+            <div id="complaint_body">
+                <ul>
+                    <li>
+                        <h6>I. The Parties to This Complaint</h6>
+                        <ul>
+                            <h6>A. The plaintiff(s)</h6>
+                            <label for="plaintiff_name[]" class="plaintiff_name">Name : </label><input type="text" name="plaintiff_name[]" id="defendant_name" class="plaintiff_name" value=" "><br/>
+                            <label for="plaintiff_address[]" class="plaintiff_address">Street Address : </label><input type="text" name="plaintiff_address[]" id="plaintiff_address" class="plaintiff_address" value=" "><br/>
+                            <label for="plaintiff_state[]" class="plaintiff_state">State : </label>
+                            <select name="plaintiff_state[]" id="plaintiff_state">
                             <option value="AL">Alabama</option>
                             <option value="AK">Alaska</option>
                             <option value="AZ">Arizona</option>
@@ -244,16 +510,16 @@
                             <option value="AP">Armed Forces Pacific</option>
                         </select><br/>
 
-                        <label for="plaintiff_zip" class="plaintiff_zip">Zip Code : </label><input type="text " name="plaintiff_zip" id="plaintiff_zip" class="plaintiff_zip" value=" "><br/>
-                        <label for="plaintiff_phone_number" class="plaintiff_phone_number">Telephone Number : </label><input type="text" name="plaintiff_phone_number" id="plaintiff_phone_number" class="plaintiff_phone_number" value=" "><br/>
-                        <label for="plaintiff_email_address" class="plaintiff_email_address">E-mail Address : </label><input type="text" name="plaintiff_email_address" id="plaintiff_email_address" class="plaintiff_email_address" value=" "><br/>
-                </li>
-                <li>
-                    <h6>B. The Defendant(s)</h6>
-                    <label for="defendant_name[]" class="defendant_name">Name : </label><input type="text" name="defendant_name[]" id="defendant_name" class="defendant_name" value=" "><br/>
-                    <label for="defendant_address[]" class="defendant_address">Street Address : </label><input type="text" name="defendant_address[]" id="defendant_address" class="defendant_address" value=" "><br/>
-                    <label for="defendant_state" class="defendant_state">State : </label>
-                    <select name="defendant_state[]" id="defendant_state">
+                            <label for="plaintiff_zip[]" class="plaintiff_zip">Zip Code : </label><input type="text " name="plaintiff_zip[]" class="plaintiff_zip" value=" "><br/>
+                            <label for="plaintiff_phone_number[]" class="plaintiff_phone_number">Telephone Number : </label><input type="text" name="plaintiff_phone_number[]" id="plaintiff_phone_number" class="plaintiff_phone_number" value=" "><br/>
+                            <label for="plaintiff_email_address[]" class="plaintiff_email_address">E-mail Address : </label><input type="text" name="plaintiff_email_address[]" id="plaintiff_email_address" class="plaintiff_email_address" value=" "><br/>
+                    </li>
+                    <li>
+                        <h6>B. The Defendant(s)</h6>
+                        <label for="defendant_name[]" class="defendant_name">Name : </label><input type="text" name="defendant_name[]" id="defendant_name" class="defendant_name" value=" "><br/>
+                        <label for="defendant_address[]" class="defendant_address">Street Address : </label><input type="text" name="defendant_address[]" id="defendant_address" class="defendant_address" value=" "><br/>
+                        <label for="defendant_state[]" class="defendant_state">State : </label>
+                        <select name="defendant_state[]" id="defendant_state">
                                 <option value="AL">Alabama</option>
                                 <option value="AK">Alaska</option>
                                 <option value="AZ">Arizona</option>
@@ -315,38 +581,38 @@
                                 <option value="AP">Armed Forces Pacific</option>
                             </select><br/>
 
-                    <label for="defendant_zip" class="defendant_zip">Zip Code : </label><input type="text " name="defendant_zip" id="defendant_zip" class="defendant_zip" value=" "><br/>
-                    <label for="defendant_phone_number" class="defendant_phone_number">Telephone Number : </label><input type="text" name="defendant_phone_number" id="defendant_phone_number" class="defendant_phone_number" value=" "><br/>
-                    <label for="defendant_email_address" class="defendant_email_address">E-mail Address : </label><input type="text" name="defendant_email_address" id="defendant_email_address" class="defendant_email_address" value=" "><br/>
-                </li>
-                </ul>
-                </li>
-                <li>
-                    <h6>II. Basis for Jurisdiction</h6>
-                    <span>What is the basis for federal court jurisdiction? <br/>
+                        <label for="defendant_zip[]" class="defendant_zip">Zip Code : </label><input type="text " name="defendant_zip[]" id="defendant_zip" class="defendant_zip" value=" "><br/>
+                        <label for="defendant_phone_number[]" class="defendant_phone_number">Telephone Number : </label><input type="text" name="defendant_phone_number" id="defendant_phone_number" class="defendant_phone_number" value=" "><br/>
+                        <label for="defendant_email_address[]" class="defendant_email_address">E-mail Address : </label><input type="text" name="defendant_email_address" id="defendant_email_address" class="defendant_email_address" value=" "><br/>
+                    </li>
+                    </ul>
+                    </li>
+                    <li>
+                        <h6>II. Basis for Jurisdiction</h6>
+                        <span>What is the basis for federal court jurisdiction? <br/>
                         <input type="checkbox" id="federal_question" name="federal_question"  class="federal_question" >  <label for="federal_question">Federal 
                             Question
                         </label>
                         <input type="checkbox" id="diversity_citizenship" name="diversity_citizenship"  class="diversity_citizenship >  <label for="diversity_citizenship">Diversity of citizenship</label>
                     </span>
-                    <ul>
-                        <li>
-                            <h6>A. If the Basis for Jurisdiction Is a Federal Question</h6>
-                            <span>List the specific federal statutes, federal treaties, and/or provisions of the United States Constitution that are at issue in this case. </span>
-                            <br/><textarea id="federal_statutes" class="federal_statutes" name="federal_statutes" rows="3" cols="50" placeholder="42 USC &#167 1983"></textarea>
-                        </li>
-                        <li>
-                            <h6>B. If the Basis for Jurisdiction Is Diversity of Citizenship</h6>
-                            <ul>
-                                <li>
-                                    <h6>1. The Plaintiff(s)</h6>
-                                    <span> Plaintiff is a: </span>
-                                    <input type="radio" id="plaintiff_is_person" name="plaintiff__is" value="individual">
-                                    <label for="plaintiff_is_person"></label>individual</label>
-                                    <input type="radio" id="plaintiff_is_corporation" name="plaintiff__is" value="corporation">
-                                    <label for="plaintiff_is_corporation">corporation</label> <br/>
-                                    <span> of the state of </span>
-                                    <select name="plaintiff_state" id="plaintiff_state">
+                        <ul>
+                            <li>
+                                <h6>A. If the Basis for Jurisdiction Is a Federal Question</h6>
+                                <span>List the specific federal statutes, federal treaties, and/or provisions of the United States Constitution that are at issue in this case. </span>
+                                <br/><textarea id="federal_statutes" class="federal_statutes" name="federal_statutes" rows="3" cols="50" placeholder="42 USC &#167 1983"></textarea>
+                            </li>
+                            <li>
+                                <h6>B. If the Basis for Jurisdiction Is Diversity of Citizenship</h6>
+                                <ul>
+                                    <li>
+                                        <h6>1. The Plaintiff(s)</h6>
+                                        <span> Plaintiff is a: </span>
+                                        <input type="radio" id="plaintiff_is_person" name="plaintiff__is" value="individual">
+                                        <label for="plaintiff_is_person"></label>individual</label>
+                                        <input type="radio" id="plaintiff_is_corporation" name="plaintiff__is" value="corporation">
+                                        <label for="plaintiff_is_corporation">corporation</label> <br/>
+                                        <span> of the state of </span>
+                                        <select name="plaintiff_state" id="plaintiff_state">
                                         <option value="AL">Alabama</option>
                                         <option value="AK">Alaska</option>
                                         <option value="AZ">Arizona</option>
@@ -407,18 +673,18 @@
                                         <option value="AE">Armed Forces Europe</option>
                                         <option value="AP">Armed Forces Pacific</option>
                                     </select>
-                                </li>
+                                    </li>
 
 
-                                <li>
-                                    <h6>2. The Defendants(s)</h6>
-                                    <span> Defendant is a: </span>
-                                    <input type="radio" id="plaintiff_is_person" name="defendant__is" value="individual">
-                                    <label for="plaintiff_is_person"></label>individual</label>
-                                    <input type="radio" id="defendant_is_corporation" name="defendant__is" value="corporation">
-                                    <label for="defendant_is_corporation">corporation</label> <br/>
-                                    <span> of the state of </span>
-                                    <select name="defendant_state" id="defendant_state">
+                                    <li>
+                                        <h6>2. The Defendants(s)</h6>
+                                        <span> Defendant is a: </span>
+                                        <input type="radio" id="plaintiff_is_person" name="defendant__is" value="individual">
+                                        <label for="plaintiff_is_person"></label>individual</label>
+                                        <input type="radio" id="defendant_is_corporation" name="defendant__is" value="corporation">
+                                        <label for="defendant_is_corporation">corporation</label> <br/>
+                                        <span> of the state of </span>
+                                        <select name="defendant_state" id="defendant_state">
                                         <option value="AL">Alabama</option>
                                         <option value="AK">Alaska</option>
                                         <option value="AZ">Arizona</option>
@@ -479,34 +745,34 @@
                                         <option value="AE">Armed Forces Europe</option>
                                         <option value="AP">Armed Forces Pacific</option>
                                     </select>
-                                </li>
+                                    </li>
 
-                                <li>
-                                    <h6>3. The Amount in Controversy</h6>
-                                    <span> The amount in controversythe amount the plaintiff claims the defendant owes or the amount at stake is more than $75,000, not counting interest and costs of court, because </span>
-                                    <br/><textarea id="amount_controversy" class="amount_controversy" name="amount_controversy" rows="3" cols="50" placeholder="This is why my claims are more than $75,000"></textarea>
+                                    <li>
+                                        <h6>3. The Amount in Controversy</h6>
+                                        <span> The amount in controversythe amount the plaintiff claims the defendant owes or the amount at stake is more than $75,000, not counting interest and costs of court, because </span>
+                                        <br/><textarea id="amount_controversy" class="amount_controversy" name="amount_controversy" rows="3" cols="50" placeholder="This is why my claims are more than $75,000"></textarea>
 
-                                </li>
+                                    </li>
 
-                            </ul>
+                                </ul>
 
 
-                        </li>
-                    </ul>
-                </li>
-                <li>
-                    <h6>III. Statement of Claim</h6>
-                    <br/><textarea id="claim" class="claim" name="claim" rows="5" cols="75" placeholder="This is why my claims are more than $75,000"></textarea>
+                            </li>
+                        </ul>
+                    </li>
+                    <li>
+                        <h6>III. Statement of Claim</h6>
+                        <br/><textarea id="claim" class="claim" name="claim" rows="7" cols="75" placeholder="Write a short and plain statement of the claim. Do not make legal arguments. State as briefly as possible the facts showing that each plaintiff is entitled to the damages or other relief sought. State how each defendant was involved and what each defendant did that caused the plaintiff harm or violated the plaintiff's rights, including the dates and places of that involvement or conduct. If more than one claim is asserted, number each claim and write a short and plain statement of each claim in a separate paragraph."></textarea>
 
-                </li>
-                <li>
-                    <h6>IV. Relief</h6>
-                    <br/><textarea id="relief" class="relief" name="relief" rows="5" cols="75" placeholder="This is why my claims are more than $75,000"></textarea>
+                    </li>
+                    <li>
+                        <h6>IV. Relief</h6>
+                        <br/><textarea id=" relief " class="relief " name="relief " rows="6 " cols="75 " placeholder="State briefly and precisely what damages or other relief the plaintiff asks the court to order. Do not make legal arguments. Include anybasis for claiming that the wrongs alleged are continuing at the present time. Include the amounts of any actual damages claimed for the acts alleged and the basis for these amounts. Include any punitive or exemplary damages claimed, the amounts, and the reasons you claim you are entitled to actual or punitive money damages. "></textarea>
 
-                </li>
-                <li>
-                    <h6>V. Certification and Closing</h6>
-                    <span>
+                    </li>
+                    <li>
+                        <h6>V. Certification and Closing</h6>
+                        <span>
                         Under Federal Rule of Civil Procedure 11, by signing below, I certify to the best of my knowledge, information, and belief that this complaint: <ul>
                             <li>(1) is not being presented for an improper purpose, such as to harass, cause unnecessary delay, or needlessly increase the cost of litigation;</li>
                             <li>(2) is supported by existing law or by a nonfrivolous argument for extending, modifying, or reversing existing law; </li>
@@ -514,97 +780,97 @@
                             <li>(4) the complaint otherwise complies with the requirements of Rule 11.</li>
                         </ul> 
                     </span>
-                    <ul>
-                        <li>
-                            <h6>A. For Parties Without an Attorney </h6>
-                            <span> I agree to provide the Clerk’s Office with any changes to my address where caserelated papers may be served.  I understand that my failure to keep a current address on file with the Clerk’s Office may result in the dismissal of my case.</span><br/>
-                            <label for=" date_signed " class="date_signed ">Date of signing : </label><input type="text " name="date_signed " id="date_signed " class="date_signed " value=" "><br/>
-                            <label for="plaintiff_name " class="plaintiff_name ">Printed Name of Plaintiff : </label><input type="text " name="plaintiff_name " id="plaintiff_name " class="plaintiff_name " value=" "><br/>
-                            <label for="signature " class="signature ">Signature of Plaintiff : </label><input type="text " name="signature " id="signature " class="signature " value=" "><br/>
+                        <ul>
+                            <li>
+                                <h6>A. For Parties Without an Attorney </h6>
+                                <span> I agree to provide the Clerk’s Office with any changes to my address where caserelated papers may be served.  I understand that my failure to keep a current address on file with the Clerk’s Office may result in the dismissal of my case.</span><br/>
+                                <label for="date_signed " class="date_signed ">Date of signing : </label><input type="text " name="date_signed " id="date_signed " class="date_signed " value=" "><br/>
+                                <label for="plaintiff_name " class="plaintiff_name ">Printed Name of Plaintiff : </label><input type="text " name="plaintiff_name " id="plaintiff_name " class="plaintiff_name " value=" "><br/>
+                                <label for="signature " class="signature ">Signature of Plaintiff : </label><input type="text " name="signature " id="signature " class="signature " value=" "><br/>
 
-                        </li>
-                        <li>
-                            <h6>B. For Attorneys</h6>
-                            <br/>
-                            <label for="date_signed " class="date_signed ">Date of signing : </label><input type="text " name="date_signed " id="date_signed " class="date_signed " value=" "><br/>
-                            <label for="attorney_signature" class="date_signed ">Signature of Attorney : </label><input type="text " name="attorney_signature" id="attorney_signature" class="attorney_signature" value=" "><br/>
-                            <label for="attorney_name" class="attorney_name">Printed Name of Attorney : </label><input type="text " name="date_signed " id="attorney_name" class="attorney_name" value=" "><br/>
-                            <label for="attorney_bar_number" class="attorney_bar_number">Bar Number : </label><input type="text " name="attorney_bar_number" id="attorney_bar_number " class="attorney_bar_number" value=" "><br/>
-                            <label for="attorney_law_firm" class="attorney_law_firm">Law Firm : </label><input type="text " name="attorney_law_firm" id="attorney_law_firm" class="attorney_law_firm" value=" "><br/>
-                            <label for="attorney_address" class="attorney_address">Street Address : </label><input type="text" name="attorney_address" id="attorney_address" class="attorney_address" value=" "><br/>
-                            <label for="attorney_state" class="attorney_state">State : </label>
-                            <select name="attorney_state" id="attorney_state">
-                                <option value="AL">Alabama</option>
-                                <option value="AK">Alaska</option>
-                                <option value="AZ">Arizona</option>
-                                <option value="AR">Arkansas</option>
-                                <option value="CA">California</option>
-                                <option value="CO">Colorado</option>
-                                <option value="CT">Connecticut</option>
-                                <option value="DE">Delaware</option>
-                                <option value="DC">District of Columbia</option>
-                                <option value="FL">Florida</option>
-                                <option value="GA">Georgia</option>
-                                <option value="HI">Hawaii</option>
-                                <option value="ID">Idaho</option>
-                                <option value="IL">Illinois</option>
-                                <option value="IN">Indiana</option>
-                                <option value="IA">Iowa</option>
-                                <option value="KS">Kansas</option>
-                                <option value="KY">Kentucky</option>
-                                <option value="LA">Louisiana</option>
-                                <option value="ME">Maine</option>
-                                <option value="MD">Maryland</option>
-                                <option value="MA">Massachusetts</option>
-                                <option value="MI">Michigan</option>
-                                <option value="MN">Minnesota</option>
-                                <option value="MS">Mississippi</option>
-                                <option value="MO">Missouri</option>
-                                <option value="MT">Montana</option>
-                                <option value="NE">Nebraska</option>
-                                <option value="NV">Nevada</option>
-                                <option value="NH">New Hampshire</option>
-                                <option value="NJ">New Jersey</option>
-                                <option value="NM">New Mexico</option>
-                                <option value="NY">New York</option>
-                                <option value="NC">North Carolina</option>
-                                <option value="ND">North Dakota</option>
-                                <option value="OH">Ohio</option>
-                                <option value="OK">Oklahoma</option>
-                                <option value="OR">Oregon</option>
-                                <option value="PA">Pennsylvania</option>
-                                <option value="RI">Rhode Island</option>
-                                <option value="SC">South Carolina</option>
-                                <option value="SD">South Dakota</option>
-                                <option value="TN">Tennessee</option>
-                                <option value="TX">Texas</option>
-                                <option value="UT">Utah</option>
-                                <option value="VT">Vermont</option>
-                                <option value="VA">Virginia</option>
-                                <option value="WA">Washington</option>
-                                <option value="WV">West Virginia</option>
-                                <option value="WI">Wisconsin</option>
-                                <option value="WY">Wyoming</option>
-                                <option value="AS">American Samoa</option>
-                                <option value="GU">Guam</option>
-                                <option value="MP">Northern Mariana Islands</option>
-                                <option value="PR">Puerto Rico</option>
-                                <option value="VI">Virgin Islands</option>
-                                <option value="AA">Armed Forces Americas</option>
-                                <option value="AE">Armed Forces Europe</option>
-                                <option value="AP">Armed Forces Pacific</option>
+                            </li>
+                            <li>
+                                <h6>B. For Attorneys</h6>
+                                <br/>
+                                <label for="date_signed " class="date_signed ">Date of signing : </label><input type="text " name="date_signed " id="date_signed " class="date_signed " value=" "><br/>
+                                <label for="attorney_signature " class="date_signed ">Signature of Attorney : </label><input type="text " name="attorney_signature " id="attorney_signature " class="attorney_signature " value=" "><br/>
+                                <label for="attorney_name " class="attorney_name ">Printed Name of Attorney : </label><input type="text " name="date_signed " id="attorney_name " class="attorney_name " value=" "><br/>
+                                <label for="attorney_bar_number " class="attorney_bar_number ">Bar Number : </label><input type="text " name="attorney_bar_number " id="attorney_bar_number " class="attorney_bar_number " value=" "><br/>
+                                <label for="attorney_law_firm " class="attorney_law_firm ">Law Firm : </label><input type="text " name="attorney_law_firm " id="attorney_law_firm " class="attorney_law_firm " value=" "><br/>
+                                <label for="attorney_address " class="attorney_address ">Street Address : </label><input type="text " name="attorney_address " id="attorney_address " class="attorney_address " value=" "><br/>
+                                <label for="attorney_state " class="attorney_state ">State : </label>
+                                <select name="attorney_state " id="attorney_state ">
+                                <option value="AL ">Alabama</option>
+                                <option value="AK ">Alaska</option>
+                                <option value="AZ ">Arizona</option>
+                                <option value="AR ">Arkansas</option>
+                                <option value="CA ">California</option>
+                                <option value="CO ">Colorado</option>
+                                <option value="CT ">Connecticut</option>
+                                <option value="DE ">Delaware</option>
+                                <option value="DC ">District of Columbia</option>
+                                <option value="FL ">Florida</option>
+                                <option value="GA ">Georgia</option>
+                                <option value="HI ">Hawaii</option>
+                                <option value="ID ">Idaho</option>
+                                <option value="IL ">Illinois</option>
+                                <option value="IN ">Indiana</option>
+                                <option value="IA ">Iowa</option>
+                                <option value="KS ">Kansas</option>
+                                <option value="KY ">Kentucky</option>
+                                <option value="LA ">Louisiana</option>
+                                <option value="ME ">Maine</option>
+                                <option value="MD ">Maryland</option>
+                                <option value="MA ">Massachusetts</option>
+                                <option value="MI ">Michigan</option>
+                                <option value="MN ">Minnesota</option>
+                                <option value="MS ">Mississippi</option>
+                                <option value="MO ">Missouri</option>
+                                <option value="MT ">Montana</option>
+                                <option value="NE ">Nebraska</option>
+                                <option value="NV ">Nevada</option>
+                                <option value="NH ">New Hampshire</option>
+                                <option value="NJ ">New Jersey</option>
+                                <option value="NM ">New Mexico</option>
+                                <option value="NY ">New York</option>
+                                <option value="NC ">North Carolina</option>
+                                <option value="ND ">North Dakota</option>
+                                <option value="OH ">Ohio</option>
+                                <option value="OK ">Oklahoma</option>
+                                <option value="OR ">Oregon</option>
+                                <option value="PA ">Pennsylvania</option>
+                                <option value="RI ">Rhode Island</option>
+                                <option value="SC ">South Carolina</option>
+                                <option value="SD ">South Dakota</option>
+                                <option value="TN ">Tennessee</option>
+                                <option value="TX ">Texas</option>
+                                <option value="UT ">Utah</option>
+                                <option value="VT ">Vermont</option>
+                                <option value="VA ">Virginia</option>
+                                <option value="WA ">Washington</option>
+                                <option value="WV ">West Virginia</option>
+                                <option value="WI ">Wisconsin</option>
+                                <option value="WY ">Wyoming</option>
+                                <option value="AS ">American Samoa</option>
+                                <option value="GU ">Guam</option>
+                                <option value="MP ">Northern Mariana Islands</option>
+                                <option value="PR ">Puerto Rico</option>
+                                <option value="VI ">Virgin Islands</option>
+                                <option value="AA ">Armed Forces Americas</option>
+                                <option value="AE ">Armed Forces Europe</option>
+                                <option value="AP ">Armed Forces Pacific</option>
                             </select><br/>
 
-                            <label for="attorney_zip" class="attorney_zip">Zip Code : </label><input type="text " name="attorney_zip" id="attorney_zip" class="attorney_zip" value=" "><br/>
-                            <label for="attorney_phone_number" class="attorney_phone_number">Telephone Number : </label><input type="text" name="attorney_phone_number" id="attorney_phone_number" class="attorney_phone_number" value=" "><br/>
-                            <label for="attorney_email_address" class="attorney_email_address">E-mail Address : </label><input type="text" name="attorney_email_address" id="attorney_email_address" class="attorney_email_address" value=" "><br/>
+                                <label for="attorney_zip " class="attorney_zip ">Zip Code : </label><input type="text " name="attorney_zip " id="attorney_zip " class="attorney_zip " value=" "><br/>
+                                <label for="attorney_phone_number " class="attorney_phone_number ">Telephone Number : </label><input type="text " name="attorney_phone_number " id="attorney_phone_number " class="attorney_phone_number " value=" "><br/>
+                                <label for="attorney_email_address " class="attorney_email_address ">E-mail Address : </label><input type="text " name="attorney_email_address " id="attorney_email_address " class="attorney_email_address " value=" "><br/>
 
-                        </li>
-                    </ul>
-                </li>
-            </ul>
-        </div>
-
+                            </li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </form>
     </div>
 
 
