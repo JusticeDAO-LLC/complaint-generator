@@ -122,16 +122,16 @@ class SERVER:
                 if "hashed_password" in cookie.keys():
                     hashed_password = cookie["hashed_password"]
                 if hashed_username is not None and hashed_password is not None:
-                    results = load_profile(dict({"hashed_username": hashed_username, "hashed_password" : hashed_password}))
-                    if "Err" not in results.keys():
-                        return {"results": results}
-                    else:
-                        return {"Err": results["Err"]}
+                    # results = load_profile(dict({"hashed_username": hashed_username, "hashed_password" : hashed_password}))
+                    # if "Err" not in results.keys():
+                    #     return {"results": results}
+                    # else:
+                    #     return {"Err": results["Err"]}
                 # cookie = cookie.replace('"', '')
                 # cookie = cookie.replace('"', '')
                 # cookie = cookie.split(":")
                 # cookie = {cookie[0]: cookie[1]}
-                return json.dumps(cookie)
+                    return json.dumps(cookie)
             else:
                 return "No Cookie found"
 
@@ -181,7 +181,7 @@ class SERVER:
                         response.set_cookie(key="token", value=token)
                         response.set_cookie(key="hashed_username", value=hashed_username)
                         response.set_cookie(key="hashed_password", value=hashed_password)
-                        response.data = json.dumps(result)
+                        response.data = json.dumps(result["data"])
                         return  {response}
                     else:
                         return {"results" : {"Err": result["Err"]}}
@@ -216,8 +216,16 @@ class SERVER:
             if type(result) is list:
                 result = result[0]
                 pass
+            
+            if "data" in result.keys():
+                result_data = result["data"]
+            if type(result_data) is str:
+                if "{" in result_data:
+                    result_data = json.loads(result_data)
+                    
+            # if result_data["data"].__len__() > 0:
+            #     result_data["data"] = None
 
-            result_data = json.loads(result["data"])
             mediator.state.data = result_data
             access_token_expires = timedelta(minutes=1440)
             access_token = create_access_token(
@@ -231,7 +239,11 @@ class SERVER:
             response.set_cookie(key="token", value=token)
             response.set_cookie(key="hashed_username", value=result_data["hashed_username"])
             response.set_cookie(key="hashed_password", value=result_data["hashed_password"])
-            response.data = json.dumps(result_data)
+            response.data = result_data
+            
+            # if response.data["chat_history"] is not None:
+            #     if type(response.data["chat_history"]["chat_history"]) is list or type(response.data["chat_history"]["chat_history"]) is dict:
+            #         response.data["chat_history"]["chat_history"] = None
             return(response)
     
             
@@ -303,14 +315,19 @@ class SERVER:
                 raise HTTPException(status_code=400, detail="you need to provide a password or hashed password")
             params_json = await request.json()
             r = requests.post(
-                hostname + '/load_profile', 
+                hostname + '/store_profile', 
                 headers={
                     'Content-Type': 'application/json',
                 }, 
                 data=json.dumps({"request" : params_json["request"]})
             )
-            results = json.loads(r.text)
-            return {"results": results}
+            if type(r.text) is str and "{" in r.text:
+                results = json.loads(r.text)
+                if "Err" in results.keys():
+                    return results
+                else:
+                    return {"results": results}
+
 
         @app.websocket("/api/chat")
         async def chat(websocket: WebSocket):

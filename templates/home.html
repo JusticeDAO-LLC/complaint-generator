@@ -239,7 +239,7 @@
             show_error(cookies["Err"]);
             return;
         } else {
-            if ("hashed_username" in cookies && "hashed_password" in cookies && "token" in cookies) {
+            if ("hashed_username" in cookies && "hashed_password" in cookies && "token" in cookies && cookies["hashed_username"] != "None" && cookies["hashed_password"] != "None" && cookies["token"] != "None") {
                 window.location = "/chat";
             }
 

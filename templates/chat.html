@@ -136,7 +136,6 @@
             // console.log(JSON.stringify(profile));
             // alert(JSON.stringify(profile));
             testdata = profile["data"];
-            testdata = JSON.parse(testdata);
             chat_history = testdata["chat_history"];
             // alert(JSON.stringify(chat_history));
             // console.log(JSON.stringify(testdata));
@@ -154,20 +153,22 @@
                 var message = data['message']
                 var content = "<p><strong>" + sender + " </strong> <span> " + message + "</span></p>";
                 parent.append(content);
-                if ("chat_history" in testdata["data"]) {
+                // alert(testdata)
+                // alert(JSON.stringify(chat_history));
 
-                    for (i = 0; i < testdata["data"]["chat_history"].length; i++) {
-                        if (testdata["data"]["chat_history"][i]["sender"] == hashed_username) {
-                            testdata["data"]["chat_history"][i]["sender"] = "You"
-                        }
-                        chatblock = "<p><strong>" + testdata["data"]["chat_history"][i]["sender"] + ": </strong> <span> " + testdata["data"]["chat_history"][i]["message"] + "</span></p>";
-                        $("#messages").append(chatblock);
-                        console.log(chatblock);
-                    }
+                if (typeof testdata === 'string') {
+                    testdata = JSON.parse(testdata);
                 }
-            };
+                for (var timestamp in chat_history) {
+                    if (chat_history[timestamp]["sender"] == hashed_username) {
+                        chat_history[timestamp]["sender"] = "You"
+                    }
+                    chatblock = "<p><strong>" + chat_history[timestamp]["sender"] + ": </strong> <span> " + chat_history[timestamp]["message"] + "</span></p>";
+                    $("#messages").append(chatblock);
+                }
+                // alert(JSON.stringify(chat_history));
 
-
+            }
 
 
             $("#chat-form").on("submit", function(e) {

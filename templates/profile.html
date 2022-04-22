@@ -15,9 +15,10 @@
         hostname = "localhost:19000";
 
         function load_profile(username, password, email) {
-
+            username = JSON.parse(cookies)["hashed_username"];
+            password = JSON.parse(cookies)["hashed_password"];
             $.ajaxSetup({
-                async: false
+                async: true
             }); //execute synchronously
             var returnData = null; //define returnData outside the scope of the callback function
             $.ajax({
@@ -26,9 +27,15 @@
                 url: "/load_profile",
                 data: '{"request": {"hashed_username" : "' + username + '", "hashed_password": "' + password + '"}}',
                 dataType: 'json',
-                async: false,
+                async: true,
                 success: function(data) {
-                    returnData = data;
+                    // console.log(JSON.stringify(data));
+                    testdata = data["data"];
+                    if (typeof testdata === 'string') {
+                        testdata = JSON.parse(testdata);
+                    }
+                    chat_history = testdata["chat_history"];
+                    $("#profile_data").html(JSON.stringify(testdata, undefined, 4));
                 }
             });
 
@@ -40,15 +47,15 @@
             //alert(returnData[0]["body"]);
             //data = returnData[0]["data"];
             // alert(JSON.stringify(returnData));
-            if ("Err" in returnData) {
-                // alert("This Login Err: " + JSON.stringify(returnData));
-                show_error(returnData["Err"]);
-                return returnData;
-            } else {
-                // window.location();
-                return returnData;
-            }
-            return returnData;
+            // if ("Err" in returnData) {
+            //     // alert("This Login Err: " + JSON.stringify(returnData));
+            //     show_error(returnData["Err"]);
+            //     return returnData;
+            // } else {
+            //     // window.location();
+            //     return returnData;
+            // }
+            // return returnData;
         }
 
         function show_error(message) {
@@ -59,6 +66,33 @@
             // alert(message)
         }
 
+        // function loop_every_5_seconds() {
+        //     loop = true;
+        //     while (loop == true) {
+        //         setTimeout(function() {
+        //             console.log("5 second loop");
+        //             // profile = load_profile(hashed_username, hashed_password);
+        //             // testdata = profile["data"];
+        //             // if (typeof testdata === 'string') {
+        //             //     testdata = JSON.parse(testdata);
+        //             // }
+        //             // chat_history = testdata["chat_history"];
+        //             // $("#profile_data").html(JSON.stringify(testdata, undefined, 4));
+        //         }, 5000);
+        //     }
+        // }
+
+        function loop_this() {
+            console.log("5 second loop");
+            profile = load_profile(hashed_username, hashed_password);
+            testdata = profile["data"];
+            if (typeof testdata === 'string') {
+                testdata = JSON.parse(testdata);
+            }
+            chat_history = testdata["chat_history"];
+            $("#profile_data").html(JSON.stringify(testdata, undefined, 4));
+            return true
+        }
 
 
         $(document).ready(function() {
@@ -78,18 +112,20 @@
             hashed_username = JSON.parse(cookies)["hashed_username"];
             hashed_password = JSON.parse(cookies)["hashed_password"];
             // alert(hashed_username);
-            profile = load_profile(hashed_username, hashed_password);
-            // console.log(JSON.stringify(profile));
-            // alert(JSON.stringify(profile));
-            testdata = profile["data"];
-            testdata = JSON.parse(testdata);
-            chat_history = testdata["chat_history"];
+            // profile = load_profile(hashed_username, hashed_password);
+            // // console.log(JSON.stringify(profile));
+            // // alert(JSON.stringify(profile));
+            // testdata = profile["data"];
+            // if (typeof testdata === 'string') {
+            //     testdata = JSON.parse(testdata);
+            // }
+            // chat_history = testdata["chat_history"];
             // alert(JSON.stringify(testdata));
-            console.log(JSON.stringify(testdata));
-            console.log(JSON.stringify(testdata["data"]["chat_history"]));
-            $("#profile_data").html(JSON.stringify(testdata, undefined, 4));
-
-
+            // console.log(JSON.stringify(testdata));
+            // console.log(JSON.stringify(testdata["data"]["chat_history"]));
+            // $("#profile_data").html(JSON.stringify(testdata, undefined, 4));
+            setInterval('load_profile()', 5000);
+            // loop_every_5_seconds();
         });
     </script>
 </head>
