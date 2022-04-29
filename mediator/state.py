@@ -5,17 +5,26 @@ from dataclasses import fields
 # from lib2to3.pytree import _Results
 import profile
 from readline import append_history_file
+from time import sleep
 from urllib import response
 import json
 import datetime
 import glob
 import requests
 import datetime 
+import sys
+import time
+sys.path.append('../backends') 
+from huggingface import HuggingFaceBackend
+sys.path.append('../backends') 
+from openaibackend import OpenAIBackend
+
+
 
 class State:
 	@classmethod		
 
-	def __init__(self):
+	def __init__(self, **kwargs):
 		self.data_fields = list(str("complaint_summary original_complaint log username password hashed_username hashed_password chat_history questions answered_questions last_question last_message").split(" "))
 		self.complaint_summary = None
 		self.original_complaint = None
@@ -35,9 +44,55 @@ class State:
 		self.hostname2 = "http://localhost:19000"
 
 	def response(self):
+		response_message = ''
 		now = datetime.datetime.now()
 		time = now.strftime("%Y-%m-%d %H:%M:%S")
-		response_message = dict({"sender": "Bot","message":"response"})
+		# print(self.data)
+		labels = ''
+		while "error" in HuggingFaceBackend('intent', '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', 'bespin-global/klue-roberta-small-3i4k-intent-classification').__call__({"inputs": "what does the word copyright mean?"}):
+			sleep(5)
+			pass
+		labels = HuggingFaceBackend('intent', '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', 'bespin-global/klue-roberta-small-3i4k-intent-classification').__call__({"inputs": "what does the word copyright mean?"})
+		label_dict = {}
+		best_score = 0
+		for label in labels[0]:
+			label_dict[label['label']] = label['score']
+		best_label = None
+		for label in label_dict:
+			score = label_dict[label]
+			if score > best_score:
+				best_score = score
+				best_label = label
+			else:
+				pass
+		intent = ''
+		if best_label == "question" or best_label == "rhetorical question":
+			label_question_type = ""
+			if best_label == "question":
+				response_message = OpenAIBackend('openai', 'sk-hhmt0YZxBvLUyBolMj93330e0WVy5upUdsQKA2cE', 'text-davinci-002', temperature = 0.7, max_tokens = 256, top_p = 1, frequency_penalty = 0, presence_penalty = 0).__call__("what does the word copyright mean?")
+			if best_label == "rhetorical question":
+				response_message = OpenAIBackend('openai', 'sk-hhmt0YZxBvLUyBolMj93330e0WVy5upUdsQKA2cE', 'text-davinci-002', temperature = 0.7, max_tokens = 256, top_p = 1, frequency_penalty = 0, presence_penalty = 0).__call__("what does the word copyright mean?")				
+			pass
+		if best_label == "command" or best_label == "rhetorical command":
+			label_command_type = ""
+			command_list = ["1", "2"]
+			if label_command_type not in command_list:
+				response_message = "I don't understand that command"
+				pass
+			else:
+				# run_command(label_command_type)
+				pass
+			pass
+		if best_label == "fragment" or best_label == "statement":
+			# answer = ''
+			pass
+		if best_label == 'intonation-dependent utterance':
+			# unknown = ''
+			reponse_message = 'I don\'t know what you mean. please try again.'
+			pass
+
+		# data = HuggingFaceBackend('huggingface', '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', 'EleutherAI/gpt-j-6B').__call__({"inputs": "Hello, world!"})
+		# response_message = dict({"sender": "Bot","message": data[0]["generated_text"]})
 		if "chat_history" not in self.data:
 			self.data["chat_history"] = {}
 		self.data["chat_history"][time] = response_message
@@ -233,3 +288,8 @@ class State:
 			self.data["chat_history"] = {}
 		self.data["chat_history"][time] = message
 		return None
+
+
+test = State()
+data = test.response()
+print(data)

@@ -22,11 +22,12 @@ class HuggingFaceBackend:
 		self.config = config
 
 		self.API_URL = "https://api-inference.huggingface.co/models/" + self.engine
-		self.headers = {"Authorization": f"Bearer {api_key}"}
+		self.headers = {"Authorization": f"Bearer {self.api_key}"}
 
 	def __call__(self, payload):
 		data = json.dumps(payload)
 		response = requests.request("POST", self.API_URL , headers=self.headers, data=data)
 		return json.loads(response.content.decode("utf-8"))
 
-data = HuggingFaceBackend('huggingface', '', 'bert-base-cased').__call__({"text": "Hello, world!"})
+# data = HuggingFaceBackend('huggingface', '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', 'EleutherAI/gpt-j-6B').__call__({"inputs": "Hello, world!"})
+# print(data)

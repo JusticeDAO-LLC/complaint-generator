@@ -365,9 +365,9 @@ class SERVER:
                         reply = ""
                         data = await websocket.receive_json()
                         mediator.state.load_profile(dict({"results":{ "hashed_username": hashed_username, "hashed_password":hashed_password}}))
-                        mediator.state.message(data)
+                        mediator.state(hashed_password = hashed_password, hashed_username = hashed_username).message(data)
                         await manager.broadcast(data)
-                        await manager.broadcast(mediator.state.response())
+                        await manager.broadcast(mediator.state(hashed_password = hashed_password, hashed_username = hashed_username)s.response())
                         mediator.state.store_profile(dict({"results":{ "hashed_username": hashed_username, "hashed_password":hashed_password}}))
                         
 

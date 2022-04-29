@@ -7,21 +7,20 @@ class WorkstationBackendModels:
 		self.model = model
 		self.config = config
 
-		del self.config['type']
-
 
 	def __call__(self, text):
-		r = requests.post(
-			'https://%s.justicedao.biz/generate' % self.model, 
+		r = requests.request("POST",
+			'https://'+ self.model +'.justicedao.biz/generate', 
 			headers={
 				'Content-Type': 'application/json'
 			}, 
-			data=json.dumps({'prompt': text, **self.config})
+			data=json.dumps({'prompt': text, **self.config}), 
+			verify=False
 		)
 
 		data = json.loads(r.text)
-
-		return data['output']
+		if 'output' in data.keys():
+			return data['output']
 
 class WorkstationBackendDatabases:
 	def __init__(self, id, model, **config):
@@ -89,3 +88,9 @@ class WorkstationSaveProfileState:
 		data = json.loads(r.text)
 
 		return data['output']
+
+# data = WorkstationBackendModels('workstation', 't5').__call__("Hello, world!")
+# print(data)
+
+# data = WorkstationBackendModels('workstation', 'gptj').__call__("Hello, world!")
+# print(data)
