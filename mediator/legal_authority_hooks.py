@@ -14,6 +14,14 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pathlib import Path
 
+from .integrations import (
+    IPFSDatasetsAdapter,
+    IntegrationFeatureFlags,
+    RetrievalOrchestrator,
+    VectorRetrievalAugmentor,
+    GraphAwareRetrievalReranker,
+)
+
 # Add ipfs_datasets_py to path if available
 ipfs_datasets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ipfs_datasets_py')
 if os.path.exists(ipfs_datasets_path) and ipfs_datasets_path not in sys.path:
@@ -57,8 +65,180 @@ class LegalAuthoritySearchHook:
     
     def __init__(self, mediator):
         self.mediator = mediator
+        self.integration_flags = IntegrationFeatureFlags.from_env()
+        self.integration_adapter = IPFSDatasetsAdapter(feature_flags=self.integration_flags)
+        self.retrieval_orchestrator = RetrievalOrchestrator()
+        self.vector_augmentor = VectorRetrievalAugmentor()
+        self.graph_reranker = GraphAwareRetrievalReranker()
         self._check_availability()
         self._init_web_archiving()
+
+    def get_capability_registry(self) -> Dict[str, Dict[str, object]]:
+        """Get capability and feature-flag status for enhanced integrations."""
+        return self.integration_adapter.capability_registry()
+
+    def _normalize_records(
+        self,
+        records: List[Dict[str, Any]],
+        query: str,
+        source_type: str,
+        source_name: str,
+    ) -> List[Dict[str, Any]]:
+        normalized = []
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            normalized_record = self.integration_adapter.normalize_record(
+                query=query,
+                source_type=source_type,
+                source_name=source_name,
+                record=record,
+            )
+            normalized.append({
+                'source_type': normalized_record.source_type,
+                'source_name': normalized_record.source_name,
+                'query': normalized_record.query,
+                'retrieved_at': normalized_record.retrieved_at,
+                'title': normalized_record.title,
+                'url': normalized_record.url,
+                'citation': normalized_record.citation,
+                'snippet': normalized_record.snippet,
+                'content': normalized_record.content,
+                'score': normalized_record.score,
+                'confidence': normalized_record.confidence,
+                'metadata': normalized_record.metadata,
+            })
+        return normalized
+
+    def _merge_rank_normalized(
+        self,
+        normalized_records: List[Dict[str, Any]],
+        max_results: int,
+        query_context: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        model_records = []
+        for item in normalized_records:
+            model_records.append(self.integration_adapter.normalize_record(
+                query=str(item.get('query', '')),
+                source_type=str(item.get('source_type', 'unknown')),
+                source_name=str(item.get('source_name', 'unknown')),
+                record=item,
+            ))
+
+        ranked = self.retrieval_orchestrator.merge_and_rank(
+            model_records,
+            max_results=max_results,
+            query_context=query_context,
+        )
+        return [
+            {
+                'source_type': r.source_type,
+                'source_name': r.source_name,
+                'query': r.query,
+                'retrieved_at': r.retrieved_at,
+                'title': r.title,
+                'url': r.url,
+                'citation': r.citation,
+                'snippet': r.snippet,
+                'content': r.content,
+                'score': r.score,
+                'confidence': r.confidence,
+                'metadata': r.metadata,
+            }
+            for r in ranked
+        ]
+
+    def _build_support_bundle(self, normalized_records: List[Dict[str, Any]], max_items: int = 5) -> Dict[str, Any]:
+        model_records = []
+        for item in normalized_records:
+            model_records.append(self.integration_adapter.normalize_record(
+                query=str(item.get('query', '')),
+                source_type=str(item.get('source_type', 'unknown')),
+                source_name=str(item.get('source_name', 'unknown')),
+                record=item,
+            ))
+        return self.retrieval_orchestrator.build_support_bundle(model_records, max_items_per_bucket=max_items)
+
+    def _build_query_context(
+        self,
+        query: str,
+        claim_type: Optional[str] = None,
+        jurisdiction: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return self.retrieval_orchestrator.build_query_context(
+            query=query,
+            claim_type=claim_type,
+            complaint_type=claim_type,
+            jurisdiction=jurisdiction,
+            max_queries=4,
+        )
+
+    def _build_evidence_context(
+        self,
+        query: str,
+        claim_type: Optional[str] = None,
+        jurisdiction: Optional[str] = None,
+    ) -> List[str]:
+        context: List[str] = []
+
+        def _add(value: Any):
+            text = str(value or '').strip()
+            if text and text not in context:
+                context.append(text)
+
+        _add(query)
+        _add(claim_type)
+        _add(jurisdiction)
+
+        state = getattr(self.mediator, 'state', None)
+        if state is None:
+            return context[:8]
+
+        for attr in ('complaint_summary', 'original_complaint', 'complaint', 'last_message'):
+            _add(getattr(state, attr, None))
+
+        state_data = getattr(state, 'data', {}) or {}
+        if isinstance(state_data, dict):
+            context_values = []
+            extractor = getattr(state, 'extract_chat_history_context_strings', None)
+            if callable(extractor):
+                extracted = extractor(limit=3)
+                if isinstance(extracted, (list, tuple)):
+                    context_values = list(extracted)
+            if not context_values:
+                chat_history = state_data.get('chat_history', {})
+                if isinstance(chat_history, dict):
+                    for _, value in list(chat_history.items())[-3:]:
+                        if isinstance(value, dict):
+                            for candidate in (value.get('message'), value.get('question')):
+                                text = str(candidate or '').strip()
+                                if text and text not in context_values:
+                                    context_values.append(text)
+                        else:
+                            context_values.append(value)
+            for value in context_values:
+                _add(value)
+
+        return context[:8]
+
+    def _dedupe_raw_results(self, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        merged: Dict[str, Dict[str, Any]] = {}
+        anonymous_count = 0
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            key = str(
+                record.get('url')
+                or record.get('citation')
+                or record.get('title')
+                or record.get('content')
+                or f'anonymous:{anonymous_count}'
+            ).strip().lower()
+            anonymous_count += 1
+            existing = merged.get(key)
+            if existing is None or float(record.get('score', 0.0) or 0.0) > float(existing.get('score', 0.0) or 0.0):
+                merged[key] = record
+        return list(merged.values())
     
     def _check_availability(self):
         """Check availability of legal search tools."""
@@ -266,15 +446,35 @@ Return only the search terms, one per line."""
             'case_law': [],
             'web_archives': []
         }
+
+        query_context = self._build_query_context(
+            query=query,
+            claim_type=claim_type,
+            jurisdiction=jurisdiction,
+        )
+        evidence_context = self._build_evidence_context(
+            query=query,
+            claim_type=claim_type,
+            jurisdiction=jurisdiction,
+        )
+        search_queries = [query]
+        if self.integration_flags.enhanced_search or self.integration_flags.enhanced_legal:
+            search_queries = list(query_context.get('queries', []) or [query])[:3]
         
         # Search US Code
-        results['statutes'] = self.search_us_code(query, max_results=5)
+        for subquery in search_queries:
+            results['statutes'].extend(self.search_us_code(subquery, max_results=5))
+        results['statutes'] = self._dedupe_raw_results(results['statutes'])
         
         # Search Federal Register
-        results['regulations'] = self.search_federal_register(query, max_results=5)
+        for subquery in search_queries:
+            results['regulations'].extend(self.search_federal_register(subquery, max_results=5))
+        results['regulations'] = self._dedupe_raw_results(results['regulations'])
         
         # Search case law
-        results['case_law'] = self.search_case_law(query, jurisdiction, max_results=5)
+        for subquery in search_queries:
+            results['case_law'].extend(self.search_case_law(subquery, jurisdiction, max_results=5))
+        results['case_law'] = self._dedupe_raw_results(results['case_law'])
         
         # Search relevant legal web archives
         legal_domains = ['law.cornell.edu', 'law.justia.com', 'findlaw.com']
@@ -286,6 +486,122 @@ Return only the search terms, one per line."""
                 pass
         
         total_found = sum(len(v) for v in results.values())
+
+        if self.integration_flags.enhanced_search or self.integration_flags.enhanced_legal:
+            normalized_records: List[Dict[str, Any]] = []
+            normalized_records.extend(self._normalize_records(
+                records=results['statutes'],
+                query=query,
+                source_type='statute',
+                source_name='us_code',
+            ))
+            normalized_records.extend(self._normalize_records(
+                records=results['regulations'],
+                query=query,
+                source_type='regulation',
+                source_name='federal_register',
+            ))
+            normalized_records.extend(self._normalize_records(
+                records=results['case_law'],
+                query=query,
+                source_type='case_law',
+                source_name='recap',
+            ))
+            normalized_records.extend(self._normalize_records(
+                records=results['web_archives'],
+                query=query,
+                source_type='web_archive',
+                source_name='common_crawl',
+            ))
+
+            if self.integration_flags.enhanced_vector:
+                normalized_records = self.vector_augmentor.augment_normalized_records(
+                    records=normalized_records,
+                    query=query,
+                    context_texts=evidence_context,
+                )
+                self.mediator.log(
+                    'legal_authority_vector_augmentation',
+                    query=query,
+                    records=len(normalized_records),
+                    evidence_context_items=len(evidence_context),
+                    capabilities=self.vector_augmentor.capabilities(),
+                )
+
+            if self.integration_flags.enhanced_graph and self.integration_flags.reranker_mode in {
+                'graph',
+                'hybrid',
+                'auto',
+                'on',
+            }:
+                canary_enabled = self.graph_reranker.should_apply_canary(
+                    seed=f"legal_authority|{query}",
+                    percent=self.integration_flags.reranker_canary_percent,
+                )
+                if canary_enabled:
+                    normalized_records = self.graph_reranker.augment_normalized_records(
+                        records=normalized_records,
+                        query=query,
+                        mediator=self.mediator,
+                        enable_optimizer=self.integration_flags.enhanced_optimizer,
+                        retrieval_max_latency_ms=self.integration_flags.retrieval_max_latency_ms,
+                    )
+                    sample_metadata = dict((normalized_records[0] if normalized_records else {}).get('metadata', {}) or {})
+                    self.mediator.log(
+                        'legal_authority_graph_reranking',
+                        query=query,
+                        records=len(normalized_records),
+                        reranker_mode=self.integration_flags.reranker_mode,
+                        enhanced_optimizer=self.integration_flags.enhanced_optimizer,
+                        retrieval_max_latency_ms=self.integration_flags.retrieval_max_latency_ms,
+                        reranker_canary_percent=self.integration_flags.reranker_canary_percent,
+                        canary_enabled=canary_enabled,
+                        latency_guard=sample_metadata.get('graph_latency_guard_applied', False),
+                        average_boost=sample_metadata.get('graph_run_avg_boost', 0.0),
+                        elapsed_ms=sample_metadata.get('graph_run_elapsed_ms', 0.0),
+                    )
+                    if hasattr(self.mediator, 'update_reranker_metrics'):
+                        self.mediator.update_reranker_metrics(
+                            source='legal_authority',
+                            applied=True,
+                            metadata=sample_metadata,
+                            canary_enabled=canary_enabled,
+                            window_size=self.integration_flags.reranker_metrics_window,
+                        )
+                else:
+                    self.mediator.log(
+                        'legal_authority_graph_reranking_skipped',
+                        query=query,
+                        reranker_mode=self.integration_flags.reranker_mode,
+                        reranker_canary_percent=self.integration_flags.reranker_canary_percent,
+                        canary_enabled=canary_enabled,
+                    )
+                    if hasattr(self.mediator, 'update_reranker_metrics'):
+                        self.mediator.update_reranker_metrics(
+                            source='legal_authority',
+                            applied=False,
+                            metadata={},
+                            canary_enabled=canary_enabled,
+                            window_size=self.integration_flags.reranker_metrics_window,
+                        )
+
+            results['normalized'] = self._merge_rank_normalized(
+                normalized_records,
+                max_results=20,
+                query_context=query_context,
+            )
+            results['support_bundle'] = self._build_support_bundle(results['normalized'])
+
+            self.mediator.log(
+                'legal_authority_normalized_results',
+                query=query,
+                decomposed_queries=len(query_context.get('queries', []) or []),
+                raw_total=total_found,
+                normalized_total=len(results['normalized']),
+                enhanced_search=self.integration_flags.enhanced_search,
+                enhanced_legal=self.integration_flags.enhanced_legal,
+            )
+
         self.mediator.log('legal_authority_search_all',
             query=query, total_found=total_found)
         

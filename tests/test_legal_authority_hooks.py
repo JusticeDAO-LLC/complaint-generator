@@ -73,6 +73,445 @@ class TestLegalAuthoritySearchHook:
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
+    def test_get_capability_registry_returns_expected_shape(self):
+        """Test capability registry shape for Phase 1 adapter integration."""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthoritySearchHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.query_backend = Mock(return_value="test query")
+
+            hook = LegalAuthoritySearchHook(mock_mediator)
+            registry = hook.get_capability_registry()
+
+            assert isinstance(registry, dict)
+            assert 'legal_datasets' in registry
+            assert 'search_tools' in registry
+            assert 'graph_tools' in registry
+            assert 'vector_tools' in registry
+            assert 'optimizer_tools' in registry
+            assert 'mcp_tools' in registry
+
+            legal = registry['legal_datasets']
+            assert 'available' in legal
+            assert 'enabled' in legal
+            assert 'active' in legal
+            assert 'details' in legal
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_search_all_sources_enhanced_adds_normalized_results(self):
+        """Enhanced mode should expose normalized deduped records."""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthoritySearchHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.query_backend = Mock(return_value="test query")
+
+            with patch.dict(os.environ, {
+                'IPFS_DATASETS_ENHANCED_SEARCH': '1',
+                'IPFS_DATASETS_ENHANCED_LEGAL': '1',
+            }, clear=False):
+                hook = LegalAuthoritySearchHook(mock_mediator)
+                hook.search_us_code = Mock(return_value=[
+                    {'title': 'Title A', 'url': 'example-dot-com/a', 'score': 0.4},
+                    {'title': 'Title A better', 'url': 'example-dot-com/a', 'score': 0.9},
+                ])
+                hook.search_federal_register = Mock(return_value=[])
+                hook.search_case_law = Mock(return_value=[])
+                hook.search_web_archives = Mock(return_value=[])
+
+                results = hook.search_all_sources('test query')
+
+                assert isinstance(results, dict)
+                assert 'normalized' in results
+                assert isinstance(results['normalized'], list)
+                assert len(results['normalized']) == 1
+                assert results['normalized'][0]['score'] == 0.9
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_search_all_sources_enhanced_vector_marks_normalized_metadata(self):
+        """Enhanced vector mode should annotate normalized records with vector metadata."""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthoritySearchHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.query_backend = Mock(return_value="test query")
+
+            with patch.dict(os.environ, {
+                'IPFS_DATASETS_ENHANCED_SEARCH': '1',
+                'IPFS_DATASETS_ENHANCED_LEGAL': '1',
+                'IPFS_DATASETS_ENHANCED_VECTOR': '1',
+            }, clear=False):
+                hook = LegalAuthoritySearchHook(mock_mediator)
+                hook.search_us_code = Mock(return_value=[
+                    {'title': 'Employment discrimination law', 'url': 'example-dot-com/a', 'score': 0.4},
+                ])
+                hook.search_federal_register = Mock(return_value=[])
+                hook.search_case_law = Mock(return_value=[])
+                hook.search_web_archives = Mock(return_value=[])
+
+                results = hook.search_all_sources('employment discrimination')
+
+                assert 'normalized' in results
+                assert len(results['normalized']) >= 1
+                assert results['normalized'][0]['metadata'].get('vector_augmented') is True
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_search_all_sources_vector_uses_state_context_to_boost_matching_authority(self):
+        """Enhanced vector mode should use complaint context to prefer the matching authority."""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthoritySearchHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.query_backend = Mock(return_value="test query")
+            mock_mediator.state = Mock()
+            mock_mediator.state.complaint_summary = 'Retaliation after reporting discrimination to HR'
+            mock_mediator.state.original_complaint = 'Termination email supports the retaliation claim.'
+            mock_mediator.state.complaint = None
+            mock_mediator.state.last_message = 'Need authority tied to the termination email evidence.'
+            mock_mediator.state.data = {
+                'chat_history': {
+                    '1': 'termination email from manager',
+                    '2': 'retaliation complaint details',
+                }
+            }
+
+            with patch.dict(os.environ, {
+                'IPFS_DATASETS_ENHANCED_SEARCH': '1',
+                'IPFS_DATASETS_ENHANCED_LEGAL': '1',
+                'IPFS_DATASETS_ENHANCED_VECTOR': '1',
+            }, clear=False):
+                hook = LegalAuthoritySearchHook(mock_mediator)
+                hook.search_us_code = Mock(return_value=[
+                    {
+                        'title': 'Termination email retaliation authority',
+                        'url': 'https://example.com/relevant-authority',
+                        'score': 0.35,
+                    },
+                ])
+                hook.search_federal_register = Mock(return_value=[])
+                hook.search_case_law = Mock(return_value=[
+                    {
+                        'title': 'Generic workplace policy case',
+                        'url': 'https://example.com/generic-authority',
+                        'score': 0.45,
+                    },
+                ])
+                hook.search_web_archives = Mock(return_value=[])
+
+                results = hook.search_all_sources('employment retaliation')
+
+                assert 'normalized' in results
+                assert results['normalized'][0]['title'] == 'Termination email retaliation authority'
+                assert results['normalized'][0]['metadata'].get('evidence_similarity_applied') is True
+                assert results['normalized'][0]['metadata'].get('evidence_similarity_score', 0.0) > 0.0
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_build_evidence_context_uses_structured_chat_message_text(self):
+        try:
+            from mediator.legal_authority_hooks import LegalAuthoritySearchHook
+            from mediator.state import State
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.query_backend = Mock(return_value="test query")
+            mock_mediator.state = Mock()
+            mock_mediator.state.complaint_summary = None
+            mock_mediator.state.original_complaint = None
+            mock_mediator.state.complaint = None
+            mock_mediator.state.last_message = None
+            mock_mediator.state.data = {
+                'chat_history': {
+                    '1': {
+                        'sender': 'user-123',
+                        'message': 'Termination email from HR references my complaint.',
+                        'question': 'Do you have the termination email?',
+                    }
+                }
+            }
+            helper_state = State()
+            helper_state.data = mock_mediator.state.data
+            mock_mediator.state.extract_chat_history_context_strings = helper_state.extract_chat_history_context_strings
+
+            hook = LegalAuthoritySearchHook(mock_mediator)
+            context = hook._build_evidence_context('employment retaliation')
+
+            assert 'Termination email from HR references my complaint.' in context
+            assert not any('{\'sender\':' in item for item in context)
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_build_evidence_context_uses_structured_chat_message_text_without_helper(self):
+        try:
+            from mediator.legal_authority_hooks import LegalAuthoritySearchHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.query_backend = Mock(return_value="test query")
+            mock_mediator.state = Mock()
+            mock_mediator.state.complaint_summary = None
+            mock_mediator.state.original_complaint = None
+            mock_mediator.state.complaint = None
+            mock_mediator.state.last_message = None
+            mock_mediator.state.data = {
+                'chat_history': {
+                    '1': {
+                        'sender': 'user-123',
+                        'message': 'Structured termination email detail.',
+                        'question': 'Do you have the termination email?',
+                    }
+                }
+            }
+
+            hook = LegalAuthoritySearchHook(mock_mediator)
+            context = hook._build_evidence_context('employment retaliation')
+
+            assert 'Structured termination email detail.' in context
+            assert 'Do you have the termination email?' in context
+            assert not any('{\'sender\':' in item for item in context)
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_search_all_sources_enhanced_decomposes_query_into_multiple_searches(self):
+        """Enhanced legal/search mode should expand a query into multiple source searches."""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthoritySearchHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.query_backend = Mock(return_value="test query")
+
+            with patch.dict(os.environ, {
+                'IPFS_DATASETS_ENHANCED_SEARCH': '1',
+                'IPFS_DATASETS_ENHANCED_LEGAL': '1',
+            }, clear=False):
+                hook = LegalAuthoritySearchHook(mock_mediator)
+                hook.search_us_code = Mock(side_effect=lambda term, max_results=5: [
+                    {'title': f'US Code {term}', 'url': f'https://example.com/{term.replace(" ", "-")}', 'score': 0.3}
+                ])
+                hook.search_federal_register = Mock(return_value=[])
+                hook.search_case_law = Mock(return_value=[])
+                hook.search_web_archives = Mock(return_value=[])
+
+                results = hook.search_all_sources(
+                    'employment discrimination retaliation',
+                    claim_type='employment_discrimination',
+                    jurisdiction='federal',
+                )
+
+                assert hook.search_us_code.call_count >= 2
+                searched_queries = [call.args[0] for call in hook.search_us_code.call_args_list]
+                assert 'employment discrimination retaliation' in searched_queries
+                assert any('federal' in query or 'employment discrimination' in query for query in searched_queries)
+                assert results['normalized'][0]['metadata'].get('query_decomposition_applied') is True
+                assert results['normalized'][0]['metadata'].get('query_decomposition_count', 0) >= 2
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_search_all_sources_enhanced_jurisdiction_weighting_prefers_matching_authority(self):
+        """Enhanced ranking should prefer authorities whose jurisdiction matches the query context."""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthoritySearchHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.query_backend = Mock(return_value="test query")
+
+            with patch.dict(os.environ, {
+                'IPFS_DATASETS_ENHANCED_SEARCH': '1',
+                'IPFS_DATASETS_ENHANCED_LEGAL': '1',
+            }, clear=False):
+                hook = LegalAuthoritySearchHook(mock_mediator)
+                hook.search_us_code = Mock(return_value=[
+                    {
+                        'title': 'Federal retaliation statute',
+                        'url': 'https://example.com/federal-statute',
+                        'score': 0.40,
+                        'metadata': {'jurisdiction': 'federal'},
+                    },
+                ])
+                hook.search_federal_register = Mock(return_value=[])
+                hook.search_case_law = Mock(return_value=[
+                    {
+                        'title': 'California retaliation case',
+                        'url': 'https://example.com/california-case',
+                        'score': 0.49,
+                        'metadata': {'jurisdiction': 'california'},
+                    },
+                ])
+                hook.search_web_archives = Mock(return_value=[])
+
+                results = hook.search_all_sources('retaliation claim', jurisdiction='federal')
+
+                assert results['normalized'][0]['title'] == 'Federal retaliation statute'
+                assert results['normalized'][0]['metadata'].get('orchestrator_jurisdiction_weight', 0.0) > 0.0
+                california_record = next(item for item in results['normalized'] if item['title'] == 'California retaliation case')
+                assert california_record['metadata'].get('orchestrator_jurisdiction_weight', 0.0) == 0.0
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_search_all_sources_graph_reranker_boosts_graph_aligned_record(self):
+        """Enhanced graph mode should rerank using phase graph context terms."""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthoritySearchHook
+
+            class _Entity:
+                def __init__(self, name):
+                    self.name = name
+                    self.attributes = {}
+
+            class _Node:
+                def __init__(self, name):
+                    self.name = name
+                    self.description = ""
+
+            class _KG:
+                def get_entities_by_type(self, entity_type):
+                    if entity_type == 'claim':
+                        return [_Entity('employment discrimination')]
+                    return []
+
+            class _DG:
+                def get_nodes_by_type(self, _node_type):
+                    return [_Node('retaliation')]
+
+                def get_claim_readiness(self):
+                    return {
+                        'overall_readiness': 0.0,
+                        'incomplete_claim_details': [
+                            {'claim_name': 'employment discrimination retaliation'}
+                        ],
+                    }
+
+                def find_unsatisfied_requirements(self):
+                    return [
+                        {
+                            'node_name': 'retaliation claim',
+                            'missing_dependencies': [
+                                {'source_name': 'termination letter'},
+                            ],
+                        }
+                    ]
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.query_backend = Mock(return_value="test query")
+            mock_mediator.phase_manager = Mock()
+            mock_mediator.phase_manager.get_phase_data = Mock(
+                side_effect=lambda _phase, key=None: _KG() if key == 'knowledge_graph' else (_DG() if key == 'dependency_graph' else None)
+            )
+
+            with patch.dict(os.environ, {
+                'IPFS_DATASETS_ENHANCED_SEARCH': '1',
+                'IPFS_DATASETS_ENHANCED_LEGAL': '1',
+                'IPFS_DATASETS_ENHANCED_GRAPH': '1',
+                'RETRIEVAL_RERANKER_MODE': 'graph',
+                'RETRIEVAL_MAX_LATENCY_MS': '100',
+            }, clear=False):
+                hook = LegalAuthoritySearchHook(mock_mediator)
+                hook.search_us_code = Mock(return_value=[
+                    {'title': 'Employment discrimination retaliation standards', 'url': 'example-dot-com/relevant', 'score': 0.40},
+                    {'title': 'Generic procedural digest', 'url': 'example-dot-com/generic', 'score': 0.49},
+                ])
+                hook.search_federal_register = Mock(return_value=[])
+                hook.search_case_law = Mock(return_value=[])
+                hook.search_web_archives = Mock(return_value=[])
+
+                results = hook.search_all_sources('workplace claim analysis')
+
+                assert 'normalized' in results
+                target = next(
+                    item for item in results['normalized']
+                    if item.get('title') == 'Employment discrimination retaliation standards'
+                )
+                assert target['metadata'].get('graph_reranked') is True
+                assert target['metadata'].get('graph_readiness_gap', 0) > 0
+                assert target['metadata'].get('graph_latency_budget_ms') == 100
+                assert target['metadata'].get('graph_latency_guard_applied') is True
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_search_all_sources_graph_reranker_canary_zero_skips_reranking(self):
+        """Graph reranking should be skipped when canary percent is set to 0."""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthoritySearchHook
+
+            class _Entity:
+                def __init__(self, name):
+                    self.name = name
+                    self.attributes = {}
+
+            class _Node:
+                def __init__(self, name):
+                    self.name = name
+                    self.description = ""
+
+            class _KG:
+                def get_entities_by_type(self, entity_type):
+                    if entity_type == 'claim':
+                        return [_Entity('employment discrimination')]
+                    return []
+
+            class _DG:
+                def get_nodes_by_type(self, _node_type):
+                    return [_Node('retaliation')]
+
+                def get_claim_readiness(self):
+                    return {
+                        'overall_readiness': 0.0,
+                        'incomplete_claim_details': [
+                            {'claim_name': 'employment discrimination retaliation'}
+                        ],
+                    }
+
+                def find_unsatisfied_requirements(self):
+                    return [
+                        {
+                            'node_name': 'retaliation claim',
+                            'missing_dependencies': [
+                                {'source_name': 'termination letter'},
+                            ],
+                        }
+                    ]
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.query_backend = Mock(return_value="test query")
+            mock_mediator.phase_manager = Mock()
+            mock_mediator.phase_manager.get_phase_data = Mock(
+                side_effect=lambda _phase, key=None: _KG() if key == 'knowledge_graph' else (_DG() if key == 'dependency_graph' else None)
+            )
+
+            with patch.dict(os.environ, {
+                'IPFS_DATASETS_ENHANCED_SEARCH': '1',
+                'IPFS_DATASETS_ENHANCED_LEGAL': '1',
+                'IPFS_DATASETS_ENHANCED_GRAPH': '1',
+                'RETRIEVAL_RERANKER_MODE': 'graph',
+                'RETRIEVAL_RERANKER_CANARY_PERCENT': '0',
+            }, clear=False):
+                hook = LegalAuthoritySearchHook(mock_mediator)
+                hook.search_us_code = Mock(return_value=[
+                    {'title': 'Employment discrimination retaliation standards', 'url': 'example-dot-com/relevant', 'score': 0.40},
+                ])
+                hook.search_federal_register = Mock(return_value=[])
+                hook.search_case_law = Mock(return_value=[])
+                hook.search_web_archives = Mock(return_value=[])
+
+                results = hook.search_all_sources('workplace claim analysis')
+
+                assert 'normalized' in results
+                assert results['normalized'][0]['metadata'].get('graph_reranked') is not True
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
 
 class TestLegalAuthorityStorageHook:
     """Test cases for LegalAuthorityStorageHook"""
@@ -322,6 +761,88 @@ class TestMediatorLegalAuthorityIntegration:
                 # Retrieve
                 authorities = mediator.get_legal_authorities(claim_type='civil rights')
                 assert len(authorities) > 0
+            finally:
+                if os.path.exists(db_path):
+                    os.unlink(db_path)
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    @pytest.mark.integration
+    def test_store_legal_authorities_ignores_normalized_bucket_for_storage(self):
+        """Enhanced normalized artifacts should be cached but not inserted as authority rows."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                db_path = f.name
+
+            try:
+                mediator = Mediator(
+                    backends=[mock_backend],
+                    legal_authority_db_path=db_path
+                )
+                mediator.state.username = 'testuser'
+
+                authorities = {
+                    'statutes': [
+                        {
+                            'citation': '42 U.S.C. § 1983',
+                            'title': 'Civil Rights Act',
+                            'content': 'Test content'
+                        }
+                    ],
+                    'normalized': [
+                        {
+                            'citation': '42 U.S.C. § 1983',
+                            'score': 0.95,
+                            'source_name': 'us_code'
+                        }
+                    ],
+                    'support_bundle': {
+                        'top_mixed': [
+                            {
+                                'citation': '42 U.S.C. § 1983',
+                                'title': 'Civil Rights Act',
+                                'snippet': 'Strong match',
+                            }
+                        ],
+                        'top_authorities': [
+                            {
+                                'citation': '42 U.S.C. § 1983',
+                                'title': 'Civil Rights Act',
+                            }
+                        ],
+                        'top_evidence': [],
+                        'cross_supported': [],
+                        'hybrid_cross_supported': [],
+                        'summary': {
+                            'total_records': 1,
+                            'authority_count': 1,
+                            'evidence_count': 0,
+                            'cross_supported_count': 0,
+                            'hybrid_cross_supported_count': 0,
+                        },
+                    }
+                }
+
+                stored = mediator.store_legal_authorities(
+                    authorities,
+                    claim_type='civil rights',
+                    search_query='civil rights violation'
+                )
+
+                assert stored.get('statutes', 0) == 1
+                assert 'normalized' not in stored
+                assert hasattr(mediator.state, 'last_legal_authorities_normalized')
+                assert len(mediator.state.last_legal_authorities_normalized) == 1
+                assert hasattr(mediator.state, 'last_legal_authorities_support_bundle')
+                assert mediator.state.last_legal_authorities_support_bundle['summary']['total_records'] == 1
+
+                all_rows = mediator.get_legal_authorities(claim_type='civil rights')
+                assert len(all_rows) == 1
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)

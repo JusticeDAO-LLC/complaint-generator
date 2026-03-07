@@ -14,6 +14,14 @@ import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
+from .integrations import (
+    IPFSDatasetsAdapter,
+    IntegrationFeatureFlags,
+    RetrievalOrchestrator,
+    VectorRetrievalAugmentor,
+    GraphAwareRetrievalReranker,
+)
+
 logger = logging.getLogger(__name__)
 
 # Add complaint_analysis to path
@@ -42,7 +50,314 @@ class LegalCorpusRAGHook:
     
     def __init__(self, mediator):
         self.mediator = mediator
+        self.integration_flags = IntegrationFeatureFlags.from_env()
+        self.integration_adapter = IPFSDatasetsAdapter(feature_flags=self.integration_flags)
+        self.retrieval_orchestrator = RetrievalOrchestrator()
+        self.vector_augmentor = VectorRetrievalAugmentor()
+        self.graph_reranker = GraphAwareRetrievalReranker()
         self._init_legal_corpus()
+
+    def get_capability_registry(self) -> Dict[str, Dict[str, object]]:
+        """Get capability and feature-flag status for enhanced integrations."""
+        return self.integration_adapter.capability_registry()
+
+    def _normalize_records(
+        self,
+        records: List[Dict[str, Any]],
+        query: str,
+        source_type: str,
+        source_name: str,
+    ) -> List[Dict[str, Any]]:
+        normalized = []
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            normalized_record = self.integration_adapter.normalize_record(
+                query=query,
+                source_type=source_type,
+                source_name=source_name,
+                record={
+                    'title': record.get('content', ''),
+                    'content': record.get('content', ''),
+                    'snippet': record.get('content', ''),
+                    'score': record.get('score', 0.0),
+                    'metadata': {
+                        'type': record.get('type'),
+                        'source': record.get('source'),
+                        'complaint_type': record.get('complaint_type'),
+                    },
+                },
+            )
+            normalized.append({
+                'source_type': normalized_record.source_type,
+                'source_name': normalized_record.source_name,
+                'query': normalized_record.query,
+                'retrieved_at': normalized_record.retrieved_at,
+                'title': normalized_record.title,
+                'url': normalized_record.url,
+                'citation': normalized_record.citation,
+                'snippet': normalized_record.snippet,
+                'content': normalized_record.content,
+                'score': normalized_record.score,
+                'confidence': normalized_record.confidence,
+                'metadata': normalized_record.metadata,
+            })
+        return normalized
+
+    def _merge_rank_normalized(
+        self,
+        normalized_records: List[Dict[str, Any]],
+        max_results: int,
+        query_context: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        model_records = []
+        for item in normalized_records:
+            model_records.append(self.integration_adapter.normalize_record(
+                query=str(item.get('query', '')),
+                source_type=str(item.get('source_type', 'unknown')),
+                source_name=str(item.get('source_name', 'unknown')),
+                record=item,
+            ))
+
+        ranked = self.retrieval_orchestrator.merge_and_rank(
+            model_records,
+            max_results=max_results,
+            query_context=query_context,
+        )
+        return [
+            {
+                'source_type': r.source_type,
+                'source_name': r.source_name,
+                'query': r.query,
+                'retrieved_at': r.retrieved_at,
+                'title': r.title,
+                'url': r.url,
+                'citation': r.citation,
+                'snippet': r.snippet,
+                'content': r.content,
+                'score': r.score,
+                'confidence': r.confidence,
+                'metadata': r.metadata,
+            }
+            for r in ranked
+        ]
+
+    def _build_support_bundle(self, normalized_records: List[Dict[str, Any]], max_items: int = 5) -> Dict[str, Any]:
+        model_records = []
+        for item in normalized_records:
+            model_records.append(self.integration_adapter.normalize_record(
+                query=str(item.get('query', '')),
+                source_type=str(item.get('source_type', 'unknown')),
+                source_name=str(item.get('source_name', 'unknown')),
+                record=item,
+            ))
+        return self.retrieval_orchestrator.build_support_bundle(model_records, max_items_per_bucket=max_items)
+
+    def _build_query_context(
+        self,
+        query: str,
+        complaint_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return self.retrieval_orchestrator.build_query_context(
+            query=query,
+            complaint_type=complaint_type,
+            claim_type=complaint_type,
+            max_queries=4,
+        )
+
+    def _build_evidence_context(
+        self,
+        query: str,
+        complaint_type: Optional[str] = None,
+    ) -> List[str]:
+        context: List[str] = []
+
+        def _add(value: Any):
+            text = str(value or '').strip()
+            if text and text not in context:
+                context.append(text)
+
+        _add(query)
+        _add(complaint_type)
+
+        state = getattr(self.mediator, 'state', None)
+        if state is None:
+            return context[:8]
+
+        for attr in ('complaint_summary', 'original_complaint', 'complaint', 'last_message'):
+            _add(getattr(state, attr, None))
+
+        state_data = getattr(state, 'data', {}) or {}
+        if isinstance(state_data, dict):
+            context_values = []
+            extractor = getattr(state, 'extract_chat_history_context_strings', None)
+            if callable(extractor):
+                extracted = extractor(limit=3)
+                if isinstance(extracted, (list, tuple)):
+                    context_values = list(extracted)
+            if not context_values:
+                chat_history = state_data.get('chat_history', {})
+                if isinstance(chat_history, dict):
+                    for _, value in list(chat_history.items())[-3:]:
+                        if isinstance(value, dict):
+                            for candidate in (value.get('message'), value.get('question')):
+                                text = str(candidate or '').strip()
+                                if text and text not in context_values:
+                                    context_values.append(text)
+                        else:
+                            context_values.append(value)
+            for value in context_values:
+                _add(value)
+
+        return context[:8]
+
+    def _dedupe_raw_records(self, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        merged: Dict[str, Dict[str, Any]] = {}
+        anonymous_count = 0
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            key = str(
+                record.get('content')
+                or record.get('title')
+                or record.get('citation')
+                or f'anonymous:{anonymous_count}'
+            ).strip().lower()
+            anonymous_count += 1
+            existing = merged.get(key)
+            if existing is None or float(record.get('score', 0.0) or 0.0) > float(existing.get('score', 0.0) or 0.0):
+                merged[key] = record
+        return list(merged.values())
+
+    def search_legal_corpus_bundle(
+        self,
+        query: str,
+        complaint_type: Optional[str] = None,
+        max_results: int = 10,
+    ) -> Dict[str, Any]:
+        """Return raw legal corpus results plus optional normalized/reranked results."""
+        query_context = self._build_query_context(query=query, complaint_type=complaint_type)
+        evidence_context = self._build_evidence_context(query=query, complaint_type=complaint_type)
+
+        raw = self.search_legal_corpus(
+            query=query,
+            complaint_type=complaint_type,
+            max_results=max_results,
+        )
+
+        if self.integration_flags.enhanced_search or self.integration_flags.enhanced_legal:
+            expanded_raw: List[Dict[str, Any]] = []
+            for subquery in list(query_context.get('queries', []) or [query])[:3]:
+                expanded_raw.extend(self.search_legal_corpus(
+                    query=subquery,
+                    complaint_type=complaint_type,
+                    max_results=max_results,
+                ))
+            raw = self._dedupe_raw_records(expanded_raw)
+
+        bundle: Dict[str, Any] = {
+            'query': query,
+            'complaint_type': complaint_type,
+            'raw': raw,
+        }
+
+        if self.integration_flags.enhanced_search or self.integration_flags.enhanced_legal:
+            normalized = self._normalize_records(
+                records=raw,
+                query=query,
+                source_type='legal_corpus',
+                source_name='complaint_analysis',
+            )
+
+            if self.integration_flags.enhanced_vector:
+                normalized = self.vector_augmentor.augment_normalized_records(
+                    records=normalized,
+                    query=query,
+                    context_texts=evidence_context,
+                )
+                self.mediator.log(
+                    'legal_corpus_vector_augmentation',
+                    query=query,
+                    records=len(normalized),
+                    evidence_context_items=len(evidence_context),
+                    capabilities=self.vector_augmentor.capabilities(),
+                )
+
+            if self.integration_flags.enhanced_graph and self.integration_flags.reranker_mode in {
+                'graph',
+                'hybrid',
+                'auto',
+                'on',
+            }:
+                canary_enabled = self.graph_reranker.should_apply_canary(
+                    seed=f"legal_corpus|{query}",
+                    percent=self.integration_flags.reranker_canary_percent,
+                )
+                if canary_enabled:
+                    normalized = self.graph_reranker.augment_normalized_records(
+                        records=normalized,
+                        query=query,
+                        mediator=self.mediator,
+                        enable_optimizer=self.integration_flags.enhanced_optimizer,
+                        retrieval_max_latency_ms=self.integration_flags.retrieval_max_latency_ms,
+                    )
+                    sample_metadata = dict((normalized[0] if normalized else {}).get('metadata', {}) or {})
+                    self.mediator.log(
+                        'legal_corpus_graph_reranking',
+                        query=query,
+                        records=len(normalized),
+                        reranker_mode=self.integration_flags.reranker_mode,
+                        enhanced_optimizer=self.integration_flags.enhanced_optimizer,
+                        retrieval_max_latency_ms=self.integration_flags.retrieval_max_latency_ms,
+                        reranker_canary_percent=self.integration_flags.reranker_canary_percent,
+                        canary_enabled=canary_enabled,
+                        latency_guard=sample_metadata.get('graph_latency_guard_applied', False),
+                        average_boost=sample_metadata.get('graph_run_avg_boost', 0.0),
+                        elapsed_ms=sample_metadata.get('graph_run_elapsed_ms', 0.0),
+                    )
+                    if hasattr(self.mediator, 'update_reranker_metrics'):
+                        self.mediator.update_reranker_metrics(
+                            source='legal_corpus',
+                            applied=True,
+                            metadata=sample_metadata,
+                            canary_enabled=canary_enabled,
+                            window_size=self.integration_flags.reranker_metrics_window,
+                        )
+                else:
+                    self.mediator.log(
+                        'legal_corpus_graph_reranking_skipped',
+                        query=query,
+                        reranker_mode=self.integration_flags.reranker_mode,
+                        reranker_canary_percent=self.integration_flags.reranker_canary_percent,
+                        canary_enabled=canary_enabled,
+                    )
+                    if hasattr(self.mediator, 'update_reranker_metrics'):
+                        self.mediator.update_reranker_metrics(
+                            source='legal_corpus',
+                            applied=False,
+                            metadata={},
+                            canary_enabled=canary_enabled,
+                            window_size=self.integration_flags.reranker_metrics_window,
+                        )
+
+            bundle['normalized'] = self._merge_rank_normalized(
+                normalized_records=normalized,
+                max_results=max_results,
+                query_context=query_context,
+            )
+            bundle['support_bundle'] = self._build_support_bundle(bundle['normalized'])
+            self.mediator.log(
+                'legal_corpus_normalized_results',
+                query=query,
+                complaint_type=complaint_type,
+                decomposed_queries=len(query_context.get('queries', []) or []),
+                raw_total=len(raw),
+                normalized_total=len(bundle['normalized']),
+                enhanced_search=self.integration_flags.enhanced_search,
+                enhanced_legal=self.integration_flags.enhanced_legal,
+            )
+
+        return bundle
         
     def _init_legal_corpus(self):
         """Initialize legal corpus from complaint_analysis."""

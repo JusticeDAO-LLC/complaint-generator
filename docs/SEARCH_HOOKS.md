@@ -65,6 +65,16 @@ suggestions = hook.suggest_questions(
     complaint_type="employment_discrimination",
     existing_questions=current_questions
 )
+
+# Inspect enhanced integration capability/flag status
+registry = hook.get_capability_registry()
+
+# Optional enhanced bundle (raw + normalized/reranked when flags enabled)
+bundle = hook.search_legal_corpus_bundle(
+    query="discrimination",
+    complaint_type="employment_discrimination",
+    max_results=10
+)
 ```
 
 #### Features
@@ -72,6 +82,12 @@ suggestions = hook.suggest_questions(
 - **Legal Pattern Search**: Searches 90+ regex patterns for legal terms
 - **Keyword Search**: Type-specific searches across 12 complaint types
 - **Relevance Scoring**: Ranks results by relevance to query
+- **Optional Vector Augmentation**: When `IPFS_DATASETS_ENHANCED_VECTOR=true`, normalized result bundles apply vector-ready score augmentation hints and metadata (`vector_augmented`, overlap ratio)
+- **Optional Graph-Aware Reranking**: When `IPFS_DATASETS_ENHANCED_GRAPH=true` and `RETRIEVAL_RERANKER_MODE` is `graph`/`hybrid`/`auto`/`on`, normalized bundles apply graph-context overlap boosts and metadata (`graph_reranked`, overlap ratio)
+- **Readiness Feedback Loop**: Graph-aware reranking also consumes dependency-graph readiness signals (incomplete claim names and unsatisfied dependency names) to prioritize retrieval records that reduce current evidence gaps (`graph_readiness_gap`, `graph_priority_overlap` metadata)
+- **Optimizer-Assisted Tuning**: With `IPFS_DATASETS_ENHANCED_OPTIMIZER=true`, reranking adaptively expands boost budget for low-readiness/high-gap cases and emits tuning metadata (`graph_optimizer_tuned`, `graph_effective_max_boost`)
+- **Latency Guard + Telemetry**: `RETRIEVAL_MAX_LATENCY_MS` constrains effective graph-boost ceilings for tighter budgets and emits per-run telemetry (`graph_latency_guard_applied`, `graph_run_elapsed_ms`, `graph_run_avg_boost`, `graph_run_boosted_count`)
+- **Canary Rollout Control**: `RETRIEVAL_RERANKER_CANARY_PERCENT` (0-100) deterministically gates graph/optimizer reranking per request for safe staged rollout.
 - **Decision Tree Enrichment**: Adds legal context to trees
 - **Question Suggestion**: Identifies gaps and suggests questions
 - **Requirement Extraction**: Extracts legal requirements per type

@@ -5,14 +5,19 @@ import os
 from lib.log import init_logging, make_logger
 from backends import WorkstationBackendModels, WorkstationBackendDatabases, LLMRouterBackend
 from mediator import Mediator
-from applications import CLI
-from applications import SERVER
 
 parser = argparse.ArgumentParser(description='Complaint Generator')
 parser.add_argument(
 	'--config',
 	default=os.environ.get('COMPLAINT_GENERATOR_CONFIG', 'config.llm_router.json'),
 	help='Path to configuration JSON (default: config.llm_router.json)'
+)
+parser.add_argument(
+	'--export-reranker-metrics',
+	default=None,
+	nargs='?',
+	const='',
+	help='Export reranker metrics JSON on shutdown; provide optional path or omit to auto-generate under statefiles/'
 )
 args = parser.parse_args()
 
@@ -79,15 +84,26 @@ for backend_id in config_mediator['backends']:
 # inquiries = Inquiries(hashed_username = hashed_username, hashed_password = hashed_password, token = token)
 mediator = Mediator(backends=backends)
 
-for type in config_application['type']:
-	if type == 'cli':
-		application = CLI(mediator)
-	elif type == 'server':
-		application = SERVER.__init__(mediator)
-	else:
-		log.error('unknown application type: %s' % type)
-		exit(-1)
+try:
+	for type in config_application['type']:
+		if type == 'cli':
+			from applications import CLI
+			application = CLI(mediator)
+		elif type == 'server':
+			from applications import SERVER
+			application = SERVER(mediator)
+		else:
+			log.error('unknown application type: %s' % type)
+			exit(-1)
 
-	application.run()
+		application.run()
+finally:
+	if args.export_reranker_metrics is not None:
+		try:
+			requested_path = args.export_reranker_metrics or None
+			export_path = mediator.export_reranker_metrics_json(requested_path)
+			log.info('reranker metrics exported to: %s' % export_path)
+		except Exception as exception:
+			log.error('failed to export reranker metrics: %s' % str(exception))
 	
 

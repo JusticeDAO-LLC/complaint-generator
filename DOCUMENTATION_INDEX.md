@@ -76,6 +76,8 @@ Complete index of all documentation in the complaint-generator repository.
 ### IPFS Integration
 - [docs/IPFS_DATASETS_INTEGRATION.md](docs/IPFS_DATASETS_INTEGRATION.md) - IPFS integration guide
 - [docs/IPFS_DATASETS_PY_INTEGRATION.md](docs/IPFS_DATASETS_PY_INTEGRATION.md) - Python IPFS integration
+- [docs/IPFS_DATASETS_PY_ENHANCEMENT_PLAN.md](docs/IPFS_DATASETS_PY_ENHANCEMENT_PLAN.md) - Phased implementation roadmap for expanded legal/search/graph/vector/optimizer capabilities
+- [docs/IPFS_DATASETS_PY_COMPATIBILITY_MATRIX.md](docs/IPFS_DATASETS_PY_COMPATIBILITY_MATRIX.md) - Capability-to-module matrix and runtime status contract for Phase 0 adapter integration
 
 ### DEI Analysis (HACC)
 - [docs/HACC_INTEGRATION.md](docs/HACC_INTEGRATION.md) - DEI policy analysis
@@ -93,6 +95,7 @@ Complete index of all documentation in the complaint-generator repository.
 ### GraphRAG Ontology Extraction
 - [docs/EXTRACTION_CONFIG_GUIDE.md](docs/EXTRACTION_CONFIG_GUIDE.md) - Comprehensive configuration reference for ExtractionConfig: field descriptions, valid ranges, use cases, performance tuning, common patterns, and troubleshooting
 - [docs/optimizers/HOW_TO_ADD_NEW_OPTIMIZER.md](docs/optimizers/HOW_TO_ADD_NEW_OPTIMIZER.md) - Implementation checklist for adding new optimizers (contracts, tests, observability, docs)
+- [docs/optimizers/INTERACTIVE_REFINEMENT_ENDPOINT.md](docs/optimizers/INTERACTIVE_REFINEMENT_ENDPOINT.md) - FastAPI interactive refinement preview/apply endpoints (`/refinement`, `/api/refinement/*`) and integration notes
 - [ipfs_datasets_py/ipfs_datasets_py/optimizers/docs/GLOSSARY.md](ipfs_datasets_py/ipfs_datasets_py/optimizers/docs/GLOSSARY.md) - Shared ontology, pipeline, and optimization terminology
 
 ### 🔧 Optimizers API Documentation
@@ -106,6 +109,10 @@ Complete index of all documentation in the complaint-generator repository.
 - [docs/IMPLEMENTATION_SUMMARY.md](docs/IMPLEMENTATION_SUMMARY.md) - Implementation summary
 - [docs/TAXONOMY_EXPANSION_SUMMARY.md](docs/TAXONOMY_EXPANSION_SUMMARY.md) - Taxonomy expansion
 - [docs/VERIFICATION_SUMMARY.md](docs/VERIFICATION_SUMMARY.md) - Verification summary
+
+### Operations Scripts
+- [scripts/summarize_reranker_metrics.py](scripts/summarize_reranker_metrics.py) - Summarize exported reranker metrics for canary rollout review (text report + optional summary JSON)
+- [scripts/validate_canary_ops.py](scripts/validate_canary_ops.py) - CI-safe validation for canary VS Code task wiring and summarizer CLI availability
 
 ## Example Scripts
 

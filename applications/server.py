@@ -6,21 +6,40 @@ from datetime import datetime, timedelta
 import jwt
 import requests
 from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
+from urllib3.util.retry import Retry
 
-from fastapi import FastAPI, Request, HTTPException, BackgroundTasks, Cookie, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, HTTPException, BackgroundTasks, Cookie, WebSocket, WebSocketDisconnect, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from lib.chat_payloads import build_chat_payload
 from starlette.status import HTTP_403_FORBIDDEN
 from starlette.responses import RedirectResponse
 import uvicorn
 
 
 class SERVER:
+    @staticmethod
+    def build_chat_payload(message, inquiry_payload=None, sender="Bot:"):
+        return build_chat_payload(message, inquiry_payload=inquiry_payload, sender=sender)
+
+    @staticmethod
+    def process_chat_message(mediator, message, sender="Bot:"):
+        bot_payload = mediator.io_payload(message)
+        return SERVER.build_chat_payload(
+            bot_payload["message"],
+            bot_payload,
+            sender=sender,
+        )
        
     def __init__(self, mediator):
- 
-        app = FastAPI()
+        self.mediator = mediator
+        self.host = "0.0.0.0"
+        self.port = 19000
+        self.app = FastAPI()
+        app = self.app
+        if os.path.isdir("static"):
+            app.mount("/static", StaticFiles(directory="static"), name="static")
         
         hostname = "http://10.10.0.10:1792"
 
@@ -329,6 +348,17 @@ class SERVER:
                     return {"results": results}
 
 
+        @app.post("/api/chat")
+        async def chat_post(request: Request):
+            payload = await request.json()
+            message = ""
+            if isinstance(payload, dict):
+                message = payload.get("message") or payload.get("text") or ""
+            if not message:
+                raise HTTPException(status_code=400, detail="message is required")
+            return self.process_chat_message(mediator, message)
+
+
         @app.websocket("/api/chat")
         async def chat(websocket: WebSocket):
             token = websocket.cookies.get("token")
@@ -354,49 +384,34 @@ class SERVER:
 
             if token:
                 await manager.connect(websocket, hashed_username)
-                response = {
-                    "sender": "Bot:",
-                    "message": "Please state your legal complaint"
-                }
+                response = self.build_chat_payload(
+                    "Please state your legal complaint",
+                    mediator.get_current_inquiry_payload(),
+                )
 
                 await manager.broadcast(response)
                 try:
                     while True:
-                        reply = ""
                         data = await websocket.receive_json()
+                        message = data.get("message") if isinstance(data, dict) else str(data)
                         mediator.state.load_profile(dict({"results":{ "hashed_username": hashed_username, "hashed_password":hashed_password}}))
-                        mediator.state(hashed_password = hashed_password, hashed_username = hashed_username).message(data)
-                        await manager.broadcast(data)
-                        await manager.broadcast(mediator.state(hashed_password = hashed_password, hashed_username = hashed_username)s.response())
+                        user_payload = self.build_chat_payload(message, sender=hashed_username or "User:")
+                        await manager.broadcast(user_payload)
+                        mediator.state.message(user_payload)
+                        bot_payload = self.process_chat_message(mediator, message)
+                        await manager.broadcast(bot_payload)
+                        mediator.state.message(bot_payload)
                         mediator.state.store_profile(dict({"results":{ "hashed_username": hashed_username, "hashed_password":hashed_password}}))
                         
 
                 except WebSocketDisconnect:
-                    manager.disconnect(websocket, token)
+                    manager.disconnect(websocket, hashed_username)
                     response['message'] = "left"
                     await manager.broadcast(response)
 
 
-        uvicorn.run(app, host="0.0.0.0", port=19000)
-        
-    class SocketManager:
-        def __init__(self):
-            self.active_connections: list[(WebSocket, str)] = []
-
-        async def connect(self, websocket: WebSocket, user: str):
-            await websocket.accept()
-            self.active_connections.append((websocket, user))
-
-        def disconnect(self, websocket: WebSocket, user: str):
-            self.active_connections.remove((websocket, user))
-
-        async def broadcast(self, data: dict):
-            for connection in self.active_connections:
-                await connection[0].send_json(data)
-
-    manager = SocketManager()
-
-    app = FastAPI()
+    def run(self):
+        uvicorn.run(self.app, host=self.host, port=self.port)
 
 
     

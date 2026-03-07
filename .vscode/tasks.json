@@ -1,0 +1,49 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Canary: Run + Export + Summarize Reranker Metrics",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "set -euo pipefail; ts=$(date +%Y%m%d_%H%M%S); metrics=statefiles/reranker_metrics_${ts}.json; summary=statefiles/reranker_metrics_${ts}.summary.json; .venv/bin/python run.py --config config.llm_router.json --export-reranker-metrics \"$metrics\"; .venv/bin/python scripts/summarize_reranker_metrics.py --input \"$metrics\" --summary-out \"$summary\"; echo \"Metrics: $metrics\"; echo \"Summary: $summary\""
+      ],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Canary: Summarize Latest Reranker Metrics Export",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "set -euo pipefail; latest=$(ls -1t statefiles/reranker_metrics_*.json 2>/dev/null | grep -v '\\.summary\\.json$' | head -n1 || true); if [ -z \"${latest:-}\" ]; then echo 'No reranker metrics export found under statefiles/'; exit 1; fi; summary=\"${latest%.json}.summary.json\"; .venv/bin/python scripts/summarize_reranker_metrics.py --input \"$latest\" --summary-out \"$summary\"; echo \"Input: $latest\"; echo \"Summary: $summary\""
+      ],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Canary: Generate Sample + Summarize Reranker Metrics",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "set -euo pipefail; ts=$(date +%Y%m%d_%H%M%S); metrics=statefiles/reranker_metrics_sample_${ts}.json; summary=statefiles/reranker_metrics_sample_${ts}.summary.json; METRICS_PATH=\"$metrics\" .venv/bin/python -c \"import os; from mediator import Mediator; from unittest.mock import Mock; m=Mock(); m.id='sample-backend'; med=Mediator(backends=[m]); med.update_reranker_metrics(source='legal_authority', applied=True, metadata={'graph_run_avg_boost':0.05,'graph_run_elapsed_ms':2.0,'graph_latency_guard_applied':False}, canary_enabled=True); med.update_reranker_metrics(source='web_evidence', applied=False, metadata={}, canary_enabled=False); print(med.export_reranker_metrics_json(os.environ['METRICS_PATH']))\"; .venv/bin/python scripts/summarize_reranker_metrics.py --input \"$metrics\" --summary-out \"$summary\"; echo \"Sample metrics: $metrics\"; echo \"Sample summary: $summary\""
+      ],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Canary: Validate Ops Wiring (CI-safe)",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "set -euo pipefail; .venv/bin/python scripts/validate_canary_ops.py; .venv/bin/pytest tests/test_canary_ops_validation.py -q"
+      ],
+      "group": "test",
+      "problemMatcher": []
+    }
+  ]
+}

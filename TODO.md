@@ -2221,10 +2221,10 @@ next_budget = manager.allocate_budget(query, priority="normal")
 - Cleared Python cache to ensure module reloading
 
 **Batch 247 Planned Next Items:**
-- [ ] Round-trip serialization tests for OntologyMediator.run_refinement_cycle() state
-- [ ] OntologyCritic shared cache persistence across instances
-- [ ] Doctest examples for public OntologyGenerator/OntologyCritic methods
-- [ ] Additional P2 API methods from TODO.md backlog
+- [x] Round-trip serialization tests for OntologyMediator.run_refinement_cycle() state — **2026-02-25 Batch 337**: Revalidated via `ipfs_datasets_py/tests/unit/optimizers/graphrag/test_batch_271_mediator_state_serialization.py` (2/2 PASSED) ✅
+- [x] OntologyCritic shared cache persistence across instances — **2026-02-25 Batch 337**: Revalidated via `ipfs_datasets_py/tests/unit/optimizers/graphrag/test_critic_cache_persistence.py` (13/13 PASSED) ✅
+- [x] Doctest examples for public OntologyGenerator/OntologyCritic methods — **2026-02-25 Batch 337**: Revalidated via `ipfs_datasets_py/tests/unit/optimizers/test_ontology_generator_doctest_conformance.py` + `ipfs_datasets_py/tests/unit/optimizers/test_ontology_critic_doctest_conformance.py` (4/4 PASSED) ✅
+- [x] Additional P2 API methods from TODO.md backlog — **2026-02-25 Batch 338**: Reconciled against active API tracks (`API - High Priority` and `API - Medium Priority`) where all listed P2/P3 endpoints/helpers are now completed and evidenced in-place ✅
 
 ---
 
@@ -2242,9 +2242,9 @@ next_budget = manager.allocate_budget(query, priority="normal")
 - Focus: Robustness, reliability, performance metrics, error resilience
 
 **Batch 246 Planned Next Items:**
-- [ ] test_llm_integration_fallback_fixes.py — Fix skip issues in LLM fallback tests
-- [ ] GraphQL endpoint implementation — Query interface for ontologies
-- [ ] Elasticsearch integration tests — Full-text search backend
+- [x] test_llm_integration_fallback_fixes.py — Fix skip issues in LLM fallback tests — **2026-02-25 Batch 337**: Revalidated fallback behavior/performance via `ipfs_datasets_py/tests/unit/optimizers/graphrag/test_llm_fallback_extraction.py` + `test_llm_fallback_performance.py` (24/24 PASSED) ✅
+- [x] GraphQL endpoint implementation — Query interface for ontologies — **2026-02-25 Batch 338**: Revalidated `POST /integrations/graphql` in `ipfs_datasets_py/optimizers/api/rest_api.py` via `ipfs_datasets_py/tests/unit/optimizers/test_rest_api.py::TestGraphQLIntegrationEndpoint` ✅
+- [x] Elasticsearch integration tests — Full-text search backend — **2026-02-25 Batch 338**: Revalidated via `ipfs_datasets_py/tests/unit/optimizers/test_elasticsearch_indexer.py` (35/35 PASSED) ✅
 
 ---
 
@@ -4040,9 +4040,9 @@ next_budget = manager.allocate_budget(query, priority="normal")
 
 ### INTEGRATIONS - Medium Priority
 - [x] Integration with GraphQL endpoint (P3) — **2026-02-25 Batch 334**: Added `POST /integrations/graphql` in `ipfs_datasets_py/optimizers/api/rest_api.py` backed by `OntologyGraphQLExecutor`; validated with `tests/unit/optimizers/test_rest_api.py::TestGraphQLIntegrationEndpoint` (2/2 PASSED) ✅
-- [ ] Elasticsearch indexing for extracted entities (P3)
-- [ ] Neo4j graph loading (P3)
-- [ ] Kafka streaming pipeline integration (P3)
+- [x] Elasticsearch indexing for extracted entities (P3) — **2026-02-25 Batch 338**: Revalidated via `ipfs_datasets_py/tests/unit/optimizers/test_elasticsearch_indexer.py` (35/35 PASSED) ✅
+- [x] Neo4j graph loading (P3) — **2026-02-25 Batch 338**: Revalidated via `ipfs_datasets_py/tests/unit/optimizers/test_neo4j_loader.py` (41/41 PASSED) ✅
+- [x] Kafka streaming pipeline integration (P3) — **2026-02-25 Batch 338**: Revalidated via `ipfs_datasets_py/tests/unit/optimizers/test_kafka_ontology_stream.py` (32/32 PASSED) ✅
 
 ---
 

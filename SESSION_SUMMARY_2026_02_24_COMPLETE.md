@@ -228,3 +228,56 @@ Fix applied:
 **Impact:** High - Improved code quality, security posture, performance visibility, developer experience, and infrastructure foundation for next improvement cycle.
 
 **Next Action:** Ready for next cycle with infinite TODO methodology - pull new random picks from different tracks and continue systematic improvement.
+
+---
+
+## Addendum (2026-03-06): Canary Rollout Operations Tooling
+
+### Scope
+Extended complaint-generator operational readiness for reranker canary rollout, focusing on reproducible metrics export/summarization workflows and CI-safe wiring validation.
+
+### Delivered
+- Added runtime export support in `run.py`:
+  - `--export-reranker-metrics [optional_path]`
+  - supports explicit path or auto-generated `statefiles/` output when no path is supplied.
+- Fixed blocking parser issue in `applications/server.py` WebSocket response call.
+- Added reusable summarization utility:
+  - `scripts/summarize_reranker_metrics.py`
+  - converts exported metrics JSON into concise text report + optional summary JSON.
+- Added CI-safe wiring validator:
+  - `scripts/validate_canary_ops.py`
+  - validates required VS Code canary task labels/command fragments and summarizer CLI contract.
+- Added focused validation test:
+  - `tests/test_canary_ops_validation.py`
+
+### VS Code Tasks Added
+Defined canary operations tasks in `.vscode/tasks.json`:
+1. `Canary: Run + Export + Summarize Reranker Metrics`
+2. `Canary: Summarize Latest Reranker Metrics Export`
+3. `Canary: Generate Sample + Summarize Reranker Metrics`
+4. `Canary: Validate Ops Wiring (CI-safe)`
+
+### Documentation Updates
+- `docs/CONFIGURATION.md`:
+  - one-command export flow
+  - summarization usage
+  - all canary task descriptions
+  - CI-safe validator command
+- `README.md`:
+  - new canary operations entrypoint section.
+- `DOCUMENTATION_INDEX.md`:
+  - operations script entries for summarizer and validator.
+
+### Validation Snapshot
+- CI-safe validator command passes:
+  - `python scripts/validate_canary_ops.py`
+- Focused tests pass:
+  - `tests/test_canary_ops_validation.py`
+  - `tests/test_graph_phase2_integration.py`
+
+### Outcome
+Canary rollout operations now have:
+- deterministic export/summarize workflows,
+- one-click local task execution,
+- CI-safe wiring checks to prevent drift,
+- and updated entrypoint/configuration docs for discoverability.

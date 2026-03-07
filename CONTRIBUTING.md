@@ -154,6 +154,16 @@ pytest --cov=. --cov-report=html
 pytest -m integration
 ```
 
+### Run Canary Ops Validation
+
+Before opening a PR that touches reranker rollout, metrics export, or related docs/tasks, run:
+
+```bash
+make canary-validate
+```
+
+GitHub Actions also runs the same command in the `Canary Ops Validation` workflow on pushes and pull requests to `main`/`master`.
+
 ### Run Unit Tests Only (Faster)
 
 ```bash

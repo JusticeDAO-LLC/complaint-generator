@@ -128,6 +128,33 @@ python run.py --config config.llm_router.json
 
 ---
 
+## 🧭 Canary Ops (Reranker Rollout)
+
+Use the built-in workspace tasks in `.vscode/tasks.json` for rollout monitoring:
+
+- `Canary: Run + Export + Summarize Reranker Metrics`
+- `Canary: Summarize Latest Reranker Metrics Export`
+- `Canary: Generate Sample + Summarize Reranker Metrics`
+- `Canary: Validate Ops Wiring (CI-safe)`
+
+You can also run CI-safe validation directly:
+
+```bash
+python scripts/validate_canary_ops.py
+```
+
+Or use the top-level Makefile aliases:
+
+```bash
+make canary-validate
+make canary-smoke
+make canary-sample
+```
+
+See [Canary configuration details →](docs/CONFIGURATION.md).
+
+---
+
 ## 📖 Usage Examples
 
 ### Basic Complaint Processing

@@ -4,6 +4,6 @@ user_prompts = {
 
 model_prompts = {
     'generate_questions': '"""\n{complaint}\n"""\n\nGenerate a list of questions that an attorney would ask their client about this legal lawsuit.',
-    'summarize_complaint': '"""\n{inquiries}\n"""\n\nGenerate a very long detailed summary about the Plaintiff\'s legal complaint from this conversation.',
+    'summarize_complaint': '"""\n{inquiries}\n"""\n\n{support_context}\n\nGenerate a very long detailed summary about the Plaintiff\'s legal complaint from this conversation. Use the support context when it strengthens factual grounding, legal framing, or corroboration, but do not invent facts that are not supported.',
     'inquiry_block': 'Lawyer: {lawyer}\nPlaintiff: {plaintiff}'
 }

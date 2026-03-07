@@ -46,6 +46,16 @@
             max-height: 80%;
             overflow: auto;
         }
+
+        .chat-message {
+            margin-bottom: 0.75rem;
+        }
+
+        .chat-explanation {
+            color: #6c757d;
+            font-size: 0.9rem;
+            margin-left: 1.25rem;
+        }
         
         #chat-form input {
             width: 400px;
@@ -67,125 +77,7 @@
             background-color: transparent;
         }
     </style>
-    <script>
-        hostname = "localhost:19000";
-
-        function load_profile(username, password, email) {
-
-            $.ajaxSetup({
-                async: false
-            }); //execute synchronously
-            var returnData = null; //define returnData outside the scope of the callback function
-            $.ajax({
-                type: "POST",
-                contentType: 'application/json',
-                url: "/load_profile",
-                data: '{"request": {"hashed_username" : "' + username + '", "hashed_password": "' + password + '"}}',
-                dataType: 'json',
-                async: false,
-                success: function(data) {
-                    returnData = data;
-                }
-            });
-
-            // alert(JSON.stringify(returnData));
-            $.ajaxSetup({
-                async: true
-            }); //return to default setting
-            //alert(JSON.stringify(returnData));
-            //alert(returnData[0]["body"]);
-            //data = returnData[0]["data"];
-            // alert(JSON.stringify(returnData));
-            if ("Err" in returnData) {
-                // alert("This Login Err: " + JSON.stringify(returnData));
-                show_error(returnData["Err"]);
-                return returnData;
-            } else {
-                // window.location();
-                return returnData;
-            }
-            return returnData;
-        }
-
-        function show_error(message) {
-            form_field = $("#Err").html();
-            form_field = "<span>" + message + "</span>";
-            $("#Err").html(form_field);
-            $("#Err").show();
-            // alert(message)
-        }
-
-        $(document).ready(function() {
-            cookies = "";
-            $("body").css("background-color", "transparent");
-            $.ajax({
-                url: "/cookies",
-                type: "get",
-                async: false,
-                data: {},
-                success: function(data) {
-                    // alert(data);
-                    cookies = data;
-                }
-            });
-            // alert(JSON.parse(cookies));
-            hashed_username = JSON.parse(cookies)["hashed_username"];
-            hashed_password = JSON.parse(cookies)["hashed_password"];
-            // alert(hashed_username);
-            profile = load_profile(hashed_username, hashed_password);
-            // console.log(JSON.stringify(profile));
-            // alert(JSON.stringify(profile));
-            testdata = profile["data"];
-            chat_history = testdata["chat_history"];
-            // alert(JSON.stringify(chat_history));
-            // console.log(JSON.stringify(testdata));
-            // console.log(JSON.stringify(testdata["data"]["chat_history"]));
-
-            var receiver = "";
-            // create websocket
-            var socket = new WebSocket("ws://" + hostname + "/api/chat");
-            socket.onmessage = function(event) {
-                var parent = $("#messages");
-                var data = JSON.parse(event.data);
-                var sender = data['sender'];
-                if (sender == hashed_username)
-                    sender = "You";
-                var message = data['message']
-                var content = "<p><strong>" + sender + " </strong> <span> " + message + "</span></p>";
-                parent.append(content);
-                // alert(testdata)
-                // alert(JSON.stringify(chat_history));
-
-                if (typeof testdata === 'string') {
-                    testdata = JSON.parse(testdata);
-                }
-                for (var timestamp in chat_history) {
-                    if (chat_history[timestamp]["sender"] == hashed_username) {
-                        chat_history[timestamp]["sender"] = "You"
-                    }
-                    chatblock = "<p><strong>" + chat_history[timestamp]["sender"] + ": </strong> <span> " + chat_history[timestamp]["message"] + "</span></p>";
-                    $("#messages").append(chatblock);
-                }
-                // alert(JSON.stringify(chat_history));
-
-            }
-
-
-            $("#chat-form").on("submit", function(e) {
-                e.preventDefault();
-                var message = $("input").val();
-                if (message) {
-                    data = {
-                        "sender": hashed_username,
-                        "message": message
-                    };
-                    socket.send(JSON.stringify(data));
-                    $("input").val("");
-                    // document.cookie = 'X-Authorization=; path=/;';
-                }
-            });
-        });
-    </script>
+    <script src="/static/chat.js"></script>
 </head>
 
 <body style="background-color: transparent;">

@@ -25,6 +25,7 @@ from .web_evidence_hooks import (
 	WebEvidenceSearchHook,
 	WebEvidenceIntegrationHook
 )
+from .integrations import IntegrationFeatureFlags, GraphRetrievalAugmentor
 
 # Import three-phase complaint processing
 from complaint_phases import (
@@ -99,6 +100,151 @@ class Mediator:
 	def response(self):
 		return "I'm sorry, I don't understand. Please try again."
 
+	def _cache_support_bundle(self, state_attr: str, bundle: Any, log_event: str, **log_fields):
+		if isinstance(bundle, dict):
+			setattr(self.state, state_attr, bundle)
+			summary = bundle.get('summary', {}) if isinstance(bundle, dict) else {}
+			self.log(
+				log_event,
+				total_records=summary.get('total_records', 0),
+				cross_supported=summary.get('cross_supported_count', 0),
+				**log_fields,
+			)
+
+	def build_drafting_support_context(self, max_items_per_bucket: int = 3) -> str:
+		sections = []
+		bundle_sources = [
+			('Statutes', getattr(self.state, 'applicable_statutes_bundle', None)),
+			('Legal Authorities', getattr(self.state, 'last_legal_authorities_support_bundle', None)),
+			('Web Evidence', getattr(self.state, 'last_web_evidence_support_bundle', None)),
+		]
+
+		for label, container in bundle_sources:
+			bundle = None
+			if isinstance(container, dict) and 'support_bundle' in container and isinstance(container.get('support_bundle'), dict):
+				bundle = container.get('support_bundle')
+			elif isinstance(container, dict):
+				bundle = container
+
+			if not isinstance(bundle, dict):
+				continue
+
+			lines = []
+			for bucket_name, title in (
+				('top_authorities', 'Strongest authorities'),
+				('top_evidence', 'Strongest evidence'),
+				('hybrid_cross_supported', 'Cross-supported items'),
+			):
+				items = list(bundle.get(bucket_name, []) or [])[:max(1, int(max_items_per_bucket or 1))]
+				if not items:
+					continue
+				lines.append(f'{title}:')
+				for item in items:
+					if not isinstance(item, dict):
+						continue
+					name = str(item.get('title') or item.get('citation') or item.get('url') or 'Untitled support').strip()
+					why = str(item.get('snippet') or item.get('content') or '').strip()
+					lines.append(f'- {name}' + (f': {why}' if why else ''))
+
+			if lines:
+				sections.append(f'{label} Support:\n' + '\n'.join(lines))
+
+		if not sections:
+			return 'Support Context: No retrieved legal or evidence support is currently cached.'
+
+		return 'Support Context:\n' + '\n\n'.join(sections)
+
+	def build_legal_question_support_context(self, max_items_per_bucket: int = 2) -> Dict[str, Any]:
+		sections = []
+		summary = {
+			'authority_count': 0,
+			'evidence_count': 0,
+			'cross_supported_count': 0,
+			'hybrid_cross_supported_count': 0,
+		}
+
+		bundle_sources = [
+			getattr(self.state, 'applicable_statutes_support_bundle', None),
+			getattr(self.state, 'last_legal_authorities_support_bundle', None),
+			getattr(self.state, 'last_web_evidence_support_bundle', None),
+		]
+
+		for bundle in bundle_sources:
+			if not isinstance(bundle, dict):
+				continue
+			bundle_summary = bundle.get('summary', {}) or {}
+			for key in summary:
+				summary[key] += int(bundle_summary.get(key, 0) or 0)
+
+			cross_supported = list(bundle.get('hybrid_cross_supported', []) or bundle.get('cross_supported', []) or [])
+			for item in cross_supported[:max(1, int(max_items_per_bucket or 1))]:
+				if not isinstance(item, dict):
+					continue
+				name = str(item.get('title') or item.get('citation') or item.get('url') or 'Untitled support').strip()
+				why = str(item.get('snippet') or item.get('content') or '').strip()
+				sections.append(f'- {name}' + (f': {why}' if why else ''))
+
+		if not sections:
+			return {
+				'support_context': 'No cross-supported authorities or evidence are cached yet.',
+				'support_summary': summary,
+			}
+
+		return {
+			'support_context': 'Cross-supported retrieved items:\n' + '\n'.join(sections),
+			'support_summary': summary,
+		}
+
+	def build_inquiry_gap_context(self) -> Dict[str, Any]:
+		priority_terms = []
+		gap_count = 0
+
+		try:
+			dg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'dependency_graph')
+		except Exception:
+			dg = None
+
+		if dg is None:
+			return {
+				'priority_terms': priority_terms,
+				'gap_count': gap_count,
+			}
+
+		try:
+			readiness = dg.get_claim_readiness() if hasattr(dg, 'get_claim_readiness') else {}
+			for claim in list((readiness or {}).get('incomplete_claim_details', []) or []):
+				if not isinstance(claim, dict):
+					continue
+				claim_name = str(claim.get('claim_name', '') or '').strip()
+				if claim_name and claim_name not in priority_terms:
+					priority_terms.append(claim_name)
+		except Exception:
+			pass
+
+		try:
+			unsatisfied = dg.find_unsatisfied_requirements() if hasattr(dg, 'find_unsatisfied_requirements') else []
+			gap_count = len(unsatisfied or [])
+			for item in unsatisfied or []:
+				if not isinstance(item, dict):
+					continue
+				for value in [item.get('node_name')]:
+					text = str(value or '').strip()
+					if text and text not in priority_terms:
+						priority_terms.append(text)
+				for missing in list(item.get('missing_dependencies', []) or []):
+					if not isinstance(missing, dict):
+						continue
+					text = str(missing.get('source_name', '') or '').strip()
+					if text and text not in priority_terms:
+						priority_terms.append(text)
+		except Exception:
+			pass
+
+		return {
+			'priority_terms': priority_terms,
+			'gap_count': gap_count,
+		}
+
 	def io(self, text):
 		self.log('user_input', text=text)
 
@@ -110,6 +256,23 @@ class Mediator:
 			raise exception
 
 		return output
+
+	def io_payload(self, text) -> Dict[str, Any]:
+		message = self.io(text)
+		inquiry_payload = self.get_current_inquiry_payload()
+		return {
+			'message': message,
+			'question': inquiry_payload.get('question') or message,
+			'inquiry': inquiry_payload.get('inquiry'),
+			'explanation': inquiry_payload.get('explanation'),
+		}
+
+	def get_current_inquiry_payload(self) -> Dict[str, Any]:
+		return {
+			'question': ((getattr(self.state, 'current_inquiry', None) or {}).get('question')),
+			'inquiry': getattr(self.state, 'current_inquiry', None),
+			'explanation': getattr(self.state, 'current_inquiry_explanation', None),
+		}
 
 
 	def process(self, text):
@@ -129,7 +292,18 @@ class Mediator:
 			if self.inquiries.is_complete():
 				return self.finalize()
 
-		return self.inquiries.get_next()['question']
+		next_details = self.inquiries.get_next_details()
+		next_inquiry = next_details.get('inquiry') or {}
+		next_explanation = next_details.get('explanation') or {}
+		self.state.current_inquiry = next_inquiry
+		self.state.current_inquiry_explanation = next_explanation
+		self.log(
+			'next_inquiry_selected',
+			question=next_inquiry.get('question'),
+			priority=next_explanation.get('priority'),
+			reasons=next_explanation.get('reasons', []),
+		)
+		return next_inquiry['question']
 
 
 	def finalize(self):
@@ -157,7 +331,18 @@ class Mediator:
 		
 		# Step 2: Retrieve applicable statutes
 		self.log('legal_analysis', step='statute_retrieval')
-		statutes = self.statute_retriever.retrieve_statutes(classification)
+		integration_flags = IntegrationFeatureFlags.from_env()
+		if integration_flags.enhanced_legal or integration_flags.enhanced_search:
+			statute_bundle = self.statute_retriever.retrieve_statutes_bundle(classification)
+			statutes = statute_bundle.get('raw', [])
+			self.state.applicable_statutes_bundle = statute_bundle
+			self._cache_support_bundle(
+				'applicable_statutes_support_bundle',
+				statute_bundle.get('support_bundle'),
+				'statute_support_bundle_cached',
+			)
+		else:
+			statutes = self.statute_retriever.retrieve_statutes(classification)
 		self.state.applicable_statutes = statutes
 		
 		# Step 3: Generate summary judgment requirements
@@ -167,24 +352,47 @@ class Mediator:
 		
 		# Step 4: Generate targeted questions
 		self.log('legal_analysis', step='question_generation')
-		questions = self.question_generator.generate_questions(requirements, classification)
+		questions = self.question_generator.generate_questions(
+			requirements,
+			classification,
+			provenance_context={
+				'statute_count': len(statutes),
+				'enhanced_legal': integration_flags.enhanced_legal,
+				'enhanced_search': integration_flags.enhanced_search,
+				**self.build_legal_question_support_context(),
+			}
+		)
 		self.state.legal_questions = questions
+		merged_legal_questions = self.inquiries.merge_legal_questions(questions)
+		self.log(
+			'legal_questions_merged_into_inquiries',
+			count=merged_legal_questions,
+		)
 		
-		return {
+		result = {
 			'classification': classification,
 			'statutes': statutes,
 			'requirements': requirements,
 			'questions': questions
 		}
+
+		if integration_flags.enhanced_legal or integration_flags.enhanced_search:
+			result['statute_bundle'] = getattr(self.state, 'applicable_statutes_bundle', {'raw': statutes})
+
+		return result
 	
 	def get_legal_analysis(self):
 		"""Get the current legal analysis results."""
-		return {
+		result = {
 			'classification': getattr(self.state, 'legal_classification', None),
 			'statutes': getattr(self.state, 'applicable_statutes', None),
 			'requirements': getattr(self.state, 'summary_judgment_requirements', None),
 			'questions': getattr(self.state, 'legal_questions', None)
 		}
+		statute_bundle = getattr(self.state, 'applicable_statutes_bundle', None)
+		if statute_bundle is not None:
+			result['statute_bundle'] = statute_bundle
+		return result
 	
 	def submit_evidence(self, data: bytes, evidence_type: str,
 	                   user_id: str = None,
@@ -370,21 +578,52 @@ class Mediator:
 		
 		complaint_id = getattr(self.state, 'complaint_id', None)
 		
-		stored_counts = {}
-		for auth_type, auth_list in authorities.items():
-			if auth_list:
-				# Add type info to each authority
-				for auth in auth_list:
-					auth['type'] = auth_type.rstrip('s')  # statutes -> statute
-				
-				record_ids = self.legal_authority_storage.add_authorities_bulk(
-					auth_list, user_id, complaint_id, claim_type, search_query
-				)
-				stored_counts[auth_type] = len(record_ids)
-				
-				self.log('legal_authorities_stored',
-					type=auth_type, count=len(record_ids), claim_type=claim_type)
-		
+		stored_counts: Dict[str, int] = {}
+		known_authority_buckets = {'statutes', 'regulations', 'case_law', 'web_archives'}
+
+		# Persist normalized/enhanced artifacts in state for auditability, but do not
+		# insert them as first-class authority rows.
+		normalized_records = authorities.get('normalized') if isinstance(authorities, dict) else None
+		if isinstance(normalized_records, list):
+			self.state.last_legal_authorities_normalized = normalized_records
+			self.log(
+				'legal_authorities_normalized_cached',
+				count=len(normalized_records),
+				claim_type=claim_type,
+			)
+
+		support_bundle = authorities.get('support_bundle') if isinstance(authorities, dict) else None
+		self._cache_support_bundle(
+			'last_legal_authorities_support_bundle',
+			support_bundle,
+			'legal_authorities_support_bundle_cached',
+			claim_type=claim_type,
+		)
+
+		for auth_type in known_authority_buckets:
+			auth_list = authorities.get(auth_type, []) if isinstance(authorities, dict) else []
+			if not isinstance(auth_list, list) or not auth_list:
+				continue
+
+			storable_list: List[Dict[str, Any]] = []
+			for auth in auth_list:
+				if not isinstance(auth, dict):
+					continue
+				copy_auth = dict(auth)
+				copy_auth['type'] = auth_type.rstrip('s')  # statutes -> statute
+				storable_list.append(copy_auth)
+
+			if not storable_list:
+				continue
+
+			record_ids = self.legal_authority_storage.add_authorities_bulk(
+				storable_list, user_id, complaint_id, claim_type, search_query
+			)
+			stored_counts[auth_type] = len(record_ids)
+
+			self.log('legal_authorities_stored',
+				type=auth_type, count=len(record_ids), claim_type=claim_type)
+
 		return stored_counts
 	
 	def get_legal_authorities(self, user_id: str = None, claim_type: str = None):
@@ -524,11 +763,81 @@ class Mediator:
 		Returns:
 			Dictionary with search results from each source
 		"""
-		return self.web_evidence_search.search_for_evidence(
+		results = self.web_evidence_search.search_for_evidence(
 			keywords=keywords,
 			domains=domains,
 			max_results=max_results
 		)
+
+		normalized_records = results.get('normalized') if isinstance(results, dict) else None
+		if isinstance(normalized_records, list):
+			self.state.last_web_evidence_normalized = normalized_records
+			self.log(
+				'web_evidence_normalized_cached',
+				count=len(normalized_records),
+			)
+
+		support_bundle = results.get('support_bundle') if isinstance(results, dict) else None
+		self._cache_support_bundle(
+			'last_web_evidence_support_bundle',
+			support_bundle,
+			'web_evidence_support_bundle_cached',
+		)
+
+		return results
+
+	def enrich_graphs_with_retrieval_artifacts(self, max_items: int = 20) -> Dict[str, Any]:
+		"""Enhance phase graphs using cached normalized legal/web retrieval artifacts."""
+		kg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
+		dg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'dependency_graph')
+		if kg is None or dg is None:
+			return {
+				'enriched': False,
+				'added': 0,
+				'message': 'Knowledge/dependency graphs not initialized'
+			}
+
+		legal_normalized = list(getattr(self.state, 'last_legal_authorities_normalized', []) or [])
+		if not legal_normalized:
+			bundle = getattr(self.state, 'applicable_statutes_bundle', None)
+			if isinstance(bundle, dict):
+				legal_normalized = list(bundle.get('normalized', []) or [])
+
+		web_normalized = list(getattr(self.state, 'last_web_evidence_normalized', []) or [])
+
+		claim_nodes = dg.get_nodes_by_type(NodeType.CLAIM)
+		claim_ids = [node.id for node in claim_nodes] if claim_nodes else []
+
+		augmentor = GraphRetrievalAugmentor()
+		payloads = augmentor.build_evidence_payloads(
+			legal_normalized=legal_normalized,
+			web_normalized=web_normalized,
+			claim_ids=claim_ids,
+			max_items=max_items,
+		)
+
+		added = 0
+		for payload in payloads:
+			try:
+				self.add_evidence_to_graphs(payload)
+				added += 1
+			except Exception as exception:
+				self.log('graph_enrichment_error', error=str(exception), payload_id=payload.get('id'))
+
+		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'retrieval_artifact_enrichment_count', added)
+		self.log(
+			'graph_retrieval_enrichment_complete',
+			added=added,
+			legal_candidates=len(legal_normalized),
+			web_candidates=len(web_normalized),
+		)
+
+		return {
+			'enriched': True,
+			'added': added,
+			'legal_candidates': len(legal_normalized),
+			'web_candidates': len(web_normalized),
+		}
 	
 	def discover_evidence_automatically(self, user_id: str = None):
 		"""
@@ -701,14 +1010,24 @@ class Mediator:
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_gaps', unsatisfied)
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'knowledge_gaps', kg_gaps)
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_count', 0)
+
+		integration_flags = IntegrationFeatureFlags.from_env()
+		graph_enrichment_result = None
+		if integration_flags.enhanced_graph:
+			graph_enrichment_result = self.enrich_graphs_with_retrieval_artifacts()
 		
-		return {
+		result = {
 			'phase': ComplaintPhase.EVIDENCE.value,
 			'evidence_gaps': len(unsatisfied),
 			'knowledge_gaps': len(kg_gaps),
 			'suggested_evidence_types': self._suggest_evidence_types(unsatisfied, kg_gaps),
 			'next_action': self.phase_manager.get_next_action()
 		}
+
+		if graph_enrichment_result is not None:
+			result['graph_enrichment'] = graph_enrichment_result
+
+		return result
 	
 	def add_evidence_to_graphs(self, evidence_data: Dict[str, Any]) -> Dict[str, Any]:
 		"""
@@ -1006,7 +1325,138 @@ class Mediator:
 				'evidence': self.phase_manager.is_phase_complete(ComplaintPhase.EVIDENCE),
 				'formalization': self.phase_manager.is_phase_complete(ComplaintPhase.FORMALIZATION)
 			},
-			'next_action': self.phase_manager.get_next_action()
+			'next_action': self.phase_manager.get_next_action(),
+			'reranking_metrics': self.get_reranker_metrics(),
+		}
+
+	def get_reranker_metrics(self) -> Dict[str, Any]:
+		"""Get aggregated reranker rollout metrics from mediator state."""
+		metrics = getattr(self.state, 'reranker_metrics', None)
+		if isinstance(metrics, dict):
+			return dict(metrics)
+		return self._default_reranker_metrics()
+
+	def export_reranker_metrics_json(self, output_path: str = None) -> str:
+		"""Export reranker metrics snapshot to a JSON file and return file path."""
+		import json
+		import os
+
+		if output_path is None:
+			statefiles_dir = os.path.join(os.path.dirname(__file__), '..', 'statefiles')
+			os.makedirs(statefiles_dir, exist_ok=True)
+			output_path = os.path.join(statefiles_dir, f"reranker_metrics_{int(time())}.json")
+		else:
+			parent = os.path.dirname(output_path)
+			if parent:
+				os.makedirs(parent, exist_ok=True)
+
+		snapshot = {
+			'exported_at': int(time()),
+			'metrics': self.get_reranker_metrics(),
+			'window_resets': int(getattr(self.state, 'reranker_metrics_window_resets', 0) or 0),
+		}
+
+		with open(output_path, 'w') as handle:
+			json.dump(snapshot, handle, indent=2)
+
+		self.log(
+			'reranker_metrics_exported',
+			output_path=output_path,
+			total_runs=int(snapshot['metrics'].get('total_runs', 0) or 0),
+		)
+
+		return output_path
+
+	def _default_reranker_metrics(self) -> Dict[str, Any]:
+		now_ts = int(time())
+		return {
+			'total_runs': 0,
+			'applied_runs': 0,
+			'skipped_runs': 0,
+			'canary_enabled_runs': 0,
+			'latency_guard_runs': 0,
+			'avg_boost': 0.0,
+			'avg_elapsed_ms': 0.0,
+			'first_seen_at': now_ts,
+			'last_updated_at': now_ts,
+			'last_reset_at': now_ts,
+			'by_source': {},
+		}
+
+	def reset_reranker_metrics(self):
+		"""Reset aggregated reranker metrics in state."""
+		metrics = self._default_reranker_metrics()
+		metrics['last_reset_at'] = int(time())
+		self.state.reranker_metrics = metrics
+
+	def update_reranker_metrics(self, source: str, applied: bool, metadata: Dict[str, Any] = None, canary_enabled: bool = None, window_size: int = 0):
+		"""Aggregate lightweight reranker rollout metrics in state."""
+		if not hasattr(self.state, 'reranker_metrics') or not isinstance(getattr(self.state, 'reranker_metrics'), dict):
+			self.state.reranker_metrics = self._default_reranker_metrics()
+
+		if int(window_size or 0) > 0:
+			current_total = int(self.state.reranker_metrics.get('total_runs', 0) or 0)
+			if current_total >= int(window_size):
+				window_resets = int(getattr(self.state, 'reranker_metrics_window_resets', 0) or 0) + 1
+				self.reset_reranker_metrics()
+				self.state.reranker_metrics_window_resets = window_resets
+
+		metrics = self.state.reranker_metrics
+		metrics.setdefault('first_seen_at', int(time()))
+		metrics.setdefault('last_reset_at', int(time()))
+		metrics['total_runs'] = int(metrics.get('total_runs', 0)) + 1
+		if applied:
+			metrics['applied_runs'] = int(metrics.get('applied_runs', 0)) + 1
+		else:
+			metrics['skipped_runs'] = int(metrics.get('skipped_runs', 0)) + 1
+
+		if canary_enabled is True:
+			metrics['canary_enabled_runs'] = int(metrics.get('canary_enabled_runs', 0)) + 1
+
+		metadata = metadata if isinstance(metadata, dict) else {}
+		if metadata.get('graph_latency_guard_applied') is True:
+			metrics['latency_guard_runs'] = int(metrics.get('latency_guard_runs', 0)) + 1
+
+		source_key = source or 'unknown'
+		by_source = metrics.get('by_source')
+		if not isinstance(by_source, dict):
+			by_source = {}
+		source_metrics = by_source.get(source_key, {
+			'total_runs': 0,
+			'applied_runs': 0,
+			'skipped_runs': 0,
+			'avg_boost': 0.0,
+			'avg_elapsed_ms': 0.0,
+		})
+		source_metrics['total_runs'] = int(source_metrics.get('total_runs', 0)) + 1
+		if applied:
+			source_metrics['applied_runs'] = int(source_metrics.get('applied_runs', 0)) + 1
+		else:
+			source_metrics['skipped_runs'] = int(source_metrics.get('skipped_runs', 0)) + 1
+
+		def _running_average(current_avg: float, current_count: int, new_value: float) -> float:
+			if current_count <= 0:
+				return float(new_value)
+			return (float(current_avg) * float(current_count) + float(new_value)) / float(current_count + 1)
+
+		boost_value = float(metadata.get('graph_run_avg_boost', 0.0) or 0.0)
+		elapsed_value = float(metadata.get('graph_run_elapsed_ms', 0.0) or 0.0)
+		source_prev_count = max(0, int(source_metrics['total_runs']) - 1)
+		source_metrics['avg_boost'] = round(_running_average(float(source_metrics.get('avg_boost', 0.0) or 0.0), source_prev_count, boost_value), 6)
+		source_metrics['avg_elapsed_ms'] = round(_running_average(float(source_metrics.get('avg_elapsed_ms', 0.0) or 0.0), source_prev_count, elapsed_value), 6)
+
+		global_prev_count = max(0, int(metrics['total_runs']) - 1)
+		metrics['avg_boost'] = round(_running_average(float(metrics.get('avg_boost', 0.0) or 0.0), global_prev_count, boost_value), 6)
+		metrics['avg_elapsed_ms'] = round(_running_average(float(metrics.get('avg_elapsed_ms', 0.0) or 0.0), global_prev_count, elapsed_value), 6)
+
+		by_source[source_key] = source_metrics
+		metrics['by_source'] = by_source
+		metrics['last_updated_at'] = int(time())
+		self.state.reranker_metrics = metrics
+		return {
+			**metrics,
+			'window_size': int(window_size or 0),
+			'window_resets': int(getattr(self.state, 'reranker_metrics_window_resets', 0) or 0),
 		}
 	
 	def save_graphs_to_statefiles(self, base_filename: str) -> Dict[str, str]:
@@ -1152,8 +1602,6 @@ class Mediator:
 		self.log('backend_query', backend=backend.id, prompt=prompt, response=response)
 
 		return response
-		
-
 
 	def log(self, event_type, **data):
 		self.state.log.append({
