@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -55,11 +56,25 @@ class ClaimSupportHook:
                 CREATE SEQUENCE IF NOT EXISTS claim_support_id_seq START 1
             """)
             conn.execute("""
+                CREATE TABLE IF NOT EXISTS claim_requirements (
+                    user_id VARCHAR,
+                    complaint_id VARCHAR,
+                    claim_type VARCHAR NOT NULL,
+                    element_id VARCHAR NOT NULL,
+                    element_index INTEGER,
+                    element_text TEXT NOT NULL,
+                    metadata JSON,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS claim_support (
                     id BIGINT PRIMARY KEY DEFAULT nextval('claim_support_id_seq'),
                     user_id VARCHAR,
                     complaint_id VARCHAR,
                     claim_type VARCHAR NOT NULL,
+                    claim_element_id VARCHAR,
+                    claim_element_text TEXT,
                     support_kind VARCHAR NOT NULL,
                     support_ref VARCHAR NOT NULL,
                     support_label TEXT,
@@ -74,19 +89,201 @@ class ClaimSupportHook:
                 ON claim_support(user_id, claim_type)
             """)
             conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_claim_requirements_user_claim
+                ON claim_requirements(user_id, claim_type)
+            """)
+            conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_claim_support_ref
                 ON claim_support(support_ref)
             """)
+            conn.execute("ALTER TABLE claim_support ADD COLUMN IF NOT EXISTS claim_element_id VARCHAR")
+            conn.execute("ALTER TABLE claim_support ADD COLUMN IF NOT EXISTS claim_element_text TEXT")
             conn.close()
             self.mediator.log('claim_support_schema_initialized', db_path=self.db_path)
         except Exception as exc:
             self.mediator.log('claim_support_schema_error', error=str(exc))
+
+    def _make_element_id(self, claim_type: str, element_index: int) -> str:
+        normalized_claim = ''.join(ch.lower() if ch.isalnum() else '_' for ch in claim_type).strip('_')
+        return f'{normalized_claim}:{element_index}'
+
+    def _tokenize_text(self, value: Optional[str]) -> List[str]:
+        if not value:
+            return []
+        return [token for token in re.findall(r'[a-z0-9]+', value.lower()) if len(token) > 2]
+
+    def _extract_match_text(self, support_label: Optional[str], metadata: Optional[Dict[str, Any]]) -> str:
+        metadata = metadata or {}
+        parts: List[str] = []
+        for field in ('title', 'description', 'summary', 'content_excerpt', 'claim_element', 'claim_element_text', 'source_url'):
+            value = metadata.get(field)
+            if isinstance(value, str):
+                parts.append(value)
+        keywords = metadata.get('keywords')
+        if isinstance(keywords, list):
+            parts.extend(str(item) for item in keywords if item)
+        if support_label:
+            parts.append(support_label)
+        return ' '.join(parts)
+
+    def resolve_claim_element(
+        self,
+        user_id: str,
+        claim_type: str,
+        *,
+        claim_element_text: Optional[str] = None,
+        support_label: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Optional[str]]:
+        requirements = self.get_claim_requirements(user_id, claim_type).get(claim_type, [])
+        if not requirements:
+            return {'claim_element_id': None, 'claim_element_text': claim_element_text}
+
+        if claim_element_text:
+            normalized_input = ' '.join(self._tokenize_text(claim_element_text))
+            for requirement in requirements:
+                normalized_requirement = ' '.join(self._tokenize_text(requirement['element_text']))
+                if normalized_input and normalized_input == normalized_requirement:
+                    return {
+                        'claim_element_id': requirement['element_id'],
+                        'claim_element_text': requirement['element_text'],
+                    }
+
+        match_text = self._extract_match_text(support_label, metadata)
+        match_tokens = set(self._tokenize_text(match_text))
+        if not match_tokens:
+            return {'claim_element_id': None, 'claim_element_text': claim_element_text}
+
+        best_requirement: Optional[Dict[str, Any]] = None
+        best_score = 0.0
+        for requirement in requirements:
+            requirement_tokens = set(self._tokenize_text(requirement['element_text']))
+            if not requirement_tokens:
+                continue
+            overlap = match_tokens & requirement_tokens
+            score = len(overlap) / len(requirement_tokens)
+            if score > best_score:
+                best_score = score
+                best_requirement = requirement
+
+        if best_requirement and best_score >= 0.3:
+            return {
+                'claim_element_id': best_requirement['element_id'],
+                'claim_element_text': best_requirement['element_text'],
+            }
+
+        return {'claim_element_id': None, 'claim_element_text': claim_element_text}
+
+    def register_claim_requirements(
+        self,
+        user_id: str,
+        requirements: Dict[str, List[str]],
+        complaint_id: Optional[str] = None,
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        if not DUCKDB_AVAILABLE:
+            return {}
+
+        registered: Dict[str, List[Dict[str, Any]]] = {}
+        try:
+            conn = duckdb.connect(self.db_path)
+            for claim_type, elements in requirements.items():
+                conn.execute(
+                    "DELETE FROM claim_requirements WHERE user_id = ? AND claim_type = ?",
+                    [user_id, claim_type],
+                )
+                registered[claim_type] = []
+                for element_index, element_text in enumerate(elements, start=1):
+                    element_id = self._make_element_id(claim_type, element_index)
+                    conn.execute(
+                        """
+                        INSERT INTO claim_requirements (
+                            user_id, complaint_id, claim_type, element_id,
+                            element_index, element_text, metadata
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        [
+                            user_id,
+                            complaint_id,
+                            claim_type,
+                            element_id,
+                            element_index,
+                            element_text,
+                            json.dumps({}),
+                        ],
+                    )
+                    registered[claim_type].append(
+                        {
+                            'claim_type': claim_type,
+                            'element_id': element_id,
+                            'element_index': element_index,
+                            'element_text': element_text,
+                        }
+                    )
+            conn.close()
+            self.mediator.log('claim_requirements_registered', claims=list(registered.keys()))
+            return registered
+        except Exception as exc:
+            self.mediator.log('claim_requirements_registration_error', error=str(exc))
+            return {}
+
+    def get_claim_requirements(
+        self,
+        user_id: str,
+        claim_type: Optional[str] = None,
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        if not DUCKDB_AVAILABLE:
+            return {}
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            if claim_type:
+                rows = conn.execute(
+                    """
+                    SELECT complaint_id, claim_type, element_id, element_index, element_text, metadata, timestamp
+                    FROM claim_requirements
+                    WHERE user_id = ? AND claim_type = ?
+                    ORDER BY element_index ASC
+                    """,
+                    [user_id, claim_type],
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT complaint_id, claim_type, element_id, element_index, element_text, metadata, timestamp
+                    FROM claim_requirements
+                    WHERE user_id = ?
+                    ORDER BY claim_type ASC, element_index ASC
+                    """,
+                    [user_id],
+                ).fetchall()
+            conn.close()
+
+            grouped: Dict[str, List[Dict[str, Any]]] = {}
+            for row in rows:
+                grouped.setdefault(row[1], []).append(
+                    {
+                        'complaint_id': row[0],
+                        'claim_type': row[1],
+                        'element_id': row[2],
+                        'element_index': row[3],
+                        'element_text': row[4],
+                        'metadata': json.loads(row[5]) if row[5] else {},
+                        'timestamp': row[6],
+                    }
+                )
+            return grouped
+        except Exception as exc:
+            self.mediator.log('claim_requirements_query_error', error=str(exc))
+            return {}
 
     def add_support_link(
         self,
         *,
         user_id: str,
         claim_type: str,
+        claim_element_id: Optional[str] = None,
+        claim_element_text: Optional[str] = None,
         support_kind: str,
         support_ref: str,
         support_label: Optional[str] = None,
@@ -99,21 +296,33 @@ class ClaimSupportHook:
             self.mediator.log('claim_support_unavailable')
             return -1
 
+        resolved_element = self.resolve_claim_element(
+            user_id,
+            claim_type,
+            claim_element_text=claim_element_text,
+            support_label=support_label,
+            metadata=metadata,
+        )
+        claim_element_id = claim_element_id or resolved_element['claim_element_id']
+        claim_element_text = claim_element_text or resolved_element['claim_element_text']
+
         try:
             conn = duckdb.connect(self.db_path)
             result = conn.execute(
                 """
                 INSERT INTO claim_support (
-                    user_id, complaint_id, claim_type, support_kind,
+                    user_id, complaint_id, claim_type, claim_element_id, claim_element_text, support_kind,
                     support_ref, support_label, source_table, support_strength, metadata
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id
                 """,
                 [
                     user_id,
                     complaint_id,
                     claim_type,
+                    claim_element_id,
+                    claim_element_text,
                     support_kind,
                     support_ref,
                     support_label,
@@ -128,6 +337,7 @@ class ClaimSupportHook:
                 'claim_support_link_added',
                 record_id=record_id,
                 claim_type=claim_type,
+                claim_element_id=claim_element_id,
                 support_kind=support_kind,
                 support_ref=support_ref,
             )
@@ -145,8 +355,9 @@ class ClaimSupportHook:
             if claim_type:
                 results = conn.execute(
                     """
-                    SELECT id, complaint_id, claim_type, support_kind, support_ref,
-                           support_label, source_table, support_strength, metadata, timestamp
+                      SELECT id, complaint_id, claim_type, claim_element_id, claim_element_text,
+                          support_kind, support_ref, support_label, source_table,
+                          support_strength, metadata, timestamp
                     FROM claim_support
                     WHERE user_id = ? AND claim_type = ?
                     ORDER BY timestamp DESC
@@ -156,8 +367,9 @@ class ClaimSupportHook:
             else:
                 results = conn.execute(
                     """
-                    SELECT id, complaint_id, claim_type, support_kind, support_ref,
-                           support_label, source_table, support_strength, metadata, timestamp
+                      SELECT id, complaint_id, claim_type, claim_element_id, claim_element_text,
+                          support_kind, support_ref, support_label, source_table,
+                          support_strength, metadata, timestamp
                     FROM claim_support
                     WHERE user_id = ?
                     ORDER BY timestamp DESC
@@ -170,13 +382,15 @@ class ClaimSupportHook:
                     'id': row[0],
                     'complaint_id': row[1],
                     'claim_type': row[2],
-                    'support_kind': row[3],
-                    'support_ref': row[4],
-                    'support_label': row[5],
-                    'source_table': row[6],
-                    'support_strength': row[7],
-                    'metadata': json.loads(row[8]) if row[8] else {},
-                    'timestamp': row[9],
+                    'claim_element_id': row[3],
+                    'claim_element_text': row[4],
+                    'support_kind': row[5],
+                    'support_ref': row[6],
+                    'support_label': row[7],
+                    'source_table': row[8],
+                    'support_strength': row[9],
+                    'metadata': json.loads(row[10]) if row[10] else {},
+                    'timestamp': row[11],
                 }
                 for row in results
             ]
@@ -186,12 +400,15 @@ class ClaimSupportHook:
 
     def summarize_claim_support(self, user_id: str, claim_type: Optional[str] = None) -> Dict[str, Any]:
         links = self.get_support_links(user_id, claim_type)
+        requirements = self.get_claim_requirements(user_id, claim_type)
         if claim_type:
             grouped = {claim_type: links}
         else:
             grouped: Dict[str, List[Dict[str, Any]]] = {}
             for link in links:
                 grouped.setdefault(link['claim_type'], []).append(link)
+            for requirement_claim in requirements.keys():
+                grouped.setdefault(requirement_claim, [])
 
         summary: Dict[str, Any] = {
             'available': DUCKDB_AVAILABLE,
@@ -202,9 +419,48 @@ class ClaimSupportHook:
             support_by_kind: Dict[str, int] = {}
             for link in claim_links:
                 support_by_kind[link['support_kind']] = support_by_kind.get(link['support_kind'], 0) + 1
+
+            claim_requirements = requirements.get(current_claim, [])
+            links_by_element: Dict[str, List[Dict[str, Any]]] = {}
+            unassigned_links: List[Dict[str, Any]] = []
+            for link in claim_links:
+                element_key = link.get('claim_element_id') or link.get('claim_element_text')
+                if element_key:
+                    links_by_element.setdefault(element_key, []).append(link)
+                else:
+                    unassigned_links.append(link)
+
+            element_summaries: List[Dict[str, Any]] = []
+            covered_elements = 0
+            for requirement in claim_requirements:
+                requirement_links = links_by_element.get(requirement['element_id'], [])
+                if not requirement_links:
+                    requirement_links = links_by_element.get(requirement['element_text'], [])
+
+                element_support_by_kind: Dict[str, int] = {}
+                for link in requirement_links:
+                    element_support_by_kind[link['support_kind']] = (
+                        element_support_by_kind.get(link['support_kind'], 0) + 1
+                    )
+                if requirement_links:
+                    covered_elements += 1
+                element_summaries.append(
+                    {
+                        **requirement,
+                        'total_links': len(requirement_links),
+                        'support_by_kind': element_support_by_kind,
+                        'links': requirement_links,
+                    }
+                )
+
             summary['claims'][current_claim] = {
                 'total_links': len(claim_links),
                 'support_by_kind': support_by_kind,
+                'total_elements': len(claim_requirements),
+                'covered_elements': covered_elements,
+                'uncovered_elements': max(len(claim_requirements) - covered_elements, 0),
+                'elements': element_summaries,
+                'unassigned_links': unassigned_links,
                 'links': claim_links,
             }
         return summary

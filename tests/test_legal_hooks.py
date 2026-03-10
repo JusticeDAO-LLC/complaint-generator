@@ -5,6 +5,8 @@ Tests for legal classification, statute retrieval, summary judgment requirements
 and question generation hooks.
 """
 import pytest
+import tempfile
+import os
 from unittest.mock import Mock, MagicMock, patch
 
 
@@ -240,26 +242,38 @@ class TestLegalHooksIntegration:
             mock_backend = Mock()
             mock_backend.id = 'test-backend'
             mock_backend.return_value = "Mock LLM response"
-            
-            mediator = Mediator(backends=[mock_backend])
-            mediator.state.complaint = "Test complaint about breach of contract"
-            
-            # Mock the hook methods to avoid actual LLM calls
-            mediator.legal_classifier.classify_complaint = Mock(return_value={
-                'claim_types': ['breach of contract'],
-                'jurisdiction': 'federal',
-                'legal_areas': ['contract law'],
-                'key_facts': ['written agreement']
-            })
-            mediator.statute_retriever.retrieve_statutes = Mock(return_value=[])
-            mediator.summary_judgment.generate_requirements = Mock(return_value={})
-            mediator.question_generator.generate_questions = Mock(return_value=[])
-            
-            result = mediator.analyze_complaint_legal_issues()
-            
-            assert 'classification' in result
-            assert 'statutes' in result
-            assert 'requirements' in result
-            assert 'questions' in result
+
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                db_path = f.name
+
+            try:
+                mediator = Mediator(backends=[mock_backend], claim_support_db_path=db_path)
+                mediator.state.complaint = "Test complaint about breach of contract"
+
+                # Mock the hook methods to avoid actual LLM calls
+                mediator.legal_classifier.classify_complaint = Mock(return_value={
+                    'claim_types': ['breach of contract'],
+                    'jurisdiction': 'federal',
+                    'legal_areas': ['contract law'],
+                    'key_facts': ['written agreement']
+                })
+                mediator.statute_retriever.retrieve_statutes = Mock(return_value=[])
+                mediator.summary_judgment.generate_requirements = Mock(return_value={
+                    'breach of contract': ['Existence of a valid contract']
+                })
+                mediator.question_generator.generate_questions = Mock(return_value=[])
+
+                result = mediator.analyze_complaint_legal_issues()
+
+                assert 'classification' in result
+                assert 'statutes' in result
+                assert 'requirements' in result
+                assert 'support_summary' in result
+                assert 'questions' in result
+                assert result['support_summary']['claims']['breach of contract']['total_elements'] == 1
+                assert result['support_summary']['claims']['breach of contract']['uncovered_elements'] == 1
+            finally:
+                if os.path.exists(db_path):
+                    os.unlink(db_path)
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")

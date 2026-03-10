@@ -174,6 +174,10 @@ class Mediator:
 		self.log('legal_analysis', step='requirements_generation')
 		requirements = self.summary_judgment.generate_requirements(classification, statutes)
 		self.state.summary_judgment_requirements = requirements
+		user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		complaint_id = getattr(self.state, 'complaint_id', None)
+		self.claim_support.register_claim_requirements(user_id, requirements, complaint_id=complaint_id)
+		support_summary = self.summarize_claim_support(user_id=user_id)
 		
 		# Step 4: Generate targeted questions
 		self.log('legal_analysis', step='question_generation')
@@ -184,15 +188,18 @@ class Mediator:
 			'classification': classification,
 			'statutes': statutes,
 			'requirements': requirements,
+			'support_summary': support_summary,
 			'questions': questions
 		}
 	
 	def get_legal_analysis(self):
 		"""Get the current legal analysis results."""
+		user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
 		return {
 			'classification': getattr(self.state, 'legal_classification', None),
 			'statutes': getattr(self.state, 'applicable_statutes', None),
 			'requirements': getattr(self.state, 'summary_judgment_requirements', None),
+			'support_summary': self.summarize_claim_support(user_id=user_id),
 			'questions': getattr(self.state, 'legal_questions', None)
 		}
 	
@@ -200,6 +207,7 @@ class Mediator:
 	                   user_id: str = None,
 	                   description: str = None,
 	                   claim_type: str = None,
+	                   claim_element: str = None,
 	                   metadata: dict = None):
 		"""
 		Submit evidence for the user's case.
@@ -240,7 +248,8 @@ class Mediator:
 			'record_id': record_id,
 			'user_id': user_id,
 			'description': description,
-			'claim_type': claim_type
+			'claim_type': claim_type,
+			'claim_element': claim_element
 		}
 
 		if claim_type:
@@ -248,6 +257,7 @@ class Mediator:
 				user_id=user_id,
 				complaint_id=complaint_id,
 				claim_type=claim_type,
+				claim_element_text=claim_element,
 				support_kind='evidence',
 				support_ref=evidence_info['cid'],
 				support_label=description or evidence_type,
@@ -268,6 +278,7 @@ class Mediator:
 	                        user_id: str = None,
 	                        description: str = None,
 	                        claim_type: str = None,
+	                        claim_element: str = None,
 	                        metadata: dict = None):
 		"""
 		Submit evidence from a file.
@@ -297,6 +308,7 @@ class Mediator:
 			user_id=user_id,
 			description=description,
 			claim_type=claim_type,
+			claim_element=claim_element,
 			metadata=file_metadata
 		)
 	
@@ -415,6 +427,7 @@ class Mediator:
 							user_id=user_id,
 							complaint_id=complaint_id,
 							claim_type=claim_type,
+							claim_element_text=auth.get('claim_element'),
 							support_kind='authority',
 							support_ref=support_ref,
 							support_label=auth.get('title') or auth.get('citation') or auth_type,
