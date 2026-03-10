@@ -2,6 +2,7 @@
 
 import os
 import json
+import re
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pathlib import Path
@@ -303,6 +304,37 @@ class WebEvidenceIntegrationHook:
             else:
                 self._search_hook = WebEvidenceSearchHook(self.mediator)
         return self._search_hook
+
+    def _build_web_evidence_payload(self, evidence_item: Dict[str, Any]) -> bytes:
+        """Build a text payload so web evidence can be chunked and indexed like uploaded documents."""
+        sections: List[str] = []
+        title = str(evidence_item.get('title') or '').strip()
+        url = str(evidence_item.get('url') or '').strip()
+        description = str(evidence_item.get('description') or '').strip()
+        content = str(evidence_item.get('content') or '').strip()
+
+        if title:
+            sections.append(f"Title: {title}")
+        if url:
+            sections.append(f"URL: {url}")
+        if description:
+            sections.append(f"Description: {description}")
+        if content:
+            sections.append("Content:")
+            sections.append(content)
+
+        if not sections:
+            sections.append(json.dumps(evidence_item, sort_keys=True))
+
+        return "\n\n".join(sections).encode('utf-8', errors='ignore')
+
+    def _build_web_evidence_filename(self, evidence_item: Dict[str, Any]) -> str:
+        """Create a stable filename-like label for document parsing metadata."""
+        title = str(evidence_item.get('title') or '').strip().lower()
+        slug = re.sub(r'[^a-z0-9]+', '-', title).strip('-')
+        if not slug:
+            slug = 'web-evidence'
+        return f"{slug}.txt"
     
     def discover_and_store_evidence(self, keywords: List[str],
                                     domains: Optional[List[str]] = None,
@@ -367,16 +399,7 @@ class WebEvidenceIntegrationHook:
             
             # Store evidence
             try:
-                # Convert evidence to bytes (JSON representation)
-                evidence_data = json.dumps({
-                    'title': evidence_item.get('title', ''),
-                    'url': evidence_item.get('url', ''),
-                    'content': evidence_item.get('content', ''),
-                    'description': evidence_item.get('description', ''),
-                    'source_type': evidence_item.get('source_type', 'web'),
-                    'discovered_at': evidence_item.get('discovered_at', ''),
-                    'metadata': evidence_item.get('metadata', {})
-                }).encode('utf-8')
+                evidence_data = self._build_web_evidence_payload(evidence_item)
                 
                 # Store in IPFS via evidence storage hook
                 storage_result = self.mediator.evidence_storage.store_evidence(
@@ -387,9 +410,16 @@ class WebEvidenceIntegrationHook:
                         'source_url': evidence_item.get('url'),
                         'acquisition_method': 'web_discovery',
                         'source_system': 'ipfs_datasets_py',
+                        'filename': self._build_web_evidence_filename(evidence_item),
+                        'mime_type': 'text/plain',
+                        'parse_document': True,
                         'auto_discovered': True,
                         'relevance_score': validation['relevance_score'],
-                        'keywords': keywords
+                        'keywords': keywords,
+                        'title': evidence_item.get('title', ''),
+                        'description': evidence_item.get('description', ''),
+                        'discovered_at': evidence_item.get('discovered_at', ''),
+                        'search_metadata': evidence_item.get('metadata', {}),
                     }
                 )
 

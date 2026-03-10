@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import re
+import hashlib
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -85,6 +87,21 @@ class ClaimSupportHook:
                 )
             """)
             conn.execute("""
+                CREATE TABLE IF NOT EXISTS claim_follow_up_execution (
+                    id BIGINT PRIMARY KEY DEFAULT nextval('claim_support_id_seq'),
+                    user_id VARCHAR,
+                    claim_type VARCHAR NOT NULL,
+                    claim_element_id VARCHAR,
+                    claim_element_text TEXT,
+                    support_kind VARCHAR NOT NULL,
+                    query_text TEXT NOT NULL,
+                    query_hash VARCHAR NOT NULL,
+                    status VARCHAR DEFAULT 'executed',
+                    metadata JSON,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_claim_support_user_claim
                 ON claim_support(user_id, claim_type)
             """)
@@ -95,6 +112,10 @@ class ClaimSupportHook:
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_claim_support_ref
                 ON claim_support(support_ref)
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_claim_follow_up_lookup
+                ON claim_follow_up_execution(user_id, claim_type, support_kind, query_hash)
             """)
             conn.execute("ALTER TABLE claim_support ADD COLUMN IF NOT EXISTS claim_element_id VARCHAR")
             conn.execute("ALTER TABLE claim_support ADD COLUMN IF NOT EXISTS claim_element_text TEXT")
@@ -125,6 +146,13 @@ class ClaimSupportHook:
         if support_label:
             parts.append(support_label)
         return ' '.join(parts)
+
+    def _normalize_query_text(self, query_text: str) -> str:
+        return ' '.join((query_text or '').strip().lower().split())
+
+    def _hash_query_text(self, query_text: str) -> str:
+        normalized = self._normalize_query_text(query_text)
+        return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
 
     def resolve_claim_element(
         self,
@@ -557,3 +585,150 @@ class ClaimSupportHook:
             }
 
         return overview
+
+    def was_follow_up_executed(
+        self,
+        user_id: str,
+        claim_type: str,
+        support_kind: str,
+        query_text: str,
+        cooldown_seconds: int = 3600,
+    ) -> bool:
+        if not DUCKDB_AVAILABLE:
+            return False
+
+        query_hash = self._hash_query_text(query_text)
+        try:
+            conn = duckdb.connect(self.db_path)
+            row = conn.execute(
+                """
+                SELECT timestamp
+                FROM claim_follow_up_execution
+                WHERE user_id = ? AND claim_type = ? AND support_kind = ? AND query_hash = ?
+                ORDER BY timestamp DESC
+                LIMIT 1
+                """,
+                [user_id, claim_type, support_kind, query_hash],
+            ).fetchone()
+            conn.close()
+            if not row or cooldown_seconds < 0:
+                return False
+            last_run = row[0]
+            now = datetime.now(last_run.tzinfo) if hasattr(last_run, 'tzinfo') else datetime.now()
+            return last_run >= now - timedelta(seconds=cooldown_seconds)
+        except Exception as exc:
+            self.mediator.log('claim_follow_up_lookup_error', error=str(exc))
+            return False
+
+    def record_follow_up_execution(
+        self,
+        *,
+        user_id: str,
+        claim_type: str,
+        claim_element_id: Optional[str],
+        claim_element_text: Optional[str],
+        support_kind: str,
+        query_text: str,
+        status: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        if not DUCKDB_AVAILABLE:
+            return -1
+
+        query_hash = self._hash_query_text(query_text)
+        try:
+            conn = duckdb.connect(self.db_path)
+            result = conn.execute(
+                """
+                INSERT INTO claim_follow_up_execution (
+                    user_id, claim_type, claim_element_id, claim_element_text,
+                    support_kind, query_text, query_hash, status, metadata
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                RETURNING id
+                """,
+                [
+                    user_id,
+                    claim_type,
+                    claim_element_id,
+                    claim_element_text,
+                    support_kind,
+                    query_text,
+                    query_hash,
+                    status,
+                    json.dumps(metadata or {}),
+                ],
+            ).fetchone()
+            conn.close()
+            return result[0]
+        except Exception as exc:
+            self.mediator.log('claim_follow_up_record_error', error=str(exc))
+            return -1
+
+    def get_follow_up_execution_status(
+        self,
+        user_id: str,
+        claim_type: str,
+        support_kind: str,
+        query_text: str,
+        cooldown_seconds: int = 3600,
+    ) -> Dict[str, Any]:
+        if not DUCKDB_AVAILABLE:
+            return {
+                'query_text': query_text,
+                'support_kind': support_kind,
+                'has_history': False,
+                'in_cooldown': False,
+            }
+
+        query_hash = self._hash_query_text(query_text)
+        try:
+            conn = duckdb.connect(self.db_path)
+            row = conn.execute(
+                """
+                SELECT status, metadata, timestamp
+                FROM claim_follow_up_execution
+                WHERE user_id = ? AND claim_type = ? AND support_kind = ? AND query_hash = ?
+                ORDER BY timestamp DESC
+                LIMIT 1
+                """,
+                [user_id, claim_type, support_kind, query_hash],
+            ).fetchone()
+            conn.close()
+            if not row:
+                return {
+                    'query_text': query_text,
+                    'support_kind': support_kind,
+                    'has_history': False,
+                    'in_cooldown': False,
+                }
+
+            last_status = row[0]
+            metadata = json.loads(row[1]) if row[1] else {}
+            last_attempted_at = row[2]
+            eligible_at = None
+            in_cooldown = False
+            if cooldown_seconds >= 0:
+                eligible_at = last_attempted_at + timedelta(seconds=cooldown_seconds)
+                now = datetime.now(last_attempted_at.tzinfo) if hasattr(last_attempted_at, 'tzinfo') else datetime.now()
+                in_cooldown = eligible_at > now
+
+            return {
+                'query_text': query_text,
+                'support_kind': support_kind,
+                'has_history': True,
+                'last_status': last_status,
+                'last_attempted_at': last_attempted_at,
+                'eligible_at': eligible_at,
+                'in_cooldown': in_cooldown,
+                'metadata': metadata,
+            }
+        except Exception as exc:
+            self.mediator.log('claim_follow_up_status_error', error=str(exc))
+            return {
+                'query_text': query_text,
+                'support_kind': support_kind,
+                'has_history': False,
+                'in_cooldown': False,
+                'error': str(exc),
+            }

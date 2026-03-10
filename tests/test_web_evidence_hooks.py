@@ -211,7 +211,29 @@ class TestWebEvidenceIntegrationHook:
             mock_mediator.evidence_storage = Mock()
             mock_mediator.evidence_storage.store_evidence = Mock(return_value={
                 'cid': 'QmTest123',
-                'size': 100
+                'size': 100,
+                'type': 'web_document',
+                'metadata': {
+                    'document_parse_summary': {
+                        'status': 'fallback',
+                        'chunk_count': 1,
+                        'text_length': 42,
+                    }
+                },
+                'document_parse': {
+                    'status': 'fallback',
+                    'text': 'Title: Evidence 1\n\nURL: https://example.com/1',
+                    'chunks': [
+                        {
+                            'chunk_id': 'chunk-0',
+                            'index': 0,
+                            'start': 0,
+                            'end': 44,
+                            'text': 'Title: Evidence 1\n\nURL: https://example.com/1',
+                        }
+                    ],
+                    'metadata': {'filename': 'evidence-1.txt', 'mime_type': 'text/plain'},
+                },
             })
             
             mock_mediator.evidence_state = Mock()
@@ -238,9 +260,19 @@ class TestWebEvidenceIntegrationHook:
             assert 'support_links_added' in result
             assert result['discovered'] == 2
             assert result['support_links_added'] == 2
+            store_kwargs = mock_mediator.evidence_storage.store_evidence.call_args.kwargs
+            assert store_kwargs['evidence_type'] == 'web_document'
+            assert store_kwargs['metadata']['parse_document'] is True
+            assert store_kwargs['metadata']['mime_type'] == 'text/plain'
+            assert store_kwargs['metadata']['filename'] == 'evidence-2.txt'
+            payload_text = store_kwargs['data'].decode('utf-8')
+            assert 'Title: Evidence 2' in payload_text
+            assert 'URL: https://example.com/2' in payload_text
+            assert 'Content:' in payload_text
             add_record_kwargs = mock_mediator.evidence_state.add_evidence_record.call_args.kwargs
             assert add_record_kwargs['claim_element_id'] == 'employment_discrimination:1'
             assert add_record_kwargs['claim_element'] == 'Protected activity'
+            assert add_record_kwargs['evidence_info']['document_parse']['status'] == 'fallback'
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
     

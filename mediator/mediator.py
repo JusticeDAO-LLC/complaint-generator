@@ -565,6 +565,7 @@ class Mediator:
 		claim_type: str = None,
 		user_id: str = None,
 		required_support_kinds: List[str] = None,
+		cooldown_seconds: int = 3600,
 	):
 		"""Generate targeted follow-up retrieval tasks from claim overview gaps."""
 		if user_id is None:
@@ -594,8 +595,26 @@ class Mediator:
 					'partially_supported',
 					claim_data.get('required_support_kinds', plan['required_support_kinds']),
 				))
+			for task in tasks:
+				execution_status: Dict[str, Any] = {}
+				for kind, queries in task.get('queries', {}).items():
+					query_text = queries[0] if queries else ''
+					execution_status[kind] = self.claim_support.get_follow_up_execution_status(
+						user_id,
+						current_claim,
+						kind,
+						query_text,
+						cooldown_seconds=cooldown_seconds,
+					)
+				task['execution_status'] = execution_status
+				task['blocked_by_cooldown'] = any(
+					status.get('in_cooldown', False)
+					for status in execution_status.values()
+				)
+
 			plan['claims'][current_claim] = {
 				'task_count': len(tasks),
+				'blocked_task_count': len([task for task in tasks if task.get('blocked_by_cooldown')]),
 				'tasks': tasks,
 			}
 		return plan
@@ -618,6 +637,8 @@ class Mediator:
 		support_kind: str = None,
 		max_tasks_per_claim: int = 3,
 		min_relevance: float = 0.6,
+		cooldown_seconds: int = 3600,
+		force: bool = False,
 	):
 		"""Execute follow-up retrieval tasks for missing or partial claim support."""
 		if user_id is None:
@@ -630,6 +651,7 @@ class Mediator:
 
 		for current_claim, claim_plan in plan.get('claims', {}).items():
 			executed_tasks = []
+			skipped_tasks = []
 			for task in claim_plan.get('tasks', [])[:max_tasks_per_claim]:
 				execution = {
 					'claim_element_id': task.get('claim_element_id'),
@@ -641,47 +663,113 @@ class Mediator:
 				if support_kind in (None, 'evidence') and 'evidence' in task.get('missing_support_kinds', []):
 					evidence_query = task.get('queries', {}).get('evidence', [])
 					query_text = evidence_query[0] if evidence_query else f'{current_claim} {task.get("claim_element", "")} evidence'
-					keywords = self._keywords_from_follow_up_query(
-						query_text,
+					if not force and self.claim_support.was_follow_up_executed(
+						user_id,
 						current_claim,
-						task.get('claim_element', ''),
-					)
-					discovery_result = self.discover_web_evidence(
-						keywords=keywords,
-						user_id=user_id,
-						claim_type=current_claim,
-						min_relevance=min_relevance,
-					)
-					execution['executed']['evidence'] = {
-						'query': query_text,
-						'keywords': keywords,
-						'result': discovery_result,
-					}
+						'evidence',
+						query_text,
+						cooldown_seconds=cooldown_seconds,
+					):
+						self.claim_support.record_follow_up_execution(
+							user_id=user_id,
+							claim_type=current_claim,
+							claim_element_id=task.get('claim_element_id'),
+							claim_element_text=task.get('claim_element'),
+							support_kind='evidence',
+							query_text=query_text,
+							status='skipped_duplicate',
+							metadata={'cooldown_seconds': cooldown_seconds},
+						)
+						skipped_tasks.append({
+							**execution,
+							'skipped': {'evidence': {'query': query_text, 'reason': 'duplicate_within_cooldown'}},
+						})
+					else:
+						keywords = self._keywords_from_follow_up_query(
+							query_text,
+							current_claim,
+							task.get('claim_element', ''),
+						)
+						discovery_result = self.discover_web_evidence(
+							keywords=keywords,
+							user_id=user_id,
+							claim_type=current_claim,
+							min_relevance=min_relevance,
+						)
+						self.claim_support.record_follow_up_execution(
+							user_id=user_id,
+							claim_type=current_claim,
+							claim_element_id=task.get('claim_element_id'),
+							claim_element_text=task.get('claim_element'),
+							support_kind='evidence',
+							query_text=query_text,
+							status='executed',
+							metadata={'keywords': keywords},
+						)
+						execution['executed']['evidence'] = {
+							'query': query_text,
+							'keywords': keywords,
+							'result': discovery_result,
+						}
 				if support_kind in (None, 'authority') and 'authority' in task.get('missing_support_kinds', []):
 					authority_query = task.get('queries', {}).get('authority', [])
 					query_text = authority_query[0] if authority_query else f'{current_claim} {task.get("claim_element", "")} statute'
-					search_results = self.search_legal_authorities(
-						query=query_text,
-						claim_type=current_claim,
-						search_all=True,
-					)
-					stored_counts = self.store_legal_authorities(
-						search_results,
-						claim_type=current_claim,
-						search_query=query_text,
-						user_id=user_id,
-					)
-					execution['executed']['authority'] = {
-						'query': query_text,
-						'search_results': {key: len(value) for key, value in search_results.items()},
-						'stored_counts': stored_counts,
-					}
+					if not force and self.claim_support.was_follow_up_executed(
+						user_id,
+						current_claim,
+						'authority',
+						query_text,
+						cooldown_seconds=cooldown_seconds,
+					):
+						self.claim_support.record_follow_up_execution(
+							user_id=user_id,
+							claim_type=current_claim,
+							claim_element_id=task.get('claim_element_id'),
+							claim_element_text=task.get('claim_element'),
+							support_kind='authority',
+							query_text=query_text,
+							status='skipped_duplicate',
+							metadata={'cooldown_seconds': cooldown_seconds},
+						)
+						skipped_tasks.append({
+							**execution,
+							'skipped': {'authority': {'query': query_text, 'reason': 'duplicate_within_cooldown'}},
+						})
+					else:
+						search_results = self.search_legal_authorities(
+							query=query_text,
+							claim_type=current_claim,
+							search_all=True,
+						)
+						stored_counts = self.store_legal_authorities(
+							search_results,
+							claim_type=current_claim,
+							search_query=query_text,
+							user_id=user_id,
+						)
+						self.claim_support.record_follow_up_execution(
+							user_id=user_id,
+							claim_type=current_claim,
+							claim_element_id=task.get('claim_element_id'),
+							claim_element_text=task.get('claim_element'),
+							support_kind='authority',
+							query_text=query_text,
+							status='executed',
+							metadata={'search_results': {key: len(value) for key, value in search_results.items()}},
+						)
+						execution['executed']['authority'] = {
+							'query': query_text,
+							'search_results': {key: len(value) for key, value in search_results.items()},
+							'stored_counts': stored_counts,
+						}
 				if execution['executed']:
 					executed_tasks.append(execution)
 
 			results['claims'][current_claim] = {
 				'task_count': len(executed_tasks),
+				'skipped_task_count': len(skipped_tasks),
 				'tasks': executed_tasks,
+				'skipped_tasks': skipped_tasks,
 				'updated_claim_overview': self.get_claim_overview(claim_type=current_claim, user_id=user_id).get('claims', {}).get(current_claim, {}),
 				'updated_follow_up_plan': self.get_claim_follow_up_plan(claim_type=current_claim, user_id=user_id).get('claims', {}).get(current_claim, {}),
 			}

@@ -412,6 +412,79 @@ class LegalAuthorityStorageHook:
             'claim_element_id': authority_data.get('claim_element_id') or resolution.get('claim_element_id'),
             'claim_element': authority_data.get('claim_element') or resolution.get('claim_element_text'),
         }
+
+    def _find_existing_authority_record(
+        self,
+        conn,
+        user_id: str,
+        complaint_id: Optional[str],
+        claim_type: Optional[str],
+        authority: Dict[str, Any],
+    ) -> Optional[int]:
+        citation = authority.get('citation')
+        url = authority.get('url')
+        title = authority.get('title')
+        authority_type = authority.get('type')
+        source = authority.get('source')
+        claim_element_id = authority.get('claim_element_id')
+
+        if citation:
+            existing = conn.execute(
+                """
+                SELECT id
+                FROM legal_authorities
+                WHERE user_id = ?
+                  AND citation = ?
+                  AND COALESCE(complaint_id, '') = COALESCE(?, '')
+                  AND COALESCE(claim_type, '') = COALESCE(?, '')
+                  AND COALESCE(claim_element_id, '') = COALESCE(?, '')
+                ORDER BY id ASC
+                LIMIT 1
+                """,
+                [user_id, citation, complaint_id, claim_type, claim_element_id],
+            ).fetchone()
+            if existing:
+                return existing[0]
+
+        if url:
+            existing = conn.execute(
+                """
+                SELECT id
+                FROM legal_authorities
+                WHERE user_id = ?
+                  AND url = ?
+                  AND COALESCE(complaint_id, '') = COALESCE(?, '')
+                  AND COALESCE(claim_type, '') = COALESCE(?, '')
+                  AND COALESCE(claim_element_id, '') = COALESCE(?, '')
+                ORDER BY id ASC
+                LIMIT 1
+                """,
+                [user_id, url, complaint_id, claim_type, claim_element_id],
+            ).fetchone()
+            if existing:
+                return existing[0]
+
+        if authority_type and source and title:
+            existing = conn.execute(
+                """
+                SELECT id
+                FROM legal_authorities
+                WHERE user_id = ?
+                  AND authority_type = ?
+                  AND source = ?
+                  AND title = ?
+                  AND COALESCE(complaint_id, '') = COALESCE(?, '')
+                  AND COALESCE(claim_type, '') = COALESCE(?, '')
+                  AND COALESCE(claim_element_id, '') = COALESCE(?, '')
+                ORDER BY id ASC
+                LIMIT 1
+                """,
+                [user_id, authority_type, source, title, complaint_id, claim_type, claim_element_id],
+            ).fetchone()
+            if existing:
+                return existing[0]
+
+        return None
     
     def add_authority(self, authority_data: Dict[str, Any],
                      user_id: str, complaint_id: Optional[str] = None,
@@ -452,6 +525,10 @@ class LegalAuthorityStorageHook:
                 title=authority_data.get('title') or '',
                 content=authority_data.get('content') or authority_data.get('text') or '',
                 url=authority_data.get('url') or '',
+                jurisdiction=provenance.jurisdiction,
+                source_system=provenance.source_system,
+                claim_element_id=claim_element.get('claim_element_id') or '',
+                claim_element=claim_element.get('claim_element') or '',
                 relevance_score=authority_data.get('relevance_score', 0.5),
                 metadata={
                     **(authority_data.get('metadata', {}) if isinstance(authority_data.get('metadata', {}), dict) else {}),
@@ -461,6 +538,25 @@ class LegalAuthorityStorageHook:
                 provenance=provenance,
             )
             normalized_authority = authority.as_dict()
+
+            existing_record_id = self._find_existing_authority_record(
+                conn,
+                user_id,
+                complaint_id,
+                claim_type,
+                normalized_authority,
+            )
+            if existing_record_id is not None:
+                conn.close()
+                self.mediator.log(
+                    'legal_authority_duplicate',
+                    record_id=existing_record_id,
+                    citation=normalized_authority.get('citation'),
+                    url=normalized_authority.get('url'),
+                    claim_type=claim_type,
+                    claim_element_id=normalized_authority.get('claim_element_id'),
+                )
+                return existing_record_id
             
             result = conn.execute("""
                 INSERT INTO legal_authorities (

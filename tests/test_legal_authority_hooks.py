@@ -169,6 +169,57 @@ class TestLegalAuthorityStorageHook:
                     os.unlink(db_path)
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_add_authority_deduplicates_same_claim_scope(self):
+        """Test duplicate authorities in the same claim scope reuse the existing record."""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthorityStorageHook
+            import duckdb
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                db_path = f.name
+
+            try:
+                hook = LegalAuthorityStorageHook(mock_mediator, db_path=db_path)
+
+                authority_data = {
+                    'type': 'statute',
+                    'source': 'us_code',
+                    'citation': '42 U.S.C. § 1983',
+                    'title': 'Civil Rights Act',
+                    'content': 'Test statute content...',
+                    'url': 'https://example.com/usc/42/1983',
+                    'metadata': {'test': 'data'},
+                    'relevance_score': 0.9,
+                }
+
+                first_id = hook.add_authority(
+                    authority_data,
+                    user_id='testuser',
+                    complaint_id='complaint-1',
+                    claim_type='civil rights violation',
+                )
+                second_id = hook.add_authority(
+                    authority_data,
+                    user_id='testuser',
+                    complaint_id='complaint-1',
+                    claim_type='civil rights violation',
+                )
+
+                results = hook.get_authorities_by_claim('testuser', 'civil rights violation')
+
+                assert first_id > 0
+                assert second_id == first_id
+                assert len(results) == 1
+                assert results[0]['citation'] == '42 U.S.C. § 1983'
+            finally:
+                if os.path.exists(db_path):
+                    os.unlink(db_path)
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
     
     def test_get_authorities_by_claim(self):
         """Test retrieving authorities by claim type"""

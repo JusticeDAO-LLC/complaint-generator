@@ -3,7 +3,16 @@ from .capabilities import (
 	get_ipfs_datasets_capabilities,
 	summarize_ipfs_datasets_capabilities,
 )
-from .types import CaseArtifact, CaseAuthority, ProvenanceRecord
+from .types import (
+	CaseArtifact,
+	CaseAuthority,
+	CaseClaimElement,
+	CaseFact,
+	CaseSupportEdge,
+	FormalPredicate,
+	ProvenanceRecord,
+	ValidationRun,
+)
 
 __all__ = [
 	"CapabilityStatus",
@@ -11,5 +20,10 @@ __all__ = [
 	"summarize_ipfs_datasets_capabilities",
 	"CaseArtifact",
 	"CaseAuthority",
+	"CaseClaimElement",
+	"CaseFact",
+	"CaseSupportEdge",
+	"FormalPredicate",
 	"ProvenanceRecord",
+	"ValidationRun",
 ]

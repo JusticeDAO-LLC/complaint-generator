@@ -47,6 +47,8 @@ class TestEvidenceStorageHook:
             assert 'timestamp' in result
             assert 'provenance' in result['metadata']
             assert result['metadata']['provenance']['content_hash']
+            assert result['document_parse']['status'] in {'fallback', 'available-fallback', 'empty'}
+            assert result['metadata']['document_parse_summary']['chunk_count'] >= 1
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
     
@@ -216,6 +218,66 @@ class TestEvidenceStateHook:
                     
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_add_evidence_record_deduplicates_same_claim_scope(self):
+        """Test duplicate evidence in the same claim scope reuses the existing record."""
+        try:
+            from mediator.evidence_hooks import EvidenceStateHook
+            import duckdb
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.state = Mock()
+            mock_mediator.state.username = "testuser"
+
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                db_path = f.name
+
+            try:
+                hook = EvidenceStateHook(mock_mediator, db_path=db_path)
+
+                evidence_info = {
+                    'cid': 'QmDuplicateEvidence',
+                    'type': 'document',
+                    'size': 2048,
+                    'metadata': {
+                        'provenance': {
+                            'content_hash': 'hash-123',
+                            'source_url': 'https://example.com/evidence/1',
+                            'acquisition_method': 'web_discovery',
+                        }
+                    },
+                }
+
+                first_id = hook.add_evidence_record(
+                    user_id='testuser',
+                    evidence_info=evidence_info,
+                    complaint_id='complaint-1',
+                    claim_type='breach of contract',
+                    claim_element_id='breach_of_contract:1',
+                    claim_element='Valid contract',
+                )
+                second_id = hook.add_evidence_record(
+                    user_id='testuser',
+                    evidence_info=evidence_info,
+                    complaint_id='complaint-1',
+                    claim_type='breach of contract',
+                    claim_element_id='breach_of_contract:1',
+                    claim_element='Valid contract',
+                )
+
+                results = hook.get_user_evidence('testuser')
+
+                assert first_id > 0
+                assert second_id == first_id
+                assert len(results) == 1
+                assert results[0]['cid'] == 'QmDuplicateEvidence'
+            finally:
+                if os.path.exists(db_path):
+                    os.unlink(db_path)
+
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
     
     def test_get_evidence_statistics(self):
         """Test evidence statistics retrieval"""
@@ -253,6 +315,64 @@ class TestEvidenceStateHook:
                 if os.path.exists(db_path):
                     os.unlink(db_path)
                     
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_persists_document_parse_summary_and_chunks(self):
+        """Test parsed document data is summarized on evidence rows and chunk rows are stored."""
+        try:
+            from mediator.evidence_hooks import EvidenceStateHook
+            import duckdb
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.state = Mock()
+            mock_mediator.state.username = "testuser"
+
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                db_path = f.name
+
+            try:
+                hook = EvidenceStateHook(mock_mediator, db_path=db_path)
+
+                evidence_info = {
+                    'cid': 'QmParsed123',
+                    'type': 'document',
+                    'size': 64,
+                    'metadata': {
+                        'provenance': {'content_hash': 'hash123'},
+                        'document_parse_summary': {
+                            'status': 'fallback',
+                            'chunk_count': 2,
+                            'text_length': 24,
+                        },
+                    },
+                    'document_parse': {
+                        'status': 'fallback',
+                        'text': 'alpha beta gamma delta',
+                        'chunks': [
+                            {'chunk_id': 'chunk-0', 'index': 0, 'start': 0, 'end': 11, 'text': 'alpha beta '},
+                            {'chunk_id': 'chunk-1', 'index': 1, 'start': 11, 'end': 22, 'text': 'gamma delta'},
+                        ],
+                        'metadata': {'filename': 'evidence.txt'},
+                    },
+                }
+
+                record_id = hook.add_evidence_record('testuser', evidence_info)
+                record = hook.get_evidence_by_cid('QmParsed123')
+                chunks = hook.get_evidence_chunks(record_id)
+
+                assert record_id > 0
+                assert record['parse_status'] == 'fallback'
+                assert record['chunk_count'] == 2
+                assert record['parsed_text_preview'].startswith('alpha beta')
+                assert record['parse_metadata']['filename'] == 'evidence.txt'
+                assert len(chunks) == 2
+                assert chunks[0]['chunk_id'] == 'chunk-0'
+            finally:
+                if os.path.exists(db_path):
+                    os.unlink(db_path)
+
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
@@ -372,11 +492,14 @@ class TestMediatorEvidenceIntegration:
                 assert 'record_id' in result
                 assert result['user_id'] == 'testuser'
                 assert result['claim_element_id'] == 'breach_of_contract:1'
+                assert result['document_parse']['status'] in {'fallback', 'available-fallback', 'empty'}
+                assert result['metadata']['document_parse_summary']['chunk_count'] >= 1
                 
                 # Verify evidence can be retrieved
                 evidence_list = mediator.get_user_evidence('testuser')
                 assert len(evidence_list) > 0
                 assert evidence_list[0]['claim_element'] == 'Valid contract'
+                assert evidence_list[0]['chunk_count'] >= 1
 
                 element_view = mediator.get_claim_element_view(
                     claim_type='breach of contract',
@@ -406,6 +529,22 @@ class TestMediatorEvidenceIntegration:
                     max_tasks_per_claim=2,
                 )
                 assert follow_up_execution['claims']['breach of contract']['task_count'] == 2
+
+                follow_up_plan_after_execution = mediator.get_claim_follow_up_plan(
+                    claim_type='breach of contract',
+                    user_id='testuser',
+                )
+                assert follow_up_plan_after_execution['claims']['breach of contract']['blocked_task_count'] == 2
+                assert follow_up_plan_after_execution['claims']['breach of contract']['tasks'][0]['execution_status']['evidence']['in_cooldown'] is True
+
+                second_follow_up_execution = mediator.execute_claim_follow_up_plan(
+                    claim_type='breach of contract',
+                    user_id='testuser',
+                    support_kind='evidence',
+                    max_tasks_per_claim=2,
+                )
+                assert second_follow_up_execution['claims']['breach of contract']['task_count'] == 0
+                assert second_follow_up_execution['claims']['breach of contract']['skipped_task_count'] == 2
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)

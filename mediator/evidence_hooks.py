@@ -12,6 +12,7 @@ from integrations.ipfs_datasets.provenance import (
     merge_metadata_with_provenance,
     stable_content_hash,
 )
+from integrations.ipfs_datasets.documents import parse_document_bytes
 from integrations.ipfs_datasets.types import CaseArtifact
 from integrations.ipfs_datasets.storage import (
     IPFS_AVAILABLE,
@@ -46,6 +47,16 @@ class EvidenceStorageHook:
         if not IPFS_AVAILABLE:
             self.mediator.log('evidence_warning', 
                 message='IPFS not available - evidence storage will be simulated')
+
+    def _should_parse_evidence(self, evidence_type: str, metadata: Optional[Dict[str, Any]]) -> bool:
+        parse_flag = (metadata or {}).get('parse_document')
+        if parse_flag is not None:
+            return bool(parse_flag)
+        normalized_type = (evidence_type or '').lower()
+        if normalized_type in {'document', 'text', 'email', 'pdf'}:
+            return True
+        mime_type = str((metadata or {}).get('mime_type', '')).lower()
+        return mime_type.startswith('text/') or mime_type == 'application/pdf'
     
     def store_evidence(self, data: bytes, evidence_type: str, 
                       metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -78,10 +89,20 @@ class EvidenceStorageHook:
             )
             normalized_metadata = merge_metadata_with_provenance(metadata, provenance)
             if IPFS_AVAILABLE:
-                # Store in IPFS
-                cid = add_bytes(data, pin=True)
-                self.mediator.log('evidence_stored', 
-                    cid=cid, size=len(data), type=evidence_type)
+                try:
+                    # Store in IPFS
+                    cid = add_bytes(data, pin=True)
+                    self.mediator.log('evidence_stored', 
+                        cid=cid, size=len(data), type=evidence_type)
+                except Exception as ipfs_error:
+                    cid = f"Qm{hashlib.sha256(data).hexdigest()[:44]}"
+                    self.mediator.log(
+                        'evidence_ipfs_runtime_unavailable',
+                        error=str(ipfs_error),
+                        cid=cid,
+                        size=len(data),
+                        type=evidence_type,
+                    )
             else:
                 # Fallback: Create a simulated CID using hash
                 cid = f"Qm{hashlib.sha256(data).hexdigest()[:44]}"
@@ -93,10 +114,27 @@ class EvidenceStorageHook:
                 artifact_type=evidence_type,
                 size=len(data),
                 timestamp=datetime.now().isoformat(),
+                mime_type=str((metadata or {}).get('mime_type', '')),
+                source_type=provenance.source_type,
+                content_hash=content_hash,
+                acquisition_method=provenance.acquisition_method,
+                source_url=provenance.source_url,
                 metadata=normalized_metadata,
                 provenance=provenance,
             )
             result = artifact.as_dict()
+            if self._should_parse_evidence(evidence_type, metadata):
+                document_parse = parse_document_bytes(
+                    data,
+                    filename=str((metadata or {}).get('filename', '')),
+                    mime_type=str((metadata or {}).get('mime_type', '')),
+                )
+                result['document_parse'] = document_parse
+                result['metadata']['document_parse_summary'] = {
+                    'status': document_parse.get('status'),
+                    'chunk_count': len(document_parse.get('chunks', []) or []),
+                    'text_length': len(document_parse.get('text', '') or ''),
+                }
             result['ipfs_available'] = IPFS_AVAILABLE
             return result
             
@@ -239,8 +277,24 @@ class EvidenceStateHook:
                 "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS provenance JSON",
                 "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS claim_element_id VARCHAR",
                 "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS claim_element TEXT",
+                "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS parse_status VARCHAR",
+                "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS chunk_count INTEGER",
+                "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS parsed_text_preview TEXT",
+                "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS parse_metadata JSON",
             ]:
                 conn.execute(statement)
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS evidence_chunks (
+                    evidence_id BIGINT,
+                    chunk_id VARCHAR,
+                    chunk_index INTEGER,
+                    start_offset INTEGER,
+                    end_offset INTEGER,
+                    chunk_text TEXT,
+                    metadata JSON
+                )
+            """)
             
             # Create index on CID for fast lookups
             conn.execute("""
@@ -259,6 +313,99 @@ class EvidenceStateHook:
             
         except Exception as e:
             self.mediator.log('evidence_schema_error', error=str(e))
+
+    def _store_document_chunks(self, conn, evidence_id: int, document_parse: Dict[str, Any]) -> None:
+        chunks = document_parse.get('chunks', []) or []
+        if not chunks:
+            return
+        for chunk in chunks:
+            conn.execute(
+                """
+                INSERT INTO evidence_chunks (
+                    evidence_id, chunk_id, chunk_index, start_offset, end_offset, chunk_text, metadata
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    evidence_id,
+                    chunk.get('chunk_id'),
+                    chunk.get('index'),
+                    chunk.get('start'),
+                    chunk.get('end'),
+                    chunk.get('text'),
+                    json.dumps({}),
+                ],
+            )
+
+    def _find_existing_evidence_record(
+        self,
+        conn,
+        user_id: str,
+        evidence_info: Dict[str, Any],
+        complaint_id: Optional[str],
+        claim_type: Optional[str],
+        claim_element_id: Optional[str],
+    ) -> Optional[int]:
+        provenance = evidence_info.get('metadata', {}).get('provenance', {})
+        evidence_cid = evidence_info.get('cid')
+        content_hash = provenance.get('content_hash')
+        source_url = provenance.get('source_url')
+
+        if evidence_cid:
+            existing = conn.execute(
+                """
+                SELECT id
+                FROM evidence
+                WHERE user_id = ?
+                  AND evidence_cid = ?
+                  AND COALESCE(complaint_id, '') = COALESCE(?, '')
+                  AND COALESCE(claim_type, '') = COALESCE(?, '')
+                  AND COALESCE(claim_element_id, '') = COALESCE(?, '')
+                ORDER BY id ASC
+                LIMIT 1
+                """,
+                [user_id, evidence_cid, complaint_id, claim_type, claim_element_id],
+            ).fetchone()
+            if existing:
+                return existing[0]
+
+        if content_hash:
+            existing = conn.execute(
+                """
+                SELECT id
+                FROM evidence
+                WHERE user_id = ?
+                  AND content_hash = ?
+                  AND COALESCE(complaint_id, '') = COALESCE(?, '')
+                  AND COALESCE(claim_type, '') = COALESCE(?, '')
+                  AND COALESCE(claim_element_id, '') = COALESCE(?, '')
+                ORDER BY id ASC
+                LIMIT 1
+                """,
+                [user_id, content_hash, complaint_id, claim_type, claim_element_id],
+            ).fetchone()
+            if existing:
+                return existing[0]
+
+        if source_url:
+            existing = conn.execute(
+                """
+                SELECT id
+                FROM evidence
+                WHERE user_id = ?
+                  AND source_url = ?
+                  AND COALESCE(complaint_id, '') = COALESCE(?, '')
+                  AND COALESCE(claim_type, '') = COALESCE(?, '')
+                  AND COALESCE(claim_element_id, '') = COALESCE(?, '')
+                ORDER BY id ASC
+                LIMIT 1
+                """,
+                [user_id, source_url, complaint_id, claim_type, claim_element_id],
+            ).fetchone()
+            if existing:
+                return existing[0]
+
+        return None
     
     def add_evidence_record(self, user_id: str, evidence_info: Dict[str, Any],
                           complaint_id: Optional[str] = None,
@@ -285,6 +432,29 @@ class EvidenceStateHook:
         
         try:
             conn = duckdb.connect(self.db_path)
+            document_parse = evidence_info.get('document_parse') if isinstance(evidence_info.get('document_parse'), dict) else {}
+            document_parse_summary = evidence_info.get('metadata', {}).get('document_parse_summary', {})
+            parsed_text = document_parse.get('text', '')
+            parsed_text_preview = parsed_text[:5000] if parsed_text else ''
+
+            existing_record_id = self._find_existing_evidence_record(
+                conn,
+                user_id,
+                evidence_info,
+                complaint_id,
+                claim_type,
+                claim_element_id,
+            )
+            if existing_record_id is not None:
+                conn.close()
+                self.mediator.log(
+                    'evidence_record_duplicate',
+                    record_id=existing_record_id,
+                    cid=evidence_info.get('cid'),
+                    claim_type=claim_type,
+                    claim_element_id=claim_element_id,
+                )
+                return existing_record_id
             
             # Get username from mediator state if available
             state = getattr(self.mediator, 'state', None)
@@ -297,9 +467,10 @@ class EvidenceStateHook:
                     user_id, username, evidence_cid, evidence_type, 
                     evidence_size, metadata, complaint_id, claim_type, description,
                     content_hash, source_url, acquisition_method, provenance,
-                    claim_element_id, claim_element
+                    claim_element_id, claim_element, parse_status, chunk_count,
+                    parsed_text_preview, parse_metadata
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id
             """, [
                 user_id,
@@ -317,9 +488,14 @@ class EvidenceStateHook:
                 json.dumps(evidence_info.get('metadata', {}).get('provenance', {})),
                 claim_element_id,
                 claim_element,
+                document_parse.get('status') or document_parse_summary.get('status'),
+                len(document_parse.get('chunks', []) or []),
+                parsed_text_preview,
+                json.dumps(document_parse.get('metadata', {})),
             ]).fetchone()
             
             record_id = result[0]
+            self._store_document_chunks(conn, record_id, document_parse)
             conn.close()
             
             self.mediator.log('evidence_record_added', 
@@ -351,7 +527,8 @@ class EvidenceStateHook:
                 SELECT id, user_id, username, evidence_cid, evidence_type,
                       evidence_size, timestamp, metadata, complaint_id,
                       claim_type, description, content_hash, source_url,
-                      acquisition_method, provenance, claim_element_id, claim_element
+                        acquisition_method, provenance, claim_element_id, claim_element,
+                        parse_status, chunk_count, parsed_text_preview, parse_metadata
                 FROM evidence
                 WHERE user_id = ?
                 ORDER BY timestamp DESC
@@ -379,6 +556,10 @@ class EvidenceStateHook:
                     'provenance': json.loads(row[14]) if row[14] else {},
                     'claim_element_id': row[15],
                     'claim_element': row[16],
+                    'parse_status': row[17],
+                    'chunk_count': row[18] or 0,
+                    'parsed_text_preview': row[19] or '',
+                    'parse_metadata': json.loads(row[20]) if row[20] else {},
                 })
             
             return evidence_list
@@ -407,7 +588,8 @@ class EvidenceStateHook:
                 SELECT id, user_id, username, evidence_cid, evidence_type,
                       evidence_size, timestamp, metadata, complaint_id,
                       claim_type, description, content_hash, source_url,
-                      acquisition_method, provenance, claim_element_id, claim_element
+                        acquisition_method, provenance, claim_element_id, claim_element,
+                        parse_status, chunk_count, parsed_text_preview, parse_metadata
                 FROM evidence
                 WHERE evidence_cid = ?
             """, [cid]).fetchone()
@@ -433,6 +615,10 @@ class EvidenceStateHook:
                     'provenance': json.loads(result[14]) if result[14] else {},
                     'claim_element_id': result[15],
                     'claim_element': result[16],
+                    'parse_status': result[17],
+                    'chunk_count': result[18] or 0,
+                    'parsed_text_preview': result[19] or '',
+                    'parse_metadata': json.loads(result[20]) if result[20] else {},
                 }
             
             return None
@@ -440,6 +626,38 @@ class EvidenceStateHook:
         except Exception as e:
             self.mediator.log('evidence_query_error', error=str(e), cid=cid)
             return None
+
+    def get_evidence_chunks(self, evidence_id: int) -> List[Dict[str, Any]]:
+        """Get parsed chunks for a stored evidence record."""
+        if not DUCKDB_AVAILABLE:
+            return []
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            results = conn.execute(
+                """
+                SELECT chunk_id, chunk_index, start_offset, end_offset, chunk_text, metadata
+                FROM evidence_chunks
+                WHERE evidence_id = ?
+                ORDER BY chunk_index ASC
+                """,
+                [evidence_id],
+            ).fetchall()
+            conn.close()
+            return [
+                {
+                    'chunk_id': row[0],
+                    'index': row[1],
+                    'start': row[2],
+                    'end': row[3],
+                    'text': row[4],
+                    'metadata': json.loads(row[5]) if row[5] else {},
+                }
+                for row in results
+            ]
+        except Exception as e:
+            self.mediator.log('evidence_chunk_query_error', error=str(e), evidence_id=evidence_id)
+            return []
     
     def get_evidence_statistics(self, user_id: Optional[str] = None) -> Dict[str, Any]:
         """
