@@ -375,9 +375,14 @@ class WebEvidenceIntegrationHook:
             'stored_new': 0,
             'reused': 0,
             'skipped': 0,
+            'total_records': 0,
+            'total_new': 0,
+            'total_reused': 0,
             'evidence_cids': [],
             'support_links_added': 0,
             'support_links_reused': 0,
+            'total_support_links_added': 0,
+            'total_support_links_reused': 0,
         }
         
         # Process each result
@@ -451,6 +456,7 @@ class WebEvidenceIntegrationHook:
                     claim_element=resolved_element.get('claim_element_text') if claim_type and hasattr(self.mediator, 'claim_support') else None,
                 )
                 record_id = record_result['record_id']
+                support_link_result = {'created': False, 'reused': False}
 
                 if claim_type and hasattr(self.mediator, 'claim_support'):
                     support_link_result = self.mediator.claim_support.upsert_support_link(
@@ -478,6 +484,11 @@ class WebEvidenceIntegrationHook:
                 stored_evidence['stored'] += 1
                 stored_evidence['stored_new'] += 1 if record_result.get('created') else 0
                 stored_evidence['reused'] += 1 if record_result.get('reused') else 0
+                stored_evidence['total_records'] += 1
+                stored_evidence['total_new'] += 1 if record_result.get('created') else 0
+                stored_evidence['total_reused'] += 1 if record_result.get('reused') else 0
+                stored_evidence['total_support_links_added'] += 1 if support_link_result.get('created') else 0
+                stored_evidence['total_support_links_reused'] += 1 if support_link_result.get('reused') else 0
                 stored_evidence['evidence_cids'].append(storage_result['cid'])
 
                 current_kg = None
@@ -539,6 +550,7 @@ class WebEvidenceIntegrationHook:
             'claim_types': classification.get('claim_types', []),
             'evidence_discovered': {},
             'evidence_stored': {},
+            'evidence_storage_summary': {},
             'support_summary': {},
             'claim_overview': {},
             'follow_up_plan': {},
@@ -562,6 +574,7 @@ class WebEvidenceIntegrationHook:
             
             results['evidence_discovered'][claim_type] = discovery_result['discovered']
             results['evidence_stored'][claim_type] = discovery_result['stored']
+            results['evidence_storage_summary'][claim_type] = discovery_result
             if hasattr(self.mediator, 'summarize_claim_support'):
                 support_summary = self.mediator.summarize_claim_support(user_id, claim_type)
                 results['support_summary'][claim_type] = support_summary.get('claims', {}).get(

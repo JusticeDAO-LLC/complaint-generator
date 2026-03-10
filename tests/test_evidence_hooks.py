@@ -516,6 +516,10 @@ class TestMediatorEvidenceIntegration:
                 assert result['document_graph']['status'] in {'unavailable', 'available-fallback'}
                 assert result['metadata']['document_graph_summary']['entity_count'] >= 1
                 assert result['graph_projection']['claim_links'] >= 1
+                assert result['record_created'] is True
+                assert result['record_reused'] is False
+                assert result['support_link_created'] is True
+                assert result['support_link_reused'] is False
                 
                 # Verify evidence can be retrieved
                 evidence_list = mediator.get_user_evidence('testuser')
@@ -531,6 +535,18 @@ class TestMediatorEvidenceIntegration:
                 projected_kg = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
                 assert result['artifact_id'] in projected_kg.entities
                 assert any(rel.relation_type == 'supported_by' for rel in projected_kg.relationships.values())
+
+                duplicate_result = mediator.submit_evidence(
+                    data=b"Test evidence content",
+                    evidence_type='document',
+                    description='Valid contract test document',
+                    claim_type='breach of contract'
+                )
+                assert duplicate_result['record_id'] == result['record_id']
+                assert duplicate_result['record_created'] is False
+                assert duplicate_result['record_reused'] is True
+                assert duplicate_result['support_link_created'] is False
+                assert duplicate_result['support_link_reused'] is True
 
                 element_view = mediator.get_claim_element_view(
                     claim_type='breach of contract',
@@ -551,7 +567,15 @@ class TestMediatorEvidenceIntegration:
                 mediator.discover_web_evidence = Mock(return_value={
                     'discovered': 2,
                     'stored': 1,
+                    'stored_new': 0,
+                    'reused': 1,
                     'support_links_added': 1,
+                    'support_links_reused': 0,
+                    'total_records': 1,
+                    'total_new': 0,
+                    'total_reused': 1,
+                    'total_support_links_added': 1,
+                    'total_support_links_reused': 0,
                 })
                 follow_up_execution = mediator.execute_claim_follow_up_plan(
                     claim_type='breach of contract',
@@ -560,6 +584,17 @@ class TestMediatorEvidenceIntegration:
                     max_tasks_per_claim=2,
                 )
                 assert follow_up_execution['claims']['breach of contract']['task_count'] == 2
+                evidence_results = [
+                    task['executed']['evidence']['result']
+                    for task in follow_up_execution['claims']['breach of contract']['tasks']
+                    if 'evidence' in task.get('executed', {})
+                ]
+                assert len(evidence_results) == 2
+                assert all(result['total_records'] == 1 for result in evidence_results)
+                assert all(result['total_new'] == 0 for result in evidence_results)
+                assert all(result['total_reused'] == 1 for result in evidence_results)
+                assert all(result['total_support_links_added'] == 1 for result in evidence_results)
+                assert all(result['total_support_links_reused'] == 0 for result in evidence_results)
 
                 follow_up_plan_after_execution = mediator.get_claim_follow_up_plan(
                     claim_type='breach of contract',

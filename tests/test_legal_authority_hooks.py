@@ -426,6 +426,21 @@ class TestMediatorLegalAuthorityIntegration:
                 # Store
                 stored = mediator.store_legal_authorities(results, claim_type='civil rights')
                 assert 'statutes' in stored
+                assert stored['total_records'] == 1
+                assert stored['total_new'] == 1
+                assert stored['total_reused'] == 0
+                assert stored['total_support_links_added'] == 1
+                assert stored['total_support_links_reused'] == 0
+
+                stored_duplicate = mediator.store_legal_authorities(results, claim_type='civil rights')
+                assert stored_duplicate['statutes'] == 1
+                assert stored_duplicate['statutes_new'] == 0
+                assert stored_duplicate['statutes_reused'] == 1
+                assert stored_duplicate['statutes_support_links_added'] == 0
+                assert stored_duplicate['statutes_support_links_reused'] == 1
+                assert stored_duplicate['total_records'] == 1
+                assert stored_duplicate['total_new'] == 0
+                assert stored_duplicate['total_reused'] == 1
 
                 support_links = mediator.get_claim_support(claim_type='civil rights')
                 assert len(support_links) > 0
@@ -449,6 +464,11 @@ class TestMediatorLegalAuthorityIntegration:
                 assert authorities[0]['claim_element'] == 'Protected activity'
 
                 auto_results = mediator.research_case_automatically(user_id='testuser')
+                assert auto_results['authorities_stored']['civil rights']['total_records'] == 1
+                assert auto_results['authorities_stored']['civil rights']['total_new'] == 0
+                assert auto_results['authorities_stored']['civil rights']['total_reused'] == 1
+                assert auto_results['authorities_stored']['civil rights']['total_support_links_added'] == 0
+                assert auto_results['authorities_stored']['civil rights']['total_support_links_reused'] == 1
                 assert auto_results['claim_overview']['civil rights']['partially_supported_count'] == 1
                 assert auto_results['follow_up_plan']['civil rights']['task_count'] == 1
 

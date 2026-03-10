@@ -449,7 +449,13 @@ class Mediator:
 		
 		complaint_id = getattr(self.state, 'complaint_id', None)
 		
-		stored_counts = {}
+		stored_counts = {
+			'total_records': 0,
+			'total_new': 0,
+			'total_reused': 0,
+			'total_support_links_added': 0,
+			'total_support_links_reused': 0,
+		}
 		for auth_type, auth_list in authorities.items():
 			if auth_list:
 				# Add type info to each authority
@@ -500,6 +506,11 @@ class Mediator:
 				stored_counts[f'{auth_type}_reused'] = reused_count
 				stored_counts[f'{auth_type}_support_links_added'] = support_links_added
 				stored_counts[f'{auth_type}_support_links_reused'] = support_links_reused
+				stored_counts['total_records'] += len(record_ids)
+				stored_counts['total_new'] += created_count
+				stored_counts['total_reused'] += reused_count
+				stored_counts['total_support_links_added'] += support_links_added
+				stored_counts['total_support_links_reused'] += support_links_reused
 				
 				self.log('legal_authorities_stored',
 					type=auth_type, count=len(record_ids), claim_type=claim_type)

@@ -276,12 +276,22 @@ class TestWebEvidenceIntegrationHook:
             assert 'stored' in result
             assert 'stored_new' in result
             assert 'reused' in result
+            assert 'total_records' in result
+            assert 'total_new' in result
+            assert 'total_reused' in result
             assert 'support_links_added' in result
             assert 'support_links_reused' in result
+            assert 'total_support_links_added' in result
+            assert 'total_support_links_reused' in result
             assert result['discovered'] == 2
             assert result['stored_new'] == 2
             assert result['reused'] == 0
+            assert result['total_records'] == 2
+            assert result['total_new'] == 2
+            assert result['total_reused'] == 0
             assert result['support_links_added'] == 2
+            assert result['total_support_links_added'] == 2
+            assert result['total_support_links_reused'] == 0
             store_kwargs = mock_mediator.evidence_storage.store_evidence.call_args.kwargs
             assert store_kwargs['evidence_type'] == 'web_document'
             assert store_kwargs['metadata']['parse_document'] is True
@@ -307,6 +317,15 @@ class TestWebEvidenceIntegrationHook:
             mock_mediator.log = Mock()
             mock_mediator.state = Mock()
             mock_mediator.state.username = 'testuser'
+            mock_mediator.phase_manager = Mock()
+            mock_mediator.phase_manager.get_phase_data = Mock(return_value=object())
+            mock_mediator.add_evidence_to_graphs = Mock(return_value={
+                'graph_projection': {
+                    'entity_count': 0,
+                    'relationship_count': 0,
+                    'claim_links': 1,
+                }
+            })
             mock_mediator.web_evidence_search = Mock()
             mock_mediator.web_evidence_search.search_for_evidence = Mock(return_value={
                 'total_found': 1,
@@ -362,11 +381,16 @@ class TestWebEvidenceIntegrationHook:
             assert result['stored'] == 1
             assert result['stored_new'] == 0
             assert result['reused'] == 1
+            assert result['total_records'] == 1
+            assert result['total_new'] == 0
+            assert result['total_reused'] == 1
             assert result['support_links_added'] == 0
-            assert len(result['graph_projection']) == 2
+            assert result['total_support_links_added'] == 0
+            assert len(result['graph_projection']) == 1
             assert result['graph_projection'][0]['claim_links'] == 1
-            assert mock_mediator.add_evidence_to_graphs.call_count == 2
+            assert mock_mediator.add_evidence_to_graphs.call_count == 1
             assert result['support_links_reused'] == 1
+            assert result['total_support_links_reused'] == 1
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
     
@@ -468,11 +492,22 @@ class TestWebEvidenceIntegrationHook:
             hook.discover_and_store_evidence = Mock(return_value={
                 'discovered': 3,
                 'stored': 2,
+                'stored_new': 1,
+                'reused': 1,
                 'support_links_added': 2,
+                'support_links_reused': 0,
+                'total_records': 2,
+                'total_new': 1,
+                'total_reused': 1,
+                'total_support_links_added': 2,
+                'total_support_links_reused': 0,
             })
 
             result = hook.discover_evidence_for_case(user_id='testuser')
 
+            assert result['evidence_storage_summary']['employment discrimination']['total_records'] == 2
+            assert result['evidence_storage_summary']['employment discrimination']['total_new'] == 1
+            assert result['evidence_storage_summary']['employment discrimination']['total_reused'] == 1
             assert result['support_summary']['employment discrimination']['total_links'] == 2
             assert result['claim_overview']['employment discrimination']['missing_count'] == 1
             assert result['follow_up_plan']['employment discrimination']['task_count'] == 2
@@ -511,11 +546,20 @@ class TestWebEvidenceIntegrationHook:
             hook.discover_and_store_evidence = Mock(return_value={
                 'discovered': 1,
                 'stored': 1,
+                'stored_new': 1,
+                'reused': 0,
                 'support_links_added': 1,
+                'support_links_reused': 0,
+                'total_records': 1,
+                'total_new': 1,
+                'total_reused': 0,
+                'total_support_links_added': 1,
+                'total_support_links_reused': 0,
             })
 
             result = hook.discover_evidence_for_case(user_id='testuser', execute_follow_up=True)
 
+            assert result['evidence_storage_summary']['employment discrimination']['total_records'] == 1
             assert result['follow_up_execution']['employment discrimination']['task_count'] == 1
             mock_mediator.execute_claim_follow_up_plan.assert_called_once()
             assert mock_mediator.execute_claim_follow_up_plan.call_args.kwargs['support_kind'] == 'evidence'
