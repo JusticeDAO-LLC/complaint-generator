@@ -227,11 +227,7 @@ class Mediator:
 		# Use username from state if user_id not provided
 		if user_id is None:
 			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
-		
-		# Store in IPFS
-		self.log('evidence_submission', user_id=user_id, type=evidence_type)
-		evidence_info = self.evidence_storage.store_evidence(data, evidence_type, metadata)
-		
+
 		# Get complaint ID if available
 		complaint_id = getattr(self.state, 'complaint_id', None)
 		resolved_element = {'claim_element_id': None, 'claim_element_text': claim_element}
@@ -243,9 +239,21 @@ class Mediator:
 				support_label=description or evidence_type,
 				metadata=metadata,
 			)
+
+		storage_metadata = dict(metadata or {})
+		if claim_type and 'claim_type' not in storage_metadata:
+			storage_metadata['claim_type'] = claim_type
+		if resolved_element.get('claim_element_id') and 'claim_element_id' not in storage_metadata:
+			storage_metadata['claim_element_id'] = resolved_element.get('claim_element_id')
+		if resolved_element.get('claim_element_text') and 'claim_element' not in storage_metadata:
+			storage_metadata['claim_element'] = resolved_element.get('claim_element_text')
+		
+		# Store in IPFS
+		self.log('evidence_submission', user_id=user_id, type=evidence_type)
+		evidence_info = self.evidence_storage.store_evidence(data, evidence_type, storage_metadata)
 		
 		# Store state in DuckDB
-		record_id = self.evidence_state.add_evidence_record(
+		record_result = self.evidence_state.upsert_evidence_record(
 			user_id=user_id,
 			evidence_info=evidence_info,
 			complaint_id=complaint_id,
@@ -254,10 +262,13 @@ class Mediator:
 			claim_element=resolved_element.get('claim_element_text'),
 			description=description
 		)
+		record_id = record_result['record_id']
 		
 		result = {
 			**evidence_info,
 			'record_id': record_id,
+			'record_created': record_result.get('created', False),
+			'record_reused': record_result.get('reused', False),
 			'user_id': user_id,
 			'description': description,
 			'claim_type': claim_type,
@@ -266,7 +277,7 @@ class Mediator:
 		}
 
 		if claim_type:
-			self.claim_support.add_support_link(
+			support_link_result = self.claim_support.upsert_support_link(
 				user_id=user_id,
 				complaint_id=complaint_id,
 				claim_type=claim_type,
@@ -283,6 +294,17 @@ class Mediator:
 					'provenance': result.get('metadata', {}).get('provenance', {}),
 				},
 			)
+			result['support_link_id'] = support_link_result.get('record_id')
+			result['support_link_created'] = support_link_result.get('created', False)
+			result['support_link_reused'] = support_link_result.get('reused', False)
+
+		if self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph'):
+			graph_result = self.add_evidence_to_graphs({
+				**result,
+				'name': description or evidence_type,
+				'confidence': 0.8,
+			})
+			result['graph_projection'] = graph_result.get('graph_projection', {})
 		
 		self.log('evidence_submitted', cid=evidence_info['cid'], record_id=record_id)
 		
@@ -340,6 +362,10 @@ class Mediator:
 			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
 		
 		return self.evidence_state.get_user_evidence(user_id)
+
+	def get_evidence_graph(self, evidence_id: int):
+		"""Get stored graph entities and relationships for an evidence record."""
+		return self.evidence_state.get_evidence_graph(evidence_id)
 	
 	def retrieve_evidence(self, cid: str):
 		"""
@@ -429,15 +455,27 @@ class Mediator:
 				# Add type info to each authority
 				for auth in auth_list:
 					auth['type'] = auth_type.rstrip('s')  # statutes -> statute
-				
-				record_ids = self.legal_authority_storage.add_authorities_bulk(
-					auth_list, user_id, complaint_id, claim_type, search_query
-				)
-				stored_counts[auth_type] = len(record_ids)
-				if claim_type:
-					for auth, record_id in zip(auth_list, record_ids):
+
+				record_ids = []
+				created_count = 0
+				reused_count = 0
+				support_links_added = 0
+				support_links_reused = 0
+				for auth in auth_list:
+					upsert_result = self.legal_authority_storage.upsert_authority(
+						auth,
+						user_id,
+						complaint_id,
+						claim_type,
+						search_query,
+					)
+					record_id = upsert_result['record_id']
+					record_ids.append(record_id)
+					created_count += 1 if upsert_result.get('created') else 0
+					reused_count += 1 if upsert_result.get('reused') else 0
+					if claim_type:
 						support_ref = auth.get('citation') or auth.get('url') or str(record_id)
-						self.claim_support.add_support_link(
+						support_link_result = self.claim_support.upsert_support_link(
 							user_id=user_id,
 							complaint_id=complaint_id,
 							claim_type=claim_type,
@@ -454,6 +492,14 @@ class Mediator:
 								'provenance': auth.get('provenance', auth.get('metadata', {}).get('provenance', {})),
 							},
 						)
+						support_links_added += 1 if support_link_result.get('created') else 0
+						support_links_reused += 1 if support_link_result.get('reused') else 0
+
+				stored_counts[auth_type] = len(record_ids)
+				stored_counts[f'{auth_type}_new'] = created_count
+				stored_counts[f'{auth_type}_reused'] = reused_count
+				stored_counts[f'{auth_type}_support_links_added'] = support_links_added
+				stored_counts[f'{auth_type}_support_links_reused'] = support_links_reused
 				
 				self.log('legal_authorities_stored',
 					type=auth_type, count=len(record_ids), claim_type=claim_type)
@@ -1160,6 +1206,108 @@ class Mediator:
 			'suggested_evidence_types': self._suggest_evidence_types(unsatisfied, kg_gaps),
 			'next_action': self.phase_manager.get_next_action()
 		}
+
+	def _find_claim_entities_for_type(self, kg, claim_type: str = None):
+		"""Find claim entities in the intake knowledge graph matching a claim type."""
+		if not kg:
+			return []
+		claim_entities = kg.get_entities_by_type('claim')
+		if not claim_type:
+			return claim_entities
+		normalized = ''.join(ch.lower() if ch.isalnum() else '_' for ch in claim_type).strip('_')
+		matches = []
+		for entity in claim_entities:
+			entity_claim_type = str(entity.attributes.get('claim_type', '')).strip().lower()
+			entity_normalized = ''.join(ch.lower() if ch.isalnum() else '_' for ch in entity_claim_type).strip('_')
+			entity_name = str(entity.name or '').lower()
+			if entity_normalized == normalized or entity_claim_type == claim_type.lower() or claim_type.lower() in entity_name:
+				matches.append(entity)
+		return matches
+
+	def _project_document_graph_to_knowledge_graph(self, kg, evidence_data: Dict[str, Any]) -> Dict[str, Any]:
+		"""Project persisted document-graph entities/edges into the complaint knowledge graph."""
+		if not kg:
+			return {'projected': False, 'entity_count': 0, 'relationship_count': 0, 'claim_links': 0}
+
+		from complaint_phases.knowledge_graph import Entity, Relationship
+
+		document_graph = evidence_data.get('document_graph') or {}
+		if not isinstance(document_graph, dict):
+			document_graph = {}
+
+		inserted_entities = 0
+		inserted_relationships = 0
+		claim_links = 0
+		entity_id_map = {}
+
+		for graph_entity in document_graph.get('entities', []) or []:
+			graph_entity_id = graph_entity.get('id')
+			if not graph_entity_id:
+				continue
+			entity_type = graph_entity.get('type') or 'fact'
+			mapped_type = 'evidence' if entity_type == 'artifact' else entity_type
+			entity_id_map[graph_entity_id] = graph_entity_id
+			if graph_entity_id in kg.entities:
+				continue
+			kg.add_entity(Entity(
+				id=graph_entity_id,
+				type=mapped_type,
+				name=graph_entity.get('name') or mapped_type.title(),
+				attributes=graph_entity.get('attributes', {}),
+				confidence=graph_entity.get('confidence', 0.6),
+				source='evidence',
+			))
+			inserted_entities += 1
+
+		for graph_relationship in document_graph.get('relationships', []) or []:
+			relationship_id = graph_relationship.get('id')
+			if not relationship_id or relationship_id in kg.relationships:
+				continue
+			source_id = entity_id_map.get(graph_relationship.get('source_id'), graph_relationship.get('source_id'))
+			target_id = entity_id_map.get(graph_relationship.get('target_id'), graph_relationship.get('target_id'))
+			if not source_id or not target_id:
+				continue
+			if source_id not in kg.entities or target_id not in kg.entities:
+				continue
+			kg.add_relationship(Relationship(
+				id=relationship_id,
+				source_id=source_id,
+				target_id=target_id,
+				relation_type=graph_relationship.get('relation_type') or 'related_to',
+				attributes=graph_relationship.get('attributes', {}),
+				confidence=graph_relationship.get('confidence', 0.6),
+				source='evidence',
+			))
+			inserted_relationships += 1
+
+		artifact_id = evidence_data.get('artifact_id') or evidence_data.get('cid')
+		claim_entities = self._find_claim_entities_for_type(kg, evidence_data.get('claim_type'))
+		if artifact_id and artifact_id in kg.entities:
+			for claim_entity in claim_entities:
+				rel_id = f"rel_{claim_entity.id}_{artifact_id}_supported_by"
+				if rel_id in kg.relationships:
+					continue
+				kg.add_relationship(Relationship(
+					id=rel_id,
+					source_id=claim_entity.id,
+					target_id=artifact_id,
+					relation_type='supported_by',
+					attributes={
+						'claim_type': evidence_data.get('claim_type'),
+						'claim_element_id': evidence_data.get('claim_element_id'),
+					},
+					confidence=0.75,
+					source='evidence',
+				))
+				inserted_relationships += 1
+				claim_links += 1
+
+		return {
+			'projected': True,
+			'entity_count': inserted_entities,
+			'relationship_count': inserted_relationships,
+			'claim_links': claim_links,
+		}
 	
 	def add_evidence_to_graphs(self, evidence_data: Dict[str, Any]) -> Dict[str, Any]:
 		"""
@@ -1173,52 +1321,72 @@ class Mediator:
 		"""
 		kg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
 		dg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'dependency_graph')
+		projection_summary = {'projected': False, 'entity_count': 0, 'relationship_count': 0, 'claim_links': 0}
+		if evidence_data.get('document_graph'):
+			projection_summary = self._project_document_graph_to_knowledge_graph(kg, evidence_data)
 		
 		# Add evidence entity to knowledge graph
 		from complaint_phases.knowledge_graph import Entity
-		evidence_entity = Entity(
-			id=f"evidence_{evidence_data.get('id', 'unknown')}",
-			type='evidence',
-			name=evidence_data.get('name', 'Evidence'),
-			attributes=evidence_data,
-			confidence=evidence_data.get('confidence', 0.8),
-			source='evidence'
-		)
-		kg.add_entity(evidence_entity)
+		artifact_id = evidence_data.get('artifact_id') or evidence_data.get('cid') or f"evidence_{evidence_data.get('id', 'unknown')}"
+		if kg and artifact_id not in kg.entities:
+			evidence_entity = Entity(
+				id=artifact_id,
+				type='evidence',
+				name=evidence_data.get('name', evidence_data.get('description', 'Evidence')),
+				attributes=evidence_data,
+				confidence=evidence_data.get('confidence', 0.8),
+				source='evidence'
+			)
+			kg.add_entity(evidence_entity)
+			projection_summary['entity_count'] += 1
 		
 		# Add supporting relationships
 		supported_claim_ids = evidence_data.get('supports_claims', [])
 		from complaint_phases.knowledge_graph import Relationship
-		for claim_id in supported_claim_ids:
-			rel = Relationship(
-				id=f"rel_{evidence_entity.id}_{claim_id}",
-				source_id=evidence_entity.id,
-				target_id=claim_id,
-				relation_type='supports',
-				confidence=evidence_data.get('relevance', 0.7)
-			)
-			kg.add_relationship(rel)
+		if kg:
+			for claim_id in supported_claim_ids:
+				rel_id = f"rel_{artifact_id}_{claim_id}"
+				if rel_id in kg.relationships:
+					continue
+				rel = Relationship(
+					id=rel_id,
+					source_id=artifact_id,
+					target_id=claim_id,
+					relation_type='supports',
+					confidence=evidence_data.get('relevance', 0.7),
+					source='evidence'
+				)
+				kg.add_relationship(rel)
+				projection_summary['relationship_count'] += 1
 		
 		# Add to dependency graph
-		if supported_claim_ids:
+		if dg and supported_claim_ids:
 			self.dg_builder.add_evidence_to_graph(dg, evidence_data, supported_claim_ids[0])
 		
 		# Update phase data
 		evidence_count = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'evidence_count') or 0
-		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_count', evidence_count + 1)
-		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'knowledge_graph_enhanced', True)
+		graph_changed = projection_summary['entity_count'] > 0 or projection_summary['relationship_count'] > 0
+		existing_enhanced = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'knowledge_graph_enhanced') or False
+		updated_evidence_count = evidence_count + 1 if graph_changed else evidence_count
+		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_count', updated_evidence_count)
+		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'knowledge_graph_enhanced', existing_enhanced or graph_changed)
+		if kg:
+			self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', kg)
+		if dg:
+			self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', dg)
 		
 		# Calculate evidence gap ratio
-		readiness = dg.get_claim_readiness()
-		gap_ratio = 1.0 - readiness['overall_readiness']
+		readiness = dg.get_claim_readiness() if dg else {'overall_readiness': 0.0}
+		gap_ratio = 1.0 - readiness['overall_readiness'] if dg else 1.0
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_gap_ratio', gap_ratio)
 		
 		return {
 			'evidence_added': True,
-			'evidence_count': evidence_count + 1,
-			'kg_summary': kg.summary(),
+			'evidence_count': updated_evidence_count,
+			'kg_summary': kg.summary() if kg else {},
 			'dg_readiness': readiness,
 			'gap_ratio': gap_ratio,
+			'graph_projection': projection_summary,
 			'ready_for_formalization': self.phase_manager.is_phase_complete(ComplaintPhase.EVIDENCE)
 		}
 	

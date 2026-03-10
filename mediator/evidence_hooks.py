@@ -13,6 +13,7 @@ from integrations.ipfs_datasets.provenance import (
     stable_content_hash,
 )
 from integrations.ipfs_datasets.documents import parse_document_bytes
+from integrations.ipfs_datasets.graphs import extract_graph_from_text
 from integrations.ipfs_datasets.types import CaseArtifact
 from integrations.ipfs_datasets.storage import (
     IPFS_AVAILABLE,
@@ -134,6 +135,26 @@ class EvidenceStorageHook:
                     'status': document_parse.get('status'),
                     'chunk_count': len(document_parse.get('chunks', []) or []),
                     'text_length': len(document_parse.get('text', '') or ''),
+                }
+                graph_payload = extract_graph_from_text(
+                    document_parse.get('text', ''),
+                    source_id=result.get('artifact_id') or result.get('cid'),
+                    metadata={
+                        'artifact_id': result.get('artifact_id', ''),
+                        'filename': str((metadata or {}).get('filename', '')),
+                        'mime_type': str((metadata or {}).get('mime_type', '')),
+                        'source_url': provenance.source_url,
+                        'claim_type': str((metadata or {}).get('claim_type', '')),
+                        'claim_element_id': str((metadata or {}).get('claim_element_id', '')),
+                        'claim_element_text': str((metadata or {}).get('claim_element', '')),
+                        'title': str((metadata or {}).get('title', '')),
+                    },
+                )
+                result['document_graph'] = graph_payload
+                result['metadata']['document_graph_summary'] = {
+                    'status': graph_payload.get('status'),
+                    'entity_count': len(graph_payload.get('entities', []) or []),
+                    'relationship_count': len(graph_payload.get('relationships', []) or []),
                 }
             result['ipfs_available'] = IPFS_AVAILABLE
             return result
@@ -281,6 +302,10 @@ class EvidenceStateHook:
                 "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS chunk_count INTEGER",
                 "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS parsed_text_preview TEXT",
                 "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS parse_metadata JSON",
+                "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS graph_status VARCHAR",
+                "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS graph_entity_count INTEGER",
+                "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS graph_relationship_count INTEGER",
+                "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS graph_metadata JSON",
             ]:
                 conn.execute(statement)
 
@@ -292,6 +317,29 @@ class EvidenceStateHook:
                     start_offset INTEGER,
                     end_offset INTEGER,
                     chunk_text TEXT,
+                    metadata JSON
+                )
+            """)
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS evidence_graph_entities (
+                    evidence_id BIGINT,
+                    entity_id VARCHAR,
+                    entity_type VARCHAR,
+                    entity_name TEXT,
+                    confidence FLOAT,
+                    metadata JSON
+                )
+            """)
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS evidence_graph_relationships (
+                    evidence_id BIGINT,
+                    relationship_id VARCHAR,
+                    source_id VARCHAR,
+                    target_id VARCHAR,
+                    relation_type VARCHAR,
+                    confidence FLOAT,
                     metadata JSON
                 )
             """)
@@ -334,6 +382,47 @@ class EvidenceStateHook:
                     chunk.get('end'),
                     chunk.get('text'),
                     json.dumps({}),
+                ],
+            )
+
+    def _store_document_graph(self, conn, evidence_id: int, document_graph: Dict[str, Any]) -> None:
+        entities = document_graph.get('entities', []) or []
+        relationships = document_graph.get('relationships', []) or []
+
+        for entity in entities:
+            conn.execute(
+                """
+                INSERT INTO evidence_graph_entities (
+                    evidence_id, entity_id, entity_type, entity_name, confidence, metadata
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    evidence_id,
+                    entity.get('id'),
+                    entity.get('type'),
+                    entity.get('name'),
+                    entity.get('confidence', 0.0),
+                    json.dumps(entity.get('attributes', {})),
+                ],
+            )
+
+        for relationship in relationships:
+            conn.execute(
+                """
+                INSERT INTO evidence_graph_relationships (
+                    evidence_id, relationship_id, source_id, target_id, relation_type, confidence, metadata
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    evidence_id,
+                    relationship.get('id'),
+                    relationship.get('source_id'),
+                    relationship.get('target_id'),
+                    relationship.get('relation_type'),
+                    relationship.get('confidence', 0.0),
+                    json.dumps(relationship.get('attributes', {})),
                 ],
             )
 
@@ -413,6 +502,23 @@ class EvidenceStateHook:
                           claim_element_id: Optional[str] = None,
                           claim_element: Optional[str] = None,
                           description: Optional[str] = None) -> int:
+        result = self.upsert_evidence_record(
+            user_id=user_id,
+            evidence_info=evidence_info,
+            complaint_id=complaint_id,
+            claim_type=claim_type,
+            claim_element_id=claim_element_id,
+            claim_element=claim_element,
+            description=description,
+        )
+        return result['record_id']
+
+    def upsert_evidence_record(self, user_id: str, evidence_info: Dict[str, Any],
+                             complaint_id: Optional[str] = None,
+                             claim_type: Optional[str] = None,
+                             claim_element_id: Optional[str] = None,
+                             claim_element: Optional[str] = None,
+                             description: Optional[str] = None) -> Dict[str, Any]:
         """
         Add evidence record to DuckDB.
         
@@ -424,18 +530,39 @@ class EvidenceStateHook:
             description: Optional description of the evidence
             
         Returns:
-            Record ID of the inserted evidence
+            Dictionary describing whether the record was newly inserted or reused.
         """
         if not DUCKDB_AVAILABLE:
             self.mediator.log('evidence_state_unavailable')
-            return -1
+            return {'record_id': -1, 'created': False, 'reused': False}
         
         try:
             conn = duckdb.connect(self.db_path)
             document_parse = evidence_info.get('document_parse') if isinstance(evidence_info.get('document_parse'), dict) else {}
             document_parse_summary = evidence_info.get('metadata', {}).get('document_parse_summary', {})
+            document_graph = evidence_info.get('document_graph') if isinstance(evidence_info.get('document_graph'), dict) else {}
+            document_graph_summary = evidence_info.get('metadata', {}).get('document_graph_summary', {})
             parsed_text = document_parse.get('text', '')
             parsed_text_preview = parsed_text[:5000] if parsed_text else ''
+            if not document_graph and parsed_text:
+                document_graph = extract_graph_from_text(
+                    parsed_text,
+                    source_id=evidence_info.get('artifact_id') or evidence_info.get('cid'),
+                    metadata={
+                        'artifact_id': evidence_info.get('artifact_id', ''),
+                        'source_url': evidence_info.get('metadata', {}).get('provenance', {}).get('source_url', ''),
+                        'claim_type': claim_type or '',
+                        'claim_element_id': claim_element_id or '',
+                        'claim_element_text': claim_element or '',
+                        'filename': document_parse.get('metadata', {}).get('filename', ''),
+                        'mime_type': document_parse.get('metadata', {}).get('mime_type', ''),
+                    },
+                )
+                document_graph_summary = {
+                    'status': document_graph.get('status'),
+                    'entity_count': len(document_graph.get('entities', []) or []),
+                    'relationship_count': len(document_graph.get('relationships', []) or []),
+                }
 
             existing_record_id = self._find_existing_evidence_record(
                 conn,
@@ -454,7 +581,7 @@ class EvidenceStateHook:
                     claim_type=claim_type,
                     claim_element_id=claim_element_id,
                 )
-                return existing_record_id
+                return {'record_id': existing_record_id, 'created': False, 'reused': True}
             
             # Get username from mediator state if available
             state = getattr(self.mediator, 'state', None)
@@ -468,9 +595,10 @@ class EvidenceStateHook:
                     evidence_size, metadata, complaint_id, claim_type, description,
                     content_hash, source_url, acquisition_method, provenance,
                     claim_element_id, claim_element, parse_status, chunk_count,
-                    parsed_text_preview, parse_metadata
+                    parsed_text_preview, parse_metadata, graph_status,
+                    graph_entity_count, graph_relationship_count, graph_metadata
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id
             """, [
                 user_id,
@@ -492,16 +620,21 @@ class EvidenceStateHook:
                 len(document_parse.get('chunks', []) or []),
                 parsed_text_preview,
                 json.dumps(document_parse.get('metadata', {})),
+                document_graph.get('status') or document_graph_summary.get('status'),
+                len(document_graph.get('entities', []) or []),
+                len(document_graph.get('relationships', []) or []),
+                json.dumps(document_graph.get('metadata', {})),
             ]).fetchone()
             
             record_id = result[0]
             self._store_document_chunks(conn, record_id, document_parse)
+            self._store_document_graph(conn, record_id, document_graph)
             conn.close()
             
             self.mediator.log('evidence_record_added', 
                 record_id=record_id, cid=evidence_info['cid'])
             
-            return record_id
+            return {'record_id': record_id, 'created': True, 'reused': False}
             
         except Exception as e:
             self.mediator.log('evidence_record_error', error=str(e))
@@ -528,7 +661,8 @@ class EvidenceStateHook:
                       evidence_size, timestamp, metadata, complaint_id,
                       claim_type, description, content_hash, source_url,
                         acquisition_method, provenance, claim_element_id, claim_element,
-                        parse_status, chunk_count, parsed_text_preview, parse_metadata
+                    parse_status, chunk_count, parsed_text_preview, parse_metadata,
+                    graph_status, graph_entity_count, graph_relationship_count, graph_metadata
                 FROM evidence
                 WHERE user_id = ?
                 ORDER BY timestamp DESC
@@ -560,6 +694,10 @@ class EvidenceStateHook:
                     'chunk_count': row[18] or 0,
                     'parsed_text_preview': row[19] or '',
                     'parse_metadata': json.loads(row[20]) if row[20] else {},
+                    'graph_status': row[21],
+                    'graph_entity_count': row[22] or 0,
+                    'graph_relationship_count': row[23] or 0,
+                    'graph_metadata': json.loads(row[24]) if row[24] else {},
                 })
             
             return evidence_list
@@ -589,7 +727,8 @@ class EvidenceStateHook:
                       evidence_size, timestamp, metadata, complaint_id,
                       claim_type, description, content_hash, source_url,
                         acquisition_method, provenance, claim_element_id, claim_element,
-                        parse_status, chunk_count, parsed_text_preview, parse_metadata
+                    parse_status, chunk_count, parsed_text_preview, parse_metadata,
+                    graph_status, graph_entity_count, graph_relationship_count, graph_metadata
                 FROM evidence
                 WHERE evidence_cid = ?
             """, [cid]).fetchone()
@@ -619,6 +758,10 @@ class EvidenceStateHook:
                     'chunk_count': result[18] or 0,
                     'parsed_text_preview': result[19] or '',
                     'parse_metadata': json.loads(result[20]) if result[20] else {},
+                    'graph_status': result[21],
+                    'graph_entity_count': result[22] or 0,
+                    'graph_relationship_count': result[23] or 0,
+                    'graph_metadata': json.loads(result[24]) if result[24] else {},
                 }
             
             return None
@@ -658,6 +801,60 @@ class EvidenceStateHook:
         except Exception as e:
             self.mediator.log('evidence_chunk_query_error', error=str(e), evidence_id=evidence_id)
             return []
+
+    def get_evidence_graph(self, evidence_id: int) -> Dict[str, Any]:
+        """Get normalized graph entities and relationships for a stored evidence record."""
+        if not DUCKDB_AVAILABLE:
+            return {'status': 'unavailable', 'entities': [], 'relationships': []}
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            entity_rows = conn.execute(
+                """
+                SELECT entity_id, entity_type, entity_name, confidence, metadata
+                FROM evidence_graph_entities
+                WHERE evidence_id = ?
+                ORDER BY entity_id ASC
+                """,
+                [evidence_id],
+            ).fetchall()
+            relationship_rows = conn.execute(
+                """
+                SELECT relationship_id, source_id, target_id, relation_type, confidence, metadata
+                FROM evidence_graph_relationships
+                WHERE evidence_id = ?
+                ORDER BY relationship_id ASC
+                """,
+                [evidence_id],
+            ).fetchall()
+            conn.close()
+            return {
+                'status': 'available',
+                'entities': [
+                    {
+                        'id': row[0],
+                        'type': row[1],
+                        'name': row[2],
+                        'confidence': row[3],
+                        'attributes': json.loads(row[4]) if row[4] else {},
+                    }
+                    for row in entity_rows
+                ],
+                'relationships': [
+                    {
+                        'id': row[0],
+                        'source_id': row[1],
+                        'target_id': row[2],
+                        'relation_type': row[3],
+                        'confidence': row[4],
+                        'attributes': json.loads(row[5]) if row[5] else {},
+                    }
+                    for row in relationship_rows
+                ],
+            }
+        except Exception as e:
+            self.mediator.log('evidence_graph_query_error', error=str(e), evidence_id=evidence_id)
+            return {'status': 'error', 'entities': [], 'relationships': [], 'error': str(e)}
     
     def get_evidence_statistics(self, user_id: Optional[str] = None) -> Dict[str, Any]:
         """

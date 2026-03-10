@@ -181,6 +181,15 @@ class TestWebEvidenceIntegrationHook:
             mock_mediator.log = Mock()
             mock_mediator.state = Mock()
             mock_mediator.state.username = 'testuser'
+            mock_mediator.phase_manager = Mock()
+            mock_mediator.phase_manager.get_phase_data = Mock(return_value=object())
+            mock_mediator.add_evidence_to_graphs = Mock(return_value={
+                'graph_projection': {
+                    'entity_count': 3,
+                    'relationship_count': 2,
+                    'claim_links': 1,
+                }
+            })
             
             # Mock dependencies
             mock_mediator.web_evidence_search = Mock()
@@ -237,13 +246,21 @@ class TestWebEvidenceIntegrationHook:
             })
             
             mock_mediator.evidence_state = Mock()
-            mock_mediator.evidence_state.add_evidence_record = Mock(return_value=1)
+            mock_mediator.evidence_state.upsert_evidence_record = Mock(return_value={
+                'record_id': 1,
+                'created': True,
+                'reused': False,
+            })
             mock_mediator.claim_support = Mock()
             mock_mediator.claim_support.resolve_claim_element = Mock(return_value={
                 'claim_element_id': 'employment_discrimination:1',
                 'claim_element_text': 'Protected activity',
             })
-            mock_mediator.claim_support.add_support_link = Mock(return_value=1)
+            mock_mediator.claim_support.upsert_support_link = Mock(return_value={
+                'record_id': 1,
+                'created': True,
+                'reused': False,
+            })
             
             hook = WebEvidenceIntegrationHook(mock_mediator)
             
@@ -257,8 +274,13 @@ class TestWebEvidenceIntegrationHook:
             assert isinstance(result, dict)
             assert 'discovered' in result
             assert 'stored' in result
+            assert 'stored_new' in result
+            assert 'reused' in result
             assert 'support_links_added' in result
+            assert 'support_links_reused' in result
             assert result['discovered'] == 2
+            assert result['stored_new'] == 2
+            assert result['reused'] == 0
             assert result['support_links_added'] == 2
             store_kwargs = mock_mediator.evidence_storage.store_evidence.call_args.kwargs
             assert store_kwargs['evidence_type'] == 'web_document'
@@ -269,10 +291,82 @@ class TestWebEvidenceIntegrationHook:
             assert 'Title: Evidence 2' in payload_text
             assert 'URL: https://example.com/2' in payload_text
             assert 'Content:' in payload_text
-            add_record_kwargs = mock_mediator.evidence_state.add_evidence_record.call_args.kwargs
+            add_record_kwargs = mock_mediator.evidence_state.upsert_evidence_record.call_args.kwargs
             assert add_record_kwargs['claim_element_id'] == 'employment_discrimination:1'
             assert add_record_kwargs['claim_element'] == 'Protected activity'
             assert add_record_kwargs['evidence_info']['document_parse']['status'] == 'fallback'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_discover_and_store_evidence_reports_reuse_counts(self):
+        """Test reused evidence rows and support links are surfaced in results."""
+        try:
+            from mediator.web_evidence_hooks import WebEvidenceIntegrationHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.state = Mock()
+            mock_mediator.state.username = 'testuser'
+            mock_mediator.web_evidence_search = Mock()
+            mock_mediator.web_evidence_search.search_for_evidence = Mock(return_value={
+                'total_found': 1,
+                'brave_search': [
+                    {
+                        'title': 'Evidence 1',
+                        'url': 'https://example.com/1',
+                        'content': 'Content 1',
+                        'source_type': 'brave_search'
+                    }
+                ],
+                'common_crawl': []
+            })
+            mock_mediator.web_evidence_search.validate_evidence = Mock(return_value={
+                'valid': True,
+                'relevance_score': 0.8
+            })
+
+            mock_mediator.evidence_storage = Mock()
+            mock_mediator.evidence_storage.store_evidence = Mock(return_value={
+                'cid': 'QmTest123',
+                'size': 100,
+                'type': 'web_document',
+                'metadata': {},
+            })
+
+            mock_mediator.evidence_state = Mock()
+            mock_mediator.evidence_state.upsert_evidence_record = Mock(return_value={
+                'record_id': 7,
+                'created': False,
+                'reused': True,
+            })
+            mock_mediator.claim_support = Mock()
+            mock_mediator.claim_support.resolve_claim_element = Mock(return_value={
+                'claim_element_id': 'employment_discrimination:1',
+                'claim_element_text': 'Protected activity',
+            })
+            mock_mediator.claim_support.upsert_support_link = Mock(return_value={
+                'record_id': 11,
+                'created': False,
+                'reused': True,
+            })
+
+            hook = WebEvidenceIntegrationHook(mock_mediator)
+
+            result = hook.discover_and_store_evidence(
+                keywords=['employment', 'discrimination'],
+                user_id='testuser',
+                claim_type='employment discrimination',
+                min_relevance=0.5
+            )
+
+            assert result['stored'] == 1
+            assert result['stored_new'] == 0
+            assert result['reused'] == 1
+            assert result['support_links_added'] == 0
+            assert len(result['graph_projection']) == 2
+            assert result['graph_projection'][0]['claim_links'] == 1
+            assert mock_mediator.add_evidence_to_graphs.call_count == 2
+            assert result['support_links_reused'] == 1
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
     

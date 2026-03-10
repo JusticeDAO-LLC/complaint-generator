@@ -103,6 +103,56 @@ class TestClaimSupportHook:
             if os.path.exists(db_path):
                 os.unlink(db_path)
 
+    def test_add_support_link_deduplicates_same_reference(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+
+            first_id = hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_id='employment:1',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidence1',
+                support_label='Email thread',
+                source_table='evidence',
+            )
+            second_id = hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_id='employment:1',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidence1',
+                support_label='Email thread',
+                source_table='evidence',
+            )
+
+            links = hook.get_support_links('testuser', 'employment')
+            summary = hook.summarize_claim_support('testuser', 'employment')
+
+            assert first_id == second_id
+            assert len(links) == 1
+            assert summary['claims']['employment']['total_links'] == 1
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
     def test_add_support_link_resolves_matching_element(self):
         try:
             from mediator.claim_support_hooks import ClaimSupportHook

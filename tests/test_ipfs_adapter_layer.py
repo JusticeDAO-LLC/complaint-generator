@@ -136,5 +136,6 @@ def test_extract_graph_from_text_returns_normalized_shape():
     result = extract_graph_from_text('Example complaint text', source_id='artifact-1')
 
     assert result['source_id'] == 'artifact-1'
-    assert result['entities'] == []
-    assert result['relationships'] == []
+    assert result['entities'][0]['id'] == 'artifact-1'
+    assert any(entity['type'] == 'fact' for entity in result['entities'])
+    assert any(relationship['relation_type'] == 'has_fact' for relationship in result['relationships'])

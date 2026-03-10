@@ -320,9 +320,39 @@ class ClaimSupportHook:
         metadata: Optional[Dict[str, Any]] = None,
         complaint_id: Optional[str] = None,
     ) -> int:
+        result = self.upsert_support_link(
+            user_id=user_id,
+            claim_type=claim_type,
+            claim_element_id=claim_element_id,
+            claim_element_text=claim_element_text,
+            support_kind=support_kind,
+            support_ref=support_ref,
+            support_label=support_label,
+            source_table=source_table,
+            support_strength=support_strength,
+            metadata=metadata,
+            complaint_id=complaint_id,
+        )
+        return result['record_id']
+
+    def upsert_support_link(
+        self,
+        *,
+        user_id: str,
+        claim_type: str,
+        claim_element_id: Optional[str] = None,
+        claim_element_text: Optional[str] = None,
+        support_kind: str,
+        support_ref: str,
+        support_label: Optional[str] = None,
+        source_table: Optional[str] = None,
+        support_strength: float = 0.5,
+        metadata: Optional[Dict[str, Any]] = None,
+        complaint_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         if not DUCKDB_AVAILABLE:
             self.mediator.log('claim_support_unavailable')
-            return -1
+            return {'record_id': -1, 'created': False, 'reused': False}
 
         resolved_element = self.resolve_claim_element(
             user_id,
@@ -336,6 +366,49 @@ class ClaimSupportHook:
 
         try:
             conn = duckdb.connect(self.db_path)
+            if claim_element_id:
+                existing = conn.execute(
+                    """
+                    SELECT id
+                    FROM claim_support
+                    WHERE user_id = ?
+                      AND claim_type = ?
+                      AND support_kind = ?
+                      AND support_ref = ?
+                      AND COALESCE(claim_element_id, '') = COALESCE(?, '')
+                    ORDER BY id ASC
+                    LIMIT 1
+                    """,
+                    [user_id, claim_type, support_kind, support_ref, claim_element_id],
+                ).fetchone()
+            else:
+                existing = conn.execute(
+                    """
+                    SELECT id
+                    FROM claim_support
+                    WHERE user_id = ?
+                      AND claim_type = ?
+                      AND support_kind = ?
+                      AND support_ref = ?
+                      AND COALESCE(claim_element_text, '') = COALESCE(?, '')
+                    ORDER BY id ASC
+                    LIMIT 1
+                    """,
+                    [user_id, claim_type, support_kind, support_ref, claim_element_text],
+                ).fetchone()
+            if existing:
+                conn.close()
+                record_id = existing[0]
+                self.mediator.log(
+                    'claim_support_link_duplicate',
+                    record_id=record_id,
+                    claim_type=claim_type,
+                    claim_element_id=claim_element_id,
+                    support_kind=support_kind,
+                    support_ref=support_ref,
+                )
+                return {'record_id': record_id, 'created': False, 'reused': True}
+
             result = conn.execute(
                 """
                 INSERT INTO claim_support (
@@ -369,7 +442,7 @@ class ClaimSupportHook:
                 support_kind=support_kind,
                 support_ref=support_ref,
             )
-            return record_id
+            return {'record_id': record_id, 'created': True, 'reused': False}
         except Exception as exc:
             self.mediator.log('claim_support_link_error', error=str(exc))
             raise Exception(f'Failed to add claim support link: {str(exc)}')

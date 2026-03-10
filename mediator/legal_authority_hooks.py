@@ -490,6 +490,19 @@ class LegalAuthorityStorageHook:
                      user_id: str, complaint_id: Optional[str] = None,
                      claim_type: Optional[str] = None,
                      search_query: Optional[str] = None) -> int:
+        result = self.upsert_authority(
+            authority_data,
+            user_id,
+            complaint_id=complaint_id,
+            claim_type=claim_type,
+            search_query=search_query,
+        )
+        return result['record_id']
+
+    def upsert_authority(self, authority_data: Dict[str, Any],
+                        user_id: str, complaint_id: Optional[str] = None,
+                        claim_type: Optional[str] = None,
+                        search_query: Optional[str] = None) -> Dict[str, Any]:
         """
         Add a legal authority to the database.
         
@@ -501,11 +514,11 @@ class LegalAuthorityStorageHook:
             search_query: Original search query
             
         Returns:
-            Record ID of inserted authority
+            Dictionary describing whether the authority was newly inserted or reused.
         """
         if not DUCKDB_AVAILABLE:
             self.mediator.log('legal_authority_storage_unavailable')
-            return -1
+            return {'record_id': -1, 'created': False, 'reused': False}
         
         try:
             conn = duckdb.connect(self.db_path)
@@ -556,7 +569,7 @@ class LegalAuthorityStorageHook:
                     claim_type=claim_type,
                     claim_element_id=normalized_authority.get('claim_element_id'),
                 )
-                return existing_record_id
+                return {'record_id': existing_record_id, 'created': False, 'reused': True}
             
             result = conn.execute("""
                 INSERT INTO legal_authorities (
@@ -593,7 +606,7 @@ class LegalAuthorityStorageHook:
             self.mediator.log('legal_authority_added',
                 record_id=record_id, citation=authority_data.get('citation'))
             
-            return record_id
+            return {'record_id': record_id, 'created': True, 'reused': False}
             
         except Exception as e:
             self.mediator.log('legal_authority_storage_error', error=str(e))

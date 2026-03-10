@@ -49,6 +49,8 @@ class TestEvidenceStorageHook:
             assert result['metadata']['provenance']['content_hash']
             assert result['document_parse']['status'] in {'fallback', 'available-fallback', 'empty'}
             assert result['metadata']['document_parse_summary']['chunk_count'] >= 1
+            assert result['document_graph']['status'] in {'unavailable', 'available-fallback'}
+            assert result['metadata']['document_graph_summary']['entity_count'] >= 1
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
     
@@ -361,14 +363,19 @@ class TestEvidenceStateHook:
                 record_id = hook.add_evidence_record('testuser', evidence_info)
                 record = hook.get_evidence_by_cid('QmParsed123')
                 chunks = hook.get_evidence_chunks(record_id)
+                graph = hook.get_evidence_graph(record_id)
 
                 assert record_id > 0
                 assert record['parse_status'] == 'fallback'
                 assert record['chunk_count'] == 2
                 assert record['parsed_text_preview'].startswith('alpha beta')
                 assert record['parse_metadata']['filename'] == 'evidence.txt'
+                assert record['graph_entity_count'] >= 1
+                assert record['graph_relationship_count'] >= 1
                 assert len(chunks) == 2
                 assert chunks[0]['chunk_id'] == 'chunk-0'
+                assert any(entity['type'] == 'fact' for entity in graph['entities'])
+                assert any(rel['relation_type'] == 'has_fact' for rel in graph['relationships'])
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)
@@ -459,6 +466,8 @@ class TestMediatorEvidenceIntegration:
         """Test submitting evidence through mediator"""
         try:
             from mediator import Mediator
+            from complaint_phases import ComplaintPhase
+            from complaint_phases.knowledge_graph import Entity, KnowledgeGraph
             
             mock_backend = Mock()
             mock_backend.id = 'test-backend'
@@ -475,6 +484,16 @@ class TestMediatorEvidenceIntegration:
                     claim_support_db_path=claim_support_db_path,
                 )
                 mediator.state.username = 'testuser'
+                kg = KnowledgeGraph()
+                kg.add_entity(Entity(
+                    id='claim-1',
+                    type='claim',
+                    name='Breach of Contract Claim',
+                    attributes={'claim_type': 'breach of contract'},
+                    confidence=0.9,
+                    source='complaint',
+                ))
+                mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', kg)
                 mediator.claim_support.register_claim_requirements(
                     'testuser',
                     {'breach of contract': ['Valid contract', 'Breach']},
@@ -494,12 +513,24 @@ class TestMediatorEvidenceIntegration:
                 assert result['claim_element_id'] == 'breach_of_contract:1'
                 assert result['document_parse']['status'] in {'fallback', 'available-fallback', 'empty'}
                 assert result['metadata']['document_parse_summary']['chunk_count'] >= 1
+                assert result['document_graph']['status'] in {'unavailable', 'available-fallback'}
+                assert result['metadata']['document_graph_summary']['entity_count'] >= 1
+                assert result['graph_projection']['claim_links'] >= 1
                 
                 # Verify evidence can be retrieved
                 evidence_list = mediator.get_user_evidence('testuser')
                 assert len(evidence_list) > 0
                 assert evidence_list[0]['claim_element'] == 'Valid contract'
                 assert evidence_list[0]['chunk_count'] >= 1
+                assert evidence_list[0]['graph_entity_count'] >= 1
+
+                graph = mediator.get_evidence_graph(result['record_id'])
+                assert any(entity['type'] == 'claim_element' for entity in graph['entities'])
+                assert any(rel['relation_type'] == 'supports' for rel in graph['relationships'])
+
+                projected_kg = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
+                assert result['artifact_id'] in projected_kg.entities
+                assert any(rel.relation_type == 'supported_by' for rel in projected_kg.relationships.values())
 
                 element_view = mediator.get_claim_element_view(
                     claim_type='breach of contract',

@@ -372,9 +372,12 @@ class WebEvidenceIntegrationHook:
             'discovered': search_results['total_found'],
             'validated': 0,
             'stored': 0,
+            'stored_new': 0,
+            'reused': 0,
             'skipped': 0,
             'evidence_cids': [],
             'support_links_added': 0,
+            'support_links_reused': 0,
         }
         
         # Process each result
@@ -439,7 +442,7 @@ class WebEvidenceIntegrationHook:
                     )
                 
                 # Add to evidence state database
-                record_id = self.mediator.evidence_state.add_evidence_record(
+                record_result = self.mediator.evidence_state.upsert_evidence_record(
                     user_id=user_id,
                     evidence_info=storage_result,
                     description=f"Auto-discovered: {evidence_item.get('title', 'Web evidence')}",
@@ -447,9 +450,10 @@ class WebEvidenceIntegrationHook:
                     claim_element_id=resolved_element.get('claim_element_id') if claim_type and hasattr(self.mediator, 'claim_support') else None,
                     claim_element=resolved_element.get('claim_element_text') if claim_type and hasattr(self.mediator, 'claim_support') else None,
                 )
+                record_id = record_result['record_id']
 
                 if claim_type and hasattr(self.mediator, 'claim_support'):
-                    self.mediator.claim_support.add_support_link(
+                    support_link_result = self.mediator.claim_support.upsert_support_link(
                         user_id=user_id,
                         complaint_id=getattr(self.mediator.state, 'complaint_id', None),
                         claim_type=claim_type,
@@ -468,10 +472,30 @@ class WebEvidenceIntegrationHook:
                             'auto_discovered': True,
                         },
                     )
-                    stored_evidence['support_links_added'] += 1
+                    stored_evidence['support_links_added'] += 1 if support_link_result.get('created') else 0
+                    stored_evidence['support_links_reused'] += 1 if support_link_result.get('reused') else 0
                 
                 stored_evidence['stored'] += 1
+                stored_evidence['stored_new'] += 1 if record_result.get('created') else 0
+                stored_evidence['reused'] += 1 if record_result.get('reused') else 0
                 stored_evidence['evidence_cids'].append(storage_result['cid'])
+
+                current_kg = None
+                if hasattr(self.mediator, 'phase_manager'):
+                    from complaint_phases import ComplaintPhase
+                    current_kg = self.mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
+                if hasattr(self.mediator, 'add_evidence_to_graphs') and current_kg:
+                    graph_result = self.mediator.add_evidence_to_graphs({
+                        **storage_result,
+                        'record_id': record_id,
+                        'name': evidence_item.get('title') or evidence_item.get('url') or 'Web evidence',
+                        'description': evidence_item.get('description') or evidence_item.get('content') or '',
+                        'claim_type': claim_type,
+                        'claim_element_id': resolved_element.get('claim_element_id'),
+                        'claim_element': resolved_element.get('claim_element_text'),
+                        'confidence': float(validation['relevance_score']),
+                    })
+                    stored_evidence.setdefault('graph_projection', []).append(graph_result.get('graph_projection', {}))
                 
                 self.mediator.log('web_evidence_stored',
                     cid=storage_result['cid'],
