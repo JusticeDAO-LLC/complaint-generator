@@ -45,6 +45,8 @@ class TestLegalAuthoritySearchHook:
                 results = hook.search_us_code('employment discrimination', max_results=5)
                 
                 assert isinstance(results, list)
+                if results:
+                    assert results[0]['source'] == 'us_code'
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
     
@@ -156,6 +158,7 @@ class TestLegalAuthorityStorageHook:
                 assert isinstance(results, list)
                 assert len(results) > 0
                 assert results[0]['citation'] == '29 U.S.C. § 2601'
+                assert 'provenance' in results[0]
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)
@@ -318,6 +321,12 @@ class TestMediatorLegalAuthorityIntegration:
                 # Store
                 stored = mediator.store_legal_authorities(results, claim_type='civil rights')
                 assert 'statutes' in stored
+
+                support_links = mediator.get_claim_support(claim_type='civil rights')
+                assert len(support_links) > 0
+
+                support_summary = mediator.summarize_claim_support(claim_type='civil rights')
+                assert support_summary['claims']['civil rights']['support_by_kind']['authority'] > 0
                 
                 # Retrieve
                 authorities = mediator.get_legal_authorities(claim_type='civil rights')

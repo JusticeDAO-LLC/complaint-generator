@@ -45,6 +45,8 @@ class TestEvidenceStorageHook:
             assert result['size'] == len(test_data)
             assert result['type'] == evidence_type
             assert 'timestamp' in result
+            assert 'provenance' in result['metadata']
+            assert result['metadata']['provenance']['content_hash']
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
     
@@ -159,6 +161,7 @@ class TestEvidenceStateHook:
                 assert isinstance(results, list)
                 assert len(results) > 0
                 assert results[0]['cid'] == 'QmTest456'
+                assert 'provenance' in results[0]
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)
@@ -197,6 +200,7 @@ class TestEvidenceStateHook:
                 assert result is not None
                 assert result['cid'] == 'QmTest789'
                 assert result['type'] == 'video'
+                assert 'provenance' in result
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)

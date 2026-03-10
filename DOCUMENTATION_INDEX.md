@@ -76,6 +76,8 @@ Complete index of all documentation in the complaint-generator repository.
 ### IPFS Integration
 - [docs/IPFS_DATASETS_INTEGRATION.md](docs/IPFS_DATASETS_INTEGRATION.md) - IPFS integration guide
 - [docs/IPFS_DATASETS_PY_INTEGRATION.md](docs/IPFS_DATASETS_PY_INTEGRATION.md) - Python IPFS integration
+- [docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md](docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md) - Comprehensive integration roadmap for legal scrapers, search, graph reasoning, theorem validation, and archival tooling
+- [docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md](docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md) - Validated module map and adapter targets for the checked out `ipfs_datasets_py` submodule
 
 ### DEI Analysis (HACC)
 - [docs/HACC_INTEGRATION.md](docs/HACC_INTEGRATION.md) - DEI policy analysis

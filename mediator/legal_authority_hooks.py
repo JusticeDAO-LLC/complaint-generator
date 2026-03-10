@@ -1,43 +1,23 @@
-"""
-Legal Authority Retrieval Hooks for Mediator
+"""Legal authority retrieval hooks for mediator."""
 
-This module provides hooks for:
-1. Searching for relevant legal authorities using web archiving and legal scrapers
-2. Storing legal authorities in DuckDB
-3. Retrieving and analyzing stored legal authorities
-"""
-
-import sys
 import os
 import json
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pathlib import Path
 
-# Add ipfs_datasets_py to path if available
-ipfs_datasets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ipfs_datasets_py')
-if os.path.exists(ipfs_datasets_path) and ipfs_datasets_path not in sys.path:
-    sys.path.insert(0, ipfs_datasets_path)
-
-try:
-    from ipfs_datasets_py.legal_scrapers import (
-        search_us_code,
-        search_federal_register,
-        search_recap_documents
-    )
-    LEGAL_SCRAPERS_AVAILABLE = True
-except ImportError:
-    LEGAL_SCRAPERS_AVAILABLE = False
-    search_us_code = None
-    search_federal_register = None
-    search_recap_documents = None
-
-try:
-    from ipfs_datasets_py.web_archiving import CommonCrawlSearchEngine
-    WEB_ARCHIVING_AVAILABLE = True
-except ImportError:
-    WEB_ARCHIVING_AVAILABLE = False
-    CommonCrawlSearchEngine = None
+from integrations.ipfs_datasets.provenance import build_provenance
+from integrations.ipfs_datasets.types import CaseAuthority
+from integrations.ipfs_datasets.legal import (
+    LEGAL_SCRAPERS_AVAILABLE,
+    search_federal_register,
+    search_recap_documents,
+    search_us_code,
+)
+from integrations.ipfs_datasets.search import (
+    COMMON_CRAWL_AVAILABLE as WEB_ARCHIVING_AVAILABLE,
+    CommonCrawlSearchEngine,
+)
 
 try:
     import duckdb
@@ -366,6 +346,13 @@ class LegalAuthorityStorageHook:
                     search_query VARCHAR
                 )
             """)
+
+            for statement in [
+                "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS jurisdiction VARCHAR",
+                "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS source_system VARCHAR",
+                "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS provenance JSON",
+            ]:
+                conn.execute(statement)
             
             # Create indexes
             conn.execute("""
@@ -413,28 +400,52 @@ class LegalAuthorityStorageHook:
         
         try:
             conn = duckdb.connect(self.db_path)
+            provenance = build_provenance(
+                source_url=str(authority_data.get('url', '')),
+                acquisition_method='legal_search',
+                source_type=str(authority_data.get('type', 'unknown')),
+                acquired_at=datetime.now().isoformat(),
+                source_system=str(authority_data.get('source', 'unknown')),
+                jurisdiction=str(authority_data.get('jurisdiction', '')),
+            )
+            authority = CaseAuthority(
+                authority_type=authority_data.get('type', 'unknown'),
+                source=authority_data.get('source', 'unknown'),
+                citation=authority_data.get('citation') or '',
+                title=authority_data.get('title') or '',
+                content=authority_data.get('content') or authority_data.get('text') or '',
+                url=authority_data.get('url') or '',
+                relevance_score=authority_data.get('relevance_score', 0.5),
+                metadata=authority_data.get('metadata', {}) if isinstance(authority_data.get('metadata', {}), dict) else {},
+                provenance=provenance,
+            )
+            normalized_authority = authority.as_dict()
             
             result = conn.execute("""
                 INSERT INTO legal_authorities (
                     user_id, complaint_id, claim_type, authority_type,
                     source, citation, title, content, url, metadata,
-                    relevance_score, search_query
+                    relevance_score, search_query, jurisdiction,
+                    source_system, provenance
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id
             """, [
                 user_id,
                 complaint_id,
                 claim_type,
-                authority_data.get('type', 'unknown'),
-                authority_data.get('source', 'unknown'),
-                authority_data.get('citation'),
-                authority_data.get('title'),
-                authority_data.get('content') or authority_data.get('text'),
-                authority_data.get('url'),
-                json.dumps(authority_data.get('metadata', {})),
-                authority_data.get('relevance_score', 0.5),
-                search_query
+                normalized_authority.get('type', 'unknown'),
+                normalized_authority.get('source', 'unknown'),
+                normalized_authority.get('citation'),
+                normalized_authority.get('title'),
+                normalized_authority.get('content'),
+                normalized_authority.get('url'),
+                json.dumps(normalized_authority.get('metadata', {})),
+                normalized_authority.get('relevance_score', 0.5),
+                search_query,
+                provenance.jurisdiction,
+                provenance.source_system,
+                json.dumps(provenance.as_dict()),
             ]).fetchone()
             
             record_id = result[0]
@@ -498,7 +509,8 @@ class LegalAuthorityStorageHook:
             
             results = conn.execute("""
                 SELECT id, authority_type, source, citation, title,
-                       content, url, metadata, relevance_score, timestamp
+                      content, url, metadata, relevance_score, timestamp,
+                      jurisdiction, source_system, provenance
                 FROM legal_authorities
                 WHERE user_id = ? AND claim_type = ?
                 ORDER BY relevance_score DESC, timestamp DESC
@@ -518,7 +530,10 @@ class LegalAuthorityStorageHook:
                     'url': row[6],
                     'metadata': json.loads(row[7]) if row[7] else {},
                     'relevance_score': row[8],
-                    'timestamp': row[9]
+                    'timestamp': row[9],
+                    'jurisdiction': row[10],
+                    'source_system': row[11],
+                    'provenance': json.loads(row[12]) if row[12] else {},
                 })
             
             return authorities
@@ -545,7 +560,8 @@ class LegalAuthorityStorageHook:
             
             results = conn.execute("""
                 SELECT id, claim_type, authority_type, source, citation,
-                       title, content, url, metadata, relevance_score, timestamp
+                      title, content, url, metadata, relevance_score, timestamp,
+                      jurisdiction, source_system, provenance
                 FROM legal_authorities
                 WHERE user_id = ?
                 ORDER BY timestamp DESC
@@ -566,7 +582,10 @@ class LegalAuthorityStorageHook:
                     'url': row[7],
                     'metadata': json.loads(row[8]) if row[8] else {},
                     'relevance_score': row[9],
-                    'timestamp': row[10]
+                    'timestamp': row[10],
+                    'jurisdiction': row[11],
+                    'source_system': row[12],
+                    'provenance': json.loads(row[13]) if row[13] else {},
                 })
             
             return authorities

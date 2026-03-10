@@ -1,37 +1,18 @@
-"""
-Web Evidence Discovery Hooks for Mediator
+"""Web evidence discovery hooks for mediator."""
 
-This module provides hooks for automatically discovering evidence using:
-1. Common Crawl Search Engine - Search archived web pages
-2. Brave Search API - Search current web content
-3. Web Archive tools - Find historical evidence
-"""
-
-import sys
 import os
 import json
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pathlib import Path
 
-# Add ipfs_datasets_py to path if available
-ipfs_datasets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ipfs_datasets_py')
-if os.path.exists(ipfs_datasets_path) and ipfs_datasets_path not in sys.path:
-    sys.path.insert(0, ipfs_datasets_path)
-
-try:
-    from ipfs_datasets_py.web_archiving import CommonCrawlSearchEngine
-    COMMON_CRAWL_AVAILABLE = True
-except ImportError:
-    COMMON_CRAWL_AVAILABLE = False
-    CommonCrawlSearchEngine = None
-
-try:
-    from ipfs_datasets_py.web_archiving.brave_search_client import BraveSearchClient
-    BRAVE_SEARCH_AVAILABLE = True
-except ImportError:
-    BRAVE_SEARCH_AVAILABLE = False
-    BraveSearchClient = None
+from integrations.ipfs_datasets.search import (
+    BRAVE_SEARCH_AVAILABLE,
+    COMMON_CRAWL_AVAILABLE,
+    BraveSearchAPI,
+    CommonCrawlSearchEngine,
+    search_brave_web,
+)
 
 
 class WebEvidenceSearchHook:
@@ -69,7 +50,7 @@ class WebEvidenceSearchHook:
                 # Check for API key
                 api_key = os.environ.get('BRAVE_SEARCH_API_KEY')
                 if api_key:
-                    self.brave_search = BraveSearchClient(api_key=api_key)
+                    self.brave_search = BraveSearchAPI(api_key=api_key) if BraveSearchAPI else None
                     self.mediator.log('web_evidence_init',
                         message='Brave Search initialized')
                 else:
@@ -161,32 +142,33 @@ class WebEvidenceSearchHook:
             return []
         
         try:
-            # Brave Search expects count parameter
-            search_params = {
-                'count': min(max_results, 20)  # Brave has limits
-            }
-            
-            if freshness:
-                search_params['freshness'] = freshness
-            
-            results = self.brave_search.web_search(query, **search_params)
-            
-            # Extract and format results
-            formatted_results = []
-            if results and 'web' in results and 'results' in results['web']:
-                for item in results['web']['results'][:max_results]:
-                    formatted_results.append({
-                        'title': item.get('title', ''),
-                        'url': item.get('url', ''),
-                        'description': item.get('description', ''),
-                        'content': item.get('description', ''),  # Use description as content preview
-                        'source_type': 'brave_search',
-                        'discovered_at': datetime.now().isoformat(),
-                        'metadata': {
-                            'age': item.get('age', ''),
-                            'language': item.get('language', '')
-                        }
-                    })
+            if hasattr(self.brave_search, 'web_search'):
+                search_params = {'count': min(max_results, 20)}
+                if freshness:
+                    search_params['freshness'] = freshness
+                results = self.brave_search.web_search(query, **search_params)
+                formatted_results = []
+                if results and 'web' in results and 'results' in results['web']:
+                    for item in results['web']['results'][:max_results]:
+                        formatted_results.append({
+                            'title': item.get('title', ''),
+                            'url': item.get('url', ''),
+                            'description': item.get('description', ''),
+                            'content': item.get('description', ''),
+                            'source_type': 'brave_search',
+                            'discovered_at': datetime.now().isoformat(),
+                            'metadata': {
+                                'age': item.get('age', ''),
+                                'language': item.get('language', '')
+                            }
+                        })
+            else:
+                formatted_results = search_brave_web(
+                    query=query,
+                    max_results=max_results,
+                    freshness=freshness,
+                    api_key=getattr(self.brave_search, 'api_key', None),
+                )
             
             self.mediator.log('web_evidence_search',
                 search_type='brave_search', query=query, found=len(formatted_results))
@@ -359,7 +341,8 @@ class WebEvidenceIntegrationHook:
             'validated': 0,
             'stored': 0,
             'skipped': 0,
-            'evidence_cids': []
+            'evidence_cids': [],
+            'support_links_added': 0,
         }
         
         # Process each result
@@ -402,6 +385,8 @@ class WebEvidenceIntegrationHook:
                     metadata={
                         'source_type': evidence_item.get('source_type'),
                         'source_url': evidence_item.get('url'),
+                        'acquisition_method': 'web_discovery',
+                        'source_system': 'ipfs_datasets_py',
                         'auto_discovered': True,
                         'relevance_score': validation['relevance_score'],
                         'keywords': keywords
@@ -415,6 +400,26 @@ class WebEvidenceIntegrationHook:
                     description=f"Auto-discovered: {evidence_item.get('title', 'Web evidence')}",
                     claim_type=claim_type
                 )
+
+                if claim_type and hasattr(self.mediator, 'claim_support'):
+                    self.mediator.claim_support.add_support_link(
+                        user_id=user_id,
+                        complaint_id=getattr(self.mediator.state, 'complaint_id', None),
+                        claim_type=claim_type,
+                        support_kind='evidence',
+                        support_ref=storage_result['cid'],
+                        support_label=evidence_item.get('title') or evidence_item.get('url') or 'Web evidence',
+                        source_table='evidence',
+                        support_strength=float(validation['relevance_score']),
+                        metadata={
+                            'record_id': record_id,
+                            'source_url': evidence_item.get('url'),
+                            'source_type': evidence_item.get('source_type', 'web'),
+                            'keywords': keywords,
+                            'auto_discovered': True,
+                        },
+                    )
+                    stored_evidence['support_links_added'] += 1
                 
                 stored_evidence['stored'] += 1
                 stored_evidence['evidence_cids'].append(storage_result['cid'])
@@ -459,7 +464,8 @@ class WebEvidenceIntegrationHook:
         results = {
             'claim_types': classification.get('claim_types', []),
             'evidence_discovered': {},
-            'evidence_stored': {}
+            'evidence_stored': {},
+            'support_summary': {},
         }
         
         # Discover evidence for each claim type
@@ -479,6 +485,16 @@ class WebEvidenceIntegrationHook:
             
             results['evidence_discovered'][claim_type] = discovery_result['discovered']
             results['evidence_stored'][claim_type] = discovery_result['stored']
+            if hasattr(self.mediator, 'summarize_claim_support'):
+                support_summary = self.mediator.summarize_claim_support(user_id, claim_type)
+                results['support_summary'][claim_type] = support_summary.get('claims', {}).get(
+                    claim_type,
+                    {
+                        'total_links': 0,
+                        'support_by_kind': {},
+                        'links': [],
+                    },
+                )
         
         self.mediator.log('auto_evidence_discovery_complete', results=results)
         

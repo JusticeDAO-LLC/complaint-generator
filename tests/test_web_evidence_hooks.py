@@ -216,19 +216,24 @@ class TestWebEvidenceIntegrationHook:
             
             mock_mediator.evidence_state = Mock()
             mock_mediator.evidence_state.add_evidence_record = Mock(return_value=1)
+            mock_mediator.claim_support = Mock()
+            mock_mediator.claim_support.add_support_link = Mock(return_value=1)
             
             hook = WebEvidenceIntegrationHook(mock_mediator)
             
             result = hook.discover_and_store_evidence(
                 keywords=['employment', 'discrimination'],
                 user_id='testuser',
+                claim_type='employment discrimination',
                 min_relevance=0.5
             )
             
             assert isinstance(result, dict)
             assert 'discovered' in result
             assert 'stored' in result
+            assert 'support_links_added' in result
             assert result['discovered'] == 2
+            assert result['support_links_added'] == 2
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
     
@@ -240,6 +245,21 @@ class TestWebEvidenceIntegrationHook:
             mock_mediator = Mock()
             mock_mediator.log = Mock()
             mock_mediator.query_backend = Mock(return_value="discrimination\nemployment\nwrongful termination")
+            mock_mediator.summarize_claim_support = Mock(return_value={
+                'claims': {
+                    'employment discrimination': {
+                        'total_links': 1,
+                        'support_by_kind': {'evidence': 1},
+                        'links': [],
+                    }
+                }
+            })
+            mock_mediator.state = Mock()
+            mock_mediator.state.username = 'testuser'
+            mock_mediator.state.complaint = 'test complaint'
+            mock_mediator.state.legal_classification = {
+                'claim_types': ['employment discrimination']
+            }
             
             hook = WebEvidenceIntegrationHook(mock_mediator)
             
@@ -247,6 +267,43 @@ class TestWebEvidenceIntegrationHook:
             
             assert isinstance(keywords, list)
             assert len(keywords) > 0
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_discover_evidence_for_case_includes_support_summary(self):
+        """Test auto-discovery returns per-claim support summaries."""
+        try:
+            from mediator.web_evidence_hooks import WebEvidenceIntegrationHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.state = Mock()
+            mock_mediator.state.username = 'testuser'
+            mock_mediator.state.complaint = 'test complaint'
+            mock_mediator.state.legal_classification = {
+                'claim_types': ['employment discrimination']
+            }
+            mock_mediator.summarize_claim_support = Mock(return_value={
+                'claims': {
+                    'employment discrimination': {
+                        'total_links': 2,
+                        'support_by_kind': {'evidence': 2},
+                        'links': [],
+                    }
+                }
+            })
+
+            hook = WebEvidenceIntegrationHook(mock_mediator)
+            hook._generate_search_keywords = Mock(return_value=['employment discrimination'])
+            hook.discover_and_store_evidence = Mock(return_value={
+                'discovered': 3,
+                'stored': 2,
+                'support_links_added': 2,
+            })
+
+            result = hook.discover_evidence_for_case(user_id='testuser')
+
+            assert result['support_summary']['employment discrimination']['total_links'] == 2
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 

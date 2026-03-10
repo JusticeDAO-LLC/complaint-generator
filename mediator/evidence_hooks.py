@@ -1,13 +1,5 @@
-"""
-Evidence Management Hooks for Mediator
+"""Evidence management hooks for mediator."""
 
-This module provides hooks for:
-1. Storing evidence in IPFS via ipfs_backend_router
-2. Managing evidence state in DuckDB
-3. Retrieving and analyzing evidence by CID (Content ID)
-"""
-
-import sys
 import os
 import json
 import hashlib
@@ -15,19 +7,19 @@ from typing import Dict, List, Optional, Any, BinaryIO
 from datetime import datetime
 from pathlib import Path
 
-# Add ipfs_datasets_py to path if available
-ipfs_datasets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ipfs_datasets_py')
-if os.path.exists(ipfs_datasets_path) and ipfs_datasets_path not in sys.path:
-    sys.path.insert(0, ipfs_datasets_path)
-
-try:
-    from ipfs_datasets_py.ipfs_backend_router import add_bytes, cat, pin, get_ipfs_backend
-    IPFS_AVAILABLE = True
-except ImportError:
-    IPFS_AVAILABLE = False
-    add_bytes = None
-    cat = None
-    pin = None
+from integrations.ipfs_datasets.provenance import (
+    build_provenance,
+    merge_metadata_with_provenance,
+    stable_content_hash,
+)
+from integrations.ipfs_datasets.types import CaseArtifact
+from integrations.ipfs_datasets.storage import (
+    IPFS_AVAILABLE,
+    add_bytes,
+    cat,
+    get_ipfs_backend,
+    pin,
+)
 
 try:
     import duckdb
@@ -74,6 +66,17 @@ class EvidenceStorageHook:
             - metadata: Any additional metadata
         """
         try:
+            content_hash = stable_content_hash(data)
+            provenance = build_provenance(
+                source_url=str((metadata or {}).get('source_url', '')),
+                acquisition_method=str((metadata or {}).get('acquisition_method', 'submitted')),
+                source_type=str((metadata or {}).get('source_type', evidence_type)),
+                acquired_at=datetime.now().isoformat(),
+                content_hash=content_hash,
+                source_system=str((metadata or {}).get('source_system', 'complaint_generator')),
+                jurisdiction=str((metadata or {}).get('jurisdiction', '')),
+            )
+            normalized_metadata = merge_metadata_with_provenance(metadata, provenance)
             if IPFS_AVAILABLE:
                 # Store in IPFS
                 cid = add_bytes(data, pin=True)
@@ -85,15 +88,16 @@ class EvidenceStorageHook:
                 self.mediator.log('evidence_simulated', 
                     cid=cid, size=len(data), type=evidence_type)
             
-            result = {
-                'cid': cid,
-                'size': len(data),
-                'type': evidence_type,
-                'timestamp': datetime.now().isoformat(),
-                'metadata': metadata or {},
-                'ipfs_available': IPFS_AVAILABLE
-            }
-            
+            artifact = CaseArtifact(
+                cid=cid,
+                artifact_type=evidence_type,
+                size=len(data),
+                timestamp=datetime.now().isoformat(),
+                metadata=normalized_metadata,
+                provenance=provenance,
+            )
+            result = artifact.as_dict()
+            result['ipfs_available'] = IPFS_AVAILABLE
             return result
             
         except Exception as e:
@@ -227,6 +231,14 @@ class EvidenceStateHook:
                     description TEXT
                 )
             """)
+
+            for statement in [
+                "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS content_hash VARCHAR",
+                "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS source_url VARCHAR",
+                "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS acquisition_method VARCHAR",
+                "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS provenance JSON",
+            ]:
+                conn.execute(statement)
             
             # Create index on CID for fast lookups
             conn.execute("""
@@ -279,9 +291,10 @@ class EvidenceStateHook:
             result = conn.execute("""
                 INSERT INTO evidence (
                     user_id, username, evidence_cid, evidence_type, 
-                    evidence_size, metadata, complaint_id, claim_type, description
+                    evidence_size, metadata, complaint_id, claim_type, description,
+                    content_hash, source_url, acquisition_method, provenance
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id
             """, [
                 user_id,
@@ -292,7 +305,11 @@ class EvidenceStateHook:
                 json.dumps(evidence_info.get('metadata', {})),
                 complaint_id,
                 claim_type,
-                description
+                description,
+                evidence_info.get('metadata', {}).get('provenance', {}).get('content_hash'),
+                evidence_info.get('metadata', {}).get('provenance', {}).get('source_url'),
+                evidence_info.get('metadata', {}).get('provenance', {}).get('acquisition_method'),
+                json.dumps(evidence_info.get('metadata', {}).get('provenance', {})),
             ]).fetchone()
             
             record_id = result[0]
@@ -325,8 +342,9 @@ class EvidenceStateHook:
             
             results = conn.execute("""
                 SELECT id, user_id, username, evidence_cid, evidence_type,
-                       evidence_size, timestamp, metadata, complaint_id,
-                       claim_type, description
+                      evidence_size, timestamp, metadata, complaint_id,
+                      claim_type, description, content_hash, source_url,
+                      acquisition_method, provenance
                 FROM evidence
                 WHERE user_id = ?
                 ORDER BY timestamp DESC
@@ -347,7 +365,11 @@ class EvidenceStateHook:
                     'metadata': json.loads(row[7]) if row[7] else {},
                     'complaint_id': row[8],
                     'claim_type': row[9],
-                    'description': row[10]
+                    'description': row[10],
+                    'content_hash': row[11],
+                    'source_url': row[12],
+                    'acquisition_method': row[13],
+                    'provenance': json.loads(row[14]) if row[14] else {},
                 })
             
             return evidence_list
@@ -374,8 +396,9 @@ class EvidenceStateHook:
             
             result = conn.execute("""
                 SELECT id, user_id, username, evidence_cid, evidence_type,
-                       evidence_size, timestamp, metadata, complaint_id,
-                       claim_type, description
+                      evidence_size, timestamp, metadata, complaint_id,
+                      claim_type, description, content_hash, source_url,
+                      acquisition_method, provenance
                 FROM evidence
                 WHERE evidence_cid = ?
             """, [cid]).fetchone()
@@ -394,7 +417,11 @@ class EvidenceStateHook:
                     'metadata': json.loads(result[7]) if result[7] else {},
                     'complaint_id': result[8],
                     'claim_type': result[9],
-                    'description': result[10]
+                    'description': result[10],
+                    'content_hash': result[11],
+                    'source_url': result[12],
+                    'acquisition_method': result[13],
+                    'provenance': json.loads(result[14]) if result[14] else {},
                 }
             
             return None

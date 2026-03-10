@@ -25,6 +25,8 @@ from .web_evidence_hooks import (
 	WebEvidenceSearchHook,
 	WebEvidenceIntegrationHook
 )
+from .claim_support_hooks import ClaimSupportHook
+from integrations.ipfs_datasets.capabilities import get_ipfs_datasets_capabilities
 
 # Import three-phase complaint processing
 from complaint_phases import (
@@ -40,10 +42,17 @@ from complaint_phases import (
 
 
 class Mediator:
-	def __init__(self, backends, evidence_db_path=None, legal_authority_db_path=None):
+	def __init__(self, backends, evidence_db_path=None, legal_authority_db_path=None, claim_support_db_path=None):
 		self.backends = backends
 		# Initialize state early because hooks may log during construction.
 		self.state = State()
+		self.log(
+			'ipfs_datasets_capabilities',
+			capabilities={
+				name: status.as_dict()
+				for name, status in get_ipfs_datasets_capabilities().items()
+			},
+		)
 		self.inquiries = Inquiries(self)
 		self.complaint = Complaint(self)
 		
@@ -57,6 +66,7 @@ class Mediator:
 		self.evidence_storage = EvidenceStorageHook(self)
 		self.evidence_state = EvidenceStateHook(self, db_path=evidence_db_path)
 		self.evidence_analysis = EvidenceAnalysisHook(self)
+		self.claim_support = ClaimSupportHook(self, db_path=claim_support_db_path)
 		
 		# Initialize legal authority hooks
 		self.legal_authority_search = LegalAuthoritySearchHook(self)
@@ -232,6 +242,23 @@ class Mediator:
 			'description': description,
 			'claim_type': claim_type
 		}
+
+		if claim_type:
+			self.claim_support.add_support_link(
+				user_id=user_id,
+				complaint_id=complaint_id,
+				claim_type=claim_type,
+				support_kind='evidence',
+				support_ref=evidence_info['cid'],
+				support_label=description or evidence_type,
+				source_table='evidence',
+				support_strength=float(result.get('metadata', {}).get('relevance_score', 0.7)),
+				metadata={
+					'record_id': record_id,
+					'evidence_type': evidence_type,
+					'provenance': result.get('metadata', {}).get('provenance', {}),
+				},
+			)
 		
 		self.log('evidence_submitted', cid=evidence_info['cid'], record_id=record_id)
 		
@@ -381,6 +408,25 @@ class Mediator:
 					auth_list, user_id, complaint_id, claim_type, search_query
 				)
 				stored_counts[auth_type] = len(record_ids)
+				if claim_type:
+					for auth, record_id in zip(auth_list, record_ids):
+						support_ref = auth.get('citation') or auth.get('url') or str(record_id)
+						self.claim_support.add_support_link(
+							user_id=user_id,
+							complaint_id=complaint_id,
+							claim_type=claim_type,
+							support_kind='authority',
+							support_ref=support_ref,
+							support_label=auth.get('title') or auth.get('citation') or auth_type,
+							source_table='legal_authorities',
+							support_strength=float(auth.get('relevance_score', 0.6)),
+							metadata={
+								'record_id': record_id,
+								'authority_type': auth.get('type'),
+								'source': auth.get('source'),
+								'provenance': auth.get('provenance', auth.get('metadata', {}).get('provenance', {})),
+							},
+						)
 				
 				self.log('legal_authorities_stored',
 					type=auth_type, count=len(record_ids), claim_type=claim_type)
@@ -421,6 +467,18 @@ class Mediator:
 			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
 		
 		return self.legal_authority_analysis.analyze_authorities_for_claim(user_id, claim_type)
+
+	def get_claim_support(self, user_id: str = None, claim_type: str = None):
+		"""Get persisted claim-support links."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		return self.claim_support.get_support_links(user_id, claim_type)
+
+	def summarize_claim_support(self, user_id: str = None, claim_type: str = None):
+		"""Summarize persisted evidence and authority support by claim type."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		return self.claim_support.summarize_claim_support(user_id, claim_type)
 	
 	def research_case_automatically(self, user_id: str = None):
 		"""
@@ -450,7 +508,8 @@ class Mediator:
 		results = {
 			'claim_types': classification.get('claim_types', []),
 			'authorities_found': {},
-			'authorities_stored': {}
+			'authorities_stored': {},
+			'support_summary': {}
 		}
 		
 		# Search for authorities for each claim type
@@ -476,6 +535,15 @@ class Mediator:
 				k: len(v) for k, v in search_results.items()
 			}
 			results['authorities_stored'][claim_type] = stored_counts
+			support_summary = self.summarize_claim_support(user_id, claim_type)
+			results['support_summary'][claim_type] = support_summary.get('claims', {}).get(
+				claim_type,
+				{
+					'total_links': 0,
+					'support_by_kind': {},
+					'links': [],
+				},
+			)
 		
 		self.log('auto_research_complete', results=results)
 		

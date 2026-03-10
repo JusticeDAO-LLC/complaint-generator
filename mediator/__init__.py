@@ -19,6 +19,7 @@ from .web_evidence_hooks import (
     WebEvidenceSearchHook,
     WebEvidenceIntegrationHook
 )
+from .claim_support_hooks import ClaimSupportHook
 from .legal_corpus_hooks import (
     LegalCorpusRAGHook
 )
