@@ -10,25 +10,16 @@ This provides the best of both approaches:
 - Combined relevance scoring
 """
 
-import sys
-import os
 import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
+from integrations.ipfs_datasets.vector_store import (
+    EMBEDDINGS_AVAILABLE,
+    EmbeddingsRouter,
+)
+
 logger = logging.getLogger(__name__)
-
-# Add ipfs_datasets_py to path if available
-ipfs_datasets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ipfs_datasets_py')
-if os.path.exists(ipfs_datasets_path) and ipfs_datasets_path not in sys.path:
-    sys.path.insert(0, ipfs_datasets_path)
-
-try:
-    from ipfs_datasets_py.embeddings_router import EmbeddingsRouter
-    EMBEDDINGS_AVAILABLE = True
-except ImportError:
-    EMBEDDINGS_AVAILABLE = False
-    EmbeddingsRouter = None
 
 from .keywords import get_keywords, get_type_specific_keywords
 from .legal_patterns import LegalPatternExtractor

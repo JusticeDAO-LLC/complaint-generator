@@ -393,6 +393,19 @@ class TestMediatorEvidenceIntegration:
                 )
                 assert overview['claims']['breach of contract']['partially_supported_count'] == 1
                 assert overview['claims']['breach of contract']['missing_count'] == 1
+
+                mediator.discover_web_evidence = Mock(return_value={
+                    'discovered': 2,
+                    'stored': 1,
+                    'support_links_added': 1,
+                })
+                follow_up_execution = mediator.execute_claim_follow_up_plan(
+                    claim_type='breach of contract',
+                    user_id='testuser',
+                    support_kind='evidence',
+                    max_tasks_per_claim=2,
+                )
+                assert follow_up_execution['claims']['breach of contract']['task_count'] == 2
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)

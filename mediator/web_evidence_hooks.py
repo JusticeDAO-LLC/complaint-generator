@@ -459,7 +459,8 @@ class WebEvidenceIntegrationHook:
         
         return stored_evidence
     
-    def discover_evidence_for_case(self, user_id: Optional[str] = None) -> Dict[str, Any]:
+    def discover_evidence_for_case(self, user_id: Optional[str] = None,
+                                  execute_follow_up: bool = False) -> Dict[str, Any]:
         """
         Automatically discover evidence for all claims in the case.
         
@@ -487,6 +488,7 @@ class WebEvidenceIntegrationHook:
             'support_summary': {},
             'claim_overview': {},
             'follow_up_plan': {},
+            'follow_up_execution': {},
         }
         
         # Discover evidence for each claim type
@@ -534,6 +536,19 @@ class WebEvidenceIntegrationHook:
             if hasattr(self.mediator, 'get_claim_follow_up_plan'):
                 follow_up_plan = self.mediator.get_claim_follow_up_plan(claim_type=claim_type, user_id=user_id)
                 results['follow_up_plan'][claim_type] = follow_up_plan.get('claims', {}).get(
+                    claim_type,
+                    {
+                        'task_count': 0,
+                        'tasks': [],
+                    },
+                )
+            if execute_follow_up and hasattr(self.mediator, 'execute_claim_follow_up_plan'):
+                follow_up_execution = self.mediator.execute_claim_follow_up_plan(
+                    claim_type=claim_type,
+                    user_id=user_id,
+                    support_kind='evidence',
+                )
+                results['follow_up_execution'][claim_type] = follow_up_execution.get('claims', {}).get(
                     claim_type,
                     {
                         'task_count': 0,

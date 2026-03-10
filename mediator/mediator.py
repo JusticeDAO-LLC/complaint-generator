@@ -1,4 +1,5 @@
 from time import time
+import re
 from typing import List, Optional, Dict, Any
 from .strings import user_prompts
 from .state import State
@@ -599,6 +600,93 @@ class Mediator:
 			}
 		return plan
 
+	def _keywords_from_follow_up_query(self, query: str, claim_type: str, claim_element: str) -> List[str]:
+		parts = re.findall(r'"([^"]+)"|(\S+)', query)
+		keywords: List[str] = []
+		for quoted, bare in parts:
+			value = quoted or bare
+			if value and value not in keywords:
+				keywords.append(value)
+		if not keywords:
+			keywords = [claim_type, claim_element]
+		return keywords[:5]
+
+	def execute_claim_follow_up_plan(
+		self,
+		claim_type: str = None,
+		user_id: str = None,
+		support_kind: str = None,
+		max_tasks_per_claim: int = 3,
+		min_relevance: float = 0.6,
+	):
+		"""Execute follow-up retrieval tasks for missing or partial claim support."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		plan = self.get_claim_follow_up_plan(claim_type=claim_type, user_id=user_id)
+		results = {
+			'support_kind': support_kind,
+			'claims': {},
+		}
+
+		for current_claim, claim_plan in plan.get('claims', {}).items():
+			executed_tasks = []
+			for task in claim_plan.get('tasks', [])[:max_tasks_per_claim]:
+				execution = {
+					'claim_element_id': task.get('claim_element_id'),
+					'claim_element': task.get('claim_element'),
+					'status': task.get('status'),
+					'priority': task.get('priority'),
+					'executed': {},
+				}
+				if support_kind in (None, 'evidence') and 'evidence' in task.get('missing_support_kinds', []):
+					evidence_query = task.get('queries', {}).get('evidence', [])
+					query_text = evidence_query[0] if evidence_query else f'{current_claim} {task.get("claim_element", "")} evidence'
+					keywords = self._keywords_from_follow_up_query(
+						query_text,
+						current_claim,
+						task.get('claim_element', ''),
+					)
+					discovery_result = self.discover_web_evidence(
+						keywords=keywords,
+						user_id=user_id,
+						claim_type=current_claim,
+						min_relevance=min_relevance,
+					)
+					execution['executed']['evidence'] = {
+						'query': query_text,
+						'keywords': keywords,
+						'result': discovery_result,
+					}
+				if support_kind in (None, 'authority') and 'authority' in task.get('missing_support_kinds', []):
+					authority_query = task.get('queries', {}).get('authority', [])
+					query_text = authority_query[0] if authority_query else f'{current_claim} {task.get("claim_element", "")} statute'
+					search_results = self.search_legal_authorities(
+						query=query_text,
+						claim_type=current_claim,
+						search_all=True,
+					)
+					stored_counts = self.store_legal_authorities(
+						search_results,
+						claim_type=current_claim,
+						search_query=query_text,
+						user_id=user_id,
+					)
+					execution['executed']['authority'] = {
+						'query': query_text,
+						'search_results': {key: len(value) for key, value in search_results.items()},
+						'stored_counts': stored_counts,
+					}
+				if execution['executed']:
+					executed_tasks.append(execution)
+
+			results['claims'][current_claim] = {
+				'task_count': len(executed_tasks),
+				'tasks': executed_tasks,
+				'updated_claim_overview': self.get_claim_overview(claim_type=current_claim, user_id=user_id).get('claims', {}).get(current_claim, {}),
+				'updated_follow_up_plan': self.get_claim_follow_up_plan(claim_type=current_claim, user_id=user_id).get('claims', {}).get(current_claim, {}),
+			}
+		return results
+
 	def get_claim_element_view(
 		self,
 		claim_type: str,
@@ -649,7 +737,7 @@ class Mediator:
 			'total_authorities': len(authority_records),
 		}
 	
-	def research_case_automatically(self, user_id: str = None):
+	def research_case_automatically(self, user_id: str = None, execute_follow_up: bool = False):
 		"""
 		Automatically research legal authorities for the case.
 		
@@ -680,7 +768,8 @@ class Mediator:
 			'authorities_stored': {},
 			'support_summary': {},
 			'claim_overview': {},
-			'follow_up_plan': {}
+			'follow_up_plan': {},
+			'follow_up_execution': {}
 		}
 		
 		# Search for authorities for each claim type
@@ -737,6 +826,16 @@ class Mediator:
 					'tasks': [],
 				},
 			)
+			if execute_follow_up:
+				execution = self.execute_claim_follow_up_plan(
+					claim_type=claim_type,
+					user_id=user_id,
+					support_kind='authority',
+				)
+				results['follow_up_execution'][claim_type] = execution.get('claims', {}).get(
+					claim_type,
+					{'task_count': 0, 'tasks': []},
+				)
 		
 		self.log('auto_research_complete', results=results)
 		
@@ -791,7 +890,7 @@ class Mediator:
 			max_results=max_results
 		)
 	
-	def discover_evidence_automatically(self, user_id: str = None):
+	def discover_evidence_automatically(self, user_id: str = None, execute_follow_up: bool = False):
 		"""
 		Automatically discover evidence for all claims in the case.
 		
@@ -810,7 +909,10 @@ class Mediator:
 		if user_id is None:
 			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
 		
-		return self.web_evidence_integration.discover_evidence_for_case(user_id=user_id)
+		return self.web_evidence_integration.discover_evidence_for_case(
+			user_id=user_id,
+			execute_follow_up=execute_follow_up,
+		)
 
 
 	# ============================================================================

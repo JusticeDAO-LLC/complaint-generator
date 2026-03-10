@@ -400,6 +400,32 @@ class TestMediatorLegalAuthorityIntegration:
                 auto_results = mediator.research_case_automatically(user_id='testuser')
                 assert auto_results['claim_overview']['civil rights']['partially_supported_count'] == 1
                 assert auto_results['follow_up_plan']['civil rights']['task_count'] == 1
+
+                mediator.search_legal_authorities = Mock(return_value={
+                    'statutes': [],
+                    'regulations': [],
+                    'case_law': [],
+                    'web_archives': [],
+                })
+                mediator.store_legal_authorities = Mock(return_value={
+                    'statutes': 0,
+                    'regulations': 0,
+                    'case_law': 0,
+                    'web_archives': 0,
+                })
+                follow_up_execution = mediator.execute_claim_follow_up_plan(
+                    claim_type='civil rights',
+                    user_id='testuser',
+                    support_kind='authority',
+                    max_tasks_per_claim=2,
+                )
+                assert follow_up_execution['claims']['civil rights']['task_count'] == 0
+
+                auto_results_with_execution = mediator.research_case_automatically(
+                    user_id='testuser',
+                    execute_follow_up=True,
+                )
+                assert auto_results_with_execution['follow_up_execution']['civil rights']['task_count'] == 0
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)

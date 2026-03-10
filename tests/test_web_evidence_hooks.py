@@ -353,6 +353,49 @@ class TestWebEvidenceIntegrationHook:
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
+    def test_discover_evidence_for_case_can_execute_follow_up(self):
+        """Test auto-discovery can execute evidence follow-up tasks."""
+        try:
+            from mediator.web_evidence_hooks import WebEvidenceIntegrationHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.state = Mock()
+            mock_mediator.state.username = 'testuser'
+            mock_mediator.state.complaint = 'test complaint'
+            mock_mediator.state.legal_classification = {
+                'claim_types': ['employment discrimination']
+            }
+            mock_mediator.summarize_claim_support = Mock(return_value={'claims': {}})
+            mock_mediator.get_claim_overview = Mock(return_value={'claims': {}})
+            mock_mediator.get_claim_follow_up_plan = Mock(return_value={'claims': {}})
+            mock_mediator.execute_claim_follow_up_plan = Mock(return_value={
+                'claims': {
+                    'employment discrimination': {
+                        'task_count': 1,
+                        'tasks': [
+                            {'claim_element': 'Adverse action'}
+                        ],
+                    }
+                }
+            })
+
+            hook = WebEvidenceIntegrationHook(mock_mediator)
+            hook._generate_search_keywords = Mock(return_value=['employment discrimination'])
+            hook.discover_and_store_evidence = Mock(return_value={
+                'discovered': 1,
+                'stored': 1,
+                'support_links_added': 1,
+            })
+
+            result = hook.discover_evidence_for_case(user_id='testuser', execute_follow_up=True)
+
+            assert result['follow_up_execution']['employment discrimination']['task_count'] == 1
+            mock_mediator.execute_claim_follow_up_plan.assert_called_once()
+            assert mock_mediator.execute_claim_follow_up_plan.call_args.kwargs['support_kind'] == 'evidence'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
 
 class TestMediatorWebEvidenceIntegration:
     """Integration tests for web evidence hooks with mediator"""
