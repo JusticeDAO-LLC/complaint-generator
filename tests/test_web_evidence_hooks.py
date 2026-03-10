@@ -217,6 +217,10 @@ class TestWebEvidenceIntegrationHook:
             mock_mediator.evidence_state = Mock()
             mock_mediator.evidence_state.add_evidence_record = Mock(return_value=1)
             mock_mediator.claim_support = Mock()
+            mock_mediator.claim_support.resolve_claim_element = Mock(return_value={
+                'claim_element_id': 'employment_discrimination:1',
+                'claim_element_text': 'Protected activity',
+            })
             mock_mediator.claim_support.add_support_link = Mock(return_value=1)
             
             hook = WebEvidenceIntegrationHook(mock_mediator)
@@ -234,6 +238,9 @@ class TestWebEvidenceIntegrationHook:
             assert 'support_links_added' in result
             assert result['discovered'] == 2
             assert result['support_links_added'] == 2
+            add_record_kwargs = mock_mediator.evidence_state.add_evidence_record.call_args.kwargs
+            assert add_record_kwargs['claim_element_id'] == 'employment_discrimination:1'
+            assert add_record_kwargs['claim_element'] == 'Protected activity'
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
     
@@ -292,6 +299,43 @@ class TestWebEvidenceIntegrationHook:
                     }
                 }
             })
+            mock_mediator.get_claim_overview = Mock(return_value={
+                'claims': {
+                    'employment discrimination': {
+                        'required_support_kinds': ['evidence', 'authority'],
+                        'covered': [],
+                        'partially_supported': [
+                            {'element_text': 'Protected activity'}
+                        ],
+                        'missing': [
+                            {'element_text': 'Adverse action'}
+                        ],
+                        'covered_count': 0,
+                        'partially_supported_count': 1,
+                        'missing_count': 1,
+                        'total_elements': 2,
+                    }
+                }
+            })
+            mock_mediator.get_claim_follow_up_plan = Mock(return_value={
+                'claims': {
+                    'employment discrimination': {
+                        'task_count': 2,
+                        'tasks': [
+                            {
+                                'claim_element': 'Protected activity',
+                                'status': 'partially_supported',
+                                'missing_support_kinds': ['authority'],
+                            },
+                            {
+                                'claim_element': 'Adverse action',
+                                'status': 'missing',
+                                'missing_support_kinds': ['evidence', 'authority'],
+                            },
+                        ],
+                    }
+                }
+            })
 
             hook = WebEvidenceIntegrationHook(mock_mediator)
             hook._generate_search_keywords = Mock(return_value=['employment discrimination'])
@@ -304,6 +348,8 @@ class TestWebEvidenceIntegrationHook:
             result = hook.discover_evidence_for_case(user_id='testuser')
 
             assert result['support_summary']['employment discrimination']['total_links'] == 2
+            assert result['claim_overview']['employment discrimination']['missing_count'] == 1
+            assert result['follow_up_plan']['employment discrimination']['task_count'] == 2
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 

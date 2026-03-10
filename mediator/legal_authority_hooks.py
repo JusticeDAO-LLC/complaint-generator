@@ -351,6 +351,8 @@ class LegalAuthorityStorageHook:
                 "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS jurisdiction VARCHAR",
                 "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS source_system VARCHAR",
                 "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS provenance JSON",
+                "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS claim_element_id VARCHAR",
+                "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS claim_element TEXT",
             ]:
                 conn.execute(statement)
             
@@ -376,6 +378,40 @@ class LegalAuthorityStorageHook:
             
         except Exception as e:
             self.mediator.log('legal_authority_schema_error', error=str(e))
+
+    def _resolve_claim_element(
+        self,
+        user_id: str,
+        claim_type: Optional[str],
+        authority_data: Dict[str, Any],
+    ) -> Dict[str, Optional[str]]:
+        if not claim_type or not hasattr(self.mediator, 'claim_support'):
+            return {
+                'claim_element_id': authority_data.get('claim_element_id'),
+                'claim_element': authority_data.get('claim_element'),
+            }
+
+        metadata = authority_data.get('metadata', {})
+        if not isinstance(metadata, dict):
+            metadata = {}
+        resolution = self.mediator.claim_support.resolve_claim_element(
+            user_id,
+            claim_type,
+            claim_element_text=authority_data.get('claim_element'),
+            support_label=authority_data.get('title') or authority_data.get('citation'),
+            metadata={
+                **metadata,
+                'title': authority_data.get('title'),
+                'description': authority_data.get('content') or authority_data.get('text'),
+                'summary': authority_data.get('summary'),
+                'content_excerpt': authority_data.get('content') or authority_data.get('text'),
+                'source_url': authority_data.get('url'),
+            },
+        )
+        return {
+            'claim_element_id': authority_data.get('claim_element_id') or resolution.get('claim_element_id'),
+            'claim_element': authority_data.get('claim_element') or resolution.get('claim_element_text'),
+        }
     
     def add_authority(self, authority_data: Dict[str, Any],
                      user_id: str, complaint_id: Optional[str] = None,
@@ -400,6 +436,7 @@ class LegalAuthorityStorageHook:
         
         try:
             conn = duckdb.connect(self.db_path)
+            claim_element = self._resolve_claim_element(user_id, claim_type, authority_data)
             provenance = build_provenance(
                 source_url=str(authority_data.get('url', '')),
                 acquisition_method='legal_search',
@@ -416,7 +453,11 @@ class LegalAuthorityStorageHook:
                 content=authority_data.get('content') or authority_data.get('text') or '',
                 url=authority_data.get('url') or '',
                 relevance_score=authority_data.get('relevance_score', 0.5),
-                metadata=authority_data.get('metadata', {}) if isinstance(authority_data.get('metadata', {}), dict) else {},
+                metadata={
+                    **(authority_data.get('metadata', {}) if isinstance(authority_data.get('metadata', {}), dict) else {}),
+                    'claim_element_id': claim_element.get('claim_element_id'),
+                    'claim_element': claim_element.get('claim_element'),
+                },
                 provenance=provenance,
             )
             normalized_authority = authority.as_dict()
@@ -426,9 +467,9 @@ class LegalAuthorityStorageHook:
                     user_id, complaint_id, claim_type, authority_type,
                     source, citation, title, content, url, metadata,
                     relevance_score, search_query, jurisdiction,
-                    source_system, provenance
+                    source_system, provenance, claim_element_id, claim_element
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id
             """, [
                 user_id,
@@ -446,6 +487,8 @@ class LegalAuthorityStorageHook:
                 provenance.jurisdiction,
                 provenance.source_system,
                 json.dumps(provenance.as_dict()),
+                claim_element.get('claim_element_id'),
+                claim_element.get('claim_element'),
             ]).fetchone()
             
             record_id = result[0]
@@ -510,7 +553,7 @@ class LegalAuthorityStorageHook:
             results = conn.execute("""
                 SELECT id, authority_type, source, citation, title,
                       content, url, metadata, relevance_score, timestamp,
-                      jurisdiction, source_system, provenance
+                      jurisdiction, source_system, provenance, claim_element_id, claim_element
                 FROM legal_authorities
                 WHERE user_id = ? AND claim_type = ?
                 ORDER BY relevance_score DESC, timestamp DESC
@@ -534,6 +577,8 @@ class LegalAuthorityStorageHook:
                     'jurisdiction': row[10],
                     'source_system': row[11],
                     'provenance': json.loads(row[12]) if row[12] else {},
+                    'claim_element_id': row[13],
+                    'claim_element': row[14],
                 })
             
             return authorities
@@ -561,7 +606,7 @@ class LegalAuthorityStorageHook:
             results = conn.execute("""
                 SELECT id, claim_type, authority_type, source, citation,
                       title, content, url, metadata, relevance_score, timestamp,
-                      jurisdiction, source_system, provenance
+                      jurisdiction, source_system, provenance, claim_element_id, claim_element
                 FROM legal_authorities
                 WHERE user_id = ?
                 ORDER BY timestamp DESC
@@ -586,6 +631,8 @@ class LegalAuthorityStorageHook:
                     'jurisdiction': row[11],
                     'source_system': row[12],
                     'provenance': json.loads(row[13]) if row[13] else {},
+                    'claim_element_id': row[14],
+                    'claim_element': row[15],
                 })
             
             return authorities

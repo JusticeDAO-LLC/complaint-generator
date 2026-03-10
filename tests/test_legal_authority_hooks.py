@@ -125,6 +125,50 @@ class TestLegalAuthorityStorageHook:
                     os.unlink(db_path)
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_add_authority_resolves_claim_element(self):
+        """Test authority storage enriches claim element metadata when available"""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthorityStorageHook
+            import duckdb
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.claim_support = Mock()
+            mock_mediator.claim_support.resolve_claim_element = Mock(return_value={
+                'claim_element_id': 'civil_rights:1',
+                'claim_element_text': 'Protected activity',
+            })
+
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                db_path = f.name
+
+            try:
+                hook = LegalAuthorityStorageHook(mock_mediator, db_path=db_path)
+
+                authority_data = {
+                    'type': 'statute',
+                    'source': 'us_code',
+                    'citation': '42 U.S.C. § 1983',
+                    'title': 'Protected activity protections',
+                    'content': 'Test statute content...',
+                }
+
+                record_id = hook.add_authority(
+                    authority_data,
+                    user_id='testuser',
+                    claim_type='civil rights',
+                )
+                results = hook.get_authorities_by_claim('testuser', 'civil rights')
+
+                assert record_id > 0
+                assert results[0]['claim_element_id'] == 'civil_rights:1'
+                assert results[0]['claim_element'] == 'Protected activity'
+            finally:
+                if os.path.exists(db_path):
+                    os.unlink(db_path)
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
     
     def test_get_authorities_by_claim(self):
         """Test retrieving authorities by claim type"""
@@ -292,21 +336,31 @@ class TestMediatorLegalAuthorityIntegration:
             
             with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
                 db_path = f.name
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                claim_support_db_path = f.name
             
             try:
                 mediator = Mediator(
                     backends=[mock_backend],
-                    legal_authority_db_path=db_path
+                    legal_authority_db_path=db_path,
+                    claim_support_db_path=claim_support_db_path,
                 )
                 mediator.state.username = 'testuser'
+                mediator.state.legal_classification = {
+                    'claim_types': ['civil rights']
+                }
+                mediator.claim_support.register_claim_requirements(
+                    'testuser',
+                    {'civil rights': ['Protected activity', 'Adverse action']},
+                )
                 
                 # Mock search results
                 mediator.legal_authority_search.search_all_sources = Mock(return_value={
                     'statutes': [
                         {
                             'citation': '42 U.S.C. § 1983',
-                            'title': 'Civil Rights Act',
-                            'content': 'Test content'
+                            'title': 'Protected activity under the Civil Rights Act',
+                            'content': 'Test content about protected activity'
                         }
                     ],
                     'regulations': [],
@@ -324,15 +378,32 @@ class TestMediatorLegalAuthorityIntegration:
 
                 support_links = mediator.get_claim_support(claim_type='civil rights')
                 assert len(support_links) > 0
+                assert support_links[0]['claim_element_id'] == 'civil_rights:1'
 
                 support_summary = mediator.summarize_claim_support(claim_type='civil rights')
                 assert support_summary['claims']['civil rights']['support_by_kind']['authority'] > 0
+                assert support_summary['claims']['civil rights']['covered_elements'] == 1
+
+                claim_overview = mediator.get_claim_overview(claim_type='civil rights')
+                assert claim_overview['claims']['civil rights']['partially_supported_count'] == 1
+                assert claim_overview['claims']['civil rights']['missing_count'] == 0
+
+                follow_up_plan = mediator.get_claim_follow_up_plan(claim_type='civil rights')
+                assert follow_up_plan['claims']['civil rights']['task_count'] == 1
+                assert follow_up_plan['claims']['civil rights']['tasks'][0]['missing_support_kinds'] == ['evidence']
                 
                 # Retrieve
                 authorities = mediator.get_legal_authorities(claim_type='civil rights')
                 assert len(authorities) > 0
+                assert authorities[0]['claim_element'] == 'Protected activity'
+
+                auto_results = mediator.research_case_automatically(user_id='testuser')
+                assert auto_results['claim_overview']['civil rights']['partially_supported_count'] == 1
+                assert auto_results['follow_up_plan']['civil rights']['task_count'] == 1
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)
+                if os.path.exists(claim_support_db_path):
+                    os.unlink(claim_support_db_path)
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")

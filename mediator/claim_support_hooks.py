@@ -464,3 +464,96 @@ class ClaimSupportHook:
                 'links': claim_links,
             }
         return summary
+
+    def get_claim_element_summary(
+        self,
+        user_id: str,
+        claim_type: str,
+        *,
+        claim_element_id: Optional[str] = None,
+        claim_element_text: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        requirements = self.get_claim_requirements(user_id, claim_type).get(claim_type, [])
+        resolved = self.resolve_claim_element(
+            user_id,
+            claim_type,
+            claim_element_text=claim_element_text,
+            metadata={'claim_element_text': claim_element_text} if claim_element_text else None,
+        )
+        target_element_id = claim_element_id or resolved.get('claim_element_id')
+        target_element_text = claim_element_text or resolved.get('claim_element_text')
+
+        requirement = None
+        for item in requirements:
+            if target_element_id and item['element_id'] == target_element_id:
+                requirement = item
+                break
+            if target_element_text and item['element_text'] == target_element_text:
+                requirement = item
+                break
+
+        summary = self.summarize_claim_support(user_id, claim_type)
+        claim_summary = summary.get('claims', {}).get(claim_type, {})
+        for element_summary in claim_summary.get('elements', []):
+            if requirement and element_summary.get('element_id') == requirement.get('element_id'):
+                return element_summary
+            if target_element_text and element_summary.get('element_text') == target_element_text:
+                return element_summary
+
+        if requirement:
+            return {
+                **requirement,
+                'total_links': 0,
+                'support_by_kind': {},
+                'links': [],
+            }
+
+        return {
+            'element_id': target_element_id,
+            'element_text': target_element_text,
+            'total_links': 0,
+            'support_by_kind': {},
+            'links': [],
+        }
+
+    def get_claim_overview(
+        self,
+        user_id: str,
+        claim_type: Optional[str] = None,
+        required_support_kinds: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        required_kinds = required_support_kinds or ['evidence', 'authority']
+        summary = self.summarize_claim_support(user_id, claim_type)
+
+        overview: Dict[str, Any] = {
+            'available': summary.get('available', False),
+            'required_support_kinds': required_kinds,
+            'claims': {},
+        }
+
+        for current_claim, claim_summary in summary.get('claims', {}).items():
+            covered: List[Dict[str, Any]] = []
+            partially_supported: List[Dict[str, Any]] = []
+            missing: List[Dict[str, Any]] = []
+
+            for element in claim_summary.get('elements', []):
+                kinds_present = set(element.get('support_by_kind', {}).keys())
+                if element.get('total_links', 0) == 0:
+                    missing.append(element)
+                elif all(kind in kinds_present for kind in required_kinds):
+                    covered.append(element)
+                else:
+                    partially_supported.append(element)
+
+            overview['claims'][current_claim] = {
+                'required_support_kinds': required_kinds,
+                'covered': covered,
+                'partially_supported': partially_supported,
+                'missing': missing,
+                'covered_count': len(covered),
+                'partially_supported_count': len(partially_supported),
+                'missing_count': len(missing),
+                'total_elements': claim_summary.get('total_elements', 0),
+            }
+
+        return overview

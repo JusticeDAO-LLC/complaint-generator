@@ -117,6 +117,8 @@ class TestEvidenceStateHook:
                 record_id = hook.add_evidence_record(
                     user_id='testuser',
                     evidence_info=evidence_info,
+                    claim_element_id='contract:1',
+                    claim_element='Valid contract',
                     description='Test evidence'
                 )
                 
@@ -153,7 +155,12 @@ class TestEvidenceStateHook:
                     'metadata': {}
                 }
                 
-                hook.add_evidence_record('testuser', evidence_info)
+                hook.add_evidence_record(
+                    'testuser',
+                    evidence_info,
+                    claim_element_id='employment:1',
+                    claim_element='Protected activity',
+                )
                 
                 # Retrieve evidence
                 results = hook.get_user_evidence('testuser')
@@ -162,6 +169,8 @@ class TestEvidenceStateHook:
                 assert len(results) > 0
                 assert results[0]['cid'] == 'QmTest456'
                 assert 'provenance' in results[0]
+                assert results[0]['claim_element_id'] == 'employment:1'
+                assert results[0]['claim_element'] == 'Protected activity'
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)
@@ -336,28 +345,58 @@ class TestMediatorEvidenceIntegration:
             
             with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
                 db_path = f.name
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                claim_support_db_path = f.name
             
             try:
-                mediator = Mediator(backends=[mock_backend], evidence_db_path=db_path)
+                mediator = Mediator(
+                    backends=[mock_backend],
+                    evidence_db_path=db_path,
+                    claim_support_db_path=claim_support_db_path,
+                )
                 mediator.state.username = 'testuser'
+                mediator.claim_support.register_claim_requirements(
+                    'testuser',
+                    {'breach of contract': ['Valid contract', 'Breach']},
+                )
                 
                 # Submit test evidence
                 result = mediator.submit_evidence(
                     data=b"Test evidence content",
                     evidence_type='document',
-                    description='Test document',
+                    description='Valid contract test document',
                     claim_type='breach of contract'
                 )
                 
                 assert 'cid' in result
                 assert 'record_id' in result
                 assert result['user_id'] == 'testuser'
+                assert result['claim_element_id'] == 'breach_of_contract:1'
                 
                 # Verify evidence can be retrieved
                 evidence_list = mediator.get_user_evidence('testuser')
                 assert len(evidence_list) > 0
+                assert evidence_list[0]['claim_element'] == 'Valid contract'
+
+                element_view = mediator.get_claim_element_view(
+                    claim_type='breach of contract',
+                    claim_element='Valid contract',
+                    user_id='testuser',
+                )
+                assert element_view['is_covered'] is True
+                assert element_view['total_evidence'] == 1
+                assert element_view['claim_element_id'] == 'breach_of_contract:1'
+
+                overview = mediator.get_claim_overview(
+                    claim_type='breach of contract',
+                    user_id='testuser',
+                )
+                assert overview['claims']['breach of contract']['partially_supported_count'] == 1
+                assert overview['claims']['breach of contract']['missing_count'] == 1
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)
+                if os.path.exists(claim_support_db_path):
+                    os.unlink(claim_support_db_path)
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")

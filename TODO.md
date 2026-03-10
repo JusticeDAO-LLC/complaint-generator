@@ -1,5 +1,9 @@
 # Task Rotation Backlog
 
+## Current Integration Planning
+
+- [ ] Execute `ipfs_datasets_py` integration backlog for complaint-generator organization, graph enrichment, archival evidence, and formal validation. See `docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md` and `docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md`.
+
 ## Completed (2026-02-21)
 
 ### GRAPHRAG - Batch 200

@@ -233,6 +233,15 @@ class Mediator:
 		
 		# Get complaint ID if available
 		complaint_id = getattr(self.state, 'complaint_id', None)
+		resolved_element = {'claim_element_id': None, 'claim_element_text': claim_element}
+		if claim_type:
+			resolved_element = self.claim_support.resolve_claim_element(
+				user_id,
+				claim_type,
+				claim_element_text=claim_element,
+				support_label=description or evidence_type,
+				metadata=metadata,
+			)
 		
 		# Store state in DuckDB
 		record_id = self.evidence_state.add_evidence_record(
@@ -240,6 +249,8 @@ class Mediator:
 			evidence_info=evidence_info,
 			complaint_id=complaint_id,
 			claim_type=claim_type,
+			claim_element_id=resolved_element.get('claim_element_id'),
+			claim_element=resolved_element.get('claim_element_text'),
 			description=description
 		)
 		
@@ -249,7 +260,8 @@ class Mediator:
 			'user_id': user_id,
 			'description': description,
 			'claim_type': claim_type,
-			'claim_element': claim_element
+			'claim_element': resolved_element.get('claim_element_text'),
+			'claim_element_id': resolved_element.get('claim_element_id'),
 		}
 
 		if claim_type:
@@ -257,7 +269,8 @@ class Mediator:
 				user_id=user_id,
 				complaint_id=complaint_id,
 				claim_type=claim_type,
-				claim_element_text=claim_element,
+				claim_element_id=resolved_element.get('claim_element_id'),
+				claim_element_text=resolved_element.get('claim_element_text'),
 				support_kind='evidence',
 				support_ref=evidence_info['cid'],
 				support_label=description or evidence_type,
@@ -487,11 +500,154 @@ class Mediator:
 			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
 		return self.claim_support.get_support_links(user_id, claim_type)
 
+	def get_claim_requirements(self, user_id: str = None, claim_type: str = None):
+		"""Get persisted claim requirements by claim type."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		return self.claim_support.get_claim_requirements(user_id, claim_type)
+
 	def summarize_claim_support(self, user_id: str = None, claim_type: str = None):
 		"""Summarize persisted evidence and authority support by claim type."""
 		if user_id is None:
 			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
 		return self.claim_support.summarize_claim_support(user_id, claim_type)
+
+	def get_claim_overview(
+		self,
+		claim_type: str = None,
+		user_id: str = None,
+		required_support_kinds: List[str] = None,
+	):
+		"""Group claim elements into covered, partially supported, and missing buckets."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		return self.claim_support.get_claim_overview(
+			user_id,
+			claim_type=claim_type,
+			required_support_kinds=required_support_kinds,
+		)
+
+	def _build_follow_up_task(self, claim_type: str, element: Dict[str, Any], status: str,
+			required_support_kinds: List[str]) -> Dict[str, Any]:
+		element_text = element.get('element_text') or element.get('claim_element') or 'Unknown element'
+		support_by_kind = element.get('support_by_kind', {})
+		missing_support_kinds = [
+			kind for kind in required_support_kinds
+			if support_by_kind.get(kind, 0) == 0
+		]
+		priority = 'high' if status == 'missing' else 'medium'
+		queries: Dict[str, List[str]] = {}
+		if 'evidence' in missing_support_kinds:
+			queries['evidence'] = [
+				f'"{claim_type}" "{element_text}" evidence',
+				f'"{element_text}" documentation {claim_type}',
+				f'"{element_text}" facts witness records {claim_type}',
+			]
+		if 'authority' in missing_support_kinds:
+			queries['authority'] = [
+				f'"{claim_type}" "{element_text}" statute',
+				f'"{claim_type}" "{element_text}" case law',
+				f'"{element_text}" legal elements {claim_type}',
+			]
+		return {
+			'claim_type': claim_type,
+			'claim_element_id': element.get('element_id'),
+			'claim_element': element_text,
+			'status': status,
+			'priority': priority,
+			'missing_support_kinds': missing_support_kinds,
+			'queries': queries,
+		}
+
+	def get_claim_follow_up_plan(
+		self,
+		claim_type: str = None,
+		user_id: str = None,
+		required_support_kinds: List[str] = None,
+	):
+		"""Generate targeted follow-up retrieval tasks from claim overview gaps."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		overview = self.get_claim_overview(
+			claim_type=claim_type,
+			user_id=user_id,
+			required_support_kinds=required_support_kinds,
+		)
+		plan = {
+			'required_support_kinds': required_support_kinds or ['evidence', 'authority'],
+			'claims': {},
+		}
+		for current_claim, claim_data in overview.get('claims', {}).items():
+			tasks = []
+			for element in claim_data.get('missing', []):
+				tasks.append(self._build_follow_up_task(
+					current_claim,
+					element,
+					'missing',
+					claim_data.get('required_support_kinds', plan['required_support_kinds']),
+				))
+			for element in claim_data.get('partially_supported', []):
+				tasks.append(self._build_follow_up_task(
+					current_claim,
+					element,
+					'partially_supported',
+					claim_data.get('required_support_kinds', plan['required_support_kinds']),
+				))
+			plan['claims'][current_claim] = {
+				'task_count': len(tasks),
+				'tasks': tasks,
+			}
+		return plan
+
+	def get_claim_element_view(
+		self,
+		claim_type: str,
+		claim_element_id: str = None,
+		claim_element: str = None,
+		user_id: str = None,
+	):
+		"""Get evidence, authorities, and support coverage for one claim element."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+
+		element_summary = self.claim_support.get_claim_element_summary(
+			user_id,
+			claim_type,
+			claim_element_id=claim_element_id,
+			claim_element_text=claim_element,
+		)
+		target_element_id = element_summary.get('element_id')
+		target_element_text = element_summary.get('element_text')
+
+		evidence_records = []
+		for evidence in self.evidence_state.get_user_evidence(user_id):
+			if evidence.get('claim_type') != claim_type:
+				continue
+			if target_element_id and evidence.get('claim_element_id') == target_element_id:
+				evidence_records.append(evidence)
+			elif target_element_text and evidence.get('claim_element') == target_element_text:
+				evidence_records.append(evidence)
+
+		authority_records = []
+		for authority in self.legal_authority_storage.get_authorities_by_claim(user_id, claim_type):
+			if target_element_id and authority.get('claim_element_id') == target_element_id:
+				authority_records.append(authority)
+			elif target_element_text and authority.get('claim_element') == target_element_text:
+				authority_records.append(authority)
+
+		return {
+			'claim_type': claim_type,
+			'claim_element_id': target_element_id,
+			'claim_element': target_element_text,
+			'exists': bool(target_element_id or target_element_text),
+			'is_covered': bool(element_summary.get('total_links', 0)),
+			'missing_support': element_summary.get('total_links', 0) == 0,
+			'support_summary': element_summary,
+			'evidence': evidence_records,
+			'authorities': authority_records,
+			'total_evidence': len(evidence_records),
+			'total_authorities': len(authority_records),
+		}
 	
 	def research_case_automatically(self, user_id: str = None):
 		"""
@@ -522,7 +678,9 @@ class Mediator:
 			'claim_types': classification.get('claim_types', []),
 			'authorities_found': {},
 			'authorities_stored': {},
-			'support_summary': {}
+			'support_summary': {},
+			'claim_overview': {},
+			'follow_up_plan': {}
 		}
 		
 		# Search for authorities for each claim type
@@ -555,6 +713,28 @@ class Mediator:
 					'total_links': 0,
 					'support_by_kind': {},
 					'links': [],
+				},
+			)
+			claim_overview = self.get_claim_overview(claim_type=claim_type, user_id=user_id)
+			results['claim_overview'][claim_type] = claim_overview.get('claims', {}).get(
+				claim_type,
+				{
+					'required_support_kinds': ['evidence', 'authority'],
+					'covered': [],
+					'partially_supported': [],
+					'missing': [],
+					'covered_count': 0,
+					'partially_supported_count': 0,
+					'missing_count': 0,
+					'total_elements': 0,
+				},
+			)
+			follow_up_plan = self.get_claim_follow_up_plan(claim_type=claim_type, user_id=user_id)
+			results['follow_up_plan'][claim_type] = follow_up_plan.get('claims', {}).get(
+				claim_type,
+				{
+					'task_count': 0,
+					'tasks': [],
 				},
 			)
 		

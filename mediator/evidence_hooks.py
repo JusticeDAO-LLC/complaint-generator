@@ -237,6 +237,8 @@ class EvidenceStateHook:
                 "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS source_url VARCHAR",
                 "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS acquisition_method VARCHAR",
                 "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS provenance JSON",
+                "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS claim_element_id VARCHAR",
+                "ALTER TABLE evidence ADD COLUMN IF NOT EXISTS claim_element TEXT",
             ]:
                 conn.execute(statement)
             
@@ -261,6 +263,8 @@ class EvidenceStateHook:
     def add_evidence_record(self, user_id: str, evidence_info: Dict[str, Any],
                           complaint_id: Optional[str] = None,
                           claim_type: Optional[str] = None,
+                          claim_element_id: Optional[str] = None,
+                          claim_element: Optional[str] = None,
                           description: Optional[str] = None) -> int:
         """
         Add evidence record to DuckDB.
@@ -292,9 +296,10 @@ class EvidenceStateHook:
                 INSERT INTO evidence (
                     user_id, username, evidence_cid, evidence_type, 
                     evidence_size, metadata, complaint_id, claim_type, description,
-                    content_hash, source_url, acquisition_method, provenance
+                    content_hash, source_url, acquisition_method, provenance,
+                    claim_element_id, claim_element
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id
             """, [
                 user_id,
@@ -310,6 +315,8 @@ class EvidenceStateHook:
                 evidence_info.get('metadata', {}).get('provenance', {}).get('source_url'),
                 evidence_info.get('metadata', {}).get('provenance', {}).get('acquisition_method'),
                 json.dumps(evidence_info.get('metadata', {}).get('provenance', {})),
+                claim_element_id,
+                claim_element,
             ]).fetchone()
             
             record_id = result[0]
@@ -344,7 +351,7 @@ class EvidenceStateHook:
                 SELECT id, user_id, username, evidence_cid, evidence_type,
                       evidence_size, timestamp, metadata, complaint_id,
                       claim_type, description, content_hash, source_url,
-                      acquisition_method, provenance
+                      acquisition_method, provenance, claim_element_id, claim_element
                 FROM evidence
                 WHERE user_id = ?
                 ORDER BY timestamp DESC
@@ -370,6 +377,8 @@ class EvidenceStateHook:
                     'source_url': row[12],
                     'acquisition_method': row[13],
                     'provenance': json.loads(row[14]) if row[14] else {},
+                    'claim_element_id': row[15],
+                    'claim_element': row[16],
                 })
             
             return evidence_list
@@ -398,7 +407,7 @@ class EvidenceStateHook:
                 SELECT id, user_id, username, evidence_cid, evidence_type,
                       evidence_size, timestamp, metadata, complaint_id,
                       claim_type, description, content_hash, source_url,
-                      acquisition_method, provenance
+                      acquisition_method, provenance, claim_element_id, claim_element
                 FROM evidence
                 WHERE evidence_cid = ?
             """, [cid]).fetchone()
@@ -422,6 +431,8 @@ class EvidenceStateHook:
                     'source_url': result[12],
                     'acquisition_method': result[13],
                     'provenance': json.loads(result[14]) if result[14] else {},
+                    'claim_element_id': result[15],
+                    'claim_element': result[16],
                 }
             
             return None

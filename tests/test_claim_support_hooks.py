@@ -144,3 +144,105 @@ class TestClaimSupportHook:
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)
+
+    def test_get_claim_element_summary(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity', 'Adverse employment action']},
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                support_kind='evidence',
+                support_ref='QmEvidence3',
+                support_label='Protected activity email',
+                metadata={'keywords': ['protected', 'activity']},
+            )
+
+            summary = hook.get_claim_element_summary(
+                'testuser',
+                'employment',
+                claim_element_text='Protected activity',
+            )
+
+            assert summary['element_id'] == 'employment:1'
+            assert summary['total_links'] == 1
+            assert summary['support_by_kind']['evidence'] == 1
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_claim_overview_classifies_elements(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {
+                    'employment': [
+                        'Protected activity',
+                        'Adverse employment action',
+                        'Causal connection',
+                    ]
+                },
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidence4',
+                support_label='Protected activity email',
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='authority',
+                support_ref='42 U.S.C. § 1983',
+                support_label='Protected activity authority',
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Adverse employment action',
+                support_kind='evidence',
+                support_ref='QmEvidence5',
+                support_label='Termination notice',
+            )
+
+            overview = hook.get_claim_overview('testuser', 'employment')
+            claim_overview = overview['claims']['employment']
+
+            assert claim_overview['covered_count'] == 1
+            assert claim_overview['partially_supported_count'] == 1
+            assert claim_overview['missing_count'] == 1
+            assert claim_overview['covered'][0]['element_text'] == 'Protected activity'
+            assert claim_overview['partially_supported'][0]['element_text'] == 'Adverse employment action'
+            assert claim_overview['missing'][0]['element_text'] == 'Causal connection'
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)

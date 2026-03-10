@@ -392,13 +392,30 @@ class WebEvidenceIntegrationHook:
                         'keywords': keywords
                     }
                 )
+
+                resolved_element = {'claim_element_id': None, 'claim_element_text': None}
+                if claim_type and hasattr(self.mediator, 'claim_support'):
+                    resolved_element = self.mediator.claim_support.resolve_claim_element(
+                        user_id,
+                        claim_type,
+                        support_label=evidence_item.get('title') or evidence_item.get('url'),
+                        metadata={
+                            'source_url': evidence_item.get('url'),
+                            'title': evidence_item.get('title'),
+                            'description': evidence_item.get('description') or evidence_item.get('content'),
+                            'content_excerpt': evidence_item.get('content'),
+                            'keywords': keywords,
+                        },
+                    )
                 
                 # Add to evidence state database
                 record_id = self.mediator.evidence_state.add_evidence_record(
                     user_id=user_id,
                     evidence_info=storage_result,
                     description=f"Auto-discovered: {evidence_item.get('title', 'Web evidence')}",
-                    claim_type=claim_type
+                    claim_type=claim_type,
+                    claim_element_id=resolved_element.get('claim_element_id') if claim_type and hasattr(self.mediator, 'claim_support') else None,
+                    claim_element=resolved_element.get('claim_element_text') if claim_type and hasattr(self.mediator, 'claim_support') else None,
                 )
 
                 if claim_type and hasattr(self.mediator, 'claim_support'):
@@ -406,6 +423,8 @@ class WebEvidenceIntegrationHook:
                         user_id=user_id,
                         complaint_id=getattr(self.mediator.state, 'complaint_id', None),
                         claim_type=claim_type,
+                        claim_element_id=resolved_element.get('claim_element_id'),
+                        claim_element_text=resolved_element.get('claim_element_text'),
                         support_kind='evidence',
                         support_ref=storage_result['cid'],
                         support_label=evidence_item.get('title') or evidence_item.get('url') or 'Web evidence',
@@ -466,6 +485,8 @@ class WebEvidenceIntegrationHook:
             'evidence_discovered': {},
             'evidence_stored': {},
             'support_summary': {},
+            'claim_overview': {},
+            'follow_up_plan': {},
         }
         
         # Discover evidence for each claim type
@@ -493,6 +514,30 @@ class WebEvidenceIntegrationHook:
                         'total_links': 0,
                         'support_by_kind': {},
                         'links': [],
+                    },
+                )
+            if hasattr(self.mediator, 'get_claim_overview'):
+                claim_overview = self.mediator.get_claim_overview(claim_type=claim_type, user_id=user_id)
+                results['claim_overview'][claim_type] = claim_overview.get('claims', {}).get(
+                    claim_type,
+                    {
+                        'required_support_kinds': ['evidence', 'authority'],
+                        'covered': [],
+                        'partially_supported': [],
+                        'missing': [],
+                        'covered_count': 0,
+                        'partially_supported_count': 0,
+                        'missing_count': 0,
+                        'total_elements': 0,
+                    },
+                )
+            if hasattr(self.mediator, 'get_claim_follow_up_plan'):
+                follow_up_plan = self.mediator.get_claim_follow_up_plan(claim_type=claim_type, user_id=user_id)
+                results['follow_up_plan'][claim_type] = follow_up_plan.get('claims', {}).get(
+                    claim_type,
+                    {
+                        'task_count': 0,
+                        'tasks': [],
                     },
                 )
         
