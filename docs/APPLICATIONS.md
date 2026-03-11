@@ -49,6 +49,8 @@ commands are:
 !reset      wipe current state and start over
 !resume     resumes from a statefile from disk
 !save       saves current state to disk
+!claim-review [claim_type] [key=value]
+!execute-follow-up [claim_type] [key=value]
 
 Username:
 >
@@ -76,6 +78,32 @@ After authentication, the system enters interactive mode where:
 | `!reset` | Wipe current state and start over with a new complaint |
 | `!save` | Save current conversation state to disk |
 | `!resume` | Load a previously saved state from disk |
+| `!claim-review` | Print the claim-support review payload in JSON for a claim type |
+| `!execute-follow-up` | Execute follow-up retrieval tasks and print the execution payload in JSON |
+
+Review command examples:
+
+```text
+!claim-review claim_type="employment retaliation"
+!claim-review "civil rights" include_follow_up_plan=false
+!execute-follow-up "civil rights" follow_up_support_kind=authority follow_up_max_tasks_per_claim=1
+!execute-follow-up claim_type=retaliation follow_up_force=true include_post_execution_review=false
+```
+
+Supported `key=value` options:
+
+- `claim_type`
+- `user_id`
+- `follow_up_cooldown_seconds`
+- `follow_up_support_kind`
+- `follow_up_max_tasks_per_claim`
+- `include_support_summary`
+- `include_overview`
+- `include_follow_up_plan`
+- `required_support_kinds` as a comma-separated list such as `required_support_kinds=evidence,authority`
+- `include_post_execution_review`
+- `execute_follow_up` on `!claim-review` for backward-compatible opt-in execution
+- `follow_up_force` on `!execute-follow-up`
 
 ### Profile Storage
 
@@ -126,6 +154,7 @@ The server starts on the configured host and port (typically `http://localhost:8
 | `/` | Main landing page | HTML template (index.html) |
 | `/home` | Home page after login | HTML template (home.html) |
 | `/chat` | Chat interface | HTML template (chat.html) |
+| `/claim-support-review` | Operator review dashboard for claim support and follow-up execution | HTML template (claim_support_review.html) |
 | `/profile` | User profile page | HTML template (profile.html) |
 | `/results` | Results/complaint display | HTML template (results.html) |
 | `/document` | Document viewer | HTML template (document.html) |
@@ -136,7 +165,7 @@ The server starts on the configured host and port (typically `http://localhost:8
 
 | Endpoint | Description | Returns |
 |----------|-------------|---------|
-| `/api/claim-support/review` | Claim-element review packet for operator or UI workflows | JSON payload with `claim_coverage_matrix`, `claim_coverage_summary`, and optional `support_summary`, `claim_overview`, `follow_up_plan`, or opt-in `follow_up_execution` |
+| `/api/claim-support/review` | Claim-element review packet for operator or UI workflows | JSON payload with `claim_coverage_matrix`, `claim_coverage_summary`, and optional `support_summary`, `claim_overview`, or `follow_up_plan`; `follow_up_execution` remains compatibility-only |
 | `/api/claim-support/execute-follow-up` | Explicit side-effecting follow-up execution endpoint | JSON payload with `follow_up_execution`, `follow_up_execution_summary`, and optional `post_execution_review` |
 
 ##### `/api/claim-support/review` - Claim Support Review
@@ -167,11 +196,12 @@ Example response fields:
 - `claim_overview`: covered, partially supported, and missing element buckets keyed by claim type.
 - `follow_up_plan`: actionable retrieval tasks keyed by claim type.
 - `follow_up_plan_summary`: compact task, suppression, and graph-support counts keyed by claim type.
-- `follow_up_execution`: opt-in follow-up execution results keyed by claim type when `execute_follow_up=true`.
-- `follow_up_execution_summary`: opt-in compact execution, suppression, cooldown-skip, and graph-support counts keyed by claim type.
+- `follow_up_execution`: compatibility-only opt-in execution results keyed by claim type when `execute_follow_up=true`.
+- `follow_up_execution_summary`: compatibility-only compact execution, suppression, cooldown-skip, and graph-support counts keyed by claim type.
 
 If `user_id` is omitted, the endpoint resolves it from the mediator state and falls back to `anonymous`.
 If `execute_follow_up` is omitted or `false`, the endpoint remains read-only and does not trigger retrieval side effects.
+New clients should prefer `/api/claim-support/execute-follow-up` when they want side effects, and treat `execute_follow_up` on the review endpoint as a backward-compatible bridge.
 
 ##### `/api/claim-support/execute-follow-up` - Follow-Up Execution
 
@@ -275,6 +305,7 @@ The server uses Jinja2 templates located in the `templates/` directory:
 | `index.html` | Landing page with login |
 | `home.html` | Main dashboard after authentication |
 | `chat.html` | Interactive chat interface for complaints |
+| `claim_support_review.html` | Operator dashboard for claim review and follow-up execution |
 | `profile.html` | User profile management |
 | `results.html` | Display generated complaint results |
 | `document.html` | Document viewer/editor (WYSIWYG) |

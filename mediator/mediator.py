@@ -29,6 +29,12 @@ from .web_evidence_hooks import (
 from .claim_support_hooks import ClaimSupportHook
 from integrations.ipfs_datasets.capabilities import get_ipfs_datasets_capabilities
 from integrations.ipfs_datasets.graphs import query_graph_support
+from applications.review_api import (
+	ClaimSupportFollowUpExecuteRequest,
+	ClaimSupportReviewRequest,
+	build_claim_support_follow_up_execution_payload,
+	build_claim_support_review_payload,
+)
 
 # Import three-phase complaint processing
 from complaint_phases import (
@@ -739,6 +745,66 @@ class Mediator:
 			user_id,
 			claim_type=claim_type,
 			required_support_kinds=required_support_kinds,
+		)
+
+	def build_claim_support_review_payload(
+		self,
+		claim_type: str = None,
+		user_id: str = None,
+		required_support_kinds: List[str] = None,
+		follow_up_cooldown_seconds: int = 3600,
+		include_support_summary: bool = True,
+		include_overview: bool = True,
+		include_follow_up_plan: bool = True,
+		execute_follow_up: bool = False,
+		follow_up_support_kind: str = None,
+		follow_up_max_tasks_per_claim: int = 3,
+	):
+		return build_claim_support_review_payload(
+			self,
+			ClaimSupportReviewRequest(
+				user_id=user_id,
+				claim_type=claim_type,
+				required_support_kinds=required_support_kinds or ['evidence', 'authority'],
+				follow_up_cooldown_seconds=follow_up_cooldown_seconds,
+				include_support_summary=include_support_summary,
+				include_overview=include_overview,
+				include_follow_up_plan=include_follow_up_plan,
+				execute_follow_up=execute_follow_up,
+				follow_up_support_kind=follow_up_support_kind,
+				follow_up_max_tasks_per_claim=follow_up_max_tasks_per_claim,
+			),
+		)
+
+	def build_claim_support_follow_up_execution_payload(
+		self,
+		claim_type: str = None,
+		user_id: str = None,
+		required_support_kinds: List[str] = None,
+		follow_up_cooldown_seconds: int = 3600,
+		follow_up_support_kind: str = None,
+		follow_up_max_tasks_per_claim: int = 3,
+		follow_up_force: bool = False,
+		include_post_execution_review: bool = True,
+		include_support_summary: bool = True,
+		include_overview: bool = True,
+		include_follow_up_plan: bool = True,
+	):
+		return build_claim_support_follow_up_execution_payload(
+			self,
+			ClaimSupportFollowUpExecuteRequest(
+				user_id=user_id,
+				claim_type=claim_type,
+				required_support_kinds=required_support_kinds or ['evidence', 'authority'],
+				follow_up_cooldown_seconds=follow_up_cooldown_seconds,
+				follow_up_support_kind=follow_up_support_kind,
+				follow_up_max_tasks_per_claim=follow_up_max_tasks_per_claim,
+				follow_up_force=follow_up_force,
+				include_post_execution_review=include_post_execution_review,
+				include_support_summary=include_support_summary,
+				include_overview=include_overview,
+				include_follow_up_plan=include_follow_up_plan,
+			),
 		)
 
 	def _build_follow_up_task(self, claim_type: str, element: Dict[str, Any], status: str,

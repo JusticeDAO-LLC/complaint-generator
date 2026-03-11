@@ -78,6 +78,15 @@ class SERVER:
                     template = f.read()
             return template
 
+        @app.get("/claim-support-review", response_class=HTMLResponse)
+        async def read_items(request: Request ):
+            template = ""
+            filename = os.getcwd() + "/templates/claim_support_review.html"
+            if os.path.isfile(filename):
+                with open(filename, "r") as f:
+                    template = f.read()
+            return template
+
         @app.get("/chat", response_class=HTMLResponse)
         async def read_items(request: Request ):
             template = ""

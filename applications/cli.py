@@ -1,4 +1,5 @@
 import json
+import shlex
 from urllib import request
 from lib.log import make_logger
 from mediator.exceptions import UserPresentableException
@@ -65,7 +66,11 @@ class CLI:
 
 
 	def interpret_command(self, line):
-		parts = line.split(' ')
+		parts = shlex.split(line)
+		if not parts:
+			self.print_error('command unknown, available commands are:')
+			self.print_commands()
+			return
 		command = parts[0]
 
 		if command == 'reset':
@@ -75,9 +80,74 @@ class CLI:
 			self.save()
 		elif command == 'resume':
 			self.resume()
+		elif command == 'claim-review':
+			self.claim_review(parts[1:])
+		elif command == 'execute-follow-up':
+			self.execute_follow_up(parts[1:])
 		else:
 			self.print_error('command unknown, available commands are:')
 			self.print_commands()
+
+	def _parse_command_options(self, args):
+		options = {}
+		positionals = []
+		for arg in args:
+			if '=' not in arg:
+				positionals.append(arg)
+				continue
+			key, value = arg.split('=', 1)
+			value = value.strip()
+			lowered = value.lower()
+			if lowered in ('true', 'false'):
+				parsed_value = lowered == 'true'
+			elif key.replace('-', '_') == 'required_support_kinds':
+				parsed_value = [item.strip() for item in value.split(',') if item.strip()]
+			else:
+				try:
+					parsed_value = int(value)
+				except ValueError:
+					parsed_value = value
+			options[key.replace('-', '_')] = parsed_value
+		return positionals, options
+
+	def claim_review(self, args):
+		positionals, options = self._parse_command_options(args)
+		claim_type = options.get('claim_type')
+		if claim_type is None and positionals:
+			claim_type = ' '.join(positionals)
+		payload = self.mediator.build_claim_support_review_payload(
+			claim_type=claim_type,
+			user_id=options.get('user_id'),
+			required_support_kinds=options.get('required_support_kinds'),
+			follow_up_cooldown_seconds=options.get('follow_up_cooldown_seconds', 3600),
+			include_support_summary=options.get('include_support_summary', True),
+			include_overview=options.get('include_overview', True),
+			include_follow_up_plan=options.get('include_follow_up_plan', True),
+			execute_follow_up=options.get('execute_follow_up', False),
+			follow_up_support_kind=options.get('follow_up_support_kind'),
+			follow_up_max_tasks_per_claim=options.get('follow_up_max_tasks_per_claim', 3),
+		)
+		self.print_response(json.dumps(payload, indent=2, default=str))
+
+	def execute_follow_up(self, args):
+		positionals, options = self._parse_command_options(args)
+		claim_type = options.get('claim_type')
+		if claim_type is None and positionals:
+			claim_type = ' '.join(positionals)
+		payload = self.mediator.build_claim_support_follow_up_execution_payload(
+			claim_type=claim_type,
+			user_id=options.get('user_id'),
+			required_support_kinds=options.get('required_support_kinds'),
+			follow_up_cooldown_seconds=options.get('follow_up_cooldown_seconds', 3600),
+			follow_up_support_kind=options.get('follow_up_support_kind'),
+			follow_up_max_tasks_per_claim=options.get('follow_up_max_tasks_per_claim', 3),
+			follow_up_force=options.get('follow_up_force', False),
+			include_post_execution_review=options.get('include_post_execution_review', True),
+			include_support_summary=options.get('include_support_summary', True),
+			include_overview=options.get('include_overview', True),
+			include_follow_up_plan=options.get('include_follow_up_plan', True),
+		)
+		self.print_response(json.dumps(payload, indent=2, default=str))
 
 
 	def save(self):
@@ -110,3 +180,5 @@ class CLI:
 		print('!reset      wipe current state and start over')
 		print('!resume     resumes from a statefile from disk')
 		print('!save       saves current state to disk')
+		print('!claim-review [claim_type] [key=value]')
+		print('!execute-follow-up [claim_type] [key=value]')
