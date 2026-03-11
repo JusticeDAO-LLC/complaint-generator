@@ -635,6 +635,7 @@ Interpretation notes:
 - `follow_up_support_kind` narrows execution to one retrieval lane such as `evidence` or `authority` without changing the review-only sections.
 - `follow_up_max_tasks_per_claim` limits side-effecting execution only; it does not truncate `follow_up_plan`.
 - `claim_coverage_summary`, `follow_up_plan_summary`, and `follow_up_execution_summary` are the compact operator-facing surfaces intended for dashboards and review tools.
+- When `execute_follow_up=true`, the response adds `compatibility_notice` and emits `Deprecation`, `Sunset`, `Link`, and `Warning` headers so clients can migrate off the compatibility path.
 - New clients should prefer `POST /api/claim-support/execute-follow-up` for side effects and treat `execute_follow_up` on the review endpoint as a compatibility path.
 
 ## Claim Support Follow-Up Execution API

@@ -29,7 +29,7 @@ from .web_evidence_hooks import (
 from .claim_support_hooks import ClaimSupportHook
 from integrations.ipfs_datasets.capabilities import get_ipfs_datasets_capabilities
 from integrations.ipfs_datasets.graphs import query_graph_support
-from applications.review_api import (
+from claim_support_review import (
 	ClaimSupportFollowUpExecuteRequest,
 	ClaimSupportReviewRequest,
 	build_claim_support_follow_up_execution_payload,

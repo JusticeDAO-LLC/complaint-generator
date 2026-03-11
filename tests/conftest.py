@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 
 import pytest
@@ -12,10 +13,10 @@ _LLM_KEYWORDS = (
     "vertexai",
     "bedrock",
     "ollama",
-    "llm",
     "chatcompletion",
-    "completions",
-    "responses",
+    "chat.completions",
+    "responses.create",
+    "completions.create",
     "transformers",
     "pipeline(",
     "autotokenizer",
@@ -49,10 +50,21 @@ _HEAVY_KEYWORDS = (
     "milvus",
 )
 
+_RESERVED_EXAMPLE_URL_RE = re.compile(
+    r"https?://(?:[a-z0-9-]+\.)*example\.(?:com|org|net)(?:/[^\s\"'<>)]*)?",
+    re.IGNORECASE,
+)
+
 
 def _truthy_env(name: str) -> bool:
     value = os.environ.get(name, "").strip().lower()
     return value in {"1", "true", "yes", "y", "on"}
+
+
+def _strip_reserved_example_urls(text: str) -> str:
+    """Ignore reserved example-domain fixtures when auto-classifying network tests."""
+
+    return _RESERVED_EXAMPLE_URL_RE.sub("reserved-example-url", text)
 
 
 def pytest_addoption(parser):
@@ -144,8 +156,9 @@ def pytest_collection_modifyitems(config, items):
         try:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 text = f.read().lower()
+            network_text = _strip_reserved_example_urls(text)
             is_llm = any(k in text for k in _LLM_KEYWORDS)
-            is_network = any(k in text for k in _NETWORK_KEYWORDS)
+            is_network = any(k in network_text for k in _NETWORK_KEYWORDS)
             is_heavy = any(k in text for k in _HEAVY_KEYWORDS)
         except Exception:
             pass

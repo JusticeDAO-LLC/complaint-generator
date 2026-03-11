@@ -1,11 +1,15 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from applications.review_api import (
+from fastapi import Response
+from claim_support_review import (
     ClaimSupportFollowUpExecuteRequest,
     ClaimSupportReviewRequest,
     build_claim_support_follow_up_execution_payload,
     build_claim_support_review_payload,
+)
+from applications.review_api import (
+    REVIEW_EXECUTION_SUNSET,
     create_review_api_app,
 )
 
@@ -368,3 +372,40 @@ def test_claim_support_review_endpoint_is_registered_on_app():
         for route in app.routes
         if hasattr(route, "methods")
     )
+
+
+async def test_claim_support_review_route_marks_execute_follow_up_as_deprecated():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.get_claim_coverage_matrix.return_value = {"claims": {}}
+    mediator.get_claim_overview.return_value = {"claims": {}}
+    mediator.get_claim_follow_up_plan.return_value = {"claims": {}}
+    mediator.execute_claim_follow_up_plan.return_value = {"claims": {}}
+    mediator.summarize_claim_support.return_value = {"claims": {}}
+
+    app = create_review_api_app(mediator)
+    review_route = next(
+        route
+        for route in app.routes
+        if getattr(route, "path", None) == "/api/claim-support/review"
+    )
+    response = Response()
+
+    payload = await review_route.endpoint(
+        ClaimSupportReviewRequest(claim_type="retaliation", execute_follow_up=True),
+        response,
+    )
+
+    assert payload["compatibility_notice"]["deprecated"] is True
+    assert (
+        payload["compatibility_notice"]["replacement_route"]
+        == "/api/claim-support/execute-follow-up"
+    )
+    assert response.headers["Deprecation"] == "true"
+    assert response.headers["Sunset"] == REVIEW_EXECUTION_SUNSET
+    assert response.headers["Link"] == (
+        '</api/claim-support/execute-follow-up>; rel="successor-version"'
+    )
+    assert "execute_follow_up on /api/claim-support/review is deprecated" in response.headers[
+        "Warning"
+    ]

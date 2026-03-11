@@ -198,10 +198,12 @@ Example response fields:
 - `follow_up_plan_summary`: compact task, suppression, and graph-support counts keyed by claim type.
 - `follow_up_execution`: compatibility-only opt-in execution results keyed by claim type when `execute_follow_up=true`.
 - `follow_up_execution_summary`: compatibility-only compact execution, suppression, cooldown-skip, and graph-support counts keyed by claim type.
+- `compatibility_notice`: route-level deprecation metadata returned only when `execute_follow_up=true`.
 
 If `user_id` is omitted, the endpoint resolves it from the mediator state and falls back to `anonymous`.
 If `execute_follow_up` is omitted or `false`, the endpoint remains read-only and does not trigger retrieval side effects.
 New clients should prefer `/api/claim-support/execute-follow-up` when they want side effects, and treat `execute_follow_up` on the review endpoint as a backward-compatible bridge.
+When the compatibility path is used, the response also includes `Deprecation`, `Sunset`, `Link`, and `Warning` headers pointing callers at `/api/claim-support/execute-follow-up`.
 
 ##### `/api/claim-support/execute-follow-up` - Follow-Up Execution
 
