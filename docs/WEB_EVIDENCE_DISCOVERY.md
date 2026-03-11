@@ -80,6 +80,9 @@ result = mediator.discover_web_evidence(
 print(f"Discovered: {result['discovered']}")
 print(f"Validated: {result['validated']}")
 print(f"Stored: {result['stored']}")
+print(f"New records: {result['total_new']}")
+print(f"Reused records: {result['total_reused']}")
+print(f"New support links: {result['total_support_links_added']}")
 print(f"Skipped: {result['skipped']}")
 print(f"CIDs: {result['evidence_cids']}")
 ```
@@ -99,8 +102,27 @@ results = mediator.discover_evidence_automatically()
 print(f"Claims analyzed: {results['claim_types']}")
 for claim_type, count in results['evidence_discovered'].items():
     stored = results['evidence_stored'][claim_type]
+    storage_summary = results['evidence_storage_summary'][claim_type]
     print(f"{claim_type}: {count} discovered, {stored} stored")
+    print(f"  new={storage_summary['total_new']} reused={storage_summary['total_reused']}")
 ```
+
+## Result Semantics
+
+The discovery payload distinguishes raw processing counts from deduplicated storage outcomes:
+
+- `stored`: Number of evidence items that completed the storage workflow.
+- `stored_new`: Number of brand-new evidence rows inserted into DuckDB.
+- `reused`: Number of items that resolved to an existing evidence row.
+- `total_records`: Aggregate count of processed evidence records for the request.
+- `total_new`: Aggregate count of newly inserted evidence rows.
+- `total_reused`: Aggregate count of reused evidence rows.
+- `support_links_added`: Number of new claim-support links created.
+- `support_links_reused`: Number of claim-support links that already existed.
+- `total_support_links_added`: Aggregate new support-link count.
+- `total_support_links_reused`: Aggregate reused support-link count.
+
+When evidence is projected into the active knowledge graph, each entry in `graph_projection` also reports whether the graph changed or the artifact was already present.
 
 ### Retrieve Discovered Evidence
 
@@ -244,6 +266,36 @@ Discover and store evidence.
 
 **Returns:** Dictionary with discovery statistics
 
+Typical keys include:
+
+```json
+{
+    "discovered": 3,
+    "validated": 2,
+    "stored": 2,
+    "stored_new": 1,
+    "reused": 1,
+    "total_records": 2,
+    "total_new": 1,
+    "total_reused": 1,
+    "support_links_added": 2,
+    "support_links_reused": 0,
+    "total_support_links_added": 2,
+    "total_support_links_reused": 0,
+    "graph_projection": [
+        {
+            "graph_changed": true,
+            "artifact_entity_added": true,
+            "artifact_entity_already_present": false,
+            "storage_record_created": true,
+            "storage_record_reused": false,
+            "support_link_created": true,
+            "support_link_reused": false
+        }
+    ]
+}
+```
+
 #### `discover_evidence_automatically(user_id=None)`
 
 Automatically discover evidence for all case claims.
@@ -252,6 +304,8 @@ Automatically discover evidence for all case claims.
 - `user_id` (str, optional): User identifier
 
 **Returns:** Dictionary with results per claim type
+
+Per-claim results now include both the legacy count in `evidence_stored[claim_type]` and the full deduplicated breakdown in `evidence_storage_summary[claim_type]`.
 
 ## Advanced Usage
 

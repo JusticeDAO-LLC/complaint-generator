@@ -1332,13 +1332,27 @@ class Mediator:
 		"""
 		kg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
 		dg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'dependency_graph')
-		projection_summary = {'projected': False, 'entity_count': 0, 'relationship_count': 0, 'claim_links': 0}
+		projection_summary = {
+			'projected': False,
+			'graph_changed': False,
+			'entity_count': 0,
+			'relationship_count': 0,
+			'claim_links': 0,
+			'artifact_entity_added': False,
+			'artifact_entity_already_present': False,
+			'storage_record_created': bool(evidence_data.get('record_created', False)),
+			'storage_record_reused': bool(evidence_data.get('record_reused', False)),
+			'support_link_created': bool(evidence_data.get('support_link_created', False)),
+			'support_link_reused': bool(evidence_data.get('support_link_reused', False)),
+		}
 		if evidence_data.get('document_graph'):
-			projection_summary = self._project_document_graph_to_knowledge_graph(kg, evidence_data)
+			projection_summary.update(self._project_document_graph_to_knowledge_graph(kg, evidence_data))
 		
 		# Add evidence entity to knowledge graph
 		from complaint_phases.knowledge_graph import Entity
 		artifact_id = evidence_data.get('artifact_id') or evidence_data.get('cid') or f"evidence_{evidence_data.get('id', 'unknown')}"
+		artifact_present_before_add = bool(kg and artifact_id in kg.entities)
+		projection_summary['artifact_entity_already_present'] = artifact_present_before_add
 		if kg and artifact_id not in kg.entities:
 			evidence_entity = Entity(
 				id=artifact_id,
@@ -1350,6 +1364,7 @@ class Mediator:
 			)
 			kg.add_entity(evidence_entity)
 			projection_summary['entity_count'] += 1
+			projection_summary['artifact_entity_added'] = True
 		
 		# Add supporting relationships
 		supported_claim_ids = evidence_data.get('supports_claims', [])
@@ -1369,14 +1384,23 @@ class Mediator:
 				)
 				kg.add_relationship(rel)
 				projection_summary['relationship_count'] += 1
+		graph_changed = projection_summary['entity_count'] > 0 or projection_summary['relationship_count'] > 0
 		
 		# Add to dependency graph
-		if dg and supported_claim_ids:
+		should_update_dependency_graph = bool(
+			dg and supported_claim_ids and (
+				kg is None
+				or graph_changed
+				or evidence_data.get('record_created', False)
+				or evidence_data.get('support_link_created', False)
+			)
+		)
+		if should_update_dependency_graph:
 			self.dg_builder.add_evidence_to_graph(dg, evidence_data, supported_claim_ids[0])
 		
 		# Update phase data
 		evidence_count = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'evidence_count') or 0
-		graph_changed = projection_summary['entity_count'] > 0 or projection_summary['relationship_count'] > 0
+		projection_summary['graph_changed'] = graph_changed
 		existing_enhanced = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'knowledge_graph_enhanced') or False
 		updated_evidence_count = evidence_count + 1 if graph_changed else evidence_count
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_count', updated_evidence_count)

@@ -185,9 +185,17 @@ class TestWebEvidenceIntegrationHook:
             mock_mediator.phase_manager.get_phase_data = Mock(return_value=object())
             mock_mediator.add_evidence_to_graphs = Mock(return_value={
                 'graph_projection': {
+                    'projected': True,
+                    'graph_changed': True,
                     'entity_count': 3,
                     'relationship_count': 2,
                     'claim_links': 1,
+                    'artifact_entity_added': True,
+                    'artifact_entity_already_present': False,
+                    'storage_record_created': True,
+                    'storage_record_reused': False,
+                    'support_link_created': True,
+                    'support_link_reused': False,
                 }
             })
             
@@ -292,6 +300,15 @@ class TestWebEvidenceIntegrationHook:
             assert result['support_links_added'] == 2
             assert result['total_support_links_added'] == 2
             assert result['total_support_links_reused'] == 0
+            assert len(result['graph_projection']) == 2
+            assert result['graph_projection'][0]['graph_changed'] is True
+            assert result['graph_projection'][0]['artifact_entity_added'] is True
+            assert result['graph_projection'][0]['storage_record_reused'] is False
+            graph_kwargs = mock_mediator.add_evidence_to_graphs.call_args.args[0]
+            assert graph_kwargs['record_created'] is True
+            assert graph_kwargs['record_reused'] is False
+            assert graph_kwargs['support_link_created'] is True
+            assert graph_kwargs['support_link_reused'] is False
             store_kwargs = mock_mediator.evidence_storage.store_evidence.call_args.kwargs
             assert store_kwargs['evidence_type'] == 'web_document'
             assert store_kwargs['metadata']['parse_document'] is True
@@ -321,9 +338,17 @@ class TestWebEvidenceIntegrationHook:
             mock_mediator.phase_manager.get_phase_data = Mock(return_value=object())
             mock_mediator.add_evidence_to_graphs = Mock(return_value={
                 'graph_projection': {
+                    'projected': True,
+                    'graph_changed': False,
                     'entity_count': 0,
                     'relationship_count': 0,
                     'claim_links': 1,
+                    'artifact_entity_added': False,
+                    'artifact_entity_already_present': True,
+                    'storage_record_created': False,
+                    'storage_record_reused': True,
+                    'support_link_created': False,
+                    'support_link_reused': True,
                 }
             })
             mock_mediator.web_evidence_search = Mock()
@@ -388,6 +413,14 @@ class TestWebEvidenceIntegrationHook:
             assert result['total_support_links_added'] == 0
             assert len(result['graph_projection']) == 1
             assert result['graph_projection'][0]['claim_links'] == 1
+            assert result['graph_projection'][0]['graph_changed'] is False
+            assert result['graph_projection'][0]['artifact_entity_already_present'] is True
+            assert result['graph_projection'][0]['storage_record_reused'] is True
+            graph_kwargs = mock_mediator.add_evidence_to_graphs.call_args.args[0]
+            assert graph_kwargs['record_created'] is False
+            assert graph_kwargs['record_reused'] is True
+            assert graph_kwargs['support_link_created'] is False
+            assert graph_kwargs['support_link_reused'] is True
             assert mock_mediator.add_evidence_to_graphs.call_count == 1
             assert result['support_links_reused'] == 1
             assert result['total_support_links_reused'] == 1

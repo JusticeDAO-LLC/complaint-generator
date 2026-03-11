@@ -59,6 +59,8 @@ result = mediator.submit_evidence(
 
 print(f"Evidence stored with CID: {result['cid']}")
 print(f"Record ID: {result['record_id']}")
+print(f"New DB row: {result['record_created']}")
+print(f"Reused DB row: {result['record_reused']}")
 ```
 
 ### Submit Evidence from File
@@ -188,6 +190,32 @@ export IPFS_DATASETS_PY_KUBO_CMD=/usr/local/bin/ipfs
 
 ## API Reference
 
+## Result Metadata
+
+`submit_evidence(...)` and `submit_evidence_file(...)` now return explicit deduplication and graph-projection metadata in addition to the stored artifact details.
+
+Important fields:
+
+- `record_created`: `True` when a new evidence row was inserted into DuckDB.
+- `record_reused`: `True` when the evidence matched an existing row in the same claim scope.
+- `support_link_created`: `True` when a new claim-support link was inserted.
+- `support_link_reused`: `True` when the claim-support link already existed.
+- `graph_projection`: Knowledge-graph projection summary.
+
+The `graph_projection` payload distinguishes storage reuse from graph mutation:
+
+```json
+{
+    "graph_changed": false,
+    "artifact_entity_added": false,
+    "artifact_entity_already_present": true,
+    "storage_record_created": false,
+    "storage_record_reused": true,
+    "support_link_created": false,
+    "support_link_reused": true
+}
+```
+
 ### Mediator Methods
 
 #### `submit_evidence(data, evidence_type, user_id=None, description=None, claim_type=None, metadata=None)`
@@ -202,7 +230,7 @@ Submit evidence data.
 - `claim_type` (str, optional): Associated claim type
 - `metadata` (dict, optional): Additional metadata
 
-**Returns:** Dict with CID, record_id, and evidence details
+**Returns:** Dict with CID, record_id, deduplication status, and graph projection details
 
 #### `submit_evidence_file(file_path, evidence_type, ...)`
 
@@ -211,7 +239,7 @@ Submit evidence from file.
 **Args:** Same as `submit_evidence` plus:
 - `file_path` (str): Path to evidence file
 
-**Returns:** Dict with CID, record_id, and evidence details
+**Returns:** Dict with CID, record_id, deduplication status, and graph projection details
 
 #### `get_user_evidence(user_id=None)`
 

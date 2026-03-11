@@ -75,6 +75,8 @@ stored = mediator.store_legal_authorities(
 
 print(f"Stored {stored['statutes']} statutes")
 print(f"Stored {stored['case_law']} cases")
+print(f"New authority rows: {stored['total_new']}")
+print(f"Reused authority rows: {stored['total_reused']}")
 ```
 
 ### Retrieve Stored Authorities
@@ -118,8 +120,21 @@ results = mediator.research_case_automatically()
 
 print(f"Researched {len(results['claim_types'])} claim types")
 for claim_type, authorities in results['authorities_stored'].items():
-    print(f"{claim_type}: {sum(authorities.values())} authorities")
+    print(f"{claim_type}: {authorities['total_records']} authorities")
+    print(f"  new={authorities['total_new']} reused={authorities['total_reused']}")
 ```
+
+## Storage Result Semantics
+
+Authority storage is deduplication-aware. `store_legal_authorities(...)` returns both per-source counts and aggregate totals:
+
+- `total_records`: Authorities processed for the call.
+- `total_new`: New authority rows inserted.
+- `total_reused`: Existing authority rows reused.
+- `total_support_links_added`: New claim-support links created.
+- `total_support_links_reused`: Existing claim-support links reused.
+
+Per-source counters remain available with keys such as `statutes_new`, `statutes_reused`, `statutes_support_links_added`, and `statutes_support_links_reused`.
 
 ## Legal Sources
 

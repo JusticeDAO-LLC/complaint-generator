@@ -499,6 +499,10 @@ class WebEvidenceIntegrationHook:
                     graph_result = self.mediator.add_evidence_to_graphs({
                         **storage_result,
                         'record_id': record_id,
+                        'record_created': record_result.get('created', False),
+                        'record_reused': record_result.get('reused', False),
+                        'support_link_created': support_link_result.get('created', False),
+                        'support_link_reused': support_link_result.get('reused', False),
                         'name': evidence_item.get('title') or evidence_item.get('url') or 'Web evidence',
                         'description': evidence_item.get('description') or evidence_item.get('content') or '',
                         'claim_type': claim_type,

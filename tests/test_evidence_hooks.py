@@ -516,6 +516,11 @@ class TestMediatorEvidenceIntegration:
                 assert result['document_graph']['status'] in {'unavailable', 'available-fallback'}
                 assert result['metadata']['document_graph_summary']['entity_count'] >= 1
                 assert result['graph_projection']['claim_links'] >= 1
+                assert result['graph_projection']['graph_changed'] is True
+                assert result['graph_projection']['artifact_entity_added'] is True
+                assert result['graph_projection']['artifact_entity_already_present'] is False
+                assert result['graph_projection']['storage_record_created'] is True
+                assert result['graph_projection']['storage_record_reused'] is False
                 assert result['record_created'] is True
                 assert result['record_reused'] is False
                 assert result['support_link_created'] is True
@@ -547,6 +552,11 @@ class TestMediatorEvidenceIntegration:
                 assert duplicate_result['record_reused'] is True
                 assert duplicate_result['support_link_created'] is False
                 assert duplicate_result['support_link_reused'] is True
+                assert duplicate_result['graph_projection']['graph_changed'] is False
+                assert duplicate_result['graph_projection']['artifact_entity_added'] is False
+                assert duplicate_result['graph_projection']['artifact_entity_already_present'] is True
+                assert duplicate_result['graph_projection']['storage_record_created'] is False
+                assert duplicate_result['graph_projection']['storage_record_reused'] is True
 
                 element_view = mediator.get_claim_element_view(
                     claim_type='breach of contract',

@@ -69,6 +69,7 @@ Complete index of all documentation in the complaint-generator repository.
 ### Evidence Management
 - [docs/EVIDENCE_MANAGEMENT.md](docs/EVIDENCE_MANAGEMENT.md) - IPFS storage and DuckDB metadata
 - [docs/WEB_EVIDENCE_DISCOVERY.md](docs/WEB_EVIDENCE_DISCOVERY.md) - Automated web evidence discovery
+- [docs/PAYLOAD_CONTRACTS.md](docs/PAYLOAD_CONTRACTS.md) - Central reference for evidence, authority, follow-up, and graph projection response payloads
 
 ### Search Integration
 - [docs/SEARCH_HOOKS.md](docs/SEARCH_HOOKS.md) - Legal corpus RAG and search integration
