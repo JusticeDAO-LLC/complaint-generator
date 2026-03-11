@@ -27,6 +27,8 @@ The main opportunity is no longer "add IPFS" or "add search." The opportunity is
 5. Translate claim requirements and facts into predicates for theorem-style validation.
 6. Feed gaps, contradictions, and support coverage back into the mediator and complaint drafting flow.
 
+The current repository is already partway through that transition. Evidence and authority facts are now persisted and exposed through unified claim-support views, graph-support fallback queries can rank and cluster support for claim elements, and review payloads can already return compact follow-up and coverage summaries for operators. The next plan therefore needs to focus on deepening those working slices into a fuller graph, retrieval, and formal-validation system.
+
 The end state should be a complaint generator that can answer, for every claim element:
 
 - what evidence supports it
@@ -80,10 +82,13 @@ The integration is no longer just an adapter shell. The repository already has s
 
 - uploaded evidence is parsed through the adapter layer and persisted with parse summaries, chunks, graph metadata, and extracted facts
 - discovered web evidence is normalized into the same storage model instead of being kept as opaque search results
+- stored legal authorities can now carry parse summaries, chunk rows, graph metadata, and persisted fact rows when full text is available
 - graph projections from evidence can be pushed into the complaint-phase knowledge graph and linked back to claim elements
+- claim-support views can already flatten support facts across evidence and authorities and expose graph-support summaries for claim elements
 - bounded agentic scraper loops exist and persist run summaries, iteration metrics, tactic-level observations, and coverage ledgers
 - a queue-backed scraper worker now exists so scraper execution can be scheduled from pending work instead of running unconditionally
 - mediator APIs already expose scraper history, scraper tactic performance, queue inspection, and queued-job execution helpers
+- review payloads can already expose claim coverage summaries, follow-up plans, and compatibility-path follow-up execution summaries for operator inspection
 
 This means the next plan should optimize around completing the knowledge plane, not around inventing the first integration seam.
 
@@ -143,9 +148,9 @@ The largest gaps are now product and workflow gaps, not import gaps:
 - no graph database persistence strategy for multi-artifact legal reasoning beyond local graph projection and DuckDB metadata
 - no production theorem-prover workflow for claim-element validation
 - no GraphRAG-backed retrieval or ontology refinement in complaint workflows
-- no unified fact registry spanning uploaded evidence, archived pages, and authorities under one review surface
-- no legal-authority parse pipeline parallel to the evidence parse pipeline
-- no operator-facing case support dashboard or coverage matrix view
+- no durable corpus service yet spans uploaded evidence, archived pages, authorities, graph artifacts, and future predicates under one query contract
+- legal-authority parsing exists for stored authority text, but source coverage, ranking depth, and contradiction handling are still incomplete
+- operator-facing review payloads and coverage summaries exist, but there is no dedicated dashboard or contradiction-review workspace yet
 - no general job boundary for parse, graph, authority, and reasoning tasks beyond the scraper queue
 
 ## Strategic Objective
@@ -167,11 +172,12 @@ Use `ipfs_datasets_py` to turn complaint-generator from a complaint drafting wor
 |---|---|---|---|
 | Legal scrapers | Partial | adapter-backed search and normalized authority storage | richer authority ranking, contradiction handling, state and agency expansion |
 | Web search and archiving | In Progress | Brave, Common Crawl, archive sweeps, direct scraping, persisted scraper runs, queue-backed worker | archive-first capture policy, temporal diffing, stronger source clustering |
-| Document parsing | In Progress | uploaded and web evidence parse summaries, chunks, graph extraction, facts, plus authority parse summaries and authority chunk persistence | one shared corpus service contract across all source families |
-| Knowledge graphs | In Progress | local graph projection into complaint phases, evidence graph metadata persistence, authority graph entity and relationship persistence | backing graph store, graph snapshot persistence, support query plane |
+| Document parsing | In Progress | uploaded and web evidence parse summaries, chunks, graph extraction, facts, plus authority parse summaries, authority chunk persistence, and stored parse metadata | one shared corpus service contract across all source families |
+| Knowledge graphs | In Progress | local graph projection into complaint phases, evidence graph metadata persistence, authority graph entity and relationship persistence, and graph-support fallback queries with duplicate and semantic clustering | backing graph store, graph snapshot persistence, support query plane |
 | GraphRAG | Planned | adapter capability boundary only | ontology generation, support-path scoring, follow-up integration |
 | Logic and theorem proving | Planned | capability probing and placeholder adapter | predicate templates, proof execution, contradiction persistence |
 | Vector search | Planned | adapter shell only | retrieval indexing and hybrid search integration |
+| Review and operator surfaces | In Progress | review payloads, coverage summaries, follow-up plan summaries, and execution summaries | dedicated dashboard, contradiction workspace, and richer support packets |
 | MCP gateway | Planned | adapter shell only | tool exposure and workflow-level orchestration |
 
 ## Recommended Delivery Phases
@@ -204,13 +210,14 @@ Scope:
 
 - persist graph snapshots when graph backends are available
 - formalize support edges, fact links, lineage, and coverage rows
-- add graph-backed support tracing for claim-element review and drafting readiness
+- deepen the existing support-fact and graph-support views into graph-backed tracing for claim-element review and drafting readiness
 
 Primary outputs:
 
 - support-query APIs
 - graph snapshot and lineage persistence
 - claim-element coverage matrix
+- dedicated review surfaces built on top of the existing mediator payload summaries
 
 ### Phase 3: Add reasoning and validation
 
@@ -727,7 +734,7 @@ Objective: make the integrated system inspectable and usable.
 
 Deliverables:
 
-- support coverage summaries
+- expanded support coverage summaries building on the current review payloads
 - provenance-linked evidence review packets
 - authority review views
 - contradiction and missing-support reports
@@ -763,9 +770,9 @@ Priority files:
 
 Focus:
 
-- add document adapter
+- deepen the shared document adapter
 - deepen graph extraction and graph snapshot persistence
-- add graph-support query APIs
+- expand existing graph-support query APIs into persistent support-tracing workflows
 
 Priority files:
 
@@ -836,7 +843,7 @@ Priority files:
 1. Integrate graph support queries into mediator review flows.
 2. Archive important web evidence eagerly and store archive metadata.
 3. Expand legal authority normalization and ranking.
-4. Introduce a shared fact registry across evidence and authorities.
+4. Expand the existing fact registry to archived pages, graph artifacts, and unified review semantics.
 
 ## Next 60 to 90 days
 
@@ -899,8 +906,8 @@ The integration should be considered successful when the system can demonstrate:
 2. Expand `integrations/ipfs_datasets/graphs.py` from fallback extraction into graph persistence and support-query workflows.
 3. Connect `integrations/ipfs_datasets/graphrag.py` outputs to support scoring and denoiser gap detection.
 4. Replace `integrations/ipfs_datasets/logic.py` placeholders with claim-element proof and contradiction workflows.
-5. Add a shared fact registry tying evidence, archived pages, and authorities to claim elements.
-6. Add operator review endpoints or reports for support coverage, provenance, and contradictions.
+5. Expand the existing fact registry so evidence, archived pages, authorities, and future predicates share one durable corpus contract.
+6. Deepen the existing operator review endpoints and reports for support coverage, provenance, and contradictions.
 
 ## Summary
 

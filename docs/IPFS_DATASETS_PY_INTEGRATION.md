@@ -11,6 +11,7 @@ This document is the practical integration guide that sits between:
 - [docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md](docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md)
 - [docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md](docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md)
 - [docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md](docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md)
+- [docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md](docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md)
 - [docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md](docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md)
 
 The main principle is simple: complaint-generator remains the orchestrator, and `ipfs_datasets_py` provides acquisition, parsing, graph, archival, retrieval, and reasoning capabilities through the adapter layer under `integrations/ipfs_datasets/`.
@@ -239,6 +240,8 @@ The highest-value order remains:
 4. Add claim-element coverage matrix reporting.
 5. Integrate GraphRAG support-path scoring.
 6. Integrate theorem-prover-backed validation.
+
+For milestone-level ownership, file targets, and acceptance tests, use [docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md](docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md) as the execution companion to this guide.
 
 This order matters because theorem proving and GraphRAG become much more useful once the system already has stable parse outputs, fact records, support edges, and graph lineage.
 

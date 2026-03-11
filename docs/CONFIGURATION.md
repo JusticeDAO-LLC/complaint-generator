@@ -23,6 +23,8 @@ export COMPLAINT_GENERATOR_CONFIG=/path/to/config.json
 python run.py
 ```
 
+The repository also includes `config.review_surface.json` for the dedicated claim-support operator surface.
+
 ## Configuration Structure
 
 ```json
@@ -206,7 +208,7 @@ Configure CLI and web server applications:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `type` | array[string] | Yes | Application types: `["cli"]`, `["server"]`, or `["cli", "server"]` |
+| `type` | array[string] | Yes | Application types: `["cli"]`, `["server"]`, `["review-surface"]`, `["review-api"]`, `["review-dashboard"]`, or one web type combined with `"cli"` |
 | `host` | string | No | Server bind address (default: `"0.0.0.0"`) |
 | `port` | integer | No | Server port (default: 8000) |
 | `workers` | integer | No | Number of Uvicorn workers (default: 1) |
@@ -216,7 +218,11 @@ Configure CLI and web server applications:
 
 - `"cli"` - Start command-line interface
 - `"server"` - Start web server
-- Both can be specified: `["cli", "server"]`
+- `"review-surface"` - Start the dedicated claim-support dashboard plus its review/follow-up API routes
+- `"review-api"` - Start only the claim-support review/follow-up API routes
+- `"review-dashboard"` - Start only the `/claim-support-review` HTML dashboard
+- One web type can be combined with `"cli"`, for example `["cli", "review-surface"]`
+- Multiple web types in one process are not supported because they share the same bind address and port
 
 **Note:** The current configuration format has a legacy structure where `type` may be an object instead of an array. Both formats are supported:
 
@@ -456,7 +462,11 @@ ERROR: missing backend configuration "invalid-backend-id" - cannot continue
 
 **Error:** `unknown application type: xxx`
 
-**Solution:** Use valid application types: `"cli"` or `"server"`, not other values.
+**Solution:** Use valid application types: `"cli"`, `"server"`, `"review-surface"`, `"review-api"`, or `"review-dashboard"`.
+
+**Error:** `multiple web application types are not supported in one process`
+
+**Solution:** Choose a single web surface per process, optionally combined with `"cli"`.
 
 ### Port Already in Use
 

@@ -43,11 +43,15 @@ These areas are already present and should be treated as foundation, not future 
 - persistent claim requirements and claim-support links
 - evidence and authority deduplication with created or reused metadata
 - parsed evidence summaries, chunks, graph metadata, and extracted fact persistence
+- parsed legal-authority summaries, authority chunk persistence, and authority fact persistence when text is available
 - graph projection metadata propagated through mediator payloads
 - graph projection from evidence into complaint-phase knowledge graph state
+- unified claim-support fact retrieval across evidence and authorities
+- graph-support fallback queries with duplicate collapse and semantic-cluster summaries
 - persisted scraper runs, tactic telemetry, and coverage ledgers
 - queue-backed scraper job persistence and worker execution
 - follow-up planning and cooldown-aware execution history
+- review payloads and compact coverage or follow-up summaries for operator-facing inspection
 - centralized payload contract documentation
 
 ## Still shallow or incomplete
@@ -58,9 +62,9 @@ These are the main execution targets:
 - `integrations/ipfs_datasets/graphs.py` is still primarily fallback extraction and stub persistence
 - `integrations/ipfs_datasets/graphrag.py` is not yet used in support scoring or denoiser planning
 - `integrations/ipfs_datasets/logic.py` still returns `not_implemented` for proof workflows
-- no shared fact registry spans uploaded evidence, archived pages, and legal authorities
+- the shared fact registry exists for evidence and authorities but does not yet provide one durable corpus service across archived pages, graph artifacts, and future predicates
 - no graph-store persistence or query plane exists for multi-artifact support tracing
-- no operator-facing support packet or contradiction review workflow exists
+- review payloads exist, but there is still no dedicated dashboard or contradiction-review workspace
 
 ## Status Legend
 
@@ -80,7 +84,7 @@ These are the main execution targets:
 | W5 | GraphRAG support analysis | Planned | P1 | Ontology refinement improves support ranking and gap detection |
 | W6 | Formal logic and theorem proving | Planned | P1 | Claim-element sufficiency and contradiction validation |
 | W7 | Retrieval and follow-up optimization | In Progress | P1 | Retrieval is driven by missing support and provenance-aware ranking |
-| W8 | Review and operator tooling | Planned | P1 | Coverage, provenance, and contradiction outputs become inspectable |
+| W8 | Review and operator tooling | In Progress | P1 | Existing coverage and follow-up payloads graduate into richer inspectable review surfaces |
 
 ## W1: Adapter Hardening
 
@@ -182,7 +186,7 @@ Acceptance criteria:
 
 ### Work Package W2.3: Shared fact registry
 
-Status: Planned
+Status: In Progress
 Target files:
 
 - schema layer to be selected during implementation
@@ -193,13 +197,13 @@ Target files:
 
 Tasks:
 
-- persist extracted facts separately from raw artifacts and authorities
-- link facts to claim elements, artifacts, and authorities
-- store fact provenance at the chunk or passage level when available
+- deepen the existing extracted-fact persistence so archived pages, authorities, and uploaded evidence share one durable corpus contract
+- link facts to claim elements, artifacts, authorities, and future graph or logic outputs
+- store fact provenance at the chunk or passage level when available and preserve lineage into review payloads
 
 Acceptance criteria:
 
-- claim-element support can enumerate both source artifacts and the specific facts derived from them
+- claim-element support can enumerate both source artifacts and the specific facts derived from them across all acquisition paths
 
 ### Work Package W2.4: Queue-backed acquisition orchestration
 
@@ -591,7 +595,7 @@ Acceptance criteria:
 
 - support payloads can tell whether an evidentiary page came from a live fetch, historical snapshot, or both
 
-### Work Package W7.3: Follow-up task quality improvements
+### Work Package W7.4: Follow-up task quality improvements
 
 Status: In Progress
 Target files:
@@ -611,24 +615,27 @@ Acceptance criteria:
 
 ## W8: Review and Operator Tooling
 
-Status: Planned
+Status: In Progress
 Priority: P1
 
 ### Why this matters
 
 The integration only improves real legal work if people can inspect coverage, provenance, and contradictions without diving into raw tables.
 
+The repo already has a first review surface through mediator payloads and the review API. The next step is to turn those packets into a fuller workspace rather than inventing the first operator view.
+
 ### Work Package W8.1: Support packet reporting
 
-Status: Planned
+Status: In Progress
 Target files:
 
 - `mediator/mediator.py`
+- `applications/review_api.py`
 - reporting or docs surfaces to be selected during implementation
 
 Tasks:
 
-- expose support coverage summaries with direct evidence and authority traces
+- deepen existing support coverage summaries with direct evidence, authority, fact, and graph-support traces
 - expose provenance summaries and bundle manifests
 - expose contradiction and missing-support reports
 
@@ -659,8 +666,9 @@ Acceptance criteria:
 1. Finish W1.1 capability reporting cleanup.
 2. Implement W3.1 `documents.py`.
 3. Execute W3.2 parse-pipeline unification.
-4. Start W2.3 shared fact registry.
+4. Finish W2.3 shared fact registry expansion to archived pages and unified corpus semantics.
 5. Deepen W4.1 graph adapter persistence and query contracts.
+6. Stabilize W8.1 support packet reporting around the existing review payloads.
 
 ## Next sequence
 
@@ -776,4 +784,4 @@ Guardrail:
 1. Deepen `integrations/ipfs_datasets/documents.py`.
 2. Route `mediator/evidence_hooks.py` and `mediator/web_evidence_hooks.py` through the new document contract.
 3. Expand `integrations/ipfs_datasets/graphs.py` to persist and query graph snapshots.
-4. Add a shared fact registry that links claim elements to extracted facts, evidence, authorities, and future predicates.
+4. Expand the existing shared fact registry so claim elements, extracted facts, evidence, authorities, archived pages, and future predicates share one durable contract.

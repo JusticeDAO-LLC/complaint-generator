@@ -124,6 +124,12 @@ python run.py --config config.llm_router.json
 # Access at http://localhost:8000
 ```
 
+**Review Surface Mode:**
+```bash
+python run.py --config config.review_surface.json
+# Access the operator dashboard at http://localhost:8000/claim-support-review
+```
+
 **Agentic Scraper CLI:**
 ```bash
 python scripts/agentic_scraper_cli.py enqueue \
@@ -143,7 +149,7 @@ python scripts/agentic_scraper_cli.py history --user-id cli-user
 python scripts/agentic_scraper_cli.py tactics --user-id cli-user
 ```
 
-[Complete setup guide →](docs/DEPLOYMENT.md) | [Configuration →](docs/CONFIGURATION.md)
+[Complete setup guide →](docs/DEPLOYMENT.md) | [Configuration →](docs/CONFIGURATION.md) | [Applications →](docs/APPLICATIONS.md)
 
 ---
 

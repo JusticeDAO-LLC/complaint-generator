@@ -1,13 +1,12 @@
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 from bs4 import BeautifulSoup
 from fastapi import FastAPI
 from fastapi import Response
-from fastapi.responses import HTMLResponse
 
 from applications.review_api import attach_claim_support_review_routes
+from applications.review_ui import attach_claim_support_review_ui_routes
 from claim_support_review import (
     ClaimSupportFollowUpExecuteRequest,
     ClaimSupportReviewRequest,
@@ -17,11 +16,7 @@ from claim_support_review import (
 def _build_dashboard_app(mediator: Mock) -> FastAPI:
     app = FastAPI()
     attach_claim_support_review_routes(app, mediator)
-
-    @app.get("/claim-support-review", response_class=HTMLResponse)
-    async def claim_support_review_page() -> str:
-        return Path("templates/claim_support_review.html").read_text()
-
+    attach_claim_support_review_ui_routes(app)
     return app
 
 

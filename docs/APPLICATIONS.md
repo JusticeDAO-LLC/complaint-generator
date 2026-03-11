@@ -2,14 +2,23 @@
 
 This document describes the user-facing applications in the Complaint Generator system, including the command-line interface (CLI) and web server.
 
+The review operator surface also has dedicated app factories for non-legacy deployments:
+
+- `applications.create_review_api_app(mediator)` mounts only the claim-support review and follow-up execution API routes.
+- `applications.create_review_dashboard_app()` mounts only the `/claim-support-review` HTML dashboard.
+- `applications.create_review_surface_app(mediator)` mounts both the dashboard UI and the review/follow-up API routes on one FastAPI app.
+
+The repository also includes `config.review_surface.json` for launching the combined review surface through `run.py`.
+
 ## Overview
 
-The Complaint Generator provides two application interfaces:
+The Complaint Generator provides two primary application interfaces and dedicated review-surface variants:
 
 1. **CLI Application** - Interactive command-line interface for legal complaint generation
 2. **Web Server** - FastAPI-based web application with REST API and WebSocket support
+3. **Review Surface Apps** - Focused FastAPI apps for the claim-support dashboard and review APIs
 
-Both applications use the same underlying mediator and processing pipeline, providing consistent functionality across interfaces.
+All application variants use the same underlying mediator and processing pipeline, providing consistent functionality across interfaces.
 
 ## CLI Application
 
@@ -144,6 +153,20 @@ Ensure your configuration file has server enabled:
 ```
 
 The server starts on the configured host and port (typically `http://localhost:8000` or as configured).
+
+## Review Surface Application
+
+The dedicated review surface can be started without the broader legacy web app:
+
+```bash
+python run.py --config config.review_surface.json
+```
+
+This mode serves:
+
+- `/claim-support-review` for the operator dashboard
+- `/api/claim-support/review` for read-only review payloads
+- `/api/claim-support/execute-follow-up` for explicit follow-up execution
 
 ### API Endpoints
 
@@ -331,17 +354,17 @@ class SocketManager:
 
 ## Running Both Applications
 
-You can run both CLI and web server simultaneously:
+You can run the CLI together with one web surface:
 
 ```json
 {
   "APPLICATION": {
-    "type": ["cli", "server"]
+    "type": ["cli", "review-surface"]
   }
 }
 ```
 
-This will start the CLI interface and also launch the web server in the background.
+This starts the selected web surface in the background and then enters the CLI.
 
 ## Application Entry Points
 
@@ -367,7 +390,7 @@ Applications are configured in `config.llm_router.json`:
 ```json
 {
   "APPLICATION": {
-    "type": ["cli", "server"],
+    "type": ["review-surface"],
     "host": "0.0.0.0",
     "port": 8000
   },
@@ -378,6 +401,8 @@ Applications are configured in `config.llm_router.json`:
   }
 }
 ```
+
+The repository root also includes `config.review_surface.json` as a ready-to-run focused operator profile.
 
 See [docs/CONFIGURATION.md](CONFIGURATION.md) for complete configuration reference.
 

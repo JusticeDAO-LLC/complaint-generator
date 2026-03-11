@@ -15,6 +15,7 @@ from starlette.status import HTTP_403_FORBIDDEN
 from starlette.responses import RedirectResponse
 
 from .review_api import attach_claim_support_review_routes
+from .review_ui import attach_claim_support_review_ui_routes
 
 
 class SERVER:
@@ -25,6 +26,7 @@ class SERVER:
  
         app = FastAPI()
         attach_claim_support_review_routes(app, mediator)
+        attach_claim_support_review_ui_routes(app)
         
         hostname = "http://10.10.0.10:1792"
 
@@ -73,15 +75,6 @@ class SERVER:
         async def read_items(request: Request ):
             template = ""
             filename = os.getcwd() + "/templates/results.html"
-            if os.path.isfile(filename):
-                with open(filename, "r") as f:
-                    template = f.read()
-            return template
-
-        @app.get("/claim-support-review", response_class=HTMLResponse)
-        async def read_items(request: Request ):
-            template = ""
-            filename = os.getcwd() + "/templates/claim_support_review.html"
             if os.path.isfile(filename):
                 with open(filename, "r") as f:
                     template = f.read()

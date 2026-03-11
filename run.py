@@ -5,8 +5,7 @@ import os
 from lib.log import init_logging, make_logger
 from backends import WorkstationBackendModels, WorkstationBackendDatabases, LLMRouterBackend
 from mediator import Mediator
-from applications import CLI
-from applications import SERVER
+from applications import start_configured_applications
 
 parser = argparse.ArgumentParser(description='Complaint Generator')
 parser.add_argument(
@@ -79,15 +78,10 @@ for backend_id in config_mediator['backends']:
 # inquiries = Inquiries(hashed_username = hashed_username, hashed_password = hashed_password, token = token)
 mediator = Mediator(backends=backends)
 
-for type in config_application['type']:
-	if type == 'cli':
-		application = CLI(mediator)
-	elif type == 'server':
-		application = SERVER.__init__(mediator)
-	else:
-		log.error('unknown application type: %s' % type)
-		exit(-1)
-
-	application.run()
+try:
+	start_configured_applications(mediator, config_application)
+except ValueError as exc:
+	log.error(str(exc))
+	exit(-1)
 	
 

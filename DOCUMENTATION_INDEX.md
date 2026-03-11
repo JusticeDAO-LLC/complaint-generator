@@ -80,6 +80,7 @@ Complete index of all documentation in the complaint-generator repository.
 - [docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md](docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md) - Comprehensive integration roadmap for legal scrapers, search, graph reasoning, theorem validation, and archival tooling
 - [docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md](docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md) - Implementation backlog with work packages, dependencies, acceptance criteria, and sprint sequencing
 - [docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md](docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md) - Runtime and implementation dependency map for search, archival, parsing, graphs, GraphRAG, logic, and review workflows
+- [docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md](docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md) - Milestone-by-milestone execution checklist with file targets, acceptance criteria, and validation expectations
 - [docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md](docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md) - Validated module map and adapter targets for the checked out `ipfs_datasets_py` submodule
 
 ### DEI Analysis (HACC)
@@ -208,7 +209,7 @@ See [docs/EXAMPLES.md](docs/EXAMPLES.md) for detailed documentation of all 21 ex
 - **Contribute code** → CONTRIBUTING.md
 - **Write tests** → tests/README.md, TESTING.md
 - **Integrate IPFS** → docs/IPFS_DATASETS_INTEGRATION.md
-- **Plan `ipfs_datasets_py` integration work** → docs/IPFS_DATASETS_PY_INTEGRATION.md, docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md, docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md, docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md
+- **Plan `ipfs_datasets_py` integration work** → docs/IPFS_DATASETS_PY_INTEGRATION.md, docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md, docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md, docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md, docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md
 - **Perform legal research** → docs/LEGAL_AUTHORITY_RESEARCH.md
 - **Manage evidence** → docs/EVIDENCE_MANAGEMENT.md
 - **Use search/RAG** → docs/SEARCH_HOOKS.md
