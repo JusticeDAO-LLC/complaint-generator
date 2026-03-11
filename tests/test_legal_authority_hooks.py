@@ -297,6 +297,90 @@ class TestLegalAuthorityStorageHook:
                     os.unlink(db_path)
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_add_authority_persists_parse_summary_and_chunks(self):
+        """Test authority parsing stores parse summary fields and chunk rows."""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthorityStorageHook
+            import duckdb
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                db_path = f.name
+
+            try:
+                hook = LegalAuthorityStorageHook(mock_mediator, db_path=db_path)
+
+                authority_data = {
+                    'type': 'regulation',
+                    'source': 'federal_register',
+                    'citation': '91 Fed. Reg. 12345',
+                    'title': 'Workplace protections',
+                    'content': 'Employers must preserve records.\n\nRetaliation is prohibited when workers report violations.',
+                }
+
+                record_id = hook.add_authority(authority_data, 'testuser', claim_type='employment')
+                authority = hook.get_authority_by_id(record_id)
+                chunks = hook.get_authority_chunks(record_id)
+
+                assert record_id > 0
+                assert authority is not None
+                assert authority['parse_status'] in {'fallback', 'available-fallback'}
+                assert authority['chunk_count'] >= 1
+                assert authority['parsed_text_preview'].startswith('Employers must preserve records.')
+                assert authority['parse_metadata']['parser_version'] == 'documents-adapter:1'
+                assert authority['parse_metadata']['source'] == 'legal_authority'
+                assert len(chunks) >= 1
+                assert chunks[0]['chunk_id'] == 'chunk-0'
+                assert chunks[0]['metadata']['source'] == 'legal_authority'
+            finally:
+                if os.path.exists(db_path):
+                    os.unlink(db_path)
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_add_authority_persists_graph_metadata(self):
+        """Test authority storage persists graph summary fields and graph rows."""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthorityStorageHook
+            import duckdb
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                db_path = f.name
+
+            try:
+                hook = LegalAuthorityStorageHook(mock_mediator, db_path=db_path)
+
+                authority_data = {
+                    'type': 'statute',
+                    'source': 'us_code',
+                    'citation': '42 U.S.C. § 1983',
+                    'title': 'Civil Rights Act',
+                    'content': 'Protected activity is covered. Retaliation is prohibited.',
+                }
+
+                record_id = hook.add_authority(authority_data, 'testuser', claim_type='civil rights')
+                authority = hook.get_authority_by_id(record_id)
+                graph = hook.get_authority_graph(record_id)
+
+                assert record_id > 0
+                assert authority is not None
+                assert authority['graph_status'] in {'unavailable', 'available-fallback'}
+                assert authority['graph_entity_count'] >= 1
+                assert authority['graph_relationship_count'] >= 1
+                assert graph['status'] == 'available'
+                assert any(entity['type'] == 'fact' for entity in graph['entities'])
+                assert any(rel['relation_type'] == 'has_fact' for rel in graph['relationships'])
+            finally:
+                if os.path.exists(db_path):
+                    os.unlink(db_path)
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
     
     def test_get_statistics(self):
         """Test getting authority statistics"""
@@ -496,16 +580,66 @@ class TestMediatorLegalAuthorityIntegration:
 
                 claim_overview = mediator.get_claim_overview(claim_type='civil rights')
                 assert claim_overview['claims']['civil rights']['partially_supported_count'] == 1
-                assert claim_overview['claims']['civil rights']['missing_count'] == 0
+                assert claim_overview['claims']['civil rights']['missing_count'] == 1
+
+                coverage_matrix = mediator.get_claim_coverage_matrix(claim_type='civil rights')
+                assert coverage_matrix['claims']['civil rights']['status_counts']['partially_supported'] == 1
+                assert coverage_matrix['claims']['civil rights']['status_counts']['missing'] == 1
+                coverage_element = coverage_matrix['claims']['civil rights']['elements'][0]
+                assert coverage_element['status'] == 'partially_supported'
+                assert coverage_element['missing_support_kinds'] == ['evidence']
+                assert coverage_element['links_by_kind']['authority'][0]['record_summary']['citation'] == '42 U.S.C. § 1983'
+                assert coverage_element['links_by_kind']['authority'][0]['graph_summary']['entity_count'] >= 0
 
                 follow_up_plan = mediator.get_claim_follow_up_plan(claim_type='civil rights')
-                assert follow_up_plan['claims']['civil rights']['task_count'] == 1
-                assert follow_up_plan['claims']['civil rights']['tasks'][0]['missing_support_kinds'] == ['evidence']
-                assert follow_up_plan['claims']['civil rights']['tasks'][0]['has_graph_support'] is True
-                assert follow_up_plan['claims']['civil rights']['tasks'][0]['graph_support']['summary']['support_by_kind']['authority'] >= 1
-                assert follow_up_plan['claims']['civil rights']['tasks'][0]['graph_support_strength'] in {'moderate', 'strong'}
-                assert follow_up_plan['claims']['civil rights']['tasks'][0]['recommended_action'] in {'target_missing_support_kind', 'review_existing_support'}
-                assert follow_up_plan['claims']['civil rights']['tasks'][0]['priority'] in {'medium', 'low'}
+                assert follow_up_plan['claims']['civil rights']['task_count'] == 2
+                protected_activity_task = next(
+                    task for task in follow_up_plan['claims']['civil rights']['tasks']
+                    if task['claim_element_id'] == 'civil_rights:1'
+                )
+                adverse_action_task = next(
+                    task for task in follow_up_plan['claims']['civil rights']['tasks']
+                    if task['claim_element_id'] == 'civil_rights:2'
+                )
+                assert protected_activity_task['missing_support_kinds'] == ['evidence']
+                assert protected_activity_task['has_graph_support'] is True
+                assert protected_activity_task['graph_support']['summary']['support_by_kind']['authority'] >= 1
+                assert protected_activity_task['graph_support_strength'] in {'moderate', 'strong'}
+                assert protected_activity_task['recommended_action'] in {'target_missing_support_kind', 'review_existing_support'}
+                assert protected_activity_task['priority'] in {'medium', 'low'}
+                assert adverse_action_task['missing_support_kinds'] == ['evidence', 'authority']
+
+                mediator.query_claim_graph_support = Mock(return_value={
+                    'claim_element_id': 'civil_rights:1',
+                    'summary': {
+                        'total_fact_count': 6,
+                        'unique_fact_count': 2,
+                        'duplicate_fact_count': 4,
+                        'max_score': 2.5,
+                        'support_by_kind': {'authority': 6},
+                    },
+                    'results': [
+                        {'fact_id': 'fact:1', 'score': 2.5, 'matched_claim_element': True, 'duplicate_count': 3},
+                    ],
+                })
+                mediator.discover_web_evidence = Mock(return_value={'total_records': 1})
+                suppressed_plan = mediator.get_claim_follow_up_plan(claim_type='civil rights')
+                suppressed_task = next(
+                    task for task in suppressed_plan['claims']['civil rights']['tasks']
+                    if task['claim_element_id'] == 'civil_rights:1'
+                )
+                assert suppressed_task['should_suppress_retrieval'] is True
+                assert suppressed_task['suppression_reason'] == 'existing_support_high_duplication'
+                suppressed_execution = mediator.execute_claim_follow_up_plan(
+                    claim_type='civil rights',
+                    user_id='testuser',
+                    support_kind='evidence',
+                    max_tasks_per_claim=1,
+                )
+                assert suppressed_execution['claims']['civil rights']['task_count'] == 0
+                assert suppressed_execution['claims']['civil rights']['skipped_task_count'] == 1
+                assert suppressed_execution['claims']['civil rights']['skipped_tasks'][0]['skipped']['suppressed']['reason'] == 'existing_support_high_duplication'
+                mediator.discover_web_evidence.assert_not_called()
                 
                 # Retrieve
                 authorities = mediator.get_legal_authorities(claim_type='civil rights')
@@ -521,8 +655,11 @@ class TestMediatorLegalAuthorityIntegration:
                 assert auto_results['authorities_stored']['civil rights']['total_reused'] == 1
                 assert auto_results['authorities_stored']['civil rights']['total_support_links_added'] == 0
                 assert auto_results['authorities_stored']['civil rights']['total_support_links_reused'] == 1
+                assert auto_results['claim_coverage_matrix']['civil rights']['status_counts']['partially_supported'] == 1
+                assert auto_results['claim_coverage_matrix']['civil rights']['status_counts']['missing'] == 1
                 assert auto_results['claim_overview']['civil rights']['partially_supported_count'] == 1
-                assert auto_results['follow_up_plan']['civil rights']['task_count'] == 1
+                assert auto_results['claim_overview']['civil rights']['missing_count'] == 1
+                assert auto_results['follow_up_plan']['civil rights']['task_count'] == 2
 
                 mediator.search_legal_authorities = Mock(return_value={
                     'statutes': [],

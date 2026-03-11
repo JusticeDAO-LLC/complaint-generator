@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from integrations.ipfs_datasets.provenance import build_provenance
+from integrations.ipfs_datasets.documents import parse_document_text
 from integrations.ipfs_datasets.graphs import extract_graph_from_text
 from integrations.ipfs_datasets.types import CaseAuthority, CaseFact
 from integrations.ipfs_datasets.legal import (
@@ -91,7 +92,14 @@ class LegalAuthoritySearchHook:
                 try:
                     statute_results = search_us_code(term, max_results=max_results)
                     if statute_results:
-                        results.extend(statute_results)
+                        results.extend(
+                            {
+                                **statute,
+                                'source': statute.get('source', 'us_code'),
+                            }
+                            for statute in statute_results
+                            if isinstance(statute, dict)
+                        )
                 except Exception as e:
                     self.mediator.log('legal_authority_search_error',
                         search_type='us_code', term=term, error=str(e))
@@ -360,12 +368,55 @@ class LegalAuthorityStorageHook:
                 )
             """)
 
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS legal_authority_chunks (
+                    authority_id BIGINT,
+                    chunk_id VARCHAR,
+                    chunk_index INTEGER,
+                    start_offset INTEGER,
+                    end_offset INTEGER,
+                    chunk_text TEXT,
+                    metadata JSON
+                )
+            """)
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS legal_authority_graph_entities (
+                    authority_id BIGINT,
+                    entity_id VARCHAR,
+                    entity_type VARCHAR,
+                    entity_name TEXT,
+                    confidence FLOAT,
+                    metadata JSON
+                )
+            """)
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS legal_authority_graph_relationships (
+                    authority_id BIGINT,
+                    relationship_id VARCHAR,
+                    source_id VARCHAR,
+                    target_id VARCHAR,
+                    relation_type VARCHAR,
+                    confidence FLOAT,
+                    metadata JSON
+                )
+            """)
+
             for statement in [
                 "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS jurisdiction VARCHAR",
                 "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS source_system VARCHAR",
                 "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS provenance JSON",
                 "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS claim_element_id VARCHAR",
                 "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS claim_element TEXT",
+                "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS parse_status VARCHAR",
+                "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS chunk_count INTEGER",
+                "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS parsed_text_preview TEXT",
+                "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS parse_metadata JSON",
+                "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS graph_status VARCHAR",
+                "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS graph_entity_count INTEGER",
+                "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS graph_relationship_count INTEGER",
+                "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS graph_metadata JSON",
             ]:
                 conn.execute(statement)
             
@@ -392,31 +443,69 @@ class LegalAuthorityStorageHook:
         except Exception as e:
             self.mediator.log('legal_authority_schema_error', error=str(e))
 
+    def _parse_authority_text(self, authority: Dict[str, Any]) -> Dict[str, Any]:
+        authority_text = authority.get('content') or authority.get('text') or ''
+        if not authority_text:
+            authority_text = '\n\n'.join(
+                part for part in [authority.get('title') or '', authority.get('citation') or ''] if part
+            )
+
+        parsed = parse_document_text(
+            authority_text,
+            filename=(authority.get('citation') or authority.get('title') or authority.get('url') or 'authority.txt'),
+            mime_type='text/plain',
+            source='legal_authority',
+        )
+        parsed_metadata = parsed.get('metadata', {}) if isinstance(parsed.get('metadata'), dict) else {}
+        authority_metadata = authority.get('metadata', {}) if isinstance(authority.get('metadata'), dict) else {}
+        authority_metadata['document_parse_summary'] = {
+            'status': parsed.get('status'),
+            'chunk_count': len(parsed.get('chunks', []) or []),
+            'text_length': len(parsed.get('text', '') or ''),
+            'parser_version': parsed_metadata.get('parser_version', ''),
+            'input_format': parsed_metadata.get('input_format', ''),
+            'paragraph_count': parsed_metadata.get('paragraph_count', 0),
+            'source': parsed_metadata.get('source', 'legal_authority'),
+        }
+        authority['metadata'] = authority_metadata
+        return parsed
+
+    def _store_authority_chunks(self, conn, authority_id: int, document_parse: Dict[str, Any]) -> None:
+        chunks = document_parse.get('chunks', []) or []
+        if not chunks:
+            return
+
+        parse_metadata = document_parse.get('metadata', {}) if isinstance(document_parse.get('metadata'), dict) else {}
+        for chunk in chunks:
+            conn.execute(
+                """
+                INSERT INTO legal_authority_chunks (
+                    authority_id, chunk_id, chunk_index, start_offset, end_offset, chunk_text, metadata
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    authority_id,
+                    chunk.get('chunk_id'),
+                    chunk.get('index'),
+                    chunk.get('start'),
+                    chunk.get('end'),
+                    chunk.get('text'),
+                    json.dumps({
+                        'length': chunk.get('length', 0),
+                        'parser_version': parse_metadata.get('parser_version', ''),
+                        'source': parse_metadata.get('source', 'legal_authority'),
+                    }),
+                ],
+            )
+
     def _store_authority_facts(
         self,
         conn,
         authority_id: int,
-        authority: Dict[str, Any],
-        claim_type: Optional[str],
+        graph_payload: Dict[str, Any],
         provenance,
     ) -> None:
-        authority_text = authority.get('content') or authority.get('title') or authority.get('citation') or ''
-        if not authority_text:
-            return
-
-        graph_payload = extract_graph_from_text(
-            authority_text,
-            source_id=f'authority:{authority_id}',
-            metadata={
-                'artifact_id': f'authority:{authority_id}',
-                'title': authority.get('title', ''),
-                'source_url': authority.get('url', ''),
-                'claim_type': claim_type or '',
-                'claim_element_id': authority.get('claim_element_id', ''),
-                'claim_element_text': authority.get('claim_element', ''),
-            },
-        )
-
         for entity in graph_payload.get('entities', []) or []:
             if entity.get('type') != 'fact':
                 continue
@@ -455,6 +544,72 @@ class LegalAuthorityStorageHook:
                 ],
             )
 
+    def _extract_authority_graph(
+        self,
+        authority_id: int,
+        authority: Dict[str, Any],
+        claim_type: Optional[str],
+        document_parse: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        parsed_text = ''
+        if isinstance(document_parse, dict):
+            parsed_text = document_parse.get('text', '') or ''
+        authority_text = parsed_text or authority.get('content') or authority.get('title') or authority.get('citation') or ''
+        if not authority_text:
+            return {'status': 'unavailable', 'entities': [], 'relationships': [], 'metadata': {}}
+
+        return extract_graph_from_text(
+            authority_text,
+            source_id=f'authority:{authority_id}',
+            metadata={
+                'artifact_id': f'authority:{authority_id}',
+                'title': authority.get('title', ''),
+                'source_url': authority.get('url', ''),
+                'claim_type': claim_type or '',
+                'claim_element_id': authority.get('claim_element_id', ''),
+                'claim_element_text': authority.get('claim_element', ''),
+                'parse_status': document_parse.get('status', '') if isinstance(document_parse, dict) else '',
+            },
+        )
+
+    def _store_authority_graph(self, conn, authority_id: int, graph_payload: Dict[str, Any]) -> None:
+        for entity in graph_payload.get('entities', []) or []:
+            conn.execute(
+                """
+                INSERT INTO legal_authority_graph_entities (
+                    authority_id, entity_id, entity_type, entity_name, confidence, metadata
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    authority_id,
+                    entity.get('id'),
+                    entity.get('type'),
+                    entity.get('name'),
+                    entity.get('confidence', 0.0),
+                    json.dumps(entity.get('attributes', {})),
+                ],
+            )
+
+        for relationship in graph_payload.get('relationships', []) or []:
+            conn.execute(
+                """
+                INSERT INTO legal_authority_graph_relationships (
+                    authority_id, relationship_id, source_id, target_id, relation_type, confidence, metadata
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    authority_id,
+                    relationship.get('id'),
+                    relationship.get('source_id'),
+                    relationship.get('target_id'),
+                    relationship.get('relation_type'),
+                    relationship.get('confidence', 0.0),
+                    json.dumps(relationship.get('attributes', {})),
+                ],
+            )
+
     def _authority_record_from_row(self, row, *, include_claim_type: bool = False) -> Dict[str, Any]:
         offset = 1 if include_claim_type else 0
         record = {
@@ -473,7 +628,15 @@ class LegalAuthorityStorageHook:
             'provenance': json.loads(row[12 + offset]) if row[12 + offset] else {},
             'claim_element_id': row[13 + offset],
             'claim_element': row[14 + offset],
-            'fact_count': row[15 + offset] or 0,
+            'parse_status': row[15 + offset],
+            'chunk_count': row[16 + offset] or 0,
+            'parsed_text_preview': row[17 + offset] or '',
+            'parse_metadata': json.loads(row[18 + offset]) if row[18 + offset] else {},
+            'graph_status': row[19 + offset],
+            'graph_entity_count': row[20 + offset] or 0,
+            'graph_relationship_count': row[21 + offset] or 0,
+            'graph_metadata': json.loads(row[22 + offset]) if row[22 + offset] else {},
+            'fact_count': row[23 + offset] or 0,
         }
         if include_claim_type:
             record['claim_type'] = row[1]
@@ -485,7 +648,8 @@ class LegalAuthorityStorageHook:
         claim_type: Optional[str],
         authority_data: Dict[str, Any],
     ) -> Dict[str, Optional[str]]:
-        if not claim_type or not hasattr(self.mediator, 'claim_support'):
+        claim_support = getattr(self.mediator, 'claim_support', None)
+        if not claim_type or claim_support is None:
             return {
                 'claim_element_id': authority_data.get('claim_element_id'),
                 'claim_element': authority_data.get('claim_element'),
@@ -494,7 +658,7 @@ class LegalAuthorityStorageHook:
         metadata = authority_data.get('metadata', {})
         if not isinstance(metadata, dict):
             metadata = {}
-        resolution = self.mediator.claim_support.resolve_claim_element(
+        resolution = claim_support.resolve_claim_element(
             user_id,
             claim_type,
             claim_element_text=authority_data.get('claim_element'),
@@ -508,6 +672,8 @@ class LegalAuthorityStorageHook:
                 'source_url': authority_data.get('url'),
             },
         )
+        if not isinstance(resolution, dict):
+            resolution = {}
         return {
             'claim_element_id': authority_data.get('claim_element_id') or resolution.get('claim_element_id'),
             'claim_element': authority_data.get('claim_element') or resolution.get('claim_element_text'),
@@ -623,6 +789,9 @@ class LegalAuthorityStorageHook:
         try:
             conn = duckdb.connect(self.db_path)
             claim_element = self._resolve_claim_element(user_id, claim_type, authority_data)
+            document_parse = self._parse_authority_text(authority_data)
+            parsed_text = document_parse.get('text', '') if isinstance(document_parse, dict) else ''
+            parsed_text_preview = parsed_text[:5000] if parsed_text else ''
             provenance = build_provenance(
                 source_url=str(authority_data.get('url', '')),
                 acquisition_method='legal_search',
@@ -676,9 +845,11 @@ class LegalAuthorityStorageHook:
                     user_id, complaint_id, claim_type, authority_type,
                     source, citation, title, content, url, metadata,
                     relevance_score, search_query, jurisdiction,
-                    source_system, provenance, claim_element_id, claim_element
+                    source_system, provenance, claim_element_id, claim_element,
+                    parse_status, chunk_count, parsed_text_preview, parse_metadata,
+                    graph_status, graph_entity_count, graph_relationship_count, graph_metadata
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id
             """, [
                 user_id,
@@ -698,14 +869,46 @@ class LegalAuthorityStorageHook:
                 json.dumps(provenance.as_dict()),
                 claim_element.get('claim_element_id'),
                 claim_element.get('claim_element'),
+                document_parse.get('status') if isinstance(document_parse, dict) else None,
+                len(document_parse.get('chunks', []) or []) if isinstance(document_parse, dict) else 0,
+                parsed_text_preview,
+                json.dumps(document_parse.get('metadata', {})) if isinstance(document_parse, dict) else json.dumps({}),
+                None,
+                0,
+                0,
+                json.dumps({}),
             ]).fetchone()
             
             record_id = result[0]
-            self._store_authority_facts(
-                conn,
+            graph_payload = self._extract_authority_graph(
                 record_id,
                 normalized_authority,
                 claim_type,
+                document_parse=document_parse,
+            )
+            conn.execute(
+                """
+                UPDATE legal_authorities
+                SET graph_status = ?,
+                    graph_entity_count = ?,
+                    graph_relationship_count = ?,
+                    graph_metadata = ?
+                WHERE id = ?
+                """,
+                [
+                    graph_payload.get('status'),
+                    len(graph_payload.get('entities', []) or []),
+                    len(graph_payload.get('relationships', []) or []),
+                    json.dumps(graph_payload.get('metadata', {})),
+                    record_id,
+                ],
+            )
+            self._store_authority_chunks(conn, record_id, document_parse)
+            self._store_authority_graph(conn, record_id, graph_payload)
+            self._store_authority_facts(
+                conn,
+                record_id,
+                graph_payload,
                 provenance,
             )
             conn.close()
@@ -769,7 +972,9 @@ class LegalAuthorityStorageHook:
             results = conn.execute("""
                 SELECT id, authority_type, source, citation, title,
                       content, url, metadata, relevance_score, timestamp,
-                      jurisdiction, source_system, provenance, claim_element_id, claim_element,
+                        jurisdiction, source_system, provenance, claim_element_id, claim_element,
+                                                parse_status, chunk_count, parsed_text_preview, parse_metadata,
+                                                graph_status, graph_entity_count, graph_relationship_count, graph_metadata,
                       (
                           SELECT COUNT(*) FROM legal_authority_facts laf WHERE laf.authority_id = legal_authorities.id
                       ) AS fact_count
@@ -805,7 +1010,9 @@ class LegalAuthorityStorageHook:
             results = conn.execute("""
                 SELECT id, claim_type, authority_type, source, citation,
                       title, content, url, metadata, relevance_score, timestamp,
-                      jurisdiction, source_system, provenance, claim_element_id, claim_element,
+                        jurisdiction, source_system, provenance, claim_element_id, claim_element,
+                                                parse_status, chunk_count, parsed_text_preview, parse_metadata,
+                                                graph_status, graph_entity_count, graph_relationship_count, graph_metadata,
                       (
                           SELECT COUNT(*) FROM legal_authority_facts laf WHERE laf.authority_id = legal_authorities.id
                       ) AS fact_count
@@ -833,7 +1040,9 @@ class LegalAuthorityStorageHook:
                 """
                 SELECT id, claim_type, authority_type, source, citation,
                       title, content, url, metadata, relevance_score, timestamp,
-                      jurisdiction, source_system, provenance, claim_element_id, claim_element,
+                        jurisdiction, source_system, provenance, claim_element_id, claim_element,
+                                                parse_status, chunk_count, parsed_text_preview, parse_metadata,
+                                                graph_status, graph_entity_count, graph_relationship_count, graph_metadata,
                       (
                           SELECT COUNT(*) FROM legal_authority_facts laf WHERE laf.authority_id = legal_authorities.id
                       ) AS fact_count
@@ -882,6 +1091,92 @@ class LegalAuthorityStorageHook:
         except Exception as e:
             self.mediator.log('legal_authority_fact_query_error', error=str(e), authority_id=authority_id)
             return []
+
+    def get_authority_chunks(self, authority_id: int) -> List[Dict[str, Any]]:
+        """Get parsed chunk records for a stored legal authority."""
+        if not DUCKDB_AVAILABLE:
+            return []
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            rows = conn.execute(
+                """
+                SELECT chunk_id, chunk_index, start_offset, end_offset, chunk_text, metadata
+                FROM legal_authority_chunks
+                WHERE authority_id = ?
+                ORDER BY chunk_index ASC
+                """,
+                [authority_id],
+            ).fetchall()
+            conn.close()
+            return [
+                {
+                    'chunk_id': row[0],
+                    'index': row[1],
+                    'start': row[2],
+                    'end': row[3],
+                    'text': row[4],
+                    'metadata': json.loads(row[5]) if row[5] else {},
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            self.mediator.log('legal_authority_chunk_query_error', error=str(e), authority_id=authority_id)
+            return []
+
+    def get_authority_graph(self, authority_id: int) -> Dict[str, Any]:
+        """Get normalized graph entities and relationships for a stored legal authority."""
+        if not DUCKDB_AVAILABLE:
+            return {'status': 'unavailable', 'entities': [], 'relationships': []}
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            entity_rows = conn.execute(
+                """
+                SELECT entity_id, entity_type, entity_name, confidence, metadata
+                FROM legal_authority_graph_entities
+                WHERE authority_id = ?
+                ORDER BY entity_id ASC
+                """,
+                [authority_id],
+            ).fetchall()
+            relationship_rows = conn.execute(
+                """
+                SELECT relationship_id, source_id, target_id, relation_type, confidence, metadata
+                FROM legal_authority_graph_relationships
+                WHERE authority_id = ?
+                ORDER BY relationship_id ASC
+                """,
+                [authority_id],
+            ).fetchall()
+            conn.close()
+            return {
+                'status': 'available',
+                'entities': [
+                    {
+                        'id': row[0],
+                        'type': row[1],
+                        'name': row[2],
+                        'confidence': row[3],
+                        'attributes': json.loads(row[4]) if row[4] else {},
+                    }
+                    for row in entity_rows
+                ],
+                'relationships': [
+                    {
+                        'id': row[0],
+                        'source_id': row[1],
+                        'target_id': row[2],
+                        'relation_type': row[3],
+                        'confidence': row[4],
+                        'attributes': json.loads(row[5]) if row[5] else {},
+                    }
+                    for row in relationship_rows
+                ],
+            }
+        except Exception as e:
+            self.mediator.log('legal_authority_graph_query_error', error=str(e), authority_id=authority_id)
+            return {'status': 'error', 'entities': [], 'relationships': [], 'error': str(e)}
     
     def get_statistics(self, user_id: Optional[str] = None) -> Dict[str, Any]:
         """

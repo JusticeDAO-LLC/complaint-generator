@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import inspect
+
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 from urllib.parse import urlparse
@@ -286,6 +289,12 @@ def scrape_archived_domain(
         results = scraper.scrape_domain(url, max_pages=max_pages)
     except Exception:
         return []
+
+    if inspect.isawaitable(results):
+        try:
+            results = asyncio.run(results)
+        except Exception:
+            return []
 
     normalized = [_normalize_scrape_result(item, "archived_domain_scrape") for item in results]
     return _deduplicate_results(normalized)

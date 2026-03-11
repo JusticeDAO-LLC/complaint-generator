@@ -14,6 +14,12 @@ htmlcov/
 *.pyd
 .tox/
 .cache/
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
 
 # Local stray artifact seen during config debugging
 test_extended_config.log

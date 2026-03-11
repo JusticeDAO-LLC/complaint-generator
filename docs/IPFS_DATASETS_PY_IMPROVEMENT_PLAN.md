@@ -167,8 +167,8 @@ Use `ipfs_datasets_py` to turn complaint-generator from a complaint drafting wor
 |---|---|---|---|
 | Legal scrapers | Partial | adapter-backed search and normalized authority storage | richer authority ranking, contradiction handling, state and agency expansion |
 | Web search and archiving | In Progress | Brave, Common Crawl, archive sweeps, direct scraping, persisted scraper runs, queue-backed worker | archive-first capture policy, temporal diffing, stronger source clustering |
-| Document parsing | In Progress | uploaded and web evidence parse summaries, chunks, graph extraction, facts | legal authority parsing and one shared corpus service contract |
-| Knowledge graphs | In Progress | local graph projection into complaint phases, evidence graph metadata persistence | backing graph store, graph snapshot persistence, support query plane |
+| Document parsing | In Progress | uploaded and web evidence parse summaries, chunks, graph extraction, facts, plus authority parse summaries and authority chunk persistence | one shared corpus service contract across all source families |
+| Knowledge graphs | In Progress | local graph projection into complaint phases, evidence graph metadata persistence, authority graph entity and relationship persistence | backing graph store, graph snapshot persistence, support query plane |
 | GraphRAG | Planned | adapter capability boundary only | ontology generation, support-path scoring, follow-up integration |
 | Logic and theorem proving | Planned | capability probing and placeholder adapter | predicate templates, proof execution, contradiction persistence |
 | Vector search | Planned | adapter shell only | retrieval indexing and hybrid search integration |
@@ -263,6 +263,7 @@ Already partially integrated:
 - claim-element linking exists
 - legal research is already routed through mediator hooks
 - authority search already has a production adapter seam, so the remaining work is workflow depth rather than import wiring
+- legal authority storage now also has a first shared-document slice, with parse summaries, chunk persistence, and graph metadata persistence for stored authority text
 
 ### Improvement plan
 
@@ -325,6 +326,8 @@ Use `ipfs_datasets_py` graph capabilities to organize artifacts, facts, legal au
 ### Current position
 
 Complaint-generator already has local knowledge and dependency graph models, and graph projection from evidence is already happening. A graph adapter exists, but backing graph-store workflows are still mostly placeholders.
+
+The legal-authority path now also persists authority graph entities and relationships locally, which closes a major consistency gap between evidence and authority ingestion even though backing graph-store workflows are still missing.
 
 ### Improvement plan
 
@@ -410,7 +413,7 @@ Treat all uploaded or discovered content as parseable corpus material rather tha
 
 ### Current position
 
-Evidence ingestion already stores content and now persists parse summaries, chunks, and extracted graph or fact metadata for uploaded and scraped evidence. The remaining gap is making `documents.py` the fully shared corpus contract across evidence, fetched pages, and legal texts.
+Evidence ingestion already stores content and now persists parse summaries, chunks, and extracted graph or fact metadata for uploaded and scraped evidence. Legal authority storage has also started using the shared parse contract for stored authority text. The remaining gap is making `documents.py` the fully shared corpus contract across all evidence, fetched pages, and legal texts, not just selected slices.
 
 ### Improvement plan
 

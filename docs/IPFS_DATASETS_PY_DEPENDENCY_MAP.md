@@ -27,10 +27,13 @@ graph TD
     B --> E[Evidence Hooks]
     B --> F[Web Evidence Hooks]
     B --> G[Legal Authority Hooks]
+    B --> AQ[Acquisition Queue]
 
     E --> H[Storage Adapter]
     F --> I[Search and Archive Adapter]
     G --> J[Legal Scraper Adapter]
+    AQ --> AR[Queue Worker]
+    AR --> F
 
     H --> K[IPFS and Content Store]
     I --> L[Brave Search]
@@ -80,6 +83,7 @@ graph TD
 - `mediator/mediator.py` remains the orchestrator.
 - `complaint_phases/` remains the canonical in-memory graph workflow.
 - `integrations/ipfs_datasets/` remains the only production boundary to `ipfs_datasets_py`.
+- long-running scraper acquisition should flow through claimed queue work rather than unconditional daemon execution.
 - the shared case outputs that matter most are the fact registry, claim-support store, coverage matrix, and review packets.
 
 ## Responsibility Map
@@ -90,11 +94,12 @@ graph TD
 | Storage and provenance | `mediator/evidence_hooks.py`, `integrations/ipfs_datasets/storage.py` | reproducible artifact storage and source lineage |
 | Web acquisition | `mediator/web_evidence_hooks.py`, `integrations/ipfs_datasets/search.py` | search, fetch, archive, temporal metadata |
 | Legal acquisition | `mediator/legal_authority_hooks.py`, `integrations/ipfs_datasets/legal.py` | authority retrieval, normalization, ranking |
-| Parsing | planned `integrations/ipfs_datasets/documents.py` | text extraction, chunking, metadata, OCR fallback |
+| Parsing | `integrations/ipfs_datasets/documents.py` plus mediator ingestion hooks | text extraction, chunking, metadata, OCR fallback |
 | Facts and support | `mediator/claim_support_hooks.py` plus planned fact registry | claim-element support organization |
 | Graph enrichment | `integrations/ipfs_datasets/graphs.py`, `complaint_phases/` | support edges, entity resolution, graph persistence |
 | GraphRAG | `integrations/ipfs_datasets/graphrag.py` | ontology quality and support-path scoring |
 | Logic and provers | `integrations/ipfs_datasets/logic.py` | proof gaps, contradiction checks, sufficiency validation |
+| Queue-backed acquisition | `mediator/evidence_hooks.py`, `mediator/mediator.py`, `scripts/agentic_scraper_cli.py` | deferred worker execution and queue inspection |
 | Review outputs | mediator reporting layer | support packet, contradiction report, provenance bundle |
 
 ## Implementation Dependency Map
@@ -103,6 +108,7 @@ graph TD
 graph LR
     A[W1 Adapter Hardening] --> B[W3 Documents Adapter]
     A --> C[W2 Provenance Normalization]
+    A --> AQ[W2 Queue Backed Acquisition]
     B --> D[W2 Shared Fact Registry]
     C --> D
     B --> E[W4 Graph Adapter Deepening]
@@ -128,15 +134,19 @@ graph LR
 
 Graph and theorem-prover workflows need normalized text and chunk outputs. Without a shared parse contract, each hook would continue producing source-specific intermediate data and downstream integration would stay brittle.
 
-### 2. Facts before proof
+### 2. Queue-backed acquisition before sustained scraper operations
+
+The scraper worker should consume queued work rather than running indefinitely without demand. This keeps archival and evidence acquisition aligned with real follow-up tasks and avoids idle scraping that produces unreviewed noise.
+
+### 3. Facts before proof
 
 Formal validation should operate on grounded facts, not directly on raw artifacts or raw search results. The fact registry is the bridge between parsing and proof.
 
-### 3. Graph queries before review surfaces
+### 4. Graph queries before review surfaces
 
 Support packets and contradiction reports only become useful when they can enumerate provenance-linked support traces rather than summary counters alone.
 
-### 4. GraphRAG after graph persistence
+### 5. GraphRAG after graph persistence
 
 GraphRAG can add the most value once graph snapshots, entity resolution, and support-path queries exist. Before that, ontology scoring has little stable substrate to evaluate.
 
@@ -211,18 +221,19 @@ Minimum fields:
 
 These are the main blockers preventing deeper integration right now:
 
-1. The shared `documents.py` adapter exists, but it is not yet the fully adopted parse contract across all ingestion paths.
+1. The shared `documents.py` adapter exists, but it is not yet the fully adopted parse contract across evidence, scraped pages, and legal authorities.
 2. The graph adapter exists but does not yet provide robust persistence or support-query workflows.
 3. The logic adapter exists but still returns placeholder `not_implemented` contracts.
-4. The system does not yet persist extracted facts as a first-class shared object.
+4. The system does not yet persist extracted facts as a first-class shared object across evidence and authority domains.
+5. The queue-backed acquisition model exists for scraper work, but it has not yet been generalized to other long-running acquisition or reasoning tasks.
 
 ## Recommended Immediate Build Path
 
 1. Deepen `integrations/ipfs_datasets/documents.py`.
-2. Route evidence and web evidence parsing through that adapter consistently.
-3. Add a shared fact registry linked to claim elements.
+2. Route evidence, web evidence, and authority parsing through that adapter consistently.
+3. Expand the shared fact registry linked to claim elements and source lineage.
 4. Expand `integrations/ipfs_datasets/graphs.py` to persist and query graph snapshots.
-5. Expose claim-element support queries from graph and fact data.
+5. Expose claim-element support queries and coverage-matrix reporting from graph and fact data.
 6. Add GraphRAG scoring and theorem-prover validation on top of that substrate.
 
 ## Definition of an Integrated End State

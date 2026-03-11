@@ -726,6 +726,21 @@ class Mediator:
 			required_support_kinds=required_support_kinds,
 		)
 
+	def get_claim_coverage_matrix(
+		self,
+		claim_type: str = None,
+		user_id: str = None,
+		required_support_kinds: List[str] = None,
+	):
+		"""Return a review-oriented coverage matrix for claim elements and support sources."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		return self.claim_support.get_claim_coverage_matrix(
+			user_id,
+			claim_type=claim_type,
+			required_support_kinds=required_support_kinds,
+		)
+
 	def _build_follow_up_task(self, claim_type: str, element: Dict[str, Any], status: str,
 			required_support_kinds: List[str]) -> Dict[str, Any]:
 		element_text = element.get('element_text') or element.get('claim_element') or 'Unknown element'
@@ -762,14 +777,16 @@ class Mediator:
 	def _classify_graph_support(self, graph_support: Dict[str, Any]) -> Dict[str, Any]:
 		summary = graph_support.get('summary', {}) if isinstance(graph_support, dict) else {}
 		max_score = float(summary.get('max_score', 0.0) or 0.0)
-		unique_fact_count = int(summary.get('unique_fact_count', summary.get('total_fact_count', 0)) or 0)
-		if max_score >= 2.0 or unique_fact_count >= 3:
+		semantic_cluster_count = int(
+			summary.get('semantic_cluster_count', summary.get('unique_fact_count', summary.get('total_fact_count', 0))) or 0
+		)
+		if max_score >= 2.0 or semantic_cluster_count >= 3:
 			return {
 				'strength': 'strong',
 				'priority_adjustment': -1,
 				'recommended_action': 'review_existing_support',
 			}
-		if max_score >= 1.0 or unique_fact_count >= 1:
+		if max_score >= 1.0 or semantic_cluster_count >= 1:
 			return {
 				'strength': 'moderate',
 				'priority_adjustment': 0,
@@ -790,10 +807,12 @@ class Mediator:
 
 	def _should_suppress_follow_up_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
 		graph_summary = (task.get('graph_support') or {}).get('summary', {})
-		unique_fact_count = int(graph_summary.get('unique_fact_count', graph_summary.get('total_fact_count', 0)) or 0)
-		duplicate_fact_count = int(graph_summary.get('duplicate_fact_count', 0) or 0)
+		semantic_cluster_count = int(
+			graph_summary.get('semantic_cluster_count', graph_summary.get('unique_fact_count', graph_summary.get('total_fact_count', 0))) or 0
+		)
+		semantic_duplicate_count = int(graph_summary.get('semantic_duplicate_count', graph_summary.get('duplicate_fact_count', 0)) or 0)
 		strength = task.get('graph_support_strength', 'none')
-		if strength == 'strong' and unique_fact_count > 0 and duplicate_fact_count >= unique_fact_count:
+		if strength == 'strong' and semantic_cluster_count > 0 and semantic_duplicate_count >= semantic_cluster_count:
 			return {
 				'suppress': True,
 				'reason': 'existing_support_high_duplication',
@@ -1189,6 +1208,7 @@ class Mediator:
 			'authorities_found': {},
 			'authorities_stored': {},
 			'support_summary': {},
+			'claim_coverage_matrix': {},
 			'claim_overview': {},
 			'follow_up_plan': {},
 			'follow_up_execution': {}
@@ -1224,6 +1244,25 @@ class Mediator:
 					'total_links': 0,
 					'support_by_kind': {},
 					'links': [],
+				},
+			)
+			coverage_matrix = self.get_claim_coverage_matrix(claim_type=claim_type, user_id=user_id)
+			results['claim_coverage_matrix'][claim_type] = coverage_matrix.get('claims', {}).get(
+				claim_type,
+				{
+					'claim_type': claim_type,
+					'required_support_kinds': ['evidence', 'authority'],
+					'total_elements': 0,
+					'status_counts': {
+						'covered': 0,
+						'partially_supported': 0,
+						'missing': 0,
+					},
+					'total_links': 0,
+					'total_facts': 0,
+					'support_by_kind': {},
+					'elements': [],
+					'unassigned_links': [],
 				},
 			)
 			claim_overview = self.get_claim_overview(claim_type=claim_type, user_id=user_id)

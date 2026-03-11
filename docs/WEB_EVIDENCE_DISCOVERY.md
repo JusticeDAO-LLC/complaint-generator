@@ -369,6 +369,12 @@ Automatically discover evidence for all case claims.
 
 Per-claim results now include both the legacy count in `evidence_stored[claim_type]` and the full deduplicated breakdown in `evidence_storage_summary[claim_type]`.
 
+Automatic discovery results also include compact follow-up summaries:
+
+- `follow_up_plan_summary[claim_type]`: task, blocked, graph-supported, and suppressed counts plus semantic-cluster totals and recommended-action totals.
+- `follow_up_execution_summary[claim_type]`: executed, skipped, suppressed, and cooldown-skipped task counts plus semantic-cluster totals when `execute_follow_up=True`.
+- `claim_coverage_matrix[claim_type]`: claim-element support status with grouped evidence or authority links and lightweight record or graph summaries.
+
 #### `run_agentic_scraper_cycle(keywords, domains=None, iterations=1, sleep_seconds=0.0, quality_domain='caselaw')`
 
 Run a bounded scrape-review-critique-optimize loop.

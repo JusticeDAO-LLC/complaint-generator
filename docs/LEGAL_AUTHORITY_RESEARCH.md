@@ -332,6 +332,14 @@ Automatically research all claims in the case.
 
 **Returns:** Dictionary with research results
 
+Per-claim results include:
+
+- `authorities_stored[claim_type]`: storage and deduplication counts for the authority batch.
+- `support_summary[claim_type]`: raw persisted support-link summary.
+- `claim_overview[claim_type]`: covered, partially supported, and missing element buckets.
+- `claim_coverage_matrix[claim_type]`: grouped claim-element support with `links_by_kind`, `missing_support_kinds`, and inline record or graph summaries.
+- `follow_up_plan[claim_type]`: next-step authority or evidence retrieval tasks derived from the current support gaps.
+
 ## Advanced Usage
 
 ### Custom Relevance Scoring

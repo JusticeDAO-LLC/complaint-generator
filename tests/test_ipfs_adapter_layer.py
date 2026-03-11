@@ -357,3 +357,39 @@ def test_query_graph_support_ranks_fact_backed_results():
     assert result['results'][0]['matched_claim_element'] is True
     assert result['results'][0]['duplicate_count'] == 2
     assert result['results'][0]['score'] >= result['results'][1]['score']
+
+
+def test_query_graph_support_clusters_semantically_similar_facts():
+    result = query_graph_support(
+        'employment:1',
+        graph_id='intake-knowledge-graph',
+        claim_type='employment',
+        claim_element_text='Protected activity',
+        support_facts=[
+            {
+                'fact_id': 'fact:1',
+                'text': 'Employee complained to HR about discrimination and engaged in protected activity.',
+                'claim_element_id': 'employment:1',
+                'claim_element_text': 'Protected activity',
+                'support_kind': 'evidence',
+                'source_table': 'evidence',
+                'confidence': 0.6,
+            },
+            {
+                'fact_id': 'fact:2',
+                'text': 'Employee engaged in protected activity by filing an HR discrimination complaint.',
+                'claim_element_id': 'employment:1',
+                'claim_element_text': 'Protected activity',
+                'support_kind': 'authority',
+                'source_table': 'legal_authorities',
+                'confidence': 0.7,
+            },
+        ],
+    )
+
+    assert result['summary']['total_fact_count'] == 2
+    assert result['summary']['unique_fact_count'] == 2
+    assert result['summary']['semantic_cluster_count'] == 1
+    assert result['summary']['semantic_duplicate_count'] == 1
+    assert result['results'][0]['cluster_size'] == 2
+    assert len(result['results'][0]['cluster_texts']) == 2

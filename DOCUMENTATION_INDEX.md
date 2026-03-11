@@ -76,7 +76,7 @@ Complete index of all documentation in the complaint-generator repository.
 
 ### IPFS Integration
 - [docs/IPFS_DATASETS_INTEGRATION.md](docs/IPFS_DATASETS_INTEGRATION.md) - IPFS integration guide
-- [docs/IPFS_DATASETS_PY_INTEGRATION.md](docs/IPFS_DATASETS_PY_INTEGRATION.md) - Python IPFS integration
+- [docs/IPFS_DATASETS_PY_INTEGRATION.md](docs/IPFS_DATASETS_PY_INTEGRATION.md) - Current-state `ipfs_datasets_py` integration guide for adapters, mediator hooks, search, parsing, graphs, and reasoning workflows
 - [docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md](docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md) - Comprehensive integration roadmap for legal scrapers, search, graph reasoning, theorem validation, and archival tooling
 - [docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md](docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md) - Implementation backlog with work packages, dependencies, acceptance criteria, and sprint sequencing
 - [docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md](docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md) - Runtime and implementation dependency map for search, archival, parsing, graphs, GraphRAG, logic, and review workflows
@@ -208,6 +208,7 @@ See [docs/EXAMPLES.md](docs/EXAMPLES.md) for detailed documentation of all 21 ex
 - **Contribute code** → CONTRIBUTING.md
 - **Write tests** → tests/README.md, TESTING.md
 - **Integrate IPFS** → docs/IPFS_DATASETS_INTEGRATION.md
+- **Plan `ipfs_datasets_py` integration work** → docs/IPFS_DATASETS_PY_INTEGRATION.md, docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md, docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md, docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md
 - **Perform legal research** → docs/LEGAL_AUTHORITY_RESEARCH.md
 - **Manage evidence** → docs/EVIDENCE_MANAGEMENT.md
 - **Use search/RAG** → docs/SEARCH_HOOKS.md

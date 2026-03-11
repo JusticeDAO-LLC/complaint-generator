@@ -522,6 +522,22 @@ class TestWebEvidenceIntegrationHook:
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
+    def test_get_search_hook_uses_mediator_search_hook(self):
+        """Test lazy search-hook initialization reuses mediator.web_evidence_search."""
+        try:
+            from mediator.web_evidence_hooks import WebEvidenceIntegrationHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.web_evidence_search = Mock()
+
+            hook = WebEvidenceIntegrationHook(mock_mediator)
+
+            assert hook._get_search_hook() is mock_mediator.web_evidence_search
+            assert hook._get_search_hook() is mock_mediator.web_evidence_search
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
     def test_discover_evidence_for_case_includes_support_summary(self):
         """Test auto-discovery returns per-claim support summaries."""
         try:
@@ -562,20 +578,58 @@ class TestWebEvidenceIntegrationHook:
                     }
                 }
             })
+            mock_mediator.get_claim_coverage_matrix = Mock(return_value={
+                'claims': {
+                    'employment discrimination': {
+                        'claim_type': 'employment discrimination',
+                        'required_support_kinds': ['evidence', 'authority'],
+                        'total_elements': 2,
+                        'status_counts': {
+                            'covered': 0,
+                            'partially_supported': 1,
+                            'missing': 1,
+                        },
+                        'total_links': 2,
+                        'total_facts': 2,
+                        'support_by_kind': {'evidence': 2},
+                        'elements': [],
+                        'unassigned_links': [],
+                    }
+                }
+            })
             mock_mediator.get_claim_follow_up_plan = Mock(return_value={
                 'claims': {
                     'employment discrimination': {
                         'task_count': 2,
+                        'blocked_task_count': 1,
                         'tasks': [
                             {
                                 'claim_element': 'Protected activity',
                                 'status': 'partially_supported',
                                 'missing_support_kinds': ['authority'],
+                                'has_graph_support': True,
+                                'recommended_action': 'review_existing_support',
+                                'should_suppress_retrieval': True,
+                                'graph_support': {
+                                    'summary': {
+                                        'semantic_cluster_count': 1,
+                                        'semantic_duplicate_count': 2,
+                                    }
+                                },
                             },
                             {
                                 'claim_element': 'Adverse action',
                                 'status': 'missing',
                                 'missing_support_kinds': ['evidence', 'authority'],
+                                'has_graph_support': False,
+                                'recommended_action': 'retrieve_more_support',
+                                'should_suppress_retrieval': False,
+                                'graph_support': {
+                                    'summary': {
+                                        'semantic_cluster_count': 0,
+                                        'semantic_duplicate_count': 0,
+                                    }
+                                },
                             },
                         ],
                     }
@@ -604,8 +658,16 @@ class TestWebEvidenceIntegrationHook:
             assert result['evidence_storage_summary']['employment discrimination']['total_new'] == 1
             assert result['evidence_storage_summary']['employment discrimination']['total_reused'] == 1
             assert result['support_summary']['employment discrimination']['total_links'] == 2
+            assert result['claim_coverage_matrix']['employment discrimination']['status_counts']['partially_supported'] == 1
             assert result['claim_overview']['employment discrimination']['missing_count'] == 1
             assert result['follow_up_plan']['employment discrimination']['task_count'] == 2
+            assert result['follow_up_plan_summary']['employment discrimination']['task_count'] == 2
+            assert result['follow_up_plan_summary']['employment discrimination']['blocked_task_count'] == 1
+            assert result['follow_up_plan_summary']['employment discrimination']['graph_supported_task_count'] == 1
+            assert result['follow_up_plan_summary']['employment discrimination']['suppressed_task_count'] == 1
+            assert result['follow_up_plan_summary']['employment discrimination']['semantic_cluster_count'] == 1
+            assert result['follow_up_plan_summary']['employment discrimination']['semantic_duplicate_count'] == 2
+            assert result['follow_up_plan_summary']['employment discrimination']['recommended_actions']['review_existing_support'] == 1
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
@@ -623,6 +685,7 @@ class TestWebEvidenceIntegrationHook:
                 'claim_types': ['employment discrimination']
             }
             mock_mediator.summarize_claim_support = Mock(return_value={'claims': {}})
+            mock_mediator.get_claim_coverage_matrix = Mock(return_value={'claims': {}})
             mock_mediator.get_claim_overview = Mock(return_value={'claims': {}})
             mock_mediator.get_claim_follow_up_plan = Mock(return_value={'claims': {}})
             mock_mediator.execute_claim_follow_up_plan = Mock(return_value={
@@ -630,7 +693,31 @@ class TestWebEvidenceIntegrationHook:
                     'employment discrimination': {
                         'task_count': 1,
                         'tasks': [
-                            {'claim_element': 'Adverse action'}
+                            {
+                                'claim_element': 'Adverse action',
+                                'graph_support': {
+                                    'summary': {
+                                        'semantic_cluster_count': 1,
+                                        'semantic_duplicate_count': 1,
+                                    }
+                                },
+                            }
+                        ],
+                        'skipped_tasks': [
+                            {
+                                'claim_element': 'Protected activity',
+                                'graph_support': {
+                                    'summary': {
+                                        'semantic_cluster_count': 2,
+                                        'semantic_duplicate_count': 3,
+                                    }
+                                },
+                                'skipped': {
+                                    'suppressed': {
+                                        'reason': 'existing_support_high_duplication'
+                                    }
+                                },
+                            }
                         ],
                     }
                 }
@@ -656,6 +743,11 @@ class TestWebEvidenceIntegrationHook:
 
             assert result['evidence_storage_summary']['employment discrimination']['total_records'] == 1
             assert result['follow_up_execution']['employment discrimination']['task_count'] == 1
+            assert result['follow_up_execution_summary']['employment discrimination']['executed_task_count'] == 1
+            assert result['follow_up_execution_summary']['employment discrimination']['skipped_task_count'] == 1
+            assert result['follow_up_execution_summary']['employment discrimination']['suppressed_task_count'] == 1
+            assert result['follow_up_execution_summary']['employment discrimination']['semantic_cluster_count'] == 3
+            assert result['follow_up_execution_summary']['employment discrimination']['semantic_duplicate_count'] == 4
             mock_mediator.execute_claim_follow_up_plan.assert_called_once()
             assert mock_mediator.execute_claim_follow_up_plan.call_args.kwargs['support_kind'] == 'evidence'
         except ImportError as e:

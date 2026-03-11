@@ -279,7 +279,7 @@ Acceptance criteria:
 
 ### Work Package W3.3: Legal text parse pipeline
 
-Status: Planned
+Status: In Progress
 Target files:
 
 - `mediator/legal_authority_hooks.py`
@@ -291,6 +291,12 @@ Tasks:
 - parse authority text into chunked records when full text is available
 - extract citation and requirement candidates from parsed authority text
 - connect parsed authority text to the legal graph and future predicate translation
+
+Implemented baseline:
+
+- stored legal authority text now flows through `documents.py` for parse summaries and chunk persistence
+- authority fact extraction now prefers normalized parsed text over raw content when available
+- authority graph entities and relationships are now persisted locally alongside authority facts
 
 Acceptance criteria:
 
@@ -323,6 +329,7 @@ Implemented baseline:
 
 - evidence ingestion already performs graph extraction and stores entity and relationship metadata in DuckDB
 - complaint-phase graph projection already exists for evidence-backed support insertion
+- legal-authority ingestion now also stores graph entity and relationship metadata locally for later support tracing
 
 Acceptance criteria:
 

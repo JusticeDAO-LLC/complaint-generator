@@ -326,8 +326,54 @@ class WebEvidenceIntegrationHook:
     
     def __init__(self, mediator):
         self.mediator = mediator
-        # Create a search hook for convenience methods
         self._search_hook = None
+
+    def _aggregate_graph_support_metrics(self, tasks: List[Dict[str, Any]]) -> Dict[str, int]:
+        semantic_cluster_count = 0
+        semantic_duplicate_count = 0
+        for task in tasks:
+            graph_summary = (task.get('graph_support') or {}).get('summary', {})
+            semantic_cluster_count += int(graph_summary.get('semantic_cluster_count', 0) or 0)
+            semantic_duplicate_count += int(graph_summary.get('semantic_duplicate_count', 0) or 0)
+        return {
+            'semantic_cluster_count': semantic_cluster_count,
+            'semantic_duplicate_count': semantic_duplicate_count,
+        }
+
+    def _summarize_follow_up_plan_claim(self, claim_plan: Dict[str, Any]) -> Dict[str, Any]:
+        tasks = claim_plan.get('tasks', []) if isinstance(claim_plan, dict) else []
+        recommended_actions: Dict[str, int] = {}
+        for task in tasks:
+            action = str(task.get('recommended_action') or 'unspecified')
+            recommended_actions[action] = recommended_actions.get(action, 0) + 1
+        graph_support_metrics = self._aggregate_graph_support_metrics(tasks)
+        return {
+            'task_count': len(tasks),
+            'blocked_task_count': claim_plan.get('blocked_task_count', 0),
+            'graph_supported_task_count': len([task for task in tasks if task.get('has_graph_support')]),
+            'suppressed_task_count': len([task for task in tasks if task.get('should_suppress_retrieval')]),
+            'semantic_cluster_count': graph_support_metrics['semantic_cluster_count'],
+            'semantic_duplicate_count': graph_support_metrics['semantic_duplicate_count'],
+            'recommended_actions': recommended_actions,
+        }
+
+    def _summarize_follow_up_execution_claim(self, claim_execution: Dict[str, Any]) -> Dict[str, Any]:
+        executed_tasks = claim_execution.get('tasks', []) if isinstance(claim_execution, dict) else []
+        skipped_tasks = claim_execution.get('skipped_tasks', []) if isinstance(claim_execution, dict) else []
+        suppressed = [task for task in skipped_tasks if 'suppressed' in task.get('skipped', {})]
+        cooldown_skips = [
+            task for task in skipped_tasks
+            if any(value.get('reason') == 'duplicate_within_cooldown' for value in task.get('skipped', {}).values() if isinstance(value, dict))
+        ]
+        graph_support_metrics = self._aggregate_graph_support_metrics(executed_tasks + skipped_tasks)
+        return {
+            'executed_task_count': len(executed_tasks),
+            'skipped_task_count': len(skipped_tasks),
+            'suppressed_task_count': len(suppressed),
+            'cooldown_skipped_task_count': len(cooldown_skips),
+            'semantic_cluster_count': graph_support_metrics['semantic_cluster_count'],
+            'semantic_duplicate_count': graph_support_metrics['semantic_duplicate_count'],
+        }
     
     def _get_search_hook(self):
         """Lazy initialization of search hook."""
@@ -808,7 +854,10 @@ class WebEvidenceIntegrationHook:
             'support_summary': {},
             'claim_overview': {},
             'follow_up_plan': {},
+            'follow_up_plan_summary': {},
             'follow_up_execution': {},
+            'follow_up_execution_summary': {},
+                                        'claim_coverage_matrix': {},
         }
         
         # Discover evidence for each claim type
@@ -854,28 +903,52 @@ class WebEvidenceIntegrationHook:
                         'total_elements': 0,
                     },
                 )
+            if hasattr(self.mediator, 'get_claim_coverage_matrix'):
+                coverage_matrix = self.mediator.get_claim_coverage_matrix(claim_type=claim_type, user_id=user_id)
+                results['claim_coverage_matrix'][claim_type] = coverage_matrix.get('claims', {}).get(
+                    claim_type,
+                    {
+                        'claim_type': claim_type,
+                        'required_support_kinds': ['evidence', 'authority'],
+                        'total_elements': 0,
+                        'status_counts': {
+                            'covered': 0,
+                            'partially_supported': 0,
+                            'missing': 0,
+                        },
+                        'total_links': 0,
+                        'total_facts': 0,
+                        'support_by_kind': {},
+                        'elements': [],
+                        'unassigned_links': [],
+                    },
+                )
             if hasattr(self.mediator, 'get_claim_follow_up_plan'):
                 follow_up_plan = self.mediator.get_claim_follow_up_plan(claim_type=claim_type, user_id=user_id)
-                results['follow_up_plan'][claim_type] = follow_up_plan.get('claims', {}).get(
+                claim_plan = follow_up_plan.get('claims', {}).get(
                     claim_type,
                     {
                         'task_count': 0,
                         'tasks': [],
                     },
                 )
+                results['follow_up_plan'][claim_type] = claim_plan
+                results['follow_up_plan_summary'][claim_type] = self._summarize_follow_up_plan_claim(claim_plan)
             if execute_follow_up and hasattr(self.mediator, 'execute_claim_follow_up_plan'):
                 follow_up_execution = self.mediator.execute_claim_follow_up_plan(
                     claim_type=claim_type,
                     user_id=user_id,
                     support_kind='evidence',
                 )
-                results['follow_up_execution'][claim_type] = follow_up_execution.get('claims', {}).get(
+                claim_execution = follow_up_execution.get('claims', {}).get(
                     claim_type,
                     {
                         'task_count': 0,
                         'tasks': [],
                     },
                 )
+                results['follow_up_execution'][claim_type] = claim_execution
+                results['follow_up_execution_summary'][claim_type] = self._summarize_follow_up_execution_claim(claim_execution)
         
         self.mediator.log('auto_evidence_discovery_complete', results=results)
         

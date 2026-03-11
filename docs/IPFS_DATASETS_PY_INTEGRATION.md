@@ -1,263 +1,267 @@
-# HACC Scripts vs ipfs_datasets_py - Integration Analysis
+# IPFS Datasets Py Integration Guide
 
-**Date:** 2026-02-08  
-**Purpose:** Identify duplicated functionality and integration opportunities between HACC scripts and ipfs_datasets_py package
+Date: 2026-03-11
 
----
+## Purpose
 
-## Executive Summary
+Describe how complaint-generator should use the `ipfs_datasets_py` submodule in production, based on the current repository state.
 
-The **ipfs_datasets_py** package provides **substantial overlapping functionality** with the HACC scripts we analyzed. Rather than wrapping HACC scripts directly, we should **leverage ipfs_datasets_py's existing infrastructure** which offers:
+This document is the practical integration guide that sits between:
 
-- ✅ **More mature implementations** - 4400+ tests, production-ready
-- ✅ **Better integration** - Already a submodule in complaint-generator
-- ✅ **Hardware acceleration** - 2-20x speedup via ipfs_accelerate_py
-- ✅ **IPFS-native storage** - Built-in IPFS integration via ipfs_kit_py
-- ✅ **Comprehensive features** - PDF processing, OCR, web archiving, search APIs
+- [docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md](docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md)
+- [docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md](docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md)
+- [docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md](docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md)
+- [docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md](docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md)
 
-**Recommendation:** Use ipfs_datasets_py as the primary infrastructure and selectively adopt only HACC's complaint-specific keyword sets and domain knowledge.
+The main principle is simple: complaint-generator remains the orchestrator, and `ipfs_datasets_py` provides acquisition, parsing, graph, archival, retrieval, and reasoning capabilities through the adapter layer under `integrations/ipfs_datasets/`.
 
----
+## Integration Goals
 
-## Functional Overlap Analysis
+The `ipfs_datasets_py` integration should improve complaint-generator in five concrete ways:
 
-### 1. Web Search & Discovery
+1. Acquire legal and factual source material more broadly and more reproducibly.
+2. Normalize that material into shared artifacts, chunks, facts, graph metadata, and provenance records.
+3. Organize support by claim element instead of by raw search result or upload source.
+4. Improve retrieval quality with archival, graph, and eventually vector and GraphRAG signals.
+5. Enable formal validation and contradiction analysis once graph and predicate layers mature.
 
-#### HACC Scripts
-- **collect_brave.py** - Brave Search API wrapper
-- **seeded_commoncrawl_discovery.py** - CommonCrawl archive search
+## Current Production Boundary
 
-#### ipfs_datasets_py Equivalent
-- ✅ **`ipfs_datasets_py/web_archiving/brave_search_client.py`**
-  - More feature-rich Brave Search client
-  - Disk + IPFS caching with TTL and LRU eviction
-  - File locking for concurrent access
-  - Pagination metadata support
-  - Cache statistics and management
-  - Both sync and async interfaces
-  
-- ✅ **`ipfs_datasets_py/web_archiving/common_crawl_integration.py`**
-  - Full CommonCrawl Search Engine integration
-  - Supports local, remote, and CLI modes
-  - Fast domain/URL lookups using rowgroup slicing
-  - WARC record fetching and content extraction
-  - MCP server integration for AI assistants
-  - Batch operations and parallel queries
+All production-facing `ipfs_datasets_py` usage should flow through these adapter modules:
 
-**Verdict:** 🔴 **COMPLETE DUPLICATION** - ipfs_datasets_py versions are more advanced
+- `integrations/ipfs_datasets/capabilities.py`
+- `integrations/ipfs_datasets/loader.py`
+- `integrations/ipfs_datasets/storage.py`
+- `integrations/ipfs_datasets/search.py`
+- `integrations/ipfs_datasets/legal.py`
+- `integrations/ipfs_datasets/documents.py`
+- `integrations/ipfs_datasets/graphs.py`
+- `integrations/ipfs_datasets/graphrag.py`
+- `integrations/ipfs_datasets/logic.py`
+- `integrations/ipfs_datasets/vector_store.py`
+- `integrations/ipfs_datasets/mcp_gateway.py`
+- `integrations/ipfs_datasets/provenance.py`
+- `integrations/ipfs_datasets/types.py`
+- `integrations/ipfs_datasets/scraper_daemon.py`
 
-**Action:** ❌ Don't use HACC's collect_brave.py or seeded_commoncrawl_discovery.py  
-           ✅ Use ipfs_datasets_py's implementations directly
+This boundary is already important operationally because it gives complaint-generator:
 
----
+- capability detection and degraded-mode support
+- a place for sync or async normalization wrappers
+- consistent payload contracts for mediator hooks
+- insulation from submodule package layout drift
 
-### 2. Document Download & Management
+## What Is Already Integrated
 
-#### HACC Scripts
-- **download_manager.py** - URL deduplication, PDF download, metadata manifest
-- **download_retry_search_fallback.py** - Retry with fallback strategies
-- **playwright_redownload.py** - Browser-based downloads
+### Evidence and artifact storage
 
-#### ipfs_datasets_py Equivalent
-- ✅ **`ipfs_datasets_py/web_archiving/web_archive.py`**
-  - Archive URLs with metadata
-  - Track archived items with unique identifiers
-  - Memory-only or persistent storage modes
-  - Timestamps for tracking
-  
-- ✅ **`ipfs_datasets_py/file_converter/url_handler.py`**
-  - URL downloading and caching
-  - Multiple retry strategies
-  - Content validation
-  
-- ✅ **IPFS Storage via `ipfs_kit_py` (submodule)**
-  - Content-addressed storage (automatic deduplication)
-  - IPFS pinning and retrieval
-  - CID-based addressing
+Complaint-generator already uses the IPFS-backed storage adapter in the evidence path. Uploaded evidence and discovered web evidence can be normalized, deduplicated, stored, and linked back to claim elements.
 
-**Verdict:** 🟡 **PARTIAL OVERLAP** - ipfs_datasets_py has better IPFS integration, HACC has better manifest tracking
+Operationally, this already includes:
 
-**Action:** ✅ Use ipfs_datasets_py for storage + IPFS  
-           ⭐ Adapt HACC's manifest system for provenance tracking
+- provenance-aware evidence storage
+- content-hash and CID-aware deduplication
+- persisted evidence rows in DuckDB
+- parse summaries, chunk rows, graph metadata, and extracted fact persistence for parsed evidence
 
----
+### Web search, scraping, and archival acquisition
 
-### 3. PDF Processing & Text Extraction
+Complaint-generator already uses adapter-backed search and scraping flows for:
 
-#### HACC Scripts
-- **parse_pdfs.py** - pdftotext + OCR fallback (ocrmypdf)
-- **batch_ocr_parallel.py** - Parallel OCR processing
-- **fallback_pdftotext_extract.py** - Multiple extraction strategies
+- Brave-style current web search
+- Common Crawl search
+- direct page scraping
+- archive-domain sweeps
+- bounded agentic scraper optimization loops
 
-#### ipfs_datasets_py Equivalent
-- ✅ **`ipfs_datasets_py/pdf_processing/pdf_processor.py`**
-  - Complete PDF processing pipeline
-  - PyMuPDF (fitz) and pdfplumber support
-  - OCR engine integration (`ocr_engine.py`)
-  - Batch processing (`batch_processor.py`)
-  - IPLD structuring for decentralized storage
-  - LLM optimization for chunks
-  - Entity extraction and GraphRAG integration
-  - Cross-document analysis
-  
-- ✅ **`ipfs_datasets_py/file_converter/text_extractors.py`**
-  - PDFExtractor with pdfplumber primary, PyPDF2 fallback
-  - ExtractionResult with metadata
-  - Format detection and routing
-  - Office format support (Word, Excel, PowerPoint)
-  - Archive extraction (ZIP, TAR, etc.)
-  - Image extraction and OCR
-  
-- ✅ **Hardware Acceleration via `ipfs_accelerate_py`**
-  - 2-20x speedup for PDF processing
-  - Multi-backend support (CUDA, OpenCL, Metal)
+The scraper path is no longer only an in-process helper. It now has:
 
-**Verdict:** 🔴 **COMPLETE DUPLICATION** - ipfs_datasets_py is significantly more advanced
+- persisted scraper run history
+- tactic-level performance tracking
+- coverage ledgers
+- a queue-backed worker model so scraper jobs only execute when there is queued work
 
-**Action:** ❌ Don't use HACC's parse_pdfs.py  
-           ✅ Use ipfs_datasets_py's pdf_processor.py and file_converter modules
+### Legal source acquisition
 
----
+Legal authority acquisition is already routed through the adapter layer and normalized into complaint-generator records. This provides a real base for deeper authority ranking and formal rule translation, even though authority parsing and contradiction analysis are still incomplete.
 
-### 4. Document Indexing & Tagging
+### Graph enrichment
 
-#### HACC Scripts
-- **index_and_tag.py** - Keyword extraction, applicability tagging, risk scoring
+Complaint-generator already has useful graph integration in place:
 
-#### ipfs_datasets_py Equivalent
-- ✅ **`ipfs_datasets_py/embeddings_router.py`**
-  - Vector embeddings for semantic search
-  - Multiple embedding backend support
-  - Batch processing
-  
-- ✅ **`ipfs_datasets_py/search/search_embeddings.py`**
-  - Vector-based similarity search
-  - Embedding storage and retrieval
-  
-- ✅ **`ipfs_datasets_py/graphrag/`** (Knowledge Graph)
-  - Entity extraction
-  - Relationship mapping
-  - Cross-document reasoning
-  - Semantic indexing
+- graph extraction can run during evidence ingestion
+- graph entities and relationships can be persisted as evidence-linked metadata
+- graph projections can be pushed into the complaint-phase knowledge graph
+- support edges can be linked back to claim elements
 
-**Verdict:** 🟡 **PARTIAL OVERLAP** - ipfs_datasets_py has vector search, HACC has keyword-based tagging
+This means the remaining graph work is not “add graphs.” It is “add graph persistence, graph querying, and graph-backed organization at case scale.”
 
-**Action:** ✅ Use ipfs_datasets_py for vector embeddings and knowledge graphs  
-           ⭐ Adapt HACC's keyword sets (complaint-specific) for hybrid search
+## Capability Areas and Recommended Use
 
----
+### 1. Legal scrapers and legal dataset search
 
-### 5. Legal Provision & Citation Extraction
+Use `integrations/ipfs_datasets/legal.py` as the single legal acquisition seam.
 
-#### HACC Scripts
-- **deep_analysis.py** - Regex-based legal term extraction from statutes
-- **kg_violation_seed_queries.py** - Risk-based entity pooling
-- **kg_seed_pack.py** - Entity extraction and seed query generation
+Recommended use inside complaint-generator:
 
-#### ipfs_datasets_py Equivalent
-- ✅ **`ipfs_datasets_py/graphrag_integration.py`**
-  - Advanced entity extraction
-  - Relationship discovery
-  - Knowledge graph construction
-  
-- ✅ **`ipfs_datasets_py/pdf_processing/classify_with_llm.py`**
-  - LLM-based document classification
-  - Entity extraction using LLMs
-  
-- ⚠️ **No direct legal provision extraction module**
-  - This is HACC's unique value-add
-  - Domain-specific regex patterns for legal text
+- retrieve statutes, regulations, administrative materials, and case-source records through normalized wrappers
+- normalize all authorities into one storage model with provenance and ranking metadata
+- connect authorities to claim elements and procedural requirements, not just to high-level claim types
 
-**Verdict:** 🟢 **UNIQUE FUNCTIONALITY** - HACC's legal domain knowledge is valuable
+Primary next improvements:
 
-**Action:** ⭐ **Keep HACC's legal extraction patterns**  
-           ✅ Integrate with ipfs_datasets_py's GraphRAG for enhanced analysis
+- richer authority ranking fields such as jurisdiction, precedential value, and procedural relevance
+- parsing of authority full text when available
+- contradiction and adverse-authority handling
 
----
+### 2. Web archiving, search engines, and scraper workflows
 
-### 6. Report Generation
+Use `integrations/ipfs_datasets/search.py` plus `integrations/ipfs_datasets/scraper_daemon.py` as the acquisition layer for public factual material.
 
-#### HACC Scripts
-- **report_generator.py** - Risk-scored summaries, document reports
+Recommended use inside complaint-generator:
 
-#### ipfs_datasets_py Equivalent
-- ✅ **`ipfs_datasets_py/llm_router.py`**
-  - LLM request routing to multiple providers
-  - Already integrated in complaint-generator backend
-  
-- ✅ **`ipfs_datasets_py/pdf_processing/llm_optimizer.py`**
-  - LLM-optimized document chunks
-  - Summary generation
-  
-- ⚠️ **No specific complaint report templates**
+- use current-web and archive search to discover factual support
+- convert valuable discoveries into normalized evidence records instead of leaving them as transient results
+- prefer queue-backed scraper execution for operator or daemon workflows
+- retain direct bounded-run execution for smoke tests, debugging, and one-off investigations
 
-**Verdict:** 🟡 **PARTIAL OVERLAP** - ipfs_datasets_py has LLM infrastructure, HACC has report templates
+Primary next improvements:
 
-**Action:** ✅ Use ipfs_datasets_py's LLM routing  
-           ⭐ Adapt HACC's report templates for complaint-specific summaries
+- archive-first acquisition for high-value URLs
+- version-aware page history and temporal contradiction checks
+- better clustering of duplicate pages found through multiple engines and archives
 
----
+### 3. Document parsing and corpus services
 
-## Feature Comparison Matrix
+Use `integrations/ipfs_datasets/documents.py` as the single parse contract for uploaded evidence, scraped pages, and eventually legal authorities.
 
-| Feature | HACC Scripts | ipfs_datasets_py | Winner | Recommendation |
-|---------|-------------|------------------|--------|----------------|
-| **Brave Search API** | collect_brave.py | brave_search_client.py | ipfs_datasets_py | Use ipfs_datasets_py (more features) |
-| **CommonCrawl** | seeded_cc_discovery.py | common_crawl_integration.py | ipfs_datasets_py | Use ipfs_datasets_py (MCP server, 3 modes) |
-| **PDF Text Extraction** | parse_pdfs.py | pdf_processor.py | ipfs_datasets_py | Use ipfs_datasets_py (more formats, IPLD) |
-| **OCR Processing** | batch_ocr_parallel.py | ocr_engine.py | ipfs_datasets_py | Use ipfs_datasets_py (multi-engine, GPU) |
-| **Document Storage** | download_manager.py | ipfs_kit_py + web_archive.py | ipfs_datasets_py | Use ipfs_datasets_py (IPFS-native) |
-| **Vector Embeddings** | ❌ None | embeddings_router.py | ipfs_datasets_py | Use ipfs_datasets_py |
-| **Knowledge Graph** | kg_*.py (basic) | graphrag/ (advanced) | ipfs_datasets_py | Use ipfs_datasets_py |
-| **Legal Patterns** | deep_analysis.py | ❌ None | **HACC** | **Keep HACC's patterns** |
-| **Keyword Tagging** | index_and_tag.py | search_embeddings.py | Hybrid | Combine both |
-| **Risk Scoring** | report_generator.py | ❌ None | **HACC** | **Keep HACC's scoring** |
-| **Hardware Acceleration** | ❌ None | ipfs_accelerate_py | ipfs_datasets_py | Use ipfs_datasets_py (2-20x speedup) |
-| **MCP Integration** | ❌ None | ✅ 200+ tools | ipfs_datasets_py | Use ipfs_datasets_py |
+Recommended use inside complaint-generator:
 
----
+- normalize raw bytes and fetched page content into parse outputs with text, chunks, and summary metadata
+- preserve transform lineage for later graph extraction and logic translation
+- feed chunk outputs into graph and fact extraction rather than maintaining hook-local parse shapes
 
-## Integration Architecture
+Primary next improvements:
 
-### Recommended Approach
+- make legal authority text flow through the same parse contract when full text is available
+- expose one shared corpus object model for evidence and authorities
 
-```python
-# complaint-generator/mediator/evidence_hooks.py
+### 4. Graph database and knowledge-graph usage
 
-from ipfs_datasets_py.web_archiving import BraveSearchClient, CommonCrawlSearchEngine
-from ipfs_datasets_py.pdf_processing import PDFProcessor
-from ipfs_datasets_py.file_converter import FileConverter
-from ipfs_datasets_py.embeddings_router import EmbeddingsRouter
-from ipfs_datasets_py.graphrag import GraphRAGIntegrator
+Use `integrations/ipfs_datasets/graphs.py` to connect parsed artifacts to graph persistence and support queries, while keeping `complaint_phases/` as the canonical workflow graph surface.
 
-# Import HACC's unique components
-from hacc_integration.legal_patterns import ComplaintLegalPatternExtractor
-from hacc_integration.risk_scoring import ComplaintRiskScorer
-from hacc_integration.keywords import COMPLAINT_KEYWORDS
+Recommended use inside complaint-generator:
 
-class EvidenceStorageHook:
-    def __init__(self):
-        # Use ipfs_datasets_py for infrastructure
-        self.search_client = BraveSearchClient(
-            api_key=os.getenv('BRAVE_API_KEY'),
-            cache_ipfs=True  # Enable distributed caching
-        )
-        self.cc_engine = CommonCrawlSearchEngine(mode='local')
-        self.pdf_processor = PDFProcessor(
-            enable_ocr=True,
-            enable_graphrag=True,
-            hardware_acceleration=True  # Use ipfs_accelerate_py
-        )
-        self.file_converter = FileConverter()
-        self.embeddings = EmbeddingsRouter()
-        
-        # Use HACC's domain expertise
-        self.legal_extractor = ComplaintLegalPatternExtractor()
-        self.risk_scorer = ComplaintRiskScorer()
-    
-    def search_evidence(self, complaint_keywords):
-        """Search for evidence using complaint-specific keywords."""
-        # Use ipfs_datasets_py's search
+- keep the complaint-phase knowledge, dependency, and legal graphs as the in-memory decision model
+- project parsed evidence and authorities into those graphs
+- add graph snapshot persistence only through the adapter boundary
+
+Primary next improvements:
+
+- backing graph-store persistence and lineage
+- graph-backed support tracing by claim element
+- a coverage matrix built from facts, support edges, graph output, and validation state
+
+### 5. GraphRAG and information organization
+
+Use `integrations/ipfs_datasets/graphrag.py` after graph persistence and fact organization are sufficiently stable.
+
+Recommended use inside complaint-generator:
+
+- refine ontologies from complaint narratives, evidence corpora, and legal authority bundles
+- score support paths, not just individual records
+- feed ontology quality and structural gaps into follow-up planning and denoising
+
+Primary next improvements:
+
+- ontology generation and validation workflows
+- support-path scoring for claim overviews
+- graph-quality-guided follow-up planning
+
+### 6. Theorem provers and formal logic
+
+Use `integrations/ipfs_datasets/logic.py` as the sole formal-reasoning boundary.
+
+Recommended use inside complaint-generator:
+
+- translate claim elements into predicate templates
+- translate extracted facts and authority-derived rules into grounded predicates
+- run contradiction and sufficiency checks only after fact and graph layers are stable enough to support them
+
+Primary next improvements:
+
+- implement the logic adapter beyond capability probing
+- define claim-type-specific predicate templates
+- persist validation runs, failed premises, and contradictory predicates
+
+### 7. Vector search and MCP gateway features
+
+`integrations/ipfs_datasets/vector_store.py` and `integrations/ipfs_datasets/mcp_gateway.py` should remain adapter seams until there is a concrete complaint-generator workflow that needs them.
+
+Recommended use inside complaint-generator:
+
+- vector search should eventually augment ranking and hybrid retrieval once corpus indexing exists
+- MCP gateway features should only be integrated where there is a clear operational need for tool exposure or remote orchestration
+
+Primary next improvements:
+
+- corpus indexing and hybrid retrieval for vector search
+- clearly scoped MCP workflows instead of generic tool passthrough
+
+## Recommended Information Organization Model
+
+The complaint generator should organize information around claim-element support, not around raw source categories.
+
+The core organization layers should be:
+
+1. Raw artifacts: uploads, archived pages, scraped pages, authority texts.
+2. Parsed corpus data: normalized text, chunks, parse metadata, transform lineage.
+3. Extracted facts: fact records with chunk-level provenance where available.
+4. Support structure: links from facts, artifacts, and authorities to claim elements.
+5. Graph structure: entity, event, authority, and support edges across the case.
+6. Validation structure: proof gaps, contradictions, and unresolved requirements.
+
+The central operator-facing product artifact should become a claim-element coverage matrix that answers:
+
+- what supports this element
+- what contradicts this element
+- what is missing
+- what came from archived web evidence versus uploaded evidence versus legal authority
+- what remains only an inference versus a grounded fact
+
+## Recommended Execution Order
+
+The highest-value order remains:
+
+1. Finish the shared parse and corpus contract.
+2. Add shared fact and support organization across evidence and authorities.
+3. Persist graph snapshots and support queries behind the graph adapter.
+4. Add claim-element coverage matrix reporting.
+5. Integrate GraphRAG support-path scoring.
+6. Integrate theorem-prover-backed validation.
+
+This order matters because theorem proving and GraphRAG become much more useful once the system already has stable parse outputs, fact records, support edges, and graph lineage.
+
+## Anti-Patterns To Avoid
+
+Avoid these integration mistakes:
+
+- direct production imports from `ipfs_datasets_py` internals outside the adapter layer
+- per-hook private parse contracts that fragment chunk and provenance handling
+- graph persistence that bypasses complaint-phase graph semantics
+- prover experiments that operate on raw text instead of grounded facts and claim predicates
+- long-running worker processes that execute scraper loops without claimed work
+
+## Definition of Success
+
+The `ipfs_datasets_py` integration should be considered successful when complaint-generator can:
+
+- search and archive factual and legal source material reproducibly
+- normalize those sources into shared artifact, chunk, fact, and provenance records
+- organize support by claim element with graph-backed and provenance-backed explanations
+- detect gaps and contradictions before draft generation
+- expose review-ready support packets and coverage summaries
+- operate in full, partial, and degraded environments without breaking mediator workflows
         brave_results = self.search_client.search(
             query=f"site:gov {' OR '.join(complaint_keywords)}",
             count=50

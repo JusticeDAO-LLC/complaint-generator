@@ -61,6 +61,49 @@ def _tokenize(value: str) -> List[str]:
     return [token for token in re.findall(r"[a-z0-9]+", (value or "").lower()) if token]
 
 
+def _normalize_semantic_token(token: str) -> str:
+    normalized = (token or "").lower().strip()
+    if not normalized:
+        return ""
+
+    canonical_map = {
+        "complained": "complain",
+        "complaint": "complain",
+        "complaints": "complain",
+        "filing": "file",
+        "filed": "file",
+        "files": "file",
+        "engaged": "engage",
+        "engaging": "engage",
+    }
+    if normalized in canonical_map:
+        return canonical_map[normalized]
+
+    for suffix in ("ing", "ed", "es", "s"):
+        if normalized.endswith(suffix) and len(normalized) > len(suffix) + 2:
+            return normalized[: -len(suffix)]
+    return normalized
+
+
+def _semantic_token_set(value: str) -> set[str]:
+    stopwords = {
+        "a",
+        "an",
+        "and",
+        "about",
+        "by",
+        "in",
+        "of",
+        "the",
+        "to",
+    }
+    return {
+        normalized
+        for normalized in (_normalize_semantic_token(token) for token in _tokenize(value))
+        if normalized and normalized not in stopwords
+    }
+
+
 def _score_fact_match(fact: Dict[str, Any], claim_element_id: str, claim_element_text: str) -> float:
     score = float(fact.get("confidence", 0.0) or 0.0)
     fact_tokens = set(_tokenize(str(fact.get("text") or "")))
@@ -81,6 +124,69 @@ def _fact_dedup_key(fact: Dict[str, Any]) -> str:
     claim_element_id = str(fact.get("claim_element_id") or "")
     claim_element_text = " ".join(str(fact.get("claim_element_text") or "").lower().split())
     return "|".join([claim_element_id, claim_element_text, text])
+
+
+def _texts_semantically_similar(left: str, right: str) -> bool:
+    left_normalized = " ".join((left or "").lower().split())
+    right_normalized = " ".join((right or "").lower().split())
+    if not left_normalized or not right_normalized:
+        return False
+    if left_normalized == right_normalized:
+        return True
+    if left_normalized in right_normalized or right_normalized in left_normalized:
+        return True
+
+    left_tokens = _semantic_token_set(left_normalized)
+    right_tokens = _semantic_token_set(right_normalized)
+    if not left_tokens or not right_tokens:
+        return False
+    overlap = len(left_tokens & right_tokens)
+    union = len(left_tokens | right_tokens)
+    containment = overlap / max(min(len(left_tokens), len(right_tokens)), 1)
+    jaccard = overlap / max(union, 1)
+    return containment >= 0.6 or jaccard >= 0.45
+
+
+def _cluster_semantically_similar_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    clusters: List[Dict[str, Any]] = []
+    for result in results:
+        matched_cluster: Optional[Dict[str, Any]] = None
+        for cluster in clusters:
+            same_element = (
+                str(cluster.get("claim_element_id") or "") == str(result.get("claim_element_id") or "")
+                and str(cluster.get("claim_element_text") or "") == str(result.get("claim_element_text") or "")
+            )
+            if not same_element:
+                continue
+            if _texts_semantically_similar(str(cluster.get("text") or ""), str(result.get("text") or "")):
+                matched_cluster = cluster
+                break
+
+        if matched_cluster is None:
+            clusters.append(
+                {
+                    **result,
+                    "cluster_size": int(result.get("duplicate_count", 1) or 1),
+                    "cluster_texts": [str(result.get("text") or "")],
+                }
+            )
+            continue
+
+        matched_cluster["duplicate_count"] = int(matched_cluster.get("duplicate_count", 1) or 1) + int(result.get("duplicate_count", 1) or 1)
+        matched_cluster["cluster_size"] = int(matched_cluster.get("cluster_size", 1) or 1) + int(result.get("duplicate_count", 1) or 1)
+        matched_cluster["score"] = max(float(matched_cluster.get("score", 0.0) or 0.0), float(result.get("score", 0.0) or 0.0))
+        matched_cluster["confidence"] = max(float(matched_cluster.get("confidence", 0.0) or 0.0), float(result.get("confidence", 0.0) or 0.0))
+        if result.get("matched_claim_element"):
+            matched_cluster["matched_claim_element"] = True
+        if str(result.get("text") or "") not in matched_cluster["cluster_texts"]:
+            matched_cluster["cluster_texts"].append(str(result.get("text") or ""))
+        for support_kind in result.get("support_kind_set", []) or []:
+            if support_kind not in matched_cluster.get("support_kind_set", []):
+                matched_cluster.setdefault("support_kind_set", []).append(support_kind)
+        for source_table in result.get("source_table_set", []) or []:
+            if source_table not in matched_cluster.get("source_table_set", []):
+                matched_cluster.setdefault("source_table_set", []).append(source_table)
+    return clusters
 
 
 def extract_graph_from_text(
@@ -233,7 +339,7 @@ def query_graph_support(
         if source_table not in existing["source_table_set"]:
             existing["source_table_set"].append(source_table)
 
-    ranked_results = list(deduped_results.values())
+    ranked_results = _cluster_semantically_similar_results(list(deduped_results.values()))
 
     ranked_results.sort(
         key=lambda item: (
@@ -246,7 +352,10 @@ def query_graph_support(
     )
 
     limited_results = ranked_results[:max_results]
-    duplicate_fact_count = max(len(facts) - len(ranked_results), 0)
+    unique_fact_count = len(deduped_results)
+    duplicate_fact_count = max(len(facts) - unique_fact_count, 0)
+    semantic_cluster_count = len(ranked_results)
+    semantic_duplicate_count = max(unique_fact_count - semantic_cluster_count, 0)
 
     return {
         "status": "available-fallback" if KNOWLEDGE_GRAPHS_AVAILABLE else "unavailable",
@@ -258,8 +367,10 @@ def query_graph_support(
         "summary": {
             "result_count": len(limited_results),
             "total_fact_count": len(facts),
-            "unique_fact_count": len(ranked_results),
+            "unique_fact_count": unique_fact_count,
             "duplicate_fact_count": duplicate_fact_count,
+            "semantic_cluster_count": semantic_cluster_count,
+            "semantic_duplicate_count": semantic_duplicate_count,
             "support_by_kind": support_by_kind,
             "support_by_source": support_by_source,
             "max_score": ranked_results[0]["score"] if ranked_results else 0.0,

@@ -507,23 +507,43 @@ class ClaimSupportHook:
         if enriched.get('source_table') == 'legal_authorities':
             authority_storage = getattr(self.mediator, 'legal_authority_storage', None)
             authority_record_id = (enriched.get('metadata') or {}).get('record_id')
-            if authority_storage is None or authority_record_id is None:
+            if authority_storage is None:
                 return enriched
 
-            if hasattr(authority_storage, 'get_authority_by_id'):
+            authority_record = None
+            if authority_record_id is not None and hasattr(authority_storage, 'get_authority_by_id'):
                 try:
                     authority_record = authority_storage.get_authority_by_id(authority_record_id)
                 except Exception as exc:
                     self.mediator.log('claim_support_authority_lookup_error', error=str(exc), authority_id=authority_record_id)
-                    return enriched
-            else:
-                authority_record = None
+                    authority_record = None
+
+            if not authority_record and hasattr(authority_storage, 'get_authority_by_citation'):
+                try:
+                    authority_record = authority_storage.get_authority_by_citation(enriched.get('support_ref'))
+                except Exception as exc:
+                    self.mediator.log('claim_support_authority_citation_lookup_error', error=str(exc), citation=enriched.get('support_ref'))
+                    authority_record = None
 
             if not authority_record:
                 return enriched
+            if not isinstance(authority_record, dict):
+                return enriched
 
             enriched['authority_record_id'] = authority_record.get('id')
-            enriched['fact_count'] = authority_record.get('fact_count', 0) or 0
+            authority_fact_count = authority_record.get('fact_count', 0)
+            enriched['fact_count'] = authority_fact_count if isinstance(authority_fact_count, (int, float)) else 0
+            enriched['record_summary'] = {
+                'id': authority_record.get('id'),
+                'citation': authority_record.get('citation'),
+                'title': authority_record.get('title'),
+                'url': authority_record.get('url'),
+                'parse_status': authority_record.get('parse_status'),
+                'chunk_count': authority_record.get('chunk_count', 0),
+                'graph_status': authority_record.get('graph_status'),
+                'graph_entity_count': authority_record.get('graph_entity_count', 0),
+                'graph_relationship_count': authority_record.get('graph_relationship_count', 0),
+            }
 
             if hasattr(authority_storage, 'get_authority_facts') and authority_record.get('id') is not None:
                 try:
@@ -533,6 +553,26 @@ class ClaimSupportHook:
                     enriched['facts'] = []
             else:
                 enriched['facts'] = []
+
+            if hasattr(authority_storage, 'get_authority_graph') and authority_record.get('id') is not None:
+                try:
+                    authority_graph = authority_storage.get_authority_graph(authority_record['id'])
+                except Exception as exc:
+                    self.mediator.log('claim_support_authority_graph_error', error=str(exc), authority_id=authority_record.get('id'))
+                    authority_graph = {'status': 'error', 'entities': [], 'relationships': []}
+                if not isinstance(authority_graph, dict):
+                    authority_graph = {'status': '', 'entities': [], 'relationships': []}
+                enriched['graph_summary'] = {
+                    'status': authority_graph.get('status', ''),
+                    'entity_count': len(authority_graph.get('entities', []) or []),
+                    'relationship_count': len(authority_graph.get('relationships', []) or []),
+                }
+            else:
+                enriched['graph_summary'] = {
+                    'status': authority_record.get('graph_status', ''),
+                    'entity_count': authority_record.get('graph_entity_count', 0) or 0,
+                    'relationship_count': authority_record.get('graph_relationship_count', 0) or 0,
+                }
             return enriched
 
         if enriched.get('source_table') != 'evidence':
@@ -550,9 +590,23 @@ class ClaimSupportHook:
 
         if not evidence_record:
             return enriched
+        if not isinstance(evidence_record, dict):
+            return enriched
 
         enriched['evidence_record_id'] = evidence_record.get('id')
-        enriched['fact_count'] = evidence_record.get('fact_count', 0) or 0
+        evidence_fact_count = evidence_record.get('fact_count', 0)
+        enriched['fact_count'] = evidence_fact_count if isinstance(evidence_fact_count, (int, float)) else 0
+        enriched['record_summary'] = {
+            'id': evidence_record.get('id'),
+            'cid': evidence_record.get('cid'),
+            'type': evidence_record.get('type'),
+            'source_url': evidence_record.get('source_url'),
+            'parse_status': evidence_record.get('parse_status'),
+            'chunk_count': evidence_record.get('chunk_count', 0),
+            'graph_status': evidence_record.get('graph_status'),
+            'graph_entity_count': evidence_record.get('graph_entity_count', 0),
+            'graph_relationship_count': evidence_record.get('graph_relationship_count', 0),
+        }
 
         if hasattr(evidence_state, 'get_evidence_facts') and evidence_record.get('id') is not None:
             try:
@@ -563,7 +617,39 @@ class ClaimSupportHook:
         else:
             enriched['facts'] = []
 
+        if hasattr(evidence_state, 'get_evidence_graph') and evidence_record.get('id') is not None:
+            try:
+                evidence_graph = evidence_state.get_evidence_graph(evidence_record['id'])
+            except Exception as exc:
+                self.mediator.log('claim_support_evidence_graph_error', error=str(exc), evidence_id=evidence_record.get('id'))
+                evidence_graph = {'status': 'error', 'entities': [], 'relationships': []}
+            if not isinstance(evidence_graph, dict):
+                evidence_graph = {'status': '', 'entities': [], 'relationships': []}
+            enriched['graph_summary'] = {
+                'status': evidence_graph.get('status', ''),
+                'entity_count': len(evidence_graph.get('entities', []) or []),
+                'relationship_count': len(evidence_graph.get('relationships', []) or []),
+            }
+        else:
+            enriched['graph_summary'] = {
+                'status': evidence_record.get('graph_status', ''),
+                'entity_count': evidence_record.get('graph_entity_count', 0) or 0,
+                'relationship_count': evidence_record.get('graph_relationship_count', 0) or 0,
+            }
+
         return enriched
+
+    def _coverage_status_for_element(
+        self,
+        element: Dict[str, Any],
+        required_support_kinds: List[str],
+    ) -> str:
+        kinds_present = set(element.get('support_by_kind', {}).keys())
+        if element.get('total_links', 0) == 0:
+            return 'missing'
+        if all(kind in kinds_present for kind in required_support_kinds):
+            return 'covered'
+        return 'partially_supported'
 
     def summarize_claim_support(self, user_id: str, claim_type: Optional[str] = None) -> Dict[str, Any]:
         links = [self._enrich_support_link(link) for link in self.get_support_links(user_id, claim_type)]
@@ -766,6 +852,73 @@ class ClaimSupportHook:
             }
 
         return overview
+
+    def get_claim_coverage_matrix(
+        self,
+        user_id: str,
+        claim_type: Optional[str] = None,
+        required_support_kinds: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Return a review-oriented claim-element coverage matrix with enriched support detail."""
+        required_kinds = required_support_kinds or ['evidence', 'authority']
+        summary = self.summarize_claim_support(user_id, claim_type)
+
+        matrix: Dict[str, Any] = {
+            'available': summary.get('available', False),
+            'required_support_kinds': required_kinds,
+            'claims': {},
+        }
+
+        for current_claim, claim_summary in summary.get('claims', {}).items():
+            elements: List[Dict[str, Any]] = []
+            status_counts = {
+                'covered': 0,
+                'partially_supported': 0,
+                'missing': 0,
+            }
+            support_link_total = 0
+            fact_total = 0
+
+            for element in claim_summary.get('elements', []):
+                status = self._coverage_status_for_element(element, required_kinds)
+                status_counts[status] += 1
+                support_link_total += int(element.get('total_links', 0) or 0)
+                fact_total += int(element.get('fact_count', 0) or 0)
+
+                links_by_kind: Dict[str, List[Dict[str, Any]]] = {}
+                for link in element.get('links', []) or []:
+                    links_by_kind.setdefault(link.get('support_kind', 'unknown'), []).append(link)
+
+                elements.append(
+                    {
+                        'element_id': element.get('element_id'),
+                        'element_text': element.get('element_text'),
+                        'status': status,
+                        'support_by_kind': element.get('support_by_kind', {}),
+                        'total_links': element.get('total_links', 0),
+                        'fact_count': element.get('fact_count', 0),
+                        'missing_support_kinds': [
+                            kind for kind in required_kinds
+                            if element.get('support_by_kind', {}).get(kind, 0) == 0
+                        ],
+                        'links_by_kind': links_by_kind,
+                        'links': element.get('links', []),
+                    }
+                )
+
+            matrix['claims'][current_claim] = {
+                'claim_type': current_claim,
+                'required_support_kinds': required_kinds,
+                'total_elements': claim_summary.get('total_elements', 0),
+                'status_counts': status_counts,
+                'total_links': support_link_total,
+                'total_facts': fact_total,
+                'support_by_kind': claim_summary.get('support_by_kind', {}),
+                'elements': elements,
+                'unassigned_links': claim_summary.get('unassigned_links', []),
+            }
+
+        return matrix
 
     def was_follow_up_executed(
         self,
