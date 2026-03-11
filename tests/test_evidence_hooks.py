@@ -398,6 +398,56 @@ class TestEvidenceStateHook:
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
+    def test_scraper_queue_claim_and_complete_job(self):
+        """Test scraper jobs can be queued, claimed, and completed from DuckDB state."""
+        try:
+            from mediator.evidence_hooks import EvidenceStateHook
+            import duckdb
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.state = Mock()
+            mock_mediator.state.username = "testuser"
+
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                db_path = f.name
+
+            try:
+                hook = EvidenceStateHook(mock_mediator, db_path=db_path)
+
+                queued = hook.enqueue_scraper_job(
+                    user_id='testuser',
+                    keywords=['employment discrimination'],
+                    domains=['eeoc.gov'],
+                    claim_type='employment discrimination',
+                    iterations=2,
+                    priority=10,
+                )
+                queue_rows = hook.get_scraper_queue(user_id='testuser', status='queued', limit=5)
+                claimed = hook.claim_next_scraper_job(worker_id='worker-1', user_id='testuser')
+                completed = hook.complete_scraper_job(
+                    queued['job_id'],
+                    run_id=21,
+                    metadata={'storage_summary': {'stored': 1}},
+                )
+                detail = hook.get_scraper_queue_job(queued['job_id'])
+
+                assert queued['queued'] is True
+                assert queue_rows[0]['id'] == queued['job_id']
+                assert claimed['claimed'] is True
+                assert claimed['job']['status'] == 'running'
+                assert completed['updated'] is True
+                assert completed['job']['status'] == 'completed'
+                assert completed['job']['run_id'] == 21
+                assert detail['available'] is True
+                assert detail['job']['metadata']['storage_summary']['stored'] == 1
+            finally:
+                if os.path.exists(db_path):
+                    os.unlink(db_path)
+
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
 
 class TestEvidenceAnalysisHook:
     """Test cases for EvidenceAnalysisHook"""
@@ -687,3 +737,89 @@ class TestMediatorEvidenceIntegration:
                     os.unlink(claim_support_db_path)
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
+
+    @pytest.mark.integration
+    def test_follow_up_plan_suppresses_high_duplication_retrieval(self):
+        """Strong duplicated graph support should suppress low-value follow-up retrieval unless forced."""
+        try:
+            from mediator import Mediator
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+        mock_backend = Mock()
+        mock_backend.id = 'test-backend'
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            claim_support_db_path = f.name
+
+        try:
+            mediator = Mediator(
+                backends=[mock_backend],
+                claim_support_db_path=claim_support_db_path,
+            )
+            mediator.state.username = 'testuser'
+            mediator.claim_support.register_claim_requirements(
+                'testuser',
+                {'breach of contract': ['Valid contract']},
+            )
+            mediator.claim_support.add_support_link(
+                user_id='testuser',
+                claim_type='breach of contract',
+                claim_element_id='breach_of_contract:1',
+                claim_element_text='Valid contract',
+                support_kind='authority',
+                support_ref='42 U.S.C. § 1983',
+                support_label='Authority support',
+                source_table='legal_authorities',
+            )
+
+            mediator.query_claim_graph_support = Mock(return_value={
+                'claim_element_id': 'breach_of_contract:1',
+                'summary': {
+                    'total_fact_count': 6,
+                    'unique_fact_count': 2,
+                    'duplicate_fact_count': 4,
+                    'max_score': 2.5,
+                    'support_by_kind': {'authority': 6},
+                },
+                'results': [
+                    {'fact_id': 'fact:1', 'score': 2.5, 'matched_claim_element': True, 'duplicate_count': 3},
+                ],
+            })
+            mediator.discover_web_evidence = Mock(return_value={'total_records': 1})
+
+            follow_up_plan = mediator.get_claim_follow_up_plan(
+                claim_type='breach of contract',
+                user_id='testuser',
+            )
+            task = follow_up_plan['claims']['breach of contract']['tasks'][0]
+
+            assert task['graph_support_strength'] == 'strong'
+            assert task['should_suppress_retrieval'] is True
+            assert task['suppression_reason'] == 'existing_support_high_duplication'
+
+            follow_up_execution = mediator.execute_claim_follow_up_plan(
+                claim_type='breach of contract',
+                user_id='testuser',
+                support_kind='evidence',
+                max_tasks_per_claim=1,
+            )
+            assert follow_up_execution['claims']['breach of contract']['task_count'] == 0
+            assert follow_up_execution['claims']['breach of contract']['skipped_task_count'] == 1
+            skipped_task = follow_up_execution['claims']['breach of contract']['skipped_tasks'][0]
+            assert skipped_task['should_suppress_retrieval'] is True
+            assert skipped_task['skipped']['suppressed']['reason'] == 'existing_support_high_duplication'
+            mediator.discover_web_evidence.assert_not_called()
+
+            forced_execution = mediator.execute_claim_follow_up_plan(
+                claim_type='breach of contract',
+                user_id='testuser',
+                support_kind='evidence',
+                max_tasks_per_claim=1,
+                force=True,
+            )
+            assert forced_execution['claims']['breach of contract']['task_count'] == 1
+            mediator.discover_web_evidence.assert_called_once()
+        finally:
+            if os.path.exists(claim_support_db_path):
+                os.unlink(claim_support_db_path)

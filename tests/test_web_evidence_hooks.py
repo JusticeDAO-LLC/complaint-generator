@@ -128,7 +128,47 @@ class TestWebEvidenceSearchHook:
             assert isinstance(results, dict)
             assert 'brave_search' in results
             assert 'common_crawl' in results
+            assert 'multi_engine_search' in results
+            assert 'archived_domain_scrape' in results
             assert 'total_found' in results
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_search_for_evidence_includes_extended_sources(self):
+        """Test that extended search sources are merged into the search payload"""
+        try:
+            from mediator.web_evidence_hooks import WebEvidenceSearchHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+
+            hook = WebEvidenceSearchHook(mock_mediator)
+            hook.brave_search = True
+            hook.cc_search = True
+            hook.search_brave = Mock(return_value=[
+                {'title': 'Brave Result', 'url': 'https://example.com/1', 'source_type': 'brave_search'}
+            ])
+            hook.search_common_crawl = Mock(return_value=[
+                {'title': 'Archive Result', 'url': 'https://example.com/2', 'source_type': 'common_crawl'}
+            ])
+
+            with patch('mediator.web_evidence_hooks.MULTI_ENGINE_SEARCH_AVAILABLE', True):
+                with patch('mediator.web_evidence_hooks.UNIFIED_WEB_SCRAPER_AVAILABLE', True):
+                    with patch('mediator.web_evidence_hooks.search_multi_engine_web', return_value=[
+                        {'title': 'Multi Result', 'url': 'https://example.com/3', 'source_type': 'multi_engine_search'}
+                    ]):
+                        with patch('mediator.web_evidence_hooks.scrape_archived_domain', return_value=[
+                            {'title': 'Sweep Result', 'url': 'https://example.com/4', 'source_type': 'archived_domain_scrape'}
+                        ]):
+                            results = hook.search_for_evidence(
+                                keywords=['employment', 'discrimination'],
+                                domains=['example.com'],
+                                max_results=10,
+                            )
+
+            assert results['total_found'] == 4
+            assert len(results['multi_engine_search']) == 1
+            assert len(results['archived_domain_scrape']) == 1
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
     
@@ -261,6 +301,10 @@ class TestWebEvidenceIntegrationHook:
                 'record_id': 1,
                 'created': True,
                 'reused': False,
+            })
+            mock_mediator.evidence_state.persist_scraper_run = Mock(return_value={
+                'persisted': True,
+                'run_id': 5,
             })
             mock_mediator.claim_support = Mock()
             mock_mediator.claim_support.resolve_claim_element = Mock(return_value={
@@ -617,6 +661,122 @@ class TestWebEvidenceIntegrationHook:
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
+    def test_run_agentic_scraper_cycle_stores_results_and_persists_run(self):
+        """Test daemon results are stored through the normal evidence path and persisted."""
+        try:
+            from mediator.web_evidence_hooks import WebEvidenceIntegrationHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.state = Mock()
+            mock_mediator.state.username = 'testuser'
+            mock_mediator.phase_manager = Mock()
+            mock_mediator.phase_manager.get_phase_data = Mock(return_value=None)
+            mock_mediator.web_evidence_search = Mock()
+            mock_mediator.web_evidence_search.validate_evidence = Mock(return_value={
+                'valid': True,
+                'relevance_score': 0.82,
+            })
+            mock_mediator.evidence_storage = Mock()
+            mock_mediator.evidence_storage.store_evidence = Mock(return_value={
+                'cid': 'QmDaemon1',
+                'size': 120,
+                'type': 'web_document',
+                'metadata': {},
+            })
+            mock_mediator.evidence_state = Mock()
+            mock_mediator.evidence_state.upsert_evidence_record = Mock(return_value={
+                'record_id': 21,
+                'created': True,
+                'reused': False,
+            })
+            mock_mediator.evidence_state.persist_scraper_run = Mock(return_value={
+                'persisted': True,
+                'run_id': 9,
+            })
+            mock_mediator.evidence_state.get_scraper_tactic_performance = Mock(return_value={
+                'available': True,
+                'tactics': [
+                    {
+                        'name': 'multi_engine_search',
+                        'avg_weight': 1.1,
+                        'avg_quality_score': 81.0,
+                        'novelty_ratio': 0.5,
+                    }
+                ],
+            })
+
+            hook = WebEvidenceIntegrationHook(mock_mediator)
+
+            with patch('mediator.web_evidence_hooks.ScraperDaemon') as daemon_cls:
+                daemon_cls.return_value.run.return_value = {
+                    'iterations': [
+                        {
+                            'iteration': 1,
+                            'tactics': [
+                                {
+                                    'name': 'multi_engine_search',
+                                    'mode': 'multi_engine_search',
+                                    'query': 'employment discrimination',
+                                    'weight': 1.2,
+                                    'discovered_count': 1,
+                                    'scraped_count': 1,
+                                    'accepted_count': 1,
+                                    'novelty_count': 1,
+                                    'quality_score': 82.0,
+                                    'quality': {'data_quality_score': 82.0},
+                                }
+                            ],
+                            'discovered_count': 1,
+                            'accepted_count': 1,
+                            'scraped_count': 1,
+                            'coverage': {'unique_urls': 1, 'unique_domains': 1, 'source_diversity': 1},
+                            'quality': {'data_quality_score': 82.0},
+                            'critique': {'quality_score': 82.0},
+                        }
+                    ],
+                    'final_results': [
+                        {
+                            'title': 'Policy update',
+                            'url': 'https://example.com/policy',
+                            'description': 'Policy update content',
+                            'content': 'Policy update content',
+                            'source_type': 'multi_engine_search',
+                            'metadata': {'original_source_type': 'multi_engine_search'},
+                        }
+                    ],
+                    'coverage_ledger': {
+                        'https://example.com/policy': {
+                            'domain': 'example.com',
+                            'source_type': 'multi_engine_search',
+                            'last_seen_iteration': 1,
+                        }
+                    },
+                    'tactic_history': {'multi_engine_search': [82.0]},
+                    'final_quality': {'data_quality_score': 82.0},
+                }
+
+                result = hook.run_agentic_scraper_cycle(
+                    keywords=['employment discrimination'],
+                    domains=['example.com'],
+                    iterations=2,
+                    claim_type='employment discrimination',
+                )
+
+            assert result['storage_summary']['stored'] == 1
+            assert result['storage_summary']['total_new'] == 1
+            assert result['scraper_run']['persisted'] is True
+            assert result['scraper_run']['run_id'] == 9
+            assert result['seeded_tactics'][0]['name'] == 'multi_engine_search'
+            persist_kwargs = mock_mediator.evidence_state.persist_scraper_run.call_args.kwargs
+            assert persist_kwargs['claim_type'] == 'employment discrimination'
+            assert persist_kwargs['stored_summary']['stored'] == 1
+            assert persist_kwargs['run_result']['final_results'][0]['url'] == 'https://example.com/policy'
+            daemon_run_kwargs = daemon_cls.return_value.run.call_args.kwargs
+            assert daemon_run_kwargs['tactics'][0].name == 'multi_engine_search'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
 
 class TestMediatorWebEvidenceIntegration:
     """Integration tests for web evidence hooks with mediator"""
@@ -692,5 +852,115 @@ class TestMediatorWebEvidenceIntegration:
             
             assert isinstance(result, dict)
             assert 'total_found' in result
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    @pytest.mark.integration
+    def test_mediator_run_agentic_scraper_cycle(self):
+        """Test bounded agentic scraper loop through mediator"""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+
+            mediator = Mediator(backends=[mock_backend])
+            mediator.web_evidence_integration.run_agentic_scraper_cycle = Mock(return_value={
+                'iterations': [{'iteration': 1, 'accepted_count': 2}],
+                'final_results': [{'url': 'https://example.com/policy'}],
+                'coverage_ledger': {'https://example.com/policy': {'domain': 'example.com'}},
+                'storage_summary': {'stored': 1},
+                'scraper_run': {'persisted': True, 'run_id': 9},
+            })
+
+            result = mediator.run_agentic_scraper_cycle(
+                keywords=['employment discrimination'],
+                domains=['example.com'],
+                iterations=2,
+            )
+
+            assert isinstance(result, dict)
+            assert 'iterations' in result
+            assert result['final_results'][0]['url'] == 'https://example.com/policy'
+            assert result['scraper_run']['persisted'] is True
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    @pytest.mark.integration
+    def test_mediator_scraper_history_helpers(self):
+        """Test mediator proxies scraper run history helpers."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.evidence_state.get_scraper_runs = Mock(return_value=[{'id': 7}])
+            mediator.evidence_state.get_scraper_run_details = Mock(return_value={'available': True, 'run': {'id': 7}})
+            mediator.evidence_state.get_scraper_tactic_performance = Mock(return_value={'available': True, 'tactics': []})
+
+            runs = mediator.get_scraper_runs(limit=5)
+            detail = mediator.get_scraper_run_details(7)
+            perf = mediator.get_scraper_tactic_performance(limit_runs=5)
+
+            assert runs[0]['id'] == 7
+            assert detail['run']['id'] == 7
+            assert perf['available'] is True
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    @pytest.mark.integration
+    def test_mediator_scraper_queue_helpers(self):
+        """Test mediator proxies scraper queue helpers and runs claimed jobs."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.evidence_state.enqueue_scraper_job = Mock(return_value={'queued': True, 'job_id': 11})
+            mediator.evidence_state.get_scraper_queue = Mock(return_value=[{'id': 11, 'status': 'queued'}])
+            mediator.evidence_state.claim_next_scraper_job = Mock(return_value={
+                'claimed': True,
+                'job': {
+                    'id': 11,
+                    'user_id': 'testuser',
+                    'keywords': ['employment discrimination'],
+                    'domains': ['eeoc.gov'],
+                    'iterations': 2,
+                    'sleep_seconds': 0.0,
+                    'quality_domain': 'caselaw',
+                    'claim_type': 'employment discrimination',
+                    'min_relevance': 0.6,
+                    'store_results': True,
+                },
+            })
+            mediator.evidence_state.complete_scraper_job = Mock(return_value={
+                'updated': True,
+                'job': {'id': 11, 'status': 'completed', 'run_id': 15, 'claim_type': 'employment discrimination'},
+            })
+            mediator.web_evidence_integration.run_agentic_scraper_cycle = Mock(return_value={
+                'iterations': [{'iteration': 1, 'accepted_count': 2}],
+                'final_results': [{'url': 'https://example.com/policy'}],
+                'storage_summary': {'stored': 1},
+                'scraper_run': {'persisted': True, 'run_id': 15},
+            })
+
+            queued = mediator.enqueue_agentic_scraper_job(
+                keywords=['employment discrimination'],
+                claim_type='employment discrimination',
+            )
+            jobs = mediator.get_scraper_queue(status='queued', limit=5)
+            result = mediator.run_next_agentic_scraper_job(worker_id='worker-1', user_id='testuser')
+
+            assert queued['queued'] is True
+            assert jobs[0]['id'] == 11
+            assert result['claimed'] is True
+            assert result['ran'] is True
+            assert result['job']['run_id'] == 15
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")

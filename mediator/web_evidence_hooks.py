@@ -10,10 +10,17 @@ from pathlib import Path
 from integrations.ipfs_datasets.search import (
     BRAVE_SEARCH_AVAILABLE,
     COMMON_CRAWL_AVAILABLE,
+    MULTI_ENGINE_SEARCH_AVAILABLE,
+    UNIFIED_WEB_SCRAPER_AVAILABLE,
     BraveSearchAPI,
     CommonCrawlSearchEngine,
+    evaluate_scraped_content,
+    scrape_archived_domain,
+    scrape_web_content,
     search_brave_web,
+    search_multi_engine_web,
 )
+from integrations.ipfs_datasets.scraper_daemon import ScraperDaemon, ScraperDaemonConfig, ScraperTactic
 
 
 class WebEvidenceSearchHook:
@@ -197,6 +204,8 @@ class WebEvidenceSearchHook:
         results = {
             'common_crawl': [],
             'brave_search': [],
+            'multi_engine_search': [],
+            'archived_domain_scrape': [],
             'total_found': 0
         }
         
@@ -208,6 +217,14 @@ class WebEvidenceSearchHook:
             brave_results = self.search_brave(search_query, max_results=max_results)
             results['brave_search'] = brave_results
             results['total_found'] += len(brave_results)
+
+        if MULTI_ENGINE_SEARCH_AVAILABLE:
+            multi_engine_results = search_multi_engine_web(
+                query=search_query,
+                max_results=max_results,
+            )
+            results['multi_engine_search'] = multi_engine_results
+            results['total_found'] += len(multi_engine_results)
         
         # Search Common Crawl for specific domains if provided
         if self.cc_search and domains:
@@ -216,6 +233,16 @@ class WebEvidenceSearchHook:
                     cc_results = self.search_common_crawl(domain, keywords, max_results=5)
                     results['common_crawl'].extend(cc_results)
                     results['total_found'] += len(cc_results)
+                except Exception as e:
+                    self.mediator.log('web_evidence_domain_error',
+                        domain=domain, error=str(e))
+
+        if UNIFIED_WEB_SCRAPER_AVAILABLE and domains:
+            for domain in domains[:3]:
+                try:
+                    archive_results = scrape_archived_domain(domain, max_pages=min(max_results, 5))
+                    results['archived_domain_scrape'].extend(archive_results)
+                    results['total_found'] += len(archive_results)
                 except Exception as e:
                     self.mediator.log('web_evidence_domain_error',
                         domain=domain, error=str(e))
@@ -256,6 +283,12 @@ class WebEvidenceSearchHook:
             validation['relevance_score'] = 0.7
         elif evidence_item.get('source_type') == 'common_crawl':
             validation['relevance_score'] = 0.6
+        elif evidence_item.get('source_type') == 'multi_engine_search':
+            validation['relevance_score'] = 0.72
+        elif evidence_item.get('source_type') == 'archived_domain_scrape':
+            validation['relevance_score'] = 0.68
+        elif evidence_item.get('source_type') == 'web_scrape':
+            validation['relevance_score'] = 0.66
         
         # Use LLM to assess relevance if available
         try:
@@ -368,41 +401,10 @@ class WebEvidenceIntegrationHook:
         parser_version = detail.get('parser_version', '')
         if parser_version and parser_version not in aggregate['parser_versions']:
             aggregate['parser_versions'].append(parser_version)
-    
-    def discover_and_store_evidence(self, keywords: List[str],
-                                    domains: Optional[List[str]] = None,
-                                    user_id: Optional[str] = None,
-                                    claim_type: Optional[str] = None,
-                                    min_relevance: float = 0.5) -> Dict[str, Any]:
-        """
-        Discover evidence from web sources and store in evidence database.
-        
-        Args:
-            keywords: Keywords to search for
-            domains: Optional specific domains
-            user_id: User identifier
-            claim_type: Associated claim type
-            min_relevance: Minimum relevance score to store (0.0 to 1.0)
-            
-        Returns:
-            Dictionary with discovered and stored evidence counts
-        """
-        if not hasattr(self.mediator, 'web_evidence_search'):
-            return {'error': 'Web evidence search not available'}
-        
-        if user_id is None:
-            user_id = getattr(self.mediator.state, 'username', None) or \
-                     getattr(self.mediator.state, 'hashed_username', 'anonymous')
-        
-        # Search for evidence
-        search_results = self.mediator.web_evidence_search.search_for_evidence(
-            keywords=keywords,
-            domains=domains,
-            max_results=20
-        )
-        
-        stored_evidence = {
-            'discovered': search_results['total_found'],
+
+    def _empty_storage_summary(self, discovered_count: int = 0) -> Dict[str, Any]:
+        return {
+            'discovered': discovered_count,
             'validated': 0,
             'stored': 0,
             'stored_new': 0,
@@ -427,32 +429,55 @@ class WebEvidenceIntegrationHook:
                 'parser_versions': [],
             },
         }
-        
-        # Process each result
-        all_results = (
-            search_results.get('brave_search', []) +
-            search_results.get('common_crawl', [])
-        )
-        
-        for evidence_item in all_results:
-            # Validate evidence
+
+    def _store_evidence_items(self,
+                              evidence_items: List[Dict[str, Any]],
+                              *,
+                              keywords: List[str],
+                              user_id: str,
+                              claim_type: Optional[str],
+                              min_relevance: float) -> Dict[str, Any]:
+        stored_evidence = self._empty_storage_summary(discovered_count=len(evidence_items))
+        seen_urls = set()
+
+        for evidence_item in evidence_items:
+            evidence_url = evidence_item.get('url')
+            if evidence_url and evidence_url in seen_urls:
+                continue
+            if evidence_url:
+                seen_urls.add(evidence_url)
+
+            source_type = evidence_item.get('source_type')
+            if source_type in {'brave_search', 'multi_engine_search'} and evidence_url:
+                scraped = scrape_web_content(evidence_url)
+                if scraped.get('success') and scraped.get('content'):
+                    evidence_item = {
+                        **evidence_item,
+                        'content': scraped.get('content') or evidence_item.get('content', ''),
+                        'description': evidence_item.get('description') or scraped.get('description', ''),
+                        'metadata': {
+                            **(evidence_item.get('metadata', {}) if isinstance(evidence_item.get('metadata'), dict) else {}),
+                            'original_source_type': source_type,
+                            'scrape': scraped.get('metadata', {}),
+                            'scrape_errors': scraped.get('errors', []),
+                        },
+                    }
+
             validation = self.mediator.web_evidence_search.validate_evidence(evidence_item)
-            
+
             if not validation['valid']:
                 stored_evidence['skipped'] += 1
                 continue
-            
+
             stored_evidence['validated'] += 1
-            
+
             if validation['relevance_score'] < min_relevance:
                 stored_evidence['skipped'] += 1
                 continue
-            
-            # Store evidence
+
             try:
                 evidence_data = self._build_web_evidence_payload(evidence_item)
-                
-                # Store in IPFS via evidence storage hook
+
                 storage_result = self.mediator.evidence_storage.store_evidence(
                     data=evidence_data,
                     evidence_type='web_document',
@@ -488,8 +513,7 @@ class WebEvidenceIntegrationHook:
                             'keywords': keywords,
                         },
                     )
-                
-                # Add to evidence state database
+
                 record_result = self.mediator.evidence_state.upsert_evidence_record(
                     user_id=user_id,
                     evidence_info=storage_result,
@@ -523,7 +547,7 @@ class WebEvidenceIntegrationHook:
                     )
                     stored_evidence['support_links_added'] += 1 if support_link_result.get('created') else 0
                     stored_evidence['support_links_reused'] += 1 if support_link_result.get('reused') else 0
-                
+
                 stored_evidence['stored'] += 1
                 stored_evidence['stored_new'] += 1 if record_result.get('created') else 0
                 stored_evidence['reused'] += 1 if record_result.get('reused') else 0
@@ -558,22 +582,201 @@ class WebEvidenceIntegrationHook:
                         'confidence': float(validation['relevance_score']),
                     })
                     stored_evidence.setdefault('graph_projection', []).append(graph_result.get('graph_projection', {}))
-                
+
                 self.mediator.log('web_evidence_stored',
                     cid=storage_result['cid'],
                     url=evidence_item.get('url'),
                     relevance=validation['relevance_score'])
-                
+
             except Exception as e:
                 self.mediator.log('web_evidence_storage_error',
                     url=evidence_item.get('url'), error=str(e))
                 stored_evidence['skipped'] += 1
+
+        return stored_evidence
+
+    def _seed_daemon_tactics(self, user_id: str) -> Optional[List[ScraperTactic]]:
+        """Seed daemon tactic weights from recent persisted scraper performance."""
+        evidence_state = getattr(self.mediator, 'evidence_state', None)
+        if evidence_state is None or not hasattr(evidence_state, 'get_scraper_tactic_performance'):
+            return None
+
+        performance = evidence_state.get_scraper_tactic_performance(user_id=user_id, limit_runs=10)
+        tactic_rows = performance.get('tactics', []) if isinstance(performance, dict) else []
+        if not tactic_rows:
+            return None
+
+        default_tactics = {
+            tactic.name: tactic
+            for tactic in [
+                ScraperTactic(
+                    name='multi_engine_search',
+                    mode='multi_engine_search',
+                    query_template='{keywords}',
+                    max_results=5,
+                    scrape_top_results=True,
+                    weight=1.2,
+                ),
+                ScraperTactic(
+                    name='brave_search_fresh',
+                    mode='brave_search',
+                    query_template='{keywords}',
+                    max_results=5,
+                    freshness='pw',
+                    scrape_top_results=True,
+                    weight=1.0,
+                ),
+                ScraperTactic(
+                    name='domain_archive_sweep',
+                    mode='archived_domain_scrape',
+                    max_results=5,
+                    weight=0.9,
+                ),
+            ]
+        }
+        seeded: List[ScraperTactic] = []
+        for tactic_name, tactic in default_tactics.items():
+            learned = next((row for row in tactic_rows if row.get('name') == tactic_name), None)
+            if learned is None:
+                seeded.append(tactic)
+                continue
+
+            learned_weight = float(learned.get('avg_weight', tactic.weight) or tactic.weight)
+            quality_bonus = 0.15 if float(learned.get('avg_quality_score', 0.0) or 0.0) >= 60.0 else -0.05
+            novelty_bonus = min(0.2, float(learned.get('novelty_ratio', 0.0) or 0.0) * 0.2)
+            seeded.append(
+                ScraperTactic(
+                    name=tactic.name,
+                    mode=tactic.mode,
+                    query_template=tactic.query_template,
+                    max_results=tactic.max_results,
+                    freshness=tactic.freshness,
+                    scrape_top_results=tactic.scrape_top_results,
+                    weight=max(0.1, round(learned_weight + quality_bonus + novelty_bonus, 2)),
+                )
+            )
+        return sorted(seeded, key=lambda tactic: tactic.weight, reverse=True)
+    
+    def discover_and_store_evidence(self, keywords: List[str],
+                                    domains: Optional[List[str]] = None,
+                                    user_id: Optional[str] = None,
+                                    claim_type: Optional[str] = None,
+                                    min_relevance: float = 0.5) -> Dict[str, Any]:
+        """
+        Discover evidence from web sources and store in evidence database.
+        
+        Args:
+            keywords: Keywords to search for
+            domains: Optional specific domains
+            user_id: User identifier
+            claim_type: Associated claim type
+            min_relevance: Minimum relevance score to store (0.0 to 1.0)
+            
+        Returns:
+            Dictionary with discovered and stored evidence counts
+        """
+        if not hasattr(self.mediator, 'web_evidence_search'):
+            return {'error': 'Web evidence search not available'}
+        
+        if user_id is None:
+            user_id = getattr(self.mediator.state, 'username', None) or \
+                     getattr(self.mediator.state, 'hashed_username', 'anonymous')
+        
+        # Search for evidence
+        search_results = self.mediator.web_evidence_search.search_for_evidence(
+            keywords=keywords,
+            domains=domains,
+            max_results=20
+        )
+
+        all_results = (
+            search_results.get('brave_search', []) +
+            search_results.get('common_crawl', []) +
+            search_results.get('multi_engine_search', []) +
+            search_results.get('archived_domain_scrape', [])
+        )
+
+        stored_evidence = self._store_evidence_items(
+            all_results,
+            keywords=keywords,
+            user_id=user_id,
+            claim_type=claim_type,
+            min_relevance=min_relevance,
+        )
+        stored_evidence['discovered'] = search_results['total_found']
         
         self.mediator.log('web_evidence_discovery_complete',
             discovered=stored_evidence['discovered'],
             stored=stored_evidence['stored'])
         
         return stored_evidence
+
+    def run_agentic_scraper_cycle(self,
+                                  keywords: List[str],
+                                  domains: Optional[List[str]] = None,
+                                  iterations: int = 1,
+                                  sleep_seconds: float = 0.0,
+                                  quality_domain: str = 'caselaw',
+                                  user_id: Optional[str] = None,
+                                  claim_type: Optional[str] = None,
+                                  min_relevance: float = 0.5,
+                                  store_results: bool = True) -> Dict[str, Any]:
+        """Run the agentic scraper loop for a bounded number of iterations."""
+        if user_id is None:
+            user_id = getattr(self.mediator.state, 'username', None) or \
+                     getattr(self.mediator.state, 'hashed_username', 'anonymous')
+
+        daemon = ScraperDaemon(
+            config=ScraperDaemonConfig(
+                iterations=iterations,
+                sleep_seconds=sleep_seconds,
+                quality_domain=quality_domain,
+            )
+        )
+        seeded_tactics = self._seed_daemon_tactics(user_id)
+        daemon_result = daemon.run(keywords=keywords, domains=domains, tactics=seeded_tactics)
+        final_results = list(daemon_result.get('final_results', []) or [])
+        storage_summary = self._empty_storage_summary(discovered_count=len(final_results))
+        if store_results and final_results:
+            storage_summary = self._store_evidence_items(
+                final_results,
+                keywords=keywords,
+                user_id=user_id,
+                claim_type=claim_type,
+                min_relevance=min_relevance,
+            )
+
+        persistence = {'persisted': False, 'run_id': -1}
+        if hasattr(self.mediator, 'evidence_state') and hasattr(self.mediator.evidence_state, 'persist_scraper_run'):
+            persistence = self.mediator.evidence_state.persist_scraper_run(
+                user_id=user_id,
+                run_result=daemon_result,
+                keywords=keywords,
+                domains=domains,
+                claim_type=claim_type,
+                stored_summary=storage_summary,
+                config={
+                    'iterations': iterations,
+                    'sleep_seconds': sleep_seconds,
+                    'quality_domain': quality_domain,
+                    'min_relevance': min_relevance,
+                    'store_results': store_results,
+                },
+            )
+
+        return {
+            **daemon_result,
+            'storage_summary': storage_summary,
+            'scraper_run': persistence,
+            'seeded_tactics': [
+                {
+                    'name': tactic.name,
+                    'mode': tactic.mode,
+                    'weight': tactic.weight,
+                }
+                for tactic in (seeded_tactics or [])
+            ],
+        }
     
     def discover_evidence_for_case(self, user_id: Optional[str] = None,
                                   execute_follow_up: bool = False) -> Dict[str, Any]:

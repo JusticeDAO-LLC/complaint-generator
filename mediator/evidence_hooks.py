@@ -5,7 +5,7 @@ import json
 import hashlib
 import mimetypes
 from typing import Dict, List, Optional, Any, BinaryIO
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from integrations.ipfs_datasets.provenance import (
@@ -362,6 +362,103 @@ class EvidenceStateHook:
                     provenance JSON
                 )
             """)
+
+            conn.execute("""
+                CREATE SEQUENCE IF NOT EXISTS scraper_run_id_seq START 1
+            """)
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS scraper_runs (
+                    id BIGINT PRIMARY KEY DEFAULT nextval('scraper_run_id_seq'),
+                    user_id VARCHAR,
+                    username VARCHAR,
+                    claim_type VARCHAR,
+                    keywords JSON,
+                    domains JSON,
+                    iteration_count INTEGER,
+                    final_result_count INTEGER,
+                    stored_count INTEGER,
+                    new_count INTEGER,
+                    reused_count INTEGER,
+                    unique_url_count INTEGER,
+                    quality JSON,
+                    config JSON,
+                    metadata JSON,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS scraper_run_iterations (
+                    run_id BIGINT,
+                    iteration_index INTEGER,
+                    discovered_count INTEGER,
+                    accepted_count INTEGER,
+                    scraped_count INTEGER,
+                    coverage JSON,
+                    quality JSON,
+                    critique JSON
+                )
+            """)
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS scraper_run_tactics (
+                    run_id BIGINT,
+                    iteration_index INTEGER,
+                    tactic_name VARCHAR,
+                    tactic_mode VARCHAR,
+                    query_text TEXT,
+                    weight FLOAT,
+                    discovered_count INTEGER,
+                    scraped_count INTEGER,
+                    accepted_count INTEGER,
+                    novelty_count INTEGER,
+                    quality_score FLOAT,
+                    quality JSON
+                )
+            """)
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS scraper_run_coverage (
+                    run_id BIGINT,
+                    url TEXT,
+                    domain VARCHAR,
+                    source_type VARCHAR,
+                    last_seen_iteration INTEGER,
+                    metadata JSON
+                )
+            """)
+
+            conn.execute("""
+                CREATE SEQUENCE IF NOT EXISTS scraper_queue_id_seq START 1
+            """)
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS scraper_queue (
+                    id BIGINT PRIMARY KEY DEFAULT nextval('scraper_queue_id_seq'),
+                    user_id VARCHAR,
+                    username VARCHAR,
+                    claim_type VARCHAR,
+                    keywords JSON,
+                    domains JSON,
+                    iterations INTEGER,
+                    sleep_seconds DOUBLE,
+                    quality_domain VARCHAR,
+                    min_relevance DOUBLE,
+                    store_results BOOLEAN,
+                    priority INTEGER DEFAULT 100,
+                    status VARCHAR DEFAULT 'queued',
+                    available_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    claimed_at TIMESTAMP,
+                    completed_at TIMESTAMP,
+                    worker_id VARCHAR,
+                    run_id BIGINT,
+                    error TEXT,
+                    metadata JSON,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             
             # Create index on CID for fast lookups
             conn.execute("""
@@ -373,6 +470,16 @@ class EvidenceStateHook:
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_evidence_user 
                 ON evidence(user_id)
+            """)
+
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_scraper_queue_status_available
+                ON scraper_queue(status, available_at)
+            """)
+
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_scraper_queue_user_status
+                ON scraper_queue(user_id, status)
             """)
             
             conn.close()
@@ -1014,6 +1121,664 @@ class EvidenceStateHook:
         except Exception as e:
             self.mediator.log('evidence_stats_error', error=str(e))
             return {'available': False, 'error': str(e)}
+
+    def persist_scraper_run(self,
+                            user_id: str,
+                            run_result: Dict[str, Any],
+                            *,
+                            keywords: Optional[List[str]] = None,
+                            domains: Optional[List[str]] = None,
+                            claim_type: Optional[str] = None,
+                            stored_summary: Optional[Dict[str, Any]] = None,
+                            config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Persist an agentic scraper run, its iterations, and coverage ledger."""
+        if not DUCKDB_AVAILABLE:
+            return {'persisted': False, 'run_id': -1}
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            state = getattr(self.mediator, 'state', None)
+            username = getattr(state, 'username', None) if state is not None else None
+            if not isinstance(username, str) or not username:
+                username = user_id
+
+            iterations = list(run_result.get('iterations', []) or [])
+            final_results = list(run_result.get('final_results', []) or [])
+            coverage_ledger = run_result.get('coverage_ledger', {}) if isinstance(run_result.get('coverage_ledger'), dict) else {}
+            quality_payload = run_result.get('final_quality', {}) if isinstance(run_result.get('final_quality'), dict) else {}
+            stored_summary = stored_summary or {}
+
+            row = conn.execute(
+                """
+                INSERT INTO scraper_runs (
+                    user_id, username, claim_type, keywords, domains,
+                    iteration_count, final_result_count, stored_count, new_count, reused_count,
+                    unique_url_count, quality, config, metadata
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                RETURNING id
+                """,
+                [
+                    user_id,
+                    username,
+                    claim_type,
+                    json.dumps(keywords or []),
+                    json.dumps(domains or []),
+                    len(iterations),
+                    len(final_results),
+                    int(stored_summary.get('stored', 0) or 0),
+                    int(stored_summary.get('total_new', 0) or 0),
+                    int(stored_summary.get('total_reused', 0) or 0),
+                    len(coverage_ledger),
+                    json.dumps(quality_payload),
+                    json.dumps(config or {}),
+                    json.dumps({'tactic_history': run_result.get('tactic_history', {})}),
+                ],
+            ).fetchone()
+            run_id = int(row[0])
+
+            for iteration in iterations:
+                iteration_index = int(iteration.get('iteration', 0) or 0)
+                conn.execute(
+                    """
+                    INSERT INTO scraper_run_iterations (
+                        run_id, iteration_index, discovered_count, accepted_count, scraped_count,
+                        coverage, quality, critique
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        run_id,
+                        iteration_index,
+                        int(iteration.get('discovered_count', 0) or 0),
+                        int(iteration.get('accepted_count', 0) or 0),
+                        int(iteration.get('scraped_count', 0) or 0),
+                        json.dumps(iteration.get('coverage', {})),
+                        json.dumps(iteration.get('quality', {})),
+                        json.dumps(iteration.get('critique', {})),
+                    ],
+                )
+
+                for tactic in iteration.get('tactics', []) or []:
+                    conn.execute(
+                        """
+                        INSERT INTO scraper_run_tactics (
+                            run_id, iteration_index, tactic_name, tactic_mode, query_text,
+                            weight, discovered_count, scraped_count, accepted_count,
+                            novelty_count, quality_score, quality
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        [
+                            run_id,
+                            iteration_index,
+                            tactic.get('name'),
+                            tactic.get('mode'),
+                            tactic.get('query'),
+                            float(tactic.get('weight', 0.0) or 0.0),
+                            int(tactic.get('discovered_count', 0) or 0),
+                            int(tactic.get('scraped_count', 0) or 0),
+                            int(tactic.get('accepted_count', 0) or 0),
+                            int(tactic.get('novelty_count', 0) or 0),
+                            float(tactic.get('quality_score', 0.0) or 0.0),
+                            json.dumps(tactic.get('quality', {})),
+                        ],
+                    )
+
+            for url, coverage in coverage_ledger.items():
+                coverage_metadata = coverage if isinstance(coverage, dict) else {}
+                conn.execute(
+                    """
+                    INSERT INTO scraper_run_coverage (
+                        run_id, url, domain, source_type, last_seen_iteration, metadata
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        run_id,
+                        url,
+                        coverage_metadata.get('domain', ''),
+                        coverage_metadata.get('source_type', ''),
+                        int(coverage_metadata.get('last_seen_iteration', 0) or 0),
+                        json.dumps(coverage_metadata),
+                    ],
+                )
+
+            conn.close()
+            self.mediator.log('scraper_run_persisted', run_id=run_id, user_id=user_id)
+            return {'persisted': True, 'run_id': run_id}
+        except Exception as e:
+            self.mediator.log('scraper_run_persist_error', error=str(e), user_id=user_id)
+            return {'persisted': False, 'run_id': -1, 'error': str(e)}
+
+    def get_scraper_runs(self, user_id: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
+        """Return persisted scraper runs with summary metadata."""
+        if not DUCKDB_AVAILABLE:
+            return []
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            if user_id:
+                rows = conn.execute(
+                    """
+                    SELECT id, user_id, username, claim_type, keywords, domains,
+                           iteration_count, final_result_count, stored_count, new_count,
+                           reused_count, unique_url_count, quality, config, metadata, timestamp
+                    FROM scraper_runs
+                    WHERE user_id = ?
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                    """,
+                    [user_id, int(limit)],
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT id, user_id, username, claim_type, keywords, domains,
+                           iteration_count, final_result_count, stored_count, new_count,
+                           reused_count, unique_url_count, quality, config, metadata, timestamp
+                    FROM scraper_runs
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                    """,
+                    [int(limit)],
+                ).fetchall()
+            conn.close()
+            return [
+                {
+                    'id': row[0],
+                    'user_id': row[1],
+                    'username': row[2],
+                    'claim_type': row[3],
+                    'keywords': json.loads(row[4]) if row[4] else [],
+                    'domains': json.loads(row[5]) if row[5] else [],
+                    'iteration_count': row[6] or 0,
+                    'final_result_count': row[7] or 0,
+                    'stored_count': row[8] or 0,
+                    'new_count': row[9] or 0,
+                    'reused_count': row[10] or 0,
+                    'unique_url_count': row[11] or 0,
+                    'quality': json.loads(row[12]) if row[12] else {},
+                    'config': json.loads(row[13]) if row[13] else {},
+                    'metadata': json.loads(row[14]) if row[14] else {},
+                    'timestamp': row[15],
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            self.mediator.log('scraper_run_query_error', error=str(e), user_id=user_id)
+            return []
+
+    def get_scraper_run_details(self, run_id: int) -> Dict[str, Any]:
+        """Return one persisted scraper run with iterations, tactics, and coverage rows."""
+        if not DUCKDB_AVAILABLE:
+            return {'available': False}
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            run_row = conn.execute(
+                """
+                SELECT id, user_id, username, claim_type, keywords, domains,
+                       iteration_count, final_result_count, stored_count, new_count,
+                       reused_count, unique_url_count, quality, config, metadata, timestamp
+                FROM scraper_runs
+                WHERE id = ?
+                LIMIT 1
+                """,
+                [int(run_id)],
+            ).fetchone()
+            if not run_row:
+                conn.close()
+                return {'available': False, 'run_id': run_id}
+
+            iteration_rows = conn.execute(
+                """
+                SELECT iteration_index, discovered_count, accepted_count, scraped_count,
+                       coverage, quality, critique
+                FROM scraper_run_iterations
+                WHERE run_id = ?
+                ORDER BY iteration_index ASC
+                """,
+                [int(run_id)],
+            ).fetchall()
+            tactic_rows = conn.execute(
+                """
+                SELECT iteration_index, tactic_name, tactic_mode, query_text, weight,
+                       discovered_count, scraped_count, accepted_count, novelty_count,
+                       quality_score, quality
+                FROM scraper_run_tactics
+                WHERE run_id = ?
+                ORDER BY iteration_index ASC, tactic_name ASC
+                """,
+                [int(run_id)],
+            ).fetchall()
+            coverage_rows = conn.execute(
+                """
+                SELECT url, domain, source_type, last_seen_iteration, metadata
+                FROM scraper_run_coverage
+                WHERE run_id = ?
+                ORDER BY last_seen_iteration ASC, url ASC
+                """,
+                [int(run_id)],
+            ).fetchall()
+            conn.close()
+
+            tactics_by_iteration: Dict[int, List[Dict[str, Any]]] = {}
+            for row in tactic_rows:
+                tactics_by_iteration.setdefault(row[0], []).append({
+                    'iteration': row[0],
+                    'name': row[1],
+                    'mode': row[2],
+                    'query': row[3],
+                    'weight': row[4] or 0.0,
+                    'discovered_count': row[5] or 0,
+                    'scraped_count': row[6] or 0,
+                    'accepted_count': row[7] or 0,
+                    'novelty_count': row[8] or 0,
+                    'quality_score': row[9] or 0.0,
+                    'quality': json.loads(row[10]) if row[10] else {},
+                })
+
+            iterations = []
+            for row in iteration_rows:
+                iteration_index = row[0]
+                iterations.append({
+                    'iteration': iteration_index,
+                    'discovered_count': row[1] or 0,
+                    'accepted_count': row[2] or 0,
+                    'scraped_count': row[3] or 0,
+                    'coverage': json.loads(row[4]) if row[4] else {},
+                    'quality': json.loads(row[5]) if row[5] else {},
+                    'critique': json.loads(row[6]) if row[6] else {},
+                    'tactics': tactics_by_iteration.get(iteration_index, []),
+                })
+
+            return {
+                'available': True,
+                'run': {
+                    'id': run_row[0],
+                    'user_id': run_row[1],
+                    'username': run_row[2],
+                    'claim_type': run_row[3],
+                    'keywords': json.loads(run_row[4]) if run_row[4] else [],
+                    'domains': json.loads(run_row[5]) if run_row[5] else [],
+                    'iteration_count': run_row[6] or 0,
+                    'final_result_count': run_row[7] or 0,
+                    'stored_count': run_row[8] or 0,
+                    'new_count': run_row[9] or 0,
+                    'reused_count': run_row[10] or 0,
+                    'unique_url_count': run_row[11] or 0,
+                    'quality': json.loads(run_row[12]) if run_row[12] else {},
+                    'config': json.loads(run_row[13]) if run_row[13] else {},
+                    'metadata': json.loads(run_row[14]) if run_row[14] else {},
+                    'timestamp': run_row[15],
+                },
+                'iterations': iterations,
+                'coverage': [
+                    {
+                        'url': row[0],
+                        'domain': row[1],
+                        'source_type': row[2],
+                        'last_seen_iteration': row[3] or 0,
+                        'metadata': json.loads(row[4]) if row[4] else {},
+                    }
+                    for row in coverage_rows
+                ],
+            }
+        except Exception as e:
+            self.mediator.log('scraper_run_detail_error', error=str(e), run_id=run_id)
+            return {'available': False, 'run_id': run_id, 'error': str(e)}
+
+    def get_scraper_tactic_performance(self, user_id: Optional[str] = None, limit_runs: int = 20) -> Dict[str, Any]:
+        """Aggregate recent tactic performance from persisted scraper runs."""
+        if not DUCKDB_AVAILABLE:
+            return {'available': False, 'tactics': []}
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            if user_id:
+                rows = conn.execute(
+                    """
+                    WITH recent_runs AS (
+                        SELECT id
+                        FROM scraper_runs
+                        WHERE user_id = ?
+                        ORDER BY timestamp DESC
+                        LIMIT ?
+                    )
+                    SELECT tactic_name,
+                           AVG(weight) AS avg_weight,
+                           AVG(quality_score) AS avg_quality_score,
+                           AVG(discovered_count) AS avg_discovered_count,
+                           AVG(scraped_count) AS avg_scraped_count,
+                           AVG(accepted_count) AS avg_accepted_count,
+                           AVG(novelty_count) AS avg_novelty_count,
+                           COUNT(*) AS observation_count
+                    FROM scraper_run_tactics
+                    WHERE run_id IN (SELECT id FROM recent_runs)
+                    GROUP BY tactic_name
+                    ORDER BY avg_quality_score DESC, observation_count DESC
+                    """,
+                    [user_id, int(limit_runs)],
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    WITH recent_runs AS (
+                        SELECT id
+                        FROM scraper_runs
+                        ORDER BY timestamp DESC
+                        LIMIT ?
+                    )
+                    SELECT tactic_name,
+                           AVG(weight) AS avg_weight,
+                           AVG(quality_score) AS avg_quality_score,
+                           AVG(discovered_count) AS avg_discovered_count,
+                           AVG(scraped_count) AS avg_scraped_count,
+                           AVG(accepted_count) AS avg_accepted_count,
+                           AVG(novelty_count) AS avg_novelty_count,
+                           COUNT(*) AS observation_count
+                    FROM scraper_run_tactics
+                    WHERE run_id IN (SELECT id FROM recent_runs)
+                    GROUP BY tactic_name
+                    ORDER BY avg_quality_score DESC, observation_count DESC
+                    """,
+                    [int(limit_runs)],
+                ).fetchall()
+            conn.close()
+
+            tactics = []
+            for row in rows:
+                avg_accepted = float(row[5] or 0.0)
+                avg_novelty = float(row[6] or 0.0)
+                novelty_ratio = (avg_novelty / avg_accepted) if avg_accepted > 0 else 0.0
+                tactics.append({
+                    'name': row[0],
+                    'avg_weight': float(row[1] or 0.0),
+                    'avg_quality_score': float(row[2] or 0.0),
+                    'avg_discovered_count': float(row[3] or 0.0),
+                    'avg_scraped_count': float(row[4] or 0.0),
+                    'avg_accepted_count': avg_accepted,
+                    'avg_novelty_count': avg_novelty,
+                    'novelty_ratio': novelty_ratio,
+                    'observation_count': int(row[7] or 0),
+                })
+
+            return {'available': True, 'tactics': tactics}
+        except Exception as e:
+            self.mediator.log('scraper_tactic_perf_error', error=str(e), user_id=user_id)
+            return {'available': False, 'tactics': [], 'error': str(e)}
+
+    def _serialize_scraper_queue_row(self, row: Any) -> Dict[str, Any]:
+        return {
+            'id': row[0],
+            'user_id': row[1],
+            'username': row[2],
+            'claim_type': row[3],
+            'keywords': json.loads(row[4]) if row[4] else [],
+            'domains': json.loads(row[5]) if row[5] else [],
+            'iterations': row[6] or 0,
+            'sleep_seconds': float(row[7] or 0.0),
+            'quality_domain': row[8] or 'caselaw',
+            'min_relevance': float(row[9] or 0.0),
+            'store_results': bool(row[10]),
+            'priority': row[11] or 100,
+            'status': row[12] or 'queued',
+            'available_at': row[13],
+            'claimed_at': row[14],
+            'completed_at': row[15],
+            'worker_id': row[16],
+            'run_id': row[17],
+            'error': row[18],
+            'metadata': json.loads(row[19]) if row[19] else {},
+            'created_at': row[20],
+            'updated_at': row[21],
+        }
+
+    def enqueue_scraper_job(self,
+                            user_id: str,
+                            keywords: List[str],
+                            *,
+                            domains: Optional[List[str]] = None,
+                            claim_type: Optional[str] = None,
+                            iterations: int = 3,
+                            sleep_seconds: float = 0.0,
+                            quality_domain: str = 'caselaw',
+                            min_relevance: float = 0.5,
+                            store_results: bool = True,
+                            priority: int = 100,
+                            available_at: Optional[datetime] = None,
+                            metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Queue a scraper job for later worker consumption."""
+        if not DUCKDB_AVAILABLE:
+            return {'queued': False, 'job_id': -1}
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            state = getattr(self.mediator, 'state', None)
+            username = getattr(state, 'username', None) if state is not None else None
+            if not isinstance(username, str) or not username:
+                username = user_id
+
+            row = conn.execute(
+                """
+                INSERT INTO scraper_queue (
+                    user_id, username, claim_type, keywords, domains,
+                    iterations, sleep_seconds, quality_domain, min_relevance,
+                    store_results, priority, available_at, metadata, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                RETURNING id
+                """,
+                [
+                    user_id,
+                    username,
+                    claim_type,
+                    json.dumps(keywords or []),
+                    json.dumps(domains or []),
+                    int(iterations),
+                    float(sleep_seconds),
+                    quality_domain,
+                    float(min_relevance),
+                    bool(store_results),
+                    int(priority),
+                    available_at or datetime.utcnow(),
+                    json.dumps(metadata or {}),
+                ],
+            ).fetchone()
+            conn.close()
+            job_id = int(row[0])
+            self.mediator.log('scraper_job_enqueued', job_id=job_id, user_id=user_id)
+            return {'queued': True, 'job_id': job_id}
+        except Exception as e:
+            self.mediator.log('scraper_job_enqueue_error', error=str(e), user_id=user_id)
+            return {'queued': False, 'job_id': -1, 'error': str(e)}
+
+    def get_scraper_queue(self,
+                          user_id: Optional[str] = None,
+                          status: Optional[str] = None,
+                          limit: int = 20) -> List[Dict[str, Any]]:
+        """Return queued/running/completed scraper jobs."""
+        if not DUCKDB_AVAILABLE:
+            return []
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            clauses: List[str] = []
+            params: List[Any] = []
+            if user_id:
+                clauses.append('user_id = ?')
+                params.append(user_id)
+            if status:
+                clauses.append('status = ?')
+                params.append(status)
+
+            where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ''
+            rows = conn.execute(
+                f"""
+                SELECT id, user_id, username, claim_type, keywords, domains,
+                       iterations, sleep_seconds, quality_domain, min_relevance,
+                       store_results, priority, status, available_at, claimed_at,
+                       completed_at, worker_id, run_id, error, metadata,
+                       created_at, updated_at
+                FROM scraper_queue
+                {where_sql}
+                ORDER BY
+                    CASE status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END,
+                    priority ASC,
+                    available_at ASC,
+                    created_at ASC
+                LIMIT ?
+                """,
+                [*params, int(limit)],
+            ).fetchall()
+            conn.close()
+            return [self._serialize_scraper_queue_row(row) for row in rows]
+        except Exception as e:
+            self.mediator.log('scraper_queue_query_error', error=str(e), user_id=user_id, status=status)
+            return []
+
+    def get_scraper_queue_job(self, job_id: int) -> Dict[str, Any]:
+        """Return one queued scraper job."""
+        if not DUCKDB_AVAILABLE:
+            return {'available': False, 'job_id': job_id}
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            row = conn.execute(
+                """
+                SELECT id, user_id, username, claim_type, keywords, domains,
+                       iterations, sleep_seconds, quality_domain, min_relevance,
+                       store_results, priority, status, available_at, claimed_at,
+                       completed_at, worker_id, run_id, error, metadata,
+                       created_at, updated_at
+                FROM scraper_queue
+                WHERE id = ?
+                LIMIT 1
+                """,
+                [int(job_id)],
+            ).fetchone()
+            conn.close()
+            if not row:
+                return {'available': False, 'job_id': job_id}
+            return {'available': True, 'job': self._serialize_scraper_queue_row(row)}
+        except Exception as e:
+            self.mediator.log('scraper_queue_job_error', error=str(e), job_id=job_id)
+            return {'available': False, 'job_id': job_id, 'error': str(e)}
+
+    def claim_next_scraper_job(self,
+                               worker_id: str,
+                               *,
+                               user_id: Optional[str] = None) -> Dict[str, Any]:
+        """Claim the next available scraper job so only queued work is processed."""
+        if not DUCKDB_AVAILABLE:
+            return {'claimed': False, 'job': None}
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            for _ in range(3):
+                clauses = ["status = 'queued'", 'available_at <= CURRENT_TIMESTAMP']
+                params: List[Any] = []
+                if user_id:
+                    clauses.append('user_id = ?')
+                    params.append(user_id)
+
+                row = conn.execute(
+                    f"""
+                    SELECT id
+                    FROM scraper_queue
+                    WHERE {' AND '.join(clauses)}
+                    ORDER BY priority ASC, available_at ASC, created_at ASC
+                    LIMIT 1
+                    """,
+                    params,
+                ).fetchone()
+                if not row:
+                    conn.close()
+                    return {'claimed': False, 'job': None}
+
+                claimed_row = conn.execute(
+                    """
+                    UPDATE scraper_queue
+                    SET status = 'running',
+                        claimed_at = CURRENT_TIMESTAMP,
+                        updated_at = CURRENT_TIMESTAMP,
+                        worker_id = ?
+                    WHERE id = ? AND status = 'queued'
+                    RETURNING id, user_id, username, claim_type, keywords, domains,
+                              iterations, sleep_seconds, quality_domain, min_relevance,
+                              store_results, priority, status, available_at, claimed_at,
+                              completed_at, worker_id, run_id, error, metadata,
+                              created_at, updated_at
+                    """,
+                    [worker_id, int(row[0])],
+                ).fetchone()
+                if claimed_row:
+                    conn.close()
+                    job = self._serialize_scraper_queue_row(claimed_row)
+                    self.mediator.log('scraper_job_claimed', job_id=job['id'], worker_id=worker_id)
+                    return {'claimed': True, 'job': job}
+
+            conn.close()
+            return {'claimed': False, 'job': None}
+        except Exception as e:
+            self.mediator.log('scraper_job_claim_error', error=str(e), worker_id=worker_id, user_id=user_id)
+            return {'claimed': False, 'job': None, 'error': str(e)}
+
+    def complete_scraper_job(self,
+                             job_id: int,
+                             *,
+                             run_id: Optional[int] = None,
+                             error: Optional[str] = None,
+                             metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Mark a claimed scraper job as completed or failed."""
+        if not DUCKDB_AVAILABLE:
+            return {'updated': False, 'job_id': job_id}
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            current = conn.execute(
+                """
+                SELECT metadata
+                FROM scraper_queue
+                WHERE id = ?
+                LIMIT 1
+                """,
+                [int(job_id)],
+            ).fetchone()
+            merged_metadata = json.loads(current[0]) if current and current[0] else {}
+            if metadata:
+                merged_metadata.update(metadata)
+
+            status = 'failed' if error else 'completed'
+            row = conn.execute(
+                """
+                UPDATE scraper_queue
+                SET status = ?,
+                    completed_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP,
+                    run_id = ?,
+                    error = ?,
+                    metadata = ?
+                WHERE id = ?
+                RETURNING id, user_id, username, claim_type, keywords, domains,
+                          iterations, sleep_seconds, quality_domain, min_relevance,
+                          store_results, priority, status, available_at, claimed_at,
+                          completed_at, worker_id, run_id, error, metadata,
+                          created_at, updated_at
+                """,
+                [status, run_id, error, json.dumps(merged_metadata), int(job_id)],
+            ).fetchone()
+            conn.close()
+            if not row:
+                return {'updated': False, 'job_id': job_id}
+
+            job = self._serialize_scraper_queue_row(row)
+            self.mediator.log('scraper_job_completed', job_id=job_id, status=status, run_id=run_id)
+            return {'updated': True, 'job': job}
+        except Exception as e:
+            self.mediator.log('scraper_job_complete_error', error=str(e), job_id=job_id)
+            return {'updated': False, 'job_id': job_id, 'error': str(e)}
 
 
 class EvidenceAnalysisHook:

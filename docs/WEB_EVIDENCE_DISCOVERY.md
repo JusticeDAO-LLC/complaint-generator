@@ -9,6 +9,8 @@ The web evidence discovery system uses multiple web sources to automatically loc
 1. **Brave Search** - Current web content search
 2. **Common Crawl Search Engine** - Historical archived web pages
 3. **Web Archive tools** - Additional archiving capabilities
+4. **Multi-engine search orchestration** - Aggregated search across multiple engines
+5. **Archived domain sweeps** - Domain-first archive retrieval for better coverage
 
 This system discovers evidence automatically and stores it alongside user-submitted evidence.
 
@@ -35,11 +37,13 @@ Evidence Database
 ## Features
 
 - **Multi-Source Search**: Brave Search (current), Common Crawl (historical)
+- **Extended Source Orchestration**: Multi-engine aggregation and archived domain sweeps
 - **Automatic Discovery**: Generate keywords from claims
 - **Relevance Validation**: AI-powered relevance scoring
 - **IPFS Storage**: Store discovered evidence immutably
 - **DuckDB Tracking**: Track source, relevance, auto-discovery
 - **User Integration**: Works alongside manually submitted evidence
+- **Agentic Scraper Loop**: Iterative scrape, review, critique, and tactic reweighting for coverage growth
 
 ## Usage
 
@@ -64,7 +68,52 @@ results = mediator.search_web_for_evidence(
 print(f"Found {results['total_found']} evidence items")
 print(f"Brave Search: {len(results['brave_search'])}")
 print(f"Common Crawl: {len(results['common_crawl'])}")
+print(f"Multi-engine: {len(results['multi_engine_search'])}")
+print(f"Archive sweeps: {len(results['archived_domain_scrape'])}")
 ```
+
+### Agentic Scraper Loop
+
+```python
+daemon_result = mediator.run_agentic_scraper_cycle(
+    keywords=['employment discrimination', 'retaliation'],
+    domains=['eeoc.gov', 'dol.gov'],
+    iterations=3,
+    sleep_seconds=0.0,
+    quality_domain='caselaw',
+)
+
+print(len(daemon_result['iterations']))
+print(len(daemon_result['final_results']))
+print(sorted(daemon_result['coverage_ledger'].keys())[:3])
+```
+
+Each iteration records tactic-level discovery counts, accepted and scraped counts, quality scores, coverage metrics, and critique recommendations that are used to reweight the next pass.
+
+### Standalone CLI
+
+The repository includes a standalone command for running and inspecting the scraper daemon outside the interactive complaint flow.
+
+```bash
+python scripts/agentic_scraper_cli.py enqueue \
+    --keywords employment discrimination retaliation \
+    --domains eeoc.gov dol.gov \
+    --iterations 3
+
+python scripts/agentic_scraper_cli.py worker --once
+python scripts/agentic_scraper_cli.py queue --user-id cli-user
+
+python scripts/agentic_scraper_cli.py run \
+    --keywords employment discrimination retaliation \
+    --domains eeoc.gov dol.gov \
+    --iterations 3
+
+python scripts/agentic_scraper_cli.py history --user-id cli-user
+python scripts/agentic_scraper_cli.py detail 1 --json
+python scripts/agentic_scraper_cli.py tactics --user-id cli-user
+```
+
+Use `enqueue` plus `worker` for daemon-style operation. The worker only executes claimed queue items, so an empty queue results in an idle poll or a clean exit with `--once` instead of launching a scrape cycle.
 
 ### Discover and Store Evidence
 
@@ -264,6 +313,8 @@ Search web sources without storing.
 
 **Returns:** Dictionary with results by source type
 
+Typical keys now include `brave_search`, `common_crawl`, `multi_engine_search`, `archived_domain_scrape`, and `total_found`.
+
 #### `discover_web_evidence(keywords, domains=None, user_id=None, claim_type=None, min_relevance=0.5)`
 
 Discover and store evidence.
@@ -317,6 +368,19 @@ Automatically discover evidence for all case claims.
 **Returns:** Dictionary with results per claim type
 
 Per-claim results now include both the legacy count in `evidence_stored[claim_type]` and the full deduplicated breakdown in `evidence_storage_summary[claim_type]`.
+
+#### `run_agentic_scraper_cycle(keywords, domains=None, iterations=1, sleep_seconds=0.0, quality_domain='caselaw')`
+
+Run a bounded scrape-review-critique-optimize loop.
+
+**Args:**
+- `keywords` (List[str]): Seed search terms
+- `domains` (List[str], optional): Domains to prioritize during archive sweeps
+- `iterations` (int): Number of tactic-optimization passes
+- `sleep_seconds` (float): Delay between iterations
+- `quality_domain` (str): Validation domain used by the scraper-quality scorer
+
+**Returns:** Dictionary with iteration reports, final deduplicated results, tactic history, and coverage ledger.
 
 ## Advanced Usage
 

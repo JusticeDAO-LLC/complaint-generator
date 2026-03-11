@@ -13,6 +13,13 @@ from .types import (
 	ProvenanceRecord,
 	ValidationRun,
 )
+from .search import (
+	evaluate_scraped_content,
+	scrape_archived_domain,
+	scrape_web_content,
+	search_brave_web,
+	search_multi_engine_web,
+)
 
 __all__ = [
 	"CapabilityStatus",
@@ -26,4 +33,9 @@ __all__ = [
 	"FormalPredicate",
 	"ProvenanceRecord",
 	"ValidationRun",
+	"evaluate_scraped_content",
+	"scrape_archived_domain",
+	"scrape_web_content",
+	"search_brave_web",
+	"search_multi_engine_web",
 ]

@@ -14,7 +14,13 @@ from integrations.ipfs_datasets.legal import (
     search_recap_documents,
     search_us_code,
 )
-from integrations.ipfs_datasets.search import search_brave_web
+from integrations.ipfs_datasets.scraper_daemon import ScraperDaemon, ScraperDaemonConfig
+from integrations.ipfs_datasets.search import (
+    evaluate_scraped_content,
+    scrape_web_content,
+    search_brave_web,
+    search_multi_engine_web,
+)
 
 
 def test_capability_registry_has_expected_keys():
@@ -123,6 +129,139 @@ def test_search_brave_web_normalizes_results():
     assert len(results) == 1
     assert results[0]['source_type'] == 'brave_search'
     assert results[0]['metadata']['language'] == 'en'
+
+
+def test_search_multi_engine_web_normalizes_orchestrated_results():
+    response = Mock()
+    response.results = [
+        Mock(
+            title='Agency Guidance',
+            url='https://example.com/guidance',
+            snippet='Current agency guidance',
+            engine='duckduckgo',
+            score=0.88,
+            domain='example.com',
+            metadata={'rank': 1},
+        )
+    ]
+
+    with patch('integrations.ipfs_datasets.search.MULTI_ENGINE_SEARCH_AVAILABLE', True):
+        with patch('integrations.ipfs_datasets.search.OrchestratorConfig', side_effect=lambda **kwargs: kwargs):
+            with patch('integrations.ipfs_datasets.search.MultiEngineOrchestrator') as orchestrator_cls:
+                orchestrator_cls.return_value.search.return_value = response
+                results = search_multi_engine_web('agency guidance', max_results=5)
+
+    assert len(results) == 1
+    assert results[0]['source_type'] == 'multi_engine_search'
+    assert results[0]['metadata']['engine'] == 'duckduckgo'
+    assert results[0]['metadata']['domain'] == 'example.com'
+
+
+def test_scrape_web_content_normalizes_scraper_result():
+    scraper_result = Mock(
+        url='https://example.com/page',
+        title='Archived policy',
+        text='Relevant employment policy text',
+        content='Relevant employment policy text',
+        html='<html></html>',
+        links=[{'url': 'https://example.com/next', 'text': 'Next'}],
+        metadata={'archive_url': 'https://archive.example.com/page'},
+        method_used=Mock(value='wayback_machine'),
+        success=True,
+        errors=[],
+        extraction_time=0.5,
+    )
+
+    with patch('integrations.ipfs_datasets.search.UNIFIED_WEB_SCRAPER_AVAILABLE', True):
+        with patch('integrations.ipfs_datasets.search.ScraperConfig', side_effect=lambda **kwargs: Mock(**kwargs)):
+            with patch('integrations.ipfs_datasets.search.UnifiedWebScraper') as scraper_cls:
+                scraper_cls.return_value.scrape_sync.return_value = scraper_result
+                result = scrape_web_content('https://example.com/page')
+
+    assert result['source_type'] == 'web_scrape'
+    assert result['success'] is True
+    assert result['metadata']['method_used'] == 'wayback_machine'
+    assert 'Relevant employment policy text' in result['content']
+
+
+def test_evaluate_scraped_content_fallback_scores_non_empty_records():
+    records = [
+        {'title': 'A', 'content': 'substantial content'},
+        {'title': 'B', 'content': ''},
+    ]
+
+    with patch('integrations.ipfs_datasets.search.SCRAPER_VALIDATION_AVAILABLE', False):
+        result = evaluate_scraped_content(records, scraper_name='test-scraper')
+
+    assert result['scraper_name'] == 'test-scraper'
+    assert result['records_scraped'] == 2
+    assert 0.0 < result['data_quality_score'] < 100.0
+
+
+def test_scraper_daemon_optimizes_tactics_across_iterations():
+    daemon = ScraperDaemon(ScraperDaemonConfig(iterations=2, max_results_per_tactic=2, max_scrapes_per_tactic=1))
+
+    multi_engine_results = [
+        {
+            'title': 'Policy Update',
+            'url': 'https://example.com/policy',
+            'description': 'Policy update',
+            'content': 'Policy update',
+            'source_type': 'multi_engine_search',
+            'metadata': {},
+        }
+    ]
+    brave_results = [
+        {
+            'title': 'Press Release',
+            'url': 'https://example.com/press',
+            'description': 'Press release',
+            'content': 'Press release',
+            'source_type': 'brave_search',
+            'metadata': {},
+        }
+    ]
+
+    def fake_search_multi_engine(query, max_results=10, engines=None):
+        return multi_engine_results
+
+    def fake_search_brave(query, max_results=10, freshness=None, api_key=None):
+        return brave_results
+
+    def fake_scrape(url, methods=None, timeout=30):
+        return {
+            'url': url,
+            'title': 'Scraped',
+            'description': 'Scraped description',
+            'content': 'Scraped content with legal evidence',
+            'source_type': 'web_scrape',
+            'success': True,
+            'errors': [],
+            'metadata': {'method_used': 'beautifulsoup'},
+        }
+
+    def fake_eval(records, scraper_name='unknown', domain='caselaw'):
+        return {
+            'scraper_name': scraper_name,
+            'domain': domain,
+            'status': 'success',
+            'records_scraped': len(records),
+            'data_quality_score': 82.0,
+            'quality_issues': [],
+            'sample_data': list(records[:3]),
+        }
+
+    with patch('integrations.ipfs_datasets.scraper_daemon.search_multi_engine_web', side_effect=fake_search_multi_engine):
+        with patch('integrations.ipfs_datasets.scraper_daemon.search_brave_web', side_effect=fake_search_brave):
+            with patch('integrations.ipfs_datasets.scraper_daemon.scrape_web_content', side_effect=fake_scrape):
+                with patch('integrations.ipfs_datasets.scraper_daemon.scrape_archived_domain', return_value=[]):
+                    with patch('integrations.ipfs_datasets.scraper_daemon.evaluate_scraped_content', side_effect=fake_eval):
+                        result = daemon.run(keywords=['employment discrimination'], domains=['example.com'])
+
+    assert len(result['iterations']) >= 1
+    assert result['final_results']
+    assert 'https://example.com/policy' in result['coverage_ledger']
+    assert result['tactic_history']['multi_engine_search']
 
 
 def test_parse_document_bytes_returns_normalized_shape():

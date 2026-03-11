@@ -42,7 +42,11 @@ These areas are already present and should be treated as foundation, not future 
 - evidence, legal authority, and web evidence ingestion using adapter-backed flows
 - persistent claim requirements and claim-support links
 - evidence and authority deduplication with created or reused metadata
+- parsed evidence summaries, chunks, graph metadata, and extracted fact persistence
 - graph projection metadata propagated through mediator payloads
+- graph projection from evidence into complaint-phase knowledge graph state
+- persisted scraper runs, tactic telemetry, and coverage ledgers
+- queue-backed scraper job persistence and worker execution
 - follow-up planning and cooldown-aware execution history
 - centralized payload contract documentation
 
@@ -71,8 +75,8 @@ These are the main execution targets:
 |---|---|---|---|---|
 | W1 | Adapter hardening | In Progress | P0 | Stable feature detection and runtime-mode handling |
 | W2 | Unified acquisition and provenance | In Progress | P0 | Evidence, authorities, and archived web material share one case model |
-| W3 | Document and chunk services | Planned | P0 | Source material becomes reusable parsed corpus data |
-| W4 | Graph persistence and support queries | Planned | P0 | Cross-artifact support can be queried and explained |
+| W3 | Document and chunk services | In Progress | P0 | Source material becomes reusable parsed corpus data |
+| W4 | Graph persistence and support queries | In Progress | P0 | Cross-artifact support can be queried and explained |
 | W5 | GraphRAG support analysis | Planned | P1 | Ontology refinement improves support ranking and gap detection |
 | W6 | Formal logic and theorem proving | Planned | P1 | Claim-element sufficiency and contradiction validation |
 | W7 | Retrieval and follow-up optimization | In Progress | P1 | Retrieval is driven by missing support and provenance-aware ranking |
@@ -197,9 +201,30 @@ Acceptance criteria:
 
 - claim-element support can enumerate both source artifacts and the specific facts derived from them
 
+### Work Package W2.4: Queue-backed acquisition orchestration
+
+Status: In Progress
+Target files:
+
+- `mediator/evidence_hooks.py`
+- `mediator/mediator.py`
+- `scripts/agentic_scraper_cli.py`
+
+Tasks:
+
+- persist scraper queue jobs with claim metadata, timing metadata, and worker ownership
+- require workers to claim pending work instead of launching scraper runs unconditionally
+- keep queue inspection and one-job execution available through mediator and CLI surfaces
+
+Acceptance criteria:
+
+- scraper workers idle or exit cleanly when there is no queued work
+- queued work can be inspected, claimed, executed, and marked completed or failed
+- queue semantics remain optional and do not break direct bounded-run entrypoints
+
 ## W3: Document and Chunk Services
 
-Status: Planned
+Status: In Progress
 Priority: P0
 
 ### Why this matters
@@ -208,7 +233,7 @@ Source material cannot support graph, retrieval, or theorem-proving workflows if
 
 ### Work Package W3.1: Document adapter
 
-Status: Planned
+Status: In Progress
 Target files:
 
 - `integrations/ipfs_datasets/documents.py`
@@ -231,7 +256,7 @@ Validation:
 
 ### Work Package W3.2: Evidence parse pipeline unification
 
-Status: Planned
+Status: In Progress
 Target files:
 
 - `mediator/evidence_hooks.py`
@@ -242,6 +267,11 @@ Tasks:
 - route parsing through `documents.py`
 - normalize chunk metadata and parse lineage
 - expose reusable parse summaries rather than hook-local output shapes
+
+Implemented baseline:
+
+- uploaded evidence and discovered web evidence already persist parse summaries, chunk rows, graph metadata, and extracted facts
+- web evidence now lands in the same normalized storage path as other evidence rather than remaining only a search payload
 
 Acceptance criteria:
 
@@ -268,7 +298,7 @@ Acceptance criteria:
 
 ## W4: Graph Persistence and Support Queries
 
-Status: Planned
+Status: In Progress
 Priority: P0
 
 ### Why this matters
@@ -277,7 +307,7 @@ The system already builds useful in-memory graphs. The next step is to persist a
 
 ### Work Package W4.1: Graph adapter deepening
 
-Status: Planned
+Status: In Progress
 Target files:
 
 - `integrations/ipfs_datasets/graphs.py`
@@ -289,13 +319,18 @@ Tasks:
 - add entity-resolution and lineage hooks
 - define graph IDs and graph version semantics
 
+Implemented baseline:
+
+- evidence ingestion already performs graph extraction and stores entity and relationship metadata in DuckDB
+- complaint-phase graph projection already exists for evidence-backed support insertion
+
 Acceptance criteria:
 
 - complaint-generator can persist graph snapshots and query support relationships through the adapter without importing submodule internals directly
 
 ### Work Package W4.2: Graph projection persistence
 
-Status: Planned
+Status: In Progress
 Target files:
 
 - `mediator/mediator.py`
@@ -308,6 +343,11 @@ Tasks:
 - persist graph projections for evidence and authorities when graph backends are available
 - record whether a graph write created new graph content or reused existing graph structure
 - retain lineage from artifact or authority record to graph snapshot
+
+Implemented baseline:
+
+- graph projection metadata is already returned through mediator flows
+- evidence graph metadata is already persisted even when a backing graph store is unavailable
 
 Acceptance criteria:
 
@@ -518,6 +558,26 @@ Tasks:
 
 - archive high-value URLs during acquisition when archive tools are available
 - preserve archive result metadata in stored evidence records
+
+### Work Package W7.3: Queue-aware retrieval execution
+
+Status: In Progress
+Target files:
+
+- `mediator/evidence_hooks.py`
+- `mediator/mediator.py`
+- `scripts/agentic_scraper_cli.py`
+
+Tasks:
+
+- make queued acquisition the default operational mode for long-running scraper work
+- allow direct bounded execution for debugging and one-off runs
+- carry queue state forward into review and reporting surfaces
+
+Acceptance criteria:
+
+- operator-facing worker processes only execute claimed queue items
+- queued and completed retrieval work can be inspected without starting new scraper runs
 - distinguish live-web evidence from historical snapshots in support summaries
 
 Acceptance criteria:

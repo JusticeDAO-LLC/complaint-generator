@@ -407,6 +407,121 @@ class Mediator:
 		else:
 			# Return general evidence stats
 			return self.evidence_state.get_evidence_statistics(user_id)
+
+	def get_scraper_runs(self, user_id: str = None, limit: int = 20):
+		"""Get persisted scraper run summaries."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		return self.evidence_state.get_scraper_runs(user_id=user_id, limit=limit)
+
+	def get_scraper_run_details(self, run_id: int):
+		"""Get one persisted scraper run with iteration and tactic detail."""
+		return self.evidence_state.get_scraper_run_details(run_id)
+
+	def get_scraper_tactic_performance(self, user_id: str = None, limit_runs: int = 20):
+		"""Get aggregated tactic performance from persisted scraper runs."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		return self.evidence_state.get_scraper_tactic_performance(user_id=user_id, limit_runs=limit_runs)
+
+	def enqueue_agentic_scraper_job(self,
+	                              keywords: List[str],
+	                              domains: Optional[List[str]] = None,
+	                              iterations: int = 3,
+	                              sleep_seconds: float = 0.0,
+	                              quality_domain: str = 'caselaw',
+	                              user_id: str = None,
+	                              claim_type: str = None,
+	                              min_relevance: float = 0.5,
+	                              store_results: bool = True,
+	                              priority: int = 100,
+	                              available_at = None,
+	                              metadata: Dict[str, Any] = None):
+		"""Queue an agentic scraper job for later worker execution."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		return self.evidence_state.enqueue_scraper_job(
+			user_id=user_id,
+			keywords=keywords,
+			domains=domains,
+			claim_type=claim_type,
+			iterations=iterations,
+			sleep_seconds=sleep_seconds,
+			quality_domain=quality_domain,
+			min_relevance=min_relevance,
+			store_results=store_results,
+			priority=priority,
+			available_at=available_at,
+			metadata=metadata,
+		)
+
+	def get_scraper_queue(self, user_id: str = None, status: str = None, limit: int = 20):
+		"""Get queued scraper jobs."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		return self.evidence_state.get_scraper_queue(user_id=user_id, status=status, limit=limit)
+
+	def get_scraper_queue_job(self, job_id: int):
+		"""Get one queued scraper job."""
+		return self.evidence_state.get_scraper_queue_job(job_id)
+
+	def run_next_agentic_scraper_job(self, worker_id: str = 'agentic-scraper-worker', user_id: str = None):
+		"""Claim and execute the next queued scraper job, if one is available."""
+		claim_result = self.evidence_state.claim_next_scraper_job(worker_id=worker_id, user_id=user_id)
+		if not claim_result.get('claimed'):
+			return {
+				'claimed': False,
+				'ran': False,
+				'worker_id': worker_id,
+				'job': None,
+				'error': claim_result.get('error'),
+			}
+
+		job = claim_result.get('job') or {}
+		job_user_id = job.get('user_id') or user_id or getattr(self.state, 'username', None)
+		if job_user_id:
+			self.state.username = job_user_id
+
+		try:
+			run_result = self.run_agentic_scraper_cycle(
+				keywords=job.get('keywords', []),
+				domains=job.get('domains') or None,
+				iterations=int(job.get('iterations', 1) or 1),
+				sleep_seconds=float(job.get('sleep_seconds', 0.0) or 0.0),
+				quality_domain=job.get('quality_domain') or 'caselaw',
+				user_id=job_user_id,
+				claim_type=job.get('claim_type'),
+				min_relevance=float(job.get('min_relevance', 0.5) or 0.5),
+				store_results=bool(job.get('store_results', True)),
+			)
+
+			completion = self.evidence_state.complete_scraper_job(
+				job_id=job['id'],
+				run_id=(run_result.get('scraper_run') or {}).get('run_id'),
+				metadata={
+					'final_result_count': len(run_result.get('final_results', []) or []),
+					'storage_summary': run_result.get('storage_summary', {}),
+				},
+			)
+			return {
+				'claimed': True,
+				'ran': True,
+				'worker_id': worker_id,
+				'job': completion.get('job', job),
+				'run_result': run_result,
+			}
+		except Exception as exc:
+			completion = self.evidence_state.complete_scraper_job(
+				job_id=job['id'],
+				error=str(exc),
+			)
+			return {
+				'claimed': True,
+				'ran': False,
+				'worker_id': worker_id,
+				'job': completion.get('job', job),
+				'error': str(exc),
+			}
 	
 	def search_legal_authorities(self, query: str, claim_type: str = None,
 	                            jurisdiction: str = None,
@@ -673,6 +788,21 @@ class Mediator:
 			return 'medium'
 		return 'low'
 
+	def _should_suppress_follow_up_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+		graph_summary = (task.get('graph_support') or {}).get('summary', {})
+		unique_fact_count = int(graph_summary.get('unique_fact_count', graph_summary.get('total_fact_count', 0)) or 0)
+		duplicate_fact_count = int(graph_summary.get('duplicate_fact_count', 0) or 0)
+		strength = task.get('graph_support_strength', 'none')
+		if strength == 'strong' and unique_fact_count > 0 and duplicate_fact_count >= unique_fact_count:
+			return {
+				'suppress': True,
+				'reason': 'existing_support_high_duplication',
+			}
+		return {
+			'suppress': False,
+			'reason': '',
+		}
+
 	def get_claim_follow_up_plan(
 		self,
 		claim_type: str = None,
@@ -736,6 +866,9 @@ class Mediator:
 				task['recommended_action'] = graph_support_assessment['recommended_action']
 				task['priority_score'] = adjusted_priority_score
 				task['priority'] = self._priority_from_score(adjusted_priority_score)
+				suppression = self._should_suppress_follow_up_task(task)
+				task['should_suppress_retrieval'] = suppression['suppress']
+				task['suppression_reason'] = suppression['reason']
 				task['execution_status'] = execution_status
 				task['blocked_by_cooldown'] = any(
 					status.get('in_cooldown', False)
@@ -796,8 +929,20 @@ class Mediator:
 					'status': task.get('status'),
 					'priority': task.get('priority'),
 					'graph_support': task.get('graph_support', {}),
+					'should_suppress_retrieval': task.get('should_suppress_retrieval', False),
+					'suppression_reason': task.get('suppression_reason', ''),
 					'executed': {},
 				}
+				if not force and task.get('should_suppress_retrieval'):
+					skipped_tasks.append({
+						**execution,
+						'skipped': {
+							'suppressed': {
+								'reason': task.get('suppression_reason', 'existing_support_sufficient'),
+							}
+						},
+					})
+					continue
 				if support_kind in (None, 'evidence') and 'evidence' in task.get('missing_support_kinds', []):
 					evidence_query = task.get('queries', {}).get('evidence', [])
 					query_text = evidence_query[0] if evidence_query else f'{current_claim} {task.get("claim_element", "")} evidence'
@@ -1165,6 +1310,68 @@ class Mediator:
 			keywords=keywords,
 			domains=domains,
 			max_results=max_results
+		)
+
+	def run_agentic_scraper_cycle(self,
+	                            keywords: List[str],
+	                            domains: Optional[List[str]] = None,
+	                            iterations: int = 1,
+	                            sleep_seconds: float = 0.0,
+	                            quality_domain: str = 'caselaw',
+	                            user_id: str = None,
+	                            claim_type: str = None,
+	                            min_relevance: float = 0.5,
+	                            store_results: bool = True):
+		"""
+		Run the agentic scraper loop for a bounded number of iterations.
+
+		Args:
+			keywords: Search keywords to seed discovery
+			domains: Optional domains to prioritize for archival sweeps
+			iterations: Number of optimizer iterations to run
+			sleep_seconds: Delay between iterations for daemon-style use
+			quality_domain: Validation domain used by scraper quality checks
+			user_id: Optional user identifier override
+			claim_type: Optional claim association for stored evidence
+			min_relevance: Minimum relevance threshold when storing daemon results
+			store_results: Whether to feed accepted daemon results into evidence storage
+
+		Returns:
+			Dictionary with iteration reports, final results, and coverage ledger
+		"""
+		return self.web_evidence_integration.run_agentic_scraper_cycle(
+			keywords=keywords,
+			domains=domains,
+			iterations=iterations,
+			sleep_seconds=sleep_seconds,
+			quality_domain=quality_domain,
+			user_id=user_id,
+			claim_type=claim_type,
+			min_relevance=min_relevance,
+			store_results=store_results,
+		)
+
+	def run_agentic_scraper_daemon(self,
+	                             keywords: List[str],
+	                             domains: Optional[List[str]] = None,
+	                             iterations: int = 3,
+	                             sleep_seconds: float = 5.0,
+	                             quality_domain: str = 'caselaw',
+	                             user_id: str = None,
+	                             claim_type: str = None,
+	                             min_relevance: float = 0.5,
+	                             store_results: bool = True):
+		"""Convenience alias for a longer-running agentic scraper loop."""
+		return self.run_agentic_scraper_cycle(
+			keywords=keywords,
+			domains=domains,
+			iterations=iterations,
+			sleep_seconds=sleep_seconds,
+			quality_domain=quality_domain,
+			user_id=user_id,
+			claim_type=claim_type,
+			min_relevance=min_relevance,
+			store_results=store_results,
 		)
 	
 	def discover_evidence_automatically(self, user_id: str = None, execute_follow_up: bool = False):

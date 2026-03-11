@@ -61,14 +61,31 @@ Current adapter modules include:
 - `storage.py`
 - `search.py`
 - `legal.py`
+- `documents.py`
 - `llm.py`
 - `provenance.py`
 - `types.py`
 - `graphs.py`
 - `graphrag.py`
 - `logic.py`
+- `vector_store.py`
+- `mcp_gateway.py`
+- `scraper_daemon.py`
 
 This is an important milestone: complaint-generator already has a place to centralize feature detection, compatibility handling, and degraded mode behavior.
+
+### Concrete foundations already implemented
+
+The integration is no longer just an adapter shell. The repository already has several important vertical slices in place:
+
+- uploaded evidence is parsed through the adapter layer and persisted with parse summaries, chunks, graph metadata, and extracted facts
+- discovered web evidence is normalized into the same storage model instead of being kept as opaque search results
+- graph projections from evidence can be pushed into the complaint-phase knowledge graph and linked back to claim elements
+- bounded agentic scraper loops exist and persist run summaries, iteration metrics, tactic-level observations, and coverage ledgers
+- a queue-backed scraper worker now exists so scraper execution can be scheduled from pending work instead of running unconditionally
+- mediator APIs already expose scraper history, scraper tactic performance, queue inspection, and queued-job execution helpers
+
+This means the next plan should optimize around completing the knowledge plane, not around inventing the first integration seam.
 
 ### Mediator-level integration
 
@@ -84,10 +101,14 @@ The mediator stack already uses several of these capabilities:
 Complaint-generator already persists:
 
 - evidence rows
+- evidence parse summaries and chunk rows
+- evidence graph entities, relationships, and fact rows
 - legal authority rows
 - claim requirements
 - claim-support links
 - follow-up execution history
+- scraper run history and tactic telemetry
+- scraper queue state for deferred worker execution
 - deduplication metadata
 
 This is the right substrate for integrating richer graph, archival, and theorem-proving features.
@@ -111,6 +132,7 @@ Several adapters now exist but are not yet full workflow integrations:
 - `integrations/ipfs_datasets/graphs.py` currently provides extraction and persistence fallbacks, but not robust graph-store workflows
 - `integrations/ipfs_datasets/graphrag.py` can probe GraphRAG capabilities, but it is not yet driving mediator support analysis
 - `integrations/ipfs_datasets/logic.py` currently advertises logic availability but still returns `not_implemented` payloads for proof workflows
+- `integrations/ipfs_datasets/vector_store.py` and `integrations/ipfs_datasets/mcp_gateway.py` expose capability boundaries but are still placeholders from a workflow perspective
 
 In other words, the package boundary exists, but some high-value features are still only capability shells.
 
@@ -118,13 +140,13 @@ In other words, the package boundary exists, but some high-value features are st
 
 The largest gaps are now product and workflow gaps, not import gaps:
 
-- no fully integrated end-to-end document parsing workflow across all ingestion paths
-- no graph database persistence strategy for multi-artifact legal reasoning
+- no graph database persistence strategy for multi-artifact legal reasoning beyond local graph projection and DuckDB metadata
 - no production theorem-prover workflow for claim-element validation
 - no GraphRAG-backed retrieval or ontology refinement in complaint workflows
-- no unified fact registry spanning uploaded evidence, archived pages, and authorities
-- no operator-facing case support dashboard
-- no async job boundary for long-running fetch, parse, archive, graph, or reasoning work
+- no unified fact registry spanning uploaded evidence, archived pages, and authorities under one review surface
+- no legal-authority parse pipeline parallel to the evidence parse pipeline
+- no operator-facing case support dashboard or coverage matrix view
+- no general job boundary for parse, graph, authority, and reasoning tasks beyond the scraper queue
 
 ## Strategic Objective
 
@@ -138,6 +160,92 @@ Use `ipfs_datasets_py` to turn complaint-generator from a complaint drafting wor
 4. Make provenance, deduplication, and explainability first-class requirements.
 5. Treat graph and theorem-prover features as decision-support layers, not isolated experiments.
 6. Preserve full, partial, and degraded runtime modes.
+
+## Implementation Scorecard
+
+| Capability Area | Current Status | What Exists Now | Primary Gap |
+|---|---|---|---|
+| Legal scrapers | Partial | adapter-backed search and normalized authority storage | richer authority ranking, contradiction handling, state and agency expansion |
+| Web search and archiving | In Progress | Brave, Common Crawl, archive sweeps, direct scraping, persisted scraper runs, queue-backed worker | archive-first capture policy, temporal diffing, stronger source clustering |
+| Document parsing | In Progress | uploaded and web evidence parse summaries, chunks, graph extraction, facts | legal authority parsing and one shared corpus service contract |
+| Knowledge graphs | In Progress | local graph projection into complaint phases, evidence graph metadata persistence | backing graph store, graph snapshot persistence, support query plane |
+| GraphRAG | Planned | adapter capability boundary only | ontology generation, support-path scoring, follow-up integration |
+| Logic and theorem proving | Planned | capability probing and placeholder adapter | predicate templates, proof execution, contradiction persistence |
+| Vector search | Planned | adapter shell only | retrieval indexing and hybrid search integration |
+| MCP gateway | Planned | adapter shell only | tool exposure and workflow-level orchestration |
+
+## Recommended Delivery Phases
+
+### Phase 1: Finish the shared acquisition plane
+
+Objective:
+
+- complete the transition from isolated hooks to one shared acquisition model for evidence, archived pages, and authorities
+
+Scope:
+
+- unify parse contracts across uploaded evidence, scraped pages, and legal authorities
+- preserve provenance and transform-lineage fields across all artifact types
+- keep queue-backed worker execution for long-running scraper work and expand that model to other expensive acquisition tasks where justified
+
+Primary outputs:
+
+- shared artifact and fact contracts
+- consistent parse summaries and chunk lineage
+- authority text parsing when full text is available
+
+### Phase 2: Build the case knowledge plane
+
+Objective:
+
+- organize all acquired material into one queryable support structure
+
+Scope:
+
+- persist graph snapshots when graph backends are available
+- formalize support edges, fact links, lineage, and coverage rows
+- add graph-backed support tracing for claim-element review and drafting readiness
+
+Primary outputs:
+
+- support-query APIs
+- graph snapshot and lineage persistence
+- claim-element coverage matrix
+
+### Phase 3: Add reasoning and validation
+
+Objective:
+
+- move from “collected support” to “validated support”
+
+Scope:
+
+- integrate GraphRAG for ontology refinement and support-path scoring
+- translate legal requirements and extracted facts into predicates
+- add contradiction checks and proof-gap reporting through the mediator
+
+Primary outputs:
+
+- ontology quality payloads
+- validation runs and contradiction records
+- provable or partial or unsupported element reports
+
+### Phase 4: Expose operator-facing organization surfaces
+
+Objective:
+
+- make the internal support model reviewable and actionable
+
+Scope:
+
+- expose coverage packets, contradiction summaries, provenance bundles, and queued acquisition work
+- support evidence and authority review by claim element, event timeline, and support path
+
+Primary outputs:
+
+- review dashboard or CLI reporting surfaces
+- filing-ready support bundles
+- explicit unresolved-gap summaries
 
 ## Capability-by-Capability Integration Plan
 
@@ -154,6 +262,7 @@ Already partially integrated:
 - normalized authority storage exists
 - claim-element linking exists
 - legal research is already routed through mediator hooks
+- authority search already has a production adapter seam, so the remaining work is workflow depth rather than import wiring
 
 ### Improvement plan
 
@@ -186,6 +295,7 @@ Already partially integrated:
 - web evidence search exists
 - discovered evidence is stored, deduplicated, and linked to claim elements
 - graph projection metadata is already returned
+- agentic scraper runs, tactic learning, and queue-backed worker execution now exist
 
 ### Improvement plan
 
@@ -194,6 +304,7 @@ Already partially integrated:
 - store normalized page text and chunk lineage for later graph and logic processing
 - cluster duplicate evidence across Brave, Common Crawl, Wayback, and direct fetches
 - add domain- and timeline-specific workflows for employer policy changes, public statements, agency notices, and terms-of-service history
+- generalize the scraper queue into a broader acquisition job model only after the scraper path proves useful operationally
 
 ### Target outcome
 
@@ -299,7 +410,7 @@ Treat all uploaded or discovered content as parseable corpus material rather tha
 
 ### Current position
 
-Evidence ingestion already stores content and has lightweight parsing and graph extraction support, but there is no dedicated document adapter covering uploaded documents, fetched pages, and legal texts consistently.
+Evidence ingestion already stores content and now persists parse summaries, chunks, and extracted graph or fact metadata for uploaded and scraped evidence. The remaining gap is making `documents.py` the fully shared corpus contract across evidence, fetched pages, and legal texts.
 
 ### Improvement plan
 

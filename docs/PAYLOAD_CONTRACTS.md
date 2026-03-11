@@ -462,9 +462,13 @@ Follow-up planning payloads from `Mediator.get_claim_follow_up_plan(...)` now in
           "has_graph_support": true,
           "graph_support_strength": "strong",
           "recommended_action": "review_existing_support",
+          "should_suppress_retrieval": true,
+          "suppression_reason": "existing_support_high_duplication",
           "graph_support": {
             "summary": {
               "total_fact_count": 3,
+              "unique_fact_count": 1,
+              "duplicate_fact_count": 2,
               "support_by_kind": {
                 "authority": 1,
                 "evidence": 2
@@ -492,6 +496,8 @@ Interpretation notes:
 - `graph_support_strength` classifies the ranked support snapshot as `none`, `moderate`, or `strong`.
 - `recommended_action` distinguishes between tasks that should review existing support first and tasks that still need broader retrieval.
 - `priority_score` is the sortable numeric priority after graph-support adjustment; `priority` is the corresponding label.
+- `should_suppress_retrieval` flags low-value follow-up tasks that are skipped automatically unless execution is forced.
+- `suppression_reason` explains why retrieval was suppressed.
 
 Evidence task result:
 
@@ -512,6 +518,20 @@ Evidence task result:
 ```
 
 Executed and skipped follow-up tasks also carry the same `graph_support` snapshot so downstream review can compare the pre-search support context with the new retrieval result.
+
+Suppressed task example:
+
+```json
+{
+  "skipped": {
+    "suppressed": {
+      "reason": "existing_support_high_duplication"
+    }
+  },
+  "should_suppress_retrieval": true,
+  "suppression_reason": "existing_support_high_duplication"
+}
+```
 
 Authority task result:
 

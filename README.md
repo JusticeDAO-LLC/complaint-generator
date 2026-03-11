@@ -124,6 +124,25 @@ python run.py --config config.llm_router.json
 # Access at http://localhost:8000
 ```
 
+**Agentic Scraper CLI:**
+```bash
+python scripts/agentic_scraper_cli.py enqueue \
+    --keywords employment discrimination retaliation \
+    --domains eeoc.gov dol.gov \
+    --iterations 3
+
+python scripts/agentic_scraper_cli.py worker --once
+python scripts/agentic_scraper_cli.py queue --user-id cli-user
+
+python scripts/agentic_scraper_cli.py run \
+    --keywords employment discrimination retaliation \
+    --domains eeoc.gov dol.gov \
+    --iterations 3
+
+python scripts/agentic_scraper_cli.py history --user-id cli-user
+python scripts/agentic_scraper_cli.py tactics --user-id cli-user
+```
+
 [Complete setup guide →](docs/DEPLOYMENT.md) | [Configuration →](docs/CONFIGURATION.md)
 
 ---
