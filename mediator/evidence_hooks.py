@@ -5,7 +5,7 @@ import json
 import hashlib
 import mimetypes
 from typing import Dict, List, Optional, Any, BinaryIO
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 
 from integrations.ipfs_datasets.provenance import (
@@ -1586,7 +1586,7 @@ class EvidenceStateHook:
                     float(min_relevance),
                     bool(store_results),
                     int(priority),
-                    available_at or datetime.utcnow(),
+                    available_at or datetime.now(UTC),
                     json.dumps(metadata or {}),
                 ],
             ).fetchone()

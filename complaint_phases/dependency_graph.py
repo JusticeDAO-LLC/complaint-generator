@@ -10,10 +10,14 @@ import logging
 import re
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from datetime import datetime, UTC
 from enum import Enum
 
 logger = logging.getLogger(__name__)
+
+
+def _utc_now_isoformat() -> str:
+    return datetime.now(UTC).isoformat()
 
 
 class NodeType(Enum):
@@ -79,8 +83,8 @@ class DependencyGraph:
         self.nodes: Dict[str, DependencyNode] = {}
         self.dependencies: Dict[str, Dependency] = {}
         self.metadata = {
-            'created_at': datetime.utcnow().isoformat(),
-            'last_updated': datetime.utcnow().isoformat(),
+            'created_at': _utc_now_isoformat(),
+            'last_updated': _utc_now_isoformat(),
             'version': '1.0'
         }
     
@@ -257,7 +261,7 @@ class DependencyGraph:
     
     def _update_metadata(self):
         """Update last_updated timestamp."""
-        self.metadata['last_updated'] = datetime.utcnow().isoformat()
+        self.metadata['last_updated'] = _utc_now_isoformat()
     
     def summary(self) -> Dict[str, Any]:
         """Get a summary of the dependency graph."""
