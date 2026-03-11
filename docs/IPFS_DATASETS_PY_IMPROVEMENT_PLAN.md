@@ -118,7 +118,7 @@ In other words, the package boundary exists, but some high-value features are st
 
 The largest gaps are now product and workflow gaps, not import gaps:
 
-- no end-to-end document parsing adapter for all ingestion paths
+- no fully integrated end-to-end document parsing workflow across all ingestion paths
 - no graph database persistence strategy for multi-artifact legal reasoning
 - no production theorem-prover workflow for claim-element validation
 - no GraphRAG-backed retrieval or ontology refinement in complaint workflows
@@ -303,7 +303,7 @@ Evidence ingestion already stores content and has lightweight parsing and graph 
 
 ### Improvement plan
 
-- create `integrations/ipfs_datasets/documents.py`
+- deepen `integrations/ipfs_datasets/documents.py` into the shared document contract for all ingestion paths
 - standardize file detection, text extraction, OCR fallback, chunking, citation extraction, and metadata extraction
 - feed chunk-level outputs into graph extraction, authority linking, and logic translation
 - store chunk lineage so every sentence or predicate can be traced to a concrete source slice
@@ -713,7 +713,7 @@ Priority files:
 ## Next 2 weeks
 
 1. Finish production import boundary cleanup.
-2. Add `documents.py` and normalize parsing outputs.
+2. Deepen `documents.py` and normalize parsing outputs.
 3. Standardize provenance fields and chunk lineage.
 4. Add graph snapshot persistence contracts and tests.
 
@@ -781,7 +781,7 @@ The integration should be considered successful when the system can demonstrate:
 
 ## Concrete Next Actions
 
-1. Implement `integrations/ipfs_datasets/documents.py` and route all parsing through it.
+1. Deepen `integrations/ipfs_datasets/documents.py` and route all parsing through it.
 2. Expand `integrations/ipfs_datasets/graphs.py` from fallback extraction into graph persistence and support-query workflows.
 3. Connect `integrations/ipfs_datasets/graphrag.py` outputs to support scoring and denoiser gap detection.
 4. Replace `integrations/ipfs_datasets/logic.py` placeholders with claim-element proof and contradiction workflows.

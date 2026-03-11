@@ -87,7 +87,19 @@ for evidence in evidence_list:
     print(f"Description: {evidence['description']}")
     print(f"Timestamp: {evidence['timestamp']}")
     print(f"Claim: {evidence['claim_type']}")
+    print(f"Fact count: {evidence['fact_count']}")
     print()
+```
+
+### Retrieve Persisted Facts for Evidence
+
+```python
+facts = mediator.get_evidence_facts(record_id)
+
+for fact in facts:
+    print(f"Fact ID: {fact['fact_id']}")
+    print(f"Text: {fact['text']}")
+    print(f"Confidence: {fact['confidence']}")
 ```
 
 ### Retrieve Evidence by CID
@@ -216,6 +228,13 @@ The `graph_projection` payload distinguishes storage reuse from graph mutation:
 }
 ```
 
+Evidence records retrieved later through `get_user_evidence(...)` and `get_evidence_by_cid(...)` also expose:
+
+- `fact_count`: Number of persisted fact rows extracted from the evidence graph.
+- `chunk_count`: Number of persisted parsed chunks.
+- `graph_entity_count`: Number of persisted graph entities.
+- `graph_relationship_count`: Number of persisted graph relationships.
+
 ### Mediator Methods
 
 #### `submit_evidence(data, evidence_type, user_id=None, description=None, claim_type=None, metadata=None)`
@@ -258,6 +277,15 @@ Retrieve evidence data from IPFS.
 - `cid` (str): Content ID
 
 **Returns:** Evidence data (bytes)
+
+#### `get_evidence_facts(evidence_id)`
+
+Get persisted fact rows for a stored evidence record.
+
+**Args:**
+- `evidence_id` (int): Evidence record ID
+
+**Returns:** List of fact records with text, confidence, metadata, and provenance
 
 #### `analyze_evidence(user_id=None, claim_type=None)`
 

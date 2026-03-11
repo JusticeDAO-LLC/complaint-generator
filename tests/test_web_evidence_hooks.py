@@ -235,6 +235,9 @@ class TestWebEvidenceIntegrationHook:
                         'status': 'fallback',
                         'chunk_count': 1,
                         'text_length': 42,
+                        'parser_version': 'documents-adapter:1',
+                        'input_format': 'text',
+                        'paragraph_count': 1,
                     }
                 },
                 'document_parse': {
@@ -300,6 +303,16 @@ class TestWebEvidenceIntegrationHook:
             assert result['support_links_added'] == 2
             assert result['total_support_links_added'] == 2
             assert result['total_support_links_reused'] == 0
+            assert result['parse_summary']['processed'] == 2
+            assert result['parse_summary']['total_chunks'] == 2
+            assert result['parse_summary']['total_paragraphs'] == 2
+            assert result['parse_summary']['total_text_length'] == 84
+            assert result['parse_summary']['status_counts']['fallback'] == 2
+            assert result['parse_summary']['input_format_counts']['text'] == 2
+            assert 'documents-adapter:1' in result['parse_summary']['parser_versions']
+            assert len(result['parse_details']) == 2
+            assert result['parse_details'][0]['parser_version'] == 'documents-adapter:1'
+            assert result['parse_details'][0]['input_format'] == 'text'
             assert len(result['graph_projection']) == 2
             assert result['graph_projection'][0]['graph_changed'] is True
             assert result['graph_projection'][0]['artifact_entity_added'] is True
@@ -416,6 +429,11 @@ class TestWebEvidenceIntegrationHook:
             assert result['graph_projection'][0]['graph_changed'] is False
             assert result['graph_projection'][0]['artifact_entity_already_present'] is True
             assert result['graph_projection'][0]['storage_record_reused'] is True
+            assert result['parse_summary']['processed'] == 1
+            assert result['parse_summary']['total_chunks'] == 0
+            assert result['parse_summary']['status_counts'] == {}
+            assert len(result['parse_details']) == 1
+            assert result['parse_details'][0]['status'] == ''
             graph_kwargs = mock_mediator.add_evidence_to_graphs.call_args.args[0]
             assert graph_kwargs['record_created'] is False
             assert graph_kwargs['record_reused'] is True

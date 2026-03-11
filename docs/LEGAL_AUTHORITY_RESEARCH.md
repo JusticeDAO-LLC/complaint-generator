@@ -136,6 +136,11 @@ Authority storage is deduplication-aware. `store_legal_authorities(...)` returns
 
 Per-source counters remain available with keys such as `statutes_new`, `statutes_reused`, `statutes_support_links_added`, and `statutes_support_links_reused`.
 
+Stored authority rows are also fact-aware:
+
+- `get_legal_authorities(...)` returns `fact_count` for each authority row.
+- `get_authority_facts(authority_id)` returns the persisted fact rows extracted from the authority text.
+
 ## Legal Sources
 
 ### US Code
@@ -200,6 +205,20 @@ CREATE TABLE legal_authorities (
     relevance_score FLOAT,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     search_query VARCHAR
+)
+```
+
+### legal_authority_facts Table
+
+```sql
+CREATE TABLE legal_authority_facts (
+    authority_id BIGINT,
+    fact_id VARCHAR,
+    fact_text TEXT,
+    source_authority_id VARCHAR,
+    confidence FLOAT,
+    metadata JSON,
+    provenance JSON
 )
 ```
 

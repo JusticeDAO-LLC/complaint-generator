@@ -254,6 +254,44 @@ class TestLegalAuthorityStorageHook:
                 assert len(results) > 0
                 assert results[0]['citation'] == '29 U.S.C. § 2601'
                 assert 'provenance' in results[0]
+                assert results[0]['fact_count'] >= 1
+            finally:
+                if os.path.exists(db_path):
+                    os.unlink(db_path)
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_add_authority_persists_fact_rows(self):
+        """Test storing an authority also persists extracted fact rows."""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthorityStorageHook
+            import duckdb
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                db_path = f.name
+
+            try:
+                hook = LegalAuthorityStorageHook(mock_mediator, db_path=db_path)
+
+                authority_data = {
+                    'type': 'statute',
+                    'source': 'us_code',
+                    'citation': '42 U.S.C. § 1983',
+                    'title': 'Civil Rights Act',
+                    'content': 'Protected activity is covered. Retaliation is prohibited.',
+                }
+
+                record_id = hook.add_authority(authority_data, 'testuser', claim_type='civil rights')
+                authorities = hook.get_authorities_by_claim('testuser', 'civil rights')
+                facts = hook.get_authority_facts(record_id)
+
+                assert record_id > 0
+                assert authorities[0]['fact_count'] >= 1
+                assert len(facts) >= 1
+                assert 'Protected activity' in facts[0]['text'] or 'Retaliation' in facts[0]['text']
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)
@@ -289,6 +327,7 @@ class TestLegalAuthorityStorageHook:
                 
                 assert stats['available'] is True
                 assert stats['total_count'] == 3
+                assert stats['total_facts'] >= 3
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)
@@ -449,6 +488,11 @@ class TestMediatorLegalAuthorityIntegration:
                 support_summary = mediator.summarize_claim_support(claim_type='civil rights')
                 assert support_summary['claims']['civil rights']['support_by_kind']['authority'] > 0
                 assert support_summary['claims']['civil rights']['covered_elements'] == 1
+                assert support_summary['claims']['civil rights']['total_facts'] >= 1
+                authority_link = support_summary['claims']['civil rights']['elements'][0]['links'][0]
+                assert authority_link['authority_record_id'] >= 1
+                assert authority_link['fact_count'] >= 1
+                assert len(authority_link['facts']) >= 1
 
                 claim_overview = mediator.get_claim_overview(claim_type='civil rights')
                 assert claim_overview['claims']['civil rights']['partially_supported_count'] == 1
@@ -457,11 +501,19 @@ class TestMediatorLegalAuthorityIntegration:
                 follow_up_plan = mediator.get_claim_follow_up_plan(claim_type='civil rights')
                 assert follow_up_plan['claims']['civil rights']['task_count'] == 1
                 assert follow_up_plan['claims']['civil rights']['tasks'][0]['missing_support_kinds'] == ['evidence']
+                assert follow_up_plan['claims']['civil rights']['tasks'][0]['has_graph_support'] is True
+                assert follow_up_plan['claims']['civil rights']['tasks'][0]['graph_support']['summary']['support_by_kind']['authority'] >= 1
+                assert follow_up_plan['claims']['civil rights']['tasks'][0]['graph_support_strength'] in {'moderate', 'strong'}
+                assert follow_up_plan['claims']['civil rights']['tasks'][0]['recommended_action'] in {'target_missing_support_kind', 'review_existing_support'}
+                assert follow_up_plan['claims']['civil rights']['tasks'][0]['priority'] in {'medium', 'low'}
                 
                 # Retrieve
                 authorities = mediator.get_legal_authorities(claim_type='civil rights')
                 assert len(authorities) > 0
                 assert authorities[0]['claim_element'] == 'Protected activity'
+                assert authorities[0]['fact_count'] >= 1
+                authority_facts = mediator.get_authority_facts(authorities[0]['id'])
+                assert len(authority_facts) >= 1
 
                 auto_results = mediator.research_case_automatically(user_id='testuser')
                 assert auto_results['authorities_stored']['civil rights']['total_records'] == 1

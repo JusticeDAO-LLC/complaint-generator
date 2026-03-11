@@ -235,6 +235,108 @@ class TestClaimSupportHook:
             if os.path.exists(db_path):
                 os.unlink(db_path)
 
+    def test_summarize_claim_support_enriches_evidence_links_with_facts(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.evidence_state = Mock()
+        mock_mediator.evidence_state.get_evidence_by_cid = Mock(return_value={
+            'id': 12,
+            'fact_count': 2,
+        })
+        mock_mediator.evidence_state.get_evidence_facts = Mock(return_value=[
+            {'fact_id': 'fact:1', 'text': 'Employee complained about discrimination.'},
+            {'fact_id': 'fact:2', 'text': 'Complaint was sent to HR.'},
+        ])
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidenceFacts',
+                support_label='HR complaint email',
+                source_table='evidence',
+            )
+
+            summary = hook.summarize_claim_support('testuser', 'employment')
+            element = summary['claims']['employment']['elements'][0]
+
+            assert summary['claims']['employment']['total_facts'] == 2
+            assert element['fact_count'] == 2
+            assert element['links'][0]['evidence_record_id'] == 12
+            assert element['links'][0]['fact_count'] == 2
+            assert len(element['links'][0]['facts']) == 2
+            assert element['links'][0]['facts'][0]['fact_id'] == 'fact:1'
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_claim_support_facts_collects_enriched_fact_rows(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.evidence_state = Mock()
+        mock_mediator.evidence_state.get_evidence_by_cid = Mock(return_value={
+            'id': 12,
+            'fact_count': 2,
+        })
+        mock_mediator.evidence_state.get_evidence_facts = Mock(return_value=[
+            {'fact_id': 'fact:1', 'text': 'Employee complained about discrimination.'},
+            {'fact_id': 'fact:2', 'text': 'Complaint was sent to HR.'},
+        ])
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidenceFacts',
+                support_label='HR complaint email',
+                source_table='evidence',
+            )
+
+            facts = hook.get_claim_support_facts(
+                'testuser',
+                'employment',
+                claim_element_text='Protected activity',
+            )
+
+            assert len(facts) == 2
+            assert facts[0]['claim_type'] == 'employment'
+            assert facts[0]['claim_element_text'] == 'Protected activity'
+            assert facts[0]['support_kind'] == 'evidence'
+            assert facts[0]['evidence_record_id'] == 12
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
     def test_get_claim_overview_classifies_elements(self):
         try:
             from mediator.claim_support_hooks import ClaimSupportHook

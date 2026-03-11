@@ -28,6 +28,7 @@ from .web_evidence_hooks import (
 )
 from .claim_support_hooks import ClaimSupportHook
 from integrations.ipfs_datasets.capabilities import get_ipfs_datasets_capabilities
+from integrations.ipfs_datasets.graphs import query_graph_support
 
 # Import three-phase complaint processing
 from complaint_phases import (
@@ -366,6 +367,14 @@ class Mediator:
 	def get_evidence_graph(self, evidence_id: int):
 		"""Get stored graph entities and relationships for an evidence record."""
 		return self.evidence_state.get_evidence_graph(evidence_id)
+
+	def get_evidence_facts(self, evidence_id: int):
+		"""Get stored fact records for an evidence record."""
+		return self.evidence_state.get_evidence_facts(evidence_id)
+
+	def get_authority_facts(self, authority_id: int):
+		"""Get stored fact records for a legal authority."""
+		return self.legal_authority_storage.get_authority_facts(authority_id)
 	
 	def retrieve_evidence(self, cid: str):
 		"""
@@ -570,6 +579,23 @@ class Mediator:
 			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
 		return self.claim_support.summarize_claim_support(user_id, claim_type)
 
+	def get_claim_support_facts(
+		self,
+		claim_type: str = None,
+		user_id: str = None,
+		claim_element_id: str = None,
+		claim_element: str = None,
+	):
+		"""Get persisted fact rows attached to evidence and authority support links."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		return self.claim_support.get_claim_support_facts(
+			user_id,
+			claim_type,
+			claim_element_id=claim_element_id,
+			claim_element_text=claim_element,
+		)
+
 	def get_claim_overview(
 		self,
 		claim_type: str = None,
@@ -613,9 +639,39 @@ class Mediator:
 			'claim_element': element_text,
 			'status': status,
 			'priority': priority,
+			'priority_score': 3 if priority == 'high' else 2,
 			'missing_support_kinds': missing_support_kinds,
 			'queries': queries,
 		}
+
+	def _classify_graph_support(self, graph_support: Dict[str, Any]) -> Dict[str, Any]:
+		summary = graph_support.get('summary', {}) if isinstance(graph_support, dict) else {}
+		max_score = float(summary.get('max_score', 0.0) or 0.0)
+		unique_fact_count = int(summary.get('unique_fact_count', summary.get('total_fact_count', 0)) or 0)
+		if max_score >= 2.0 or unique_fact_count >= 3:
+			return {
+				'strength': 'strong',
+				'priority_adjustment': -1,
+				'recommended_action': 'review_existing_support',
+			}
+		if max_score >= 1.0 or unique_fact_count >= 1:
+			return {
+				'strength': 'moderate',
+				'priority_adjustment': 0,
+				'recommended_action': 'target_missing_support_kind',
+			}
+		return {
+			'strength': 'none',
+			'priority_adjustment': 1,
+			'recommended_action': 'retrieve_more_support',
+		}
+
+	def _priority_from_score(self, score: int) -> str:
+		if score >= 3:
+			return 'high'
+		if score == 2:
+			return 'medium'
+		return 'low'
 
 	def get_claim_follow_up_plan(
 		self,
@@ -654,6 +710,12 @@ class Mediator:
 				))
 			for task in tasks:
 				execution_status: Dict[str, Any] = {}
+				graph_support = self.query_claim_graph_support(
+					claim_type=current_claim,
+					claim_element_id=task.get('claim_element_id'),
+					claim_element=task.get('claim_element'),
+					user_id=user_id,
+				)
 				for kind, queries in task.get('queries', {}).items():
 					query_text = queries[0] if queries else ''
 					execution_status[kind] = self.claim_support.get_follow_up_execution_status(
@@ -663,11 +725,29 @@ class Mediator:
 						query_text,
 						cooldown_seconds=cooldown_seconds,
 					)
+				graph_support_assessment = self._classify_graph_support(graph_support)
+				adjusted_priority_score = max(
+					1,
+					min(3, int(task.get('priority_score', 2)) + int(graph_support_assessment.get('priority_adjustment', 0))),
+				)
+				task['graph_support'] = graph_support
+				task['has_graph_support'] = bool(graph_support.get('results'))
+				task['graph_support_strength'] = graph_support_assessment['strength']
+				task['recommended_action'] = graph_support_assessment['recommended_action']
+				task['priority_score'] = adjusted_priority_score
+				task['priority'] = self._priority_from_score(adjusted_priority_score)
 				task['execution_status'] = execution_status
 				task['blocked_by_cooldown'] = any(
 					status.get('in_cooldown', False)
 					for status in execution_status.values()
 				)
+			tasks.sort(
+				key=lambda item: (
+					item.get('blocked_by_cooldown', False),
+					-item.get('priority_score', 0),
+					item.get('claim_element', ''),
+				)
+			)
 
 			plan['claims'][current_claim] = {
 				'task_count': len(tasks),
@@ -715,6 +795,7 @@ class Mediator:
 					'claim_element': task.get('claim_element'),
 					'status': task.get('status'),
 					'priority': task.get('priority'),
+					'graph_support': task.get('graph_support', {}),
 					'executed': {},
 				}
 				if support_kind in (None, 'evidence') and 'evidence' in task.get('missing_support_kinds', []):
@@ -868,6 +949,13 @@ class Mediator:
 			elif target_element_text and authority.get('claim_element') == target_element_text:
 				authority_records.append(authority)
 
+		support_facts = self.claim_support.get_claim_support_facts(
+			user_id,
+			claim_type,
+			claim_element_id=target_element_id,
+			claim_element_text=target_element_text,
+		)
+
 		return {
 			'claim_type': claim_type,
 			'claim_element_id': target_element_id,
@@ -876,11 +964,55 @@ class Mediator:
 			'is_covered': bool(element_summary.get('total_links', 0)),
 			'missing_support': element_summary.get('total_links', 0) == 0,
 			'support_summary': element_summary,
+			'support_facts': support_facts,
 			'evidence': evidence_records,
 			'authorities': authority_records,
+			'total_facts': len(support_facts),
 			'total_evidence': len(evidence_records),
 			'total_authorities': len(authority_records),
 		}
+
+	def query_claim_graph_support(
+		self,
+		claim_type: str,
+		claim_element_id: str = None,
+		claim_element: str = None,
+		user_id: str = None,
+		max_results: int = 10,
+	):
+		"""Query fallback graph support using persisted claim-support fact rows."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+
+		element_summary = self.claim_support.get_claim_element_summary(
+			user_id,
+			claim_type,
+			claim_element_id=claim_element_id,
+			claim_element_text=claim_element,
+		)
+		target_element_id = element_summary.get('element_id') or claim_element_id or ''
+		target_element_text = element_summary.get('element_text') or claim_element or ''
+		support_facts = self.claim_support.get_claim_support_facts(
+			user_id,
+			claim_type,
+			claim_element_id=target_element_id or None,
+			claim_element_text=target_element_text or None,
+		)
+		kg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
+		graph_result = query_graph_support(
+			target_element_id,
+			graph_id='intake-knowledge-graph',
+			support_facts=support_facts,
+			claim_type=claim_type,
+			claim_element_text=target_element_text,
+			max_results=max_results,
+		)
+		graph_result['graph_context'] = {
+			'knowledge_graph_available': bool(kg),
+			'entity_count': len(kg.entities) if kg else 0,
+			'relationship_count': len(kg.relationships) if kg else 0,
+		}
+		return graph_result
 	
 	def research_case_automatically(self, user_id: str = None, execute_follow_up: bool = False):
 		"""

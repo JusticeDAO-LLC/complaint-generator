@@ -57,6 +57,32 @@ def _split_sentences(text: str) -> List[str]:
     return [part.strip() for part in parts if part and part.strip()]
 
 
+def _tokenize(value: str) -> List[str]:
+    return [token for token in re.findall(r"[a-z0-9]+", (value or "").lower()) if token]
+
+
+def _score_fact_match(fact: Dict[str, Any], claim_element_id: str, claim_element_text: str) -> float:
+    score = float(fact.get("confidence", 0.0) or 0.0)
+    fact_tokens = set(_tokenize(str(fact.get("text") or "")))
+    target_tokens = set(_tokenize(claim_element_text))
+
+    if claim_element_id and str(fact.get("claim_element_id") or "") == claim_element_id:
+        score += 1.0
+    if claim_element_text and str(fact.get("claim_element_text") or "") == claim_element_text:
+        score += 1.0
+    if fact_tokens and target_tokens:
+        overlap = len(fact_tokens & target_tokens)
+        score += overlap / max(len(target_tokens), 1)
+    return round(score, 4)
+
+
+def _fact_dedup_key(fact: Dict[str, Any]) -> str:
+    text = " ".join(str(fact.get("text") or "").lower().split())
+    claim_element_id = str(fact.get("claim_element_id") or "")
+    claim_element_text = " ".join(str(fact.get("claim_element_text") or "").lower().split())
+    return "|".join([claim_element_id, claim_element_text, text])
+
+
 def extract_graph_from_text(
     text: str,
     *,
@@ -162,12 +188,82 @@ def query_graph_support(
     claim_element_id: str,
     *,
     graph_id: Optional[str] = None,
+    support_facts: Optional[List[Dict[str, Any]]] = None,
+    claim_type: Optional[str] = None,
+    claim_element_text: Optional[str] = None,
+    max_results: int = 10,
 ) -> Dict[str, Any]:
+    facts = support_facts or []
+    ranked_results = []
+    support_by_kind: Dict[str, int] = {}
+    support_by_source: Dict[str, int] = {}
+    deduped_results: Dict[str, Dict[str, Any]] = {}
+
+    for fact in facts:
+        score = _score_fact_match(fact, claim_element_id, claim_element_text or "")
+        result = {
+            **fact,
+            "score": score,
+            "matched_claim_element": bool(
+                (claim_element_id and str(fact.get("claim_element_id") or "") == claim_element_id)
+                or (claim_element_text and str(fact.get("claim_element_text") or "") == claim_element_text)
+            ),
+            "duplicate_count": 1,
+        }
+        support_kind = str(fact.get("support_kind") or "unknown")
+        source_table = str(fact.get("source_table") or "unknown")
+        support_by_kind[support_kind] = support_by_kind.get(support_kind, 0) + 1
+        support_by_source[source_table] = support_by_source.get(source_table, 0) + 1
+
+        dedup_key = _fact_dedup_key(result)
+        existing = deduped_results.get(dedup_key)
+        if existing is None:
+            deduped_results[dedup_key] = {
+                **result,
+                "support_kind_set": [support_kind],
+                "source_table_set": [source_table],
+            }
+            continue
+
+        existing["duplicate_count"] += 1
+        existing["score"] = max(existing.get("score", 0.0), result["score"])
+        existing["confidence"] = max(existing.get("confidence", 0.0), result.get("confidence", 0.0))
+        if support_kind not in existing["support_kind_set"]:
+            existing["support_kind_set"].append(support_kind)
+        if source_table not in existing["source_table_set"]:
+            existing["source_table_set"].append(source_table)
+
+    ranked_results = list(deduped_results.values())
+
+    ranked_results.sort(
+        key=lambda item: (
+            item.get("score", 0.0),
+            item.get("matched_claim_element", False),
+            item.get("confidence", 0.0),
+            item.get("duplicate_count", 0),
+        ),
+        reverse=True,
+    )
+
+    limited_results = ranked_results[:max_results]
+    duplicate_fact_count = max(len(facts) - len(ranked_results), 0)
+
     return {
         "status": "available-fallback" if KNOWLEDGE_GRAPHS_AVAILABLE else "unavailable",
         "claim_element_id": claim_element_id,
+        "claim_type": claim_type or "",
+        "claim_element_text": claim_element_text or "",
         "graph_id": graph_id or "",
-        "results": [],
+        "results": limited_results,
+        "summary": {
+            "result_count": len(limited_results),
+            "total_fact_count": len(facts),
+            "unique_fact_count": len(ranked_results),
+            "duplicate_fact_count": duplicate_fact_count,
+            "support_by_kind": support_by_kind,
+            "support_by_source": support_by_source,
+            "max_score": ranked_results[0]["score"] if ranked_results else 0.0,
+        },
     }
 
 

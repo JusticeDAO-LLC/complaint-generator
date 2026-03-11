@@ -67,6 +67,26 @@ Representative fields:
   "support_links_reused": 0,
   "total_support_links_added": 2,
   "total_support_links_reused": 0,
+  "parse_summary": {
+    "processed": 2,
+    "total_chunks": 4,
+    "total_paragraphs": 3,
+    "total_text_length": 1800,
+    "status_counts": {"fallback": 2},
+    "input_format_counts": {"text": 2},
+    "parser_versions": ["documents-adapter:1"]
+  },
+  "parse_details": [
+    {
+      "cid": "Qm...",
+      "status": "fallback",
+      "chunk_count": 2,
+      "text_length": 900,
+      "parser_version": "documents-adapter:1",
+      "input_format": "text",
+      "paragraph_count": 1
+    }
+  ],
   "evidence_cids": ["Qm...", "Qm..."],
   "graph_projection": [
     {
@@ -92,6 +112,8 @@ Count semantics:
 - `total_reused`: Aggregate reused evidence rows.
 - `support_links_added`: New support links created during the request.
 - `support_links_reused`: Support links that already existed.
+- `parse_summary`: Aggregate parse statistics for stored web evidence in the request.
+- `parse_details`: Per-record parse metadata extracted from `document_parse_summary`.
 
 ## Automatic Evidence Discovery
 
@@ -155,6 +177,10 @@ Aggregate semantics:
 - `total_support_links_added`: New claim-support links created.
 - `total_support_links_reused`: Existing claim-support links reused.
 
+Stored authority records returned by `Mediator.get_legal_authorities(...)` also include:
+
+- `fact_count`: Number of persisted fact rows extracted from the authority text.
+
 Per-source keys follow the pattern:
 
 - `<source_group>`
@@ -183,6 +209,219 @@ Representative shape:
 }
 ```
 
+## Claim Support Summary
+
+`Mediator.summarize_claim_support(...)` returns the persisted support-link view grouped by claim type and claim element.
+
+Representative shape:
+
+```json
+{
+  "claims": {
+    "employment discrimination": {
+      "claim_type": "employment discrimination",
+      "total_links": 3,
+      "covered_elements": 2,
+      "missing_elements": 1,
+      "total_facts": 4,
+      "elements": [
+        {
+          "element_id": "employment_discrimination:1",
+          "element_text": "Adverse action",
+          "support_count": 2,
+          "support_by_kind": {
+            "evidence": 1,
+            "authority": 1
+          },
+          "fact_count": 4,
+          "links": [
+            {
+              "source_table": "legal_authorities",
+              "support_ref": "42 U.S.C. § 1983",
+              "authority_record_id": 12,
+              "fact_count": 4,
+              "facts": [
+                {
+                  "fact_type": "CaseFact",
+                  "text": "Protected activity is covered"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+Field semantics:
+
+- `total_facts`: Sum of fact rows attached to enriched evidence and authority support links for the claim.
+- `fact_count`: Sum of fact rows attached to enriched evidence and authority support links for the claim element.
+- `evidence_record_id`: DuckDB evidence row resolved from the support reference CID.
+- `authority_record_id`: DuckDB legal-authority row resolved from the persisted support-link metadata.
+- `facts`: Persisted fact rows returned by `Mediator.get_evidence_facts(...)` or `Mediator.get_authority_facts(...)`.
+
+## Claim Element View
+
+`Mediator.get_claim_element_view(...)` wraps the claim-support summary for a single element together with matching evidence and authority rows.
+
+Representative shape:
+
+```json
+{
+  "claim_type": "employment discrimination",
+  "claim_element_id": "employment_discrimination:1",
+  "claim_element": "Adverse action",
+  "exists": true,
+  "is_covered": true,
+  "missing_support": false,
+  "support_summary": {
+    "element_id": "employment_discrimination:1",
+    "element_text": "Adverse action",
+    "total_links": 2,
+    "support_by_kind": {
+      "evidence": 1,
+      "authority": 1
+    },
+    "fact_count": 4,
+    "links": [
+      {
+        "source_table": "legal_authorities",
+        "support_ref": "42 U.S.C. § 1983",
+        "authority_record_id": 12,
+        "fact_count": 4,
+        "facts": [
+          {
+            "fact_type": "CaseFact",
+            "text": "Protected activity is covered"
+          }
+        ]
+      }
+    ]
+  },
+  "support_facts": [
+    {
+      "fact_id": "fact:abc123",
+      "text": "Protected activity is covered",
+      "claim_type": "employment discrimination",
+      "claim_element_id": "employment_discrimination:1",
+      "claim_element_text": "Adverse action",
+      "support_kind": "authority",
+      "support_ref": "42 U.S.C. § 1983",
+      "source_table": "legal_authorities",
+      "authority_record_id": 12
+    }
+  ],
+  "evidence": [
+    {
+      "id": 14,
+      "cid": "Qm...",
+      "fact_count": 2
+    }
+  ],
+  "authorities": [
+    {
+      "id": 12,
+      "citation": "42 U.S.C. § 1983",
+      "fact_count": 4
+    }
+  ],
+  "total_facts": 4,
+  "total_evidence": 1,
+  "total_authorities": 1
+}
+```
+
+Interpretation notes:
+
+- `support_summary` is the same enriched element summary used inside `summarize_claim_support(...)`.
+- `support_facts` is the flattened fact list collected from the element's enriched evidence and authority support links.
+- `evidence` and `authorities` are the matching stored rows for the resolved claim element.
+
+## Support Fact Retrieval
+
+`Mediator.get_claim_support_facts(...)` returns the flattened persisted fact rows attached to claim-support links, optionally filtered to one claim element.
+
+Representative shape:
+
+```json
+[
+  {
+    "fact_id": "fact:abc123",
+    "text": "Employee complained about discrimination.",
+    "claim_type": "employment discrimination",
+    "claim_element_id": "employment_discrimination:1",
+    "claim_element_text": "Protected activity",
+    "support_kind": "evidence",
+    "support_ref": "Qm...",
+    "support_label": "HR complaint email",
+    "source_table": "evidence",
+    "evidence_record_id": 12,
+    "authority_record_id": null
+  }
+]
+```
+
+Use this when downstream workflows need a cross-source fact list without re-walking `support_summary.links`.
+
+## Claim Graph Support Query
+
+`Mediator.query_claim_graph_support(...)` ranks persisted support facts for a claim element and returns a fallback graph-support view.
+
+Representative shape:
+
+```json
+{
+  "status": "available-fallback",
+  "claim_type": "employment discrimination",
+  "claim_element_id": "employment_discrimination:1",
+  "claim_element_text": "Protected activity",
+  "graph_id": "intake-knowledge-graph",
+  "results": [
+    {
+      "fact_id": "fact:abc123",
+      "text": "Employee complained about discrimination.",
+      "support_kind": "evidence",
+      "source_table": "evidence",
+      "score": 2.6,
+      "matched_claim_element": true,
+      "duplicate_count": 2,
+      "evidence_record_id": 12
+    }
+  ],
+  "summary": {
+    "result_count": 1,
+    "total_fact_count": 3,
+    "unique_fact_count": 2,
+    "duplicate_fact_count": 1,
+    "support_by_kind": {
+      "evidence": 2,
+      "authority": 1
+    },
+    "support_by_source": {
+      "evidence": 2,
+      "legal_authorities": 1
+    },
+    "max_score": 2.6
+  },
+  "graph_context": {
+    "knowledge_graph_available": true,
+    "entity_count": 8,
+    "relationship_count": 7
+  }
+}
+```
+
+Interpretation notes:
+
+- `results` are ranked fallback matches derived from persisted evidence and authority facts.
+- `duplicate_count` shows how many repeated fact rows were collapsed into the ranked result.
+- `score` combines stored fact confidence with claim-element ID/text matching and token overlap.
+- `unique_fact_count` and `duplicate_fact_count` let callers distinguish distinct support from repeated sentence-level copies.
+- `graph_context` summarizes the currently loaded intake knowledge graph; it does not imply that the results were generated by a remote graph database.
+
 ## Graph Projection
 
 `graph_projection` is returned by `Mediator.add_evidence_to_graphs(...)` and also propagated through evidence submission and web-evidence discovery.
@@ -207,6 +446,53 @@ Interpretation examples:
 
 Evidence and authority follow-up execution payloads embed the same storage breakdowns inside each executed task result.
 
+Follow-up planning payloads from `Mediator.get_claim_follow_up_plan(...)` now include graph-support context on each task:
+
+```json
+{
+  "claims": {
+    "employment discrimination": {
+      "tasks": [
+        {
+          "claim_element_id": "employment_discrimination:1",
+          "claim_element": "Protected activity",
+          "priority": "medium",
+          "priority_score": 2,
+          "missing_support_kinds": ["evidence"],
+          "has_graph_support": true,
+          "graph_support_strength": "strong",
+          "recommended_action": "review_existing_support",
+          "graph_support": {
+            "summary": {
+              "total_fact_count": 3,
+              "support_by_kind": {
+                "authority": 1,
+                "evidence": 2
+              }
+            },
+            "results": [
+              {
+                "fact_id": "fact:abc123",
+                "score": 2.6,
+                "matched_claim_element": true
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+Interpretation notes:
+
+- `graph_support` is the same fallback support ranking returned by `Mediator.query_claim_graph_support(...)`.
+- `has_graph_support` is a quick boolean derived from whether any ranked fact results already exist for the task's claim element.
+- `graph_support_strength` classifies the ranked support snapshot as `none`, `moderate`, or `strong`.
+- `recommended_action` distinguishes between tasks that should review existing support first and tasks that still need broader retrieval.
+- `priority_score` is the sortable numeric priority after graph-support adjustment; `priority` is the corresponding label.
+
 Evidence task result:
 
 ```json
@@ -224,6 +510,8 @@ Evidence task result:
   }
 }
 ```
+
+Executed and skipped follow-up tasks also carry the same `graph_support` snapshot so downstream review can compare the pre-search support context with the new retrieval result.
 
 Authority task result:
 

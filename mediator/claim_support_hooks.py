@@ -499,8 +499,74 @@ class ClaimSupportHook:
             self.mediator.log('claim_support_query_error', error=str(exc))
             return []
 
+    def _enrich_support_link(self, link: Dict[str, Any]) -> Dict[str, Any]:
+        """Attach evidence or authority fact details to support links when available."""
+        enriched = dict(link)
+        enriched.setdefault('fact_count', 0)
+
+        if enriched.get('source_table') == 'legal_authorities':
+            authority_storage = getattr(self.mediator, 'legal_authority_storage', None)
+            authority_record_id = (enriched.get('metadata') or {}).get('record_id')
+            if authority_storage is None or authority_record_id is None:
+                return enriched
+
+            if hasattr(authority_storage, 'get_authority_by_id'):
+                try:
+                    authority_record = authority_storage.get_authority_by_id(authority_record_id)
+                except Exception as exc:
+                    self.mediator.log('claim_support_authority_lookup_error', error=str(exc), authority_id=authority_record_id)
+                    return enriched
+            else:
+                authority_record = None
+
+            if not authority_record:
+                return enriched
+
+            enriched['authority_record_id'] = authority_record.get('id')
+            enriched['fact_count'] = authority_record.get('fact_count', 0) or 0
+
+            if hasattr(authority_storage, 'get_authority_facts') and authority_record.get('id') is not None:
+                try:
+                    enriched['facts'] = authority_storage.get_authority_facts(authority_record['id'])
+                except Exception as exc:
+                    self.mediator.log('claim_support_authority_facts_error', error=str(exc), authority_id=authority_record.get('id'))
+                    enriched['facts'] = []
+            else:
+                enriched['facts'] = []
+            return enriched
+
+        if enriched.get('source_table') != 'evidence':
+            return enriched
+
+        evidence_state = getattr(self.mediator, 'evidence_state', None)
+        if evidence_state is None or not hasattr(evidence_state, 'get_evidence_by_cid'):
+            return enriched
+
+        try:
+            evidence_record = evidence_state.get_evidence_by_cid(enriched.get('support_ref'))
+        except Exception as exc:
+            self.mediator.log('claim_support_evidence_lookup_error', error=str(exc), support_ref=enriched.get('support_ref'))
+            return enriched
+
+        if not evidence_record:
+            return enriched
+
+        enriched['evidence_record_id'] = evidence_record.get('id')
+        enriched['fact_count'] = evidence_record.get('fact_count', 0) or 0
+
+        if hasattr(evidence_state, 'get_evidence_facts') and evidence_record.get('id') is not None:
+            try:
+                enriched['facts'] = evidence_state.get_evidence_facts(evidence_record['id'])
+            except Exception as exc:
+                self.mediator.log('claim_support_evidence_facts_error', error=str(exc), evidence_id=evidence_record.get('id'))
+                enriched['facts'] = []
+        else:
+            enriched['facts'] = []
+
+        return enriched
+
     def summarize_claim_support(self, user_id: str, claim_type: Optional[str] = None) -> Dict[str, Any]:
-        links = self.get_support_links(user_id, claim_type)
+        links = [self._enrich_support_link(link) for link in self.get_support_links(user_id, claim_type)]
         requirements = self.get_claim_requirements(user_id, claim_type)
         if claim_type:
             grouped = {claim_type: links}
@@ -518,8 +584,10 @@ class ClaimSupportHook:
         }
         for current_claim, claim_links in grouped.items():
             support_by_kind: Dict[str, int] = {}
+            total_facts = 0
             for link in claim_links:
                 support_by_kind[link['support_kind']] = support_by_kind.get(link['support_kind'], 0) + 1
+                total_facts += int(link.get('fact_count', 0) or 0)
 
             claim_requirements = requirements.get(current_claim, [])
             links_by_element: Dict[str, List[Dict[str, Any]]] = {}
@@ -543,12 +611,14 @@ class ClaimSupportHook:
                     element_support_by_kind[link['support_kind']] = (
                         element_support_by_kind.get(link['support_kind'], 0) + 1
                     )
+                element_fact_count = sum(int(link.get('fact_count', 0) or 0) for link in requirement_links)
                 if requirement_links:
                     covered_elements += 1
                 element_summaries.append(
                     {
                         **requirement,
                         'total_links': len(requirement_links),
+                        'fact_count': element_fact_count,
                         'support_by_kind': element_support_by_kind,
                         'links': requirement_links,
                     }
@@ -556,6 +626,7 @@ class ClaimSupportHook:
 
             summary['claims'][current_claim] = {
                 'total_links': len(claim_links),
+                'total_facts': total_facts,
                 'support_by_kind': support_by_kind,
                 'total_elements': len(claim_requirements),
                 'covered_elements': covered_elements,
@@ -565,6 +636,41 @@ class ClaimSupportHook:
                 'links': claim_links,
             }
         return summary
+
+    def get_claim_support_facts(
+        self,
+        user_id: str,
+        claim_type: Optional[str] = None,
+        *,
+        claim_element_id: Optional[str] = None,
+        claim_element_text: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        facts: List[Dict[str, Any]] = []
+        links = [self._enrich_support_link(link) for link in self.get_support_links(user_id, claim_type)]
+
+        for link in links:
+            if claim_element_id and link.get('claim_element_id') != claim_element_id:
+                continue
+            if claim_element_text and link.get('claim_element_text') != claim_element_text:
+                continue
+
+            for fact in link.get('facts', []) or []:
+                facts.append(
+                    {
+                        **fact,
+                        'claim_type': link.get('claim_type'),
+                        'claim_element_id': link.get('claim_element_id'),
+                        'claim_element_text': link.get('claim_element_text'),
+                        'support_kind': link.get('support_kind'),
+                        'support_ref': link.get('support_ref'),
+                        'support_label': link.get('support_label'),
+                        'source_table': link.get('source_table'),
+                        'evidence_record_id': link.get('evidence_record_id'),
+                        'authority_record_id': link.get('authority_record_id'),
+                    }
+                )
+
+        return facts
 
     def get_claim_element_summary(
         self,
@@ -605,6 +711,7 @@ class ClaimSupportHook:
             return {
                 **requirement,
                 'total_links': 0,
+                'fact_count': 0,
                 'support_by_kind': {},
                 'links': [],
             }
@@ -613,6 +720,7 @@ class ClaimSupportHook:
             'element_id': target_element_id,
             'element_text': target_element_text,
             'total_links': 0,
+            'fact_count': 0,
             'support_by_kind': {},
             'links': [],
         }

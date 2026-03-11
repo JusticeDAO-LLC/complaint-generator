@@ -335,6 +335,39 @@ class WebEvidenceIntegrationHook:
         if not slug:
             slug = 'web-evidence'
         return f"{slug}.txt"
+
+    def _extract_parse_detail(self, storage_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize parse metadata from stored web evidence for reporting."""
+        metadata = storage_result.get('metadata', {}) if isinstance(storage_result.get('metadata'), dict) else {}
+        parse_summary = metadata.get('document_parse_summary', {}) if isinstance(metadata.get('document_parse_summary'), dict) else {}
+        return {
+            'cid': storage_result.get('cid', ''),
+            'status': parse_summary.get('status', ''),
+            'chunk_count': int(parse_summary.get('chunk_count', 0) or 0),
+            'text_length': int(parse_summary.get('text_length', 0) or 0),
+            'parser_version': parse_summary.get('parser_version', ''),
+            'input_format': parse_summary.get('input_format', ''),
+            'paragraph_count': int(parse_summary.get('paragraph_count', 0) or 0),
+        }
+
+    def _accumulate_parse_detail(self, aggregate: Dict[str, Any], detail: Dict[str, Any]) -> None:
+        """Accumulate parse detail into request-level web evidence parse stats."""
+        aggregate['processed'] += 1
+        aggregate['total_chunks'] += detail.get('chunk_count', 0)
+        aggregate['total_paragraphs'] += detail.get('paragraph_count', 0)
+        aggregate['total_text_length'] += detail.get('text_length', 0)
+
+        status = detail.get('status', '')
+        if status:
+            aggregate['status_counts'][status] = aggregate['status_counts'].get(status, 0) + 1
+
+        input_format = detail.get('input_format', '')
+        if input_format:
+            aggregate['input_format_counts'][input_format] = aggregate['input_format_counts'].get(input_format, 0) + 1
+
+        parser_version = detail.get('parser_version', '')
+        if parser_version and parser_version not in aggregate['parser_versions']:
+            aggregate['parser_versions'].append(parser_version)
     
     def discover_and_store_evidence(self, keywords: List[str],
                                     domains: Optional[List[str]] = None,
@@ -383,6 +416,16 @@ class WebEvidenceIntegrationHook:
             'support_links_reused': 0,
             'total_support_links_added': 0,
             'total_support_links_reused': 0,
+            'parse_details': [],
+            'parse_summary': {
+                'processed': 0,
+                'total_chunks': 0,
+                'total_paragraphs': 0,
+                'total_text_length': 0,
+                'status_counts': {},
+                'input_format_counts': {},
+                'parser_versions': [],
+            },
         }
         
         # Process each result
@@ -490,6 +533,10 @@ class WebEvidenceIntegrationHook:
                 stored_evidence['total_support_links_added'] += 1 if support_link_result.get('created') else 0
                 stored_evidence['total_support_links_reused'] += 1 if support_link_result.get('reused') else 0
                 stored_evidence['evidence_cids'].append(storage_result['cid'])
+
+                parse_detail = self._extract_parse_detail(storage_result)
+                stored_evidence['parse_details'].append(parse_detail)
+                self._accumulate_parse_detail(stored_evidence['parse_summary'], parse_detail)
 
                 current_kg = None
                 if hasattr(self.mediator, 'phase_manager'):

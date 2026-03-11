@@ -3,6 +3,7 @@
 import os
 import json
 import hashlib
+import mimetypes
 from typing import Dict, List, Optional, Any, BinaryIO
 from datetime import datetime
 from pathlib import Path
@@ -14,7 +15,7 @@ from integrations.ipfs_datasets.provenance import (
 )
 from integrations.ipfs_datasets.documents import parse_document_bytes
 from integrations.ipfs_datasets.graphs import extract_graph_from_text
-from integrations.ipfs_datasets.types import CaseArtifact
+from integrations.ipfs_datasets.types import CaseArtifact, CaseFact
 from integrations.ipfs_datasets.storage import (
     IPFS_AVAILABLE,
     add_bytes,
@@ -131,10 +132,14 @@ class EvidenceStorageHook:
                     mime_type=str((metadata or {}).get('mime_type', '')),
                 )
                 result['document_parse'] = document_parse
+                parse_metadata = document_parse.get('metadata', {}) or {}
                 result['metadata']['document_parse_summary'] = {
                     'status': document_parse.get('status'),
                     'chunk_count': len(document_parse.get('chunks', []) or []),
                     'text_length': len(document_parse.get('text', '') or ''),
+                    'parser_version': parse_metadata.get('parser_version', ''),
+                    'input_format': parse_metadata.get('input_format', ''),
+                    'paragraph_count': parse_metadata.get('paragraph_count', 0),
                 }
                 graph_payload = extract_graph_from_text(
                     document_parse.get('text', ''),
@@ -182,6 +187,8 @@ class EvidenceStorageHook:
             
             # Add file information to metadata
             file_metadata = metadata or {}
+            if 'mime_type' not in file_metadata or not file_metadata.get('mime_type'):
+                file_metadata['mime_type'] = mimetypes.guess_type(file_path)[0] or ''
             file_metadata.update({
                 'filename': os.path.basename(file_path),
                 'original_path': file_path
@@ -343,6 +350,18 @@ class EvidenceStateHook:
                     metadata JSON
                 )
             """)
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS evidence_facts (
+                    evidence_id BIGINT,
+                    fact_id VARCHAR,
+                    fact_text TEXT,
+                    source_artifact_id VARCHAR,
+                    confidence FLOAT,
+                    metadata JSON,
+                    provenance JSON
+                )
+            """)
             
             # Create index on CID for fast lookups
             conn.execute("""
@@ -423,6 +442,49 @@ class EvidenceStateHook:
                     relationship.get('relation_type'),
                     relationship.get('confidence', 0.0),
                     json.dumps(relationship.get('attributes', {})),
+                ],
+            )
+
+    def _store_document_facts(self, conn, evidence_id: int, evidence_info: Dict[str, Any], document_graph: Dict[str, Any]) -> None:
+        entities = document_graph.get('entities', []) or []
+        artifact_id = evidence_info.get('artifact_id') or evidence_info.get('cid') or ''
+        provenance_payload = evidence_info.get('metadata', {}).get('provenance', {})
+
+        for entity in entities:
+            if entity.get('type') != 'fact':
+                continue
+            attributes = entity.get('attributes', {}) if isinstance(entity.get('attributes'), dict) else {}
+            fact = CaseFact(
+                fact_id=str(entity.get('id') or ''),
+                text=str(attributes.get('text') or entity.get('name') or ''),
+                source_artifact_id=artifact_id,
+                confidence=float(entity.get('confidence', 0.0) or 0.0),
+                metadata=attributes,
+                provenance=build_provenance(
+                    source_url=str(provenance_payload.get('source_url', '')),
+                    acquisition_method=str(provenance_payload.get('acquisition_method', '')),
+                    source_type=str(provenance_payload.get('source_type', '')),
+                    acquired_at=str(provenance_payload.get('acquired_at', '')),
+                    content_hash=str(provenance_payload.get('content_hash', '')),
+                    source_system=str(provenance_payload.get('source_system', '')),
+                    jurisdiction=str(provenance_payload.get('jurisdiction', '')),
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO evidence_facts (
+                    evidence_id, fact_id, fact_text, source_artifact_id, confidence, metadata, provenance
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    evidence_id,
+                    fact.fact_id,
+                    fact.text,
+                    fact.source_artifact_id,
+                    fact.confidence,
+                    json.dumps(fact.metadata),
+                    json.dumps(fact.provenance.as_dict()),
                 ],
             )
 
@@ -629,6 +691,7 @@ class EvidenceStateHook:
             record_id = result[0]
             self._store_document_chunks(conn, record_id, document_parse)
             self._store_document_graph(conn, record_id, document_graph)
+            self._store_document_facts(conn, record_id, evidence_info, document_graph)
             conn.close()
             
             self.mediator.log('evidence_record_added', 
@@ -662,7 +725,10 @@ class EvidenceStateHook:
                       claim_type, description, content_hash, source_url,
                         acquisition_method, provenance, claim_element_id, claim_element,
                     parse_status, chunk_count, parsed_text_preview, parse_metadata,
-                    graph_status, graph_entity_count, graph_relationship_count, graph_metadata
+                    graph_status, graph_entity_count, graph_relationship_count, graph_metadata,
+                    (
+                        SELECT COUNT(*) FROM evidence_facts ef WHERE ef.evidence_id = evidence.id
+                    ) AS fact_count
                 FROM evidence
                 WHERE user_id = ?
                 ORDER BY timestamp DESC
@@ -698,6 +764,7 @@ class EvidenceStateHook:
                     'graph_entity_count': row[22] or 0,
                     'graph_relationship_count': row[23] or 0,
                     'graph_metadata': json.loads(row[24]) if row[24] else {},
+                    'fact_count': row[25] or 0,
                 })
             
             return evidence_list
@@ -728,7 +795,10 @@ class EvidenceStateHook:
                       claim_type, description, content_hash, source_url,
                         acquisition_method, provenance, claim_element_id, claim_element,
                     parse_status, chunk_count, parsed_text_preview, parse_metadata,
-                    graph_status, graph_entity_count, graph_relationship_count, graph_metadata
+                    graph_status, graph_entity_count, graph_relationship_count, graph_metadata,
+                    (
+                        SELECT COUNT(*) FROM evidence_facts ef WHERE ef.evidence_id = evidence.id
+                    ) AS fact_count
                 FROM evidence
                 WHERE evidence_cid = ?
             """, [cid]).fetchone()
@@ -762,6 +832,7 @@ class EvidenceStateHook:
                     'graph_entity_count': result[22] or 0,
                     'graph_relationship_count': result[23] or 0,
                     'graph_metadata': json.loads(result[24]) if result[24] else {},
+                    'fact_count': result[25] or 0,
                 }
             
             return None
@@ -855,6 +926,38 @@ class EvidenceStateHook:
         except Exception as e:
             self.mediator.log('evidence_graph_query_error', error=str(e), evidence_id=evidence_id)
             return {'status': 'error', 'entities': [], 'relationships': [], 'error': str(e)}
+
+    def get_evidence_facts(self, evidence_id: int) -> List[Dict[str, Any]]:
+        """Get persisted fact records for a stored evidence record."""
+        if not DUCKDB_AVAILABLE:
+            return []
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            rows = conn.execute(
+                """
+                SELECT fact_id, fact_text, source_artifact_id, confidence, metadata, provenance
+                FROM evidence_facts
+                WHERE evidence_id = ?
+                ORDER BY fact_id ASC
+                """,
+                [evidence_id],
+            ).fetchall()
+            conn.close()
+            return [
+                {
+                    'fact_id': row[0],
+                    'text': row[1],
+                    'source_artifact_id': row[2],
+                    'confidence': row[3] or 0.0,
+                    'metadata': json.loads(row[4]) if row[4] else {},
+                    'provenance': json.loads(row[5]) if row[5] else {},
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            self.mediator.log('evidence_fact_query_error', error=str(e), evidence_id=evidence_id)
+            return []
     
     def get_evidence_statistics(self, user_id: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -877,17 +980,19 @@ class EvidenceStateHook:
                     SELECT 
                         COUNT(*) as total_count,
                         SUM(evidence_size) as total_size,
-                        COUNT(DISTINCT evidence_type) as type_count
+                        COUNT(DISTINCT evidence_type) as type_count,
+                        COALESCE((SELECT COUNT(*) FROM evidence_facts ef JOIN evidence e2 ON ef.evidence_id = e2.id WHERE e2.user_id = ?), 0) as total_facts
                     FROM evidence
                     WHERE user_id = ?
-                """, [user_id]).fetchone()
+                """, [user_id, user_id]).fetchone()
             else:
                 result = conn.execute("""
                     SELECT 
                         COUNT(*) as total_count,
                         SUM(evidence_size) as total_size,
                         COUNT(DISTINCT evidence_type) as type_count,
-                        COUNT(DISTINCT user_id) as user_count
+                        COUNT(DISTINCT user_id) as user_count,
+                        COALESCE((SELECT COUNT(*) FROM evidence_facts), 0) as total_facts
                     FROM evidence
                 """).fetchone()
             
@@ -897,7 +1002,8 @@ class EvidenceStateHook:
                 'available': True,
                 'total_count': result[0],
                 'total_size': result[1] or 0,
-                'type_count': result[2]
+                'type_count': result[2],
+                'total_facts': result[3] if user_id else result[4],
             }
             
             if not user_id:

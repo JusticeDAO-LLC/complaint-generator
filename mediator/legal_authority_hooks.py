@@ -7,7 +7,8 @@ from datetime import datetime
 from pathlib import Path
 
 from integrations.ipfs_datasets.provenance import build_provenance
-from integrations.ipfs_datasets.types import CaseAuthority
+from integrations.ipfs_datasets.graphs import extract_graph_from_text
+from integrations.ipfs_datasets.types import CaseAuthority, CaseFact
 from integrations.ipfs_datasets.legal import (
     LEGAL_SCRAPERS_AVAILABLE,
     search_federal_register,
@@ -347,6 +348,18 @@ class LegalAuthorityStorageHook:
                 )
             """)
 
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS legal_authority_facts (
+                    authority_id BIGINT,
+                    fact_id VARCHAR,
+                    fact_text TEXT,
+                    source_authority_id VARCHAR,
+                    confidence FLOAT,
+                    metadata JSON,
+                    provenance JSON
+                )
+            """)
+
             for statement in [
                 "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS jurisdiction VARCHAR",
                 "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS source_system VARCHAR",
@@ -378,6 +391,93 @@ class LegalAuthorityStorageHook:
             
         except Exception as e:
             self.mediator.log('legal_authority_schema_error', error=str(e))
+
+    def _store_authority_facts(
+        self,
+        conn,
+        authority_id: int,
+        authority: Dict[str, Any],
+        claim_type: Optional[str],
+        provenance,
+    ) -> None:
+        authority_text = authority.get('content') or authority.get('title') or authority.get('citation') or ''
+        if not authority_text:
+            return
+
+        graph_payload = extract_graph_from_text(
+            authority_text,
+            source_id=f'authority:{authority_id}',
+            metadata={
+                'artifact_id': f'authority:{authority_id}',
+                'title': authority.get('title', ''),
+                'source_url': authority.get('url', ''),
+                'claim_type': claim_type or '',
+                'claim_element_id': authority.get('claim_element_id', ''),
+                'claim_element_text': authority.get('claim_element', ''),
+            },
+        )
+
+        for entity in graph_payload.get('entities', []) or []:
+            if entity.get('type') != 'fact':
+                continue
+            attributes = entity.get('attributes', {}) if isinstance(entity.get('attributes'), dict) else {}
+            fact = CaseFact(
+                fact_id=str(entity.get('id') or ''),
+                text=str(attributes.get('text') or entity.get('name') or ''),
+                source_artifact_id=f'authority:{authority_id}',
+                confidence=float(entity.get('confidence', 0.0) or 0.0),
+                metadata=attributes,
+                provenance=build_provenance(
+                    source_url=str(provenance.source_url or ''),
+                    acquisition_method=str(provenance.acquisition_method or ''),
+                    source_type=str(provenance.source_type or ''),
+                    acquired_at=str(provenance.acquired_at or ''),
+                    content_hash=str(provenance.content_hash or ''),
+                    source_system=str(provenance.source_system or ''),
+                    jurisdiction=str(provenance.jurisdiction or ''),
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO legal_authority_facts (
+                    authority_id, fact_id, fact_text, source_authority_id, confidence, metadata, provenance
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    authority_id,
+                    fact.fact_id,
+                    fact.text,
+                    fact.source_artifact_id,
+                    fact.confidence,
+                    json.dumps(fact.metadata),
+                    json.dumps(fact.provenance.as_dict()),
+                ],
+            )
+
+    def _authority_record_from_row(self, row, *, include_claim_type: bool = False) -> Dict[str, Any]:
+        offset = 1 if include_claim_type else 0
+        record = {
+            'id': row[0],
+            'type': row[1 + offset],
+            'source': row[2 + offset],
+            'citation': row[3 + offset],
+            'title': row[4 + offset],
+            'content': row[5 + offset],
+            'url': row[6 + offset],
+            'metadata': json.loads(row[7 + offset]) if row[7 + offset] else {},
+            'relevance_score': row[8 + offset],
+            'timestamp': row[9 + offset],
+            'jurisdiction': row[10 + offset],
+            'source_system': row[11 + offset],
+            'provenance': json.loads(row[12 + offset]) if row[12 + offset] else {},
+            'claim_element_id': row[13 + offset],
+            'claim_element': row[14 + offset],
+            'fact_count': row[15 + offset] or 0,
+        }
+        if include_claim_type:
+            record['claim_type'] = row[1]
+        return record
 
     def _resolve_claim_element(
         self,
@@ -601,6 +701,13 @@ class LegalAuthorityStorageHook:
             ]).fetchone()
             
             record_id = result[0]
+            self._store_authority_facts(
+                conn,
+                record_id,
+                normalized_authority,
+                claim_type,
+                provenance,
+            )
             conn.close()
             
             self.mediator.log('legal_authority_added',
@@ -662,7 +769,10 @@ class LegalAuthorityStorageHook:
             results = conn.execute("""
                 SELECT id, authority_type, source, citation, title,
                       content, url, metadata, relevance_score, timestamp,
-                      jurisdiction, source_system, provenance, claim_element_id, claim_element
+                      jurisdiction, source_system, provenance, claim_element_id, claim_element,
+                      (
+                          SELECT COUNT(*) FROM legal_authority_facts laf WHERE laf.authority_id = legal_authorities.id
+                      ) AS fact_count
                 FROM legal_authorities
                 WHERE user_id = ? AND claim_type = ?
                 ORDER BY relevance_score DESC, timestamp DESC
@@ -670,27 +780,7 @@ class LegalAuthorityStorageHook:
             
             conn.close()
             
-            authorities = []
-            for row in results:
-                authorities.append({
-                    'id': row[0],
-                    'type': row[1],
-                    'source': row[2],
-                    'citation': row[3],
-                    'title': row[4],
-                    'content': row[5],
-                    'url': row[6],
-                    'metadata': json.loads(row[7]) if row[7] else {},
-                    'relevance_score': row[8],
-                    'timestamp': row[9],
-                    'jurisdiction': row[10],
-                    'source_system': row[11],
-                    'provenance': json.loads(row[12]) if row[12] else {},
-                    'claim_element_id': row[13],
-                    'claim_element': row[14],
-                })
-            
-            return authorities
+            return [self._authority_record_from_row(row) for row in results]
             
         except Exception as e:
             self.mediator.log('legal_authority_query_error', error=str(e))
@@ -715,7 +805,10 @@ class LegalAuthorityStorageHook:
             results = conn.execute("""
                 SELECT id, claim_type, authority_type, source, citation,
                       title, content, url, metadata, relevance_score, timestamp,
-                      jurisdiction, source_system, provenance, claim_element_id, claim_element
+                      jurisdiction, source_system, provenance, claim_element_id, claim_element,
+                      (
+                          SELECT COUNT(*) FROM legal_authority_facts laf WHERE laf.authority_id = legal_authorities.id
+                      ) AS fact_count
                 FROM legal_authorities
                 WHERE user_id = ?
                 ORDER BY timestamp DESC
@@ -723,31 +816,71 @@ class LegalAuthorityStorageHook:
             
             conn.close()
             
-            authorities = []
-            for row in results:
-                authorities.append({
-                    'id': row[0],
-                    'claim_type': row[1],
-                    'type': row[2],
-                    'source': row[3],
-                    'citation': row[4],
-                    'title': row[5],
-                    'content': row[6],
-                    'url': row[7],
-                    'metadata': json.loads(row[8]) if row[8] else {},
-                    'relevance_score': row[9],
-                    'timestamp': row[10],
-                    'jurisdiction': row[11],
-                    'source_system': row[12],
-                    'provenance': json.loads(row[13]) if row[13] else {},
-                    'claim_element_id': row[14],
-                    'claim_element': row[15],
-                })
-            
-            return authorities
+            return [self._authority_record_from_row(row, include_claim_type=True) for row in results]
             
         except Exception as e:
             self.mediator.log('legal_authority_query_error', error=str(e))
+            return []
+
+    def get_authority_by_id(self, authority_id: int) -> Optional[Dict[str, Any]]:
+        """Get a single authority record by its DuckDB ID."""
+        if not DUCKDB_AVAILABLE:
+            return None
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            row = conn.execute(
+                """
+                SELECT id, claim_type, authority_type, source, citation,
+                      title, content, url, metadata, relevance_score, timestamp,
+                      jurisdiction, source_system, provenance, claim_element_id, claim_element,
+                      (
+                          SELECT COUNT(*) FROM legal_authority_facts laf WHERE laf.authority_id = legal_authorities.id
+                      ) AS fact_count
+                FROM legal_authorities
+                WHERE id = ?
+                LIMIT 1
+                """,
+                [authority_id],
+            ).fetchone()
+            conn.close()
+            if row is None:
+                return None
+            return self._authority_record_from_row(row, include_claim_type=True)
+        except Exception as e:
+            self.mediator.log('legal_authority_query_error', error=str(e), authority_id=authority_id)
+            return None
+
+    def get_authority_facts(self, authority_id: int) -> List[Dict[str, Any]]:
+        """Get persisted fact records for a stored legal authority."""
+        if not DUCKDB_AVAILABLE:
+            return []
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            rows = conn.execute(
+                """
+                SELECT fact_id, fact_text, source_authority_id, confidence, metadata, provenance
+                FROM legal_authority_facts
+                WHERE authority_id = ?
+                ORDER BY fact_id ASC
+                """,
+                [authority_id],
+            ).fetchall()
+            conn.close()
+            return [
+                {
+                    'fact_id': row[0],
+                    'text': row[1],
+                    'source_authority_id': row[2],
+                    'confidence': row[3] or 0.0,
+                    'metadata': json.loads(row[4]) if row[4] else {},
+                    'provenance': json.loads(row[5]) if row[5] else {},
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            self.mediator.log('legal_authority_fact_query_error', error=str(e), authority_id=authority_id)
             return []
     
     def get_statistics(self, user_id: Optional[str] = None) -> Dict[str, Any]:
@@ -771,16 +904,18 @@ class LegalAuthorityStorageHook:
                     SELECT 
                         COUNT(*) as total_count,
                         COUNT(DISTINCT authority_type) as type_count,
-                        COUNT(DISTINCT claim_type) as claim_count
+                        COUNT(DISTINCT claim_type) as claim_count,
+                        COALESCE((SELECT COUNT(*) FROM legal_authority_facts laf JOIN legal_authorities la ON laf.authority_id = la.id WHERE la.user_id = ?), 0) as total_facts
                     FROM legal_authorities
                     WHERE user_id = ?
-                """, [user_id]).fetchone()
+                """, [user_id, user_id]).fetchone()
             else:
                 result = conn.execute("""
                     SELECT 
                         COUNT(*) as total_count,
                         COUNT(DISTINCT authority_type) as type_count,
-                        COUNT(DISTINCT user_id) as user_count
+                        COUNT(DISTINCT user_id) as user_count,
+                        COALESCE((SELECT COUNT(*) FROM legal_authority_facts), 0) as total_facts
                     FROM legal_authorities
                 """).fetchone()
             
@@ -789,7 +924,8 @@ class LegalAuthorityStorageHook:
             stats = {
                 'available': True,
                 'total_count': result[0],
-                'type_count': result[1]
+                'type_count': result[1],
+                'total_facts': result[3] if user_id else result[3],
             }
             
             if user_id:

@@ -124,6 +124,17 @@ The discovery payload distinguishes raw processing counts from deduplicated stor
 
 When evidence is projected into the active knowledge graph, each entry in `graph_projection` also reports whether the graph changed or the artifact was already present.
 
+Web discovery responses also include parse-level reporting derived from each stored artifact's `document_parse_summary`:
+
+- `parse_summary.processed`: Number of stored records for which parse metadata was examined.
+- `parse_summary.total_chunks`: Aggregate parsed chunk count across stored results.
+- `parse_summary.total_paragraphs`: Aggregate paragraph count across stored results.
+- `parse_summary.total_text_length`: Aggregate normalized text length across stored results.
+- `parse_summary.status_counts`: Parse status frequencies such as `fallback` or `available-fallback`.
+- `parse_summary.input_format_counts`: Aggregate counts by normalized input format such as `text` or `html`.
+- `parse_summary.parser_versions`: Distinct parser versions encountered in the request.
+- `parse_details`: Per-record parse summary entries keyed by CID.
+
 ### Retrieve Discovered Evidence
 
 ```python

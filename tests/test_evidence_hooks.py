@@ -49,6 +49,9 @@ class TestEvidenceStorageHook:
             assert result['metadata']['provenance']['content_hash']
             assert result['document_parse']['status'] in {'fallback', 'available-fallback', 'empty'}
             assert result['metadata']['document_parse_summary']['chunk_count'] >= 1
+            assert result['metadata']['document_parse_summary']['parser_version']
+            assert result['metadata']['document_parse_summary']['input_format'] == 'text'
+            assert result['metadata']['document_parse_summary']['paragraph_count'] >= 1
             assert result['document_graph']['status'] in {'unavailable', 'available-fallback'}
             assert result['metadata']['document_graph_summary']['entity_count'] >= 1
         except ImportError as e:
@@ -65,7 +68,7 @@ class TestEvidenceStorageHook:
             hook = EvidenceStorageHook(mock_mediator)
             
             # Create temporary file
-            with tempfile.NamedTemporaryFile(mode='wb', delete=False) as f:
+            with tempfile.NamedTemporaryFile(mode='wb', suffix='.txt', delete=False) as f:
                 f.write(b"Test file content")
                 temp_path = f.name
             
@@ -75,6 +78,8 @@ class TestEvidenceStorageHook:
                 assert isinstance(result, dict)
                 assert 'cid' in result
                 assert 'filename' in result['metadata']
+                assert result['metadata']['mime_type'] == 'text/plain'
+                assert result['metadata']['document_parse_summary']['input_format'] == 'text'
             finally:
                 os.unlink(temp_path)
                 
@@ -313,6 +318,7 @@ class TestEvidenceStateHook:
                 assert stats['available'] is True
                 assert stats['total_count'] == 3
                 assert stats['total_size'] > 0
+                assert stats['total_facts'] >= 0
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)
@@ -347,6 +353,9 @@ class TestEvidenceStateHook:
                             'status': 'fallback',
                             'chunk_count': 2,
                             'text_length': 24,
+                            'parser_version': 'documents-adapter:1',
+                            'input_format': 'text',
+                            'paragraph_count': 1,
                         },
                     },
                     'document_parse': {
@@ -364,16 +373,22 @@ class TestEvidenceStateHook:
                 record = hook.get_evidence_by_cid('QmParsed123')
                 chunks = hook.get_evidence_chunks(record_id)
                 graph = hook.get_evidence_graph(record_id)
+                facts = hook.get_evidence_facts(record_id)
 
                 assert record_id > 0
                 assert record['parse_status'] == 'fallback'
                 assert record['chunk_count'] == 2
+                assert record['fact_count'] >= 1
                 assert record['parsed_text_preview'].startswith('alpha beta')
                 assert record['parse_metadata']['filename'] == 'evidence.txt'
+                assert record['parse_metadata']['parser_version'] == 'documents-adapter:1'
                 assert record['graph_entity_count'] >= 1
                 assert record['graph_relationship_count'] >= 1
                 assert len(chunks) == 2
                 assert chunks[0]['chunk_id'] == 'chunk-0'
+                assert len(facts) >= 1
+                assert facts[0]['fact_id'].startswith('fact:')
+                assert facts[0]['source_artifact_id']
                 assert any(entity['type'] == 'fact' for entity in graph['entities'])
                 assert any(rel['relation_type'] == 'has_fact' for rel in graph['relationships'])
             finally:
@@ -513,6 +528,8 @@ class TestMediatorEvidenceIntegration:
                 assert result['claim_element_id'] == 'breach_of_contract:1'
                 assert result['document_parse']['status'] in {'fallback', 'available-fallback', 'empty'}
                 assert result['metadata']['document_parse_summary']['chunk_count'] >= 1
+                assert result['metadata']['document_parse_summary']['parser_version']
+                assert result['metadata']['document_parse_summary']['input_format'] == 'text'
                 assert result['document_graph']['status'] in {'unavailable', 'available-fallback'}
                 assert result['metadata']['document_graph_summary']['entity_count'] >= 1
                 assert result['graph_projection']['claim_links'] >= 1
@@ -531,11 +548,15 @@ class TestMediatorEvidenceIntegration:
                 assert len(evidence_list) > 0
                 assert evidence_list[0]['claim_element'] == 'Valid contract'
                 assert evidence_list[0]['chunk_count'] >= 1
+                assert evidence_list[0]['fact_count'] >= 1
                 assert evidence_list[0]['graph_entity_count'] >= 1
 
                 graph = mediator.get_evidence_graph(result['record_id'])
+                facts = mediator.get_evidence_facts(result['record_id'])
                 assert any(entity['type'] == 'claim_element' for entity in graph['entities'])
                 assert any(rel['relation_type'] == 'supports' for rel in graph['relationships'])
+                assert len(facts) >= 1
+                assert facts[0]['fact_id'].startswith('fact:')
 
                 projected_kg = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
                 assert result['artifact_id'] in projected_kg.entities
@@ -566,6 +587,24 @@ class TestMediatorEvidenceIntegration:
                 assert element_view['is_covered'] is True
                 assert element_view['total_evidence'] == 1
                 assert element_view['claim_element_id'] == 'breach_of_contract:1'
+                assert element_view['support_summary']['fact_count'] >= 1
+                assert element_view['support_summary']['links'][0]['fact_count'] >= 1
+                assert len(element_view['support_summary']['links'][0]['facts']) >= 1
+                assert element_view['total_facts'] >= 1
+                assert len(element_view['support_facts']) >= 1
+                assert element_view['support_facts'][0]['claim_type'] == 'breach of contract'
+                assert element_view['support_facts'][0]['support_kind'] == 'evidence'
+
+                graph_support = mediator.query_claim_graph_support(
+                    claim_type='breach of contract',
+                    claim_element='Valid contract',
+                    user_id='testuser',
+                )
+                assert graph_support['claim_element_id'] == 'breach_of_contract:1'
+                assert graph_support['summary']['total_fact_count'] >= 1
+                assert graph_support['summary']['support_by_kind']['evidence'] >= 1
+                assert len(graph_support['results']) >= 1
+                assert graph_support['results'][0]['support_kind'] == 'evidence'
 
                 overview = mediator.get_claim_overview(
                     claim_type='breach of contract',
@@ -594,6 +633,14 @@ class TestMediatorEvidenceIntegration:
                     max_tasks_per_claim=2,
                 )
                 assert follow_up_execution['claims']['breach of contract']['task_count'] == 2
+                assert any(
+                    task['graph_support']['summary']['total_fact_count'] >= 1
+                    for task in follow_up_execution['claims']['breach of contract']['tasks']
+                )
+                assert any(
+                    task['recommended_action'] in {'target_missing_support_kind', 'review_existing_support'}
+                    for task in follow_up_execution['claims']['breach of contract']['tasks']
+                )
                 evidence_results = [
                     task['executed']['evidence']['result']
                     for task in follow_up_execution['claims']['breach of contract']['tasks']
@@ -611,6 +658,18 @@ class TestMediatorEvidenceIntegration:
                     user_id='testuser',
                 )
                 assert follow_up_plan_after_execution['claims']['breach of contract']['blocked_task_count'] == 2
+                assert any(
+                    task['has_graph_support'] is True
+                    for task in follow_up_plan_after_execution['claims']['breach of contract']['tasks']
+                )
+                assert any(
+                    task['graph_support_strength'] in {'moderate', 'strong'}
+                    for task in follow_up_plan_after_execution['claims']['breach of contract']['tasks']
+                )
+                assert all(
+                    task['priority'] in {'high', 'medium', 'low'}
+                    for task in follow_up_plan_after_execution['claims']['breach of contract']['tasks']
+                )
                 assert follow_up_plan_after_execution['claims']['breach of contract']['tasks'][0]['execution_status']['evidence']['in_cooldown'] is True
 
                 second_follow_up_execution = mediator.execute_claim_follow_up_plan(
