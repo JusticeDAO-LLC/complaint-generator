@@ -7,6 +7,9 @@ from unittest.mock import Mock
 import pytest
 
 
+pytestmark = pytest.mark.no_auto_network
+
+
 class TestClaimSupportHook:
     def test_claim_support_hook_can_be_imported(self):
         try:

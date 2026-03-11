@@ -565,6 +565,144 @@ Interpretation notes:
 - `claim_coverage_matrix[claim_type]` exposes the same grouped claim-element support view used by automatic legal research.
 - `claim_coverage_summary[claim_type]` provides the smaller per-claim status snapshot with counts and missing-element labels.
 
+## Claim Support Review API
+
+`POST /api/claim-support/review` wraps the claim-coverage, support-summary, and follow-up contracts into one operator-facing payload.
+
+Representative request shape:
+
+```json
+{
+  "claim_type": "retaliation",
+  "required_support_kinds": ["evidence", "authority"],
+  "follow_up_cooldown_seconds": 3600,
+  "include_support_summary": true,
+  "include_overview": true,
+  "include_follow_up_plan": true,
+  "execute_follow_up": true,
+  "follow_up_support_kind": "authority",
+  "follow_up_max_tasks_per_claim": 2
+}
+```
+
+Representative response shape:
+
+```json
+{
+  "user_id": "state-user",
+  "claim_type": "retaliation",
+  "required_support_kinds": ["evidence", "authority"],
+  "claim_coverage_summary": {
+    "retaliation": {
+      "status_counts": {
+        "covered": 1,
+        "partially_supported": 1,
+        "missing": 1
+      },
+      "missing_elements": ["Causal connection"],
+      "partially_supported_elements": ["Adverse action"]
+    }
+  },
+  "follow_up_plan_summary": {
+    "retaliation": {
+      "task_count": 2,
+      "blocked_task_count": 1,
+      "suppressed_task_count": 1,
+      "semantic_cluster_count": 2,
+      "semantic_duplicate_count": 3,
+      "recommended_actions": {
+        "retrieve_more_support": 1,
+        "target_missing_support_kind": 1
+      }
+    }
+  },
+  "follow_up_execution_summary": {
+    "retaliation": {
+      "executed_task_count": 1,
+      "skipped_task_count": 2,
+      "suppressed_task_count": 1,
+      "cooldown_skipped_task_count": 1,
+      "semantic_cluster_count": 3,
+      "semantic_duplicate_count": 4
+    }
+  }
+}
+```
+
+Interpretation notes:
+
+- `execute_follow_up=false` keeps the endpoint read-only and omits `follow_up_execution` plus `follow_up_execution_summary`.
+- `follow_up_support_kind` narrows execution to one retrieval lane such as `evidence` or `authority` without changing the review-only sections.
+- `follow_up_max_tasks_per_claim` limits side-effecting execution only; it does not truncate `follow_up_plan`.
+- `claim_coverage_summary`, `follow_up_plan_summary`, and `follow_up_execution_summary` are the compact operator-facing surfaces intended for dashboards and review tools.
+
+## Claim Support Follow-Up Execution API
+
+`POST /api/claim-support/execute-follow-up` provides an explicit side-effecting surface for follow-up retrieval work.
+
+Representative request shape:
+
+```json
+{
+  "claim_type": "retaliation",
+  "required_support_kinds": ["evidence", "authority"],
+  "follow_up_cooldown_seconds": 3600,
+  "follow_up_support_kind": "evidence",
+  "follow_up_max_tasks_per_claim": 1,
+  "follow_up_force": false,
+  "include_post_execution_review": true,
+  "include_support_summary": true,
+  "include_overview": true,
+  "include_follow_up_plan": true
+}
+```
+
+Representative response shape:
+
+```json
+{
+  "user_id": "testuser",
+  "claim_type": "retaliation",
+  "required_support_kinds": ["evidence", "authority"],
+  "follow_up_support_kind": "evidence",
+  "follow_up_force": false,
+  "follow_up_execution": {
+    "retaliation": {
+      "task_count": 1,
+      "tasks": [],
+      "skipped_tasks": []
+    }
+  },
+  "follow_up_execution_summary": {
+    "retaliation": {
+      "executed_task_count": 1,
+      "skipped_task_count": 0,
+      "suppressed_task_count": 0,
+      "cooldown_skipped_task_count": 0,
+      "semantic_cluster_count": 1,
+      "semantic_duplicate_count": 0
+    }
+  },
+  "post_execution_review": {
+    "claim_coverage_summary": {
+      "retaliation": {
+        "status_counts": {
+          "covered": 2,
+          "partially_supported": 0,
+          "missing": 1
+        }
+      }
+    }
+  }
+}
+```
+
+Interpretation notes:
+
+- `follow_up_force=true` bypasses duplicate-within-cooldown suppression inside `Mediator.execute_claim_follow_up_plan(...)`.
+- `include_post_execution_review=false` returns only execution results and skips the extra post-run coverage refresh.
+- `post_execution_review` reuses the same review contract as `POST /api/claim-support/review`.
+
 Follow-up planning payloads from `Mediator.get_claim_follow_up_plan(...)` now include graph-support context on each task:
 
 ```json

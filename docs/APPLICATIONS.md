@@ -137,6 +137,7 @@ The server starts on the configured host and port (typically `http://localhost:8
 | Endpoint | Description | Returns |
 |----------|-------------|---------|
 | `/api/claim-support/review` | Claim-element review packet for operator or UI workflows | JSON payload with `claim_coverage_matrix`, `claim_coverage_summary`, and optional `support_summary`, `claim_overview`, `follow_up_plan`, or opt-in `follow_up_execution` |
+| `/api/claim-support/execute-follow-up` | Explicit side-effecting follow-up execution endpoint | JSON payload with `follow_up_execution`, `follow_up_execution_summary`, and optional `post_execution_review` |
 
 ##### `/api/claim-support/review` - Claim Support Review
 
@@ -171,6 +172,35 @@ Example response fields:
 
 If `user_id` is omitted, the endpoint resolves it from the mediator state and falls back to `anonymous`.
 If `execute_follow_up` is omitted or `false`, the endpoint remains read-only and does not trigger retrieval side effects.
+
+##### `/api/claim-support/execute-follow-up` - Follow-Up Execution
+
+POST to this endpoint when the caller wants an explicit execution surface rather than using the compatibility `execute_follow_up` flag on the review endpoint.
+
+Example request:
+
+```json
+{
+  "claim_type": "retaliation",
+  "required_support_kinds": ["evidence", "authority"],
+  "follow_up_cooldown_seconds": 3600,
+  "follow_up_support_kind": "evidence",
+  "follow_up_max_tasks_per_claim": 1,
+  "follow_up_force": false,
+  "include_post_execution_review": true,
+  "include_support_summary": true,
+  "include_overview": true,
+  "include_follow_up_plan": true
+}
+```
+
+Example response fields:
+
+- `follow_up_execution`: raw execution results keyed by claim type.
+- `follow_up_execution_summary`: compact execution, suppression, cooldown-skip, and graph-support counts keyed by claim type.
+- `post_execution_review`: refreshed review payload after execution, including updated coverage and optional follow-up planning.
+
+Use this endpoint for new clients that want execution to be unambiguously side-effecting. The review endpoint remains available for read-only review and backward-compatible opt-in execution.
 
 #### WebSocket Endpoints
 

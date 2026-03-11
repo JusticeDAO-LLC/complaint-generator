@@ -22,6 +22,22 @@ class ClaimSupportReviewRequest(BaseModel):
     follow_up_max_tasks_per_claim: int = 3
 
 
+class ClaimSupportFollowUpExecuteRequest(BaseModel):
+    user_id: Optional[str] = None
+    claim_type: Optional[str] = None
+    required_support_kinds: List[str] = Field(
+        default_factory=lambda: list(DEFAULT_REQUIRED_SUPPORT_KINDS)
+    )
+    follow_up_cooldown_seconds: int = 3600
+    follow_up_support_kind: Optional[str] = None
+    follow_up_max_tasks_per_claim: int = 3
+    follow_up_force: bool = False
+    include_post_execution_review: bool = True
+    include_support_summary: bool = True
+    include_overview: bool = True
+    include_follow_up_plan: bool = True
+
+
 def _resolve_user_id(mediator: Any, user_id: Optional[str]) -> str:
     if user_id:
         return user_id
@@ -219,12 +235,75 @@ def build_claim_support_review_payload(
     return payload
 
 
+def build_claim_support_follow_up_execution_payload(
+    mediator: Any,
+    request: ClaimSupportFollowUpExecuteRequest,
+) -> Dict[str, Any]:
+    resolved_user_id = _resolve_user_id(mediator, request.user_id)
+    required_support_kinds = (
+        request.required_support_kinds or list(DEFAULT_REQUIRED_SUPPORT_KINDS)
+    )
+
+    follow_up_execution = mediator.execute_claim_follow_up_plan(
+        claim_type=request.claim_type,
+        user_id=resolved_user_id,
+        support_kind=request.follow_up_support_kind,
+        max_tasks_per_claim=request.follow_up_max_tasks_per_claim,
+        cooldown_seconds=request.follow_up_cooldown_seconds,
+        force=request.follow_up_force,
+    )
+    follow_up_execution_claims = (
+        follow_up_execution.get("claims", {})
+        if isinstance(follow_up_execution, dict)
+        else {}
+    )
+
+    payload: Dict[str, Any] = {
+        "user_id": resolved_user_id,
+        "claim_type": request.claim_type,
+        "required_support_kinds": required_support_kinds,
+        "follow_up_support_kind": request.follow_up_support_kind,
+        "follow_up_force": request.follow_up_force,
+        "follow_up_execution": follow_up_execution_claims,
+        "follow_up_execution_summary": {
+            claim_name: _summarize_follow_up_execution_claim(claim_execution)
+            for claim_name, claim_execution in follow_up_execution_claims.items()
+            if isinstance(claim_execution, dict)
+        },
+    }
+
+    if request.include_post_execution_review:
+        payload["post_execution_review"] = build_claim_support_review_payload(
+            mediator,
+            ClaimSupportReviewRequest(
+                user_id=resolved_user_id,
+                claim_type=request.claim_type,
+                required_support_kinds=required_support_kinds,
+                follow_up_cooldown_seconds=request.follow_up_cooldown_seconds,
+                include_support_summary=request.include_support_summary,
+                include_overview=request.include_overview,
+                include_follow_up_plan=request.include_follow_up_plan,
+                execute_follow_up=False,
+                follow_up_support_kind=request.follow_up_support_kind,
+                follow_up_max_tasks_per_claim=request.follow_up_max_tasks_per_claim,
+            ),
+        )
+
+    return payload
+
+
 def create_claim_support_review_router(mediator: Any) -> APIRouter:
     router = APIRouter()
 
     @router.post("/api/claim-support/review")
     async def claim_support_review(request: ClaimSupportReviewRequest) -> Dict[str, Any]:
         return build_claim_support_review_payload(mediator, request)
+
+    @router.post("/api/claim-support/execute-follow-up")
+    async def claim_support_execute_follow_up(
+        request: ClaimSupportFollowUpExecuteRequest,
+    ) -> Dict[str, Any]:
+        return build_claim_support_follow_up_execution_payload(mediator, request)
 
     return router
 

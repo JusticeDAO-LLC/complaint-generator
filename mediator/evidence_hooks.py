@@ -711,6 +711,10 @@ class EvidenceStateHook:
             document_parse_summary = evidence_info.get('metadata', {}).get('document_parse_summary', {})
             document_graph = evidence_info.get('document_graph') if isinstance(evidence_info.get('document_graph'), dict) else {}
             document_graph_summary = evidence_info.get('metadata', {}).get('document_graph_summary', {})
+            parse_metadata = {
+                **(document_parse.get('metadata', {}) or {}),
+                **{key: value for key, value in (document_parse_summary or {}).items() if value not in (None, '')},
+            }
             parsed_text = document_parse.get('text', '')
             parsed_text_preview = parsed_text[:5000] if parsed_text else ''
             if not document_graph and parsed_text:
@@ -788,7 +792,7 @@ class EvidenceStateHook:
                 document_parse.get('status') or document_parse_summary.get('status'),
                 len(document_parse.get('chunks', []) or []),
                 parsed_text_preview,
-                json.dumps(document_parse.get('metadata', {})),
+                json.dumps(parse_metadata),
                 document_graph.get('status') or document_graph_summary.get('status'),
                 len(document_graph.get('entities', []) or []),
                 len(document_graph.get('relationships', []) or []),

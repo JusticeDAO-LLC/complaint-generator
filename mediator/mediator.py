@@ -947,6 +947,7 @@ class Mediator:
 					'claim_element': task.get('claim_element'),
 					'status': task.get('status'),
 					'priority': task.get('priority'),
+					'recommended_action': task.get('recommended_action'),
 					'graph_support': task.get('graph_support', {}),
 					'should_suppress_retrieval': task.get('should_suppress_retrieval', False),
 					'suppression_reason': task.get('suppression_reason', ''),
@@ -1776,14 +1777,14 @@ class Mediator:
 			'support_link_created': bool(evidence_data.get('support_link_created', False)),
 			'support_link_reused': bool(evidence_data.get('support_link_reused', False)),
 		}
+		artifact_id = evidence_data.get('artifact_id') or evidence_data.get('cid') or f"evidence_{evidence_data.get('id', 'unknown')}"
+		artifact_present_before_projection = bool(kg and artifact_id in kg.entities)
 		if evidence_data.get('document_graph'):
 			projection_summary.update(self._project_document_graph_to_knowledge_graph(kg, evidence_data))
 		
 		# Add evidence entity to knowledge graph
 		from complaint_phases.knowledge_graph import Entity
-		artifact_id = evidence_data.get('artifact_id') or evidence_data.get('cid') or f"evidence_{evidence_data.get('id', 'unknown')}"
-		artifact_present_before_add = bool(kg and artifact_id in kg.entities)
-		projection_summary['artifact_entity_already_present'] = artifact_present_before_add
+		projection_summary['artifact_entity_already_present'] = artifact_present_before_projection
 		if kg and artifact_id not in kg.entities:
 			evidence_entity = Entity(
 				id=artifact_id,
@@ -1795,6 +1796,7 @@ class Mediator:
 			)
 			kg.add_entity(evidence_entity)
 			projection_summary['entity_count'] += 1
+		if kg and not artifact_present_before_projection and artifact_id in kg.entities:
 			projection_summary['artifact_entity_added'] = True
 		
 		# Add supporting relationships

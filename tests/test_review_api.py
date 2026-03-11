@@ -2,7 +2,9 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from applications.review_api import (
+    ClaimSupportFollowUpExecuteRequest,
     ClaimSupportReviewRequest,
+    build_claim_support_follow_up_execution_payload,
     build_claim_support_review_payload,
     create_review_api_app,
 )
@@ -238,6 +240,118 @@ def test_claim_support_review_endpoint_allows_explicit_user_and_optional_section
     )
 
 
+def test_claim_support_follow_up_execution_payload_returns_post_execution_review():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.execute_claim_follow_up_plan.return_value = {
+        "claims": {
+            "retaliation": {
+                "task_count": 1,
+                "tasks": [
+                    {
+                        "claim_element": "Causal connection",
+                        "graph_support": {
+                            "summary": {
+                                "semantic_cluster_count": 1,
+                                "semantic_duplicate_count": 0,
+                            }
+                        },
+                    }
+                ],
+                "skipped_tasks": [],
+            }
+        }
+    }
+    mediator.get_claim_coverage_matrix.return_value = {
+        "claims": {
+            "retaliation": {
+                "claim_type": "retaliation",
+                "total_elements": 3,
+                "total_links": 3,
+                "total_facts": 5,
+                "support_by_kind": {"evidence": 2, "authority": 1},
+                "status_counts": {
+                    "covered": 2,
+                    "partially_supported": 0,
+                    "missing": 1,
+                },
+                "elements": [],
+            }
+        }
+    }
+    mediator.get_claim_overview.return_value = {
+        "claims": {
+            "retaliation": {
+                "missing": [{"element_text": "Causal connection"}],
+                "partially_supported": [],
+            }
+        }
+    }
+    mediator.get_claim_follow_up_plan.return_value = {
+        "claims": {
+            "retaliation": {
+                "task_count": 1,
+                "blocked_task_count": 0,
+                "tasks": [],
+            }
+        }
+    }
+    mediator.summarize_claim_support.return_value = {
+        "claims": {
+            "retaliation": {
+                "total_links": 3,
+                "support_by_kind": {"evidence": 2, "authority": 1},
+            }
+        }
+    }
+
+    payload = build_claim_support_follow_up_execution_payload(
+        mediator,
+        ClaimSupportFollowUpExecuteRequest(
+            claim_type="retaliation",
+            follow_up_support_kind="evidence",
+            follow_up_max_tasks_per_claim=1,
+            follow_up_force=True,
+        ),
+    )
+
+    assert payload["user_id"] == "state-user"
+    assert payload["follow_up_support_kind"] == "evidence"
+    assert payload["follow_up_force"] is True
+    assert payload["follow_up_execution"]["retaliation"]["task_count"] == 1
+    assert payload["follow_up_execution_summary"]["retaliation"]["executed_task_count"] == 1
+    assert payload["post_execution_review"]["claim_coverage_summary"]["retaliation"]["status_counts"]["covered"] == 2
+    mediator.execute_claim_follow_up_plan.assert_called_once_with(
+        claim_type="retaliation",
+        user_id="state-user",
+        support_kind="evidence",
+        max_tasks_per_claim=1,
+        cooldown_seconds=3600,
+        force=True,
+    )
+
+
+def test_claim_support_follow_up_execution_payload_can_skip_post_review():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username=None, hashed_username="hashed-user")
+    mediator.execute_claim_follow_up_plan.return_value = {"claims": {}}
+
+    payload = build_claim_support_follow_up_execution_payload(
+        mediator,
+        ClaimSupportFollowUpExecuteRequest(
+            user_id="api-user",
+            claim_type="civil rights",
+            include_post_execution_review=False,
+        ),
+    )
+
+    assert payload["user_id"] == "api-user"
+    assert "post_execution_review" not in payload
+    mediator.get_claim_coverage_matrix.assert_not_called()
+    mediator.get_claim_overview.assert_not_called()
+    mediator.get_claim_follow_up_plan.assert_not_called()
+
+
 def test_claim_support_review_endpoint_is_registered_on_app():
     mediator = Mock()
 
@@ -245,6 +359,12 @@ def test_claim_support_review_endpoint_is_registered_on_app():
 
     assert any(
         route.path == "/api/claim-support/review" and "POST" in route.methods
+        for route in app.routes
+        if hasattr(route, "methods")
+    )
+    assert any(
+        route.path == "/api/claim-support/execute-follow-up"
+        and "POST" in route.methods
         for route in app.routes
         if hasattr(route, "methods")
     )

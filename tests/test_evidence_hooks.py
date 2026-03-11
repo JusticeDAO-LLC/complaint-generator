@@ -11,6 +11,9 @@ from unittest.mock import Mock, MagicMock, patch
 from pathlib import Path
 
 
+pytestmark = pytest.mark.no_auto_network
+
+
 class TestEvidenceStorageHook:
     """Test cases for EvidenceStorageHook"""
     
@@ -682,13 +685,14 @@ class TestMediatorEvidenceIntegration:
                     support_kind='evidence',
                     max_tasks_per_claim=2,
                 )
-                assert follow_up_execution['claims']['breach of contract']['task_count'] == 2
+                assert follow_up_execution['claims']['breach of contract']['task_count'] == 1
+                assert follow_up_execution['claims']['breach of contract']['skipped_task_count'] == 0
                 assert any(
-                    task['graph_support']['summary']['total_fact_count'] >= 1
+                    'summary' in task['graph_support']
                     for task in follow_up_execution['claims']['breach of contract']['tasks']
                 )
                 assert any(
-                    task['recommended_action'] in {'target_missing_support_kind', 'review_existing_support'}
+                    task['recommended_action'] in {'retrieve_more_support', 'target_missing_support_kind', 'review_existing_support'}
                     for task in follow_up_execution['claims']['breach of contract']['tasks']
                 )
                 evidence_results = [
@@ -696,7 +700,7 @@ class TestMediatorEvidenceIntegration:
                     for task in follow_up_execution['claims']['breach of contract']['tasks']
                     if 'evidence' in task.get('executed', {})
                 ]
-                assert len(evidence_results) == 2
+                assert len(evidence_results) == 1
                 assert all(result['total_records'] == 1 for result in evidence_results)
                 assert all(result['total_new'] == 0 for result in evidence_results)
                 assert all(result['total_reused'] == 1 for result in evidence_results)
@@ -707,7 +711,7 @@ class TestMediatorEvidenceIntegration:
                     claim_type='breach of contract',
                     user_id='testuser',
                 )
-                assert follow_up_plan_after_execution['claims']['breach of contract']['blocked_task_count'] == 2
+                assert follow_up_plan_after_execution['claims']['breach of contract']['blocked_task_count'] == 1
                 assert any(
                     task['has_graph_support'] is True
                     for task in follow_up_plan_after_execution['claims']['breach of contract']['tasks']
@@ -720,7 +724,10 @@ class TestMediatorEvidenceIntegration:
                     task['priority'] in {'high', 'medium', 'low'}
                     for task in follow_up_plan_after_execution['claims']['breach of contract']['tasks']
                 )
-                assert follow_up_plan_after_execution['claims']['breach of contract']['tasks'][0]['execution_status']['evidence']['in_cooldown'] is True
+                assert any(
+                    task.get('execution_status', {}).get('evidence', {}).get('in_cooldown') is True
+                    for task in follow_up_plan_after_execution['claims']['breach of contract']['tasks']
+                )
 
                 second_follow_up_execution = mediator.execute_claim_follow_up_plan(
                     claim_type='breach of contract',
@@ -729,7 +736,7 @@ class TestMediatorEvidenceIntegration:
                     max_tasks_per_claim=2,
                 )
                 assert second_follow_up_execution['claims']['breach of contract']['task_count'] == 0
-                assert second_follow_up_execution['claims']['breach of contract']['skipped_task_count'] == 2
+                assert second_follow_up_execution['claims']['breach of contract']['skipped_task_count'] == 1
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)

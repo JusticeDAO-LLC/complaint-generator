@@ -10,6 +10,9 @@ from unittest.mock import Mock, MagicMock, patch
 from pathlib import Path
 
 
+pytestmark = pytest.mark.no_auto_network
+
+
 class TestWebEvidenceSearchHook:
     """Test cases for WebEvidenceSearchHook"""
     
