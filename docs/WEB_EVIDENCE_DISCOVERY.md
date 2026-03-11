@@ -152,8 +152,10 @@ print(f"Claims analyzed: {results['claim_types']}")
 for claim_type, count in results['evidence_discovered'].items():
     stored = results['evidence_stored'][claim_type]
     storage_summary = results['evidence_storage_summary'][claim_type]
+    coverage = results['claim_coverage_matrix'][claim_type]
     print(f"{claim_type}: {count} discovered, {stored} stored")
     print(f"  new={storage_summary['total_new']} reused={storage_summary['total_reused']}")
+    print(f"  partial={coverage['status_counts']['partially_supported']} missing={coverage['status_counts']['missing']}")
 ```
 
 ## Result Semantics
@@ -374,6 +376,7 @@ Automatic discovery results also include compact follow-up summaries:
 - `follow_up_plan_summary[claim_type]`: task, blocked, graph-supported, and suppressed counts plus semantic-cluster totals and recommended-action totals.
 - `follow_up_execution_summary[claim_type]`: executed, skipped, suppressed, and cooldown-skipped task counts plus semantic-cluster totals when `execute_follow_up=True`.
 - `claim_coverage_matrix[claim_type]`: claim-element support status with grouped evidence or authority links and lightweight record or graph summaries.
+- `claim_coverage_summary[claim_type]`: compact coverage counts plus `missing_elements` and `partially_supported_elements` labels.
 
 #### `run_agentic_scraper_cycle(keywords, domains=None, iterations=1, sleep_seconds=0.0, quality_domain='caselaw')`
 
@@ -487,10 +490,12 @@ evidence_results = mediator.discover_evidence_automatically()
 for claim_type in legal_analysis['classification']['claim_types']:
     authorities = mediator.get_legal_authorities(claim_type=claim_type)
     evidence = mediator.get_user_evidence()  # Includes auto-discovered
+    coverage = evidence_results['claim_coverage_matrix'][claim_type]
     
     print(f"\n{claim_type}:")
     print(f"  Legal authorities: {len(authorities)}")
     print(f"  Evidence items: {len(evidence)}")
+    print(f"  Missing support elements: {coverage['status_counts']['missing']}")
 ```
 
 ## Configuration

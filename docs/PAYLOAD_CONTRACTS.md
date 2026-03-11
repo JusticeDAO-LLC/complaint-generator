@@ -194,6 +194,7 @@ Per-source keys follow the pattern:
 `Mediator.research_case_automatically(...)` returns the authority storage contract per claim type under `authorities_stored`.
 
 It also returns a per-claim `claim_coverage_matrix` that groups support by claim element and by support kind.
+For compact reporting, it also returns `claim_coverage_summary` with counts and missing-element labels.
 
 Representative shape:
 
@@ -248,6 +249,24 @@ Representative shape:
         }
       ]
     }
+  },
+  "claim_coverage_summary": {
+    "civil rights": {
+      "claim_type": "civil rights",
+      "total_elements": 2,
+      "total_links": 1,
+      "total_facts": 1,
+      "support_by_kind": {
+        "authority": 1
+      },
+      "status_counts": {
+        "covered": 0,
+        "partially_supported": 1,
+        "missing": 1
+      },
+      "missing_elements": ["Adverse action"],
+      "partially_supported_elements": ["Protected activity"]
+    }
   }
 }
 ```
@@ -255,6 +274,7 @@ Representative shape:
 Interpretation notes:
 
 - `claim_coverage_matrix` is the review-oriented support payload for operator and UI workflows.
+- `claim_coverage_summary` is the compact companion payload for dashboards, logs, and quick status rendering.
 - `status_counts` separates fully covered, partially supported, and still-missing elements.
 - `links_by_kind` groups evidence and authority support without requiring callers to regroup raw links.
 - `record_summary` and `graph_summary` provide lightweight parse and graph context inline with the support record.
@@ -543,6 +563,7 @@ Interpretation notes:
 - `follow_up_execution_summary` separates suppressed tasks from cooldown skips so dashboards can explain why follow-up work did not run.
 - `follow_up_execution_summary.semantic_cluster_count` and `follow_up_execution_summary.semantic_duplicate_count` aggregate graph-support clusters across executed and skipped tasks, preserving the support context that informed execution decisions.
 - `claim_coverage_matrix[claim_type]` exposes the same grouped claim-element support view used by automatic legal research.
+- `claim_coverage_summary[claim_type]` provides the smaller per-claim status snapshot with counts and missing-element labels.
 
 Follow-up planning payloads from `Mediator.get_claim_follow_up_plan(...)` now include graph-support context on each task:
 

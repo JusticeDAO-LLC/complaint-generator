@@ -659,6 +659,10 @@ class TestWebEvidenceIntegrationHook:
             assert result['evidence_storage_summary']['employment discrimination']['total_reused'] == 1
             assert result['support_summary']['employment discrimination']['total_links'] == 2
             assert result['claim_coverage_matrix']['employment discrimination']['status_counts']['partially_supported'] == 1
+            assert result['claim_coverage_summary']['employment discrimination']['status_counts']['partially_supported'] == 1
+            assert result['claim_coverage_summary']['employment discrimination']['status_counts']['missing'] == 1
+            assert result['claim_coverage_summary']['employment discrimination']['missing_elements'] == ['Adverse action']
+            assert result['claim_coverage_summary']['employment discrimination']['partially_supported_elements'] == ['Protected activity']
             assert result['claim_overview']['employment discrimination']['missing_count'] == 1
             assert result['follow_up_plan']['employment discrimination']['task_count'] == 2
             assert result['follow_up_plan_summary']['employment discrimination']['task_count'] == 2

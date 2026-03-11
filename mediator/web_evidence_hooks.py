@@ -374,6 +374,53 @@ class WebEvidenceIntegrationHook:
             'semantic_cluster_count': graph_support_metrics['semantic_cluster_count'],
             'semantic_duplicate_count': graph_support_metrics['semantic_duplicate_count'],
         }
+
+    def _summarize_claim_coverage_claim(
+        self,
+        claim_type: str,
+        coverage_claim: Dict[str, Any],
+        overview_claim: Dict[str, Any] = None,
+    ) -> Dict[str, Any]:
+        if not isinstance(coverage_claim, dict):
+            coverage_claim = {}
+        if not isinstance(overview_claim, dict):
+            overview_claim = {}
+        elements = coverage_claim.get('elements', []) if isinstance(coverage_claim.get('elements', []), list) else []
+        if elements:
+            missing_elements = [
+                element.get('element_text')
+                for element in elements
+                if element.get('status') == 'missing' and element.get('element_text')
+            ]
+            partially_supported_elements = [
+                element.get('element_text')
+                for element in elements
+                if element.get('status') == 'partially_supported' and element.get('element_text')
+            ]
+        else:
+            missing_elements = [
+                element.get('element_text')
+                for element in overview_claim.get('missing', [])
+                if isinstance(element, dict) and element.get('element_text')
+            ]
+            partially_supported_elements = [
+                element.get('element_text')
+                for element in overview_claim.get('partially_supported', [])
+                if isinstance(element, dict) and element.get('element_text')
+            ]
+        return {
+            'claim_type': claim_type,
+            'total_elements': coverage_claim.get('total_elements', 0),
+            'total_links': coverage_claim.get('total_links', 0),
+            'total_facts': coverage_claim.get('total_facts', 0),
+            'support_by_kind': coverage_claim.get('support_by_kind', {}),
+            'status_counts': coverage_claim.get(
+                'status_counts',
+                {'covered': 0, 'partially_supported': 0, 'missing': 0},
+            ),
+            'missing_elements': missing_elements,
+            'partially_supported_elements': partially_supported_elements,
+        }
     
     def _get_search_hook(self):
         """Lazy initialization of search hook."""
@@ -852,12 +899,13 @@ class WebEvidenceIntegrationHook:
             'evidence_stored': {},
             'evidence_storage_summary': {},
             'support_summary': {},
+            'claim_coverage_summary': {},
             'claim_overview': {},
             'follow_up_plan': {},
             'follow_up_plan_summary': {},
             'follow_up_execution': {},
             'follow_up_execution_summary': {},
-                                        'claim_coverage_matrix': {},
+            'claim_coverage_matrix': {},
         }
         
         # Discover evidence for each claim type
@@ -949,6 +997,11 @@ class WebEvidenceIntegrationHook:
                 )
                 results['follow_up_execution'][claim_type] = claim_execution
                 results['follow_up_execution_summary'][claim_type] = self._summarize_follow_up_execution_claim(claim_execution)
+            results['claim_coverage_summary'][claim_type] = self._summarize_claim_coverage_claim(
+                claim_type,
+                results['claim_coverage_matrix'].get(claim_type, {}),
+                results['claim_overview'].get(claim_type, {}),
+            )
         
         self.mediator.log('auto_evidence_discovery_complete', results=results)
         

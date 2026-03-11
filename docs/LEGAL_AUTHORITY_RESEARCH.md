@@ -120,8 +120,10 @@ results = mediator.research_case_automatically()
 
 print(f"Researched {len(results['claim_types'])} claim types")
 for claim_type, authorities in results['authorities_stored'].items():
+    coverage = results['claim_coverage_matrix'][claim_type]
     print(f"{claim_type}: {authorities['total_records']} authorities")
     print(f"  new={authorities['total_new']} reused={authorities['total_reused']}")
+    print(f"  partial={coverage['status_counts']['partially_supported']} missing={coverage['status_counts']['missing']}")
 ```
 
 ## Storage Result Semantics
@@ -271,8 +273,10 @@ research_results = mediator.research_case_automatically()
 # 3. Analyze stored authorities
 for claim_type in legal_analysis['classification']['claim_types']:
     authority_analysis = mediator.analyze_legal_authorities(claim_type)
+    coverage = research_results['claim_coverage_matrix'][claim_type]
     print(f"Analysis for {claim_type}:")
     print(authority_analysis['recommendation'])
+    print(f"Missing elements: {coverage['status_counts']['missing']}")
 ```
 
 ## API Reference
@@ -338,6 +342,7 @@ Per-claim results include:
 - `support_summary[claim_type]`: raw persisted support-link summary.
 - `claim_overview[claim_type]`: covered, partially supported, and missing element buckets.
 - `claim_coverage_matrix[claim_type]`: grouped claim-element support with `links_by_kind`, `missing_support_kinds`, and inline record or graph summaries.
+- `claim_coverage_summary[claim_type]`: compact coverage counts plus `missing_elements` and `partially_supported_elements` labels.
 - `follow_up_plan[claim_type]`: next-step authority or evidence retrieval tasks derived from the current support gaps.
 
 ## Advanced Usage

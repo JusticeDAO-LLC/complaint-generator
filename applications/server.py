@@ -13,14 +13,18 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.status import HTTP_403_FORBIDDEN
 from starlette.responses import RedirectResponse
-import uvicorn
+
+from .review_api import attach_claim_support_review_routes
 
 
 class SERVER:
        
     def __init__(self, mediator):
+        import uvicorn
+
  
         app = FastAPI()
+        attach_claim_support_review_routes(app, mediator)
         
         hostname = "http://10.10.0.10:1792"
 
@@ -362,13 +366,19 @@ class SERVER:
                 await manager.broadcast(response)
                 try:
                     while True:
-                        reply = ""
                         data = await websocket.receive_json()
-                        mediator.state.load_profile(dict({"results":{ "hashed_username": hashed_username, "hashed_password":hashed_password}}))
-                        mediator.state(hashed_password = hashed_password, hashed_username = hashed_username).message(data)
+                        profile_request = {
+                            "results": {
+                                "hashed_username": hashed_username,
+                                "hashed_password": hashed_password,
+                            }
+                        }
+                        mediator.state.load_profile(profile_request)
+                        message_text = data.get("message") or data.get("content") or ""
+                        reply = mediator.io(message_text)
                         await manager.broadcast(data)
-                        await manager.broadcast(mediator.state(hashed_password = hashed_password, hashed_username = hashed_username)s.response())
-                        mediator.state.store_profile(dict({"results":{ "hashed_username": hashed_username, "hashed_password":hashed_password}}))
+                        await manager.broadcast({"sender": "Bot:", "message": reply})
+                        mediator.state.store_profile(profile_request)
                         
 
                 except WebSocketDisconnect:

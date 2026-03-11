@@ -657,6 +657,10 @@ class TestMediatorLegalAuthorityIntegration:
                 assert auto_results['authorities_stored']['civil rights']['total_support_links_reused'] == 1
                 assert auto_results['claim_coverage_matrix']['civil rights']['status_counts']['partially_supported'] == 1
                 assert auto_results['claim_coverage_matrix']['civil rights']['status_counts']['missing'] == 1
+                assert auto_results['claim_coverage_summary']['civil rights']['status_counts']['partially_supported'] == 1
+                assert auto_results['claim_coverage_summary']['civil rights']['status_counts']['missing'] == 1
+                assert auto_results['claim_coverage_summary']['civil rights']['missing_elements'] == ['Adverse action']
+                assert auto_results['claim_coverage_summary']['civil rights']['partially_supported_elements'] == ['Protected activity']
                 assert auto_results['claim_overview']['civil rights']['partially_supported_count'] == 1
                 assert auto_results['claim_overview']['civil rights']['missing_count'] == 1
                 assert auto_results['follow_up_plan']['civil rights']['task_count'] == 2

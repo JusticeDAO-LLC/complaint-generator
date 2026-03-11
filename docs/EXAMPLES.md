@@ -1,12 +1,12 @@
 # Example Scripts Reference
 
-Complete guide to all 21 example scripts in the repository, organized by category.
+Complete guide to all 22 example scripts in the repository, organized by category.
 
 ## Overview
 
-The `examples/` directory contains 21 demonstration scripts covering all major features of the complaint generator system. Scripts are organized into four categories:
+The `examples/` directory contains 22 demonstration scripts covering all major features of the complaint generator system. Scripts are organized into four categories:
 
-1. **Core System Examples** (6) - Basic workflows and core features
+1. **Core System Examples** (7) - Basic workflows and core features
 2. **Complaint Analysis Examples** (5) - Analysis and classification
 3. **Adversarial Testing Examples** (7) - Testing and optimization
 4. **Advanced Examples** (3) - Code generation and autopatch
@@ -133,7 +133,11 @@ python examples/legal_authority_research_demo.py
 ```python
 # Automatic research
 results = mediator.research_case_automatically()
-print(f"Found {results['total_authorities']} authorities")
+print(f"Researched claim types: {results['claim_types']}")
+for claim_type, stored in results['authorities_stored'].items():
+    coverage = results['claim_coverage_matrix'][claim_type]
+    print(f"{claim_type}: {stored['total_records']} authorities processed")
+    print(f"  partial={coverage['status_counts']['partially_supported']} missing={coverage['status_counts']['missing']}")
 
 # Get authorities for specific claim
 authorities = mediator.get_legal_authorities(claim_type='retaliation')
@@ -165,8 +169,11 @@ python examples/web_evidence_discovery_demo.py
 ```python
 # Automatic discovery
 results = mediator.discover_evidence_automatically()
-print(f"Discovered: {results['total_discovered']}")
-print(f"Stored: {results['total_stored']}")
+print(f"Claims analyzed: {results['claim_types']}")
+for claim_type in results['claim_types']:
+    coverage = results['claim_coverage_matrix'][claim_type]
+    print(f"{claim_type}: discovered={results['evidence_discovered'][claim_type]} stored={results['evidence_stored'][claim_type]}")
+    print(f"  partial={coverage['status_counts']['partially_supported']} missing={coverage['status_counts']['missing']}")
 
 # Manual search with keywords
 search_results = mediator.search_web_for_evidence(
@@ -221,9 +228,40 @@ questions = hook.suggest_questions(
 
 ---
 
+### 7. claim_support_review_demo.py
+
+**Purpose:** Review claim-element support coverage using the new matrix and summary payloads.
+
+**Features Demonstrated:**
+- `claim_coverage_matrix` review by claim element
+- `claim_coverage_summary` for quick status dashboards
+- grouped support links by evidence versus authority
+- missing-support analysis and follow-up planning
+
+**Usage:**
+```bash
+python examples/claim_support_review_demo.py
+```
+
+**Key Code:**
+```python
+claim_type = 'employment retaliation'
+
+matrix = mediator.get_claim_coverage_matrix(claim_type=claim_type)
+summary = mediator.research_case_automatically()['claim_coverage_summary'][claim_type]
+follow_up = mediator.get_claim_follow_up_plan(claim_type=claim_type)
+
+print(summary['status_counts'])
+print(summary['missing_elements'])
+for element in matrix['claims'][claim_type]['elements']:
+    print(element['element_text'], element['status'])
+```
+
+---
+
 ## Complaint Analysis Examples
 
-### 7. complaint_analysis_integration_demo.py
+### 8. complaint_analysis_integration_demo.py
 
 **Purpose:** End-to-end complaint analysis with all features.
 
@@ -268,7 +306,7 @@ entities = parser.parse(llm_response)
 
 ---
 
-### 8. complaint_analysis_taxonomies_demo.py
+### 9. complaint_analysis_taxonomies_demo.py
 
 **Purpose:** Demonstrate all 14 complaint type taxonomies.
 
@@ -305,7 +343,7 @@ for complaint_type in types:
 
 ---
 
-### 9. dei_taxonomy_example.py
+### 10. dei_taxonomy_example.py
 
 **Purpose:** DEI-specific analysis demonstration.
 
@@ -340,7 +378,7 @@ for prov in provisions:
 
 ---
 
-### 10. hacc_integration_example.py
+### 11. hacc_integration_example.py
 
 **Purpose:** Full DEI policy analysis pipeline (formerly HACC).
 
@@ -381,7 +419,7 @@ print(f"Reports: {list(reports.keys())}")
 
 ---
 
-### 11. hacc_dei_analysis_example.py
+### 12. hacc_dei_analysis_example.py
 
 **Purpose:** DEI analysis with synthetic policy documents.
 
@@ -400,7 +438,7 @@ python examples/hacc_dei_analysis_example.py
 
 ## Adversarial Testing Examples
 
-### 12. adversarial_harness_example.py
+### 13. adversarial_harness_example.py
 
 **Purpose:** Basic adversarial harness usage.
 
@@ -437,7 +475,7 @@ print(f"Success Rate: {results['success_rate']}")
 
 ---
 
-### 13. adversarial_harness_standalone.py
+### 14. adversarial_harness_standalone.py
 
 **Purpose:** Standalone adversarial session without harness.
 
@@ -470,7 +508,7 @@ print(f"Score: {result.critic_score.overall}")
 
 ---
 
-### 14. adversarial_optimization_demo.py
+### 15. adversarial_optimization_demo.py
 
 **Purpose:** SGD cycle optimization demonstration.
 
@@ -506,7 +544,7 @@ for cycle in range(10):
 
 ---
 
-### 15. batch_sgd_cycle.py
+### 16. batch_sgd_cycle.py
 
 **Purpose:** Batch SGD testing with state persistence.
 
@@ -523,7 +561,7 @@ python examples/batch_sgd_cycle.py
 
 ---
 
-### 16. session_sgd_report.py
+### 17. session_sgd_report.py
 
 **Purpose:** Report generation from adversarial sessions.
 
@@ -540,7 +578,7 @@ python examples/session_sgd_report.py
 
 ---
 
-### 17. parallelism_backoff_sweep.py
+### 18. parallelism_backoff_sweep.py
 
 **Purpose:** Parameter sweeping for parallelism and backoff.
 
@@ -574,7 +612,7 @@ print(f"Optimal: parallelism={optimal['p']}, backoff={optimal['b']}")
 
 ---
 
-### 18. sweep_ranker.py
+### 19. sweep_ranker.py
 
 **Purpose:** Ranking parameter sweep results.
 
@@ -591,7 +629,7 @@ python examples/sweep_ranker.py
 
 ---
 
-### 19. codex_autopatch_from_run.py
+### 20. codex_autopatch_from_run.py
 
 **Purpose:** Code autopatch from adversarial run results.
 
@@ -610,7 +648,7 @@ python examples/codex_autopatch_from_run.py
 
 ---
 
-### 20. codex_multi_run_autopatch.py
+### 21. codex_multi_run_autopatch.py
 
 **Purpose:** Multi-run autopatch loop.
 
@@ -633,7 +671,7 @@ python examples/codex_multi_run_autopatch.py \
 
 ---
 
-### 21. codex_multi_run_autopatch_loop.py
+### 22. codex_multi_run_autopatch_loop.py
 
 **Purpose:** Extended autopatch loop with convergence.
 

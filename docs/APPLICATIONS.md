@@ -132,6 +132,46 @@ The server starts on the configured host and port (typically `http://localhost:8
 | `/cookies` | Debug cookie information | JSON cookie data |
 | `/test` | Test authentication | Profile data or error |
 
+#### POST Endpoints
+
+| Endpoint | Description | Returns |
+|----------|-------------|---------|
+| `/api/claim-support/review` | Claim-element review packet for operator or UI workflows | JSON payload with `claim_coverage_matrix`, `claim_coverage_summary`, and optional `support_summary`, `claim_overview`, `follow_up_plan`, or opt-in `follow_up_execution` |
+
+##### `/api/claim-support/review` - Claim Support Review
+
+POST a small JSON request to retrieve the current claim-support review state without running the full automatic research workflow.
+
+Example request:
+
+```json
+{
+  "claim_type": "retaliation",
+  "required_support_kinds": ["evidence", "authority"],
+  "follow_up_cooldown_seconds": 3600,
+  "include_support_summary": true,
+  "include_overview": true,
+  "include_follow_up_plan": true,
+  "execute_follow_up": false,
+  "follow_up_support_kind": null,
+  "follow_up_max_tasks_per_claim": 3
+}
+```
+
+Example response fields:
+
+- `claim_coverage_matrix`: detailed per-claim and per-element grouped support links.
+- `claim_coverage_summary`: compact status counts plus missing and partially supported element labels.
+- `support_summary`: persisted support-link summary keyed by claim type.
+- `claim_overview`: covered, partially supported, and missing element buckets keyed by claim type.
+- `follow_up_plan`: actionable retrieval tasks keyed by claim type.
+- `follow_up_plan_summary`: compact task, suppression, and graph-support counts keyed by claim type.
+- `follow_up_execution`: opt-in follow-up execution results keyed by claim type when `execute_follow_up=true`.
+- `follow_up_execution_summary`: opt-in compact execution, suppression, cooldown-skip, and graph-support counts keyed by claim type.
+
+If `user_id` is omitted, the endpoint resolves it from the mediator state and falls back to `anonymous`.
+If `execute_follow_up` is omitted or `false`, the endpoint remains read-only and does not trigger retrieval side effects.
+
 #### WebSocket Endpoints
 
 ##### `/api/chat` - Real-time Chat
