@@ -503,6 +503,12 @@ Representative shape:
       "reasoning_ontology_entity_count": 3,
       "reasoning_ontology_relationship_count": 2,
       "reasoning_fallback_ontology_count": 0,
+      "decision_source_counts": {
+        "heuristic_contradictions": 1,
+        "missing_support": 1
+      },
+      "adapter_contradicted_element_count": 0,
+      "decision_fallback_ontology_element_count": 0,
       "claim_type": "civil rights",
       "total_elements": 2,
       "total_links": 1,
@@ -605,6 +611,14 @@ Representative shape:
           "ontology_entity_count": 3,
           "ontology_relationship_count": 2,
           "fallback_ontology_count": 0
+        },
+        "decision": {
+          "decision_source_counts": {
+            "heuristic_contradictions": 1,
+            "missing_support": 1
+          },
+          "adapter_contradicted_element_count": 0,
+          "fallback_ontology_element_count": 0
         }
       },
       "elements": [
@@ -623,6 +637,12 @@ Representative shape:
               "ontology_build": {"operation": "build_ontology"},
               "ontology_validation": {"operation": "validate_ontology"}
             }
+          },
+          "proof_decision_trace": {
+            "decision_source": "heuristic_contradictions",
+            "heuristic_contradiction_count": 1,
+            "logic_contradiction_count": 0,
+            "used_fallback_ontology": false
           }
         }
       ]
@@ -704,6 +724,7 @@ Interpretation notes:
 - `claim_coverage_summary` is the compact companion payload for dashboards, logs, and quick status rendering.
 - `validation_status`, `validation_status_counts`, and `proof_gap_count` lift proof-health into the compact summary without requiring callers to inspect per-element diagnostics.
 - `reasoning_adapter_status_counts`, `reasoning_backend_available_count`, `reasoning_predicate_count`, `reasoning_ontology_entity_count`, `reasoning_ontology_relationship_count`, and `reasoning_fallback_ontology_count` summarize what the `ipfs_datasets` logic and GraphRAG adapters contributed to the current validation pass.
+- `decision_source_counts`, `adapter_contradicted_element_count`, and `decision_fallback_ontology_element_count` summarize how proof decisions were reached across the claim, including whether adapter contradiction output changed any element status.
 - `graph_trace_summary` is the compact lineage companion for dashboards and audit surfaces; it counts traced links, snapshot creation versus reuse, source-table mix, and distinct graph ids without requiring callers to inspect raw support links.
 - `unresolved_element_count`, `unresolved_elements`, and `recommended_gap_actions` compress the richer gap payload into one per-claim summary for dashboards.
 - `contradiction_candidate_count` and `contradicted_elements` surface likely support conflicts without requiring callers to scan every candidate pair.
@@ -711,6 +732,7 @@ Interpretation notes:
 - `claim_contradiction_candidates` exposes heuristic contradiction candidates for operator review.
 - `claim_support_validation` is the normalized proof-oriented companion payload. It classifies each element as `supported`, `incomplete`, `missing`, or `contradicted`, emits `proof_gaps`, and provides one recommended action per element.
 - `proof_diagnostics.reasoning` aggregates backend-oriented diagnostics from the logic and GraphRAG adapters, while `reasoning_diagnostics` preserves the per-element adapter packets used to produce those aggregates.
+- `proof_diagnostics.decision` aggregates how validation decisions were reached across the claim, while `proof_decision_trace` preserves the per-element decision source and any adapter contradiction contribution.
 - `claim_support_snapshots` exposes the persisted snapshot ids, metadata, `is_stale` freshness flag, and snapshot-retention pruning metadata for the gap and contradiction diagnostics written by automatic legal research.
 - `claim_support_snapshot_summary` is the compact lifecycle companion for those persisted diagnostics. It reports how many snapshots are fresh versus stale, which kinds are present, the active retention limits, and how much pruning happened during persistence.
 - `claim_reasoning_review` is the compact operator-facing reasoning review surface. It highlights claim elements that were contradicted, required fallback ontology, or encountered unavailable or degraded adapter states during validation.
@@ -1175,6 +1197,35 @@ Representative response shape:
       ]
     }
   },
+  "follow_up_history_summary": {
+    "retaliation": {
+      "total_entry_count": 2,
+      "status_counts": {
+        "skipped_manual_review": 1,
+        "executed": 1
+      },
+      "support_kind_counts": {
+        "manual_review": 1,
+        "authority": 1
+      },
+      "execution_mode_counts": {
+        "manual_review": 1,
+        "retrieve_support": 1
+      },
+      "query_strategy_counts": {
+        "standard_gap_targeted": 2
+      },
+      "follow_up_focus_counts": {
+        "contradiction_resolution": 1,
+        "support_gap_closure": 1
+      },
+      "resolution_status_counts": {},
+      "manual_review_entry_count": 1,
+      "resolved_entry_count": 0,
+      "contradiction_related_entry_count": 1,
+      "latest_attempted_at": "2026-03-12T10:15:00"
+    }
+  },
   "follow_up_plan_summary": {
     "retaliation": {
       "task_count": 2,
@@ -1211,6 +1262,8 @@ Interpretation notes:
 - `claim_support_snapshots` exposes any persisted diagnostic snapshot ids reused by the review payload; when a stored snapshot no longer matches current support state it is marked with `is_stale=true` and the payload falls back to recomputation for that claim.
 - `claim_support_snapshot_summary` is the compact review-facing lifecycle view for those persisted diagnostics, so dashboard consumers can see freshness and pruning at a glance without iterating the raw snapshot entries.
 - `claim_reasoning_review` is the compact review-facing reasoning surface for flagged claim elements, capturing fallback ontology use plus unavailable or degraded adapter states without forcing clients to inspect every `reasoning_diagnostics` packet.
+- `follow_up_history` exposes recent rows from the persisted `claim_follow_up_execution` ledger, including contradiction-targeted retrieval attempts and manual-review audit events.
+- `follow_up_history_summary` compresses that ledger into counts by status, support kind, execution mode, query strategy, contradiction focus, and any recorded manual-review resolutions.
 - `claim_coverage_summary`, `follow_up_plan_summary`, and `follow_up_execution_summary` are the compact operator-facing surfaces intended for dashboards and review tools.
 - When `execute_follow_up=true`, the response adds `compatibility_notice` and emits `Deprecation`, `Sunset`, `Link`, and `Warning` headers so clients can migrate off the compatibility path.
 - New clients should prefer `POST /api/claim-support/execute-follow-up` for side effects and treat `execute_follow_up` on the review endpoint as a compatibility path.
@@ -1290,6 +1343,18 @@ Representative response shape:
     }
   },
   "post_execution_review": {
+    "follow_up_history_summary": {
+      "retaliation": {
+        "total_entry_count": 2,
+        "manual_review_entry_count": 1,
+        "resolved_entry_count": 1,
+        "resolution_status_counts": {
+          "resolved_supported": 1
+        },
+        "contradiction_related_entry_count": 2,
+        "latest_attempted_at": "2026-03-12T11:05:00"
+      }
+    },
     "claim_coverage_summary": {
       "retaliation": {
         "status_counts": {
@@ -1309,7 +1374,9 @@ Interpretation notes:
 - `follow_up_focus` captures whether the task is closing an ordinary support gap or resolving a contradiction-heavy element.
 - `query_strategy` records whether generated search text used the standard support-gap templates or contradiction-targeted retrieval prompts.
 - `manual_review` skips are also written into the `claim_follow_up_execution` DuckDB ledger with `support_kind="manual_review"`, so contradiction-resolution work has an audit trail even when no retrieval runs.
+- Operator resolutions can be appended to that same ledger as `status="resolved_manual_review"` events, carrying fields such as `resolution_status`, `resolution_notes`, and `related_execution_id`.
 - `manual_review_task_count` in both follow-up summaries tracks contradiction-review work that intentionally does not trigger evidence or authority retrieval.
+- `post_execution_review.follow_up_history_summary` reflects the refreshed ledger after execution, so clients can confirm that retrieval and manual-review events were recorded.
 
 - `follow_up_force=true` bypasses duplicate-within-cooldown suppression inside `Mediator.execute_claim_follow_up_plan(...)`.
 - `include_post_execution_review=false` returns only execution results and skips the extra post-run coverage refresh.

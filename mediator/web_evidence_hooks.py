@@ -10,6 +10,7 @@ from pathlib import Path
 from claim_support_review import (
     summarize_claim_reasoning_review,
     summarize_claim_support_snapshot_lifecycle,
+    summarize_follow_up_history_claim,
 )
 from integrations.ipfs_datasets.provenance import build_document_parse_contract
 from integrations.ipfs_datasets.search import (
@@ -407,6 +408,11 @@ class WebEvidenceIntegrationHook:
             if isinstance(validation_claim.get('proof_diagnostics'), dict)
             else {}
         )
+        decision_summary = (
+            (validation_claim.get('proof_diagnostics') or {}).get('decision', {})
+            if isinstance(validation_claim.get('proof_diagnostics'), dict)
+            else {}
+        )
         elements = coverage_claim.get('elements', []) if isinstance(coverage_claim.get('elements', []), list) else []
         if elements:
             missing_elements = [
@@ -495,6 +501,9 @@ class WebEvidenceIntegrationHook:
             'reasoning_ontology_entity_count': int(reasoning_summary.get('ontology_entity_count', 0) or 0),
             'reasoning_ontology_relationship_count': int(reasoning_summary.get('ontology_relationship_count', 0) or 0),
             'reasoning_fallback_ontology_count': int(reasoning_summary.get('fallback_ontology_count', 0) or 0),
+            'decision_source_counts': decision_summary.get('decision_source_counts', {}),
+            'adapter_contradicted_element_count': int(decision_summary.get('adapter_contradicted_element_count', 0) or 0),
+            'decision_fallback_ontology_element_count': int(decision_summary.get('fallback_ontology_element_count', 0) or 0),
             'total_elements': coverage_claim.get('total_elements', 0),
             'total_links': coverage_claim.get('total_links', 0),
             'total_facts': coverage_claim.get('total_facts', 0),
@@ -1019,6 +1028,8 @@ class WebEvidenceIntegrationHook:
             'follow_up_plan_summary': {},
             'follow_up_execution': {},
             'follow_up_execution_summary': {},
+            'follow_up_history': {},
+            'follow_up_history_summary': {},
             'claim_coverage_matrix': {},
         }
         
@@ -1154,6 +1165,15 @@ class WebEvidenceIntegrationHook:
                 )
                 results['follow_up_plan'][claim_type] = claim_plan
                 results['follow_up_plan_summary'][claim_type] = self._summarize_follow_up_plan_claim(claim_plan)
+            if hasattr(self.mediator, 'get_recent_claim_follow_up_execution'):
+                recent_history = self.mediator.get_recent_claim_follow_up_execution(
+                    claim_type=claim_type,
+                    user_id=user_id,
+                    limit=10,
+                )
+                claim_history = recent_history.get('claims', {}).get(claim_type, []) if isinstance(recent_history, dict) else []
+                results['follow_up_history'][claim_type] = claim_history
+                results['follow_up_history_summary'][claim_type] = summarize_follow_up_history_claim(claim_history)
             if execute_follow_up and hasattr(self.mediator, 'execute_claim_follow_up_plan'):
                 follow_up_execution = self.mediator.execute_claim_follow_up_plan(
                     claim_type=claim_type,
@@ -1169,6 +1189,15 @@ class WebEvidenceIntegrationHook:
                 )
                 results['follow_up_execution'][claim_type] = claim_execution
                 results['follow_up_execution_summary'][claim_type] = self._summarize_follow_up_execution_claim(claim_execution)
+                if hasattr(self.mediator, 'get_recent_claim_follow_up_execution'):
+                    refreshed_history = self.mediator.get_recent_claim_follow_up_execution(
+                        claim_type=claim_type,
+                        user_id=user_id,
+                        limit=10,
+                    )
+                    refreshed_claim_history = refreshed_history.get('claims', {}).get(claim_type, []) if isinstance(refreshed_history, dict) else []
+                    results['follow_up_history'][claim_type] = refreshed_claim_history
+                    results['follow_up_history_summary'][claim_type] = summarize_follow_up_history_claim(refreshed_claim_history)
             results['claim_coverage_summary'][claim_type] = self._summarize_claim_coverage_claim(
                 claim_type,
                 results['claim_coverage_matrix'].get(claim_type, {}),

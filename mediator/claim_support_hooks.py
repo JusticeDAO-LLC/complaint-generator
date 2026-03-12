@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import hashlib
+from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -361,23 +362,90 @@ class ClaimSupportHook:
             'graph_status_counts': graph_status_counts,
         }
 
-    def _validation_status_for_element(
+    def _extract_logic_contradiction_count(
+        self,
+        reasoning_diagnostics: Optional[Dict[str, Any]],
+    ) -> int:
+        reasoning = reasoning_diagnostics if isinstance(reasoning_diagnostics, dict) else {}
+        logic_contradictions = reasoning.get('logic_contradictions', {})
+        if not isinstance(logic_contradictions, dict):
+            return 0
+        contradictions = logic_contradictions.get('contradictions', [])
+        if isinstance(contradictions, list):
+            return len(contradictions)
+        if contradictions:
+            return 1
+        summary = (reasoning.get('adapter_statuses') or {}).get('logic_contradictions', {})
+        if isinstance(summary, dict):
+            return int(summary.get('contradictions_count', 0) or 0)
+        return 0
+
+    def _build_validation_decision_trace(
         self,
         element: Dict[str, Any],
         contradiction_candidates: List[Dict[str, Any]],
-    ) -> str:
-        if contradiction_candidates:
-            return 'contradicted'
-        if element.get('status') == 'covered':
-            return 'supported'
-        if int(element.get('total_links', 0) or 0) > 0:
-            return 'incomplete'
-        return 'missing'
+        reasoning_diagnostics: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        reasoning = reasoning_diagnostics if isinstance(reasoning_diagnostics, dict) else {}
+        adapter_statuses = reasoning.get('adapter_statuses', {}) if isinstance(reasoning.get('adapter_statuses'), dict) else {}
+        heuristic_contradiction_count = len(contradiction_candidates)
+        logic_contradiction_count = self._extract_logic_contradiction_count(reasoning)
+        missing_support_kind_count = len(element.get('missing_support_kinds', []) or [])
+        total_links = int(element.get('total_links', 0) or 0)
+        coverage_status = str(element.get('status') or '')
+
+        if heuristic_contradiction_count:
+            decision_source = 'heuristic_contradictions'
+            validation_status = 'contradicted'
+        elif logic_contradiction_count:
+            decision_source = 'logic_contradictions'
+            validation_status = 'contradicted'
+        elif coverage_status == 'covered':
+            decision_source = 'covered_support'
+            validation_status = 'supported'
+        elif total_links > 0:
+            decision_source = 'partial_support'
+            validation_status = 'incomplete'
+        else:
+            decision_source = 'missing_support'
+            validation_status = 'missing'
+
+        notes: List[str] = []
+        if heuristic_contradiction_count:
+            notes.append('Heuristic contradiction candidates were found for this element.')
+        if logic_contradiction_count:
+            notes.append('Logic adapter reported contradiction output for this element.')
+        if missing_support_kind_count:
+            notes.append('Required support kinds are still missing for this element.')
+        if reasoning.get('used_fallback_ontology'):
+            notes.append('Fallback ontology was used because adapter ontology output was unavailable or empty.')
+
+        return {
+            'validation_status': validation_status,
+            'decision_source': decision_source,
+            'coverage_status': coverage_status,
+            'heuristic_contradiction_count': heuristic_contradiction_count,
+            'logic_contradiction_count': logic_contradiction_count,
+            'missing_support_kind_count': missing_support_kind_count,
+            'total_links': total_links,
+            'used_fallback_ontology': bool(reasoning.get('used_fallback_ontology')),
+            'adapter_statuses': {
+                name: {
+                    'status': str(summary.get('status') or ''),
+                    'implementation_status': str(summary.get('implementation_status') or ''),
+                    'backend_available': bool(summary.get('backend_available', False)),
+                }
+                for name, summary in adapter_statuses.items()
+                if isinstance(summary, dict)
+            },
+            'notes': notes,
+        }
 
     def _proof_gaps_for_element(
         self,
         element: Dict[str, Any],
         contradiction_candidates: List[Dict[str, Any]],
+        reasoning_diagnostics: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         proof_gaps: List[Dict[str, Any]] = []
         for support_kind in element.get('missing_support_kinds', []) or []:
@@ -394,6 +462,15 @@ class ClaimSupportHook:
                     'gap_type': 'contradiction_candidates',
                     'candidate_count': len(contradiction_candidates),
                     'message': 'Conflicting support facts require operator review.',
+                }
+            )
+        logic_contradiction_count = self._extract_logic_contradiction_count(reasoning_diagnostics)
+        if logic_contradiction_count and not contradiction_candidates:
+            proof_gaps.append(
+                {
+                    'gap_type': 'logic_contradictions',
+                    'candidate_count': logic_contradiction_count,
+                    'message': 'Logic adapter reported contradictions requiring operator review.',
                 }
             )
         return proof_gaps
@@ -654,6 +731,30 @@ class ClaimSupportHook:
             'fallback_ontology_count': fallback_ontology_count,
         }
 
+    def _summarize_claim_validation_decisions(self, elements: List[Dict[str, Any]]) -> Dict[str, Any]:
+        decision_source_counts: Counter[str] = Counter()
+        adapter_contradicted_element_count = 0
+        fallback_ontology_element_count = 0
+
+        for element in elements:
+            if not isinstance(element, dict):
+                continue
+            trace = element.get('proof_decision_trace', {})
+            if not isinstance(trace, dict):
+                continue
+            source = str(trace.get('decision_source') or 'unknown')
+            decision_source_counts[source] += 1
+            if int(trace.get('logic_contradiction_count', 0) or 0) > 0:
+                adapter_contradicted_element_count += 1
+            if bool(trace.get('used_fallback_ontology')):
+                fallback_ontology_element_count += 1
+
+        return {
+            'decision_source_counts': dict(sorted(decision_source_counts.items())),
+            'adapter_contradicted_element_count': adapter_contradicted_element_count,
+            'fallback_ontology_element_count': fallback_ontology_element_count,
+        }
+
     def _build_claim_validation(
         self,
         claim_type: str,
@@ -699,9 +800,6 @@ class ClaimSupportHook:
             if not gap_element and element.get('element_text'):
                 gap_element = gap_by_element.get(str(element.get('element_text')), {})
 
-            validation_status = self._validation_status_for_element(element, contradiction_candidates)
-            proof_gaps = self._proof_gaps_for_element(element, contradiction_candidates)
-            recommended_action = self._recommended_validation_action(validation_status, element)
             proof_diagnostics = {
                 'support_trace_count': int((element.get('support_trace_summary') or {}).get('trace_count', 0) or 0),
                 'fact_trace_count': int((element.get('support_trace_summary') or {}).get('fact_trace_count', 0) or 0),
@@ -716,6 +814,18 @@ class ClaimSupportHook:
                 element,
                 contradiction_candidates,
             )
+            decision_trace = self._build_validation_decision_trace(
+                element,
+                contradiction_candidates,
+                reasoning_diagnostics,
+            )
+            validation_status = decision_trace.get('validation_status', 'missing')
+            proof_gaps = self._proof_gaps_for_element(
+                element,
+                contradiction_candidates,
+                reasoning_diagnostics,
+            )
+            recommended_action = self._recommended_validation_action(validation_status, element)
             proof_diagnostics.update(
                 {
                     'reasoning_backend_available_count': int(reasoning_diagnostics.get('backend_available_count', 0) or 0),
@@ -723,6 +833,8 @@ class ClaimSupportHook:
                     'reasoning_ontology_entity_count': int(reasoning_diagnostics.get('ontology_entity_count', 0) or 0),
                     'reasoning_ontology_relationship_count': int(reasoning_diagnostics.get('ontology_relationship_count', 0) or 0),
                     'reasoning_adapter_statuses': reasoning_diagnostics.get('adapter_statuses', {}),
+                    'decision_source': decision_trace.get('decision_source', ''),
+                    'logic_contradiction_count': int(decision_trace.get('logic_contradiction_count', 0) or 0),
                 }
             )
             validation_status_counts[validation_status] += 1
@@ -746,6 +858,7 @@ class ClaimSupportHook:
                 'proof_gap_count': len(proof_gaps),
                 'proof_gaps': proof_gaps,
                 'proof_diagnostics': proof_diagnostics,
+                'proof_decision_trace': decision_trace,
                 'reasoning_diagnostics': reasoning_diagnostics,
                 'gap_context': gap_element,
             }
@@ -799,6 +912,7 @@ class ClaimSupportHook:
                 'total_facts': int(claim_matrix.get('total_facts', 0) or 0),
                 'graph_traced_link_count': graph_traced_link_count,
                 'reasoning': self._summarize_claim_reasoning_diagnostics(elements),
+                'decision': self._summarize_claim_validation_decisions(elements),
             },
             'elements': elements,
         }
@@ -2379,6 +2493,102 @@ class ClaimSupportHook:
             self.mediator.log('claim_follow_up_record_error', error=str(exc))
             return -1
 
+    def resolve_follow_up_manual_review(
+        self,
+        *,
+        user_id: str,
+        claim_type: Optional[str] = None,
+        claim_element_id: Optional[str] = None,
+        claim_element_text: Optional[str] = None,
+        resolution_status: str = 'resolved',
+        resolution_notes: Optional[str] = None,
+        related_execution_id: Optional[int] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        if not DUCKDB_AVAILABLE:
+            return {
+                'recorded': False,
+                'error': 'DuckDB not available',
+            }
+
+        related_entry: Dict[str, Any] = {}
+        if related_execution_id is not None:
+            try:
+                conn = duckdb.connect(self.db_path)
+                row = conn.execute(
+                    """
+                    SELECT id, claim_type, claim_element_id, claim_element_text, support_kind, status, metadata
+                    FROM claim_follow_up_execution
+                    WHERE id = ? AND user_id = ?
+                    LIMIT 1
+                    """,
+                    [related_execution_id, user_id],
+                ).fetchone()
+                conn.close()
+            except Exception as exc:
+                self.mediator.log('claim_follow_up_resolution_lookup_error', error=str(exc))
+                return {
+                    'recorded': False,
+                    'error': str(exc),
+                }
+            if row:
+                related_entry = {
+                    'execution_id': row[0],
+                    'claim_type': row[1],
+                    'claim_element_id': row[2],
+                    'claim_element_text': row[3],
+                    'support_kind': row[4],
+                    'status': row[5],
+                    'metadata': json.loads(row[6]) if row[6] else {},
+                }
+
+        resolved_claim_type = claim_type or related_entry.get('claim_type')
+        resolved_element_id = claim_element_id or related_entry.get('claim_element_id')
+        resolved_element_text = claim_element_text or related_entry.get('claim_element_text')
+        if not resolved_claim_type:
+            return {
+                'recorded': False,
+                'error': 'claim_type is required to record manual review resolution',
+            }
+
+        normalized_resolution_status = str(resolution_status or 'resolved').strip() or 'resolved'
+        element_ref = resolved_element_id or resolved_element_text or 'unknown_element'
+        query_text = f'manual_review_resolution::{resolved_claim_type}::{element_ref}::{normalized_resolution_status}'
+        resolution_metadata = {
+            'resolution_status': normalized_resolution_status,
+            'resolution_notes': resolution_notes or '',
+            'related_execution_id': related_entry.get('execution_id', related_execution_id),
+            'related_support_kind': related_entry.get('support_kind', 'manual_review'),
+            'execution_mode': 'manual_review_resolution',
+            'follow_up_focus': 'contradiction_resolution',
+            'query_strategy': 'manual_review_resolution',
+            'validation_status': (related_entry.get('metadata', {}) or {}).get('validation_status', 'contradicted'),
+        }
+        if isinstance(metadata, dict):
+            resolution_metadata.update(metadata)
+
+        record_id = self.record_follow_up_execution(
+            user_id=user_id,
+            claim_type=resolved_claim_type,
+            claim_element_id=resolved_element_id,
+            claim_element_text=resolved_element_text,
+            support_kind='manual_review',
+            query_text=query_text,
+            status='resolved_manual_review',
+            metadata=resolution_metadata,
+        )
+        return {
+            'recorded': record_id > 0,
+            'execution_id': record_id,
+            'claim_type': resolved_claim_type,
+            'claim_element_id': resolved_element_id,
+            'claim_element_text': resolved_element_text,
+            'support_kind': 'manual_review',
+            'status': 'resolved_manual_review',
+            'query_text': query_text,
+            'metadata': resolution_metadata,
+        }
+
     def get_follow_up_execution_status(
         self,
         user_id: str,
@@ -2446,3 +2656,106 @@ class ClaimSupportHook:
                 'in_cooldown': False,
                 'error': str(exc),
             }
+
+    def get_recent_follow_up_execution(
+        self,
+        user_id: str,
+        claim_type: Optional[str] = None,
+        claim_element_id: Optional[str] = None,
+        support_kind: Optional[str] = None,
+        limit: int = 10,
+    ) -> Dict[str, Any]:
+        if not DUCKDB_AVAILABLE:
+            return {
+                'user_id': user_id,
+                'claim_type': claim_type,
+                'limit': max(0, int(limit or 0)),
+                'claims': {},
+            }
+
+        normalized_limit = max(0, int(limit or 0))
+        if normalized_limit == 0:
+            return {
+                'user_id': user_id,
+                'claim_type': claim_type,
+                'limit': normalized_limit,
+                'claims': {},
+            }
+
+        where_clauses = ['user_id = ?']
+        parameters: List[Any] = [user_id]
+        if claim_type:
+            where_clauses.append('claim_type = ?')
+            parameters.append(claim_type)
+        if claim_element_id:
+            where_clauses.append('claim_element_id = ?')
+            parameters.append(claim_element_id)
+        if support_kind:
+            where_clauses.append('support_kind = ?')
+            parameters.append(support_kind)
+
+        parameters.append(normalized_limit)
+        try:
+            conn = duckdb.connect(self.db_path)
+            rows = conn.execute(
+                f"""
+                SELECT
+                    id,
+                    claim_type,
+                    claim_element_id,
+                    claim_element_text,
+                    support_kind,
+                    query_text,
+                    status,
+                    metadata,
+                    timestamp
+                FROM claim_follow_up_execution
+                WHERE {' AND '.join(where_clauses)}
+                ORDER BY timestamp DESC, id DESC
+                LIMIT ?
+                """,
+                parameters,
+            ).fetchall()
+            conn.close()
+        except Exception as exc:
+            self.mediator.log('claim_follow_up_recent_history_error', error=str(exc))
+            return {
+                'user_id': user_id,
+                'claim_type': claim_type,
+                'limit': normalized_limit,
+                'claims': {},
+                'error': str(exc),
+            }
+
+        claim_entries: Dict[str, List[Dict[str, Any]]] = {}
+        for row in rows:
+            metadata = json.loads(row[7]) if row[7] else {}
+            entry = {
+                'execution_id': row[0],
+                'claim_type': row[1],
+                'claim_element_id': row[2],
+                'claim_element_text': row[3],
+                'support_kind': row[4],
+                'query_text': row[5],
+                'status': row[6],
+                'timestamp': row[8].isoformat() if hasattr(row[8], 'isoformat') else row[8],
+                'metadata': metadata,
+                'execution_mode': metadata.get('execution_mode', ''),
+                'validation_status': metadata.get('validation_status', ''),
+                'follow_up_focus': metadata.get('follow_up_focus', ''),
+                'query_strategy': metadata.get('query_strategy', ''),
+                'recommended_action': metadata.get('recommended_action', ''),
+                'skip_reason': metadata.get('skip_reason', ''),
+                'resolution_status': metadata.get('resolution_status', ''),
+                'resolution_notes': metadata.get('resolution_notes', ''),
+                'related_execution_id': metadata.get('related_execution_id'),
+            }
+            current_claim = str(row[1] or '')
+            claim_entries.setdefault(current_claim, []).append(entry)
+
+        return {
+            'user_id': user_id,
+            'claim_type': claim_type,
+            'limit': normalized_limit,
+            'claims': claim_entries,
+        }

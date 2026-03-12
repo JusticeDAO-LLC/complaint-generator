@@ -1,8 +1,9 @@
 """Unit tests for claim support persistence hooks."""
 
+import json
 import os
 import tempfile
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import duckdb
 import pytest
@@ -976,9 +977,154 @@ class TestClaimSupportHook:
             assert protected_activity['reasoning_diagnostics']['adapter_statuses']['logic_contradictions']['operation'] == 'check_contradictions'
             assert protected_activity['reasoning_diagnostics']['adapter_statuses']['ontology_build']['operation'] == 'build_ontology'
             assert protected_activity['reasoning_diagnostics']['adapter_statuses']['ontology_validation']['operation'] == 'validate_ontology'
+            assert protected_activity['proof_decision_trace']['decision_source'] == 'heuristic_contradictions'
+            assert claim_validation['proof_diagnostics']['decision']['decision_source_counts']['heuristic_contradictions'] == 1
             assert element_statuses['Protected activity'] == 'contradicted'
             assert element_statuses['Adverse action'] == 'incomplete'
             assert element_statuses['Causal connection'] == 'missing'
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_claim_support_validation_uses_logic_contradictions_when_available(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.evidence_state = Mock()
+        mock_mediator.evidence_state.get_evidence_by_cid = Mock(return_value={
+            'id': 77,
+            'cid': 'QmEvidenceLogic',
+            'fact_count': 1,
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:evidence-77',
+                    'created': True,
+                    'reused': False,
+                }
+            },
+        })
+        mock_mediator.evidence_state.get_evidence_facts = Mock(return_value=[
+            {'fact_id': 'fact:logic', 'text': 'Employee submitted a discrimination complaint to management.'},
+        ])
+        mock_mediator.evidence_state.get_evidence_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:logic'}],
+            'relationships': [{'id': 'rel:logic'}],
+        })
+        mock_mediator.legal_authority_storage = Mock()
+        mock_mediator.legal_authority_storage.get_authority_by_citation = Mock(return_value=None)
+        mock_mediator.legal_authority_storage.get_authority_facts = Mock(return_value=[])
+        mock_mediator.legal_authority_storage.get_authority_graph = Mock(return_value={})
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidenceLogic',
+                support_label='HR complaint email',
+                source_table='evidence',
+            )
+
+            with patch('mediator.claim_support_hooks.check_contradictions', return_value={
+                'status': 'success',
+                'contradictions': [{'predicate_id': 'contradiction:1'}],
+                'predicate_count': 2,
+                'metadata': {
+                    'operation': 'check_contradictions',
+                    'backend_available': True,
+                    'implementation_status': 'implemented',
+                },
+            }):
+                validation = hook.get_claim_support_validation('testuser', 'employment')
+
+            protected_activity = validation['claims']['employment']['elements'][0]
+            assert protected_activity['validation_status'] == 'contradicted'
+            assert protected_activity['proof_decision_trace']['decision_source'] == 'logic_contradictions'
+            assert protected_activity['proof_decision_trace']['logic_contradiction_count'] == 1
+            assert validation['claims']['employment']['proof_diagnostics']['decision']['adapter_contradicted_element_count'] == 1
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_resolve_follow_up_manual_review_appends_resolution_event(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            initial_id = hook.record_follow_up_execution(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_id='employment:1',
+                claim_element_text='Protected activity',
+                support_kind='manual_review',
+                query_text='manual_review::employment::employment:1::resolve_contradiction',
+                status='skipped_manual_review',
+                metadata={
+                    'execution_mode': 'manual_review',
+                    'validation_status': 'contradicted',
+                    'follow_up_focus': 'contradiction_resolution',
+                    'query_strategy': 'standard_gap_targeted',
+                },
+            )
+
+            resolution = hook.resolve_follow_up_manual_review(
+                user_id='testuser',
+                related_execution_id=initial_id,
+                resolution_status='resolved_supported',
+                resolution_notes='Operator confirmed the contradictory evidence was reconciled.',
+                metadata={'reviewer': 'case-analyst'},
+            )
+            history = hook.get_recent_follow_up_execution('testuser', 'employment', limit=5)
+
+            assert resolution['recorded'] is True
+            assert resolution['status'] == 'resolved_manual_review'
+            assert resolution['metadata']['resolution_status'] == 'resolved_supported'
+            assert resolution['metadata']['reviewer'] == 'case-analyst'
+            assert history['claims']['employment'][0]['status'] == 'resolved_manual_review'
+            assert history['claims']['employment'][0]['resolution_status'] == 'resolved_supported'
+            assert history['claims']['employment'][0]['related_execution_id'] == initial_id
+            assert history['claims']['employment'][1]['status'] == 'skipped_manual_review'
+
+            conn = duckdb.connect(db_path)
+            rows = conn.execute(
+                """
+                SELECT status, metadata
+                FROM claim_follow_up_execution
+                WHERE user_id = ? AND claim_type = ?
+                ORDER BY id ASC
+                """,
+                ['testuser', 'employment'],
+            ).fetchall()
+            conn.close()
+
+            assert len(rows) == 2
+            assert rows[1][0] == 'resolved_manual_review'
+            assert json.loads(rows[1][1])['resolution_notes'] == (
+                'Operator confirmed the contradictory evidence was reconciled.'
+            )
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)

@@ -862,6 +862,50 @@ class Mediator:
 			required_support_kinds=required_support_kinds,
 		)
 
+	def get_recent_claim_follow_up_execution(
+		self,
+		claim_type: str = None,
+		user_id: str = None,
+		claim_element_id: str = None,
+		support_kind: str = None,
+		limit: int = 10,
+	):
+		"""Return recent follow-up execution history grouped by claim for operator review."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		return self.claim_support.get_recent_follow_up_execution(
+			user_id,
+			claim_type=claim_type,
+			claim_element_id=claim_element_id,
+			support_kind=support_kind,
+			limit=limit,
+		)
+
+	def resolve_claim_follow_up_manual_review(
+		self,
+		claim_type: str = None,
+		user_id: str = None,
+		claim_element_id: str = None,
+		claim_element: str = None,
+		resolution_status: str = 'resolved',
+		resolution_notes: str = None,
+		related_execution_id: int = None,
+		metadata: Dict[str, Any] = None,
+	):
+		"""Record an operator resolution event for a manual-review follow-up item."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		return self.claim_support.resolve_follow_up_manual_review(
+			user_id=user_id,
+			claim_type=claim_type,
+			claim_element_id=claim_element_id,
+			claim_element_text=claim_element,
+			resolution_status=resolution_status,
+			resolution_notes=resolution_notes,
+			related_execution_id=related_execution_id,
+			metadata=metadata,
+		)
+
 	def build_claim_support_review_payload(
 		self,
 		claim_type: str = None,
@@ -1604,6 +1648,11 @@ class Mediator:
 			if isinstance(validation_claim.get('proof_diagnostics'), dict)
 			else {}
 		)
+		decision_summary = (
+			(validation_claim.get('proof_diagnostics') or {}).get('decision', {})
+			if isinstance(validation_claim.get('proof_diagnostics'), dict)
+			else {}
+		)
 		elements = coverage_claim.get('elements', []) if isinstance(coverage_claim.get('elements', []), list) else []
 		if elements:
 			missing_elements = [
@@ -1692,6 +1741,9 @@ class Mediator:
 			'reasoning_ontology_entity_count': int(reasoning_summary.get('ontology_entity_count', 0) or 0),
 			'reasoning_ontology_relationship_count': int(reasoning_summary.get('ontology_relationship_count', 0) or 0),
 			'reasoning_fallback_ontology_count': int(reasoning_summary.get('fallback_ontology_count', 0) or 0),
+			'decision_source_counts': decision_summary.get('decision_source_counts', {}),
+			'adapter_contradicted_element_count': int(decision_summary.get('adapter_contradicted_element_count', 0) or 0),
+			'decision_fallback_ontology_element_count': int(decision_summary.get('fallback_ontology_element_count', 0) or 0),
 			'total_elements': coverage_claim.get('total_elements', 0),
 			'total_links': coverage_claim.get('total_links', 0),
 			'total_facts': coverage_claim.get('total_facts', 0),

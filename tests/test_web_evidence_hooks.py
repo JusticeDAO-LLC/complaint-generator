@@ -704,6 +704,21 @@ class TestWebEvidenceIntegrationHook:
                     }
                 }
             })
+            mock_mediator.get_recent_claim_follow_up_execution = Mock(return_value={
+                'claims': {
+                    'employment discrimination': [
+                        {
+                            'support_kind': 'manual_review',
+                            'status': 'skipped_manual_review',
+                            'execution_mode': 'manual_review',
+                            'validation_status': 'contradicted',
+                            'follow_up_focus': 'contradiction_resolution',
+                            'query_strategy': 'standard_gap_targeted',
+                            'timestamp': '2026-03-12T10:20:00',
+                        }
+                    ]
+                }
+            })
             mock_mediator.persist_claim_support_diagnostics = Mock(return_value={
                 'claims': {
                     'employment discrimination': {
@@ -769,6 +784,9 @@ class TestWebEvidenceIntegrationHook:
             assert result['follow_up_plan_summary']['employment discrimination']['semantic_cluster_count'] == 1
             assert result['follow_up_plan_summary']['employment discrimination']['semantic_duplicate_count'] == 2
             assert result['follow_up_plan_summary']['employment discrimination']['recommended_actions']['review_existing_support'] == 1
+            assert result['follow_up_history']['employment discrimination'][0]['support_kind'] == 'manual_review'
+            assert result['follow_up_history_summary']['employment discrimination']['manual_review_entry_count'] == 1
+            assert result['follow_up_history_summary']['employment discrimination']['contradiction_related_entry_count'] == 1
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
@@ -793,6 +811,29 @@ class TestWebEvidenceIntegrationHook:
             mock_mediator.get_claim_support_validation = Mock(return_value={'claims': {}})
             mock_mediator.persist_claim_support_diagnostics = Mock(return_value={'claims': {}})
             mock_mediator.get_claim_follow_up_plan = Mock(return_value={'claims': {}})
+            mock_mediator.get_recent_claim_follow_up_execution = Mock(side_effect=[
+                {'claims': {'employment discrimination': []}},
+                {'claims': {'employment discrimination': [
+                    {
+                        'support_kind': 'evidence',
+                        'status': 'executed',
+                        'execution_mode': 'review_and_retrieve',
+                        'validation_status': 'contradicted',
+                        'follow_up_focus': 'contradiction_resolution',
+                        'query_strategy': 'contradiction_targeted',
+                        'timestamp': '2026-03-12T11:05:00',
+                    },
+                    {
+                        'support_kind': 'manual_review',
+                        'status': 'skipped_manual_review',
+                        'execution_mode': 'manual_review',
+                        'validation_status': 'contradicted',
+                        'follow_up_focus': 'contradiction_resolution',
+                        'query_strategy': 'standard_gap_targeted',
+                        'timestamp': '2026-03-12T11:04:00',
+                    },
+                ]}},
+            ])
             mock_mediator.execute_claim_follow_up_plan = Mock(return_value={
                 'claims': {
                     'employment discrimination': {
@@ -853,6 +894,12 @@ class TestWebEvidenceIntegrationHook:
             assert result['follow_up_execution_summary']['employment discrimination']['suppressed_task_count'] == 1
             assert result['follow_up_execution_summary']['employment discrimination']['semantic_cluster_count'] == 3
             assert result['follow_up_execution_summary']['employment discrimination']['semantic_duplicate_count'] == 4
+            assert result['follow_up_history_summary']['employment discrimination']['total_entry_count'] == 2
+            assert result['follow_up_history_summary']['employment discrimination']['manual_review_entry_count'] == 1
+            assert result['follow_up_history_summary']['employment discrimination']['query_strategy_counts'] == {
+                'contradiction_targeted': 1,
+                'standard_gap_targeted': 1,
+            }
             mock_mediator.execute_claim_follow_up_plan.assert_called_once()
             assert mock_mediator.execute_claim_follow_up_plan.call_args.kwargs['support_kind'] == 'evidence'
         except ImportError as e:

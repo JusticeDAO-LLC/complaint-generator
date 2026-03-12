@@ -143,7 +143,16 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                         "ontology_entity_count": 5,
                         "ontology_relationship_count": 4,
                         "fallback_ontology_count": 1,
-                    }
+                    },
+                    "decision": {
+                        "decision_source_counts": {
+                            "heuristic_contradictions": 1,
+                            "partial_support": 1,
+                            "missing_support": 1,
+                        },
+                        "adapter_contradicted_element_count": 0,
+                        "fallback_ontology_element_count": 1,
+                    },
                 },
                 "elements": [
                     {
@@ -176,6 +185,40 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                     }
                 ],
             }
+        }
+    }
+    mediator.get_recent_claim_follow_up_execution.return_value = {
+        "claims": {
+            "retaliation": [
+                {
+                    "execution_id": 21,
+                    "claim_type": "retaliation",
+                    "claim_element_id": "retaliation:2",
+                    "claim_element_text": "Adverse action",
+                    "support_kind": "manual_review",
+                    "query_text": "manual_review::retaliation::retaliation:2::resolve_contradiction",
+                    "status": "skipped_manual_review",
+                    "timestamp": "2026-03-12T10:15:00",
+                    "execution_mode": "manual_review",
+                    "validation_status": "contradicted",
+                    "follow_up_focus": "contradiction_resolution",
+                    "query_strategy": "standard_gap_targeted",
+                },
+                {
+                    "execution_id": 20,
+                    "claim_type": "retaliation",
+                    "claim_element_id": "retaliation:3",
+                    "claim_element_text": "Causal connection",
+                    "support_kind": "authority",
+                    "query_text": "\"retaliation\" \"Causal connection\" case law",
+                    "status": "executed",
+                    "timestamp": "2026-03-12T09:45:00",
+                    "execution_mode": "retrieve_support",
+                    "validation_status": "incomplete",
+                    "follow_up_focus": "support_gap_closure",
+                    "query_strategy": "standard_gap_targeted",
+                },
+            ]
         }
     }
     mediator.summarize_claim_support.return_value = {
@@ -299,6 +342,13 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
     assert payload["claim_coverage_summary"]["retaliation"]["reasoning_ontology_entity_count"] == 5
     assert payload["claim_coverage_summary"]["retaliation"]["reasoning_ontology_relationship_count"] == 4
     assert payload["claim_coverage_summary"]["retaliation"]["reasoning_fallback_ontology_count"] == 1
+    assert payload["claim_coverage_summary"]["retaliation"]["decision_source_counts"] == {
+        "heuristic_contradictions": 1,
+        "partial_support": 1,
+        "missing_support": 1,
+    }
+    assert payload["claim_coverage_summary"]["retaliation"]["adapter_contradicted_element_count"] == 0
+    assert payload["claim_coverage_summary"]["retaliation"]["decision_fallback_ontology_element_count"] == 1
     assert payload["claim_support_validation"]["retaliation"]["validation_status"] == "contradicted"
     assert payload["claim_support_snapshot_summary"]["retaliation"] == {
         "total_snapshot_count": 0,
@@ -309,6 +359,34 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         "stale_snapshot_kinds": [],
         "retention_limits": [],
         "total_pruned_snapshot_count": 0,
+    }
+    assert payload["follow_up_history"]["retaliation"][0]["support_kind"] == "manual_review"
+    assert payload["follow_up_history_summary"]["retaliation"] == {
+        "total_entry_count": 2,
+        "status_counts": {
+            "skipped_manual_review": 1,
+            "executed": 1,
+        },
+        "support_kind_counts": {
+            "manual_review": 1,
+            "authority": 1,
+        },
+        "execution_mode_counts": {
+            "manual_review": 1,
+            "retrieve_support": 1,
+        },
+        "query_strategy_counts": {
+            "standard_gap_targeted": 2,
+        },
+        "follow_up_focus_counts": {
+            "contradiction_resolution": 1,
+            "support_gap_closure": 1,
+        },
+        "resolution_status_counts": {},
+        "manual_review_entry_count": 1,
+        "resolved_entry_count": 0,
+        "contradiction_related_entry_count": 1,
+        "latest_attempted_at": "2026-03-12T10:15:00",
     }
     assert payload["claim_reasoning_review"]["retaliation"] == {
         "claim_type": "retaliation",
@@ -384,6 +462,11 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         claim_type="retaliation",
         user_id="state-user",
         required_support_kinds=["evidence", "authority"],
+    )
+    mediator.get_recent_claim_follow_up_execution.assert_called_once_with(
+        claim_type="retaliation",
+        user_id="state-user",
+        limit=10,
     )
     mediator.execute_claim_follow_up_plan.assert_called_once_with(
         claim_type="retaliation",

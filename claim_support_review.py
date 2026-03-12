@@ -169,6 +169,80 @@ def summarize_claim_reasoning_review(
     }
 
 
+def summarize_follow_up_history_claim(
+    history_entries: Optional[List[Dict[str, Any]]],
+) -> Dict[str, Any]:
+    entries = history_entries if isinstance(history_entries, list) else []
+    status_counts: Dict[str, int] = {}
+    support_kind_counts: Dict[str, int] = {}
+    execution_mode_counts: Dict[str, int] = {}
+    query_strategy_counts: Dict[str, int] = {}
+    follow_up_focus_counts: Dict[str, int] = {}
+    resolution_status_counts: Dict[str, int] = {}
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        status = str(entry.get("status") or "unknown")
+        support_kind = str(entry.get("support_kind") or "unknown")
+        execution_mode = str(entry.get("execution_mode") or "unknown")
+        query_strategy = str(entry.get("query_strategy") or "unknown")
+        follow_up_focus = str(entry.get("follow_up_focus") or "unknown")
+        resolution_status = str(entry.get("resolution_status") or "")
+
+        status_counts[status] = status_counts.get(status, 0) + 1
+        support_kind_counts[support_kind] = support_kind_counts.get(support_kind, 0) + 1
+        execution_mode_counts[execution_mode] = execution_mode_counts.get(execution_mode, 0) + 1
+        query_strategy_counts[query_strategy] = query_strategy_counts.get(query_strategy, 0) + 1
+        follow_up_focus_counts[follow_up_focus] = follow_up_focus_counts.get(follow_up_focus, 0) + 1
+        if resolution_status:
+            resolution_status_counts[resolution_status] = resolution_status_counts.get(resolution_status, 0) + 1
+
+    return {
+        "total_entry_count": len([entry for entry in entries if isinstance(entry, dict)]),
+        "status_counts": status_counts,
+        "support_kind_counts": support_kind_counts,
+        "execution_mode_counts": execution_mode_counts,
+        "query_strategy_counts": query_strategy_counts,
+        "follow_up_focus_counts": follow_up_focus_counts,
+        "resolution_status_counts": resolution_status_counts,
+        "manual_review_entry_count": len(
+            [
+                entry
+                for entry in entries
+                if isinstance(entry, dict) and entry.get("support_kind") == "manual_review"
+            ]
+        ),
+        "resolved_entry_count": len(
+            [
+                entry
+                for entry in entries
+                if isinstance(entry, dict)
+                and (
+                    entry.get("status") == "resolved_manual_review"
+                    or bool(entry.get("resolution_status"))
+                )
+            ]
+        ),
+        "contradiction_related_entry_count": len(
+            [
+                entry
+                for entry in entries
+                if isinstance(entry, dict)
+                and (
+                    entry.get("follow_up_focus") == "contradiction_resolution"
+                    or entry.get("validation_status") == "contradicted"
+                )
+            ]
+        ),
+        "latest_attempted_at": (
+            entries[0].get("timestamp")
+            if entries and isinstance(entries[0], dict)
+            else None
+        ),
+    }
+
+
 def _summarize_claim_coverage_claim(
     claim_type: str,
     coverage_claim: Dict[str, Any],
@@ -180,6 +254,11 @@ def _summarize_claim_coverage_claim(
     validation_claim = validation_claim if isinstance(validation_claim, dict) else {}
     reasoning_summary = (
         (validation_claim.get("proof_diagnostics") or {}).get("reasoning", {})
+        if isinstance(validation_claim.get("proof_diagnostics"), dict)
+        else {}
+    )
+    decision_summary = (
+        (validation_claim.get("proof_diagnostics") or {}).get("decision", {})
         if isinstance(validation_claim.get("proof_diagnostics"), dict)
         else {}
     )
@@ -288,6 +367,13 @@ def _summarize_claim_coverage_claim(
         ),
         "reasoning_fallback_ontology_count": int(
             reasoning_summary.get("fallback_ontology_count", 0) or 0
+        ),
+        "decision_source_counts": decision_summary.get("decision_source_counts", {}),
+        "adapter_contradicted_element_count": int(
+            decision_summary.get("adapter_contradicted_element_count", 0) or 0
+        ),
+        "decision_fallback_ontology_element_count": int(
+            decision_summary.get("fallback_ontology_element_count", 0) or 0
         ),
         "total_elements": coverage_claim.get("total_elements", 0),
         "total_links": coverage_claim.get("total_links", 0),
@@ -514,6 +600,24 @@ def build_claim_support_review_payload(
             )
             for claim_name in coverage_claims.keys()
         },
+    }
+
+    recent_follow_up_history = mediator.get_recent_claim_follow_up_execution(
+        claim_type=request.claim_type,
+        user_id=resolved_user_id,
+        limit=10,
+    )
+    recent_follow_up_claims = (
+        recent_follow_up_history.get("claims", {})
+        if isinstance(recent_follow_up_history, dict)
+        else {}
+    )
+    payload["follow_up_history"] = recent_follow_up_claims
+    payload["follow_up_history_summary"] = {
+        claim_name: summarize_follow_up_history_claim(
+            recent_follow_up_claims.get(claim_name, [])
+        )
+        for claim_name in coverage_claims.keys()
     }
 
     if request.include_follow_up_plan:
