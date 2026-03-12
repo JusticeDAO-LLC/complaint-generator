@@ -1060,6 +1060,188 @@ class TestClaimSupportHook:
             if os.path.exists(db_path):
                 os.unlink(db_path)
 
+    def test_get_claim_support_validation_uses_logic_proof_for_supported_elements(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.evidence_state = Mock()
+        mock_mediator.evidence_state.get_evidence_by_cid = Mock(return_value={
+            'id': 88,
+            'cid': 'QmEvidenceProvable',
+            'fact_count': 1,
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:evidence-88',
+                    'created': True,
+                    'reused': False,
+                }
+            },
+        })
+        mock_mediator.evidence_state.get_evidence_facts = Mock(return_value=[
+            {'fact_id': 'fact:provable', 'text': 'Employee submitted a discrimination complaint to management.'},
+        ])
+        mock_mediator.evidence_state.get_evidence_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:provable'}],
+            'relationships': [{'id': 'rel:provable'}],
+        })
+        mock_mediator.legal_authority_storage = Mock()
+        mock_mediator.legal_authority_storage.get_authority_by_citation = Mock(return_value=None)
+        mock_mediator.legal_authority_storage.get_authority_facts = Mock(return_value=[])
+        mock_mediator.legal_authority_storage.get_authority_graph = Mock(return_value={})
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidenceProvable',
+                support_label='HR complaint email',
+                source_table='evidence',
+            )
+
+            with patch('mediator.claim_support_hooks.prove_claim_elements', return_value={
+                'status': 'success',
+                'provable_elements': [{'predicate_id': 'employment:protected-activity'}],
+                'unprovable_elements': [],
+                'predicate_count': 2,
+                'metadata': {
+                    'operation': 'prove_claim_elements',
+                    'backend_available': True,
+                    'implementation_status': 'implemented',
+                },
+            }), patch('mediator.claim_support_hooks.validate_ontology', return_value={
+                'status': 'success',
+                'result': {'valid': True},
+                'metadata': {
+                    'operation': 'validate_ontology',
+                    'backend_available': True,
+                    'implementation_status': 'implemented',
+                },
+            }):
+                validation = hook.get_claim_support_validation(
+                    'testuser',
+                    'employment',
+                    required_support_kinds=['evidence'],
+                )
+
+            protected_activity = validation['claims']['employment']['elements'][0]
+            assert protected_activity['validation_status'] == 'supported'
+            assert protected_activity['proof_decision_trace']['decision_source'] == 'logic_proof_supported'
+            assert protected_activity['proof_decision_trace']['logic_provable_count'] == 1
+            assert protected_activity['proof_decision_trace']['ontology_validation_signal'] == 'valid'
+            assert validation['claims']['employment']['proof_diagnostics']['decision']['proof_supported_element_count'] == 1
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_claim_support_validation_downgrades_supported_element_when_logic_unprovable(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.evidence_state = Mock()
+        mock_mediator.evidence_state.get_evidence_by_cid = Mock(return_value={
+            'id': 89,
+            'cid': 'QmEvidenceUnprovable',
+            'fact_count': 1,
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:evidence-89',
+                    'created': True,
+                    'reused': False,
+                }
+            },
+        })
+        mock_mediator.evidence_state.get_evidence_facts = Mock(return_value=[
+            {'fact_id': 'fact:unprovable', 'text': 'Employee submitted a discrimination complaint to management.'},
+        ])
+        mock_mediator.evidence_state.get_evidence_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:unprovable'}],
+            'relationships': [{'id': 'rel:unprovable'}],
+        })
+        mock_mediator.legal_authority_storage = Mock()
+        mock_mediator.legal_authority_storage.get_authority_by_citation = Mock(return_value=None)
+        mock_mediator.legal_authority_storage.get_authority_facts = Mock(return_value=[])
+        mock_mediator.legal_authority_storage.get_authority_graph = Mock(return_value={})
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidenceUnprovable',
+                support_label='HR complaint email',
+                source_table='evidence',
+            )
+
+            with patch('mediator.claim_support_hooks.prove_claim_elements', return_value={
+                'status': 'success',
+                'provable_elements': [],
+                'unprovable_elements': [{'predicate_id': 'employment:protected-activity'}],
+                'predicate_count': 2,
+                'metadata': {
+                    'operation': 'prove_claim_elements',
+                    'backend_available': True,
+                    'implementation_status': 'implemented',
+                },
+            }), patch('mediator.claim_support_hooks.validate_ontology', return_value={
+                'status': 'success',
+                'result': {'valid': False},
+                'metadata': {
+                    'operation': 'validate_ontology',
+                    'backend_available': True,
+                    'implementation_status': 'implemented',
+                },
+            }):
+                validation = hook.get_claim_support_validation(
+                    'testuser',
+                    'employment',
+                    required_support_kinds=['evidence'],
+                )
+
+            protected_activity = validation['claims']['employment']['elements'][0]
+            assert protected_activity['validation_status'] == 'incomplete'
+            assert protected_activity['recommended_action'] == 'review_existing_support'
+            assert protected_activity['proof_decision_trace']['decision_source'] == 'logic_unprovable'
+            assert protected_activity['proof_decision_trace']['logic_unprovable_count'] == 1
+            assert protected_activity['proof_decision_trace']['ontology_validation_signal'] == 'invalid'
+            assert {gap['gap_type'] for gap in protected_activity['proof_gaps']} == {
+                'logic_unprovable',
+                'ontology_validation_failed',
+            }
+            assert validation['claims']['employment']['proof_diagnostics']['decision']['logic_unprovable_element_count'] == 1
+            assert validation['claims']['employment']['proof_diagnostics']['decision']['ontology_invalid_element_count'] == 1
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
     def test_resolve_follow_up_manual_review_appends_resolution_event(self):
         try:
             from mediator.claim_support_hooks import ClaimSupportHook

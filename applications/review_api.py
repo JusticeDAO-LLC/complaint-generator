@@ -3,8 +3,10 @@ from typing import Any, Dict
 from fastapi import APIRouter, FastAPI, Response
 from claim_support_review import (
     ClaimSupportFollowUpExecuteRequest,
+    ClaimSupportManualReviewResolveRequest,
     ClaimSupportReviewRequest,
     build_claim_support_follow_up_execution_payload,
+    build_claim_support_manual_review_resolution_payload,
     build_claim_support_review_payload,
 )
 
@@ -57,6 +59,12 @@ def create_claim_support_review_router(mediator: Any) -> APIRouter:
         request: ClaimSupportFollowUpExecuteRequest,
     ) -> Dict[str, Any]:
         return build_claim_support_follow_up_execution_payload(mediator, request)
+
+    @router.post("/api/claim-support/resolve-manual-review")
+    async def claim_support_resolve_manual_review(
+        request: ClaimSupportManualReviewResolveRequest,
+    ) -> Dict[str, Any]:
+        return build_claim_support_manual_review_resolution_payload(mediator, request)
 
     return router
 

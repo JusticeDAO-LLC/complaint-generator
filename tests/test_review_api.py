@@ -4,8 +4,10 @@ from unittest.mock import Mock
 from fastapi import Response
 from claim_support_review import (
     ClaimSupportFollowUpExecuteRequest,
+    ClaimSupportManualReviewResolveRequest,
     ClaimSupportReviewRequest,
     build_claim_support_follow_up_execution_payload,
+    build_claim_support_manual_review_resolution_payload,
     build_claim_support_review_payload,
 )
 from applications.review_api import (
@@ -152,6 +154,9 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                         },
                         "adapter_contradicted_element_count": 0,
                         "fallback_ontology_element_count": 1,
+                        "proof_supported_element_count": 0,
+                        "logic_unprovable_element_count": 0,
+                        "ontology_invalid_element_count": 0,
                     },
                 },
                 "elements": [
@@ -349,6 +354,9 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
     }
     assert payload["claim_coverage_summary"]["retaliation"]["adapter_contradicted_element_count"] == 0
     assert payload["claim_coverage_summary"]["retaliation"]["decision_fallback_ontology_element_count"] == 1
+    assert payload["claim_coverage_summary"]["retaliation"]["proof_supported_element_count"] == 0
+    assert payload["claim_coverage_summary"]["retaliation"]["logic_unprovable_element_count"] == 0
+    assert payload["claim_coverage_summary"]["retaliation"]["ontology_invalid_element_count"] == 0
     assert payload["claim_support_validation"]["retaliation"]["validation_status"] == "contradicted"
     assert payload["claim_support_snapshot_summary"]["retaliation"] == {
         "total_snapshot_count": 0,
@@ -939,6 +947,101 @@ def test_claim_support_follow_up_execution_payload_can_skip_post_review():
     mediator.get_claim_follow_up_plan.assert_not_called()
 
 
+def test_claim_support_manual_review_resolution_payload_returns_post_resolution_review():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.resolve_claim_follow_up_manual_review.return_value = {
+        "recorded": True,
+        "execution_id": 91,
+        "claim_type": "retaliation",
+        "claim_element_id": "retaliation:2",
+        "claim_element_text": "Adverse action",
+        "support_kind": "manual_review",
+        "status": "resolved_manual_review",
+        "query_text": "manual_review_resolution::retaliation::retaliation:2::resolved_supported",
+        "metadata": {
+            "resolution_status": "resolved_supported",
+            "resolution_notes": "Operator confirmed the contradiction was reconciled.",
+            "related_execution_id": 21,
+        },
+    }
+    mediator.get_claim_coverage_matrix.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_claim_overview.return_value = {"claims": {"retaliation": {"missing": [], "partially_supported": []}}}
+    mediator.get_claim_support_diagnostic_snapshots.return_value = {"claims": {}}
+    mediator.get_claim_support_gaps.return_value = {"claims": {"retaliation": {"unresolved_count": 0, "unresolved_elements": []}}}
+    mediator.get_claim_contradiction_candidates.return_value = {"claims": {"retaliation": {"candidate_count": 0, "candidates": []}}}
+    mediator.get_claim_support_validation.return_value = {"claims": {"retaliation": {"validation_status": "supported", "proof_diagnostics": {"reasoning": {}, "decision": {}}}}}
+    mediator.get_recent_claim_follow_up_execution.return_value = {
+        "claims": {
+            "retaliation": [
+                {
+                    "execution_id": 91,
+                    "support_kind": "manual_review",
+                    "status": "resolved_manual_review",
+                    "timestamp": "2026-03-12T11:05:00",
+                    "execution_mode": "manual_review_resolution",
+                    "follow_up_focus": "contradiction_resolution",
+                    "query_strategy": "manual_review_resolution",
+                    "resolution_status": "resolved_supported",
+                }
+            ]
+        }
+    }
+    mediator.get_claim_follow_up_plan.return_value = {"claims": {}}
+    mediator.summarize_claim_support.return_value = {"claims": {"retaliation": {"total_links": 2}}}
+
+    payload = build_claim_support_manual_review_resolution_payload(
+        mediator,
+        ClaimSupportManualReviewResolveRequest(
+            claim_type="retaliation",
+            claim_element_id="retaliation:2",
+            claim_element="Adverse action",
+            resolution_status="resolved_supported",
+            resolution_notes="Operator confirmed the contradiction was reconciled.",
+            related_execution_id=21,
+            resolution_metadata={"reviewer": "case-analyst"},
+        ),
+    )
+
+    assert payload["user_id"] == "state-user"
+    assert payload["resolution_result"]["status"] == "resolved_manual_review"
+    assert payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["resolved_entry_count"] == 1
+    assert payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["resolution_status_counts"] == {
+        "resolved_supported": 1,
+    }
+    mediator.resolve_claim_follow_up_manual_review.assert_called_once_with(
+        claim_type="retaliation",
+        user_id="state-user",
+        claim_element_id="retaliation:2",
+        claim_element="Adverse action",
+        resolution_status="resolved_supported",
+        resolution_notes="Operator confirmed the contradiction was reconciled.",
+        related_execution_id=21,
+        metadata={"reviewer": "case-analyst"},
+    )
+
+
+def test_claim_support_manual_review_resolution_payload_can_skip_post_review():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username=None, hashed_username="hashed-user")
+    mediator.resolve_claim_follow_up_manual_review.return_value = {"recorded": True, "status": "resolved_manual_review"}
+
+    payload = build_claim_support_manual_review_resolution_payload(
+        mediator,
+        ClaimSupportManualReviewResolveRequest(
+            user_id="api-user",
+            claim_type="civil rights",
+            include_post_resolution_review=False,
+        ),
+    )
+
+    assert payload["user_id"] == "api-user"
+    assert "post_resolution_review" not in payload
+    mediator.get_claim_coverage_matrix.assert_not_called()
+    mediator.get_claim_overview.assert_not_called()
+    mediator.get_claim_follow_up_plan.assert_not_called()
+
+
 def test_claim_support_review_payload_summarizes_manual_review_tasks():
     mediator = Mock()
     mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
@@ -1014,6 +1117,12 @@ def test_claim_support_review_endpoint_is_registered_on_app():
     )
     assert any(
         route.path == "/api/claim-support/execute-follow-up"
+        and "POST" in route.methods
+        for route in app.routes
+        if hasattr(route, "methods")
+    )
+    assert any(
+        route.path == "/api/claim-support/resolve-manual-review"
         and "POST" in route.methods
         for route in app.routes
         if hasattr(route, "methods")

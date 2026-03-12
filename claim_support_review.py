@@ -37,6 +37,24 @@ class ClaimSupportFollowUpExecuteRequest(BaseModel):
     include_follow_up_plan: bool = True
 
 
+class ClaimSupportManualReviewResolveRequest(BaseModel):
+    user_id: Optional[str] = None
+    claim_type: Optional[str] = None
+    claim_element_id: Optional[str] = None
+    claim_element: Optional[str] = None
+    resolution_status: str = "resolved"
+    resolution_notes: Optional[str] = None
+    related_execution_id: Optional[int] = None
+    resolution_metadata: Dict[str, Any] = Field(default_factory=dict)
+    required_support_kinds: List[str] = Field(
+        default_factory=lambda: list(DEFAULT_REQUIRED_SUPPORT_KINDS)
+    )
+    include_post_resolution_review: bool = True
+    include_support_summary: bool = True
+    include_overview: bool = True
+    include_follow_up_plan: bool = True
+
+
 def _resolve_user_id(mediator: Any, user_id: Optional[str]) -> str:
     if user_id:
         return user_id
@@ -374,6 +392,15 @@ def _summarize_claim_coverage_claim(
         ),
         "decision_fallback_ontology_element_count": int(
             decision_summary.get("fallback_ontology_element_count", 0) or 0
+        ),
+        "proof_supported_element_count": int(
+            decision_summary.get("proof_supported_element_count", 0) or 0
+        ),
+        "logic_unprovable_element_count": int(
+            decision_summary.get("logic_unprovable_element_count", 0) or 0
+        ),
+        "ontology_invalid_element_count": int(
+            decision_summary.get("ontology_invalid_element_count", 0) or 0
         ),
         "total_elements": coverage_claim.get("total_elements", 0),
         "total_links": coverage_claim.get("total_links", 0),
@@ -723,6 +750,54 @@ def build_claim_support_follow_up_execution_payload(
                 execute_follow_up=False,
                 follow_up_support_kind=request.follow_up_support_kind,
                 follow_up_max_tasks_per_claim=request.follow_up_max_tasks_per_claim,
+            ),
+        )
+
+    return payload
+
+
+def build_claim_support_manual_review_resolution_payload(
+    mediator: Any,
+    request: ClaimSupportManualReviewResolveRequest,
+) -> Dict[str, Any]:
+    resolved_user_id = _resolve_user_id(mediator, request.user_id)
+    required_support_kinds = (
+        request.required_support_kinds or list(DEFAULT_REQUIRED_SUPPORT_KINDS)
+    )
+
+    resolution_result = mediator.resolve_claim_follow_up_manual_review(
+        claim_type=request.claim_type,
+        user_id=resolved_user_id,
+        claim_element_id=request.claim_element_id,
+        claim_element=request.claim_element,
+        resolution_status=request.resolution_status,
+        resolution_notes=request.resolution_notes,
+        related_execution_id=request.related_execution_id,
+        metadata=request.resolution_metadata,
+    )
+
+    payload: Dict[str, Any] = {
+        "user_id": resolved_user_id,
+        "claim_type": request.claim_type,
+        "claim_element_id": request.claim_element_id,
+        "claim_element": request.claim_element,
+        "resolution_status": request.resolution_status,
+        "resolution_notes": request.resolution_notes,
+        "related_execution_id": request.related_execution_id,
+        "resolution_result": resolution_result,
+    }
+
+    if request.include_post_resolution_review:
+        payload["post_resolution_review"] = build_claim_support_review_payload(
+            mediator,
+            ClaimSupportReviewRequest(
+                user_id=resolved_user_id,
+                claim_type=request.claim_type,
+                required_support_kinds=required_support_kinds,
+                include_support_summary=request.include_support_summary,
+                include_overview=request.include_overview,
+                include_follow_up_plan=request.include_follow_up_plan,
+                execute_follow_up=False,
             ),
         )
 

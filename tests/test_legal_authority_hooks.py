@@ -695,6 +695,8 @@ class TestMediatorLegalAuthorityIntegration:
                 assert auto_results['claim_reasoning_review']['civil rights']['total_element_count'] == len(
                     auto_results['claim_support_validation']['civil rights']['elements']
                 )
+                assert auto_results['follow_up_history']['civil rights'] == []
+                assert auto_results['follow_up_history_summary']['civil rights']['total_entry_count'] == 0
                 assert auto_results['claim_overview']['civil rights']['partially_supported_count'] == 1
                 assert auto_results['claim_overview']['civil rights']['missing_count'] == 1
                 assert auto_results['follow_up_plan']['civil rights']['task_count'] == 2
@@ -724,6 +726,7 @@ class TestMediatorLegalAuthorityIntegration:
                     execute_follow_up=True,
                 )
                 assert auto_results_with_execution['follow_up_execution']['civil rights']['task_count'] == 0
+                assert auto_results_with_execution['follow_up_history_summary']['civil rights']['total_entry_count'] == 0
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)

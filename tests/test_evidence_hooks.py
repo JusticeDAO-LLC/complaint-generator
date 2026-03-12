@@ -968,6 +968,32 @@ class TestMediatorEvidenceIntegration:
             assert metadata['validation_status'] == 'contradicted'
             assert metadata['skip_reason'] == 'contradiction_requires_resolution'
             assert metadata['follow_up_focus'] == 'contradiction_resolution'
+
+            resolution = mediator.resolve_claim_follow_up_manual_review(
+                claim_type='breach of contract',
+                user_id='testuser',
+                claim_element_id='breach_of_contract:1',
+                claim_element='Valid contract',
+                resolution_status='resolved_supported',
+                resolution_notes='Operator reconciled the contradiction.',
+                related_execution_id=1,
+            )
+            assert resolution['recorded'] is True
+
+            follow_up_plan_after_resolution = mediator.get_claim_follow_up_plan(
+                claim_type='breach of contract',
+                user_id='testuser',
+            )
+            assert follow_up_plan_after_resolution['claims']['breach of contract']['task_count'] == 0
+
+            follow_up_execution_after_resolution = mediator.execute_claim_follow_up_plan(
+                claim_type='breach of contract',
+                user_id='testuser',
+                support_kind='evidence',
+                max_tasks_per_claim=1,
+            )
+            assert follow_up_execution_after_resolution['claims']['breach of contract']['task_count'] == 0
+            assert follow_up_execution_after_resolution['claims']['breach of contract']['skipped_task_count'] == 0
             mediator.discover_web_evidence.assert_not_called()
         finally:
             if os.path.exists(claim_support_db_path):
@@ -1078,6 +1104,28 @@ class TestMediatorEvidenceIntegration:
             assert metadata['follow_up_focus'] == 'contradiction_resolution'
             assert metadata['proof_gap_types'] == ['contradiction_candidates']
             assert metadata['keywords'][0] == 'breach of contract'
+
+            resolution = mediator.resolve_claim_follow_up_manual_review(
+                claim_type='breach of contract',
+                user_id='testuser',
+                claim_element_id='breach_of_contract:1',
+                claim_element='Valid contract',
+                resolution_status='resolved_supported',
+                resolution_notes='Operator resolved the contradiction but evidence is still incomplete.',
+            )
+            assert resolution['recorded'] is True
+
+            follow_up_plan_after_resolution = mediator.get_claim_follow_up_plan(
+                claim_type='breach of contract',
+                user_id='testuser',
+            )
+            resolved_task = follow_up_plan_after_resolution['claims']['breach of contract']['tasks'][0]
+            assert resolved_task['execution_mode'] == 'retrieve_support'
+            assert resolved_task['requires_manual_review'] is False
+            assert resolved_task['manual_review_resolved'] is True
+            assert resolved_task['query_strategy'] == 'standard_gap_targeted'
+            assert resolved_task['follow_up_focus'] == 'support_gap_closure'
+            assert resolved_task['queries']['evidence'][0] == '"breach of contract" "Valid contract" evidence'
         finally:
             if os.path.exists(claim_support_db_path):
                 os.unlink(claim_support_db_path)

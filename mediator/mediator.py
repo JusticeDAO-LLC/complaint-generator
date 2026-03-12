@@ -37,6 +37,7 @@ from claim_support_review import (
 	ClaimSupportReviewRequest,
 	build_claim_support_follow_up_execution_payload,
 	build_claim_support_review_payload,
+	summarize_follow_up_history_claim,
 	summarize_claim_reasoning_review,
 	summarize_claim_support_snapshot_lifecycle,
 )
@@ -983,9 +984,11 @@ class Mediator:
 		missing_support_kinds: List[str],
 		validation_status: str = '',
 		proof_gaps: List[Dict[str, Any]] = None,
+		proof_decision_trace: Dict[str, Any] = None,
 	) -> Dict[str, List[str]]:
 		queries: Dict[str, List[str]] = {}
 		proof_gap_types = self._extract_proof_gap_types(proof_gaps or [])
+		decision_trace = proof_decision_trace if isinstance(proof_decision_trace, dict) else {}
 		gap_focus = ' '.join(
 			gap_type.replace('_', ' ')
 			for gap_type in proof_gap_types
@@ -996,12 +999,19 @@ class Mediator:
 			return ' '.join(part for part in parts if part).strip()
 
 		contradiction_targeted = validation_status == 'contradicted' and bool(missing_support_kinds)
+		reasoning_targeted = self._is_reasoning_gap_follow_up(proof_gap_types, decision_trace)
 		if 'evidence' in missing_support_kinds:
 			if contradiction_targeted:
 				queries['evidence'] = [
 					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'contradictory evidence rebuttal', gap_focus),
 					_compose_query(f'"{element_text}"', 'corroborating records inconsistency', claim_type),
 					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'timeline witness statement conflict'),
+				]
+			elif reasoning_targeted:
+				queries['evidence'] = [
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'supporting evidence formal proof', gap_focus),
+					_compose_query(f'"{element_text}"', 'corroborating records legal elements', claim_type, gap_focus),
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'evidence burden of proof'),
 				]
 			else:
 				queries['evidence'] = [
@@ -1016,6 +1026,12 @@ class Mediator:
 					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'conflicting evidence burden of proof'),
 					_compose_query(f'"{element_text}"', 'inconsistent statements legal standard', claim_type),
 				]
+			elif reasoning_targeted:
+				queries['authority'] = [
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'formal proof case law', gap_focus),
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'legal standard burden of proof', gap_focus),
+					_compose_query(f'"{element_text}"', 'formal elements precedent', claim_type),
+				]
 			else:
 				queries['authority'] = [
 					f'"{claim_type}" "{element_text}" statute',
@@ -1023,6 +1039,21 @@ class Mediator:
 					f'"{element_text}" legal elements {claim_type}',
 				]
 		return queries
+
+	def _is_reasoning_gap_follow_up(
+		self,
+		proof_gap_types: List[str],
+		proof_decision_trace: Dict[str, Any] = None,
+	) -> bool:
+		decision_trace = proof_decision_trace if isinstance(proof_decision_trace, dict) else {}
+		decision_source = str(decision_trace.get('decision_source') or '')
+		ontology_validation_signal = str(decision_trace.get('ontology_validation_signal') or '')
+		return (
+			'logic_unprovable' in (proof_gap_types or [])
+			or 'ontology_validation_failed' in (proof_gap_types or [])
+			or decision_source in {'logic_unprovable', 'logic_proof_partial', 'ontology_validation_failed'}
+			or ontology_validation_signal == 'invalid'
+		)
 
 	def _build_follow_up_record_metadata(self, task: Dict[str, Any], **extra: Any) -> Dict[str, Any]:
 		graph_summary = ((task.get('graph_support') or {}).get('summary', {})) if isinstance(task.get('graph_support'), dict) else {}
@@ -1032,6 +1063,10 @@ class Mediator:
 			'recommended_action': task.get('recommended_action', ''),
 			'requires_manual_review': task.get('requires_manual_review', False),
 			'reasoning_backed': task.get('reasoning_backed', False),
+			'proof_decision_source': task.get('proof_decision_source', ''),
+			'logic_provable_count': int(task.get('logic_provable_count', 0) or 0),
+			'logic_unprovable_count': int(task.get('logic_unprovable_count', 0) or 0),
+			'ontology_validation_signal': task.get('ontology_validation_signal', ''),
 			'proof_gap_count': int(task.get('proof_gap_count', 0) or 0),
 			'proof_gap_types': list(task.get('proof_gap_types') or []),
 			'missing_support_kinds': list(task.get('missing_support_kinds') or []),
@@ -1056,6 +1091,86 @@ class Mediator:
 		action = task.get('recommended_action') or 'manual_review'
 		return f'manual_review::{claim_type}::{element_ref}::{action}'
 
+	def _normalize_follow_up_history_key(self, value: str) -> str:
+		return str(value or '').strip().lower()
+
+	def _build_manual_review_state_map(self, history_entries: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+		state_map: Dict[str, Dict[str, Any]] = {}
+		for entry in history_entries or []:
+			if not isinstance(entry, dict):
+				continue
+			if str(entry.get('support_kind') or '') != 'manual_review':
+				continue
+			claim_element_id = str(entry.get('claim_element_id') or '').strip()
+			claim_element_text = self._normalize_follow_up_history_key(entry.get('claim_element_text') or '')
+			for key in [
+				f'id:{claim_element_id}' if claim_element_id else '',
+				f'text:{claim_element_text}' if claim_element_text else '',
+			]:
+				if key and key not in state_map:
+					state_map[key] = entry
+		return state_map
+
+	def _apply_manual_review_resolution_state(
+		self,
+		claim_type: str,
+		task: Dict[str, Any],
+		manual_review_state_map: Dict[str, Dict[str, Any]],
+	) -> Optional[Dict[str, Any]]:
+		lookup_keys = [
+			f'id:{str(task.get("claim_element_id") or "").strip()}' if task.get('claim_element_id') else '',
+			f'text:{self._normalize_follow_up_history_key(task.get("claim_element") or "")}' if task.get('claim_element') else '',
+		]
+		manual_review_state: Optional[Dict[str, Any]] = None
+		for key in lookup_keys:
+			if key and key in manual_review_state_map:
+				manual_review_state = manual_review_state_map[key]
+				break
+		if not manual_review_state:
+			return task
+
+		resolved_status = str(manual_review_state.get('status') or '')
+		resolution_status = str(manual_review_state.get('resolution_status') or '')
+		is_resolved = resolved_status == 'resolved_manual_review' or bool(resolution_status)
+		task['manual_review_history_state'] = {
+			'execution_id': manual_review_state.get('execution_id'),
+			'status': resolved_status,
+			'resolution_status': resolution_status,
+			'timestamp': manual_review_state.get('timestamp'),
+		}
+		task['manual_review_resolved'] = is_resolved
+		if not is_resolved:
+			return task
+
+		if task.get('execution_mode') == 'manual_review':
+			return None
+
+		if task.get('execution_mode') == 'review_and_retrieve':
+			filtered_proof_gaps = [
+				gap
+				for gap in (task.get('proof_gaps') or [])
+				if isinstance(gap, dict) and str(gap.get('gap_type') or '') != 'contradiction_candidates'
+			]
+			task['execution_mode'] = 'retrieve_support'
+			task['requires_manual_review'] = False
+			task['follow_up_focus'] = 'support_gap_closure'
+			task['query_strategy'] = 'standard_gap_targeted'
+			task['proof_gaps'] = filtered_proof_gaps
+			task['proof_gap_types'] = self._extract_proof_gap_types(filtered_proof_gaps)
+			task['queries'] = self._build_follow_up_queries(
+				claim_type,
+				task.get('claim_element', ''),
+				list(task.get('missing_support_kinds') or []),
+				validation_status='',
+				proof_gaps=filtered_proof_gaps,
+				proof_decision_trace={
+					'decision_source': task.get('proof_decision_source', ''),
+					'ontology_validation_signal': task.get('ontology_validation_signal', ''),
+				},
+			)
+			task['resolution_applied'] = 'manual_review_resolved'
+		return task
+
 	def _build_follow_up_task(self, claim_type: str, element: Dict[str, Any], status: str,
 			required_support_kinds: List[str]) -> Dict[str, Any]:
 		element_text = element.get('element_text') or element.get('claim_element') or 'Unknown element'
@@ -1068,28 +1183,49 @@ class Mediator:
 		validation_status = element.get('validation_status', '')
 		proof_gaps = element.get('proof_gaps', []) if isinstance(element.get('proof_gaps'), list) else []
 		proof_gap_types = self._extract_proof_gap_types(proof_gaps)
+		proof_decision_trace = element.get('proof_decision_trace', {}) if isinstance(element.get('proof_decision_trace'), dict) else {}
+		reasoning_gap_targeted = self._is_reasoning_gap_follow_up(proof_gap_types, proof_decision_trace)
 		queries = self._build_follow_up_queries(
 			claim_type,
 			element_text,
 			missing_support_kinds,
 			validation_status=validation_status,
 			proof_gaps=proof_gaps,
+			proof_decision_trace=proof_decision_trace,
 		)
 		if validation_status == 'contradicted':
+			priority = 'high'
+		elif reasoning_gap_targeted:
 			priority = 'high'
 		execution_mode = 'retrieve_support'
 		if validation_status == 'contradicted' and missing_support_kinds:
 			execution_mode = 'review_and_retrieve'
 		elif validation_status == 'contradicted':
 			execution_mode = 'manual_review'
-		follow_up_focus = 'contradiction_resolution' if validation_status == 'contradicted' else 'support_gap_closure'
-		query_strategy = 'contradiction_targeted' if execution_mode == 'review_and_retrieve' else 'standard_gap_targeted'
+		elif reasoning_gap_targeted and missing_support_kinds:
+			execution_mode = 'review_and_retrieve'
+		elif reasoning_gap_targeted:
+			execution_mode = 'manual_review'
+		follow_up_focus = 'support_gap_closure'
+		if validation_status == 'contradicted':
+			follow_up_focus = 'contradiction_resolution'
+		elif reasoning_gap_targeted:
+			follow_up_focus = 'reasoning_gap_closure'
+		query_strategy = 'standard_gap_targeted'
+		if follow_up_focus == 'contradiction_resolution' and execution_mode == 'review_and_retrieve':
+			query_strategy = 'contradiction_targeted'
+		elif follow_up_focus == 'reasoning_gap_closure':
+			query_strategy = 'reasoning_gap_targeted'
 		return {
 			'claim_type': claim_type,
 			'claim_element_id': element.get('element_id'),
 			'claim_element': element_text,
 			'status': status,
 			'validation_status': validation_status,
+			'proof_decision_source': str(proof_decision_trace.get('decision_source') or ''),
+			'logic_provable_count': int(proof_decision_trace.get('logic_provable_count', 0) or 0),
+			'logic_unprovable_count': int(proof_decision_trace.get('logic_unprovable_count', 0) or 0),
+			'ontology_validation_signal': str(proof_decision_trace.get('ontology_validation_signal') or ''),
 			'proof_gap_count': int(element.get('proof_gap_count', 0) or 0),
 			'proof_gaps': proof_gaps,
 			'proof_gap_types': proof_gap_types,
@@ -1137,7 +1273,12 @@ class Mediator:
 		return 'low'
 
 	def _should_suppress_follow_up_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-		if task.get('validation_status') == 'contradicted':
+		if task.get('validation_status') == 'contradicted' and not task.get('manual_review_resolved'):
+			return {
+				'suppress': False,
+				'reason': '',
+			}
+		if task.get('follow_up_focus') == 'reasoning_gap_closure':
 			return {
 				'suppress': False,
 				'reason': '',
@@ -1178,16 +1319,35 @@ class Mediator:
 			'claims': {},
 		}
 		for current_claim, claim_data in validation.get('claims', {}).items():
+			manual_review_history = self.claim_support.get_recent_follow_up_execution(
+				user_id,
+				claim_type=current_claim,
+				support_kind='manual_review',
+				limit=100,
+			)
+			manual_review_state_map = self._build_manual_review_state_map(
+				(manual_review_history.get('claims', {}) or {}).get(current_claim, [])
+				if isinstance(manual_review_history, dict)
+				else []
+			)
 			tasks = []
 			for element in claim_data.get('elements', []):
 				if not isinstance(element, dict) or element.get('validation_status') == 'supported':
 					continue
-				tasks.append(self._build_follow_up_task(
+				task = self._build_follow_up_task(
 					current_claim,
 					element,
 					element.get('coverage_status', element.get('status', 'missing')),
 					claim_data.get('required_support_kinds', plan['required_support_kinds']),
-				))
+				)
+				task = self._apply_manual_review_resolution_state(
+					current_claim,
+					task,
+					manual_review_state_map,
+				)
+				if task is None:
+					continue
+				tasks.append(task)
 			for task in tasks:
 				execution_status: Dict[str, Any] = {}
 				graph_support = self.query_claim_graph_support(
@@ -1210,16 +1370,25 @@ class Mediator:
 					1,
 					min(3, int(task.get('priority_score', 2)) + int(graph_support_assessment.get('priority_adjustment', 0))),
 				)
-				if task.get('validation_status') == 'contradicted':
+				if task.get('validation_status') == 'contradicted' and not task.get('manual_review_resolved'):
 					adjusted_priority_score = 3
+				if task.get('follow_up_focus') == 'reasoning_gap_closure':
+					adjusted_priority_score = max(
+						adjusted_priority_score,
+						3 if task.get('execution_mode') == 'manual_review' else 2,
+					)
 				task['graph_support'] = graph_support
 				task['has_graph_support'] = bool(graph_support.get('results'))
 				task['graph_support_strength'] = graph_support_assessment['strength']
 				task['recommended_action'] = graph_support_assessment['recommended_action']
-				if task.get('validation_status') == 'contradicted':
+				if task.get('validation_status') == 'contradicted' and not task.get('manual_review_resolved'):
 					task['recommended_action'] = 'resolve_contradiction'
-				if task.get('execution_mode') == 'manual_review':
-					task['recommended_action'] = 'resolve_contradiction'
+				if task.get('execution_mode') == 'manual_review' and not task.get('manual_review_resolved'):
+					task['recommended_action'] = (
+						'resolve_contradiction'
+						if task.get('validation_status') == 'contradicted'
+						else 'review_existing_support'
+					)
 				task['priority_score'] = adjusted_priority_score
 				task['priority'] = self._priority_from_score(adjusted_priority_score)
 				suppression = self._should_suppress_follow_up_task(task)
@@ -1744,6 +1913,9 @@ class Mediator:
 			'decision_source_counts': decision_summary.get('decision_source_counts', {}),
 			'adapter_contradicted_element_count': int(decision_summary.get('adapter_contradicted_element_count', 0) or 0),
 			'decision_fallback_ontology_element_count': int(decision_summary.get('fallback_ontology_element_count', 0) or 0),
+			'proof_supported_element_count': int(decision_summary.get('proof_supported_element_count', 0) or 0),
+			'logic_unprovable_element_count': int(decision_summary.get('logic_unprovable_element_count', 0) or 0),
+			'ontology_invalid_element_count': int(decision_summary.get('ontology_invalid_element_count', 0) or 0),
 			'total_elements': coverage_claim.get('total_elements', 0),
 			'total_links': coverage_claim.get('total_links', 0),
 			'total_facts': coverage_claim.get('total_facts', 0),
@@ -1810,6 +1982,8 @@ class Mediator:
 			'claim_reasoning_review': {},
 			'claim_overview': {},
 			'follow_up_plan': {},
+			'follow_up_history': {},
+			'follow_up_history_summary': {},
 			'follow_up_execution': {}
 		}
 		
@@ -1948,6 +2122,15 @@ class Mediator:
 					'tasks': [],
 				},
 			)
+			follow_up_history = self.get_recent_claim_follow_up_execution(
+				claim_type=claim_type,
+				user_id=user_id,
+			)
+			claim_history = follow_up_history.get('claims', {}).get(claim_type, [])
+			results['follow_up_history'][claim_type] = claim_history
+			results['follow_up_history_summary'][claim_type] = summarize_follow_up_history_claim(
+				claim_history
+			)
 			if execute_follow_up:
 				execution = self.execute_claim_follow_up_plan(
 					claim_type=claim_type,
@@ -1957,6 +2140,15 @@ class Mediator:
 				results['follow_up_execution'][claim_type] = execution.get('claims', {}).get(
 					claim_type,
 					{'task_count': 0, 'tasks': []},
+				)
+				refreshed_follow_up_history = self.get_recent_claim_follow_up_execution(
+					claim_type=claim_type,
+					user_id=user_id,
+				)
+				refreshed_claim_history = refreshed_follow_up_history.get('claims', {}).get(claim_type, [])
+				results['follow_up_history'][claim_type] = refreshed_claim_history
+				results['follow_up_history_summary'][claim_type] = summarize_follow_up_history_claim(
+					refreshed_claim_history
 				)
 		
 		self.log('auto_research_complete', results=results)

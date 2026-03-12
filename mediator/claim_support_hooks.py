@@ -380,6 +380,67 @@ class ClaimSupportHook:
             return int(summary.get('contradictions_count', 0) or 0)
         return 0
 
+    def _extract_logic_proof_counts(
+        self,
+        reasoning_diagnostics: Optional[Dict[str, Any]],
+    ) -> Dict[str, int]:
+        reasoning = reasoning_diagnostics if isinstance(reasoning_diagnostics, dict) else {}
+        logic_proof = reasoning.get('logic_proof', {})
+        if not isinstance(logic_proof, dict):
+            return {
+                'provable_count': 0,
+                'unprovable_count': 0,
+            }
+        provable_elements = logic_proof.get('provable_elements', [])
+        unprovable_elements = logic_proof.get('unprovable_elements', [])
+        return {
+            'provable_count': len(provable_elements) if isinstance(provable_elements, list) else int(bool(provable_elements)),
+            'unprovable_count': len(unprovable_elements) if isinstance(unprovable_elements, list) else int(bool(unprovable_elements)),
+        }
+
+    def _extract_ontology_validation_signal(
+        self,
+        reasoning_diagnostics: Optional[Dict[str, Any]],
+    ) -> str:
+        reasoning = reasoning_diagnostics if isinstance(reasoning_diagnostics, dict) else {}
+        ontology_validation = reasoning.get('ontology_validation', {})
+        if not isinstance(ontology_validation, dict):
+            return 'unknown'
+        result = ontology_validation.get('result')
+
+        def _normalize_validation_value(value: Any) -> Optional[str]:
+            if isinstance(value, bool):
+                return 'valid' if value else 'invalid'
+            if isinstance(value, str):
+                lowered = value.strip().lower()
+                if lowered in {'valid', 'validated', 'consistent', 'passed', 'pass', 'success', 'ok'}:
+                    return 'valid'
+                if lowered in {'invalid', 'inconsistent', 'failed', 'fail', 'error'}:
+                    return 'invalid'
+                return None
+            if isinstance(value, dict):
+                for key in ('valid', 'is_valid', 'consistent', 'passed', 'success'):
+                    if key in value:
+                        nested = _normalize_validation_value(value.get(key))
+                        if nested:
+                            return nested
+                for key in ('status', 'result', 'state', 'validation_status'):
+                    if key in value:
+                        nested = _normalize_validation_value(value.get(key))
+                        if nested:
+                            return nested
+            return None
+
+        normalized = _normalize_validation_value(result)
+        if normalized:
+            return normalized
+        status = str(ontology_validation.get('status') or '').strip().lower()
+        if status == 'success':
+            return 'valid'
+        if status in {'error', 'failed'}:
+            return 'invalid'
+        return 'unknown'
+
     def _build_validation_decision_trace(
         self,
         element: Dict[str, Any],
@@ -390,6 +451,10 @@ class ClaimSupportHook:
         adapter_statuses = reasoning.get('adapter_statuses', {}) if isinstance(reasoning.get('adapter_statuses'), dict) else {}
         heuristic_contradiction_count = len(contradiction_candidates)
         logic_contradiction_count = self._extract_logic_contradiction_count(reasoning)
+        logic_proof_counts = self._extract_logic_proof_counts(reasoning)
+        provable_count = logic_proof_counts['provable_count']
+        unprovable_count = logic_proof_counts['unprovable_count']
+        ontology_validation_signal = self._extract_ontology_validation_signal(reasoning)
         missing_support_kind_count = len(element.get('missing_support_kinds', []) or [])
         total_links = int(element.get('total_links', 0) or 0)
         coverage_status = str(element.get('status') or '')
@@ -400,6 +465,21 @@ class ClaimSupportHook:
         elif logic_contradiction_count:
             decision_source = 'logic_contradictions'
             validation_status = 'contradicted'
+        elif unprovable_count and total_links > 0:
+            decision_source = 'logic_unprovable'
+            validation_status = 'incomplete'
+        elif provable_count and missing_support_kind_count == 0 and ontology_validation_signal != 'invalid':
+            decision_source = 'logic_proof_supported'
+            validation_status = 'supported'
+        elif provable_count:
+            decision_source = 'logic_proof_partial'
+            validation_status = 'incomplete'
+        elif ontology_validation_signal == 'invalid' and total_links > 0:
+            decision_source = 'ontology_validation_failed'
+            validation_status = 'incomplete'
+        elif ontology_validation_signal == 'valid' and coverage_status == 'covered' and missing_support_kind_count == 0:
+            decision_source = 'ontology_validation_supported'
+            validation_status = 'supported'
         elif coverage_status == 'covered':
             decision_source = 'covered_support'
             validation_status = 'supported'
@@ -415,6 +495,14 @@ class ClaimSupportHook:
             notes.append('Heuristic contradiction candidates were found for this element.')
         if logic_contradiction_count:
             notes.append('Logic adapter reported contradiction output for this element.')
+        if provable_count:
+            notes.append('Logic adapter reported provable claim-element output for this element.')
+        if unprovable_count:
+            notes.append('Logic adapter reported unprovable claim-element output for this element.')
+        if ontology_validation_signal == 'invalid':
+            notes.append('Ontology validation returned an invalid or inconsistent result for this element.')
+        elif ontology_validation_signal == 'valid':
+            notes.append('Ontology validation reported a valid or consistent result for this element.')
         if missing_support_kind_count:
             notes.append('Required support kinds are still missing for this element.')
         if reasoning.get('used_fallback_ontology'):
@@ -426,6 +514,9 @@ class ClaimSupportHook:
             'coverage_status': coverage_status,
             'heuristic_contradiction_count': heuristic_contradiction_count,
             'logic_contradiction_count': logic_contradiction_count,
+            'logic_provable_count': provable_count,
+            'logic_unprovable_count': unprovable_count,
+            'ontology_validation_signal': ontology_validation_signal,
             'missing_support_kind_count': missing_support_kind_count,
             'total_links': total_links,
             'used_fallback_ontology': bool(reasoning.get('used_fallback_ontology')),
@@ -473,6 +564,23 @@ class ClaimSupportHook:
                     'message': 'Logic adapter reported contradictions requiring operator review.',
                 }
             )
+        logic_proof_counts = self._extract_logic_proof_counts(reasoning_diagnostics)
+        if logic_proof_counts['unprovable_count']:
+            proof_gaps.append(
+                {
+                    'gap_type': 'logic_unprovable',
+                    'candidate_count': logic_proof_counts['unprovable_count'],
+                    'message': 'Logic adapter could not prove one or more predicates for this element.',
+                }
+            )
+        ontology_validation_signal = self._extract_ontology_validation_signal(reasoning_diagnostics)
+        if ontology_validation_signal == 'invalid':
+            proof_gaps.append(
+                {
+                    'gap_type': 'ontology_validation_failed',
+                    'message': 'Ontology validation reported an invalid or inconsistent reasoning graph for this element.',
+                }
+            )
         return proof_gaps
 
     def _recommended_validation_action(
@@ -485,6 +593,8 @@ class ClaimSupportHook:
         if validation_status == 'missing':
             return 'collect_initial_support'
         if validation_status == 'incomplete':
+            if not (element.get('missing_support_kinds', []) or []):
+                return 'review_existing_support'
             return 'collect_missing_support_kind'
         return 'review_existing_support'
 
@@ -735,6 +845,9 @@ class ClaimSupportHook:
         decision_source_counts: Counter[str] = Counter()
         adapter_contradicted_element_count = 0
         fallback_ontology_element_count = 0
+        proof_supported_element_count = 0
+        logic_unprovable_element_count = 0
+        ontology_invalid_element_count = 0
 
         for element in elements:
             if not isinstance(element, dict):
@@ -748,11 +861,20 @@ class ClaimSupportHook:
                 adapter_contradicted_element_count += 1
             if bool(trace.get('used_fallback_ontology')):
                 fallback_ontology_element_count += 1
+            if source in {'logic_proof_supported', 'ontology_validation_supported'}:
+                proof_supported_element_count += 1
+            if source == 'logic_unprovable':
+                logic_unprovable_element_count += 1
+            if str(trace.get('ontology_validation_signal') or '') == 'invalid':
+                ontology_invalid_element_count += 1
 
         return {
             'decision_source_counts': dict(sorted(decision_source_counts.items())),
             'adapter_contradicted_element_count': adapter_contradicted_element_count,
             'fallback_ontology_element_count': fallback_ontology_element_count,
+            'proof_supported_element_count': proof_supported_element_count,
+            'logic_unprovable_element_count': logic_unprovable_element_count,
+            'ontology_invalid_element_count': ontology_invalid_element_count,
         }
 
     def _build_claim_validation(
@@ -835,6 +957,9 @@ class ClaimSupportHook:
                     'reasoning_adapter_statuses': reasoning_diagnostics.get('adapter_statuses', {}),
                     'decision_source': decision_trace.get('decision_source', ''),
                     'logic_contradiction_count': int(decision_trace.get('logic_contradiction_count', 0) or 0),
+                    'logic_provable_count': int(decision_trace.get('logic_provable_count', 0) or 0),
+                    'logic_unprovable_count': int(decision_trace.get('logic_unprovable_count', 0) or 0),
+                    'ontology_validation_signal': decision_trace.get('ontology_validation_signal', 'unknown'),
                 }
             )
             validation_status_counts[validation_status] += 1
