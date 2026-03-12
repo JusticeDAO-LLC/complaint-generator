@@ -84,6 +84,8 @@ class CLI:
 			self.claim_review(parts[1:])
 		elif command == 'execute-follow-up':
 			self.execute_follow_up(parts[1:])
+		elif command == 'export-complaint':
+			self.export_complaint(parts[1:])
 		else:
 			self.print_error('command unknown, available commands are:')
 			self.print_commands()
@@ -100,7 +102,13 @@ class CLI:
 			lowered = value.lower()
 			if lowered in ('true', 'false'):
 				parsed_value = lowered == 'true'
-			elif key.replace('-', '_') == 'required_support_kinds':
+			elif key.replace('-', '_') in {
+				'required_support_kinds',
+				'output_formats',
+				'plaintiff_names',
+				'defendant_names',
+				'requested_relief',
+			}:
 				parsed_value = [item.strip() for item in value.split(',') if item.strip()]
 			else:
 				try:
@@ -134,11 +142,19 @@ class CLI:
 		claim_coverage_summary = payload.get('claim_coverage_summary', {}) if isinstance(payload, dict) else {}
 		if isinstance(claim_coverage_summary, dict) and claim_coverage_summary:
 			sections.append(self._format_claim_review_quality_summary(claim_coverage_summary))
+		follow_up_plan_summary = payload.get('follow_up_plan_summary', {}) if isinstance(payload, dict) else {}
+		if isinstance(follow_up_plan_summary, dict) and follow_up_plan_summary:
+			sections.append(
+				self._format_authority_search_program_summary(
+					'follow-up plan authority search summary:',
+					follow_up_plan_summary,
+				)
+			)
 		sections.append(json.dumps(payload, indent=2, default=str))
 		return '\n\n'.join(section for section in sections if section)
 
 	def _format_claim_review_quality_summary(self, claim_coverage_summary):
-		lines = ['claim review parse-quality summary:']
+		lines = ['claim review quality summary:']
 		for claim_type in sorted(claim_coverage_summary.keys()):
 			summary = claim_coverage_summary.get(claim_type, {})
 			if not isinstance(summary, dict):
@@ -148,12 +164,78 @@ class CLI:
 			avg_quality = float(summary.get('avg_parse_quality_score', 0.0) or 0.0)
 			issue_elements = summary.get('parse_quality_issue_elements', []) if isinstance(summary.get('parse_quality_issue_elements'), list) else []
 			recommendation = str(summary.get('parse_quality_recommendation') or '')
-			lines.append(f'- {claim_type}: low_quality={low_quality_count} issue_elements={issue_count} avg_quality={avg_quality:.2f}')
+			authority_summary = summary.get('authority_treatment_summary', {}) if isinstance(summary.get('authority_treatment_summary'), dict) else {}
+			supportive_authority_count = int(authority_summary.get('supportive_authority_link_count', 0) or 0)
+			adverse_authority_count = int(authority_summary.get('adverse_authority_link_count', 0) or 0)
+			uncertain_authority_count = int(authority_summary.get('uncertain_authority_link_count', 0) or 0)
+			lines.append(
+				f'- {claim_type}: low_quality={low_quality_count} issue_elements={issue_count} avg_quality={avg_quality:.2f} '
+				f'authority_supportive={supportive_authority_count} authority_adverse={adverse_authority_count} '
+				f'authority_uncertain={uncertain_authority_count}'
+			)
 			if issue_elements:
 				lines.append(f"  refresh: {', '.join(str(element) for element in issue_elements)}")
+			if authority_summary.get('treatment_type_counts'):
+				treatment_labels = ', '.join(
+					f"{kind}={count}" for kind, count in sorted(authority_summary.get('treatment_type_counts', {}).items())
+				)
+				lines.append(f'  authority_treatments: {treatment_labels}')
 			if recommendation:
 				lines.append(f'  recommendation: {recommendation}')
 		return '\n'.join(lines)
+
+	def _format_authority_search_program_summary(self, title, follow_up_summary):
+		lines = [title]
+		for claim_type in sorted(follow_up_summary.keys()):
+			summary = follow_up_summary.get(claim_type, {})
+			if not isinstance(summary, dict):
+				continue
+			program_task_count = int(summary.get('authority_search_program_task_count', 0) or 0)
+			program_count = int(summary.get('authority_search_program_count', 0) or 0)
+			program_type_counts = summary.get('authority_search_program_type_counts', {}) if isinstance(summary.get('authority_search_program_type_counts'), dict) else {}
+			intent_counts = summary.get('authority_search_intent_counts', {}) if isinstance(summary.get('authority_search_intent_counts'), dict) else {}
+			primary_program_counts = summary.get('primary_authority_program_type_counts', {}) if isinstance(summary.get('primary_authority_program_type_counts'), dict) else {}
+			primary_program_bias_counts = summary.get('primary_authority_program_bias_counts', {}) if isinstance(summary.get('primary_authority_program_bias_counts'), dict) else {}
+			primary_program_rule_bias_counts = summary.get('primary_authority_program_rule_bias_counts', {}) if isinstance(summary.get('primary_authority_program_rule_bias_counts'), dict) else {}
+			if not (
+				program_task_count > 0
+				or program_count > 0
+				or program_type_counts
+				or intent_counts
+				or primary_program_counts
+				or primary_program_bias_counts
+				or primary_program_rule_bias_counts
+			):
+				continue
+			lines.append(
+				f'- {claim_type}: authority_program_tasks={program_task_count} authority_programs={program_count}'
+			)
+			if program_type_counts:
+				program_labels = ', '.join(
+					f"{program_type}={count}" for program_type, count in sorted(program_type_counts.items())
+				)
+				lines.append(f'  program_types: {program_labels}')
+			if intent_counts:
+				intent_labels = ', '.join(
+					f"{intent}={count}" for intent, count in sorted(intent_counts.items())
+				)
+				lines.append(f'  search_intents: {intent_labels}')
+			if primary_program_counts:
+				primary_labels = ', '.join(
+					f"{program_type}={count}" for program_type, count in sorted(primary_program_counts.items())
+				)
+				lines.append(f'  primary_programs: {primary_labels}')
+			if primary_program_bias_counts:
+				bias_labels = ', '.join(
+					f"{bias}={count}" for bias, count in sorted(primary_program_bias_counts.items())
+				)
+				lines.append(f'  primary_biases: {bias_labels}')
+			if primary_program_rule_bias_counts:
+				rule_bias_labels = ', '.join(
+					f"{bias}={count}" for bias, count in sorted(primary_program_rule_bias_counts.items())
+				)
+				lines.append(f'  primary_rule_biases: {rule_bias_labels}')
+		return '' if len(lines) == 1 else '\n'.join(lines)
 
 	def execute_follow_up(self, args):
 		positionals, options = self._parse_command_options(args)
@@ -180,6 +262,14 @@ class CLI:
 		execution_quality_summary = payload.get('execution_quality_summary', {}) if isinstance(payload, dict) else {}
 		if isinstance(execution_quality_summary, dict) and execution_quality_summary:
 			sections.append(self._format_execution_quality_summary(execution_quality_summary))
+		follow_up_execution_summary = payload.get('follow_up_execution_summary', {}) if isinstance(payload, dict) else {}
+		if isinstance(follow_up_execution_summary, dict) and follow_up_execution_summary:
+			sections.append(
+				self._format_authority_search_program_summary(
+					'follow-up execution authority search summary:',
+					follow_up_execution_summary,
+				)
+			)
 		sections.append(json.dumps(payload, indent=2, default=str))
 		return '\n\n'.join(section for section in sections if section)
 
@@ -203,6 +293,46 @@ class CLI:
 				lines.append(f"  remaining: {', '.join(str(element) for element in remaining_elements)}")
 			if recommended_next_action:
 				lines.append(f'  recommendation: {recommended_next_action} still needed')
+		return '\n'.join(lines)
+
+	def export_complaint(self, args):
+		positionals, options = self._parse_command_options(args)
+		output_dir = options.get('output_dir')
+		if output_dir is None and positionals:
+			output_dir = positionals[0]
+		payload = self.mediator.build_formal_complaint_document_package(
+			user_id=options.get('user_id'),
+			court_name=options.get('court_name', 'United States District Court'),
+			district=options.get('district', ''),
+			division=options.get('division'),
+			court_header_override=options.get('court_header_override'),
+			case_number=options.get('case_number'),
+			title_override=options.get('title_override'),
+			plaintiff_names=options.get('plaintiff_names'),
+			defendant_names=options.get('defendant_names'),
+			requested_relief=options.get('requested_relief'),
+			output_dir=output_dir,
+			output_formats=options.get('output_formats'),
+		)
+		self.print_response(self._format_export_complaint_output(payload))
+
+	def _format_export_complaint_output(self, payload):
+		draft = payload.get('draft', {}) if isinstance(payload, dict) else {}
+		artifacts = payload.get('artifacts', {}) if isinstance(payload, dict) else {}
+		lines = ['formal complaint export:']
+		if draft:
+			lines.append(f"title: {draft.get('title', 'Untitled complaint')}")
+			lines.append(f"court: {draft.get('court_header', 'unknown court')}")
+			caption = draft.get('case_caption', {}) if isinstance(draft.get('case_caption'), dict) else {}
+			lines.append(f"case_number: {caption.get('case_number', '________________')}")
+			lines.append(f"claims: {len(draft.get('claims_for_relief', []) or [])}")
+			lines.append(f"exhibits: {len(draft.get('exhibits', []) or [])}")
+		if artifacts:
+			lines.append('artifacts:')
+			for output_format in sorted(artifacts.keys()):
+				artifact = artifacts.get(output_format, {}) if isinstance(artifacts.get(output_format), dict) else {}
+				lines.append(f"- {output_format}: {artifact.get('path', '')}")
+		lines.append(json.dumps(payload, indent=2, default=str))
 		return '\n'.join(lines)
 
 
@@ -238,3 +368,4 @@ class CLI:
 		print('!save       saves current state to disk')
 		print('!claim-review [claim_type] [key=value]')
 		print('!execute-follow-up [claim_type] [key=value]')
+		print('!export-complaint [output_dir] [key=value]')

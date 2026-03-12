@@ -8,16 +8,11 @@ This module provides hooks for RAG (Retrieval-Augmented Generation) over the leg
 4. Support legal research during mediation
 """
 
-import sys
-import os
 import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
-
-# Add complaint_analysis to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 try:
     from complaint_analysis.keywords import get_type_specific_keywords

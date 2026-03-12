@@ -280,6 +280,20 @@ class TestMediatorWithMocks:
                 },
                 'results': [],
             })
+            mediator.legal_authority_search.build_search_programs = Mock(return_value=[
+                {
+                    'program_id': 'legal_search_program:reasoning-1',
+                    'program_type': 'fact_pattern_search',
+                    'claim_type': 'employment',
+                    'authority_intent': 'support',
+                    'query_text': 'employment Protected activity fact pattern application authority',
+                    'claim_element_id': 'employment:1',
+                    'claim_element_text': 'Protected activity',
+                    'authority_families': ['case_law'],
+                    'search_terms': ['Protected activity', 'employment'],
+                    'metadata': {},
+                }
+            ])
 
             plan = mediator.get_claim_follow_up_plan(
                 claim_type='employment',
@@ -294,10 +308,797 @@ class TestMediatorWithMocks:
             assert task['priority'] == 'high'
             assert task['missing_support_kinds'] == ['authority']
             assert task['queries']['authority'][0] == '"employment" "Protected activity" formal proof case law logic unprovable'
+            assert task['authority_search_program_summary'] == {
+                'program_count': 1,
+                'program_type_counts': {'fact_pattern_search': 1},
+                'authority_intent_counts': {'support': 1},
+                'primary_program_id': 'legal_search_program:reasoning-1',
+                'primary_program_type': 'fact_pattern_search',
+                'primary_program_bias': '',
+                'primary_program_rule_bias': '',
+            }
+            assert task['authority_search_programs'][0]['metadata']['follow_up_focus'] == 'reasoning_gap_closure'
+            assert task['authority_search_programs'][0]['metadata']['query_strategy'] == 'reasoning_gap_targeted'
             assert task['recommended_action'] == 'retrieve_more_support'
             assert task['proof_decision_source'] == 'logic_proof_partial'
             assert task['logic_provable_count'] == 1
             assert task['logic_unprovable_count'] == 1
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_follow_up_plan_uses_rule_candidate_queries_for_fact_gaps(self):
+        """When the law is already structured into rule candidates, evidence retrieval should target those predicates and exceptions."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
+                'claims': {'employment': []}
+            })
+            mediator.claim_support.get_follow_up_execution_status = Mock(return_value={
+                'in_cooldown': False,
+            })
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'required_support_kinds': ['evidence', 'authority'],
+                        'elements': [
+                            {
+                                'element_id': 'employment:1',
+                                'element_text': 'Protected activity',
+                                'coverage_status': 'partially_supported',
+                                'validation_status': 'incomplete',
+                                'recommended_action': 'collect_fact_support',
+                                'support_by_kind': {'authority': 1},
+                                'authority_treatment_summary': {
+                                    'authority_link_count': 1,
+                                    'adverse_authority_link_count': 0,
+                                },
+                                'authority_rule_candidate_summary': {
+                                    'authority_link_count': 1,
+                                    'authority_links_with_rule_candidates': 1,
+                                    'total_rule_candidate_count': 2,
+                                    'matched_claim_element_rule_count': 2,
+                                    'rule_type_counts': {
+                                        'element': 1,
+                                        'exception': 1,
+                                    },
+                                    'max_extraction_confidence': 0.78,
+                                },
+                                'proof_gap_count': 0,
+                                'proof_gaps': [],
+                                'proof_decision_trace': {
+                                    'decision_source': 'partial_support',
+                                    'logic_provable_count': 0,
+                                    'logic_unprovable_count': 0,
+                                    'ontology_validation_signal': 'unknown',
+                                },
+                                'reasoning_diagnostics': {
+                                    'backend_available_count': 0,
+                                },
+                                'gap_context': {
+                                    'links': [
+                                        {
+                                            'support_kind': 'authority',
+                                            'support_ref': '42 U.S.C. 2000e-3(a)',
+                                            'rule_candidates': [
+                                                {
+                                                    'rule_id': 'rule:1',
+                                                    'rule_text': 'Protected activity must precede the employer response.',
+                                                    'rule_type': 'element',
+                                                    'claim_element_id': 'employment:1',
+                                                    'claim_element_text': 'Protected activity',
+                                                    'extraction_confidence': 0.78,
+                                                },
+                                                {
+                                                    'rule_id': 'rule:2',
+                                                    'rule_text': 'Except where the employer lacked notice liability may not attach.',
+                                                    'rule_type': 'exception',
+                                                    'claim_element_id': 'employment:1',
+                                                    'claim_element_text': 'Protected activity',
+                                                    'extraction_confidence': 0.74,
+                                                },
+                                            ],
+                                        }
+                                    ],
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value={
+                'summary': {
+                    'total_fact_count': 0,
+                    'unique_fact_count': 0,
+                    'duplicate_fact_count': 0,
+                    'semantic_cluster_count': 0,
+                    'semantic_duplicate_count': 0,
+                    'max_score': 0.0,
+                },
+                'results': [],
+            })
+
+            plan = mediator.get_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                required_support_kinds=['evidence', 'authority'],
+            )
+            task = plan['claims']['employment']['tasks'][0]
+
+            assert task['execution_mode'] == 'retrieve_support'
+            assert task['follow_up_focus'] == 'fact_gap_closure'
+            assert task['query_strategy'] == 'rule_fact_targeted'
+            assert task['recommended_action'] == 'collect_fact_support'
+            assert task['missing_support_kinds'] == ['evidence']
+            assert task['queries']['evidence'][0] == '"employment" "Protected activity" "Protected activity must precede the employer response." supporting facts evidence'
+            assert task['queries']['evidence'][1] == '"Protected activity" "Except where the employer lacked notice liability may not attach." fact pattern records witness timeline employment'
+            assert task['rule_candidate_context']['top_rule_types'] == ['element', 'exception']
+            assert task['rule_candidate_context']['top_rule_texts'][0] == 'Protected activity must precede the employer response.'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_follow_up_plan_biases_authority_programs_for_uncertain_treatment(self):
+        """Uncertain treatment signals should prioritize good-law checking ahead of ordinary support searches."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
+                'claims': {'employment': []}
+            })
+            mediator.claim_support.get_follow_up_execution_status = Mock(return_value={
+                'in_cooldown': False,
+            })
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'required_support_kinds': ['authority'],
+                        'elements': [
+                            {
+                                'element_id': 'employment:1',
+                                'element_text': 'Protected activity',
+                                'coverage_status': 'partially_supported',
+                                'validation_status': 'incomplete',
+                                'recommended_action': 'retrieve_more_support',
+                                'support_by_kind': {},
+                                'authority_treatment_summary': {
+                                    'authority_link_count': 1,
+                                    'treated_authority_link_count': 1,
+                                    'supportive_authority_link_count': 0,
+                                    'adverse_authority_link_count': 0,
+                                    'uncertain_authority_link_count': 1,
+                                    'treatment_type_counts': {'questioned': 1},
+                                    'max_treatment_confidence': 0.63,
+                                },
+                                'proof_gap_count': 1,
+                                'proof_gaps': [{'gap_type': 'logic_unprovable'}],
+                                'proof_decision_trace': {
+                                    'decision_source': 'logic_proof_partial',
+                                    'logic_provable_count': 0,
+                                    'logic_unprovable_count': 1,
+                                    'ontology_validation_signal': 'unknown',
+                                },
+                                'reasoning_diagnostics': {
+                                    'backend_available_count': 2,
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value={
+                'summary': {
+                    'total_fact_count': 0,
+                    'unique_fact_count': 0,
+                    'duplicate_fact_count': 0,
+                    'semantic_cluster_count': 0,
+                    'semantic_duplicate_count': 0,
+                    'max_score': 0.0,
+                },
+                'results': [],
+            })
+            mediator.legal_authority_search.build_search_programs = Mock(return_value=[
+                {
+                    'program_id': 'legal_search_program:fact-1',
+                    'program_type': 'fact_pattern_search',
+                    'claim_type': 'employment',
+                    'authority_intent': 'support',
+                    'query_text': 'employment Protected activity fact pattern application authority',
+                    'claim_element_id': 'employment:1',
+                    'claim_element_text': 'Protected activity',
+                    'authority_families': ['case_law'],
+                    'search_terms': ['Protected activity', 'employment'],
+                    'metadata': {},
+                },
+                {
+                    'program_id': 'legal_search_program:treatment-1',
+                    'program_type': 'treatment_check_search',
+                    'claim_type': 'employment',
+                    'authority_intent': 'confirm_good_law',
+                    'query_text': 'employment Protected activity citation history later treatment good law',
+                    'claim_element_id': 'employment:1',
+                    'claim_element_text': 'Protected activity',
+                    'authority_families': ['case_law'],
+                    'search_terms': ['Protected activity', 'employment'],
+                    'metadata': {},
+                },
+                {
+                    'program_id': 'legal_search_program:adverse-1',
+                    'program_type': 'adverse_authority_search',
+                    'claim_type': 'employment',
+                    'authority_intent': 'oppose',
+                    'query_text': 'employment Protected activity adverse authority defense exception limitation',
+                    'claim_element_id': 'employment:1',
+                    'claim_element_text': 'Protected activity',
+                    'authority_families': ['case_law'],
+                    'search_terms': ['Protected activity', 'employment'],
+                    'metadata': {},
+                },
+            ])
+
+            plan = mediator.get_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                required_support_kinds=['authority'],
+            )
+            task = plan['claims']['employment']['tasks'][0]
+
+            assert task['follow_up_focus'] == 'reasoning_gap_closure'
+            assert task['authority_search_program_summary']['primary_program_type'] == 'treatment_check_search'
+            assert task['authority_search_program_summary']['primary_program_bias'] == 'uncertain'
+            assert task['authority_search_program_summary']['primary_program_rule_bias'] == ''
+            assert [program['program_type'] for program in task['authority_search_programs'][:2]] == [
+                'treatment_check_search',
+                'adverse_authority_search',
+            ]
+            assert task['authority_search_programs'][0]['metadata']['authority_signal_bias'] == 'uncertain'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_follow_up_plan_uses_manual_review_for_adverse_authority(self):
+        """Adverse authority signals should stay review-first and preserve treatment context in planner metadata."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
+                'claims': {'employment': []}
+            })
+            mediator.claim_support.get_follow_up_execution_status = Mock(return_value={
+                'in_cooldown': False,
+            })
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'required_support_kinds': ['authority'],
+                        'elements': [
+                            {
+                                'element_id': 'employment:1',
+                                'element_text': 'Protected activity',
+                                'coverage_status': 'covered',
+                                'validation_status': 'incomplete',
+                                'recommended_action': 'review_adverse_authority',
+                                'support_by_kind': {'authority': 1},
+                                'authority_treatment_summary': {
+                                    'authority_link_count': 1,
+                                    'treated_authority_link_count': 1,
+                                    'supportive_authority_link_count': 0,
+                                    'adverse_authority_link_count': 1,
+                                    'uncertain_authority_link_count': 0,
+                                    'treatment_type_counts': {'questioned': 1},
+                                    'max_treatment_confidence': 0.81,
+                                },
+                                'authority_rule_candidate_summary': {
+                                    'authority_link_count': 1,
+                                    'authority_links_with_rule_candidates': 1,
+                                    'total_rule_candidate_count': 1,
+                                    'matched_claim_element_rule_count': 1,
+                                    'rule_type_counts': {'element': 1},
+                                    'max_extraction_confidence': 0.66,
+                                },
+                                'proof_gap_count': 0,
+                                'proof_gaps': [],
+                                'proof_decision_trace': {
+                                    'decision_source': 'heuristic_support_only',
+                                    'logic_provable_count': 0,
+                                    'logic_unprovable_count': 0,
+                                    'ontology_validation_signal': 'unknown',
+                                },
+                                'reasoning_diagnostics': {
+                                    'backend_available_count': 0,
+                                },
+                                'gap_context': {
+                                    'links': [
+                                        {
+                                            'support_kind': 'authority',
+                                            'support_ref': 'Smith v. Example',
+                                            'rule_candidates': [
+                                                {
+                                                    'rule_id': 'rule:adverse',
+                                                    'rule_text': 'Protected activity can support retaliation claims.',
+                                                    'rule_type': 'element',
+                                                    'claim_element_id': 'employment:1',
+                                                    'claim_element_text': 'Protected activity',
+                                                    'extraction_confidence': 0.66,
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value={
+                'summary': {
+                    'total_fact_count': 4,
+                    'unique_fact_count': 2,
+                    'duplicate_fact_count': 2,
+                    'semantic_cluster_count': 2,
+                    'semantic_duplicate_count': 2,
+                    'max_score': 2.2,
+                },
+                'results': [
+                    {'fact_id': 'fact:1', 'score': 2.2, 'matched_claim_element': True},
+                ],
+            })
+
+            plan = mediator.get_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                required_support_kinds=['authority'],
+            )
+            task = plan['claims']['employment']['tasks'][0]
+
+            assert task['execution_mode'] == 'manual_review'
+            assert task['follow_up_focus'] == 'adverse_authority_review'
+            assert task['query_strategy'] == 'adverse_authority_targeted'
+            assert task['priority'] == 'high'
+            assert task['should_suppress_retrieval'] is False
+            assert task['recommended_action'] == 'review_adverse_authority'
+            assert task['authority_treatment_summary']['adverse_authority_link_count'] == 1
+
+            mediator.execute_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                support_kind='authority',
+                max_tasks_per_claim=1,
+            )
+            recorded_call = mediator.claim_support.record_follow_up_execution.call_args
+            assert recorded_call.kwargs['metadata']['skip_reason'] == 'adverse_authority_requires_review'
+            assert recorded_call.kwargs['metadata']['authority_treatment_summary']['adverse_authority_link_count'] == 1
+            assert recorded_call.kwargs['metadata']['rule_candidate_focus']['top_rule_types'] == ['element']
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_follow_up_plan_biases_authority_programs_for_adverse_treatment(self):
+        """Adverse treatment signals should make adverse-authority review programs primary within the bundle."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
+                'claims': {'employment': []}
+            })
+            mediator.claim_support.get_follow_up_execution_status = Mock(return_value={
+                'in_cooldown': False,
+            })
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'required_support_kinds': ['authority'],
+                        'elements': [
+                            {
+                                'element_id': 'employment:1',
+                                'element_text': 'Protected activity',
+                                'coverage_status': 'covered',
+                                'validation_status': 'incomplete',
+                                'recommended_action': 'review_adverse_authority',
+                                'support_by_kind': {},
+                                'authority_treatment_summary': {
+                                    'authority_link_count': 1,
+                                    'treated_authority_link_count': 1,
+                                    'supportive_authority_link_count': 0,
+                                    'adverse_authority_link_count': 1,
+                                    'uncertain_authority_link_count': 0,
+                                    'treatment_type_counts': {'limits': 1},
+                                    'max_treatment_confidence': 0.81,
+                                },
+                                'proof_gap_count': 0,
+                                'proof_gaps': [],
+                                'proof_decision_trace': {
+                                    'decision_source': 'heuristic_support_only',
+                                    'logic_provable_count': 0,
+                                    'logic_unprovable_count': 0,
+                                    'ontology_validation_signal': 'unknown',
+                                },
+                                'reasoning_diagnostics': {
+                                    'backend_available_count': 0,
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value={
+                'summary': {
+                    'total_fact_count': 1,
+                    'unique_fact_count': 1,
+                    'duplicate_fact_count': 0,
+                    'semantic_cluster_count': 1,
+                    'semantic_duplicate_count': 0,
+                    'max_score': 1.1,
+                },
+                'results': [{'fact_id': 'fact:1', 'score': 1.1}],
+            })
+            mediator.legal_authority_search.build_search_programs = Mock(return_value=[
+                {
+                    'program_id': 'legal_search_program:fact-1',
+                    'program_type': 'fact_pattern_search',
+                    'claim_type': 'employment',
+                    'authority_intent': 'support',
+                    'query_text': 'employment Protected activity fact pattern application authority',
+                    'claim_element_id': 'employment:1',
+                    'claim_element_text': 'Protected activity',
+                    'authority_families': ['case_law'],
+                    'search_terms': ['Protected activity', 'employment'],
+                    'metadata': {},
+                },
+                {
+                    'program_id': 'legal_search_program:treatment-1',
+                    'program_type': 'treatment_check_search',
+                    'claim_type': 'employment',
+                    'authority_intent': 'confirm_good_law',
+                    'query_text': 'employment Protected activity citation history later treatment good law',
+                    'claim_element_id': 'employment:1',
+                    'claim_element_text': 'Protected activity',
+                    'authority_families': ['case_law'],
+                    'search_terms': ['Protected activity', 'employment'],
+                    'metadata': {},
+                },
+                {
+                    'program_id': 'legal_search_program:adverse-1',
+                    'program_type': 'adverse_authority_search',
+                    'claim_type': 'employment',
+                    'authority_intent': 'oppose',
+                    'query_text': 'employment Protected activity adverse authority defense exception limitation',
+                    'claim_element_id': 'employment:1',
+                    'claim_element_text': 'Protected activity',
+                    'authority_families': ['case_law'],
+                    'search_terms': ['Protected activity', 'employment'],
+                    'metadata': {},
+                },
+            ])
+
+            plan = mediator.get_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                required_support_kinds=['authority'],
+            )
+            task = plan['claims']['employment']['tasks'][0]
+
+            assert task['follow_up_focus'] == 'adverse_authority_review'
+            assert task['authority_search_program_summary']['primary_program_type'] == 'adverse_authority_search'
+            assert task['authority_search_program_summary']['primary_program_bias'] == 'adverse'
+            assert task['authority_search_program_summary']['primary_program_rule_bias'] == ''
+            assert [program['program_type'] for program in task['authority_search_programs'][:2]] == [
+                'adverse_authority_search',
+                'treatment_check_search',
+            ]
+            assert task['authority_search_programs'][0]['metadata']['authority_signal_bias'] == 'adverse'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_follow_up_plan_biases_authority_programs_for_exception_rules(self):
+        """Exception rule candidates should front-load adverse-authority search even without treatment signals."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
+                'claims': {'employment': []}
+            })
+            mediator.claim_support.get_follow_up_execution_status = Mock(return_value={
+                'in_cooldown': False,
+            })
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'required_support_kinds': ['authority'],
+                        'elements': [
+                            {
+                                'element_id': 'employment:1',
+                                'element_text': 'Protected activity',
+                                'coverage_status': 'partially_supported',
+                                'validation_status': 'incomplete',
+                                'recommended_action': 'retrieve_more_support',
+                                'support_by_kind': {'evidence': 1},
+                                'authority_treatment_summary': {
+                                    'authority_link_count': 1,
+                                    'treated_authority_link_count': 0,
+                                    'supportive_authority_link_count': 0,
+                                    'adverse_authority_link_count': 0,
+                                    'uncertain_authority_link_count': 0,
+                                    'treatment_type_counts': {},
+                                },
+                                'authority_rule_candidate_summary': {
+                                    'total_rule_candidate_count': 2,
+                                    'matched_claim_element_rule_count': 2,
+                                    'rule_type_counts': {'element': 1, 'exception': 1},
+                                },
+                                'support_by_kind_details': {
+                                    'authority': [
+                                        {
+                                            'support_ref': 'auth:1',
+                                            'rule_candidates': [
+                                                {
+                                                    'rule_id': 'rule:1',
+                                                    'rule_text': 'Protected activity must precede the employer response.',
+                                                    'rule_type': 'element',
+                                                    'claim_element_id': 'employment:1',
+                                                    'claim_element_text': 'Protected activity',
+                                                    'extraction_confidence': 0.78,
+                                                },
+                                                {
+                                                    'rule_id': 'rule:2',
+                                                    'rule_text': 'Except where the employer lacked notice liability may not attach.',
+                                                    'rule_type': 'exception',
+                                                    'claim_element_id': 'employment:1',
+                                                    'claim_element_text': 'Protected activity',
+                                                    'extraction_confidence': 0.74,
+                                                },
+                                            ],
+                                        }
+                                    ],
+                                },
+                                'proof_gap_count': 0,
+                                'proof_gaps': [],
+                                'proof_decision_trace': {
+                                    'decision_source': 'partial_support',
+                                    'logic_provable_count': 0,
+                                    'logic_unprovable_count': 0,
+                                    'ontology_validation_signal': 'unknown',
+                                },
+                                'reasoning_diagnostics': {
+                                    'backend_available_count': 0,
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value={
+                'summary': {
+                    'total_fact_count': 0,
+                    'unique_fact_count': 0,
+                    'duplicate_fact_count': 0,
+                    'semantic_cluster_count': 0,
+                    'semantic_duplicate_count': 0,
+                    'max_score': 0.0,
+                },
+                'results': [],
+            })
+            mediator.legal_authority_search.build_search_programs = Mock(return_value=[
+                {
+                    'program_id': 'legal_search_program:fact-1',
+                    'program_type': 'fact_pattern_search',
+                    'claim_type': 'employment',
+                    'authority_intent': 'support',
+                    'query_text': 'employment Protected activity fact pattern application authority',
+                    'claim_element_id': 'employment:1',
+                    'claim_element_text': 'Protected activity',
+                    'authority_families': ['case_law'],
+                    'search_terms': ['Protected activity', 'employment'],
+                    'metadata': {},
+                },
+                {
+                    'program_id': 'legal_search_program:treatment-1',
+                    'program_type': 'treatment_check_search',
+                    'claim_type': 'employment',
+                    'authority_intent': 'confirm_good_law',
+                    'query_text': 'employment Protected activity citation history later treatment good law',
+                    'claim_element_id': 'employment:1',
+                    'claim_element_text': 'Protected activity',
+                    'authority_families': ['case_law'],
+                    'search_terms': ['Protected activity', 'employment'],
+                    'metadata': {},
+                },
+                {
+                    'program_id': 'legal_search_program:adverse-1',
+                    'program_type': 'adverse_authority_search',
+                    'claim_type': 'employment',
+                    'authority_intent': 'oppose',
+                    'query_text': 'employment Protected activity adverse authority defense exception limitation',
+                    'claim_element_id': 'employment:1',
+                    'claim_element_text': 'Protected activity',
+                    'authority_families': ['case_law'],
+                    'search_terms': ['Protected activity', 'employment'],
+                    'metadata': {},
+                },
+            ])
+
+            plan = mediator.get_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                required_support_kinds=['authority'],
+            )
+            task = plan['claims']['employment']['tasks'][0]
+
+            assert task['authority_search_program_summary']['primary_program_type'] == 'adverse_authority_search'
+            assert task['authority_search_program_summary']['primary_program_bias'] == ''
+            assert task['authority_search_program_summary']['primary_program_rule_bias'] == 'exception'
+            assert [program['program_type'] for program in task['authority_search_programs'][:2]] == [
+                'adverse_authority_search',
+                'treatment_check_search',
+            ]
+            assert task['authority_search_programs'][0]['metadata']['rule_signal_bias'] == 'exception'
+            assert task['authority_search_programs'][0]['metadata']['rule_candidate_focus_types'] == ['element', 'exception']
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_follow_up_plan_biases_authority_programs_for_procedural_rules(self):
+        """Procedural prerequisite rules should move procedural authority search ahead of fact-pattern support."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
+                'claims': {'employment': []}
+            })
+            mediator.claim_support.get_follow_up_execution_status = Mock(return_value={
+                'in_cooldown': False,
+            })
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'required_support_kinds': ['authority'],
+                        'elements': [
+                            {
+                                'element_id': 'employment:1',
+                                'element_text': 'Protected activity',
+                                'coverage_status': 'incomplete',
+                                'validation_status': 'incomplete',
+                                'recommended_action': 'retrieve_more_support',
+                                'support_by_kind': {},
+                                'authority_treatment_summary': {
+                                    'authority_link_count': 0,
+                                    'treated_authority_link_count': 0,
+                                    'supportive_authority_link_count': 0,
+                                    'adverse_authority_link_count': 0,
+                                    'uncertain_authority_link_count': 0,
+                                    'treatment_type_counts': {},
+                                },
+                                'authority_rule_candidate_summary': {
+                                    'total_rule_candidate_count': 1,
+                                    'matched_claim_element_rule_count': 1,
+                                    'rule_type_counts': {'procedural_prerequisite': 1},
+                                },
+                                'support_by_kind_details': {
+                                    'authority': [
+                                        {
+                                            'support_ref': 'auth:1',
+                                            'rule_candidates': [
+                                                {
+                                                    'rule_id': 'rule:1',
+                                                    'rule_text': 'A retaliation claim requires timely administrative exhaustion before suit.',
+                                                    'rule_type': 'procedural_prerequisite',
+                                                    'claim_element_id': 'employment:1',
+                                                    'claim_element_text': 'Protected activity',
+                                                    'extraction_confidence': 0.82,
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                },
+                                'proof_gap_count': 0,
+                                'proof_gaps': [],
+                                'proof_decision_trace': {
+                                    'decision_source': 'missing_support',
+                                    'logic_provable_count': 0,
+                                    'logic_unprovable_count': 0,
+                                    'ontology_validation_signal': 'unknown',
+                                },
+                                'reasoning_diagnostics': {
+                                    'backend_available_count': 0,
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value={
+                'summary': {
+                    'total_fact_count': 0,
+                    'unique_fact_count': 0,
+                    'duplicate_fact_count': 0,
+                    'semantic_cluster_count': 0,
+                    'semantic_duplicate_count': 0,
+                    'max_score': 0.0,
+                },
+                'results': [],
+            })
+            mediator.legal_authority_search.build_search_programs = Mock(return_value=[
+                {
+                    'program_id': 'legal_search_program:fact-1',
+                    'program_type': 'fact_pattern_search',
+                    'claim_type': 'employment',
+                    'authority_intent': 'support',
+                    'query_text': 'employment Protected activity fact pattern application authority',
+                    'claim_element_id': 'employment:1',
+                    'claim_element_text': 'Protected activity',
+                    'authority_families': ['case_law'],
+                    'search_terms': ['Protected activity', 'employment'],
+                    'metadata': {},
+                },
+                {
+                    'program_id': 'legal_search_program:procedure-1',
+                    'program_type': 'procedural_search',
+                    'claim_type': 'employment',
+                    'authority_intent': 'procedural',
+                    'query_text': 'employment Protected activity timeliness exhaustion venue notice procedure',
+                    'claim_element_id': 'employment:1',
+                    'claim_element_text': 'Protected activity',
+                    'authority_families': ['regulation'],
+                    'search_terms': ['Protected activity', 'employment'],
+                    'metadata': {},
+                },
+                {
+                    'program_id': 'legal_search_program:definition-1',
+                    'program_type': 'element_definition_search',
+                    'claim_type': 'employment',
+                    'authority_intent': 'support',
+                    'query_text': 'employment Protected activity element definition statute regulation rule',
+                    'claim_element_id': 'employment:1',
+                    'claim_element_text': 'Protected activity',
+                    'authority_families': ['statute'],
+                    'search_terms': ['Protected activity', 'employment'],
+                    'metadata': {},
+                },
+            ])
+
+            plan = mediator.get_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                required_support_kinds=['authority'],
+            )
+            task = plan['claims']['employment']['tasks'][0]
+
+            assert task['authority_search_program_summary']['primary_program_type'] == 'procedural_search'
+            assert task['authority_search_program_summary']['primary_program_bias'] == ''
+            assert task['authority_search_program_summary']['primary_program_rule_bias'] == 'procedural_prerequisite'
+            assert [program['program_type'] for program in task['authority_search_programs'][:3]] == [
+                'procedural_search',
+                'element_definition_search',
+                'fact_pattern_search',
+            ]
+            assert task['authority_search_programs'][0]['metadata']['rule_signal_bias'] == 'procedural_prerequisite'
+            assert task['authority_search_programs'][0]['metadata']['rule_candidate_focus_types'] == ['procedural_prerequisite']
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
@@ -682,6 +1483,133 @@ class TestMediatorWithMocks:
             assert executed_call.kwargs['metadata']['stored_result_count'] == 0
             assert executed_call.kwargs['metadata']['zero_result'] is True
             assert executed_call.kwargs['metadata']['follow_up_focus'] == 'reasoning_gap_closure'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_execute_follow_up_plan_persists_authority_search_program_metadata(self):
+        """Authority follow-up execution should persist and forward the claim-aware search-program bundle."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
+                'claims': {'employment': []}
+            })
+            mediator.claim_support.get_follow_up_execution_status = Mock(return_value={
+                'in_cooldown': False,
+            })
+            mediator.claim_support.was_follow_up_executed = Mock(return_value=False)
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'required_support_kinds': ['authority'],
+                        'elements': [
+                            {
+                                'element_id': 'employment:1',
+                                'element_text': 'Protected activity',
+                                'coverage_status': 'missing',
+                                'validation_status': 'incomplete',
+                                'recommended_action': 'collect_initial_support',
+                                'support_by_kind': {},
+                                'proof_gap_count': 0,
+                                'proof_gaps': [],
+                                'proof_decision_trace': {
+                                    'decision_source': 'missing_support',
+                                    'logic_provable_count': 0,
+                                    'logic_unprovable_count': 0,
+                                    'ontology_validation_signal': 'unknown',
+                                },
+                                'reasoning_diagnostics': {
+                                    'backend_available_count': 0,
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value={
+                'summary': {
+                    'total_fact_count': 0,
+                    'unique_fact_count': 0,
+                    'duplicate_fact_count': 0,
+                    'semantic_cluster_count': 0,
+                    'semantic_duplicate_count': 0,
+                    'max_score': 0.0,
+                },
+                'results': [],
+            })
+            mediator.legal_authority_search.build_search_programs = Mock(return_value=[
+                {
+                    'program_id': 'legal_search_program:authority-1',
+                    'program_type': 'element_definition_search',
+                    'claim_type': 'employment',
+                    'authority_intent': 'support',
+                    'query_text': 'employment Protected activity element definition statute regulation rule',
+                    'claim_element_id': 'employment:1',
+                    'claim_element_text': 'Protected activity',
+                    'authority_families': ['statute', 'regulation'],
+                    'search_terms': ['Protected activity', 'employment'],
+                    'metadata': {'rule_signal_bias': 'element'},
+                }
+            ])
+            mediator.search_legal_authorities = Mock(return_value={
+                'statutes': [{'citation': '42 U.S.C. § 2000e-3', 'title': 'Retaliation', 'source': 'us_code'}],
+                'regulations': [],
+                'case_law': [],
+                'web_archives': [],
+            })
+            mediator.store_legal_authorities = Mock(return_value={'total_records': 1})
+            mediator.get_claim_overview = Mock(return_value={'claims': {'employment': {}}})
+
+            result = mediator.execute_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                support_kind='authority',
+                max_tasks_per_claim=1,
+            )
+
+            executed_task = result['claims']['employment']['tasks'][0]
+            mediator.search_legal_authorities.assert_called_once_with(
+                query='employment Protected activity element definition statute regulation rule',
+                claim_type='employment',
+                jurisdiction=None,
+                search_all=True,
+                authority_families=['statute', 'regulation'],
+            )
+            assert executed_task['executed']['authority']['query'] == 'employment Protected activity element definition statute regulation rule'
+            assert executed_task['executed']['authority']['task_query'] == '"employment" "Protected activity" statute'
+            assert executed_task['executed']['authority']['selected_search_program_id'] == 'legal_search_program:authority-1'
+            assert executed_task['executed']['authority']['selected_search_program_type'] == 'element_definition_search'
+            assert executed_task['executed']['authority']['selected_search_program_bias'] == ''
+            assert executed_task['executed']['authority']['selected_search_program_rule_bias'] == 'element'
+            assert executed_task['executed']['authority']['selected_search_program_families'] == ['statute', 'regulation']
+            assert executed_task['executed']['authority']['search_program_summary'] == {
+                'program_count': 1,
+                'program_type_counts': {'element_definition_search': 1},
+                'authority_intent_counts': {'support': 1},
+                'primary_program_id': 'legal_search_program:authority-1',
+                'primary_program_type': 'element_definition_search',
+                'primary_program_bias': '',
+                'primary_program_rule_bias': 'element',
+            }
+            assert executed_task['executed']['authority']['search_programs'][0]['program_id'] == 'legal_search_program:authority-1'
+            store_call = mediator.store_legal_authorities.call_args
+            assert store_call.kwargs['search_programs'][0]['program_id'] == 'legal_search_program:authority-1'
+            recorded_call = mediator.claim_support.record_follow_up_execution.call_args
+            assert recorded_call.kwargs['query_text'] == 'employment Protected activity element definition statute regulation rule'
+            assert recorded_call.kwargs['metadata']['task_query'] == '"employment" "Protected activity" statute'
+            assert recorded_call.kwargs['metadata']['effective_query'] == 'employment Protected activity element definition statute regulation rule'
+            assert recorded_call.kwargs['metadata']['selected_search_program_id'] == 'legal_search_program:authority-1'
+            assert recorded_call.kwargs['metadata']['selected_search_program_type'] == 'element_definition_search'
+            assert recorded_call.kwargs['metadata']['selected_search_program_bias'] == ''
+            assert recorded_call.kwargs['metadata']['selected_search_program_rule_bias'] == 'element'
+            assert recorded_call.kwargs['metadata']['selected_search_program_families'] == ['statute', 'regulation']
+            assert recorded_call.kwargs['metadata']['search_program_ids'] == ['legal_search_program:authority-1']
+            assert recorded_call.kwargs['metadata']['search_program_count'] == 1
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 

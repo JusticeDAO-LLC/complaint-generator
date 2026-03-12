@@ -8,14 +8,7 @@ This module provides hooks for:
 4. Generating questions based on legal requirements
 """
 
-import sys
-import os
 from typing import Dict, List, Optional, Any
-
-# Add ipfs_datasets_py to path if available
-ipfs_datasets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ipfs_datasets_py')
-if os.path.exists(ipfs_datasets_path) and ipfs_datasets_path not in sys.path:
-    sys.path.insert(0, ipfs_datasets_path)
 
 
 class LegalClassificationHook:

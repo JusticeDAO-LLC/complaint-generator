@@ -7,8 +7,6 @@ Now uses complaint_analysis.SeedGenerator for data-driven seed generation.
 
 import logging
 from typing import Dict, Any, List
-import sys
-sys.path.insert(0, '.')
 
 from complaint_analysis import SeedGenerator as AnalysisSeedGenerator
 

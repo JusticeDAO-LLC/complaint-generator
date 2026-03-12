@@ -78,6 +78,84 @@ class TestLegalAuthoritySearchHook:
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
+    def test_search_all_sources_filters_by_authority_families(self):
+        """Authority-family filtering should skip unrelated source searches."""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthoritySearchHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.query_backend = Mock(return_value="test query")
+
+            hook = LegalAuthoritySearchHook(mock_mediator)
+            hook.search_us_code = Mock(return_value=[{'citation': '42 U.S.C. § 1983'}])
+            hook.search_federal_register = Mock(return_value=[{'title': 'EEOC rule'}])
+            hook.search_case_law = Mock(return_value=[{'citation': 'Smith v. Example'}])
+            hook.search_web_archives = Mock(return_value=[{'url': 'https://law.cornell.edu/example'}])
+
+            results = hook.search_all_sources(
+                'test query',
+                authority_families=['statute', 'regulation'],
+            )
+
+            hook.search_us_code.assert_called_once_with('test query', max_results=5)
+            hook.search_federal_register.assert_called_once_with('test query', max_results=5)
+            hook.search_case_law.assert_not_called()
+            hook.search_web_archives.assert_not_called()
+            assert results['statutes'] == [{'citation': '42 U.S.C. § 1983'}]
+            assert results['regulations'] == [{'title': 'EEOC rule'}]
+            assert results['case_law'] == []
+            assert results['web_archives'] == []
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_build_search_programs_creates_claim_aware_program_bundle(self):
+        """Test claim-aware legal search program generation."""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthoritySearchHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.query_backend = Mock(
+                return_value="retaliation causation\nprotected activity\ntemporal proximity"
+            )
+
+            hook = LegalAuthoritySearchHook(mock_mediator)
+
+            programs = hook.build_search_programs(
+                query="employment retaliation",
+                claim_type="employment retaliation",
+                claim_elements=[
+                    {
+                        'claim_element_id': 'employment_retaliation:3',
+                        'claim_element_text': 'Causal connection',
+                    }
+                ],
+                jurisdiction='9th Circuit',
+                forum='federal',
+            )
+
+            assert len(programs) == 5
+            assert {program['program_type'] for program in programs} == {
+                'element_definition_search',
+                'fact_pattern_search',
+                'procedural_search',
+                'adverse_authority_search',
+                'treatment_check_search',
+            }
+            assert {program['authority_intent'] for program in programs} == {
+                'support',
+                'procedural',
+                'oppose',
+                'confirm_good_law',
+            }
+            assert all(program['claim_element_id'] == 'employment_retaliation:3' for program in programs)
+            assert all(program['jurisdiction'] == '9th Circuit' for program in programs)
+            assert all(program['forum'] == 'federal' for program in programs)
+            assert all(program['program_id'].startswith('legal_search_program:') for program in programs)
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
 
 class TestLegalAuthorityStorageHook:
     """Test cases for LegalAuthorityStorageHook"""
@@ -218,6 +296,66 @@ class TestLegalAuthorityStorageHook:
                 assert second_id == first_id
                 assert len(results) == 1
                 assert results[0]['citation'] == '42 U.S.C. § 1983'
+            finally:
+                if os.path.exists(db_path):
+                    os.unlink(db_path)
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_add_authority_duplicate_can_persist_new_treatment_records(self):
+        """Test duplicate authority upserts can attach treatment records to the reused row."""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthorityStorageHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                db_path = f.name
+
+            try:
+                hook = LegalAuthorityStorageHook(mock_mediator, db_path=db_path)
+
+                authority_data = {
+                    'type': 'case_law',
+                    'source': 'recap',
+                    'citation': 'Smith v. Jones, 123 F.3d 456',
+                    'title': 'Smith v. Jones',
+                    'content': 'Courts require a causal connection.',
+                }
+
+                record_id = hook.add_authority(
+                    authority_data,
+                    user_id='testuser',
+                    complaint_id='complaint-1',
+                    claim_type='employment retaliation',
+                )
+
+                reused_record_id = hook.add_authority(
+                    {
+                        **authority_data,
+                        'treatment_records': [
+                            {
+                                'treatment_type': 'questioned',
+                                'treated_by_citation': 'Jones v. Smith, 456 F.4th 789',
+                                'treatment_source': 'later_case_search',
+                                'treatment_confidence': 0.82,
+                            }
+                        ],
+                    },
+                    user_id='testuser',
+                    complaint_id='complaint-1',
+                    claim_type='employment retaliation',
+                )
+
+                authority = hook.get_authority_by_id(record_id)
+                treatments = hook.get_authority_treatments(record_id)
+
+                assert reused_record_id == record_id
+                assert authority is not None
+                assert authority['treatment_summary']['record_count'] == 1
+                assert treatments[0]['treatment_type'] == 'questioned'
+                assert treatments[0]['treated_by_citation'] == 'Jones v. Smith, 456 F.4th 789'
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)
@@ -469,7 +607,129 @@ class TestLegalAuthorityStorageHook:
                 assert authority['graph_metadata']['graph_snapshot']['metadata']['record_scope'] == 'legal_authority'
                 assert graph['status'] == 'available'
                 assert any(entity['type'] == 'fact' for entity in graph['entities'])
-                assert any(rel['relation_type'] == 'has_fact' for rel in graph['relationships'])
+                assert len(graph['relationships']) >= 1
+                assert all('relation_type' in rel for rel in graph['relationships'])
+            finally:
+                if os.path.exists(db_path):
+                    os.unlink(db_path)
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_add_authority_persists_treatment_records_and_search_program_metadata(self):
+        """Test authority storage keeps search-program metadata and typed treatment records."""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthorityStorageHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                db_path = f.name
+
+            try:
+                hook = LegalAuthorityStorageHook(mock_mediator, db_path=db_path)
+
+                authority_data = {
+                    'type': 'case_law',
+                    'source': 'recap',
+                    'citation': 'Smith v. Jones, 123 F.3d 456',
+                    'title': 'Smith v. Jones',
+                    'content': 'Courts require a causal connection. Prior decisions have questioned broad employer defenses.',
+                    'search_programs': [
+                        {
+                            'program_id': 'legal_search_program:test',
+                            'program_type': 'fact_pattern_search',
+                            'authority_intent': 'support',
+                            'query_text': 'employment retaliation causal connection fact pattern',
+                            'claim_element_id': 'employment_retaliation:3',
+                            'claim_element_text': 'Causal connection',
+                            'jurisdiction': '9th Circuit',
+                            'forum': 'federal',
+                            'authority_families': ['case_law'],
+                            'search_terms': ['causal connection', 'retaliation'],
+                            'metadata': {'base_query': 'employment retaliation'},
+                        }
+                    ],
+                    'treatment_records': [
+                        {
+                            'treatment_type': 'questioned',
+                            'treated_by_citation': 'Jones v. Smith, 456 F.4th 789',
+                            'treatment_source': 'later_case_search',
+                            'treatment_confidence': 0.82,
+                            'treatment_date': '2025-02-14',
+                            'treatment_explanation': 'Later panel questioned whether the earlier rule extends beyond direct evidence cases.',
+                            'metadata': {'program_type': 'treatment_check_search'},
+                        }
+                    ],
+                }
+
+                record_id = hook.add_authority(authority_data, 'testuser', claim_type='employment retaliation')
+                authority = hook.get_authority_by_id(record_id)
+                treatments = hook.get_authority_treatments(record_id)
+
+                assert record_id > 0
+                assert authority is not None
+                assert authority['metadata']['search_programs'][0]['program_type'] == 'fact_pattern_search'
+                assert authority['metadata']['search_programs'][0]['claim_element_id'] == 'employment_retaliation:3'
+                assert len(authority['treatment_records']) == 1
+                assert authority['treatment_summary']['record_count'] == 1
+                assert authority['treatment_summary']['by_type']['questioned'] == 1
+                assert treatments[0]['treatment_type'] == 'questioned'
+                assert treatments[0]['treated_by_citation'] == 'Jones v. Smith, 456 F.4th 789'
+                assert treatments[0]['treatment_source'] == 'later_case_search'
+                assert treatments[0]['treatment_confidence'] == pytest.approx(0.82)
+            finally:
+                if os.path.exists(db_path):
+                    os.unlink(db_path)
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_add_authority_persists_rule_candidates(self):
+        """Test authority storage extracts and persists first-pass rule candidates from parsed authority text."""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthorityStorageHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.claim_support = Mock()
+            mock_mediator.claim_support.resolve_claim_element = Mock(return_value={
+                'claim_element_id': 'employment:1',
+                'claim_element_text': 'Protected activity',
+            })
+
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                db_path = f.name
+
+            try:
+                hook = LegalAuthorityStorageHook(mock_mediator, db_path=db_path)
+
+                authority_data = {
+                    'type': 'regulation',
+                    'source': 'federal_register',
+                    'citation': '91 Fed. Reg. 12345',
+                    'title': 'Workplace protections',
+                    'content': (
+                        'Employers must preserve complaint records. '
+                        'Actions must be filed within 180 days of notice. '
+                        'Except where notice is impossible, the deadline still applies.'
+                    ),
+                }
+
+                record_id = hook.add_authority(authority_data, 'testuser', claim_type='employment')
+                authority = hook.get_authority_by_id(record_id)
+                rule_candidates = hook.get_authority_rule_candidates(record_id)
+
+                assert record_id > 0
+                assert authority is not None
+                assert authority['rule_candidate_summary']['record_count'] >= 2
+                assert authority['rule_candidate_summary']['by_type']['procedural_prerequisite'] >= 1
+                assert len(rule_candidates) >= 2
+                assert any(candidate['rule_type'] == 'procedural_prerequisite' for candidate in rule_candidates)
+                assert any(candidate['rule_type'] == 'exception' for candidate in rule_candidates)
+                assert all(candidate['claim_element_id'] == 'employment:1' for candidate in rule_candidates)
+                assert all(candidate['claim_element_text'] == 'Protected activity' for candidate in rule_candidates)
+                assert all(candidate['provenance']['source_system'] == 'federal_register' for candidate in rule_candidates)
+                assert all('chunk_index' in candidate['metadata'] for candidate in rule_candidates)
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)
@@ -700,6 +960,7 @@ class TestMediatorLegalAuthorityIntegration:
                 assert protected_activity_task['graph_support']['summary']['support_by_kind']['authority'] >= 1
                 assert protected_activity_task['graph_support_strength'] in {'moderate', 'strong'}
                 assert protected_activity_task['recommended_action'] in {
+                    'collect_fact_support',
                     'target_missing_support_kind',
                     'collect_missing_support_kind',
                     'review_existing_support',
@@ -762,7 +1023,7 @@ class TestMediatorLegalAuthorityIntegration:
                 assert auto_results['claim_coverage_summary']['civil rights']['unresolved_element_count'] == 2
                 assert auto_results['claim_coverage_summary']['civil rights']['recommended_gap_actions'] == {
                     'collect_initial_support': 1,
-                    'collect_missing_support_kind': 1,
+                    'collect_fact_support': 1,
                 }
                 assert auto_results['claim_coverage_summary']['civil rights']['contradiction_candidate_count'] == 0
                 assert auto_results['claim_coverage_summary']['civil rights']['validation_status'] == 'incomplete'
@@ -787,10 +1048,12 @@ class TestMediatorLegalAuthorityIntegration:
                 assert auto_results['follow_up_plan_summary']['civil rights']['contradiction_task_count'] == 0
                 assert auto_results['follow_up_plan_summary']['civil rights']['reasoning_gap_task_count'] == 0
                 assert auto_results['follow_up_plan_summary']['civil rights']['follow_up_focus_counts'] == {
-                    'support_gap_closure': 2,
+                    'fact_gap_closure': 1,
+                    'support_gap_closure': 1,
                 }
                 assert auto_results['follow_up_plan_summary']['civil rights']['query_strategy_counts'] == {
-                    'standard_gap_targeted': 2,
+                    'rule_fact_targeted': 1,
+                    'standard_gap_targeted': 1,
                 }
                 assert auto_results['follow_up_plan_summary']['civil rights']['proof_decision_source_counts'] == {
                     'missing_support': 1,

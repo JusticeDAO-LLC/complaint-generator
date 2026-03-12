@@ -2,6 +2,7 @@
 
 import os
 import json
+import re
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pathlib import Path
@@ -14,7 +15,13 @@ from integrations.ipfs_datasets.provenance import (
 )
 from integrations.ipfs_datasets.documents import detect_document_input_format, parse_document_text
 from integrations.ipfs_datasets.graphs import extract_graph_from_text, persist_graph_snapshot
-from integrations.ipfs_datasets.types import CaseAuthority, CaseFact
+from integrations.ipfs_datasets.types import (
+    AuthorityTreatmentRecord,
+    CaseAuthority,
+    CaseFact,
+    LegalSearchProgram,
+    RuleCandidate,
+)
 from integrations.ipfs_datasets.legal import (
     LEGAL_SCRAPERS_AVAILABLE,
     search_federal_register,
@@ -240,9 +247,132 @@ Return only the search terms, one per line."""
             return terms[:3] or [query]
         except Exception:
             return [query]
+
+    def build_search_programs(
+        self,
+        query: str,
+        claim_type: Optional[str] = None,
+        claim_elements: Optional[List[Dict[str, Any]]] = None,
+        jurisdiction: Optional[str] = None,
+        forum: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Build claim-aware legal search programs for support, procedure, and adverse authority.
+
+        The current output is intentionally deterministic and mediator-friendly so it can
+        be persisted or attached to follow-up tasks before richer search-program logic lands.
+        """
+        base_query = str(query or "").strip()
+        if not base_query:
+            return []
+
+        normalized_claim_type = str(claim_type or "").strip()
+        normalized_jurisdiction = str(jurisdiction or "").strip()
+        normalized_forum = str(forum or "").strip()
+        generated_terms = self._generate_search_terms(base_query)
+
+        normalized_elements: List[Dict[str, str]] = []
+        for element in claim_elements or []:
+            if not isinstance(element, dict):
+                continue
+            element_text = str(
+                element.get('claim_element_text')
+                or element.get('element_text')
+                or element.get('claim_element')
+                or ''
+            ).strip()
+            if not element_text:
+                continue
+            normalized_elements.append(
+                {
+                    'claim_element_id': str(element.get('claim_element_id') or element.get('element_id') or '').strip(),
+                    'claim_element_text': element_text,
+                }
+            )
+
+        if not normalized_elements:
+            normalized_elements = [
+                {
+                    'claim_element_id': '',
+                    'claim_element_text': normalized_claim_type or base_query,
+                }
+            ]
+
+        program_templates = [
+            {
+                'program_type': 'element_definition_search',
+                'authority_intent': 'support',
+                'authority_families': ['statute', 'regulation', 'administrative_rule'],
+                'query_suffix': 'element definition statute regulation rule',
+            },
+            {
+                'program_type': 'fact_pattern_search',
+                'authority_intent': 'support',
+                'authority_families': ['case_law', 'agency_guidance'],
+                'query_suffix': 'fact pattern application authority',
+            },
+            {
+                'program_type': 'procedural_search',
+                'authority_intent': 'procedural',
+                'authority_families': ['regulation', 'administrative_rule', 'agency_guidance'],
+                'query_suffix': 'timeliness exhaustion venue notice procedure',
+            },
+            {
+                'program_type': 'adverse_authority_search',
+                'authority_intent': 'oppose',
+                'authority_families': ['case_law', 'statute', 'regulation'],
+                'query_suffix': 'adverse authority defense exception limitation',
+            },
+            {
+                'program_type': 'treatment_check_search',
+                'authority_intent': 'confirm_good_law',
+                'authority_families': ['case_law', 'administrative_rule', 'agency_guidance'],
+                'query_suffix': 'citation history later treatment good law',
+            },
+        ]
+
+        programs: List[Dict[str, Any]] = []
+        for element in normalized_elements:
+            element_text = element['claim_element_text']
+            for template in program_templates:
+                search_terms = [
+                    term
+                    for term in [element_text, normalized_claim_type, *generated_terms]
+                    if term
+                ]
+                program = LegalSearchProgram(
+                    program_type=template['program_type'],
+                    claim_type=normalized_claim_type or base_query,
+                    authority_intent=template['authority_intent'],
+                    query_text=' '.join(
+                        part
+                        for part in [base_query, element_text, normalized_jurisdiction, template['query_suffix']]
+                        if part
+                    ),
+                    claim_element_id=element['claim_element_id'],
+                    claim_element_text=element_text,
+                    jurisdiction=normalized_jurisdiction,
+                    forum=normalized_forum,
+                    authority_families=list(template['authority_families']),
+                    search_terms=search_terms[:6],
+                    metadata={
+                        'base_query': base_query,
+                        'claim_type': normalized_claim_type,
+                    },
+                )
+                programs.append(program.as_dict())
+
+        self.mediator.log(
+            'legal_authority_search_programs_built',
+            query=base_query,
+            claim_type=normalized_claim_type,
+            claim_element_count=len(normalized_elements),
+            program_count=len(programs),
+        )
+        return programs
     
     def search_all_sources(self, query: str, claim_type: Optional[str] = None,
-                          jurisdiction: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
+                          jurisdiction: Optional[str] = None,
+                          authority_families: Optional[List[str]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """
         Search all available legal sources for authorities.
         
@@ -254,34 +384,56 @@ Return only the search terms, one per line."""
         Returns:
             Dictionary with results from each source type
         """
+        normalized_families = {
+            str(family or '').strip()
+            for family in (authority_families or [])
+            if str(family or '').strip()
+        }
+        include_statutes = not normalized_families or bool(normalized_families & {'statute'})
+        include_regulations = not normalized_families or bool(
+            normalized_families & {'regulation', 'administrative_rule'}
+        )
+        include_case_law = not normalized_families or bool(normalized_families & {'case_law'})
+        include_web_archives = not normalized_families or bool(
+            normalized_families & {'agency_guidance', 'administrative_rule'}
+        )
+
         results = {
             'statutes': [],
             'regulations': [],
             'case_law': [],
             'web_archives': []
         }
-        
-        # Search US Code
-        results['statutes'] = self.search_us_code(query, max_results=5)
-        
-        # Search Federal Register
-        results['regulations'] = self.search_federal_register(query, max_results=5)
-        
-        # Search case law
-        results['case_law'] = self.search_case_law(query, jurisdiction, max_results=5)
-        
-        # Search relevant legal web archives
-        legal_domains = ['law.cornell.edu', 'law.justia.com', 'findlaw.com']
-        for domain in legal_domains:
-            try:
-                web_results = self.search_web_archives(domain, max_results=3)
-                results['web_archives'].extend(web_results)
-            except Exception:
-                pass
+
+        if include_statutes:
+            results['statutes'] = self.search_us_code(query, max_results=5)
+
+        if include_regulations:
+            results['regulations'] = self.search_federal_register(query, max_results=5)
+
+        if include_case_law:
+            results['case_law'] = self.search_case_law(query, jurisdiction, max_results=5)
+
+        if include_web_archives:
+            legal_domains = ['law.cornell.edu', 'law.justia.com', 'findlaw.com']
+            for domain in legal_domains:
+                try:
+                    web_results = self.search_web_archives(domain, max_results=3)
+                    results['web_archives'].extend(web_results)
+                except Exception:
+                    pass
         
         total_found = sum(len(v) for v in results.values())
         self.mediator.log('legal_authority_search_all',
-            query=query, total_found=total_found)
+            query=query,
+            total_found=total_found,
+            authority_families=sorted(normalized_families),
+            searched_sources={
+                'statutes': include_statutes,
+                'regulations': include_regulations,
+                'case_law': include_case_law,
+                'web_archives': include_web_archives,
+            })
         
         return results
 
@@ -408,6 +560,39 @@ class LegalAuthorityStorageHook:
                 )
             """)
 
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS legal_authority_treatments (
+                    authority_id BIGINT,
+                    treatment_id VARCHAR,
+                    treatment_type VARCHAR,
+                    treated_by_authority_id VARCHAR,
+                    treated_by_citation VARCHAR,
+                    treatment_source VARCHAR,
+                    treatment_confidence FLOAT,
+                    treatment_date VARCHAR,
+                    treatment_explanation TEXT,
+                    metadata JSON,
+                    provenance JSON
+                )
+            """)
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS legal_authority_rule_candidates (
+                    authority_id BIGINT,
+                    rule_id VARCHAR,
+                    rule_text TEXT,
+                    rule_type VARCHAR,
+                    claim_element_id VARCHAR,
+                    claim_element_text TEXT,
+                    predicate_template VARCHAR,
+                    jurisdiction VARCHAR,
+                    temporal_scope VARCHAR,
+                    extraction_confidence FLOAT,
+                    metadata JSON,
+                    provenance JSON
+                )
+            """)
+
             for statement in [
                 "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS jurisdiction VARCHAR",
                 "ALTER TABLE legal_authorities ADD COLUMN IF NOT EXISTS source_system VARCHAR",
@@ -439,6 +624,16 @@ class LegalAuthorityStorageHook:
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_authorities_citation
                 ON legal_authorities(citation)
+            """)
+
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_authority_treatments_authority
+                ON legal_authority_treatments(authority_id)
+            """)
+
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_authority_rule_candidates_authority
+                ON legal_authority_rule_candidates(authority_id)
             """)
             
             conn.close()
@@ -667,6 +862,370 @@ class LegalAuthorityStorageHook:
                 ],
             )
 
+    def _normalize_search_programs(self, authority_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        raw_programs = authority_data.get('search_programs')
+        if raw_programs is None:
+            metadata = authority_data.get('metadata', {}) if isinstance(authority_data.get('metadata'), dict) else {}
+            raw_programs = metadata.get('search_programs')
+
+        if isinstance(raw_programs, dict):
+            raw_programs = [raw_programs]
+        if not isinstance(raw_programs, list):
+            return []
+
+        normalized_programs: List[Dict[str, Any]] = []
+        for program in raw_programs:
+            if not isinstance(program, dict):
+                continue
+            normalized_programs.append(
+                {
+                    'program_id': str(program.get('program_id') or ''),
+                    'program_type': str(program.get('program_type') or ''),
+                    'authority_intent': str(program.get('authority_intent') or ''),
+                    'query_text': str(program.get('query_text') or ''),
+                    'claim_element_id': str(program.get('claim_element_id') or ''),
+                    'claim_element_text': str(program.get('claim_element_text') or ''),
+                    'jurisdiction': str(program.get('jurisdiction') or ''),
+                    'forum': str(program.get('forum') or ''),
+                    'authority_families': list(program.get('authority_families', []) or []),
+                    'search_terms': list(program.get('search_terms', []) or []),
+                    'metadata': dict(program.get('metadata', {}) or {}),
+                }
+            )
+        return normalized_programs
+
+    def _build_treatment_records(
+        self,
+        authority_id: int,
+        authority_data: Dict[str, Any],
+        provenance,
+    ) -> List[AuthorityTreatmentRecord]:
+        raw_records = authority_data.get('treatment_records')
+        if raw_records is None:
+            metadata = authority_data.get('metadata', {}) if isinstance(authority_data.get('metadata'), dict) else {}
+            raw_records = metadata.get('treatment_records')
+
+        if isinstance(raw_records, dict):
+            raw_records = [raw_records]
+        if not isinstance(raw_records, list):
+            return []
+
+        treatment_records: List[AuthorityTreatmentRecord] = []
+        for record in raw_records:
+            if not isinstance(record, dict):
+                continue
+            treatment_type = str(record.get('treatment_type') or record.get('type') or '').strip()
+            if not treatment_type:
+                continue
+            metadata = dict(record.get('metadata', {}) or {})
+            treatment_records.append(
+                AuthorityTreatmentRecord(
+                    authority_id=f'authority:{authority_id}',
+                    treatment_type=treatment_type,
+                    treated_by_authority_id=str(record.get('treated_by_authority_id') or ''),
+                    treated_by_citation=str(record.get('treated_by_citation') or record.get('citation') or ''),
+                    treatment_source=str(record.get('treatment_source') or 'authority_metadata'),
+                    treatment_confidence=float(record.get('treatment_confidence', 0.0) or 0.0),
+                    treatment_date=str(record.get('treatment_date') or ''),
+                    treatment_explanation=str(record.get('treatment_explanation') or record.get('explanation') or ''),
+                    metadata=metadata,
+                    provenance=build_provenance(
+                        source_url=str(provenance.source_url or ''),
+                        acquisition_method=str(provenance.acquisition_method or ''),
+                        source_type=str(provenance.source_type or ''),
+                        acquired_at=str(provenance.acquired_at or ''),
+                        content_hash=str(provenance.content_hash or ''),
+                        source_system=str(provenance.source_system or ''),
+                        jurisdiction=str(provenance.jurisdiction or ''),
+                    ),
+                )
+            )
+        return treatment_records
+
+    def _store_authority_treatments(
+        self,
+        conn,
+        authority_id: int,
+        treatment_records: List[AuthorityTreatmentRecord],
+    ) -> None:
+        for record in treatment_records:
+            conn.execute(
+                """
+                DELETE FROM legal_authority_treatments
+                WHERE authority_id = ? AND treatment_id = ?
+                """,
+                [authority_id, record.treatment_id],
+            )
+            conn.execute(
+                """
+                INSERT INTO legal_authority_treatments (
+                    authority_id, treatment_id, treatment_type, treated_by_authority_id,
+                    treated_by_citation, treatment_source, treatment_confidence,
+                    treatment_date, treatment_explanation, metadata, provenance
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    authority_id,
+                    record.treatment_id,
+                    record.treatment_type,
+                    record.treated_by_authority_id,
+                    record.treated_by_citation,
+                    record.treatment_source,
+                    record.treatment_confidence,
+                    record.treatment_date,
+                    record.treatment_explanation,
+                    json.dumps(record.metadata),
+                    json.dumps(record.provenance.as_dict()),
+                ],
+            )
+
+    def _split_rule_candidate_sentences(self, value: str) -> List[str]:
+        cleaned = " ".join(str(value or "").split())
+        if not cleaned:
+            return []
+        parts = re.split(r"(?<=[.!?])\s+|\n+", cleaned)
+        return [part.strip() for part in parts if part and part.strip()]
+
+    def _classify_rule_candidate_type(self, sentence: str) -> str:
+        normalized = str(sentence or "").lower()
+        if any(keyword in normalized for keyword in ("except", "unless", "however", "provided that")):
+            return 'exception'
+        if any(keyword in normalized for keyword in ("within ", "deadline", "timely", "exhaust", "notice", "venue", "filed", "preserve records", "procedure")):
+            return 'procedural_prerequisite'
+        if any(keyword in normalized for keyword in ("defense", "immunity", "safe harbor", "preempt")):
+            return 'defense'
+        if any(keyword in normalized for keyword in ("damages", "injunction", "relief", "remedy")):
+            return 'remedy'
+        return 'element'
+
+    def _rule_candidate_confidence(self, sentence: str, claim_element_text: str) -> float:
+        normalized = str(sentence or "").lower()
+        confidence = 0.55
+        if any(keyword in normalized for keyword in ("must", "shall", "required", "prohibited", "may not")):
+            confidence += 0.2
+        if claim_element_text and claim_element_text.lower() in normalized:
+            confidence += 0.15
+        if len(normalized.split()) >= 6:
+            confidence += 0.05
+        return min(round(confidence, 2), 0.95)
+
+    def _extract_rule_candidates(
+        self,
+        authority_id: int,
+        authority: Dict[str, Any],
+        claim_type: Optional[str],
+        document_parse: Dict[str, Any],
+        provenance,
+        claim_element: Dict[str, Optional[str]],
+    ) -> List[RuleCandidate]:
+        parsed_text = str((document_parse or {}).get('text') or '')
+        chunks = (document_parse or {}).get('chunks', []) or []
+        candidate_rows: List[Dict[str, Any]] = []
+
+        if chunks:
+            for chunk in chunks:
+                if not isinstance(chunk, dict):
+                    continue
+                chunk_text = str(chunk.get('text') or '')
+                for sentence in self._split_rule_candidate_sentences(chunk_text):
+                    candidate_rows.append(
+                        {
+                            'text': sentence,
+                            'chunk_id': str(chunk.get('chunk_id') or ''),
+                            'chunk_index': int(chunk.get('index', 0) or 0),
+                            'start': int(chunk.get('start', 0) or 0),
+                            'end': int(chunk.get('end', 0) or 0),
+                        }
+                    )
+        else:
+            for index, sentence in enumerate(self._split_rule_candidate_sentences(parsed_text)):
+                candidate_rows.append(
+                    {
+                        'text': sentence,
+                        'chunk_id': '',
+                        'chunk_index': index,
+                        'start': 0,
+                        'end': 0,
+                    }
+                )
+
+        rule_candidates: List[RuleCandidate] = []
+        seen_rule_texts = set()
+        for row in candidate_rows:
+            sentence = str(row.get('text') or '').strip()
+            if len(sentence.split()) < 4:
+                continue
+            normalized_text = sentence.lower()
+            if normalized_text in seen_rule_texts:
+                continue
+            seen_rule_texts.add(normalized_text)
+
+            rule_type = self._classify_rule_candidate_type(sentence)
+            claim_element_text = str(claim_element.get('claim_element') or '')
+            predicate_template = claim_element_text or str(claim_type or '')
+            rule_candidates.append(
+                RuleCandidate(
+                    authority_id=f'authority:{authority_id}',
+                    rule_text=sentence,
+                    rule_type=rule_type,
+                    claim_element_id=str(claim_element.get('claim_element_id') or ''),
+                    claim_element_text=claim_element_text,
+                    predicate_template=predicate_template,
+                    jurisdiction=str(provenance.jurisdiction or ''),
+                    temporal_scope=str(authority.get('metadata', {}).get('effective_date') or ''),
+                    extraction_confidence=self._rule_candidate_confidence(sentence, claim_element_text),
+                    metadata={
+                        'chunk_id': row.get('chunk_id', ''),
+                        'chunk_index': row.get('chunk_index', 0),
+                        'source_span': {
+                            'start': row.get('start', 0),
+                            'end': row.get('end', 0),
+                        },
+                        'claim_type': claim_type or '',
+                        'authority_type': authority.get('type', ''),
+                        'authority_source': authority.get('source', ''),
+                    },
+                    provenance=build_provenance(
+                        source_url=str(provenance.source_url or ''),
+                        acquisition_method=str(provenance.acquisition_method or ''),
+                        source_type=str(provenance.source_type or ''),
+                        acquired_at=str(provenance.acquired_at or ''),
+                        content_hash=str(provenance.content_hash or ''),
+                        source_system=str(provenance.source_system or ''),
+                        jurisdiction=str(provenance.jurisdiction or ''),
+                    ),
+                )
+            )
+
+        return rule_candidates[:25]
+
+    def _store_authority_rule_candidates(
+        self,
+        conn,
+        authority_id: int,
+        rule_candidates: List[RuleCandidate],
+    ) -> None:
+        for record in rule_candidates:
+            conn.execute(
+                """
+                INSERT INTO legal_authority_rule_candidates (
+                    authority_id, rule_id, rule_text, rule_type, claim_element_id,
+                    claim_element_text, predicate_template, jurisdiction, temporal_scope,
+                    extraction_confidence, metadata, provenance
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    authority_id,
+                    record.rule_id,
+                    record.rule_text,
+                    record.rule_type,
+                    record.claim_element_id,
+                    record.claim_element_text,
+                    record.predicate_template,
+                    record.jurisdiction,
+                    record.temporal_scope,
+                    record.extraction_confidence,
+                    json.dumps(record.metadata),
+                    json.dumps(record.provenance.as_dict()),
+                ],
+            )
+
+    def _get_authority_treatments(self, conn, authority_id: int) -> List[Dict[str, Any]]:
+        rows = conn.execute(
+            """
+            SELECT treatment_id, treatment_type, treated_by_authority_id, treated_by_citation,
+                   treatment_source, treatment_confidence, treatment_date, treatment_explanation,
+                   metadata, provenance
+            FROM legal_authority_treatments
+            WHERE authority_id = ?
+            ORDER BY treatment_confidence DESC, treatment_id ASC
+            """,
+            [authority_id],
+        ).fetchall()
+        return [
+            {
+                'treatment_id': row[0],
+                'treatment_type': row[1],
+                'treated_by_authority_id': row[2],
+                'treated_by_citation': row[3],
+                'treatment_source': row[4],
+                'treatment_confidence': row[5] or 0.0,
+                'treatment_date': row[6] or '',
+                'treatment_explanation': row[7] or '',
+                'metadata': json.loads(row[8]) if row[8] else {},
+                'provenance': json.loads(row[9]) if row[9] else {},
+            }
+            for row in rows
+        ]
+
+    def _get_authority_rule_candidates(self, conn, authority_id: int) -> List[Dict[str, Any]]:
+        rows = conn.execute(
+            """
+            SELECT rule_id, rule_text, rule_type, claim_element_id, claim_element_text,
+                   predicate_template, jurisdiction, temporal_scope, extraction_confidence,
+                   metadata, provenance
+            FROM legal_authority_rule_candidates
+            WHERE authority_id = ?
+            ORDER BY extraction_confidence DESC, rule_id ASC
+            """,
+            [authority_id],
+        ).fetchall()
+        return [
+            {
+                'rule_id': row[0],
+                'rule_text': row[1],
+                'rule_type': row[2],
+                'claim_element_id': row[3],
+                'claim_element_text': row[4],
+                'predicate_template': row[5],
+                'jurisdiction': row[6],
+                'temporal_scope': row[7],
+                'extraction_confidence': row[8] or 0.0,
+                'metadata': json.loads(row[9]) if row[9] else {},
+                'provenance': json.loads(row[10]) if row[10] else {},
+            }
+            for row in rows
+        ]
+
+    def _build_treatment_summary(self, treatment_records: List[Dict[str, Any]]) -> Dict[str, Any]:
+        counts: Dict[str, int] = {}
+        max_confidence = 0.0
+        for record in treatment_records:
+            treatment_type = str(record.get('treatment_type') or '')
+            if treatment_type:
+                counts[treatment_type] = counts.get(treatment_type, 0) + 1
+            max_confidence = max(max_confidence, float(record.get('treatment_confidence', 0.0) or 0.0))
+        return {
+            'record_count': len(treatment_records),
+            'by_type': counts,
+            'max_confidence': max_confidence,
+        }
+
+    def _build_rule_candidate_summary(self, rule_candidates: List[Dict[str, Any]]) -> Dict[str, Any]:
+        counts: Dict[str, int] = {}
+        max_confidence = 0.0
+        for record in rule_candidates:
+            rule_type = str(record.get('rule_type') or '')
+            if rule_type:
+                counts[rule_type] = counts.get(rule_type, 0) + 1
+            max_confidence = max(max_confidence, float(record.get('extraction_confidence', 0.0) or 0.0))
+        return {
+            'record_count': len(rule_candidates),
+            'by_type': counts,
+            'max_confidence': max_confidence,
+        }
+
+    def _attach_treatment_payloads(self, conn, record: Dict[str, Any]) -> Dict[str, Any]:
+        treatment_records = self._get_authority_treatments(conn, record['id'])
+        record['treatment_records'] = treatment_records
+        record['treatment_summary'] = self._build_treatment_summary(treatment_records)
+        rule_candidates = self._get_authority_rule_candidates(conn, record['id'])
+        record['rule_candidates'] = rule_candidates
+        record['rule_candidate_summary'] = self._build_rule_candidate_summary(rule_candidates)
+        return record
+
     def _authority_record_from_row(self, row, *, include_claim_type: bool = False) -> Dict[str, Any]:
         offset = 1 if include_claim_type else 0
         record = {
@@ -880,6 +1439,7 @@ class LegalAuthorityStorageHook:
                     **(authority_data.get('metadata', {}) if isinstance(authority_data.get('metadata', {}), dict) else {}),
                     'claim_element_id': claim_element.get('claim_element_id'),
                     'claim_element': claim_element.get('claim_element'),
+                    'search_programs': self._normalize_search_programs(authority_data),
                 },
                 provenance=provenance,
             )
@@ -893,6 +1453,11 @@ class LegalAuthorityStorageHook:
                 normalized_authority,
             )
             if existing_record_id is not None:
+                self._store_authority_treatments(
+                    conn,
+                    existing_record_id,
+                    self._build_treatment_records(existing_record_id, authority_data, provenance),
+                )
                 conn.close()
                 self.mediator.log(
                     'legal_authority_duplicate',
@@ -987,6 +1552,23 @@ class LegalAuthorityStorageHook:
                 provenance,
                 document_parse,
             )
+            self._store_authority_treatments(
+                conn,
+                record_id,
+                self._build_treatment_records(record_id, authority_data, provenance),
+            )
+            self._store_authority_rule_candidates(
+                conn,
+                record_id,
+                self._extract_rule_candidates(
+                    record_id,
+                    normalized_authority,
+                    claim_type,
+                    document_parse,
+                    provenance,
+                    claim_element,
+                ),
+            )
             conn.close()
             
             self.mediator.log('legal_authority_added',
@@ -1059,9 +1641,11 @@ class LegalAuthorityStorageHook:
                 ORDER BY relevance_score DESC, timestamp DESC
             """, [user_id, claim_type]).fetchall()
             
+            records = [self._authority_record_from_row(row) for row in results]
+            records = [self._attach_treatment_payloads(conn, record) for record in records]
             conn.close()
             
-            return [self._authority_record_from_row(row) for row in results]
+            return records
             
         except Exception as e:
             self.mediator.log('legal_authority_query_error', error=str(e))
@@ -1097,9 +1681,11 @@ class LegalAuthorityStorageHook:
                 ORDER BY timestamp DESC
             """, [user_id]).fetchall()
             
+            records = [self._authority_record_from_row(row, include_claim_type=True) for row in results]
+            records = [self._attach_treatment_payloads(conn, record) for record in records]
             conn.close()
             
-            return [self._authority_record_from_row(row, include_claim_type=True) for row in results]
+            return records
             
         except Exception as e:
             self.mediator.log('legal_authority_query_error', error=str(e))
@@ -1128,13 +1714,44 @@ class LegalAuthorityStorageHook:
                 """,
                 [authority_id],
             ).fetchone()
-            conn.close()
             if row is None:
+                conn.close()
                 return None
-            return self._authority_record_from_row(row, include_claim_type=True)
+            record = self._authority_record_from_row(row, include_claim_type=True)
+            record = self._attach_treatment_payloads(conn, record)
+            conn.close()
+            return record
         except Exception as e:
             self.mediator.log('legal_authority_query_error', error=str(e), authority_id=authority_id)
             return None
+
+    def get_authority_treatments(self, authority_id: int) -> List[Dict[str, Any]]:
+        """Get persisted treatment records for a stored legal authority."""
+        if not DUCKDB_AVAILABLE:
+            return []
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            records = self._get_authority_treatments(conn, authority_id)
+            conn.close()
+            return records
+        except Exception as e:
+            self.mediator.log('legal_authority_treatment_query_error', error=str(e), authority_id=authority_id)
+            return []
+
+    def get_authority_rule_candidates(self, authority_id: int) -> List[Dict[str, Any]]:
+        """Get persisted rule candidate records for a stored legal authority."""
+        if not DUCKDB_AVAILABLE:
+            return []
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            records = self._get_authority_rule_candidates(conn, authority_id)
+            conn.close()
+            return records
+        except Exception as e:
+            self.mediator.log('legal_authority_rule_candidate_query_error', error=str(e), authority_id=authority_id)
+            return []
 
     def get_authority_facts(self, authority_id: int) -> List[Dict[str, Any]]:
         """Get persisted fact records for a stored legal authority."""

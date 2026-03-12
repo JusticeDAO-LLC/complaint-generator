@@ -36,6 +36,17 @@ def _build_dashboard_mediator() -> Mock:
                 "total_links": 2,
                 "total_facts": 3,
                 "support_by_kind": {"evidence": 1, "authority": 1},
+                "authority_treatment_summary": {
+                    "authority_link_count": 1,
+                    "treated_authority_link_count": 1,
+                    "supportive_authority_link_count": 0,
+                    "adverse_authority_link_count": 1,
+                    "uncertain_authority_link_count": 0,
+                    "treatment_type_counts": {
+                        "questioned": 1,
+                    },
+                    "max_treatment_confidence": 0.82,
+                },
                 "support_packet_summary": {
                     "total_packet_count": 3,
                     "fact_packet_count": 3,
@@ -66,6 +77,17 @@ def _build_dashboard_mediator() -> Mock:
                         "status": "covered",
                         "fact_count": 2,
                         "total_links": 2,
+                        "authority_treatment_summary": {
+                            "authority_link_count": 1,
+                            "treated_authority_link_count": 1,
+                            "supportive_authority_link_count": 0,
+                            "adverse_authority_link_count": 1,
+                            "uncertain_authority_link_count": 0,
+                            "treatment_type_counts": {
+                                "questioned": 1,
+                            },
+                            "max_treatment_confidence": 0.82,
+                        },
                         "missing_support_kinds": [],
                         "support_packet_summary": {
                             "total_packet_count": 3,
@@ -174,6 +196,9 @@ def _build_dashboard_mediator() -> Mock:
                     "follow_up_focus": "parse_quality_improvement",
                     "query_strategy": "quality_gap_targeted",
                     "resolution_applied": "manual_review_resolved",
+                    "selected_search_program_type": "element_definition_search",
+                    "selected_search_program_bias": "uncertain",
+                    "selected_search_program_rule_bias": "procedural_prerequisite",
                 }
             ]
         }
@@ -194,6 +219,19 @@ def _build_dashboard_mediator() -> Mock:
                         "status": "missing",
                         "priority": "high",
                         "recommended_action": "improve_parse_quality",
+                        "authority_search_program_summary": {
+                            "program_count": 1,
+                            "program_type_counts": {
+                                "element_definition_search": 1,
+                            },
+                            "authority_intent_counts": {
+                                "support": 1,
+                            },
+                            "primary_program_id": "legal_search_program:dashboard-1",
+                            "primary_program_type": "element_definition_search",
+                            "primary_program_bias": "uncertain",
+                            "primary_program_rule_bias": "procedural_prerequisite",
+                        },
                         "follow_up_focus": "parse_quality_improvement",
                         "query_strategy": "quality_gap_targeted",
                         "missing_support_kinds": ["authority"],
@@ -275,6 +313,14 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert soup.find(id="signal-parse-quality-tasks") is not None
     assert soup.find(id="history-list") is not None
     assert soup.find(id="history-summary-chips") is not None
+    assert "authority program ${task.authority_search_program_summary.primary_program_type}" in page_html
+    assert "authority bias ${task.authority_search_program_summary.primary_program_bias}" in page_html
+    assert "rule bias ${task.authority_search_program_summary.primary_program_rule_bias}" in page_html
+    assert "History programs: ${selectedProgramTypes.map(([label, count]) => `${label}=${count}`).join(', ')}" in page_html
+    assert "History biases: ${selectedProgramBiases.map(([label, count]) => `${label}=${count}`).join(', ')}" in page_html
+    assert "History rule biases: ${selectedProgramRuleBiases.map(([label, count]) => `${label}=${count}`).join(', ')}" in page_html
+    assert "program: ${entry.selected_search_program_type}" in page_html
+    assert "rule bias: ${entry.selected_search_program_rule_bias}" in page_html
     assert "View lineage packets" in page_html
     assert "packet-details" in page_html
     assert "All packets" in page_html
@@ -318,6 +364,17 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
         "Causal connection"
     ]
     assert review_payload["claim_coverage_summary"]["retaliation"]["parse_quality_recommendation"] == ""
+    assert review_payload["claim_coverage_summary"]["retaliation"]["authority_treatment_summary"] == {
+        "authority_link_count": 1,
+        "treated_authority_link_count": 1,
+        "supportive_authority_link_count": 0,
+        "adverse_authority_link_count": 1,
+        "uncertain_authority_link_count": 0,
+        "treatment_type_counts": {
+            "questioned": 1,
+        },
+        "max_treatment_confidence": 0.82,
+    }
     assert review_payload["claim_coverage_summary"]["retaliation"]["support_packet_summary"] == {
         "total_packet_count": 3,
         "fact_packet_count": 3,
@@ -339,13 +396,33 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     }
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_packets"][0]["lineage_summary"]["archive_url"] == "https://web.archive.org/web/20240101120000/https://example.com/timeline-email"
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_packets"][1]["lineage_summary"]["fallback_mode"] == "citation_title_only"
+    assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["authority_treatment_summary"]["adverse_authority_link_count"] == 1
     assert review_payload["follow_up_plan_summary"]["retaliation"]["task_count"] == 1
     assert review_payload["follow_up_plan_summary"]["retaliation"]["parse_quality_task_count"] == 1
     assert review_payload["follow_up_plan_summary"]["retaliation"]["quality_gap_targeted_task_count"] == 1
+    assert review_payload["follow_up_plan_summary"]["retaliation"]["authority_search_program_task_count"] == 1
+    assert review_payload["follow_up_plan_summary"]["retaliation"]["authority_search_program_type_counts"] == {
+        "element_definition_search": 1,
+    }
+    assert review_payload["follow_up_plan_summary"]["retaliation"]["primary_authority_program_bias_counts"] == {
+        "uncertain": 1,
+    }
+    assert review_payload["follow_up_plan_summary"]["retaliation"]["primary_authority_program_rule_bias_counts"] == {
+        "procedural_prerequisite": 1,
+    }
     assert review_payload["follow_up_plan_summary"]["retaliation"]["resolution_applied_counts"] == {
         "manual_review_resolved": 1,
     }
     assert review_payload["follow_up_history_summary"]["retaliation"]["manual_review_entry_count"] == 1
+    assert review_payload["follow_up_history_summary"]["retaliation"]["selected_authority_program_type_counts"] == {
+        "element_definition_search": 1,
+    }
+    assert review_payload["follow_up_history_summary"]["retaliation"]["selected_authority_program_bias_counts"] == {
+        "uncertain": 1,
+    }
+    assert review_payload["follow_up_history_summary"]["retaliation"]["selected_authority_program_rule_bias_counts"] == {
+        "procedural_prerequisite": 1,
+    }
     assert any(
         entry.get("resolution_applied") == "manual_review_resolved"
         for entry in review_payload["follow_up_history"]["retaliation"]

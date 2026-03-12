@@ -23,6 +23,7 @@ from integrations.ipfs_datasets.legal import (
     search_recap_documents,
     search_us_code,
 )
+from integrations.ipfs_datasets.llm import generate_text_with_metadata
 from integrations.ipfs_datasets.logic import check_contradictions, prove_claim_elements, text_to_fol
 from integrations.ipfs_datasets.mcp_gateway import execute_gateway_tool, list_gateway_tools
 from integrations.ipfs_datasets.scraper_daemon import ScraperDaemon, ScraperDaemonConfig
@@ -32,6 +33,7 @@ from integrations.ipfs_datasets.search import (
     search_brave_web,
     search_multi_engine_web,
 )
+from integrations.ipfs_datasets.storage import pin_cid, retrieve_bytes, storage_backend_status, store_bytes
 from integrations.ipfs_datasets.vector_store import create_vector_index, search_vector_index
 
 
@@ -67,6 +69,8 @@ def test_capability_registry_exposes_common_contract_fields():
         assert payload["module_path"].startswith("ipfs_datasets_py")
         assert payload["details"]["capability"] == name
         assert "error_type" in payload["details"]
+        assert payload["details"]["adapter_module"].startswith("integrations.ipfs_datasets")
+        assert payload["details"]["contract_family"]
 
 
 def test_capability_report_returns_counts_and_nested_statuses():
@@ -76,6 +80,7 @@ def test_capability_report_returns_counts_and_nested_statuses():
     assert report["available_count"] + report["degraded_count"] == len(report["capabilities"])
     assert isinstance(report["available_capabilities"], list)
     assert isinstance(report["degraded_capabilities"], dict)
+    assert isinstance(report["family_counts"], dict)
     assert all("provider" in payload for payload in report["capabilities"].values())
     assert all("details" in payload for payload in report["capabilities"].values())
 
@@ -628,3 +633,51 @@ def test_stubbed_adapters_expose_canonical_operation_metadata():
 
     assert refinement_result['metadata']['rounds'] == 2
     assert refinement_result['metadata']['details']['rounds'] == 2
+
+
+def test_generate_text_with_metadata_wraps_success_response():
+    with patch('integrations.ipfs_datasets.llm.generate_text', return_value='adapter response'):
+        result = generate_text_with_metadata(
+            'Summarize the complaint.',
+            provider='copilot_cli',
+            model_name='gpt-5-mini',
+        )
+
+    assert result['status'] == 'available'
+    assert result['text'] == 'adapter response'
+    assert result['provider'] == 'ipfs_datasets_py'
+    assert result['metadata']['operation'] == 'generate_text'
+    assert result['metadata']['backend_available'] is True
+    assert result['metadata']['implementation_status'] == 'available'
+
+
+def test_storage_wrappers_expose_canonical_operation_metadata():
+    backend = object()
+
+    with patch('integrations.ipfs_datasets.storage.add_bytes', return_value='QmStored'):
+        stored = store_bytes(b'complaint text', pin_content=True)
+    with patch('integrations.ipfs_datasets.storage.cat', return_value=b'complaint text'):
+        retrieved = retrieve_bytes('QmStored')
+    with patch('integrations.ipfs_datasets.storage.pin', return_value={'Pins': ['QmStored']}):
+        pinned = pin_cid('QmStored')
+    with patch('integrations.ipfs_datasets.storage.get_ipfs_backend', return_value=backend):
+        backend_status = storage_backend_status()
+
+    assert stored['status'] == 'available'
+    assert stored['cid'] == 'QmStored'
+    assert stored['metadata']['operation'] == 'store_bytes'
+    assert stored['metadata']['backend_available'] is True
+
+    assert retrieved['status'] == 'available'
+    assert retrieved['cid'] == 'QmStored'
+    assert retrieved['data'] == b'complaint text'
+    assert retrieved['metadata']['operation'] == 'retrieve_bytes'
+
+    assert pinned['status'] == 'available'
+    assert pinned['cid'] == 'QmStored'
+    assert pinned['pinned'] is True
+    assert pinned['metadata']['operation'] == 'pin_cid'
+
+    assert backend_status['status'] in {'available', 'unavailable'}
+    assert backend_status['metadata']['operation'] == 'storage_backend_status'
+    assert 'backend_present' in backend_status

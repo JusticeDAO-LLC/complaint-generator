@@ -20,6 +20,7 @@ from .web_evidence_hooks import (
     WebEvidenceIntegrationHook
 )
 from .claim_support_hooks import ClaimSupportHook
+from .formal_document import ComplaintDocumentBuilder
 from .legal_corpus_hooks import (
     LegalCorpusRAGHook
 )

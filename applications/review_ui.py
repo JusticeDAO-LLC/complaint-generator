@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import HTMLResponse
 
+from .document_ui import attach_document_ui_routes
+
 
 _CLAIM_SUPPORT_REVIEW_TEMPLATE = (
     Path(__file__).resolve().parent.parent / "templates" / "claim_support_review.html"
@@ -59,8 +61,11 @@ def create_review_dashboard_app() -> FastAPI:
 def create_review_surface_app(mediator: Any) -> FastAPI:
     app = FastAPI(title="Complaint Generator Review Surface")
     attach_claim_support_review_ui_routes(app)
+    attach_document_ui_routes(app)
     attach_review_health_routes(app, "review-surface")
     from .review_api import attach_claim_support_review_routes
+    from .document_api import attach_document_routes
 
     attach_claim_support_review_routes(app, mediator)
+    attach_document_routes(app, mediator)
     return app

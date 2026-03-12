@@ -478,12 +478,56 @@ Representative shape:
       "support_by_kind": {
         "authority": 1
       },
+      "authority_treatment_summary": {
+        "authority_link_count": 1,
+        "treated_authority_link_count": 1,
+        "supportive_authority_link_count": 0,
+        "adverse_authority_link_count": 1,
+        "uncertain_authority_link_count": 0,
+        "treatment_type_counts": {
+          "questioned": 1
+        },
+        "max_treatment_confidence": 0.82
+      },
+      "authority_rule_candidate_summary": {
+        "authority_link_count": 1,
+        "authority_links_with_rule_candidates": 1,
+        "total_rule_candidate_count": 2,
+        "matched_claim_element_rule_count": 2,
+        "rule_type_counts": {
+          "element": 1,
+          "exception": 1
+        },
+        "max_extraction_confidence": 0.78
+      },
       "elements": [
         {
           "element_id": "civil_rights:1",
           "element_text": "Protected activity",
           "status": "partially_supported",
           "missing_support_kinds": ["evidence"],
+          "authority_treatment_summary": {
+            "authority_link_count": 1,
+            "treated_authority_link_count": 1,
+            "supportive_authority_link_count": 0,
+            "adverse_authority_link_count": 1,
+            "uncertain_authority_link_count": 0,
+            "treatment_type_counts": {
+              "questioned": 1
+            },
+            "max_treatment_confidence": 0.82
+          },
+          "authority_rule_candidate_summary": {
+            "authority_link_count": 1,
+            "authority_links_with_rule_candidates": 1,
+            "total_rule_candidate_count": 2,
+            "matched_claim_element_rule_count": 2,
+            "rule_type_counts": {
+              "element": 1,
+              "exception": 1
+            },
+            "max_extraction_confidence": 0.78
+          },
           "support_trace_summary": {
             "trace_count": 1,
             "fact_trace_count": 1,
@@ -851,6 +895,8 @@ Support-link semantics:
 - `support_traces`: Persisted fact-oriented trace rows derived from the stored support links, fact tables, and graph lineage. These are the strongest review-oriented explanation layer for why an element is currently covered or still weak.
 - `support_trace_summary`: Compact counts over `support_traces`, including fact-trace volume, parse-source mix, graph-status mix, and distinct record or graph counts.
 - `support_packet_summary`: Compact lineage counts over the traced support corpus, including archive-capture totals, capture-source mix, authority fallback modes, and source-field fallback mix.
+- `authority_treatment_summary`: Compact authority-reliability counts over authority links, including supportive versus adverse versus uncertain link totals, treatment-type mix, and maximum treatment confidence.
+- `authority_rule_candidate_summary`: Compact counts over structured rule candidates extracted from authority text, including aligned rule totals, rule-type mix such as `element`, `exception`, or `procedural_prerequisite`, and maximum extraction confidence.
 
 Interpretation notes:
 
@@ -860,6 +906,8 @@ Interpretation notes:
 - `reasoning_adapter_status_counts`, `reasoning_backend_available_count`, `reasoning_predicate_count`, `reasoning_ontology_entity_count`, `reasoning_ontology_relationship_count`, and `reasoning_fallback_ontology_count` summarize what the `ipfs_datasets` logic and GraphRAG adapters contributed to the current validation pass.
 - `decision_source_counts`, `adapter_contradicted_element_count`, and `decision_fallback_ontology_element_count` summarize how proof decisions were reached across the claim, including whether adapter contradiction output changed any element status.
 - `proof_supported_element_count`, `logic_unprovable_element_count`, and `ontology_invalid_element_count` summarize how often proof and ontology adapters positively supported an element, downgraded an element as unprovable, or reported an invalid reasoning graph.
+- `authority_treatment_summary` summarizes whether current legal-authority support appears clean, adverse, or uncertain based on persisted treatment records such as `questioned`, `limits`, `superseded`, or `good_law_unconfirmed`.
+- `authority_rule_candidate_summary` summarizes whether current legal-authority support already contains structured rule statements for the claim element. When authority support is present but `evidence` is still missing, operators can treat that as a likely factual-predicate gap rather than a legal-research gap.
 - `support_packet_summary` summarizes operator-visible parse lineage across the claim, including archive captures, capture-source mix, citation-only fallback modes, and content-source-field fallbacks.
 - `graph_trace_summary` is the compact lineage companion for dashboards and audit surfaces; it counts traced links, snapshot creation versus reuse, source-table mix, and distinct graph ids without requiring callers to inspect raw support links.
 - `support_trace_summary` remains the parse-diagnostics aggregate, while `support_packet_summary` is the operator-facing lineage aggregate built from those traced records.
@@ -1216,6 +1264,8 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
       "suppressed_task_count": 1,
       "contradiction_task_count": 1,
       "reasoning_gap_task_count": 0,
+      "fact_gap_task_count": 0,
+      "adverse_authority_task_count": 0,
       "semantic_cluster_count": 1,
       "semantic_duplicate_count": 2,
       "follow_up_focus_counts": {
@@ -1253,7 +1303,11 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
       "recommended_actions": {
         "review_existing_support": 1,
         "retrieve_more_support": 1
-      }
+      },
+      "rule_candidate_backed_task_count": 0,
+      "total_rule_candidate_count": 0,
+      "matched_claim_element_rule_count": 0,
+      "rule_candidate_type_counts": {}
     }
   },
   "follow_up_execution_summary": {
@@ -1263,6 +1317,8 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
       "suppressed_task_count": 1,
       "manual_review_task_count": 1,
       "cooldown_skipped_task_count": 0,
+      "fact_gap_task_count": 0,
+      "adverse_authority_task_count": 0,
       "semantic_cluster_count": 3,
       "semantic_duplicate_count": 4,
       "adaptive_retry_task_count": 1,
@@ -1281,6 +1337,11 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
         "reason": "repeated_zero_result_reasoning_gap",
         "recency_bucket": "fresh",
         "is_stale": false
+      },
+      "rule_candidate_backed_task_count": 0,
+      "total_rule_candidate_count": 0,
+      "matched_claim_element_rule_count": 0,
+      "rule_candidate_type_counts": {}
       }
     }
   }
@@ -1290,12 +1351,13 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
 Interpretation notes:
 
 - `follow_up_plan_summary` is a compact operator-facing view of the full `follow_up_plan` payload.
-- `contradiction_task_count`, `reasoning_gap_task_count`, `follow_up_focus_counts`, `query_strategy_counts`, `proof_decision_source_counts`, and `resolution_applied_counts` show why planned work exists, whether it has already been normalized by a manual-review resolution, and not just how much work is queued.
+- `contradiction_task_count`, `reasoning_gap_task_count`, `fact_gap_task_count`, `adverse_authority_task_count`, `follow_up_focus_counts`, `query_strategy_counts`, `proof_decision_source_counts`, and `resolution_applied_counts` show why planned work exists, whether it has already been normalized by a manual-review resolution, and not just how much work is queued.
 - `adaptive_retry_task_count`, `priority_penalized_task_count`, `adaptive_query_strategy_counts`, and `adaptive_retry_reason_counts` surface when repeated zero-result reasoning-gap retrievals have already caused the planner to broaden queries or lower urgency.
 - `last_adaptive_retry` gives the most recent broadened retry’s claim element label and timestamp plus `recency_bucket`/`is_stale` classification so dashboards can show freshness without scanning raw task lists.
 - `semantic_cluster_count` and `semantic_duplicate_count` summarize distinct versus near-duplicate graph-support clusters across planned tasks.
+- `rule_candidate_backed_task_count`, `total_rule_candidate_count`, `matched_claim_element_rule_count`, and `rule_candidate_type_counts` summarize how much of the queued or executed work is backed by structured rule extraction from current authority support.
 - `follow_up_execution_summary` separates suppressed tasks from cooldown skips so dashboards can explain why follow-up work did not run.
-- `follow_up_execution_summary` also reports contradiction-versus-reasoning-gap task counts plus focus, query-strategy, proof-decision-source, and resolution-normalization mixes across executed and skipped work.
+- `follow_up_execution_summary` also reports contradiction-versus-reasoning-gap task counts, fact-gap and adverse-authority task counts, plus focus, query-strategy, proof-decision-source, and resolution-normalization mixes across executed and skipped work.
 - The same adaptive retry fields appear on `follow_up_execution_summary`, so operator tooling can tell when executed or skipped work came from an already-broadened retry path.
 - `follow_up_execution_summary.semantic_cluster_count` and `follow_up_execution_summary.semantic_duplicate_count` aggregate graph-support clusters across executed and skipped tasks, preserving the support context that informed execution decisions.
 - `claim_coverage_matrix[claim_type]` exposes the same grouped claim-element support view used by automatic legal research.
@@ -1358,6 +1420,28 @@ Representative response shape:
       },
       "contradiction_candidate_count": 1,
       "contradicted_elements": ["Adverse action"],
+      "authority_treatment_summary": {
+        "authority_link_count": 1,
+        "treated_authority_link_count": 1,
+        "supportive_authority_link_count": 0,
+        "adverse_authority_link_count": 1,
+        "uncertain_authority_link_count": 0,
+        "treatment_type_counts": {
+          "questioned": 1
+        },
+        "max_treatment_confidence": 0.82
+      },
+      "authority_rule_candidate_summary": {
+        "authority_link_count": 1,
+        "authority_links_with_rule_candidates": 1,
+        "total_rule_candidate_count": 2,
+        "matched_claim_element_rule_count": 2,
+        "rule_type_counts": {
+          "element": 1,
+          "exception": 1
+        },
+        "max_extraction_confidence": 0.78
+      },
       "support_packet_summary": {
         "total_packet_count": 3,
         "fact_packet_count": 3,
@@ -1558,10 +1642,13 @@ Interpretation notes:
 - `claim_support_snapshot_summary` is the compact review-facing lifecycle view for those persisted diagnostics, so dashboard consumers can see freshness and pruning at a glance without iterating the raw snapshot entries.
 - `claim_reasoning_review` is the compact review-facing reasoning surface for flagged claim elements, capturing fallback ontology use plus unavailable or degraded adapter states without forcing clients to inspect every `reasoning_diagnostics` packet.
 - `follow_up_history` exposes recent rows from the persisted `claim_follow_up_execution` ledger, including contradiction-targeted retrieval attempts and manual-review audit events.
-- `follow_up_history_summary` compresses that ledger into counts by status, support kind, execution mode, query strategy, contradiction focus, resolution normalization, adaptive retry markers, and any recorded manual-review resolutions. `last_adaptive_retry` highlights the most recent broadened retry with its claim element label, timestamp, and freshness classification.
+- `follow_up_history_summary` compresses that ledger into counts by status, support kind, execution mode, query strategy, contradiction focus, resolution normalization, adaptive retry markers, selected authority-program type, and selected treatment-versus-rule bias when authority execution persisted a primary search-program choice. `last_adaptive_retry` highlights the most recent broadened retry with its claim element label, timestamp, and freshness classification.
 - `claim_coverage_summary` now carries compact parse-quality review signals such as `low_quality_parsed_record_count`, `parse_quality_issue_element_count`, and `parse_quality_issue_elements`, so dashboard clients can spot extraction-quality problems without traversing raw validation elements.
 - `claim_coverage_summary[claim_type].parse_quality_recommendation` is the canonical compact recommendation field for operator surfaces; it is set to `improve_parse_quality` when the review summary still has parse-quality issue elements.
+- `claim_coverage_summary[claim_type].authority_treatment_summary` is the canonical compact authority-reliability field for operator surfaces; it summarizes supportive, adverse, and uncertain authority links plus treatment-type counts such as `questioned`, `limits`, `superseded`, or `good_law_unconfirmed`.
+- `claim_coverage_summary[claim_type].authority_rule_candidate_summary` is the canonical compact authority-rule field for operator surfaces; it summarizes extracted rule statements, aligned rule counts for the current claim element, and rule-type mixes such as `element`, `exception`, or `procedural_prerequisite`.
 - `follow_up_plan_summary` and `follow_up_execution_summary` now include `parse_quality_task_count` plus `quality_gap_targeted_task_count`, allowing review surfaces to distinguish parse-remediation work from ordinary support-gap or contradiction follow-up.
+- `follow_up_plan_summary` and `follow_up_execution_summary` also include compact authority search-program metrics: `authority_search_program_task_count`, `authority_search_program_count`, `authority_search_program_type_counts`, `authority_search_intent_counts`, `primary_authority_program_type_counts`, `primary_authority_program_bias_counts`, and `primary_authority_program_rule_bias_counts`.
 - `claim_coverage_summary`, `follow_up_plan_summary`, and `follow_up_execution_summary` are the compact operator-facing surfaces intended for dashboards and review tools; `resolution_applied_counts` highlights tasks that are still active only because unresolved support gaps remain after manual review.
 - When `execute_follow_up=true`, the response adds `compatibility_notice` and emits `Deprecation`, `Sunset`, `Link`, and `Warning` headers so clients can migrate off the compatibility path.
 - New clients should prefer `POST /api/claim-support/execute-follow-up` for side effects and treat `execute_follow_up` on the review endpoint as a compatibility path.
@@ -1712,9 +1799,10 @@ Representative response shape:
 Interpretation notes:
 
 - `execution_mode` distinguishes normal retrieval work from contradiction-driven `manual_review` or mixed `review_and_retrieve` tasks.
-- `follow_up_focus` captures whether the task is closing an ordinary support gap, resolving a contradiction-heavy element, or closing a reasoning-specific gap such as `logic_unprovable` or `ontology_validation_failed`.
-- `query_strategy` records whether generated search text used the standard support-gap templates, contradiction-targeted retrieval prompts, or reasoning-gap-targeted prompts derived from proof diagnostics.
+- `follow_up_focus` captures whether the task is closing an ordinary support gap, a rule-guided factual gap (`fact_gap_closure`), an adverse-authority review (`adverse_authority_review`), a contradiction-heavy element, or a reasoning-specific gap such as `logic_unprovable` or `ontology_validation_failed`.
+- `query_strategy` records whether generated search text used the standard support-gap templates, rule-guided fact-gap prompts (`rule_fact_targeted`), adverse-authority review prompts (`adverse_authority_targeted`), contradiction-targeted retrieval prompts, or reasoning-gap-targeted prompts derived from proof diagnostics.
 - `manual_review` skips are also written into the `claim_follow_up_execution` DuckDB ledger with `support_kind="manual_review"`, so contradiction-resolution work has an audit trail even when no retrieval runs.
+- Adverse-authority review tasks are also kept visible even when graph support is already strong, because duplicated factual support does not resolve a questioned, limiting, or otherwise adverse authority record.
 - Operator resolutions can be appended to that same ledger as `status="resolved_manual_review"` events, carrying fields such as `resolution_status`, `resolution_notes`, and `related_execution_id`.
 - Once a contradiction has a newer `resolved_manual_review` event, pure `manual_review` tasks stop appearing in `Mediator.get_claim_follow_up_plan(...)`; mixed `review_and_retrieve` tasks downgrade back to ordinary `retrieve_support` planning so only the unresolved support gap remains active.
 - The same downgrade applies to reasoning-gap `manual_review` work: once resolved, mixed reasoning tasks clear their reasoning-specific proof-gap markers and revert to ordinary support-gap queries, so follow-up summaries describe the remaining retrieval work rather than the already-resolved proof issue.
@@ -1815,10 +1903,60 @@ Follow-up planning payloads from `Mediator.get_claim_follow_up_plan(...)` now in
           "claim_element": "Protected activity",
           "priority": "medium",
           "priority_score": 2,
+          "follow_up_focus": "fact_gap_closure",
+          "query_strategy": "rule_fact_targeted",
           "missing_support_kinds": ["evidence"],
           "has_graph_support": true,
           "graph_support_strength": "strong",
-          "recommended_action": "review_existing_support",
+          "recommended_action": "collect_fact_support",
+          "authority_treatment_summary": {
+            "authority_link_count": 1,
+            "treated_authority_link_count": 0,
+            "supportive_authority_link_count": 1,
+            "adverse_authority_link_count": 0,
+            "uncertain_authority_link_count": 0,
+            "treatment_type_counts": {},
+            "max_treatment_confidence": 0.0
+          },
+          "authority_rule_candidate_summary": {
+            "authority_link_count": 1,
+            "authority_links_with_rule_candidates": 1,
+            "total_rule_candidate_count": 2,
+            "matched_claim_element_rule_count": 2,
+            "rule_type_counts": {
+              "element": 1,
+              "exception": 1
+            },
+            "max_extraction_confidence": 0.78
+          },
+          "rule_candidate_context": {
+            "top_rule_types": ["element", "exception"],
+            "top_rule_texts": [
+              "Protected activity must precede the employer response.",
+              "Except where the employer lacked notice liability may not attach."
+            ]
+          },
+          "authority_search_program_summary": {
+            "program_count": 1,
+            "program_type_counts": {
+              "fact_pattern_search": 1
+            },
+            "authority_intent_counts": {
+              "support": 1
+            },
+            "primary_program_id": "legal_search_program:abc123",
+            "primary_program_type": "fact_pattern_search"
+          },
+          "authority_search_programs": [
+            {
+              "program_id": "legal_search_program:abc123",
+              "program_type": "fact_pattern_search",
+              "authority_intent": "support",
+              "query_text": "employment discrimination Protected activity fact pattern application authority",
+              "claim_element_id": "employment_discrimination:1",
+              "claim_element_text": "Protected activity"
+            }
+          ],
           "should_suppress_retrieval": true,
           "suppression_reason": "existing_support_high_duplication",
           "graph_support": {
@@ -1851,7 +1989,17 @@ Interpretation notes:
 - `graph_support` is the same fallback support ranking returned by `Mediator.query_claim_graph_support(...)`.
 - `has_graph_support` is a quick boolean derived from whether any ranked fact results already exist for the task's claim element.
 - `graph_support_strength` classifies the ranked support snapshot as `none`, `moderate`, or `strong`.
-- `recommended_action` distinguishes between tasks that should review existing support first and tasks that still need broader retrieval.
+- `recommended_action` distinguishes ordinary retrieval from more specific modes such as `collect_fact_support` when rule candidates already identify the missing factual predicate, or `review_adverse_authority` when current authority support is adverse.
+- `authority_treatment_summary` carries the same supportive versus adverse authority signal used by claim coverage and review payloads, so planner consumers can tell when a task is driven by questioned or limiting authority rather than missing citations alone.
+- `authority_rule_candidate_summary` is the compact planner-facing count of extracted rule statements for the current claim element.
+- `rule_candidate_context.top_rule_texts` exposes the highest-confidence rule or exception snippets the planner used when building fact-gap-targeted follow-up queries.
+- `authority_search_programs` is present when the task includes authority retrieval; it carries the claim-aware legal search bundle built for that claim element, including support-versus-adverse intent and program type.
+- `authority_search_program_summary.primary_program_bias` is the compact dashboard-facing form of the leading program's `metadata.authority_signal_bias`, so operator surfaces can show when adverse or uncertain treatment signals changed the bundle order.
+- `authority_search_program_summary.primary_program_rule_bias` is the compact dashboard-facing form of the leading program's `metadata.rule_signal_bias`, so operator surfaces can distinguish treatment-driven reordering from rule-driven reordering such as exception-heavy or procedural-prerequisite bundles.
+- `authority_search_programs[*].metadata.authority_signal_bias` is set to `adverse`, `uncertain`, or an empty string so planner consumers can see when existing treatment signals pushed adverse-authority or good-law-check programs ahead of ordinary support searches.
+- `authority_search_programs[*].metadata.rule_signal_bias` is set to `exception`, `procedural_prerequisite`, `element`, or an empty string when extracted rule candidates changed the authority bundle order.
+- `authority_search_programs[*].metadata.rule_candidate_focus_types` and `authority_search_programs[*].metadata.rule_candidate_focus_texts` carry the top extracted rule types and snippets that informed that bundle.
+- `authority_search_program_summary` is the compact companion field for dashboards or queueing code that only needs counts and the primary program id/type.
 - `priority_score` is the sortable numeric priority after graph-support adjustment; `priority` is the corresponding label.
 - `should_suppress_retrieval` flags low-value follow-up tasks that are skipped automatically unless execution is forced.
 - `suppression_reason` explains why retrieval was suppressed.
@@ -1861,12 +2009,36 @@ Evidence task result:
 ```json
 {
   "executed": {
-    "evidence": {
-      "query": "\"breach of contract\" \"Valid contract\" evidence",
-      "keywords": ["breach of contract", "Valid contract", "evidence"],
-      "result": {
-        "total_records": 1,
-        "total_new": 0,
+    "authority": {
+      "query": "\"employment discrimination\" \"Protected activity\" case law",
+      "search_program_summary": {
+        "program_count": 1,
+        "program_type_counts": {
+          "fact_pattern_search": 1
+        },
+        "authority_intent_counts": {
+          "support": 1
+        },
+        "primary_program_id": "legal_search_program:abc123",
+        "primary_program_type": "fact_pattern_search"
+      },
+      "search_programs": [
+        {
+          "program_id": "legal_search_program:abc123",
+          "program_type": "fact_pattern_search",
+          "authority_intent": "support",
+          "query_text": "employment discrimination Protected activity fact pattern application authority"
+        }
+      ],
+      "search_results": {
+        "statutes": 1,
+        "regulations": 0,
+        "case_law": 2,
+        "web_archives": 0
+      },
+      "stored_counts": {
+        "total_records": 3,
+        "total_new": 2,
         "total_reused": 1
       }
     }
@@ -1875,6 +2047,9 @@ Evidence task result:
 ```
 
 Executed and skipped follow-up tasks also carry the same `graph_support` snapshot so downstream review can compare the pre-search support context with the new retrieval result.
+Authority executions additionally persist `search_program_ids`, `search_program_count`, `selected_search_program_bias`, and `selected_search_program_rule_bias` into the `claim_follow_up_execution` ledger metadata, and forwarded `search_programs` are attached to stored authority rows when the retrieval result itself did not already include a program bundle.
+
+When `authority_search_programs` are present on a follow-up task, authority execution uses the primary program's `query_text` as the effective live search query, narrows source fan-out with the primary program's `authority_families`, and records the original planner query separately as `task_query` in execution metadata.
 
 Suppressed task example:
 

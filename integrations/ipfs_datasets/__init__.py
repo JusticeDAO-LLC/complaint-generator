@@ -35,6 +35,8 @@ from .search import (
 	search_brave_web,
 	search_multi_engine_web,
 )
+from .llm import generate_text_with_metadata
+from .storage import pin_cid, retrieve_bytes, storage_backend_status, store_bytes
 
 __all__ = [
 	"CapabilityStatus",
@@ -64,6 +66,11 @@ __all__ = [
 	"normalize_degraded_reason",
 	"with_adapter_metadata",
 	"evaluate_scraped_content",
+	"generate_text_with_metadata",
+	"store_bytes",
+	"retrieve_bytes",
+	"pin_cid",
+	"storage_backend_status",
 	"scrape_archived_domain",
 	"scrape_web_content",
 	"search_brave_web",

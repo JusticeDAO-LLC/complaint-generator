@@ -242,6 +242,9 @@ def summarize_follow_up_history_claim(
     resolution_applied_counts: Dict[str, int] = {}
     adaptive_query_strategy_counts: Dict[str, int] = {}
     adaptive_retry_reason_counts: Dict[str, int] = {}
+    selected_authority_program_type_counts: Dict[str, int] = {}
+    selected_authority_program_bias_counts: Dict[str, int] = {}
+    selected_authority_program_rule_bias_counts: Dict[str, int] = {}
     adaptive_retry_entry_count = 0
     priority_penalized_entry_count = 0
     zero_result_entry_count = 0
@@ -262,6 +265,9 @@ def summarize_follow_up_history_claim(
         adaptive_retry_reason = str(entry.get("adaptive_retry_reason") or "")
         adaptive_priority_penalty = int(entry.get("adaptive_priority_penalty", 0) or 0)
         zero_result = bool(entry.get("zero_result", False))
+        selected_search_program_type = str(entry.get("selected_search_program_type") or "")
+        selected_search_program_bias = str(entry.get("selected_search_program_bias") or "")
+        selected_search_program_rule_bias = str(entry.get("selected_search_program_rule_bias") or "")
 
         status_counts[status] = status_counts.get(status, 0) + 1
         support_kind_counts[support_kind] = support_kind_counts.get(support_kind, 0) + 1
@@ -285,6 +291,18 @@ def summarize_follow_up_history_claim(
         if adaptive_retry_reason:
             adaptive_retry_reason_counts[adaptive_retry_reason] = (
                 adaptive_retry_reason_counts.get(adaptive_retry_reason, 0) + 1
+            )
+        if selected_search_program_type:
+            selected_authority_program_type_counts[selected_search_program_type] = (
+                selected_authority_program_type_counts.get(selected_search_program_type, 0) + 1
+            )
+        if selected_search_program_bias:
+            selected_authority_program_bias_counts[selected_search_program_bias] = (
+                selected_authority_program_bias_counts.get(selected_search_program_bias, 0) + 1
+            )
+        if selected_search_program_rule_bias:
+            selected_authority_program_rule_bias_counts[selected_search_program_rule_bias] = (
+                selected_authority_program_rule_bias_counts.get(selected_search_program_rule_bias, 0) + 1
             )
         if zero_result:
             zero_result_entry_count += 1
@@ -311,6 +329,9 @@ def summarize_follow_up_history_claim(
         "priority_penalized_entry_count": priority_penalized_entry_count,
         "adaptive_query_strategy_counts": adaptive_query_strategy_counts,
         "adaptive_retry_reason_counts": adaptive_retry_reason_counts,
+        "selected_authority_program_type_counts": selected_authority_program_type_counts,
+        "selected_authority_program_bias_counts": selected_authority_program_bias_counts,
+        "selected_authority_program_rule_bias_counts": selected_authority_program_rule_bias_counts,
         "zero_result_entry_count": zero_result_entry_count,
         "last_adaptive_retry": last_adaptive_retry,
         "manual_review_entry_count": len(
@@ -540,6 +561,12 @@ def _summarize_claim_coverage_claim(
         "total_links": coverage_claim.get("total_links", 0),
         "total_facts": coverage_claim.get("total_facts", 0),
         "support_by_kind": coverage_claim.get("support_by_kind", {}),
+        "authority_treatment_summary": coverage_claim.get(
+            "authority_treatment_summary", {}
+        ),
+        "authority_rule_candidate_summary": coverage_claim.get(
+            "authority_rule_candidate_summary", {}
+        ),
         "support_trace_summary": support_trace_summary,
         "support_packet_summary": coverage_claim.get("support_packet_summary", {}),
         "status_counts": coverage_claim.get(
@@ -662,6 +689,102 @@ def _aggregate_adaptive_retry_metrics(tasks: List[Dict[str, Any]]) -> Dict[str, 
     }
 
 
+def _aggregate_authority_search_program_metrics(
+    tasks: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    authority_search_program_task_count = 0
+    authority_search_program_count = 0
+    authority_search_program_type_counts: Dict[str, int] = {}
+    authority_search_intent_counts: Dict[str, int] = {}
+    primary_authority_program_type_counts: Dict[str, int] = {}
+    primary_authority_program_bias_counts: Dict[str, int] = {}
+    primary_authority_program_rule_bias_counts: Dict[str, int] = {}
+
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        summary = task.get("authority_search_program_summary")
+        if not isinstance(summary, dict):
+            continue
+        program_count = int(summary.get("program_count", 0) or 0)
+        if program_count <= 0:
+            continue
+        authority_search_program_task_count += 1
+        authority_search_program_count += program_count
+
+        for program_type, count in (summary.get("program_type_counts") or {}).items():
+            authority_search_program_type_counts[str(program_type)] = (
+                authority_search_program_type_counts.get(str(program_type), 0)
+                + int(count or 0)
+            )
+        for intent, count in (summary.get("authority_intent_counts") or {}).items():
+            authority_search_intent_counts[str(intent)] = (
+                authority_search_intent_counts.get(str(intent), 0)
+                + int(count or 0)
+            )
+
+        primary_program_type = str(summary.get("primary_program_type") or "")
+        if primary_program_type:
+            primary_authority_program_type_counts[primary_program_type] = (
+                primary_authority_program_type_counts.get(primary_program_type, 0) + 1
+            )
+        primary_program_bias = str(summary.get("primary_program_bias") or "")
+        if primary_program_bias:
+            primary_authority_program_bias_counts[primary_program_bias] = (
+                primary_authority_program_bias_counts.get(primary_program_bias, 0) + 1
+            )
+        primary_program_rule_bias = str(summary.get("primary_program_rule_bias") or "")
+        if primary_program_rule_bias:
+            primary_authority_program_rule_bias_counts[primary_program_rule_bias] = (
+                primary_authority_program_rule_bias_counts.get(primary_program_rule_bias, 0) + 1
+            )
+
+    return {
+        "authority_search_program_task_count": authority_search_program_task_count,
+        "authority_search_program_count": authority_search_program_count,
+        "authority_search_program_type_counts": authority_search_program_type_counts,
+        "authority_search_intent_counts": authority_search_intent_counts,
+        "primary_authority_program_type_counts": primary_authority_program_type_counts,
+        "primary_authority_program_bias_counts": primary_authority_program_bias_counts,
+        "primary_authority_program_rule_bias_counts": primary_authority_program_rule_bias_counts,
+    }
+
+
+def _aggregate_rule_candidate_metrics(tasks: List[Dict[str, Any]]) -> Dict[str, Any]:
+    rule_candidate_backed_task_count = 0
+    total_rule_candidate_count = 0
+    matched_claim_element_rule_count = 0
+    rule_candidate_type_counts: Dict[str, int] = {}
+
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        summary = task.get("authority_rule_candidate_summary")
+        if not isinstance(summary, dict):
+            continue
+        candidate_count = int(summary.get("total_rule_candidate_count", 0) or 0)
+        if candidate_count <= 0:
+            continue
+
+        rule_candidate_backed_task_count += 1
+        total_rule_candidate_count += candidate_count
+        matched_claim_element_rule_count += int(
+            summary.get("matched_claim_element_rule_count", 0) or 0
+        )
+        for rule_type, count in (summary.get("rule_type_counts") or {}).items():
+            normalized_type = str(rule_type)
+            rule_candidate_type_counts[normalized_type] = (
+                rule_candidate_type_counts.get(normalized_type, 0) + int(count or 0)
+            )
+
+    return {
+        "rule_candidate_backed_task_count": rule_candidate_backed_task_count,
+        "total_rule_candidate_count": total_rule_candidate_count,
+        "matched_claim_element_rule_count": matched_claim_element_rule_count,
+        "rule_candidate_type_counts": rule_candidate_type_counts,
+    }
+
+
 def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any]:
     tasks = claim_plan.get("tasks", []) if isinstance(claim_plan, dict) else []
     recommended_actions: Dict[str, int] = {}
@@ -687,6 +810,8 @@ def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any
             )
     graph_support_metrics = _aggregate_graph_support_metrics(tasks)
     adaptive_retry_metrics = _aggregate_adaptive_retry_metrics(tasks)
+    authority_search_program_metrics = _aggregate_authority_search_program_metrics(tasks)
+    rule_candidate_metrics = _aggregate_rule_candidate_metrics(tasks)
     return {
         "task_count": len(tasks),
         "blocked_task_count": claim_plan.get("blocked_task_count", 0),
@@ -711,6 +836,16 @@ def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any
                 task
                 for task in tasks
                 if task.get("follow_up_focus") == "reasoning_gap_closure"
+            ]
+        ),
+        "fact_gap_task_count": len(
+            [task for task in tasks if task.get("follow_up_focus") == "fact_gap_closure"]
+        ),
+        "adverse_authority_task_count": len(
+            [
+                task
+                for task in tasks
+                if task.get("follow_up_focus") == "adverse_authority_review"
             ]
         ),
         "parse_quality_task_count": len(
@@ -744,6 +879,39 @@ def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any
             "adaptive_retry_reason_counts"
         ],
         "last_adaptive_retry": adaptive_retry_metrics["last_adaptive_retry"],
+        "authority_search_program_task_count": authority_search_program_metrics[
+            "authority_search_program_task_count"
+        ],
+        "authority_search_program_count": authority_search_program_metrics[
+            "authority_search_program_count"
+        ],
+        "authority_search_program_type_counts": authority_search_program_metrics[
+            "authority_search_program_type_counts"
+        ],
+        "authority_search_intent_counts": authority_search_program_metrics[
+            "authority_search_intent_counts"
+        ],
+        "primary_authority_program_type_counts": authority_search_program_metrics[
+            "primary_authority_program_type_counts"
+        ],
+        "primary_authority_program_bias_counts": authority_search_program_metrics[
+            "primary_authority_program_bias_counts"
+        ],
+        "primary_authority_program_rule_bias_counts": authority_search_program_metrics[
+            "primary_authority_program_rule_bias_counts"
+        ],
+        "rule_candidate_backed_task_count": rule_candidate_metrics[
+            "rule_candidate_backed_task_count"
+        ],
+        "total_rule_candidate_count": rule_candidate_metrics[
+            "total_rule_candidate_count"
+        ],
+        "matched_claim_element_rule_count": rule_candidate_metrics[
+            "matched_claim_element_rule_count"
+        ],
+        "rule_candidate_type_counts": rule_candidate_metrics[
+            "rule_candidate_type_counts"
+        ],
         "recommended_actions": recommended_actions,
     }
 
@@ -787,6 +955,8 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
             )
     graph_support_metrics = _aggregate_graph_support_metrics(executed_tasks + skipped_tasks)
     adaptive_retry_metrics = _aggregate_adaptive_retry_metrics(all_tasks)
+    authority_search_program_metrics = _aggregate_authority_search_program_metrics(all_tasks)
+    rule_candidate_metrics = _aggregate_rule_candidate_metrics(all_tasks)
     return {
         "executed_task_count": len(executed_tasks),
         "skipped_task_count": len(skipped_tasks),
@@ -798,6 +968,16 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
         ),
         "reasoning_gap_task_count": len(
             [task for task in all_tasks if task.get("follow_up_focus") == "reasoning_gap_closure"]
+        ),
+        "fact_gap_task_count": len(
+            [task for task in all_tasks if task.get("follow_up_focus") == "fact_gap_closure"]
+        ),
+        "adverse_authority_task_count": len(
+            [
+                task
+                for task in all_tasks
+                if task.get("follow_up_focus") == "adverse_authority_review"
+            ]
         ),
         "parse_quality_task_count": len(
             [task for task in all_tasks if task.get("follow_up_focus") == "parse_quality_improvement"]
@@ -822,6 +1002,39 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
             "adaptive_retry_reason_counts"
         ],
         "last_adaptive_retry": adaptive_retry_metrics["last_adaptive_retry"],
+        "authority_search_program_task_count": authority_search_program_metrics[
+            "authority_search_program_task_count"
+        ],
+        "authority_search_program_count": authority_search_program_metrics[
+            "authority_search_program_count"
+        ],
+        "authority_search_program_type_counts": authority_search_program_metrics[
+            "authority_search_program_type_counts"
+        ],
+        "authority_search_intent_counts": authority_search_program_metrics[
+            "authority_search_intent_counts"
+        ],
+        "primary_authority_program_type_counts": authority_search_program_metrics[
+            "primary_authority_program_type_counts"
+        ],
+        "primary_authority_program_bias_counts": authority_search_program_metrics[
+            "primary_authority_program_bias_counts"
+        ],
+        "primary_authority_program_rule_bias_counts": authority_search_program_metrics[
+            "primary_authority_program_rule_bias_counts"
+        ],
+        "rule_candidate_backed_task_count": rule_candidate_metrics[
+            "rule_candidate_backed_task_count"
+        ],
+        "total_rule_candidate_count": rule_candidate_metrics[
+            "total_rule_candidate_count"
+        ],
+        "matched_claim_element_rule_count": rule_candidate_metrics[
+            "matched_claim_element_rule_count"
+        ],
+        "rule_candidate_type_counts": rule_candidate_metrics[
+            "rule_candidate_type_counts"
+        ],
     }
 
 

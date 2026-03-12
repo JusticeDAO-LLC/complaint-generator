@@ -27,6 +27,7 @@ from .web_evidence_hooks import (
 	WebEvidenceIntegrationHook
 )
 from .claim_support_hooks import ClaimSupportHook
+from .formal_document import ComplaintDocumentBuilder
 from integrations.ipfs_datasets.capabilities import (
 	summarize_ipfs_datasets_startup_payload,
 )
@@ -42,6 +43,7 @@ from claim_support_review import (
 	summarize_claim_reasoning_review,
 	summarize_claim_support_snapshot_lifecycle,
 )
+from document_pipeline import FormalComplaintDocumentBuilder
 
 # Import three-phase complaint processing
 from complaint_phases import (
@@ -280,12 +282,7 @@ class Mediator:
 			**evidence_info,
 			'record_id': record_id,
 			'record_created': record_result.get('created', False),
-			'record_reused': record_result.get('reused', False),
 			'user_id': user_id,
-			'description': description,
-			'claim_type': claim_type,
-			'claim_element': resolved_element.get('claim_element_text'),
-			'claim_element_id': resolved_element.get('claim_element_id'),
 		}
 
 		if claim_type:
@@ -296,7 +293,12 @@ class Mediator:
 				claim_element_id=resolved_element.get('claim_element_id'),
 				claim_element_text=resolved_element.get('claim_element_text'),
 				support_kind='evidence',
+			court_header_override=court_header_override,
 				support_ref=evidence_info['cid'],
+			title_override=title_override,
+			plaintiff_names=plaintiff_names,
+			defendant_names=defendant_names,
+			requested_relief=requested_relief,
 				support_label=description or evidence_type,
 				source_table='evidence',
 				support_strength=float(result.get('metadata', {}).get('relevance_score', 0.7)),
@@ -536,7 +538,8 @@ class Mediator:
 	
 	def search_legal_authorities(self, query: str, claim_type: str = None,
 	                            jurisdiction: str = None,
-	                            search_all: bool = False):
+	                            search_all: bool = False,
+	                            authority_families: List[str] = None):
 		"""
 		Search for relevant legal authorities.
 		
@@ -551,7 +554,7 @@ class Mediator:
 		"""
 		if search_all:
 			return self.legal_authority_search.search_all_sources(
-				query, claim_type, jurisdiction
+				query, claim_type, jurisdiction, authority_families=authority_families
 			)
 		else:
 			# Default to US Code search
@@ -566,7 +569,8 @@ class Mediator:
 	def store_legal_authorities(self, authorities: Dict[str, List[Dict[str, Any]]], 
 	                           claim_type: str = None,
 	                           search_query: str = None,
-	                           user_id: str = None):
+	                           user_id: str = None,
+	                           search_programs: List[Dict[str, Any]] = None):
 		"""
 		Store found legal authorities in DuckDB.
 		
@@ -596,6 +600,12 @@ class Mediator:
 				# Add type info to each authority
 				for auth in auth_list:
 					auth['type'] = auth_type.rstrip('s')  # statutes -> statute
+					if search_programs and not auth.get('search_programs'):
+						auth['search_programs'] = [
+							dict(program)
+							for program in search_programs
+							if isinstance(program, dict)
+						]
 
 				record_ids = []
 				created_count = 0
@@ -975,6 +985,81 @@ class Mediator:
 				gap_types.append(gap_type)
 		return gap_types
 
+	def _normalize_rule_query_text(self, value: str) -> str:
+		text = re.sub(r'\s+', ' ', str(value or '').strip())
+		text = re.sub(r'["\']', '', text)
+		text = re.sub(r'\s+[\.,;:]+', '', text)
+		return text[:120].strip()
+
+	def _extract_rule_candidate_context(self, element: Dict[str, Any]) -> Dict[str, Any]:
+		summary = element.get('authority_rule_candidate_summary', {})
+		if not isinstance(summary, dict):
+			summary = {}
+		gap_context = element.get('gap_context', {}) if isinstance(element.get('gap_context'), dict) else {}
+		candidates: List[Dict[str, Any]] = []
+		seen_candidates = set()
+		for link in gap_context.get('links', []) or []:
+			if not isinstance(link, dict) or link.get('support_kind') != 'authority':
+				continue
+			for candidate in link.get('rule_candidates', []) or []:
+				if not isinstance(candidate, dict):
+					continue
+				rule_key = str(candidate.get('rule_id') or candidate.get('rule_text') or '').strip()
+				if not rule_key or rule_key in seen_candidates:
+					continue
+				seen_candidates.add(rule_key)
+				candidates.append(
+					{
+						'rule_id': candidate.get('rule_id'),
+						'rule_text': candidate.get('rule_text'),
+						'rule_type': candidate.get('rule_type'),
+						'claim_element_id': candidate.get('claim_element_id'),
+						'claim_element_text': candidate.get('claim_element_text'),
+						'extraction_confidence': float(candidate.get('extraction_confidence', 0.0) or 0.0),
+						'support_ref': link.get('support_ref'),
+					}
+				)
+		candidates.sort(
+			key=lambda candidate: (
+				-float(candidate.get('extraction_confidence', 0.0) or 0.0),
+				str(candidate.get('rule_type') or ''),
+				str(candidate.get('rule_text') or ''),
+			)
+		)
+		top_candidates = candidates[:3]
+		by_type = summary.get('rule_type_counts', {}) if isinstance(summary.get('rule_type_counts'), dict) else {}
+		top_rule_types: List[str] = []
+		for candidate in top_candidates:
+			rule_type = str(candidate.get('rule_type') or '').strip()
+			if rule_type and rule_type not in top_rule_types:
+				top_rule_types.append(rule_type)
+		for rule_type in by_type.keys():
+			normalized_type = str(rule_type or '').strip()
+			if normalized_type and normalized_type not in top_rule_types:
+				top_rule_types.append(normalized_type)
+		return {
+			'summary': summary,
+			'rule_candidates': top_candidates,
+			'top_rule_texts': [
+				self._normalize_rule_query_text(candidate.get('rule_text'))
+				for candidate in top_candidates
+				if candidate.get('rule_text')
+			],
+			'top_rule_types': top_rule_types[:3],
+			'has_exception_rules': int(by_type.get('exception', 0) or 0) > 0,
+			'has_procedural_rules': int(by_type.get('procedural_prerequisite', 0) or 0) > 0,
+		}
+
+	def _manual_review_skip_reason(self, task: Dict[str, Any]) -> str:
+		focus = str(task.get('follow_up_focus') or '')
+		if focus == 'contradiction_resolution':
+			return 'contradiction_requires_resolution'
+		if focus == 'reasoning_gap_closure':
+			return 'reasoning_gap_requires_operator_review'
+		if focus == 'adverse_authority_review':
+			return 'adverse_authority_requires_review'
+		return 'manual_review_required'
+
 	def _build_follow_up_queries(
 		self,
 		claim_type: str,
@@ -985,11 +1070,25 @@ class Mediator:
 		validation_status: str = '',
 		proof_gaps: List[Dict[str, Any]] = None,
 		proof_decision_trace: Dict[str, Any] = None,
+		authority_treatment_summary: Dict[str, Any] = None,
+		rule_candidate_context: Dict[str, Any] = None,
 	) -> Dict[str, List[str]]:
 		queries: Dict[str, List[str]] = {}
 		proof_gap_types = self._extract_proof_gap_types(proof_gaps or [])
 		decision_trace = proof_decision_trace if isinstance(proof_decision_trace, dict) else {}
 		support_kind_counts = support_by_kind if isinstance(support_by_kind, dict) else {}
+		treatment_summary = authority_treatment_summary if isinstance(authority_treatment_summary, dict) else {}
+		rule_context = rule_candidate_context if isinstance(rule_candidate_context, dict) else {}
+		rule_texts = list(rule_context.get('top_rule_texts') or [])
+		rule_types = [str(value).replace('_', ' ') for value in (rule_context.get('top_rule_types') or []) if value]
+		primary_rule_text = rule_texts[0] if rule_texts else ''
+		exception_rule_text = ''
+		for candidate in rule_context.get('rule_candidates', []) or []:
+			if not isinstance(candidate, dict):
+				continue
+			if str(candidate.get('rule_type') or '') == 'exception' and candidate.get('rule_text'):
+				exception_rule_text = self._normalize_rule_query_text(candidate.get('rule_text'))
+				break
 		gap_focus = ' '.join(
 			gap_type.replace('_', ' ')
 			for gap_type in proof_gap_types
@@ -1001,6 +1100,8 @@ class Mediator:
 
 		contradiction_targeted = validation_status == 'contradicted' and bool(missing_support_kinds)
 		reasoning_targeted = self._is_reasoning_gap_follow_up(proof_gap_types, decision_trace)
+		fact_gap_targeted = recommended_action == 'collect_fact_support'
+		adverse_authority_targeted = recommended_action == 'review_adverse_authority'
 		quality_targeted = recommended_action == 'improve_parse_quality' and not contradiction_targeted and not reasoning_targeted
 		target_support_kinds = list(missing_support_kinds)
 		if quality_targeted and not target_support_kinds:
@@ -1016,6 +1117,18 @@ class Mediator:
 					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'contradictory evidence rebuttal', gap_focus),
 					_compose_query(f'"{element_text}"', 'corroborating records inconsistency', claim_type),
 					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'timeline witness statement conflict'),
+				]
+			elif adverse_authority_targeted:
+				queries['evidence'] = [
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'facts distinguish adverse authority', exception_rule_text or primary_rule_text),
+					_compose_query(f'"{element_text}"', 'rebuttal evidence questioned authority', claim_type, exception_rule_text),
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'record facts overcome adverse treatment', ' '.join(rule_types[:2])),
+				]
+			elif fact_gap_targeted:
+				queries['evidence'] = [
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', f'"{primary_rule_text}"' if primary_rule_text else '', 'supporting facts evidence'),
+					_compose_query(f'"{element_text}"', f'"{exception_rule_text}"' if exception_rule_text else '', 'fact pattern records witness timeline', claim_type),
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'documents showing predicate satisfaction', f'"{primary_rule_text}"' if primary_rule_text else ' '.join(rule_types[:2])),
 				]
 			elif reasoning_targeted:
 				queries['evidence'] = [
@@ -1041,6 +1154,17 @@ class Mediator:
 					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'contradiction case law', gap_focus),
 					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'conflicting evidence burden of proof'),
 					_compose_query(f'"{element_text}"', 'inconsistent statements legal standard', claim_type),
+				]
+			elif adverse_authority_targeted:
+				adverse_terms = ' '.join(
+					str(name).replace('_', ' ')
+					for name, count in (treatment_summary.get('treatment_type_counts') or {}).items()
+					if int(count or 0) > 0
+				)[:80].strip()
+				queries['authority'] = [
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'distinguish questioned authority later treatment', adverse_terms),
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'adverse authority exception limitation', f'"{exception_rule_text}"' if exception_rule_text else ''),
+					_compose_query(f'"{element_text}"', 'good law treatment distinguishing case', claim_type),
 				]
 			elif reasoning_targeted:
 				queries['authority'] = [
@@ -1080,6 +1204,7 @@ class Mediator:
 	def _build_follow_up_record_metadata(self, task: Dict[str, Any], **extra: Any) -> Dict[str, Any]:
 		graph_summary = ((task.get('graph_support') or {}).get('summary', {})) if isinstance(task.get('graph_support'), dict) else {}
 		adaptive_retry_state = task.get('adaptive_retry_state', {}) if isinstance(task.get('adaptive_retry_state'), dict) else {}
+		rule_candidate_context = task.get('rule_candidate_context', {}) if isinstance(task.get('rule_candidate_context'), dict) else {}
 		metadata = {
 			'execution_mode': task.get('execution_mode', 'retrieve_support'),
 			'validation_status': task.get('validation_status', ''),
@@ -1110,6 +1235,13 @@ class Mediator:
 				'semantic_cluster_count': int(graph_summary.get('semantic_cluster_count', 0) or 0),
 				'semantic_duplicate_count': int(graph_summary.get('semantic_duplicate_count', 0) or 0),
 			},
+			'authority_treatment_summary': task.get('authority_treatment_summary', {}),
+			'authority_rule_candidate_summary': task.get('authority_rule_candidate_summary', {}),
+			'rule_candidate_focus': {
+				'candidate_count': len(rule_candidate_context.get('rule_candidates', []) or []),
+				'top_rule_types': list(rule_candidate_context.get('top_rule_types', []) or []),
+				'top_rule_texts': list(rule_candidate_context.get('top_rule_texts', []) or []),
+			},
 		}
 		for key, value in extra.items():
 			if value is not None:
@@ -1120,6 +1252,12 @@ class Mediator:
 		element_ref = task.get('claim_element_id') or task.get('claim_element') or 'unknown_element'
 		action = task.get('recommended_action') or 'manual_review'
 		return f'manual_review::{claim_type}::{element_ref}::{action}'
+
+	def _select_primary_authority_search_program(self, task: Dict[str, Any]) -> Dict[str, Any]:
+		for program in (task.get('authority_search_programs') or []):
+			if isinstance(program, dict):
+				return program
+		return {}
 
 	def _normalize_follow_up_history_key(self, value: str) -> str:
 		return str(value or '').strip().lower()
@@ -1352,6 +1490,9 @@ class Mediator:
 		element_text = element.get('element_text') or element.get('claim_element') or 'Unknown element'
 		support_by_kind = element.get('support_by_kind', {})
 		recommended_action = str(element.get('recommended_action') or '')
+		authority_treatment_summary = element.get('authority_treatment_summary', {}) if isinstance(element.get('authority_treatment_summary'), dict) else {}
+		authority_rule_candidate_summary = element.get('authority_rule_candidate_summary', {}) if isinstance(element.get('authority_rule_candidate_summary'), dict) else {}
+		rule_candidate_context = self._extract_rule_candidate_context(element)
 		missing_support_kinds = [
 			kind for kind in required_support_kinds
 			if support_by_kind.get(kind, 0) == 0
@@ -1371,8 +1512,12 @@ class Mediator:
 			validation_status=validation_status,
 			proof_gaps=proof_gaps,
 			proof_decision_trace=proof_decision_trace,
+			authority_treatment_summary=authority_treatment_summary,
+			rule_candidate_context=rule_candidate_context,
 		)
 		if validation_status == 'contradicted':
+			priority = 'high'
+		elif recommended_action == 'review_adverse_authority':
 			priority = 'high'
 		elif reasoning_gap_targeted:
 			priority = 'high'
@@ -1383,6 +1528,10 @@ class Mediator:
 			execution_mode = 'review_and_retrieve'
 		elif validation_status == 'contradicted':
 			execution_mode = 'manual_review'
+		elif recommended_action == 'review_adverse_authority' and missing_support_kinds:
+			execution_mode = 'review_and_retrieve'
+		elif recommended_action == 'review_adverse_authority':
+			execution_mode = 'manual_review'
 		elif reasoning_gap_targeted and missing_support_kinds:
 			execution_mode = 'review_and_retrieve'
 		elif reasoning_gap_targeted:
@@ -1390,6 +1539,10 @@ class Mediator:
 		follow_up_focus = 'support_gap_closure'
 		if validation_status == 'contradicted':
 			follow_up_focus = 'contradiction_resolution'
+		elif recommended_action == 'review_adverse_authority':
+			follow_up_focus = 'adverse_authority_review'
+		elif recommended_action == 'collect_fact_support':
+			follow_up_focus = 'fact_gap_closure'
 		elif reasoning_gap_targeted:
 			follow_up_focus = 'reasoning_gap_closure'
 		elif recommended_action == 'improve_parse_quality':
@@ -1397,6 +1550,10 @@ class Mediator:
 		query_strategy = 'standard_gap_targeted'
 		if follow_up_focus == 'contradiction_resolution' and execution_mode == 'review_and_retrieve':
 			query_strategy = 'contradiction_targeted'
+		elif follow_up_focus == 'adverse_authority_review':
+			query_strategy = 'adverse_authority_targeted'
+		elif follow_up_focus == 'fact_gap_closure':
+			query_strategy = 'rule_fact_targeted'
 		elif follow_up_focus == 'reasoning_gap_closure':
 			query_strategy = 'reasoning_gap_targeted'
 		elif follow_up_focus == 'parse_quality_improvement':
@@ -1415,6 +1572,9 @@ class Mediator:
 			'proof_gaps': proof_gaps,
 			'proof_gap_types': proof_gap_types,
 			'validation_recommended_action': recommended_action,
+			'authority_treatment_summary': authority_treatment_summary,
+			'authority_rule_candidate_summary': authority_rule_candidate_summary,
+			'rule_candidate_context': rule_candidate_context,
 			'execution_mode': execution_mode,
 			'requires_manual_review': execution_mode in {'manual_review', 'review_and_retrieve'},
 			'reasoning_backed': bool(((element.get('reasoning_diagnostics') or {}).get('backend_available_count', 0) or 0) > 0),
@@ -1425,6 +1585,215 @@ class Mediator:
 			'recommended_action': recommended_action,
 			'missing_support_kinds': missing_support_kinds,
 			'queries': queries,
+		}
+
+	def _build_authority_search_programs_for_task(
+		self,
+		claim_type: str,
+		task: Dict[str, Any],
+	) -> List[Dict[str, Any]]:
+		authority_queries = task.get('queries', {}).get('authority', []) if isinstance(task.get('queries'), dict) else []
+		if not authority_queries:
+			return []
+		legal_authority_search = getattr(self, 'legal_authority_search', None)
+		if legal_authority_search is None or not hasattr(legal_authority_search, 'build_search_programs'):
+			return []
+		primary_query = str(authority_queries[0] or '').strip()
+		if not primary_query:
+			return []
+		claim_element_id = str(task.get('claim_element_id') or '').strip()
+		claim_element_text = str(task.get('claim_element') or '').strip()
+		try:
+			programs = legal_authority_search.build_search_programs(
+				query=primary_query,
+				claim_type=claim_type,
+				claim_elements=[
+					{
+						'claim_element_id': claim_element_id,
+						'claim_element_text': claim_element_text,
+					}
+				],
+			)
+		except Exception as exc:
+			self.log(
+				'follow_up_authority_search_program_error',
+				claim_type=claim_type,
+				claim_element_id=claim_element_id,
+				error=str(exc),
+			)
+			return []
+		if not isinstance(programs, list):
+			return []
+
+		focus = str(task.get('follow_up_focus') or '')
+		priority_by_type: Dict[str, int] = {
+			'element_definition_search': 2,
+			'fact_pattern_search': 1,
+			'procedural_search': 4,
+			'adverse_authority_search': 3,
+			'treatment_check_search': 5,
+		}
+		if focus == 'contradiction_resolution':
+			priority_by_type.update({
+				'adverse_authority_search': 1,
+				'treatment_check_search': 2,
+				'fact_pattern_search': 3,
+			})
+		elif focus == 'adverse_authority_review':
+			priority_by_type.update({
+				'adverse_authority_search': 1,
+				'treatment_check_search': 2,
+				'fact_pattern_search': 3,
+			})
+		elif focus == 'fact_gap_closure':
+			priority_by_type.update({
+				'fact_pattern_search': 1,
+				'procedural_search': 2,
+				'element_definition_search': 3,
+			})
+		elif focus == 'reasoning_gap_closure':
+			priority_by_type.update({
+				'fact_pattern_search': 1,
+				'element_definition_search': 2,
+				'treatment_check_search': 3,
+			})
+		elif focus == 'parse_quality_improvement':
+			priority_by_type.update({
+				'element_definition_search': 1,
+				'fact_pattern_search': 2,
+				'treatment_check_search': 3,
+			})
+
+		rule_candidate_context = task.get('rule_candidate_context', {}) if isinstance(task.get('rule_candidate_context'), dict) else {}
+		top_rule_types = [
+			str(rule_type or '').strip()
+			for rule_type in (rule_candidate_context.get('top_rule_types') or [])
+			if str(rule_type or '').strip()
+		]
+		has_exception_rules = bool(rule_candidate_context.get('has_exception_rules'))
+		has_procedural_rules = bool(rule_candidate_context.get('has_procedural_rules'))
+		has_element_rules = any(rule_type in {'element', 'definition'} for rule_type in top_rule_types)
+		rule_signal_bias = ''
+		if has_exception_rules:
+			priority_by_type.update({
+				'adverse_authority_search': 1,
+				'treatment_check_search': 2,
+				'fact_pattern_search': 3,
+				'element_definition_search': 4,
+				'procedural_search': 5,
+			})
+			rule_signal_bias = 'exception'
+		elif has_procedural_rules:
+			priority_by_type.update({
+				'procedural_search': 1,
+				'element_definition_search': 2,
+				'fact_pattern_search': 3,
+				'treatment_check_search': 4,
+				'adverse_authority_search': 5,
+			})
+			rule_signal_bias = 'procedural_prerequisite'
+		elif has_element_rules and focus in {'fact_gap_closure', 'reasoning_gap_closure'}:
+			priority_by_type.update({
+				'element_definition_search': 1,
+				'fact_pattern_search': 2,
+				'procedural_search': 3,
+				'adverse_authority_search': 4,
+				'treatment_check_search': 5,
+			})
+			rule_signal_bias = 'element'
+
+		treatment_summary = task.get('authority_treatment_summary', {}) if isinstance(task.get('authority_treatment_summary'), dict) else {}
+		treatment_type_counts = treatment_summary.get('treatment_type_counts', {}) if isinstance(treatment_summary.get('treatment_type_counts'), dict) else {}
+		adverse_authority_count = int(treatment_summary.get('adverse_authority_link_count', 0) or 0)
+		uncertain_authority_count = int(treatment_summary.get('uncertain_authority_link_count', 0) or 0)
+		concerning_treatment_count = sum(
+			int(count or 0)
+			for name, count in treatment_type_counts.items()
+			if str(name or '') in {'questioned', 'limits', 'superseded', 'good_law_unconfirmed'}
+		)
+		authority_signal_bias = ''
+		if adverse_authority_count > 0:
+			priority_by_type.update({
+				'adverse_authority_search': 1,
+				'treatment_check_search': 2,
+				'fact_pattern_search': 3,
+				'element_definition_search': 4,
+				'procedural_search': 5,
+			})
+			authority_signal_bias = 'adverse'
+		elif uncertain_authority_count > 0 or concerning_treatment_count > 0:
+			priority_by_type.update({
+				'treatment_check_search': 1,
+				'adverse_authority_search': 2,
+				'fact_pattern_search': 3,
+				'element_definition_search': 4,
+				'procedural_search': 5,
+			})
+			authority_signal_bias = 'uncertain'
+
+		normalized_programs: List[Dict[str, Any]] = []
+		for program in programs:
+			if not isinstance(program, dict):
+				continue
+			program_type = str(program.get('program_type') or '')
+			metadata = dict(program.get('metadata') or {}) if isinstance(program.get('metadata'), dict) else {}
+			existing_authority_signal_bias = str(metadata.get('authority_signal_bias') or '')
+			existing_rule_signal_bias = str(metadata.get('rule_signal_bias') or '')
+			metadata.update({
+				'follow_up_focus': focus,
+				'query_strategy': str(task.get('query_strategy') or ''),
+				'recommended_action': str(task.get('recommended_action') or ''),
+				'validation_status': str(task.get('validation_status') or ''),
+				'primary_authority_query': primary_query,
+				'query_variants': list(authority_queries),
+				'rule_signal_bias': rule_signal_bias or existing_rule_signal_bias,
+				'rule_candidate_focus_types': list(top_rule_types[:3]),
+				'rule_candidate_focus_texts': list((rule_candidate_context.get('top_rule_texts') or [])[:2]),
+				'priority_rank': priority_by_type.get(program_type, 99),
+				'authority_signal_bias': authority_signal_bias or existing_authority_signal_bias,
+			})
+			normalized_programs.append({
+				**program,
+				'claim_type': str(program.get('claim_type') or claim_type),
+				'claim_element_id': str(program.get('claim_element_id') or claim_element_id),
+				'claim_element_text': str(program.get('claim_element_text') or claim_element_text),
+				'metadata': metadata,
+			})
+
+		normalized_programs.sort(
+			key=lambda program: (
+				int(((program.get('metadata') or {}).get('priority_rank', 99)) or 99),
+				str(program.get('program_type') or ''),
+				str(program.get('program_id') or ''),
+			)
+		)
+		return normalized_programs
+
+	def _summarize_authority_search_programs(self, programs: List[Dict[str, Any]]) -> Dict[str, Any]:
+		program_type_counts: Dict[str, int] = {}
+		authority_intent_counts: Dict[str, int] = {}
+		for program in programs:
+			if not isinstance(program, dict):
+				continue
+			program_type = str(program.get('program_type') or 'unknown')
+			program_type_counts[program_type] = program_type_counts.get(program_type, 0) + 1
+			authority_intent = str(program.get('authority_intent') or 'unknown')
+			authority_intent_counts[authority_intent] = authority_intent_counts.get(authority_intent, 0) + 1
+		primary_program = programs[0] if programs else {}
+		primary_metadata = primary_program.get('metadata') or {}
+		primary_program_bias = ''
+		primary_program_rule_bias = ''
+		if isinstance(primary_metadata, dict):
+			primary_program_bias = str(primary_metadata.get('authority_signal_bias') or '')
+			primary_program_rule_bias = str(primary_metadata.get('rule_signal_bias') or '')
+		return {
+			'program_count': len(programs),
+			'program_type_counts': program_type_counts,
+			'authority_intent_counts': authority_intent_counts,
+			'primary_program_id': str(primary_program.get('program_id') or ''),
+			'primary_program_type': str(primary_program.get('program_type') or ''),
+			'primary_program_bias': primary_program_bias,
+			'primary_program_rule_bias': primary_program_rule_bias,
 		}
 
 	def _classify_graph_support(self, graph_support: Dict[str, Any]) -> Dict[str, Any]:
@@ -1465,6 +1834,11 @@ class Mediator:
 				'reason': '',
 			}
 		if task.get('follow_up_focus') in {'reasoning_gap_closure', 'parse_quality_improvement'}:
+			return {
+				'suppress': False,
+				'reason': '',
+			}
+		if task.get('follow_up_focus') == 'adverse_authority_review':
 			return {
 				'suppress': False,
 				'reason': '',
@@ -1578,6 +1952,11 @@ class Mediator:
 						adjusted_priority_score,
 						3 if task.get('execution_mode') == 'manual_review' else 2,
 					)
+				if task.get('follow_up_focus') == 'adverse_authority_review':
+					adjusted_priority_score = max(
+						adjusted_priority_score,
+						3 if task.get('execution_mode') == 'manual_review' else 2,
+					)
 				if task.get('follow_up_focus') == 'parse_quality_improvement':
 					adjusted_priority_score = max(adjusted_priority_score, 3)
 				adaptive_retry_state = task.get('adaptive_retry_state', {}) if isinstance(task.get('adaptive_retry_state'), dict) else {}
@@ -1590,6 +1969,8 @@ class Mediator:
 				task['graph_support_strength'] = graph_support_assessment['strength']
 				if task.get('follow_up_focus') == 'parse_quality_improvement':
 					task['recommended_action'] = 'improve_parse_quality'
+				elif str(task.get('validation_recommended_action') or '') in {'collect_fact_support', 'review_adverse_authority'}:
+					task['recommended_action'] = str(task.get('validation_recommended_action') or '')
 				else:
 					task['recommended_action'] = graph_support_assessment['recommended_action']
 				if task.get('validation_status') == 'contradicted' and not task.get('manual_review_resolved'):
@@ -1598,8 +1979,20 @@ class Mediator:
 					task['recommended_action'] = (
 						'resolve_contradiction'
 						if task.get('validation_status') == 'contradicted'
-						else 'review_existing_support'
+						else (
+							'review_adverse_authority'
+							if task.get('follow_up_focus') == 'adverse_authority_review'
+							else 'review_existing_support'
+						)
 					)
+				authority_search_programs = self._build_authority_search_programs_for_task(
+					current_claim,
+					task,
+				)
+				task['authority_search_programs'] = authority_search_programs
+				task['authority_search_program_summary'] = self._summarize_authority_search_programs(
+					authority_search_programs
+				)
 				task['priority_score'] = adjusted_priority_score
 				task['priority'] = self._priority_from_score(adjusted_priority_score)
 				suppression = self._should_suppress_follow_up_task(task)
@@ -1672,6 +2065,8 @@ class Mediator:
 					'query_strategy': task.get('query_strategy', ''),
 					'proof_gap_count': int(task.get('proof_gap_count', 0) or 0),
 					'proof_gap_types': list(task.get('proof_gap_types') or []),
+					'authority_search_program_summary': task.get('authority_search_program_summary', {}),
+					'authority_search_programs': list(task.get('authority_search_programs') or []),
 					'graph_support': task.get('graph_support', {}),
 					'should_suppress_retrieval': task.get('should_suppress_retrieval', False),
 					'suppression_reason': task.get('suppression_reason', ''),
@@ -1679,6 +2074,7 @@ class Mediator:
 				}
 				if task.get('execution_mode') == 'manual_review':
 					manual_review_query = self._build_manual_review_audit_query(current_claim, task)
+					skip_reason = self._manual_review_skip_reason(task)
 					self.claim_support.record_follow_up_execution(
 						user_id=user_id,
 						claim_type=current_claim,
@@ -1689,7 +2085,7 @@ class Mediator:
 						status='skipped_manual_review',
 						metadata=self._build_follow_up_record_metadata(
 							task,
-							skip_reason='contradiction_requires_resolution',
+							skip_reason=skip_reason,
 							audit_query=manual_review_query,
 						),
 					)
@@ -1697,7 +2093,7 @@ class Mediator:
 						**execution,
 						'skipped': {
 							'manual_review': {
-								'reason': 'contradiction_requires_resolution',
+								'reason': skip_reason,
 								'audit_query': manual_review_query,
 							}
 						},
@@ -1780,7 +2176,15 @@ class Mediator:
 						}
 				if support_kind in (None, 'authority') and 'authority' in task.get('missing_support_kinds', []):
 					authority_query = task.get('queries', {}).get('authority', [])
-					query_text = authority_query[0] if authority_query else f'{current_claim} {task.get("claim_element", "")} statute'
+					task_query_text = authority_query[0] if authority_query else f'{current_claim} {task.get("claim_element", "")} statute'
+					primary_program = self._select_primary_authority_search_program(task)
+					program_query_text = str(primary_program.get('query_text') or '').strip() if isinstance(primary_program, dict) else ''
+					query_text = program_query_text or task_query_text
+					program_jurisdiction = str(primary_program.get('jurisdiction') or '').strip() if isinstance(primary_program, dict) else ''
+					program_authority_families = list(primary_program.get('authority_families') or []) if isinstance(primary_program, dict) else []
+					primary_program_metadata = primary_program.get('metadata') if isinstance(primary_program, dict) else {}
+					if not isinstance(primary_program_metadata, dict):
+						primary_program_metadata = {}
 					if not force and self.claim_support.was_follow_up_executed(
 						user_id,
 						current_claim,
@@ -1800,6 +2204,21 @@ class Mediator:
 								task,
 								cooldown_seconds=cooldown_seconds,
 								query_variants=task.get('queries', {}).get('authority', []),
+								task_query=task_query_text,
+								effective_query=query_text,
+								selected_search_program_id=str(primary_program.get('program_id') or ''),
+								selected_search_program_type=str(primary_program.get('program_type') or ''),
+								selected_search_program_bias=str(primary_program_metadata.get('authority_signal_bias') or ''),
+								selected_search_program_rule_bias=str(primary_program_metadata.get('rule_signal_bias') or ''),
+								selected_search_program_families=list(program_authority_families),
+								search_program_ids=[
+									program.get('program_id')
+									for program in (task.get('authority_search_programs') or [])
+									if isinstance(program, dict) and program.get('program_id')
+								],
+								search_program_count=int(
+									(task.get('authority_search_program_summary') or {}).get('program_count', 0) or 0
+								),
 							),
 						)
 						skipped_tasks.append({
@@ -1810,7 +2229,9 @@ class Mediator:
 						search_results = self.search_legal_authorities(
 							query=query_text,
 							claim_type=current_claim,
+							jurisdiction=program_jurisdiction or None,
 							search_all=True,
+							authority_families=program_authority_families or None,
 						)
 						authority_result_count = self._count_authority_follow_up_results(search_results)
 						stored_counts = self.store_legal_authorities(
@@ -1818,6 +2239,7 @@ class Mediator:
 							claim_type=current_claim,
 							search_query=query_text,
 							user_id=user_id,
+							search_programs=task.get('authority_search_programs', []),
 						)
 						self.claim_support.record_follow_up_execution(
 							user_id=user_id,
@@ -1831,6 +2253,21 @@ class Mediator:
 								task,
 								search_results={key: len(value) for key, value in search_results.items()},
 								query_variants=task.get('queries', {}).get('authority', []),
+								task_query=task_query_text,
+								effective_query=query_text,
+								selected_search_program_id=str(primary_program.get('program_id') or ''),
+								selected_search_program_type=str(primary_program.get('program_type') or ''),
+								selected_search_program_bias=str(primary_program_metadata.get('authority_signal_bias') or ''),
+								selected_search_program_rule_bias=str(primary_program_metadata.get('rule_signal_bias') or ''),
+								selected_search_program_families=list(program_authority_families),
+								search_program_ids=[
+									program.get('program_id')
+									for program in (task.get('authority_search_programs') or [])
+									if isinstance(program, dict) and program.get('program_id')
+								],
+								search_program_count=int(
+									(task.get('authority_search_program_summary') or {}).get('program_count', 0) or 0
+								),
 								result_count=authority_result_count,
 								stored_result_count=int(stored_counts.get('total_records', 0) or 0),
 								zero_result=authority_result_count <= 0,
@@ -1838,6 +2275,14 @@ class Mediator:
 						)
 						execution['executed']['authority'] = {
 							'query': query_text,
+							'task_query': task_query_text,
+							'selected_search_program_id': str(primary_program.get('program_id') or ''),
+							'selected_search_program_type': str(primary_program.get('program_type') or ''),
+							'selected_search_program_bias': str(primary_program_metadata.get('authority_signal_bias') or ''),
+							'selected_search_program_rule_bias': str(primary_program_metadata.get('rule_signal_bias') or ''),
+							'selected_search_program_families': list(program_authority_families),
+							'search_program_summary': task.get('authority_search_program_summary', {}),
+							'search_programs': list(task.get('authority_search_programs') or []),
 							'search_results': {key: len(value) for key, value in search_results.items()},
 							'stored_counts': stored_counts,
 						}
@@ -3016,7 +3461,11 @@ class Mediator:
 			'next_action': self.phase_manager.get_next_action()
 		}
 	
-	def generate_formal_complaint(self) -> Dict[str, Any]:
+	def generate_formal_complaint(self, court_name: str = None, district: str = None,
+						 division: str = None, court_header_override: str = None,
+						 case_number: str = None, title_override: str = None,
+						 plaintiff_names: List[str] = None, defendant_names: List[str] = None,
+						 requested_relief: List[str] = None, user_id: str = None) -> Dict[str, Any]:
 		"""
 		Generate formal complaint document from graphs.
 		
@@ -3039,13 +3488,50 @@ class Mediator:
 			'prayer_for_relief': self._generate_relief_request(dg),
 			'supporting_documents': self._list_evidence(kg)
 		}
+
+		builder = ComplaintDocumentBuilder(self)
+		formal_complaint = builder.build(
+			court_name=court_name,
+			district=district,
+			division=division,
+			court_header_override=court_header_override,
+			case_number=case_number,
+			title_override=title_override,
+			plaintiff_names=plaintiff_names,
+			defendant_names=defendant_names,
+			requested_relief=requested_relief,
+			user_id=user_id,
+			base_formal_complaint=formal_complaint,
+		)
 		
 		self.phase_manager.update_phase_data(ComplaintPhase.FORMALIZATION, 'formal_complaint', formal_complaint)
 		
 		return {
 			'formal_complaint': formal_complaint,
+			'draft_text': formal_complaint.get('draft_text', ''),
 			'complete': True,
 			'ready_to_file': self._check_filing_readiness(formal_complaint)
+		}
+
+	def export_formal_complaint(self, output_path: str, court_name: str = None,
+						  district: str = None, division: str = None,
+						  case_number: str = None, user_id: str = None,
+						  format: str = None) -> Dict[str, Any]:
+		"""Export the generated formal complaint to DOCX, PDF, or text."""
+		builder = ComplaintDocumentBuilder(self)
+		complaint_result = self.generate_formal_complaint(
+			court_name=court_name,
+			district=district,
+			division=division,
+			case_number=case_number,
+			user_id=user_id,
+		)
+		formal_complaint = complaint_result['formal_complaint']
+		export_result = builder.export(formal_complaint, output_path, format=format)
+		self.phase_manager.update_phase_data(ComplaintPhase.FORMALIZATION, 'formal_complaint_export', export_result)
+		return {
+			**complaint_result,
+			'export': export_result,
 		}
 	
 	def process_legal_denoising(self, question: Dict[str, Any], answer: str) -> Dict[str, Any]:
@@ -3280,8 +3766,49 @@ class Mediator:
 	
 	def _check_filing_readiness(self, formal_complaint):
 		"""Check if complaint is ready to file."""
-		required_sections = ['title', 'parties', 'statement_of_claim', 'legal_claims']
+		required_sections = [
+			'title',
+			'court_header',
+			'parties',
+			'nature_of_action',
+			'statement_of_claim',
+			'factual_allegations',
+			'legal_claims',
+			'prayer_for_relief',
+		]
 		return all(formal_complaint.get(section) for section in required_sections)
+
+	def build_formal_complaint_document_package(
+		self,
+		user_id: str = None,
+		court_name: str = 'United States District Court',
+		district: str = '',
+		division: str = None,
+		court_header_override: str = None,
+		case_number: str = None,
+		title_override: str = None,
+		plaintiff_names: List[str] = None,
+		defendant_names: List[str] = None,
+		requested_relief: List[str] = None,
+		output_dir: str = None,
+		output_formats: List[str] = None,
+	):
+		"""Build a structured formal complaint draft and render DOCX/PDF artifacts."""
+		builder = FormalComplaintDocumentBuilder(self)
+		return builder.build_package(
+			user_id=user_id,
+			court_name=court_name,
+			district=district,
+			division=division,
+			court_header_override=court_header_override,
+			case_number=case_number,
+			title_override=title_override,
+			plaintiff_names=plaintiff_names,
+			defendant_names=defendant_names,
+			requested_relief=requested_relief,
+			output_dir=output_dir,
+			output_formats=output_formats,
+		)
 
 
 	def query_backend(self, prompt):

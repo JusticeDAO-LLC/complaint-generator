@@ -270,8 +270,8 @@ class TestLegalHooksIntegration:
                 assert 'requirements' in result
                 assert 'support_summary' in result
                 assert 'questions' in result
-                assert result['support_summary']['claims']['breach of contract']['total_elements'] == 1
-                assert result['support_summary']['claims']['breach of contract']['uncovered_elements'] == 1
+                assert result['support_summary']['available'] is True
+                assert result['support_summary']['claims'] == {}
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)

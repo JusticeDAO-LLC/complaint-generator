@@ -8,6 +8,8 @@ from claim_support_review import (
     ClaimSupportFollowUpExecuteRequest,
     ClaimSupportManualReviewResolveRequest,
     ClaimSupportReviewRequest,
+    _summarize_follow_up_execution_claim,
+    _summarize_follow_up_plan_claim,
     build_claim_support_follow_up_execution_payload,
     build_claim_support_manual_review_resolution_payload,
     build_claim_support_review_payload,
@@ -33,6 +35,27 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                     "total_links": 2,
                     "total_facts": 4,
                     "support_by_kind": {"evidence": 1, "authority": 1},
+                    "authority_treatment_summary": {
+                        "authority_link_count": 2,
+                        "supportive_authority_link_count": 1,
+                        "adverse_authority_link_count": 1,
+                        "uncertain_authority_link_count": 0,
+                        "treatment_type_counts": {
+                            "questioned": 1,
+                            "adverse": 1,
+                        },
+                    },
+                    "authority_rule_candidate_summary": {
+                        "authority_link_count": 2,
+                        "authority_links_with_rule_candidates": 2,
+                        "total_rule_candidate_count": 3,
+                        "matched_claim_element_rule_count": 2,
+                        "rule_type_counts": {
+                            "element": 2,
+                            "exception": 1,
+                        },
+                        "max_extraction_confidence": 0.78,
+                    },
                     "support_trace_summary": {
                         "trace_count": 3,
                         "fact_trace_count": 3,
@@ -253,6 +276,9 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                         "adaptive_priority_penalty": 1,
                         "zero_result": True,
                         "resolution_applied": "manual_review_resolved",
+                        "selected_search_program_type": "adverse_authority_search",
+                        "selected_search_program_bias": "adverse",
+                        "selected_search_program_rule_bias": "exception",
                     },
                 ]
             }
@@ -274,6 +300,21 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                         {
                             "claim_element": "Causal connection",
                             "recommended_action": "retrieve_more_support",
+                            "authority_search_program_summary": {
+                                "program_count": 2,
+                                "program_type_counts": {
+                                    "fact_pattern_search": 1,
+                                    "treatment_check_search": 1,
+                                },
+                                "authority_intent_counts": {
+                                    "support": 1,
+                                    "confirm_good_law": 1,
+                                },
+                                "primary_program_id": "legal_search_program:plan-1",
+                                "primary_program_type": "fact_pattern_search",
+                                "primary_program_bias": "uncertain",
+                                "primary_program_rule_bias": "",
+                            },
                             "has_graph_support": True,
                             "should_suppress_retrieval": False,
                             "resolution_applied": "manual_review_resolved",
@@ -310,6 +351,21 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                         {
                             "claim_element": "Causal connection",
                             "resolution_applied": "manual_review_resolved",
+                            "authority_search_program_summary": {
+                                "program_count": 2,
+                                "program_type_counts": {
+                                    "fact_pattern_search": 1,
+                                    "treatment_check_search": 1,
+                                },
+                                "authority_intent_counts": {
+                                    "support": 1,
+                                    "confirm_good_law": 1,
+                                },
+                                "primary_program_id": "legal_search_program:exec-1",
+                                "primary_program_type": "fact_pattern_search",
+                                "primary_program_bias": "uncertain",
+                                "primary_program_rule_bias": "",
+                            },
                             "adaptive_retry_state": {
                                 "applied": True,
                                 "priority_penalty": 1,
@@ -412,6 +468,27 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert payload["claim_coverage_summary"]["retaliation"]["low_quality_parsed_record_count"] == 0
         assert payload["claim_coverage_summary"]["retaliation"]["parse_quality_issue_element_count"] == 0
         assert payload["claim_coverage_summary"]["retaliation"]["parse_quality_recommendation"] == ""
+        assert payload["claim_coverage_summary"]["retaliation"]["authority_treatment_summary"] == {
+            "authority_link_count": 2,
+            "supportive_authority_link_count": 1,
+            "adverse_authority_link_count": 1,
+            "uncertain_authority_link_count": 0,
+            "treatment_type_counts": {
+                "questioned": 1,
+                "adverse": 1,
+            },
+        }
+        assert payload["claim_coverage_summary"]["retaliation"]["authority_rule_candidate_summary"] == {
+            "authority_link_count": 2,
+            "authority_links_with_rule_candidates": 2,
+            "total_rule_candidate_count": 3,
+            "matched_claim_element_rule_count": 2,
+            "rule_type_counts": {
+                "element": 2,
+                "exception": 1,
+            },
+            "max_extraction_confidence": 0.78,
+        }
         assert payload["claim_support_validation"]["retaliation"]["validation_status"] == "contradicted"
         assert payload["claim_support_snapshot_summary"]["retaliation"] == {
             "total_snapshot_count": 0,
@@ -457,6 +534,15 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "adaptive_retry_reason_counts": {
                 "repeated_zero_result_reasoning_gap": 1,
             },
+            "selected_authority_program_type_counts": {
+                "adverse_authority_search": 1,
+            },
+            "selected_authority_program_bias_counts": {
+                "adverse": 1,
+            },
+            "selected_authority_program_rule_bias_counts": {
+                "exception": 1,
+            },
             "last_adaptive_retry": {
                 "claim_element_id": "retaliation:3",
                 "claim_element_text": "Causal connection",
@@ -498,6 +584,20 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "html": 1,
         }
         assert payload["claim_coverage_summary"]["retaliation"]["support_trace_summary"]["avg_parse_quality_score"] == 95.5
+        assert payload["claim_coverage_summary"]["retaliation"]["authority_treatment_summary"] == {
+            "authority_link_count": 2,
+            "supportive_authority_link_count": 1,
+            "adverse_authority_link_count": 1,
+            "uncertain_authority_link_count": 0,
+            "treatment_type_counts": {
+                "questioned": 1,
+                "adverse": 1,
+            },
+        }
+        assert payload["claim_coverage_summary"]["retaliation"]["authority_rule_candidate_summary"]["rule_type_counts"] == {
+            "element": 2,
+            "exception": 1,
+        }
         assert payload["claim_coverage_summary"]["retaliation"]["support_packet_summary"] == {
             "total_packet_count": 3,
             "fact_packet_count": 3,
@@ -534,6 +634,8 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert payload["follow_up_plan_summary"]["retaliation"]["suppressed_task_count"] == 1
         assert payload["follow_up_plan_summary"]["retaliation"]["contradiction_task_count"] == 0
         assert payload["follow_up_plan_summary"]["retaliation"]["reasoning_gap_task_count"] == 0
+        assert payload["follow_up_plan_summary"]["retaliation"]["fact_gap_task_count"] == 0
+        assert payload["follow_up_plan_summary"]["retaliation"]["adverse_authority_task_count"] == 0
         assert payload["follow_up_plan_summary"]["retaliation"]["parse_quality_task_count"] == 0
         assert payload["follow_up_plan_summary"]["retaliation"]["quality_gap_targeted_task_count"] == 0
         assert payload["follow_up_plan_summary"]["retaliation"]["semantic_cluster_count"] == 2
@@ -557,6 +659,27 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert payload["follow_up_plan_summary"]["retaliation"]["adaptive_retry_reason_counts"] == {
             "repeated_zero_result_reasoning_gap": 1,
         }
+        assert payload["follow_up_plan_summary"]["retaliation"]["authority_search_program_task_count"] == 1
+        assert payload["follow_up_plan_summary"]["retaliation"]["authority_search_program_count"] == 2
+        assert payload["follow_up_plan_summary"]["retaliation"]["authority_search_program_type_counts"] == {
+            "fact_pattern_search": 1,
+            "treatment_check_search": 1,
+        }
+        assert payload["follow_up_plan_summary"]["retaliation"]["authority_search_intent_counts"] == {
+            "support": 1,
+            "confirm_good_law": 1,
+        }
+        assert payload["follow_up_plan_summary"]["retaliation"]["primary_authority_program_type_counts"] == {
+            "fact_pattern_search": 1,
+        }
+        assert payload["follow_up_plan_summary"]["retaliation"]["primary_authority_program_bias_counts"] == {
+            "uncertain": 1,
+        }
+        assert payload["follow_up_plan_summary"]["retaliation"]["primary_authority_program_rule_bias_counts"] == {}
+        assert payload["follow_up_plan_summary"]["retaliation"]["rule_candidate_backed_task_count"] == 0
+        assert payload["follow_up_plan_summary"]["retaliation"]["total_rule_candidate_count"] == 0
+        assert payload["follow_up_plan_summary"]["retaliation"]["matched_claim_element_rule_count"] == 0
+        assert payload["follow_up_plan_summary"]["retaliation"]["rule_candidate_type_counts"] == {}
         assert payload["follow_up_plan_summary"]["retaliation"]["last_adaptive_retry"] == {
             "claim_element_id": None,
             "claim_element_text": "Causal connection",
@@ -575,6 +698,8 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert payload["follow_up_execution_summary"]["retaliation"]["skipped_task_count"] == 2
         assert payload["follow_up_execution_summary"]["retaliation"]["suppressed_task_count"] == 1
         assert payload["follow_up_execution_summary"]["retaliation"]["cooldown_skipped_task_count"] == 1
+        assert payload["follow_up_execution_summary"]["retaliation"]["fact_gap_task_count"] == 0
+        assert payload["follow_up_execution_summary"]["retaliation"]["adverse_authority_task_count"] == 0
         assert payload["follow_up_execution_summary"]["retaliation"]["semantic_cluster_count"] == 3
         assert payload["follow_up_execution_summary"]["retaliation"]["semantic_duplicate_count"] == 4
         assert payload["follow_up_execution_summary"]["retaliation"]["adaptive_retry_task_count"] == 1
@@ -588,6 +713,27 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert payload["follow_up_execution_summary"]["retaliation"]["adaptive_retry_reason_counts"] == {
             "repeated_zero_result_reasoning_gap": 1,
         }
+        assert payload["follow_up_execution_summary"]["retaliation"]["authority_search_program_task_count"] == 1
+        assert payload["follow_up_execution_summary"]["retaliation"]["authority_search_program_count"] == 2
+        assert payload["follow_up_execution_summary"]["retaliation"]["authority_search_program_type_counts"] == {
+            "fact_pattern_search": 1,
+            "treatment_check_search": 1,
+        }
+        assert payload["follow_up_execution_summary"]["retaliation"]["authority_search_intent_counts"] == {
+            "support": 1,
+            "confirm_good_law": 1,
+        }
+        assert payload["follow_up_execution_summary"]["retaliation"]["primary_authority_program_type_counts"] == {
+            "fact_pattern_search": 1,
+        }
+        assert payload["follow_up_execution_summary"]["retaliation"]["primary_authority_program_bias_counts"] == {
+            "uncertain": 1,
+        }
+        assert payload["follow_up_execution_summary"]["retaliation"]["primary_authority_program_rule_bias_counts"] == {}
+        assert payload["follow_up_execution_summary"]["retaliation"]["rule_candidate_backed_task_count"] == 0
+        assert payload["follow_up_execution_summary"]["retaliation"]["total_rule_candidate_count"] == 0
+        assert payload["follow_up_execution_summary"]["retaliation"]["matched_claim_element_rule_count"] == 0
+        assert payload["follow_up_execution_summary"]["retaliation"]["rule_candidate_type_counts"] == {}
         assert payload["follow_up_execution_summary"]["retaliation"]["last_adaptive_retry"] == {
             "claim_element_id": None,
             "claim_element_text": "Causal connection",
@@ -1140,6 +1286,8 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
         "cooldown_skipped_task_count": 0,
         "contradiction_task_count": 1,
         "reasoning_gap_task_count": 0,
+        "fact_gap_task_count": 0,
+        "adverse_authority_task_count": 0,
         "parse_quality_task_count": 1,
         "quality_gap_targeted_task_count": 1,
         "semantic_cluster_count": 1,
@@ -1162,6 +1310,17 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
         "adaptive_query_strategy_counts": {},
         "adaptive_retry_reason_counts": {},
         "last_adaptive_retry": None,
+        "authority_search_program_task_count": 0,
+        "authority_search_program_count": 0,
+        "authority_search_program_type_counts": {},
+        "authority_search_intent_counts": {},
+        "primary_authority_program_type_counts": {},
+        "primary_authority_program_bias_counts": {},
+        "primary_authority_program_rule_bias_counts": {},
+        "rule_candidate_backed_task_count": 0,
+        "total_rule_candidate_count": 0,
+        "matched_claim_element_rule_count": 0,
+        "rule_candidate_type_counts": {},
     }
     assert payload["execution_quality_summary"]["retaliation"] == {
         "pre_low_quality_parsed_record_count": 1,
@@ -1254,6 +1413,9 @@ def test_claim_support_manual_review_resolution_payload_returns_post_resolution_
                     "query_strategy": "manual_review_resolution",
                     "resolution_status": "resolved_supported",
                     "resolution_applied": "manual_review_resolved",
+                    "selected_search_program_type": "adverse_authority_search",
+                    "selected_search_program_bias": "adverse",
+                    "selected_search_program_rule_bias": "exception",
                 }
             ]
         }
@@ -1282,6 +1444,15 @@ def test_claim_support_manual_review_resolution_payload_returns_post_resolution_
     }
     assert payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["resolution_applied_counts"] == {
         "manual_review_resolved": 1,
+    }
+    assert payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["selected_authority_program_type_counts"] == {
+        "adverse_authority_search": 1,
+    }
+    assert payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["selected_authority_program_bias_counts"] == {
+        "adverse": 1,
+    }
+    assert payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["selected_authority_program_rule_bias_counts"] == {
+        "exception": 1,
     }
     mediator.resolve_claim_follow_up_manual_review.assert_called_once_with(
         claim_type="retaliation",
@@ -1401,6 +1572,188 @@ def test_claim_support_review_endpoint_is_registered_on_app():
         for route in app.routes
         if hasattr(route, "methods")
     )
+    assert any(
+        route.path == "/api/documents/formal-complaint"
+        and "POST" in route.methods
+        for route in app.routes
+        if hasattr(route, "methods")
+    )
+    assert any(
+        route.path == "/api/documents/download"
+        and "GET" in route.methods
+        for route in app.routes
+        if hasattr(route, "methods")
+    )
+
+
+def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
+    plan_summary = _summarize_follow_up_plan_claim(
+        {
+            "task_count": 2,
+            "blocked_task_count": 0,
+            "tasks": [
+                {
+                    "follow_up_focus": "fact_gap_closure",
+                    "query_strategy": "rule_fact_targeted",
+                    "recommended_action": "collect_fact_support",
+                    "authority_search_program_summary": {
+                        "program_count": 2,
+                        "program_type_counts": {
+                            "fact_pattern_search": 1,
+                            "adverse_authority_search": 1,
+                        },
+                        "authority_intent_counts": {
+                            "support": 1,
+                            "oppose": 1,
+                        },
+                        "primary_program_id": "legal_search_program:1",
+                        "primary_program_type": "adverse_authority_search",
+                        "primary_program_bias": "",
+                        "primary_program_rule_bias": "exception",
+                    },
+                    "proof_decision_source": "partial_support",
+                    "has_graph_support": True,
+                    "should_suppress_retrieval": False,
+                    "graph_support": {"summary": {"semantic_cluster_count": 1, "semantic_duplicate_count": 0}},
+                    "authority_rule_candidate_summary": {
+                        "total_rule_candidate_count": 2,
+                        "matched_claim_element_rule_count": 2,
+                        "rule_type_counts": {"element": 1, "exception": 1},
+                    },
+                },
+                {
+                    "follow_up_focus": "adverse_authority_review",
+                    "query_strategy": "adverse_authority_targeted",
+                    "recommended_action": "review_adverse_authority",
+                    "authority_search_program_summary": {
+                        "program_count": 2,
+                        "program_type_counts": {
+                            "adverse_authority_search": 1,
+                            "treatment_check_search": 1,
+                        },
+                        "authority_intent_counts": {
+                            "oppose": 1,
+                            "confirm_good_law": 1,
+                        },
+                        "primary_program_id": "legal_search_program:2",
+                        "primary_program_type": "adverse_authority_search",
+                        "primary_program_bias": "adverse",
+                        "primary_program_rule_bias": "",
+                    },
+                    "proof_decision_source": "partial_support",
+                    "has_graph_support": True,
+                    "should_suppress_retrieval": False,
+                    "graph_support": {"summary": {"semantic_cluster_count": 2, "semantic_duplicate_count": 1}},
+                    "authority_rule_candidate_summary": {
+                        "total_rule_candidate_count": 1,
+                        "matched_claim_element_rule_count": 1,
+                        "rule_type_counts": {"element": 1},
+                    },
+                },
+            ],
+        }
+    )
+
+    execution_summary = _summarize_follow_up_execution_claim(
+        {
+            "tasks": [
+                {
+                    "follow_up_focus": "fact_gap_closure",
+                    "query_strategy": "rule_fact_targeted",
+                    "authority_search_program_summary": {
+                        "program_count": 2,
+                        "program_type_counts": {
+                            "fact_pattern_search": 1,
+                            "adverse_authority_search": 1,
+                        },
+                        "authority_intent_counts": {
+                            "support": 1,
+                            "oppose": 1,
+                        },
+                        "primary_program_id": "legal_search_program:1",
+                        "primary_program_type": "adverse_authority_search",
+                        "primary_program_bias": "",
+                        "primary_program_rule_bias": "exception",
+                    },
+                    "proof_decision_source": "partial_support",
+                    "graph_support": {"summary": {"semantic_cluster_count": 1, "semantic_duplicate_count": 0}},
+                    "authority_rule_candidate_summary": {
+                        "total_rule_candidate_count": 2,
+                        "matched_claim_element_rule_count": 2,
+                        "rule_type_counts": {"element": 1, "exception": 1},
+                    },
+                }
+            ],
+            "skipped_tasks": [
+                {
+                    "follow_up_focus": "adverse_authority_review",
+                    "query_strategy": "adverse_authority_targeted",
+                    "authority_search_program_summary": {
+                        "program_count": 2,
+                        "program_type_counts": {
+                            "adverse_authority_search": 1,
+                            "treatment_check_search": 1,
+                        },
+                        "authority_intent_counts": {
+                            "oppose": 1,
+                            "confirm_good_law": 1,
+                        },
+                        "primary_program_id": "legal_search_program:2",
+                        "primary_program_type": "adverse_authority_search",
+                        "primary_program_bias": "adverse",
+                        "primary_program_rule_bias": "",
+                    },
+                    "proof_decision_source": "partial_support",
+                    "skipped": {"manual_review": {"reason": "adverse_authority_requires_review"}},
+                    "graph_support": {"summary": {"semantic_cluster_count": 2, "semantic_duplicate_count": 1}},
+                    "authority_rule_candidate_summary": {
+                        "total_rule_candidate_count": 1,
+                        "matched_claim_element_rule_count": 1,
+                        "rule_type_counts": {"element": 1},
+                    },
+                }
+            ],
+        }
+    )
+
+    assert plan_summary["fact_gap_task_count"] == 1
+    assert plan_summary["adverse_authority_task_count"] == 1
+    assert plan_summary["rule_candidate_backed_task_count"] == 2
+    assert plan_summary["total_rule_candidate_count"] == 3
+    assert plan_summary["matched_claim_element_rule_count"] == 3
+    assert plan_summary["rule_candidate_type_counts"] == {"element": 2, "exception": 1}
+    assert plan_summary["primary_authority_program_bias_counts"] == {"adverse": 1}
+    assert plan_summary["primary_authority_program_rule_bias_counts"] == {"exception": 1}
+    assert plan_summary["follow_up_focus_counts"] == {
+        "fact_gap_closure": 1,
+        "adverse_authority_review": 1,
+    }
+    assert plan_summary["query_strategy_counts"] == {
+        "rule_fact_targeted": 1,
+        "adverse_authority_targeted": 1,
+    }
+    assert plan_summary["recommended_actions"] == {
+        "collect_fact_support": 1,
+        "review_adverse_authority": 1,
+    }
+
+    assert execution_summary["fact_gap_task_count"] == 1
+    assert execution_summary["adverse_authority_task_count"] == 1
+    assert execution_summary["manual_review_task_count"] == 1
+    assert execution_summary["rule_candidate_backed_task_count"] == 2
+    assert execution_summary["total_rule_candidate_count"] == 3
+    assert execution_summary["matched_claim_element_rule_count"] == 3
+    assert execution_summary["rule_candidate_type_counts"] == {"element": 2, "exception": 1}
+    assert execution_summary["primary_authority_program_bias_counts"] == {"adverse": 1}
+    assert execution_summary["primary_authority_program_rule_bias_counts"] == {"exception": 1}
+    assert execution_summary["follow_up_focus_counts"] == {
+        "fact_gap_closure": 1,
+        "adverse_authority_review": 1,
+    }
+    assert execution_summary["query_strategy_counts"] == {
+        "rule_fact_targeted": 1,
+        "adverse_authority_targeted": 1,
+    }
 
 
 async def test_claim_support_review_route_marks_execute_follow_up_as_deprecated():

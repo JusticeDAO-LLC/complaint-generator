@@ -29,6 +29,8 @@ These batches assume the repository already has:
 
 The aim is to finish the highest-value workflow integrations from that baseline, not to redesign the architecture.
 
+This near-term plan now also assumes the team wants claim-aware legal corpus search and first-pass authority-treatment tracking, not just broader acquisition volume.
+
 ## Batch Selection Rules
 
 1. Do not start a later batch until the earlier batch exposes a stable mediator-visible output.
@@ -81,7 +83,55 @@ Finish the shared parse contract so uploaded evidence, discovered pages, archive
 ./.venv/bin/python -m pytest tests/test_claim_support_hooks.py -q
 ```
 
-## Batch 2: Durable Support Corpus and Graph Query Hardening
+## Batch 2: Legal Corpus Search and Authority Treatment
+
+### Goal
+
+Make legal research claim-element-aware so the system can search for support, opposition, procedural requirements, and authority reliability before drafting.
+
+### Primary files
+
+- `integrations/ipfs_datasets/legal.py`
+- `integrations/ipfs_datasets/types.py`
+- `mediator/legal_authority_hooks.py`
+- `mediator/claim_support_hooks.py`
+- `claim_support_review.py`
+
+### Work
+
+- create legal search programs for element-definition, fact-pattern, procedural, adverse-authority, and treatment-check searches
+- add normalized authority-family and treatment fields so statutes, administrative rules, guidance, and case law can be compared consistently
+- persist first-pass authority-treatment records such as `supports`, `adverse`, `limits`, `distinguishes`, and `good_law_unconfirmed`
+- add typed `Authority Record`, `Authority Treatment Edge`, and `Rule Candidate` outputs so later graph and logic work does not invent incompatible schemas
+- extract first-pass rule candidates and procedural prerequisites from parsed authority text for at least one claim type
+- map rule candidates to claim elements strongly enough to distinguish `law found but facts do not satisfy the rule` from `law not found`
+- feed authority intent and treatment uncertainty into follow-up planning and compact review payloads
+- preserve degraded mode by allowing empty treatment state when upstream treatment sources are unavailable
+
+### Expected output
+
+- per-element legal search plans rather than flat claim-type legal queries
+- first-pass authority-treatment records available to review and follow-up logic
+- first-pass rule candidates linked to at least one claim-element family
+- operator-visible supportive versus adverse authority summaries
+
+### Stop condition
+
+- for at least one claim type, the system can represent both supporting and adverse authority candidates for a claim element
+- for at least one claim type, the system can represent a rule candidate derived from authority text and connect it to claim-element review
+- compact review payloads can surface treatment-aware legal support signals without breaking existing clients
+
+### Suggested validation
+
+```bash
+./.venv/bin/python -m pytest tests/test_legal_authority_hooks.py -q
+./.venv/bin/python -m pytest tests/test_claim_support_hooks.py -q
+./.venv/bin/python -m pytest tests/test_review_api.py -q
+```
+
+Add focused tests for typed authority-treatment and rule-candidate payloads before landing this batch; do not rely only on broader hook coverage.
+
+## Batch 3: Durable Support Corpus and Graph Query Hardening
 
 ### Goal
 
@@ -123,7 +173,7 @@ Turn the existing graph snapshot and support-trace work into a more durable clai
 ./.venv/bin/python -m pytest tests/test_web_evidence_hooks.py tests/test_legal_authority_hooks.py tests/test_claim_support_review_dashboard_flow.py -q
 ```
 
-## Batch 3: Logic Adapter Grounding and Validation Persistence
+## Batch 4: Logic Adapter Grounding and Validation Persistence
 
 ### Goal
 
@@ -168,7 +218,7 @@ Replace placeholder proof behavior with grounded contradiction, failed-premise, 
 
 Add dedicated focused logic-adapter tests before landing this batch; do not rely only on broad suite coverage.
 
-## Batch 4: Operator Support Packets and Drilldown Workflow
+## Batch 5: Operator Support Packets and Drilldown Workflow
 
 ### Goal
 
@@ -215,6 +265,7 @@ Turn the existing compact review, dashboard, and follow-up summaries into a full
 2. Batch 2
 3. Batch 3
 4. Batch 4
+5. Batch 5
 
 ## Recommended Ownership Split
 
@@ -224,15 +275,15 @@ Turn the existing compact review, dashboard, and follow-up summaries into a full
 
 ### Track B: Support organization and graph work
 
-- Batch 2
+- Batch 3 after Batch 2 establishes stable authority-treatment and rule-candidate shapes
 
 ### Track C: Logic and validation work
 
-- Batch 3 after Batch 2 outputs are stable
+- Batch 4 after Batch 2 and Batch 3 outputs are stable
 
 ### Track D: Operator productization
 
-- Batch 4 after Batch 2 and Batch 3 stabilize their payloads
+- Batch 5 after Batch 3 and Batch 4 stabilize their payloads
 
 ## Exit Condition For This Plan
 

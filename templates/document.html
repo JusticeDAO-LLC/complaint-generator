@@ -1,1450 +1,897 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
-    <title>Profile Data</title>
-    <!-- Latest compiled and minified CSS -->
-    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <!-- jQuery library -->
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Formal Complaint Builder</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@400;600;700&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --ink: #162126;
+            --muted: #5b6b72;
+            --line: rgba(22, 33, 38, 0.14);
+            --paper: #f7f2e8;
+            --paper-strong: #fffdf8;
+            --accent: #8f2d1e;
+            --accent-soft: #e8c7b7;
+            --accent-deep: #5b1d15;
+            --shadow: 0 18px 50px rgba(22, 33, 38, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: 'Times New Roman', Times, serif;
-            font-size: 1.2em;
+            margin: 0;
+            min-height: 100vh;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(143, 45, 30, 0.12), transparent 30%),
+                radial-gradient(circle at top right, rgba(232, 199, 183, 0.55), transparent 28%),
+                linear-gradient(180deg, #f3ede3 0%, #ece2d5 100%);
+            font-family: 'Public Sans', sans-serif;
         }
-        
-        ul {
-            list-style-type: none;
+
+        .layout {
+            max-width: 1360px;
+            margin: 0 auto;
+            padding: 32px 20px 56px;
         }
-        
-        li {
-            list-style-type: none;
+
+        .hero {
+            display: grid;
+            grid-template-columns: 1.15fr 0.85fr;
+            gap: 24px;
+            align-items: stretch;
+            margin-bottom: 24px;
         }
-        
-        h6 {
-            font-weight: bold;
+
+        .hero-card,
+        .panel,
+        .preview-panel {
+            background: rgba(255, 253, 248, 0.92);
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow);
+            border-radius: 24px;
+            backdrop-filter: blur(12px);
         }
-        
-        #print {
-            position: absolute;
-            float: right;
-            margin-left: 20px;
-            right: 20px;
+
+        .hero-card {
+            padding: 28px;
+        }
+
+        .hero-card h1 {
+            margin: 0 0 12px;
+            font-family: 'Newsreader', serif;
+            font-size: clamp(2.5rem, 5vw, 4.4rem);
+            line-height: 0.94;
+            font-weight: 700;
+            letter-spacing: -0.04em;
+        }
+
+        .hero-card p {
+            margin: 0;
+            max-width: 48rem;
+            color: var(--muted);
+            font-size: 1rem;
+            line-height: 1.65;
+        }
+
+        .hero-metrics {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            padding: 20px;
+        }
+
+        .metric {
+            border-radius: 18px;
+            padding: 18px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(247,242,232,0.92));
+            border: 1px solid rgba(22, 33, 38, 0.08);
+        }
+
+        .metric-label {
+            display: block;
+            color: var(--muted);
+            font-size: 0.76rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            margin-bottom: 8px;
+        }
+
+        .metric-value {
+            font-family: 'Newsreader', serif;
+            font-size: 1.7rem;
+            line-height: 1;
+        }
+
+        .workspace {
+            display: grid;
+            grid-template-columns: minmax(320px, 460px) minmax(0, 1fr);
+            gap: 24px;
+        }
+
+        .panel {
+            padding: 24px;
+            position: sticky;
             top: 20px;
+            align-self: start;
         }
-        
-        .complaint-header-cell {
-            display: inline;
-            width: auto;
-            padding: 1em;
-            width: 50%;
+
+        .preview-panel {
+            padding: 24px;
+            min-height: 720px;
         }
-        
-        #complaint-header .left {
-            border-right: solid 1px #000;
+
+        .panel h2,
+        .preview-panel h2 {
+            margin: 0 0 8px;
+            font-family: 'Newsreader', serif;
+            font-size: 2rem;
+            line-height: 1;
         }
-        
-        #complaint-header .right {
-            border-left: solid 1px #000;
+
+        .panel-copy {
+            color: var(--muted);
+            line-height: 1.6;
+            margin: 0 0 22px;
         }
-        
-        #complaint-header {
+
+        .field-grid {
+            display: grid;
+            gap: 14px;
+        }
+
+        .field-row {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--accent-deep);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        input,
+        textarea,
+        select {
+            width: 100%;
+            border: 1px solid rgba(22, 33, 38, 0.16);
+            border-radius: 14px;
+            padding: 13px 14px;
+            font: inherit;
+            color: var(--ink);
+            background: rgba(255,255,255,0.92);
+            transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+        }
+
+        input:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: rgba(143, 45, 30, 0.58);
+            box-shadow: 0 0 0 4px rgba(143, 45, 30, 0.12);
+            transform: translateY(-1px);
+        }
+
+        textarea {
+            min-height: 96px;
+            resize: vertical;
+        }
+
+        .checkbox-row {
             display: flex;
-            width: 100%
+            gap: 12px;
+            flex-wrap: wrap;
         }
-        
-        .court-title {
-            font-weight: bold;
-            text-align: center;
+
+        .check-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(22, 33, 38, 0.14);
+            background: rgba(255,255,255,0.82);
+            color: var(--ink);
+            font-size: 0.92rem;
         }
-        
-        #complaint_body {
-            padding-right: auto;
-            padding-left: auto;
-            margin-left: auto;
-            margin-right: auto;
+
+        .check-pill input {
+            width: auto;
+            margin: 0;
         }
-        
-        #profile_data {
+
+        .button-row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        button {
+            appearance: none;
+            border: none;
+            border-radius: 999px;
+            padding: 13px 18px;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 24px rgba(22, 33, 38, 0.14);
+        }
+
+        button:disabled {
+            opacity: 0.62;
+            cursor: wait;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .primary {
+            color: #fff;
+            background: linear-gradient(135deg, var(--accent), #b54f38);
+        }
+
+        .secondary {
+            color: var(--ink);
+            background: rgba(232, 199, 183, 0.54);
+            border: 1px solid rgba(143, 45, 30, 0.14);
+        }
+
+        .status,
+        .error,
+        .success {
             display: none;
+            margin-top: 16px;
+            border-radius: 16px;
+            padding: 12px 14px;
+            line-height: 1.5;
+        }
+
+        .status {
+            background: rgba(22, 33, 38, 0.06);
+            color: var(--ink);
+        }
+
+        .error {
+            background: rgba(143, 45, 30, 0.12);
+            color: var(--accent-deep);
+        }
+
+        .success {
+            background: rgba(37, 94, 55, 0.12);
+            color: #255e37;
+        }
+
+        .preview-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: flex-start;
+            margin-bottom: 20px;
+        }
+
+        .preview-meta {
+            color: var(--muted);
+            font-size: 0.92rem;
+            line-height: 1.5;
+        }
+
+        .artifact-grid,
+        .section-stack,
+        .claim-stack,
+        .exhibit-stack {
+            display: grid;
+            gap: 14px;
+        }
+
+        .artifact-card,
+        .section-card,
+        .claim-card,
+        .exhibit-card {
+            border: 1px solid rgba(22, 33, 38, 0.1);
+            border-radius: 18px;
+            padding: 16px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(247,242,232,0.9));
+        }
+
+        .artifact-card h3,
+        .claim-card h3,
+        .section-card h3 {
+            margin: 0 0 10px;
+            font-size: 1rem;
+        }
+
+        .artifact-card a,
+        .exhibit-link,
+        .path-value {
+            color: var(--accent);
+            word-break: break-word;
+        }
+
+        .draft-shell {
+            border-top: 1px solid var(--line);
+            margin-top: 24px;
+            padding-top: 24px;
+        }
+
+        .court-header {
+            font-family: 'Newsreader', serif;
+            font-size: clamp(1.2rem, 3vw, 1.7rem);
+            text-align: center;
+            margin: 0 0 18px;
+        }
+
+        .caption-block {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 20px;
+            padding: 18px;
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.72);
+            margin-bottom: 18px;
+        }
+
+        .caption-parties {
+            font-family: 'Newsreader', serif;
+            line-height: 1.65;
+            white-space: pre-line;
+        }
+
+        .caption-side {
+            text-align: right;
+            color: var(--muted);
+            min-width: 190px;
+        }
+
+        .list-lines {
+            margin: 0;
+            padding-left: 18px;
+            line-height: 1.7;
+        }
+
+        .empty-state {
+            min-height: 540px;
+            display: grid;
+            place-items: center;
+            text-align: center;
+            color: var(--muted);
+            border: 1px dashed rgba(22, 33, 38, 0.18);
+            border-radius: 22px;
+            background: rgba(255,255,255,0.46);
+            padding: 28px;
+        }
+
+        .empty-state strong {
+            display: block;
+            color: var(--ink);
+            font-family: 'Newsreader', serif;
+            font-size: 1.6rem;
+            margin-bottom: 8px;
+        }
+
+        .microcopy {
+            margin-top: 10px;
+            color: var(--muted);
+            font-size: 0.86rem;
+        }
+
+        @media (max-width: 1080px) {
+            .hero,
+            .workspace {
+                grid-template-columns: 1fr;
+            }
+
+            .panel {
+                position: static;
+            }
+
+            .caption-block {
+                grid-template-columns: 1fr;
+            }
+
+            .caption-side {
+                text-align: left;
+            }
+        }
+
+        @media (max-width: 680px) {
+            .field-row,
+            .hero-metrics {
+                grid-template-columns: 1fr;
+            }
+
+            .layout {
+                padding: 20px 14px 42px;
+            }
+
+            .hero-card,
+            .panel,
+            .preview-panel {
+                border-radius: 20px;
+            }
         }
     </style>
-    <script>
-        hostname = "localhost:19000";
-
-        function document_print(window) {
-            $("input").css("border", "none");
-            $("textarea").css("border", "none");
-            $("button").css("border", "none");
-            $("select").css("border", "none");
-            $("#print").css("display", "none");
-            $("select").css("background-color", "#fff");
-            window.print();
-            $("input").css("border", "solid 1px #000");
-            $("textarea").css("border", "solid 1px #000");
-            $("button").css("border", "solid 1px #000");
-            $("select").css("border", "solid 1px #000");
-            $("select").css("background-color", "#ccc");
-            return;
-        }
-
-        function insert_document_fields(data) {
-            // alert(JSON.stringify(data["data"]["complaint_summary"]));
-        }
-
-        function load_profile(username, password) {
-            returnData = {};
-            // alert(username + " " + password);
-            $.ajax({
-                type: "POST",
-                contentType: 'application/json',
-                url: "/load_profile",
-                data: '{"request": {"hashed_username" : "' + username + '", "hashed_password": "' + password + '"}}',
-                dataType: 'json',
-                async: false,
-                success: function(data) {
-                    // insert_document_fields(data);
-                    form_timestamp = $("#timestamp").val();
-                    if (form_timestamp != "") {
-                        if (data["data"]["complaint_summary"]["timestamp"] > form_timestamp) {
-                            populate_template(data["data"]["complaint_summary"]);
-                        }
-                    } else {
-                        populate_template(data["data"]["complaint_summary"]);
-                    }
-                    returnData = data;
-                }
-            });
-
-            return returnData;
-
-        }
-
-
-
-        function merge_dictionaries(dict1, dict2) {
-            var dict3 = {};
-            for (var key in dict1) {
-                dict3[key] = dict1[key];
-            }
-            for (var key in dict2) {
-                dict3[key] = dict2[key];
-            }
-            return dict3;
-        }
-
-        function store_profile(username, password, profile) {
-
-            $.ajaxSetup({
-                async: false
-            }); //execute synchronously
-            var returnData = null; //define returnData outside the scope of the callback function
-            // if (typeof profile["data"] === 'String' || profile["data"] instanceof String) {
-            if ("data" in Object.keys(profile)) {
-                profileData = profile["data"].replace('\"', '"');
-                profileData = JSON.parse(profileData);
-                profile["data"] = profileData;
-            }
-            // }
-            profile["data"]["data"] = undefined;
-            // alert(profileData)
-            // profileData = JSON.parse(profileData);
-            // alert(JSON.stringify(profile["data"]));
-            // profile["data"] = JSON.parse(profile["data"]);
-            profile["hashed_username"] = username;
-            profile["hashed_password"] = password;
-            // profile["data"] = JSON.parse(profile["data"]);
-            // if (typeof profile["data"]["data"] === 'undefined') {
-            //     merge_dictionaries(profile["data"]["data"], profile["data"]);
-            //     unset(profile["data"]["data"]);
-            // }
-            // alert(JSON.stringify(profile));
-            $.ajax({
-                type: "POST",
-                contentType: 'application/json',
-                url: "/store_profile",
-                data: '{"request": ' + JSON.stringify(profile) + '}',
-                dataType: 'json',
-                async: false,
-                success: function(data) {
-                    returnData = data;
-                }
-            });
-
-            // alert(JSON.stringify(returnData));
-            $.ajaxSetup({
-                async: true
-            }); //return to default setting
-            //alert(JSON.stringify(returnData));
-            //alert(returnData[0]["body"]);
-            //data = returnData[0]["data"];
-            // alert(JSON.stringify(profile))
-            // alert(JSON.stringify(returnData));
-            // if ("data" in Object.keys(returnData)) {
-            //     if ("data" in Object.keys(returnData["data"])) {
-            //         returnData["data"]["data"] == undefined;
-            //     }
-            // }
-
-            // returnData["data"]["data"]
-
-            if (returnData != null) {
-                if ("Err" in returnData) {
-                    // alert("This Login Err: " + JSON.stringify(returnData));
-                    show_error(returnData["Err"]);
-                    return returnData;
-                } else {
-                    // window.location();
-                    return returnData;
-                }
-                return returnData;
-            }
-        }
-
-        function show_error(message) {
-            form_field = $("#Err").html();
-            form_field = "<span>" + message + "</span>";
-            $("#Err").html(form_field);
-            $("#Err").show();
-            // alert(message)
-        }
-
-
-        function remove_plaintiff(id) {
-
-        }
-
-        function remove_defendant(id) {
-
-        }
-
-        function add_plaintiff() {
-            fields_html = $("#plaintiff").html() + '<br/><input id="plaintiff-name" name="plaintiff-name[]" class="plaintiff-name" type="text" placeholder="John Doe" ><button class="add_plaintiff" onclick="return add_plaintiff();">+</button><button class="remove_plaintiff" onclick="return remove_plaintiff();">-</button>';
-            $("#plaintiff").html(fields_html);
-
-            plaintiff_html = '<label for="plaintiff_name[]" class="plaintiff_name">Name : </label><input type="text" name="plaintiff_name[]" id="plaintiff_name" class="plaintiff_name" value=" "><br/> \
-                            <label for="plaintiff_address[]" class="plaintiff_address">Street Address : </label><input type="text" name="plaintiff_address[]" id="plaintiff_address" class="plaintiff_address" value=" "><br/> \
-                            <label for="plaintiff_state[]" class="plaintiff_state">State : </label> \
-                            <select name="plaintiff_state[]" class="plaintiff_state[]"  id="plaintiff_state"> \
-                            <option value="AL">Alabama</option> \
-                            <option value="AK">Alaska</option> \
-                            <option value="AZ">Arizona</option> \
-                            <option value="AR">Arkansas</option> \
-                            <option value="CA">California</option> \
-                            <option value="CO">Colorado</option> \
-                            <option value="CT">Connecticut</option> \
-                            <option value="DE">Delaware</option> \
-                            <option value="DC">District of Columbia</option> \
-                            <option value="FL">Florida</option> \
-                            <option value="GA">Georgia</option> \
-                            <option value="HI">Hawaii</option> \
-                            <option value="ID">Idaho</option> \
-                            <option value="IL">Illinois</option> \
-                            <option value="IN">Indiana</option> \
-                            <option value="IA">Iowa</option> \
-                            <option value="KS">Kansas</option> \
-                            <option value="KY">Kentucky</option> \
-                            <option value="LA">Louisiana</option> \
-                            <option value="ME">Maine</option> \
-                            <option value="MD">Maryland</option> \
-                            <option value="MA">Massachusetts</option> \
-                            <option value="MI">Michigan</option> \
-                            <option value="MN">Minnesota</option> \
-                            <option value="MS">Mississippi</option> \
-                            <option value="MO">Missouri</option> \
-                            <option value="MT">Montana</option> \
-                            <option value="NE">Nebraska</option> \
-                            <option value="NV">Nevada</option> \
-                            <option value="NH">New Hampshire</option> \
-                            <option value="NJ">New Jersey</option> \
-                            <option value="NM">New Mexico</option> \
-                            <option value="NY">New York</option> \
-                            <option value="NC">North Carolina</option> \
-                            <option value="ND">North Dakota</option> \
-                            <option value="OH">Ohio</option> \
-                            <option value="OK">Oklahoma</option> \
-                            <option value="OR">Oregon</option> \
-                            <option value="PA">Pennsylvania</option> \
-                            <option value="RI">Rhode Island</option> \
-                            <option value="SC">South Carolina</option> \
-                            <option value="SD">South Dakota</option> \
-                            <option value="TN">Tennessee</option> \
-                            <option value="TX">Texas</option> \
-                            <option value="UT">Utah</option> \
-                            <option value="VT">Vermont</option> \
-                            <option value="VA">Virginia</option> \
-                            <option value="WA">Washington</option> \
-                            <option value="WV">West Virginia</option> \
-                            <option value="WI">Wisconsin</option> \
-                            <option value="WY">Wyoming</option> \
-                            <option value="AS">American Samoa</option> \
-                            <option value="GU">Guam</option> \
-                            <option value="MP">Northern Mariana Islands</option> \
-                            <option value="PR">Puerto Rico</option> \
-                            <option value="VI">Virgin Islands</option> \
-                            <option value="AA">Armed Forces Americas</option> \
-                            <option value="AE">Armed Forces Europe</option> \
-                            <option value="AP">Armed Forces Pacific</option> \
-                        </select><br/> \
-                            <label for="plaintiff_zip[]" class="plaintiff_zip">Zip Code : </label><input type="text " name="plaintiff_zip[]" class="plaintiff_zip" value=" "><br/> \
-                            <label for="plaintiff_phone[]" class="plaintiff_phone">Telephone Number : </label><input type="text" name="plaintiff_phone[]" id="plaintiff_phone" class="plaintiff_phone" value=" "><br/> \
-                            <label for="plaintiff_email_address[]" class="plaintiff_email_address">E-mail Address : </label><input type="text" name="plaintiff_email_address[]" id="plaintiff_email_address" class="plaintiff_email_address" value=" "><br/><hr></hr>';
-            original_html = $(".plaintiff_info").html()
-            $(".plaintiff_info").html(original_html + plaintiff_html);
-        }
-
-        function add_defendant() {
-            fields_html = $("#defendant").html() + '<br/><input id="defendant-name" name="defendant-name[]" class="defendant-name" type="text" placeholder="John Doe" ><button class="add_defendant" onclick="return add_defendant();">+</button><button class="remove_defendant" onclick="return remove_defendant();">-</button>';
-            $("#defendant").html(fields_html);
-
-            defendant_html = '<label for="defendant_name[]" class="defendant_name">Name : </label><input type="text" name="defendant_name[]" id="defendant_name" class="defendant_name" value=" "><br/> \
-                            <label for="defendant_address[]" class="defendant_address">Street Address : </label><input type="text" name="defendant_address[]" id="defendant_address" class="defendant_address" value=" "><br/> \
-                            <label for="defendant_state[]" class="defendant_state">State : </label> \
-                            <select name="defendant_state[]" class="defendant_state[]" id="defendant_state"> \
-                            <option value="AL">Alabama</option> \
-                            <option value="AK">Alaska</option> \
-                            <option value="AZ">Arizona</option> \
-                            <option value="AR">Arkansas</option> \
-                            <option value="CA">California</option> \
-                            <option value="CO">Colorado</option> \
-                            <option value="CT">Connecticut</option> \
-                            <option value="DE">Delaware</option> \
-                            <option value="DC">District of Columbia</option> \
-                            <option value="FL">Florida</option> \
-                            <option value="GA">Georgia</option> \
-                            <option value="HI">Hawaii</option> \
-                            <option value="ID">Idaho</option> \
-                            <option value="IL">Illinois</option> \
-                            <option value="IN">Indiana</option> \
-                            <option value="IA">Iowa</option> \
-                            <option value="KS">Kansas</option> \
-                            <option value="KY">Kentucky</option> \
-                            <option value="LA">Louisiana</option> \
-                            <option value="ME">Maine</option> \
-                            <option value="MD">Maryland</option> \
-                            <option value="MA">Massachusetts</option> \
-                            <option value="MI">Michigan</option> \
-                            <option value="MN">Minnesota</option> \
-                            <option value="MS">Mississippi</option> \
-                            <option value="MO">Missouri</option> \
-                            <option value="MT">Montana</option> \
-                            <option value="NE">Nebraska</option> \
-                            <option value="NV">Nevada</option> \
-                            <option value="NH">New Hampshire</option> \
-                            <option value="NJ">New Jersey</option> \
-                            <option value="NM">New Mexico</option> \
-                            <option value="NY">New York</option> \
-                            <option value="NC">North Carolina</option> \
-                            <option value="ND">North Dakota</option> \
-                            <option value="OH">Ohio</option> \
-                            <option value="OK">Oklahoma</option> \
-                            <option value="OR">Oregon</option> \
-                            <option value="PA">Pennsylvania</option> \
-                            <option value="RI">Rhode Island</option> \
-                            <option value="SC">South Carolina</option> \
-                            <option value="SD">South Dakota</option> \
-                            <option value="TN">Tennessee</option> \
-                            <option value="TX">Texas</option> \
-                            <option value="UT">Utah</option> \
-                            <option value="VT">Vermont</option> \
-                            <option value="VA">Virginia</option> \
-                            <option value="WA">Washington</option> \
-                            <option value="WV">West Virginia</option> \
-                            <option value="WI">Wisconsin</option> \
-                            <option value="WY">Wyoming</option> \
-                            <option value="AS">American Samoa</option> \
-                            <option value="GU">Guam</option> \
-                            <option value="MP">Northern Mariana Islands</option> \
-                            <option value="PR">Puerto Rico</option> \
-                            <option value="VI">Virgin Islands</option> \
-                            <option value="AA">Armed Forces Americas</option> \
-                            <option value="AE">Armed Forces Europe</option> \
-                            <option value="AP">Armed Forces Pacific</option> \
-                        </select><br/> \
-                        <label for="defendant_zip[]" class="defendant_zip">Zip Code : </label><input type="text " name="defendant_zip[]" id="defendant_zip" class="defendant_zip" value=" "><br/> \
-                            <label for="defendant_phone[]" class="defendant_phone">Telephone Number : </label><input type="text" name="defendant_phone[]" id="defendant_phone" class="defendant_phone" value=" "><br/> \
-                            <label for="defendant_email_address[]" class="defendant_email_address">E-mail Address : </label><input type="text" name="defendant_email_address[]" id="defendant_email_address" class="defendant_email_address" value=" "><br/> ';
-
-            original_html = $(".defendant_info").html()
-            $(".defendant_info").html(original_html + defendant_html);
-        }
-
-        function returnFalse() {
-            return false;
-        }
-
-        function num_of_keys_in_object(obj) {
-            var count = 0;
-            for (var key in obj) {
-                if (obj.hasOwnProperty(key)) {
-                    count++;
-                }
-            }
-            return count;
-        }
-
-        function populate_template(populate) {
-            // alert(JSON.stringify(populate));
-
-            dicts = {
-                "plaintiff-name": populate["plaintiffname"],
-                "defendant-name": populate["defendantname"],
-                "plaintiff_name": populate["plaintiff_name"],
-                "defendant_name": populate["defendant_name"],
-                "plaintiff_address": populate["plaintiff_address"],
-                "defendant_address": populate["defendant_address"],
-                "plaintiff_state": populate["plaintiff_state"],
-                "defendant_state": populate["defendant_state"],
-                "plaintiff_zip": populate["plaintiff_zip"],
-                "defendant_zip": populate["defendant_zip"],
-                "plaintiff_phone": populate["plaintiff_phone"],
-                "defendant_phone": populate["defendant_phone"],
-                "plaintiff_email_address": populate["plaintiff_email_address"],
-                "defendant_email_address": populate["defendant_email_address"]
-            }
-
-            for (var key in dicts) {
-                var i = 0;
-
-                if (dicts.hasOwnProperty(key)) {
-                    if (key == "plaintiff-name") {
-                        var i = 0;
-
-                        var length = num_of_keys_in_object(populate[key]);
-                        // alert(length);
-                        // alert(JSON.stringify(populate[key]));
-                        for (var i = 0; i < (length - 1); i++) {
-                            add_plaintiff();
-                        }
-                        for (var i = 0; i < length; i++) {
-                            $("#plaintiff").find(".plaintiff-name").eq(i).val(populate[key][i]);
-                            $("#plaintiff_info").find(".plaintiff_name").eq(i).val(populate[key][i]);
-                        }
-                    }
-                    if (key == "defendant-name") {
-                        var i = 0;
-
-                        var length = num_of_keys_in_object(populate[key]);
-                        // alert(length);
-                        // alert(JSON.stringify(populate[key]));
-                        for (var i = 0; i < (length - 1); i++) {
-                            add_defendant();
-                        }
-                        for (var i = 0; i < (length); i++) {
-                            $("#defendant").find(".defendant-name").eq(i).val(populate[key][i]);
-                            $("#defendant_info").find(".defendant_name").eq(i).val(populate[key][i]);
-                        }
-                    }
-                    // if (key == "jury_trial") {
-                    //     alert("jury_trial");
-                    //     if (populate[key] == "Yes") {
-                    //         $("#jury_trial-yes").prop("checked", true);
-                    //         $("#jury_trial-no").prop("checked", false);
-                    //     } else {
-                    //         $("#jury_trial-yes").prop("checked", false);
-                    //         $("#jury_trial-no").prop("checked", true);
-                    //     }
-                    // }
-                    if (String(key).includes("plaintiff_") || String(key).includes("defendant_")) {
-                        var length = num_of_keys_in_object(populate[key]);
-                        // alert(key + " " + length);
-                        var tag = $("#" + key).prop("tagName");
-                        var type = $("#" + key).prop("type");
-                        if ((JSON.stringify(populate[key]).trim() != "") && (typeof populate[key] == "string")) {
-                            if ($("#" + key + "-" + JSON.stringify(populate[key]).replace('"', '').replace('"', '').trim()) != null) {
-                                var type2 = $("#" + key + "-" + populate[key]).prop("type");
-                                console.log("#" + key + "-" + JSON.stringify(populate[key]).replace('"', '').replace('"', '').trim())
-
-                            } else {
-                                var type2 = "";
-                            }
-                        }
-                        // alert(tag);
-                        var i = 0;
-
-                        if (tag == "INPUT") {
-                            var i = 0;
-                            // alert(key + " " + length);
-                            if (Object(populate).hasOwnProperty(key)) {
-                                if (type = "text") {
-                                    $("input." + key).each(function() {
-                                        // alert(key + " " + i + " " + populate[key][String(i)]);
-                                        $(this).val(populate[key][String(i)]);
-                                        i = i + 1;
-                                    });
-                                }
-                                if (type2 = "radio") {
-                                    $("input." + key).each(function() {
-                                        // alert(key + " " + populate[key]);
-                                        if (populate[key] == "yes") {
-                                            $("#" + key + "-" + populate[key]).prop("checked", true);
-                                        }
-                                    });
-                                }
-                            }
-                        }
-                        if (tag == "SELECT") {
-                            var i = 0;
-                            $("select." + key).each(function() {
-                                option = $("#" + key + " option[value='" + populate[key][String(i)] + "']");
-                                option.attr("selected", "selected");
-                                // alert(key + " " + i + " " + $(this).html());
-                                // $(this).val(populate[key][String(i)]);
-                                i = i + 1;
-                            });
-                        }
-
-                    }
-                }
-
-            }
-
-            strings = {
-                "division_name": $("#division_name").val(),
-                "jurisdiction_state": $("#jurisdiction_state").val(),
-                "district_name": $("#district_name").val(),
-                "complaint-number": $("#complaint-number").val(),
-                "jury_trial": $("#jury_trial").val(),
-                "federal_question": $("#federal_question").val(),
-                "diversity_citizenship": $("#diversity_citizenship").val(),
-                "federal_statutes": $("#federal_statutes").val(),
-                "plaintiff_is": $("#plaintiff_is").val(),
-                "defendant_is": $("#defendant_is").val(),
-                "plaintiff-state": $("#plaintiff-state").val(),
-                "defendant-state": $("#defendant-state").val(),
-                "amount_controversy": $("#amount_controversy").val(),
-                "claim": $("#claim").val(),
-                "relief": $("#relief").val(),
-                "date_signed": $("#date_signed").val(),
-                "signature": $("#signature").val(),
-                "plaintiff_name": $("#plaintiff_name").val(),
-                "attorney_signature": $("#attorney_signature").val(),
-                "attorney_name": $("#attorney_name").val(),
-                "attorney_bar_number": $("#attorney_bar_number").val(),
-                "attorney_law_firm": $("#attorney_law_firm").val(),
-                "attorney_address": $("#attorney_address").val(),
-                "attorney_state": $("#attorney_state").val(),
-                "attorney_zip": $("#attorney_zip").val(),
-                "attorney_phone_number": $("#attorney_phone_number").val(),
-                "attorney_email_address": $("#attorney_email_address").val(),
-                "plaintiff_is": $('input[name="plaintiff_is"]:checked').val(),
-                "defendant_is": $('input[name="defendant_is"]:checked').val(),
-                "timestamp": $("#timestamp").val(),
-            }
-
-            if (populate != undefined) {
-                for (var key in strings) {
-                    // alert(key + " " + $("#" + key).attr("type"));
-                    type = $("#" + key).attr("type");
-                    tag = $("#" + key).prop("tagName");
-                    if (key == "jury_trial") {
-                        // alert("jury_trial");
-                        if (populate[key] == "yes") {
-                            $("#jury_trial-yes").prop("checked", true);
-                        } else {
-                            $("#jury_trial-no").prop("checked", true);
-                        }
-                    }
-                    if (key == "federal_question") {
-                        // alert("jury_trial");
-                        if (populate[key] == true || populate[key] == "true") {
-                            $("#federal_question").prop("checked", true);
-                        } else {
-                            $("#federal_question").prop("checked", false);
-                        }
-                    }
-                    if (key == "diversity_citizenship") {
-                        // alert("jury_trial");
-                        if (populate[key] == true || populate[key] == "true") {
-                            $("#diversity_citizenship").prop("checked", true);
-                        } else {
-                            $("#diversity_citizenship").prop("checked", false);
-                        }
-                    }
-                    if (key == "plaintiff_is") {
-                        // alert("jury_trial");
-                        if (populate[key] == "individual") {
-                            $("#plaintiff_is-individual").prop("checked", true);
-                        } else {
-                            $("#plaintiff_is-corporation").prop("checked", true);
-                        }
-                    }
-                    if (key == "defendant_is") {
-                        // alert("jury_trial");
-                        if (populate[key] == "individual") {
-                            $("#defendant_is-individual").prop("checked", true);
-                        } else {
-                            $("#defendant_is-corporation").prop("checked", true);
-                        }
-                    }
-                    if (key == "plaintiff-state") {
-                        // alert("jury_trial");
-                        // $("#plaintiff-state").val(populate[key]);
-                        option = $("#plaintiff-state option[value='" + populate[key] + "']");
-                        option.attr("selected", "selected");
-                    }
-                    if (key == "defendant-state") {
-                        // alert("jury_trial");
-                        // $("#plaintiff-state").val(populate[key]);
-                        // alert("#defendant-state option[value='" + populate[key] + "']")
-                        option = $("#defendant-state option[value='" + populate[key] + "']");
-                        // alert($("#defendant-state option[value='" + populate[key] + "']").html());
-                        option.attr("selected", "selected");
-                    }
-                    // alert(tag)
-                    if (type == "text") {
-                        if (Object($("#" + key)).hasOwnProperty("value") || Object($("#" + key)).hasOwnProperty("val")) {
-                            $("#" + key).val(populate[key]);
-                            $("#" + key).attr(value, populate[key]);
-                        }
-                        // $("#" + key).val(populate[key]);
-                    }
-                    if (type == "checkbox") {
-                        if (populate[key] == "on") {
-                            $("#" + key).attr("checked", "checked");
-                        } else if (populate[key] == "off") {
-                            $("#" + key).removeAttr("checked");
-                        }
-                    }
-                    if (type == "radio") {
-                        // alert("#" + key + "-" + populate[key]);
-                        radio = $("#" + key + "-" + populate[key]);
-                        radio.attr("checked", "checked");
-                    }
-
-                    if (type == "file") {
-
-                    }
-                    if (type == "hidden") {
-                        hidden = $("#" + key);
-                        hidden.val(populate[key]);
-                    }
-                    if (tag == "TEXTAREA") {
-                        //insert text into textarea
-                        // alert(tag)
-                        textarea = $("#" + key);
-                        textarea.val(populate[key]);
-                    }
-                    if (tag == "SELECT") {
-                        option = $("#" + key + " option[value='" + populate[key] + "']");
-                        option.attr("selected", "selected");
-                    }
-
-                }
-            }
-        }
-
-        function load_complaint() {
-            plaintiff_name = Object();
-            $('input[name^="plaintiff_name[]"]').each(
-                function(key, value) {
-                    // alert("plaintiff_name " + key + " " + value.value);
-                    plaintiff_name[key] = this.value;
-                });
-
-            defendant_name = Object();
-
-            $('input[name^="defendant_name[]"]').each(
-                function(key, value) {
-                    // alert("defendant_name " + key + " " + value.value);
-                    defendant_name[key] = this.value;
-                });
-
-            plaintiffname = Object();
-            $('input[name^="plaintiff-name[]"]').each(
-                function(key, value) {
-                    // alert("plaintiff_name " + key + " " + value.value);
-                    plaintiffname[key] = this.value;
-                });
-
-            defendantname = Object();
-
-            $('input[name^="defendant-name[]"]').each(
-                function(key, value) {
-                    defendantname[key] = this.value;
-                });
-
-
-            defendant_state = Object();
-
-            $('select[name^="defendant_state[]"]').each(
-                function(key, value) {
-                    defendant_state[key] = this.value;
-                });
-
-            plaintiff_state = Object();
-
-            $('select[name^="plaintiff_state[]"]').each(
-                function(key, value) {
-                    plaintiff_state[key] = this.value;
-                });
-
-
-
-            defendantstate = Object();
-
-            $('select[name^="defendant-state"]').each(
-                function(key, value) {
-                    defendantstate = this.value;
-                });
-
-            plaintiffstate = Object();
-
-            $('select[name^="plaintiff-state"]').each(
-                function(key, value) {
-                    plaintiffstate = this.value;
-                });
-
-
-            plaintiff_zip = Object();
-            $('input[name^="plaintiff_zip[]"]').each(
-                function(key, value) {
-                    plaintiff_zip[key] = this.value;
-                });
-
-            defendant_zip = Object();
-            $('input[name^="defendant_zip[]"]').each(
-                function(key, value) {
-                    defendant_zip[key] = this.value;
-                });
-
-            plaintiff_address = Object();
-            $('input[name^="plaintiff_address[]"]').each(
-                function(key, value) {
-                    plaintiff_address[key] = this.value;
-                });
-
-            defendant_address = Object();
-            $('input[name^="defendant_address[]"]').each(
-                function(key, value) {
-                    defendant_address[key] = this.value;
-                });
-            defendant_phone = Object();
-            $('input[name^="defendant_phone[]"]').each(
-                function(key, value) {
-                    defendant_phone[key] = this.value;
-                });
-            plaintiff_phone = Object();
-            $('input[name^="plaintiff_phone[]"]').each(
-                function(key, value) {
-                    plaintiff_phone[key] = this.value;
-                });
-
-            plaintiff_email_address = Object();
-            $('input[name^="plaintiff_email_address[]"]').each(
-                function(key, value) {
-                    plaintiff_email_address[key] = this.value;
-                });
-
-            defendant_email_address = Object();
-            $('input[name^="defendant_email_address[]"]').each(
-                function(key, value) {
-                    defendant_email_address[key] = this.value;
-                });
-
-
-            federal_question = $('input[name^="federal_question"]').prop('checked');
-
-            diversity_citizenship = $('input[name^="diversity_citizenship"]').prop('checked');
-
-            plaintiff_is = $('input[name="plaintiff_is"]:checked').val();
-
-            defendant_is = $('input[name="defendant_is"]:checked').val();
-
-            jury_trial = $('input[name="jury_trial"]:checked').val();
-
-            data = {
-                    "division_name": $("#division_name").val(),
-                    "jurisdiction_state": $("#jurisdiction_state").val(),
-                    "district_name": $("#district_name").val(),
-                    "complaint-number": $("#complaint-number").val(),
-                    "plaintiff-name": plaintiffname,
-                    "defendant-name": defendantname,
-                    "jury_trial": jury_trial,
-                    "plaintiff_name": plaintiffname,
-                    "defendant_name": defendantname,
-                    "plaintiff_address": plaintiff_address,
-                    "defendant_address": defendant_address,
-                    "plaintiff_state": plaintiff_state,
-                    "defendant_state": defendant_state,
-                    "plaintiff-state": plaintiffstate,
-                    "defendant-state": defendantstate,
-                    "plaintiff_zip": plaintiff_zip,
-                    "defendant_zip": defendant_zip,
-                    "plaintiff_phone": plaintiff_phone,
-                    "defendant_phone": defendant_phone,
-                    "plaintiff_email_address": plaintiff_email_address,
-                    "defendant_email_address": defendant_email_address,
-                    "federal_question": federal_question,
-                    "diversity_citizenship": diversity_citizenship,
-                    "federal_statutes": $("#federal_statutes").val(),
-                    "plaintiff_is": plaintiff_is,
-                    "defendant_is": defendant_is,
-                    // "plaintiff_state": $("#plaintiff_state").val(),
-                    // "defendant_state": $("#defendant_state").val(),
-                    "amount_controversy": $("#amount_controversy").val(),
-                    "claim": $("#claim").val(),
-                    "relief": $("#relief").val(),
-                    "date_signed": $("#date_signed").val(),
-                    "signature": $("#signature").val(),
-                    // "plaintiff_name": $("#plaintiff_name").val(),
-                    "attorney_signature": $("#attorney_signature").val(),
-                    "attorney_name": $("#attorney_name").val(),
-                    "attorney_bar_number": $("#attorney_bar_number").val(),
-                    "attorney_law_firm": $("#attorney_law_firm").val(),
-                    "attorney_address": $("#attorney_address").val(),
-                    "attorney_state": $("#attorney_state").val(),
-                    "attorney_zip": $("#attorney_zip").val(),
-                    "attorney_phone_number": $("#attorney_phone_number").val(),
-                    "attorney_email_address": $("#attorney_email_address").val(),
-                    "plaintiff_is": plaintiff_is,
-                    "defendant_is": defendant_is,
-                    "timestamp": $("#timestamp").val(),
-                }
-                // alert(JSON.stringify(data));
-            return (data)
-        }
-
-        $(document).ready(function() {
-            cookies = "";
-            $("body").css("background-color", "transparent");
-            $.ajax({
-                url: "/cookies",
-                type: "get",
-                async: false,
-                data: {},
-                success: function(data) {
-                    // alert(data);
-                    cookies = data;
-                }
-            });
-            // alert(JSON.parse(cookies));
-            hashed_username = JSON.parse(cookies)["hashed_username"];
-            hashed_password = JSON.parse(cookies)["hashed_password"];
-            delay = 5000;
-
-            $("input").on("change", function(e) {
-                current_time = new Date();
-                timestamp = current_time.getTime();
-                $("#timestamp").val(timestamp);
-            });
-            $("textarea").on("change", function(e) {
-                current_time = new Date();
-                timestamp = current_time.getTime();
-                $("#timestamp").val(timestamp);
-            });
-            $("select").on("change", function(e) {
-                current_time = new Date();
-                timestamp = current_time.getTime();
-                $("#timestamp").val(timestamp);
-            });
-
-            $("input").on("keyup", function(e) {
-                current_time = new Date();
-                timestamp = current_time.getTime();
-                $("#timestamp").val(timestamp);
-            });
-            $("input").on("click", function(e) {
-                current_time = new Date();
-                timestamp = current_time.getTime();
-                $("#timestamp").val(timestamp);
-            });
-            (function loop() {
-                setTimeout(function() {
-                    form_timestamp = $("#timestamp").val();
-                    // alert(form_timestamp);
-                    // Your logic here
-                    // alert(hashed_username);
-
-
-                    loaded_profile = load_profile(hashed_username, hashed_password);
-                    // alert(JSON.stringify(loaded_profile));
-                    if (loaded_profile != undefined) {
-                        if (loaded_profile["data"] != undefined) {
-                            if (loaded_profile["data"]["complaint_summary"] != undefined) {
-                                if (loaded_profile["data"]["complaint_summary"]["timestamp"] == undefined) {
-                                    loaded_profile["data"]["complaint_summary"]["timestamp"] = 0;
-                                }
-                                if (loaded_profile["data"]["complaint_summary"]["timestamp"] < form_timestamp) {
-                                    //  alert("changed");
-                                    store_profile(hashed_username, hashed_password, {
-                                        "data": {
-                                            "complaint_summary": load_complaint()
-                                        }
-                                    });
-                                }
-                            }
-                        }
-                    }
-                    //  profile_hash = hash_profile_fields();
-                    //  check_data_fields();
-                    //  insert_data_fields();
-                    //  check_data_fields();
-                    //  store_data_fields();
-
-
-                    // Your logic ends here
-                    loop();
-                }, delay);
-            })();
-
-        });
-    </script>
 </head>
-
 <body>
-    <div class="Err">
-        <div id="Err">
-            <br/>
-        </div>
-    </div>
-    <div id="profile_data">
-
-    </div>
-    <div id="complaint">
-        <form id="complaint_form" onsubmit="return returnFalse(event);">
-            <h6 class="court-title"> IN THE US DISTRICT COURT FOR THE
-                <select id="district_name" name="district_name">
-                <option value="Northern">Northern</option>
-                <option value="Southern">Southern</option>
-                <option value="Eastern">Eastern</option>
-                <option value="Western">Western</option>
-            </select> DISTRICT OF <select name="jurisdiction_state" id="jurisdiction_state">
-            <option value="AL">Alabama</option>
-            <option value="AK">Alaska</option>
-            <option value="AZ">Arizona</option>
-            <option value="AR">Arkansas</option>
-            <option value="CA">California</option>
-            <option value="CO">Colorado</option>
-            <option value="CT">Connecticut</option>
-            <option value="DE">Delaware</option>
-            <option value="DC">District of Columbia</option>
-            <option value="FL">Florida</option>
-            <option value="GA">Georgia</option>
-            <option value="HI">Hawaii</option>
-            <option value="ID">Idaho</option>
-            <option value="IL">Illinois</option>
-            <option value="IN">Indiana</option>
-            <option value="IA">Iowa</option>
-            <option value="KS">Kansas</option>
-            <option value="KY">Kentucky</option>
-            <option value="LA">Louisiana</option>
-            <option value="ME">Maine</option>
-            <option value="MD">Maryland</option>
-            <option value="MA">Massachusetts</option>
-            <option value="MI">Michigan</option>
-            <option value="MN">Minnesota</option>
-            <option value="MS">Mississippi</option>
-            <option value="MO">Missouri</option>
-            <option value="MT">Montana</option>
-            <option value="NE">Nebraska</option>
-            <option value="NV">Nevada</option>
-            <option value="NH">New Hampshire</option>
-            <option value="NJ">New Jersey</option>
-            <option value="NM">New Mexico</option>
-            <option value="NY">New York</option>
-            <option value="NC">North Carolina</option>
-            <option value="ND">North Dakota</option>
-            <option value="OH">Ohio</option>
-            <option value="OK">Oklahoma</option>
-            <option value="OR">Oregon</option>
-            <option value="PA">Pennsylvania</option>
-            <option value="RI">Rhode Island</option>
-            <option value="SC">South Carolina</option>
-            <option value="SD">South Dakota</option>
-            <option value="TN">Tennessee</option>
-            <option value="TX">Texas</option>
-            <option value="UT">Utah</option>
-            <option value="VT">Vermont</option>
-            <option value="VA">Virginia</option>
-            <option value="WA">Washington</option>
-            <option value="WV">West Virginia</option>
-            <option value="WI">Wisconsin</option>
-            <option value="WY">Wyoming</option>
-            <option value="AS">American Samoa</option>
-            <option value="GU">Guam</option>
-            <option value="MP">Northern Mariana Islands</option>
-            <option value="PR">Puerto Rico</option>
-            <option value="VI">Virgin Islands</option>
-
-        </select><br/><select id="division_name" name="division_name">
-            <option value=""></option>
-        </select> DIVISION</h6> <button id="print" onclick="document_print(window)">Print</button>
-            <div id="complaint-header">
-                <div class="left complaint-header-cell">
-                    <span id="plaintiff">
-                <input id="plaintiff-name" name="plaintiff-name[]" class="plaintiff-name" type="text" placeholder="John Doe" ><button class="add_plaintiff" onclick="return add_plaintiff();">+</button>
-                </span>
-                    <h6>Plaintiff</h6>
-                    vs.
-                    <br/>
-                    <span id="defendant">
-                        <input id="defendant-name" name="defendant-name[]" class="defendant-name" type="text" placeholder="John Doe" ><button class="add_defendant" onclick="return add_defendant(); ">+</button>
-                    </span>
-                    <h6>Defendant</h6>
+    <div class="layout">
+        <section class="hero">
+            <article class="hero-card">
+                <h1>Formal Complaint Builder</h1>
+                <p>
+                    Convert intake data, legal analysis, claim support, and stored evidence into a court-style complaint draft.
+                    This page builds the caption, facts, claims for relief, legal standards, requested relief, and linked exhibits,
+                    then renders DOCX and PDF outputs from the same structured draft.
+                </p>
+            </article>
+            <aside class="hero-card hero-metrics">
+                <div class="metric">
+                    <span class="metric-label">Output</span>
+                    <span class="metric-value">DOCX + PDF</span>
                 </div>
-                <div class="right complaint-header-cell">
-                    <h6>Case No.</h6>
-
-                    <span id="complaint-number" class="complaint-number">
-                    
-                </span>
-                    <br/> Verified Complaint
-                    <br/>
-                    <span>Jury Trial <br/>
-                        <input type="radio" name="jury_trial" id="jury_trial-yes"  class="jury_trial" value="yes" /> Yes
-                        <input type="radio" name="jury_trial" id="jury_trial-no"  class="jury_trial" value="no" /> No 
-                        <br/>
-                    </span>
-                    </span>
+                <div class="metric">
+                    <span class="metric-label">Source</span>
+                    <span class="metric-value">Intake + Evidence</span>
                 </div>
-            </div>
+                <div class="metric">
+                    <span class="metric-label">Draft Style</span>
+                    <span class="metric-value">Court Caption</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Artifacts</span>
+                    <span class="metric-value" id="artifactMetric">None yet</span>
+                </div>
+            </aside>
+        </section>
 
-            <div id="complaint_body">
-                <h6>I. The Parties to This Complaint</h6>
+        <section class="workspace">
+            <aside class="panel">
+                <h2>Build Request</h2>
+                <p class="panel-copy">
+                    Provide any court-specific overrides you want to force into the pleading. If a field is left blank, the system falls back to the structured intake and support records already in the case context.
+                </p>
 
-                <ul>
-                    <li>
-                        <div id="plaintiff_info" class="plaintiff_info">
-                            <h6>A. The plaintiff(s)</h6>
-                            <label for="plaintiff_name[]" class="plaintiff_name">Name : </label><input type="text" name="plaintiff_name[]" id="plaintiff_name" class="plaintiff_name" value=" "><br/>
-                            <label for="plaintiff_address[]" class="plaintiff_address">Street Address : </label><input type="text" name="plaintiff_address[]" id="plaintiff_address" class="plaintiff_address" value=" "><br/>
-                            <label for="plaintiff_state[]" class="plaintiff_state">State : </label>
-                            <select name="plaintiff_state[]" class="plaintiff_state" id="plaintiff_state">
-                            <option value="AL">Alabama</option>
-                            <option value="AK">Alaska</option>
-                            <option value="AZ">Arizona</option>
-                            <option value="AR">Arkansas</option>
-                            <option value="CA">California</option>
-                            <option value="CO">Colorado</option>
-                            <option value="CT">Connecticut</option>
-                            <option value="DE">Delaware</option>
-                            <option value="DC">District of Columbia</option>
-                            <option value="FL">Florida</option>
-                            <option value="GA">Georgia</option>
-                            <option value="HI">Hawaii</option>
-                            <option value="ID">Idaho</option>
-                            <option value="IL">Illinois</option>
-                            <option value="IN">Indiana</option>
-                            <option value="IA">Iowa</option>
-                            <option value="KS">Kansas</option>
-                            <option value="KY">Kentucky</option>
-                            <option value="LA">Louisiana</option>
-                            <option value="ME">Maine</option>
-                            <option value="MD">Maryland</option>
-                            <option value="MA">Massachusetts</option>
-                            <option value="MI">Michigan</option>
-                            <option value="MN">Minnesota</option>
-                            <option value="MS">Mississippi</option>
-                            <option value="MO">Missouri</option>
-                            <option value="MT">Montana</option>
-                            <option value="NE">Nebraska</option>
-                            <option value="NV">Nevada</option>
-                            <option value="NH">New Hampshire</option>
-                            <option value="NJ">New Jersey</option>
-                            <option value="NM">New Mexico</option>
-                            <option value="NY">New York</option>
-                            <option value="NC">North Carolina</option>
-                            <option value="ND">North Dakota</option>
-                            <option value="OH">Ohio</option>
-                            <option value="OK">Oklahoma</option>
-                            <option value="OR">Oregon</option>
-                            <option value="PA">Pennsylvania</option>
-                            <option value="RI">Rhode Island</option>
-                            <option value="SC">South Carolina</option>
-                            <option value="SD">South Dakota</option>
-                            <option value="TN">Tennessee</option>
-                            <option value="TX">Texas</option>
-                            <option value="UT">Utah</option>
-                            <option value="VT">Vermont</option>
-                            <option value="VA">Virginia</option>
-                            <option value="WA">Washington</option>
-                            <option value="WV">West Virginia</option>
-                            <option value="WI">Wisconsin</option>
-                            <option value="WY">Wyoming</option>
-                            <option value="AS">American Samoa</option>
-                            <option value="GU">Guam</option>
-                            <option value="MP">Northern Mariana Islands</option>
-                            <option value="PR">Puerto Rico</option>
-                            <option value="VI">Virgin Islands</option>
-                            <option value="AA">Armed Forces Americas</option>
-                            <option value="AE">Armed Forces Europe</option>
-                            <option value="AP">Armed Forces Pacific</option>
-                        </select><br/>
-
-                            <label for="plaintiff_zip[]" class="plaintiff_zip">Zip Code : </label><input type="text " name="plaintiff_zip[]" class="plaintiff_zip" id="plaintiff_zip" value=" "><br/>
-                            <label for="plaintiff_phone[]" class="plaintiff_phone">Telephone Number : </label><input type="text" name="plaintiff_phone[]" id="plaintiff_phone" class="plaintiff_phone" value=" "><br/>
-                            <label for="plaintiff_email_address[]" class="plaintiff_email_address">E-mail Address : </label><input type="text" name="plaintiff_email_address[]" id="plaintiff_email_address" class="plaintiff_email_address" value=" "><br/>
-                            <hr></hr>
-
+                <form id="documentForm" class="field-grid">
+                    <div class="field-row">
+                        <div>
+                            <label for="courtName">Court Name</label>
+                            <input id="courtName" name="courtName" type="text" value="United States District Court">
                         </div>
-                    </li>
-                    <li>
-                        <div class="defendant_info" id="defendant_info">
-
-                            <h6>B. The Defendant(s)</h6>
-                            <label for="defendant_name[]" class="defendant_name">Name : </label><input type="text" name="defendant_name[]" id="defendant_name" class="defendant_name" value=" "><br/>
-                            <label for="defendant_address[]" class="defendant_address">Street Address : </label><input type="text" name="defendant_address[]" id="defendant_address" class="defendant_address" value=" "><br/>
-                            <label for="defendant_state[]" class="defendant_state">State : </label>
-                            <select name="defendant_state[]" class="defendant_state" id="defendant_state">
-                                <option value="AL">Alabama</option>
-                                <option value="AK">Alaska</option>
-                                <option value="AZ">Arizona</option>
-                                <option value="AR">Arkansas</option>
-                                <option value="CA">California</option>
-                                <option value="CO">Colorado</option>
-                                <option value="CT">Connecticut</option>
-                                <option value="DE">Delaware</option>
-                                <option value="DC">District of Columbia</option>
-                                <option value="FL">Florida</option>
-                                <option value="GA">Georgia</option>
-                                <option value="HI">Hawaii</option>
-                                <option value="ID">Idaho</option>
-                                <option value="IL">Illinois</option>
-                                <option value="IN">Indiana</option>
-                                <option value="IA">Iowa</option>
-                                <option value="KS">Kansas</option>
-                                <option value="KY">Kentucky</option>
-                                <option value="LA">Louisiana</option>
-                                <option value="ME">Maine</option>
-                                <option value="MD">Maryland</option>
-                                <option value="MA">Massachusetts</option>
-                                <option value="MI">Michigan</option>
-                                <option value="MN">Minnesota</option>
-                                <option value="MS">Mississippi</option>
-                                <option value="MO">Missouri</option>
-                                <option value="MT">Montana</option>
-                                <option value="NE">Nebraska</option>
-                                <option value="NV">Nevada</option>
-                                <option value="NH">New Hampshire</option>
-                                <option value="NJ">New Jersey</option>
-                                <option value="NM">New Mexico</option>
-                                <option value="NY">New York</option>
-                                <option value="NC">North Carolina</option>
-                                <option value="ND">North Dakota</option>
-                                <option value="OH">Ohio</option>
-                                <option value="OK">Oklahoma</option>
-                                <option value="OR">Oregon</option>
-                                <option value="PA">Pennsylvania</option>
-                                <option value="RI">Rhode Island</option>
-                                <option value="SC">South Carolina</option>
-                                <option value="SD">South Dakota</option>
-                                <option value="TN">Tennessee</option>
-                                <option value="TX">Texas</option>
-                                <option value="UT">Utah</option>
-                                <option value="VT">Vermont</option>
-                                <option value="VA">Virginia</option>
-                                <option value="WA">Washington</option>
-                                <option value="WV">West Virginia</option>
-                                <option value="WI">Wisconsin</option>
-                                <option value="WY">Wyoming</option>
-                                <option value="AS">American Samoa</option>
-                                <option value="GU">Guam</option>
-                                <option value="MP">Northern Mariana Islands</option>
-                                <option value="PR">Puerto Rico</option>
-                                <option value="VI">Virgin Islands</option>
-                                <option value="AA">Armed Forces Americas</option>
-                                <option value="AE">Armed Forces Europe</option>
-                                <option value="AP">Armed Forces Pacific</option>
-                            </select><br/>
-
-                            <label for="defendant_zip[]" class="defendant_zip">Zip Code : </label><input type="text " name="defendant_zip[]" id="defendant_zip" class="defendant_zip" value=" "><br/>
-                            <label for="defendant_phone[]" class="defendant_phone">Telephone Number : </label><input type="text" name="defendant_phone[]" id="defendant_phone" class="defendant_phone" value=" "><br/>
-                            <label for="defendant_email_address[]" class="defendant_email_address">E-mail Address : </label><input type="text" name="defendant_email_address[]" id="defendant_email_address" class="defendant_email_address" value=" "><br/>
-                            <hr></hr>
+                        <div>
+                            <label for="district">District</label>
+                            <input id="district" name="district" type="text" placeholder="Northern District of California">
                         </div>
-                    </li>
-                </ul>
-                </li>
-                <li>
-                    <h6>II. Basis for Jurisdiction</h6>
-                    <span>What is the basis for federal court jurisdiction? <br/>
-                        <input type="checkbox" id="federal_question" name="federal_question"  class="federal_question" >  <label for="federal_question">Federal 
-                            Question
-                        </label>
-                        <input type="checkbox" id="diversity_citizenship" name="diversity_citizenship"  class="diversity_citizenship >  <label for="diversity_citizenship">Diversity of citizenship</label>
-                    </span>
-                    <ul>
-                        <li>
-                            <h6>A. If the Basis for Jurisdiction Is a Federal Question</h6>
-                            <span>List the specific federal statutes, federal treaties, and/or provisions of the United States Constitution that are at issue in this case. </span>
-                            <br/><textarea id="federal_statutes" class="federal_statutes" name="federal_statutes" rows="3" cols="50" placeholder="42 USC &#167 1983"></textarea>
-                        </li>
-                        <li>
-                            <h6>B. If the Basis for Jurisdiction Is Diversity of Citizenship</h6>
-                            <ul>
-                                <li>
-                                    <h6>1. The Plaintiff(s)</h6>
-                                    <span> Plaintiff is a: </span>
-                                    <input type="radio" id="plaintiff_is-individual" name="plaintiff_is" value="individual">
-                                    <label for="plaintiff_is_individual"></label>individual</label>
-                                    <input type="radio" id="plaintiff_is-corporation" name="plaintiff_is" value="corporation">
-                                    <label for="plaintiff_is_corporation">corporation</label> <br/>
-                                    <span> of the state of </span>
-                                    <select name="plaintiff-state" id="plaintiff-state">
-                                        <option value="AL">Alabama</option>
-                                        <option value="AK">Alaska</option>
-                                        <option value="AZ">Arizona</option>
-                                        <option value="AR">Arkansas</option>
-                                        <option value="CA">California</option>
-                                        <option value="CO">Colorado</option>
-                                        <option value="CT">Connecticut</option>
-                                        <option value="DE">Delaware</option>
-                                        <option value="DC">District of Columbia</option>
-                                        <option value="FL">Florida</option>
-                                        <option value="GA">Georgia</option>
-                                        <option value="HI">Hawaii</option>
-                                        <option value="ID">Idaho</option>
-                                        <option value="IL">Illinois</option>
-                                        <option value="IN">Indiana</option>
-                                        <option value="IA">Iowa</option>
-                                        <option value="KS">Kansas</option>
-                                        <option value="KY">Kentucky</option>
-                                        <option value="LA">Louisiana</option>
-                                        <option value="ME">Maine</option>
-                                        <option value="MD">Maryland</option>
-                                        <option value="MA">Massachusetts</option>
-                                        <option value="MI">Michigan</option>
-                                        <option value="MN">Minnesota</option>
-                                        <option value="MS">Mississippi</option>
-                                        <option value="MO">Missouri</option>
-                                        <option value="MT">Montana</option>
-                                        <option value="NE">Nebraska</option>
-                                        <option value="NV">Nevada</option>
-                                        <option value="NH">New Hampshire</option>
-                                        <option value="NJ">New Jersey</option>
-                                        <option value="NM">New Mexico</option>
-                                        <option value="NY">New York</option>
-                                        <option value="NC">North Carolina</option>
-                                        <option value="ND">North Dakota</option>
-                                        <option value="OH">Ohio</option>
-                                        <option value="OK">Oklahoma</option>
-                                        <option value="OR">Oregon</option>
-                                        <option value="PA">Pennsylvania</option>
-                                        <option value="RI">Rhode Island</option>
-                                        <option value="SC">South Carolina</option>
-                                        <option value="SD">South Dakota</option>
-                                        <option value="TN">Tennessee</option>
-                                        <option value="TX">Texas</option>
-                                        <option value="UT">Utah</option>
-                                        <option value="VT">Vermont</option>
-                                        <option value="VA">Virginia</option>
-                                        <option value="WA">Washington</option>
-                                        <option value="WV">West Virginia</option>
-                                        <option value="WI">Wisconsin</option>
-                                        <option value="WY">Wyoming</option>
-                                        <option value="AS">American Samoa</option>
-                                        <option value="GU">Guam</option>
-                                        <option value="MP">Northern Mariana Islands</option>
-                                        <option value="PR">Puerto Rico</option>
-                                        <option value="VI">Virgin Islands</option>
-                                        <option value="AA">Armed Forces Americas</option>
-                                        <option value="AE">Armed Forces Europe</option>
-                                        <option value="AP">Armed Forces Pacific</option>
-                                    </select>
-                                </li>
+                    </div>
 
+                    <div class="field-row">
+                        <div>
+                            <label for="division">Division</label>
+                            <input id="division" name="division" type="text" placeholder="San Francisco Division">
+                        </div>
+                        <div>
+                            <label for="caseNumber">Case Number</label>
+                            <input id="caseNumber" name="caseNumber" type="text" placeholder="25-cv-00001">
+                        </div>
+                    </div>
 
-                                <li>
-                                    <h6>2. The Defendants(s)</h6>
-                                    <span> Defendant is a: </span>
-                                    <input type="radio" id="defendant_is-individual" name="defendant_is" value="individual">
-                                    <label for="defendant_is_individual"></label>individual</label>
-                                    <input type="radio" id="defendant_is-corporation" name="defendant_is" value="corporation">
-                                    <label for="defendant_is_corporation">corporation</label> <br/>
-                                    <span> of the state of </span>
-                                    <select name="defendant-state" id="defendant-state">
-                                        <option value="AL">Alabama</option>
-                                        <option value="AK">Alaska</option>
-                                        <option value="AZ">Arizona</option>
-                                        <option value="AR">Arkansas</option>
-                                        <option value="CA">California</option>
-                                        <option value="CO">Colorado</option>
-                                        <option value="CT">Connecticut</option>
-                                        <option value="DE">Delaware</option>
-                                        <option value="DC">District of Columbia</option>
-                                        <option value="FL">Florida</option>
-                                        <option value="GA">Georgia</option>
-                                        <option value="HI">Hawaii</option>
-                                        <option value="ID">Idaho</option>
-                                        <option value="IL">Illinois</option>
-                                        <option value="IN">Indiana</option>
-                                        <option value="IA">Iowa</option>
-                                        <option value="KS">Kansas</option>
-                                        <option value="KY">Kentucky</option>
-                                        <option value="LA">Louisiana</option>
-                                        <option value="ME">Maine</option>
-                                        <option value="MD">Maryland</option>
-                                        <option value="MA">Massachusetts</option>
-                                        <option value="MI">Michigan</option>
-                                        <option value="MN">Minnesota</option>
-                                        <option value="MS">Mississippi</option>
-                                        <option value="MO">Missouri</option>
-                                        <option value="MT">Montana</option>
-                                        <option value="NE">Nebraska</option>
-                                        <option value="NV">Nevada</option>
-                                        <option value="NH">New Hampshire</option>
-                                        <option value="NJ">New Jersey</option>
-                                        <option value="NM">New Mexico</option>
-                                        <option value="NY">New York</option>
-                                        <option value="NC">North Carolina</option>
-                                        <option value="ND">North Dakota</option>
-                                        <option value="OH">Ohio</option>
-                                        <option value="OK">Oklahoma</option>
-                                        <option value="OR">Oregon</option>
-                                        <option value="PA">Pennsylvania</option>
-                                        <option value="RI">Rhode Island</option>
-                                        <option value="SC">South Carolina</option>
-                                        <option value="SD">South Dakota</option>
-                                        <option value="TN">Tennessee</option>
-                                        <option value="TX">Texas</option>
-                                        <option value="UT">Utah</option>
-                                        <option value="VT">Vermont</option>
-                                        <option value="VA">Virginia</option>
-                                        <option value="WA">Washington</option>
-                                        <option value="WV">West Virginia</option>
-                                        <option value="WI">Wisconsin</option>
-                                        <option value="WY">Wyoming</option>
-                                        <option value="AS">American Samoa</option>
-                                        <option value="GU">Guam</option>
-                                        <option value="MP">Northern Mariana Islands</option>
-                                        <option value="PR">Puerto Rico</option>
-                                        <option value="VI">Virgin Islands</option>
-                                        <option value="AA">Armed Forces Americas</option>
-                                        <option value="AE">Armed Forces Europe</option>
-                                        <option value="AP">Armed Forces Pacific</option>
-                                    </select>
-                                </li>
+                    <div>
+                        <label for="courtHeaderOverride">Court Header Override</label>
+                        <input id="courtHeaderOverride" name="courtHeaderOverride" type="text" placeholder="IN THE UNITED STATES DISTRICT COURT FOR THE DISTRICT OF ...">
+                    </div>
 
-                                <li>
-                                    <h6>3. The Amount in Controversy</h6>
-                                    <span> The amount in controversythe amount the plaintiff claims the defendant owes or the amount at stake is more than $75,000, not counting interest and costs of court, because </span>
-                                    <br/><textarea id="amount_controversy" class="amount_controversy" name="amount_controversy" rows="3" cols="50" placeholder="This is why my claims are more than $75,000"></textarea>
+                    <div class="field-row">
+                        <div>
+                            <label for="plaintiffs">Plaintiffs</label>
+                            <textarea id="plaintiffs" name="plaintiffs" placeholder="One name per line"></textarea>
+                        </div>
+                        <div>
+                            <label for="defendants">Defendants</label>
+                            <textarea id="defendants" name="defendants" placeholder="One name per line"></textarea>
+                        </div>
+                    </div>
 
-                                </li>
+                    <div>
+                        <label for="titleOverride">Title Override</label>
+                        <input id="titleOverride" name="titleOverride" type="text" placeholder="Jane Doe v. Acme Corporation">
+                    </div>
 
-                            </ul>
+                    <div>
+                        <label for="requestedRelief">Requested Relief Overrides</label>
+                        <textarea id="requestedRelief" name="requestedRelief" placeholder="One relief item per line"></textarea>
+                    </div>
 
+                    <div>
+                        <label>Output Formats</label>
+                        <div class="checkbox-row">
+                            <label class="check-pill"><input type="checkbox" name="outputFormat" value="docx" checked> DOCX</label>
+                            <label class="check-pill"><input type="checkbox" name="outputFormat" value="pdf" checked> PDF</label>
+                        </div>
+                    </div>
 
-                        </li>
-                    </ul>
-                </li>
-                <li>
-                    <h6>III. Statement of Claim</h6>
-                    <br/><textarea id="claim" class="claim" name="claim" rows="7" cols="75" placeholder="Write a short and plain statement of the claim. Do not make legal arguments. State as briefly as possible the facts showing that each plaintiff is entitled to the damages or other relief sought. State how each defendant was involved and what each defendant did that caused the plaintiff harm or violated the plaintiff's rights, including the dates and places of that involvement or conduct. If more than one claim is asserted, number each claim and write a short and plain statement of each claim in a separate paragraph."></textarea>
+                    <div class="button-row">
+                        <button id="generateButton" type="submit" class="primary">Generate Formal Complaint</button>
+                        <button id="resetButton" type="button" class="secondary">Reset</button>
+                    </div>
 
-                </li>
-                <li>
-                    <h6>IV. Relief</h6>
-                    <br/><textarea id="relief" class="relief" name="relief" rows="6 " cols="75 " placeholder="State briefly and precisely what damages or other relief the plaintiff asks the court to order. Do not make legal arguments. Include anybasis for claiming that the wrongs alleged are continuing at the present time. Include the amounts of any actual damages claimed for the acts alleged and the basis for these amounts. Include any punitive or exemplary damages claimed, the amounts, and the reasons you claim you are entitled to actual or punitive money damages. "></textarea>
+                    <div id="statusBox" class="status"></div>
+                    <div id="successBox" class="success"></div>
+                    <div id="errorBox" class="error"></div>
+                    <div class="microcopy">
+                        Generated files are stored in the repository’s temporary generated-documents directory and can be downloaded from the preview panel when available.
+                    </div>
+                </form>
+            </aside>
 
-                </li>
-                <li>
-                    <h6>V. Certification and Closing</h6>
-                    <span>
-                        Under Federal Rule of Civil Procedure 11, by signing below, I certify to the best of my knowledge, information, and belief that this complaint: <ul>
-                            <li>(1) is not being presented for an improper purpose, such as to harass, cause unnecessary delay, or needlessly increase the cost of litigation;</li>
-                            <li>(2) is supported by existing law or by a nonfrivolous argument for extending, modifying, or reversing existing law; </li>
-                            <li>(3) the factual contentions have evidentiary support or, if specifically so identified, will likely have evidentiary support after a reasonable opportunity for further investigation or discovery;</li>
-                            <li>(4) the complaint otherwise complies with the requirements of Rule 11.</li>
-                        </ul> 
-                    </span>
-                    <ul>
-                        <li>
-                            <h6>A. For Parties Without an Attorney </h6>
-                            <span> I agree to provide the Clerk’s Office with any changes to my address where caserelated papers may be served.  I understand that my failure to keep a current address on file with the Clerk’s Office may result in the dismissal of my case.</span><br/>
-                            <label for="date_signed " class="date_signed ">Date of signing : </label><input type="text " name="date_signed " id="date_signed " class="date_signed " value=" "><br/>
-                            <label for="plaintiff_name " class="plaintiff_name ">Printed Name of Plaintiff : </label><input type="text " name="plaintiff_name " id="plaintiff_name " class="plaintiff_name " value=" "><br/>
-                            <label for="signature " class="signature ">Signature of Plaintiff : </label><input type="text " name="signature " id="signature " class="signature " value=" "><br/>
+            <main class="preview-panel">
+                <div class="preview-header">
+                    <div>
+                        <h2>Draft Preview</h2>
+                        <div class="preview-meta" id="previewMeta">No document generated yet.</div>
+                    </div>
+                </div>
 
-                        </li>
-                        <li>
-                            <h6>B. For Attorneys</h6>
-                            <br/>
-                            <label for="date_signed " class="date_signed ">Date of signing : </label><input type="text " name="date_signed " id="date_signed " class="date_signed " value=" "><br/>
-                            <label for="attorney_signature " class="date_signed ">Signature of Attorney : </label><input type="text " name="attorney_signature " id="attorney_signature " class="attorney_signature " value=" "><br/>
-                            <label for="attorney_name " class="attorney_name ">Printed Name of Attorney : </label><input type="text " name="date_signed " id="attorney_name " class="attorney_name " value=" "><br/>
-                            <label for="attorney_bar_number " class="attorney_bar_number ">Bar Number : </label><input type="text " name="attorney_bar_number " id="attorney_bar_number " class="attorney_bar_number " value=" "><br/>
-                            <label for="attorney_law_firm " class="attorney_law_firm ">Law Firm : </label><input type="text " name="attorney_law_firm " id="attorney_law_firm " class="attorney_law_firm " value=" "><br/>
-                            <label for="attorney_address " class="attorney_address ">Street Address : </label><input type="text " name="attorney_address " id="attorney_address " class="attorney_address " value=" "><br/>
-                            <label for="attorney_state " class="attorney_state ">State : </label>
-                            <select name="attorney_state " id="attorney_state ">
-                                <option value="AL ">Alabama</option>
-                                <option value="AK ">Alaska</option>
-                                <option value="AZ ">Arizona</option>
-                                <option value="AR ">Arkansas</option>
-                                <option value="CA ">California</option>
-                                <option value="CO ">Colorado</option>
-                                <option value="CT ">Connecticut</option>
-                                <option value="DE ">Delaware</option>
-                                <option value="DC ">District of Columbia</option>
-                                <option value="FL ">Florida</option>
-                                <option value="GA ">Georgia</option>
-                                <option value="HI ">Hawaii</option>
-                                <option value="ID ">Idaho</option>
-                                <option value="IL ">Illinois</option>
-                                <option value="IN ">Indiana</option>
-                                <option value="IA ">Iowa</option>
-                                <option value="KS ">Kansas</option>
-                                <option value="KY ">Kentucky</option>
-                                <option value="LA ">Louisiana</option>
-                                <option value="ME ">Maine</option>
-                                <option value="MD ">Maryland</option>
-                                <option value="MA ">Massachusetts</option>
-                                <option value="MI ">Michigan</option>
-                                <option value="MN ">Minnesota</option>
-                                <option value="MS ">Mississippi</option>
-                                <option value="MO ">Missouri</option>
-                                <option value="MT ">Montana</option>
-                                <option value="NE ">Nebraska</option>
-                                <option value="NV ">Nevada</option>
-                                <option value="NH ">New Hampshire</option>
-                                <option value="NJ ">New Jersey</option>
-                                <option value="NM ">New Mexico</option>
-                                <option value="NY ">New York</option>
-                                <option value="NC ">North Carolina</option>
-                                <option value="ND ">North Dakota</option>
-                                <option value="OH ">Ohio</option>
-                                <option value="OK ">Oklahoma</option>
-                                <option value="OR ">Oregon</option>
-                                <option value="PA ">Pennsylvania</option>
-                                <option value="RI ">Rhode Island</option>
-                                <option value="SC ">South Carolina</option>
-                                <option value="SD ">South Dakota</option>
-                                <option value="TN ">Tennessee</option>
-                                <option value="TX ">Texas</option>
-                                <option value="UT ">Utah</option>
-                                <option value="VT ">Vermont</option>
-                                <option value="VA ">Virginia</option>
-                                <option value="WA ">Washington</option>
-                                <option value="WV ">West Virginia</option>
-                                <option value="WI ">Wisconsin</option>
-                                <option value="WY ">Wyoming</option>
-                                <option value="AS ">American Samoa</option>
-                                <option value="GU ">Guam</option>
-                                <option value="MP ">Northern Mariana Islands</option>
-                                <option value="PR ">Puerto Rico</option>
-                                <option value="VI ">Virgin Islands</option>
-                                <option value="AA ">Armed Forces Americas</option>
-                                <option value="AE ">Armed Forces Europe</option>
-                                <option value="AP ">Armed Forces Pacific</option>
-                            </select><br/>
-
-                            <label for="attorney_zip " class="attorney_zip ">Zip Code : </label><input type="text " name="attorney_zip " id="attorney_zip " class="attorney_zip " value=" "><br/>
-                            <label for="attorney_phone_number " class="attorney_phone_number ">Telephone Number : </label><input type="text " name="attorney_phone_number " id="attorney_phone_number " class="attorney_phone_number " value=" "><br/>
-                            <label for="attorney_email_address " class="attorney_email_address ">E-mail Address : </label><input type="text " name="attorney_email_address " id="attorney_email_address " class="attorney_email_address " value=" "><br/>
-                            <label> <input name="timestamp" id="timestamp" type="hidden" value=""></label>
-                        </li>
-                    </ul>
-                </li>
-                </ul>
-            </div>
-        </form>
+                <div id="previewRoot" class="empty-state">
+                    <div>
+                        <strong>Nothing rendered yet</strong>
+                        Submit the build request to generate a structured draft and download-ready artifacts.
+                    </div>
+                </div>
+            </main>
+        </section>
     </div>
 
+    <script>
+        const state = {
+            userId: null,
+            generatedPayload: null,
+        };
 
+        function showBox(id, message) {
+            const element = document.getElementById(id);
+            element.textContent = message;
+            element.style.display = message ? 'block' : 'none';
+        }
+
+        function clearMessages() {
+            showBox('statusBox', '');
+            showBox('successBox', '');
+            showBox('errorBox', '');
+        }
+
+        function splitLines(value) {
+            return String(value || '')
+                .split('\n')
+                .map((line) => line.trim())
+                .filter(Boolean);
+        }
+
+        function safeJsonParse(value) {
+            if (!value) {
+                return null;
+            }
+            if (typeof value === 'object') {
+                return value;
+            }
+            try {
+                return JSON.parse(value);
+            } catch (error) {
+                return null;
+            }
+        }
+
+        async function fetchCookies() {
+            const response = await fetch('/cookies', { credentials: 'same-origin' });
+            const text = await response.text();
+            return safeJsonParse(text) || {};
+        }
+
+        async function fetchProfileSummary(hashedUsername, hashedPassword) {
+            if (!hashedUsername || !hashedPassword) {
+                return null;
+            }
+
+            const response = await fetch('/load_profile', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    request: {
+                        hashed_username: hashedUsername,
+                        hashed_password: hashedPassword,
+                    },
+                }),
+            });
+
+            const text = await response.text();
+            const parsed = safeJsonParse(text);
+            if (!parsed) {
+                return null;
+            }
+
+            let data = parsed.data;
+            if (typeof data === 'string') {
+                data = safeJsonParse(data);
+            }
+            return data || null;
+        }
+
+        function setFieldValue(id, value) {
+            const element = document.getElementById(id);
+            if (!element || value == null || value === '') {
+                return;
+            }
+            element.value = value;
+        }
+
+        function hydrateFormFromSummary(summary) {
+            if (!summary || typeof summary !== 'object') {
+                return;
+            }
+            const complaintSummary = summary.complaint_summary || summary;
+            const plaintiffs = Object.values(complaintSummary['plaintiff-name'] || complaintSummary.plaintiff_name || {});
+            const defendants = Object.values(complaintSummary['defendant-name'] || complaintSummary.defendant_name || {});
+            const relief = complaintSummary.relief || '';
+            const district = complaintSummary.district_name || '';
+            const division = complaintSummary.division_name || '';
+
+            setFieldValue('district', district);
+            setFieldValue('division', division);
+            setFieldValue('plaintiffs', plaintiffs.join('\n'));
+            setFieldValue('defendants', defendants.join('\n'));
+            setFieldValue('requestedRelief', relief);
+        }
+
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function renderLines(lines, ordered = false) {
+            if (!Array.isArray(lines) || lines.length === 0) {
+                return '<div class="preview-meta">No content available.</div>';
+            }
+            const tag = ordered ? 'ol' : 'ul';
+            const body = lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('');
+            return `<${tag} class="list-lines">${body}</${tag}>`;
+        }
+
+        function renderArtifacts(artifacts) {
+            const values = Object.entries(artifacts || {});
+            if (!values.length) {
+                return '';
+            }
+            const cards = values.map(([format, artifact]) => {
+                const link = artifact.download_url
+                    ? `<a href="${encodeURI(artifact.download_url)}">Download ${escapeHtml(format.toUpperCase())}</a>`
+                    : '<span class="preview-meta">Download unavailable for this artifact</span>';
+                return `
+                    <article class="artifact-card">
+                        <h3>${escapeHtml(format.toUpperCase())}</h3>
+                        <div class="preview-meta">${escapeHtml(artifact.filename || '')}</div>
+                        <div class="path-value">${escapeHtml(artifact.path || '')}</div>
+                        <div class="preview-meta">${escapeHtml(String(artifact.size_bytes || 0))} bytes</div>
+                        <div>${link}</div>
+                    </article>
+                `;
+            }).join('');
+            return `<section><h2>Artifacts</h2><div class="artifact-grid">${cards}</div></section>`;
+        }
+
+        function renderClaims(claims) {
+            if (!Array.isArray(claims) || !claims.length) {
+                return '';
+            }
+            const cards = claims.map((claim) => {
+                const exhibits = Array.isArray(claim.supporting_exhibits) && claim.supporting_exhibits.length
+                    ? `<div class="preview-meta"><strong>Exhibits:</strong> ${claim.supporting_exhibits.map((item) => escapeHtml(item.label + ' ' + item.title)).join('; ')}</div>`
+                    : '';
+                return `
+                    <article class="claim-card">
+                        <h3>${escapeHtml(claim.count_title || claim.claim_type || 'Claim')}</h3>
+                        <div class="section-stack">
+                            <div>
+                                <strong>Legal standards</strong>
+                                ${renderLines(claim.legal_standards || [])}
+                            </div>
+                            <div>
+                                <strong>Supporting facts</strong>
+                                ${renderLines(claim.supporting_facts || [], true)}
+                            </div>
+                            ${claim.missing_elements && claim.missing_elements.length ? `<div><strong>Open support gaps</strong>${renderLines(claim.missing_elements || [])}</div>` : ''}
+                            ${exhibits}
+                        </div>
+                    </article>
+                `;
+            }).join('');
+            return `<section><h2>Claims for Relief</h2><div class="claim-stack">${cards}</div></section>`;
+        }
+
+        function renderExhibits(exhibits) {
+            if (!Array.isArray(exhibits) || !exhibits.length) {
+                return '';
+            }
+            const cards = exhibits.map((exhibit) => {
+                const link = exhibit.link
+                    ? `<a class="exhibit-link" href="${escapeHtml(exhibit.link)}" target="_blank" rel="noopener noreferrer">Open linked source</a>`
+                    : '<span class="preview-meta">No linked source recorded.</span>';
+                return `
+                    <article class="exhibit-card">
+                        <strong>${escapeHtml(exhibit.label || 'Exhibit')}</strong>
+                        <div>${escapeHtml(exhibit.title || '')}</div>
+                        ${exhibit.summary ? `<div class="preview-meta">${escapeHtml(exhibit.summary)}</div>` : ''}
+                        <div>${link}</div>
+                    </article>
+                `;
+            }).join('');
+            return `<section><h2>Supporting Exhibits</h2><div class="exhibit-stack">${cards}</div></section>`;
+        }
+
+        function renderPreview(payload) {
+            state.generatedPayload = payload;
+            const draft = payload.draft || {};
+            const caption = draft.case_caption || {};
+            const plaintiffs = (caption.plaintiffs || []).join('\n');
+            const defendants = (caption.defendants || []).join('\n');
+            const previewMeta = document.getElementById('previewMeta');
+            previewMeta.textContent = payload.generated_at
+                ? `Generated ${new Date(payload.generated_at).toLocaleString()}`
+                : 'Generated complaint draft';
+
+            const artifactCount = Object.keys(payload.artifacts || {}).length;
+            document.getElementById('artifactMetric').textContent = artifactCount ? `${artifactCount} ready` : 'None yet';
+
+            const html = `
+                ${renderArtifacts(payload.artifacts || {})}
+                <div class="draft-shell">
+                    <div class="court-header">${escapeHtml(draft.court_header || '')}</div>
+                    <div class="caption-block">
+                        <div class="caption-parties">${escapeHtml(plaintiffs)}\n\nPlaintiff,\n\nv.\n\n${escapeHtml(defendants)}\n\nDefendant.</div>
+                        <div class="caption-side">
+                            <div><strong>Civil Action No.</strong></div>
+                            <div>${escapeHtml(caption.case_number || '________________')}</div>
+                            <div style="margin-top: 16px;"><strong>${escapeHtml(caption.document_title || 'COMPLAINT')}</strong></div>
+                        </div>
+                    </div>
+
+                    <div class="section-stack">
+                        <article class="section-card">
+                            <h3>Nature of the Action</h3>
+                            ${renderLines(draft.nature_of_action || [])}
+                        </article>
+                        <article class="section-card">
+                            <h3>Summary of Facts</h3>
+                            ${renderLines(draft.summary_of_facts || [], true)}
+                        </article>
+                        <article class="section-card">
+                            <h3>Applicable Legal Standards</h3>
+                            ${renderLines(draft.legal_standards || [])}
+                        </article>
+                    </div>
+
+                    ${renderClaims(draft.claims_for_relief || [])}
+
+                    <section>
+                        <h2>Requested Relief</h2>
+                        <article class="section-card">
+                            ${renderLines(draft.requested_relief || [], true)}
+                        </article>
+                    </section>
+
+                    ${renderExhibits(draft.exhibits || [])}
+                </div>
+            `;
+
+            document.getElementById('previewRoot').className = '';
+            document.getElementById('previewRoot').innerHTML = html;
+        }
+
+        function buildPayload() {
+            const outputFormats = Array.from(document.querySelectorAll('input[name="outputFormat"]:checked'))
+                .map((node) => node.value);
+
+            return {
+                user_id: state.userId,
+                court_name: document.getElementById('courtName').value.trim(),
+                district: document.getElementById('district').value.trim(),
+                division: document.getElementById('division').value.trim() || null,
+                case_number: document.getElementById('caseNumber').value.trim() || null,
+                court_header_override: document.getElementById('courtHeaderOverride').value.trim() || null,
+                title_override: document.getElementById('titleOverride').value.trim() || null,
+                plaintiff_names: splitLines(document.getElementById('plaintiffs').value),
+                defendant_names: splitLines(document.getElementById('defendants').value),
+                requested_relief: splitLines(document.getElementById('requestedRelief').value),
+                output_formats: outputFormats,
+            };
+        }
+
+        async function generateDocument(event) {
+            event.preventDefault();
+            clearMessages();
+
+            const payload = buildPayload();
+            if (!payload.output_formats.length) {
+                showBox('errorBox', 'Select at least one output format.');
+                return;
+            }
+
+            const button = document.getElementById('generateButton');
+            button.disabled = true;
+            showBox('statusBox', 'Building formal complaint draft and rendering artifacts...');
+
+            try {
+                const response = await fetch('/api/documents/formal-complaint', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(payload),
+                });
+
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.detail || 'Failed to generate document package.');
+                }
+
+                renderPreview(result);
+                showBox('successBox', 'Formal complaint package generated successfully.');
+                showBox('statusBox', '');
+            } catch (error) {
+                showBox('statusBox', '');
+                showBox('errorBox', error.message || 'Failed to generate complaint package.');
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        function resetForm() {
+            document.getElementById('documentForm').reset();
+            document.querySelectorAll('input[name="outputFormat"]').forEach((node) => {
+                node.checked = node.value === 'docx' || node.value === 'pdf';
+            });
+            clearMessages();
+            document.getElementById('previewRoot').className = 'empty-state';
+            document.getElementById('previewRoot').innerHTML = '<div><strong>Nothing rendered yet</strong>Submit the build request to generate a structured draft and download-ready artifacts.</div>';
+            document.getElementById('previewMeta').textContent = 'No document generated yet.';
+            document.getElementById('artifactMetric').textContent = 'None yet';
+        }
+
+        async function bootstrap() {
+            try {
+                const cookies = await fetchCookies();
+                state.userId = cookies.hashed_username || null;
+                const summary = await fetchProfileSummary(cookies.hashed_username, cookies.hashed_password);
+                hydrateFormFromSummary(summary);
+            } catch (error) {
+                showBox('errorBox', 'Unable to prefill the document form from the current profile. You can still build the document manually.');
+            }
+        }
+
+        document.getElementById('documentForm').addEventListener('submit', generateDocument);
+        document.getElementById('resetButton').addEventListener('click', resetForm);
+        bootstrap();
+    </script>
 </body>
-
-
 </html>

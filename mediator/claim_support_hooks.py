@@ -258,6 +258,156 @@ class ClaimSupportHook:
             'graph_id_count': len(seen_graph_ids),
         }
 
+    def _summarize_authority_treatment_signals(self, links: List[Dict[str, Any]]) -> Dict[str, Any]:
+        authority_links = [
+            link for link in (links or [])
+            if isinstance(link, dict) and link.get('support_kind') == 'authority'
+        ]
+        adverse_types = {'adverse', 'limits', 'distinguishes', 'questioned', 'superseded'}
+        uncertain_types = {'good_law_unconfirmed', 'procedural_only'}
+
+        by_type: Dict[str, int] = {}
+        supportive_count = 0
+        adverse_count = 0
+        uncertain_count = 0
+        treated_link_count = 0
+        max_confidence = 0.0
+
+        for link in authority_links:
+            summary = (
+                (link.get('record_summary') or {}).get('treatment_summary', {})
+                if isinstance(link.get('record_summary'), dict)
+                else {}
+            )
+            summary = summary if isinstance(summary, dict) else {}
+            by_type_summary = summary.get('by_type', {}) if isinstance(summary.get('by_type'), dict) else {}
+            treatment_types = set()
+            for treatment_type, count in by_type_summary.items():
+                normalized_type = str(treatment_type or '')
+                if not normalized_type:
+                    continue
+                treatment_types.add(normalized_type)
+                by_type[normalized_type] = by_type.get(normalized_type, 0) + int(count or 0)
+
+            record_count = int(summary.get('record_count', 0) or 0)
+            if record_count > 0:
+                treated_link_count += 1
+            max_confidence = max(max_confidence, float(summary.get('max_confidence', 0.0) or 0.0))
+
+            if treatment_types & adverse_types:
+                adverse_count += 1
+            elif treatment_types & uncertain_types:
+                uncertain_count += 1
+            else:
+                supportive_count += 1
+
+        return {
+            'authority_link_count': len(authority_links),
+            'treated_authority_link_count': treated_link_count,
+            'supportive_authority_link_count': supportive_count,
+            'adverse_authority_link_count': adverse_count,
+            'uncertain_authority_link_count': uncertain_count,
+            'treatment_type_counts': by_type,
+            'max_treatment_confidence': max_confidence,
+        }
+
+    def _summarize_authority_rule_candidates(self, links: List[Dict[str, Any]]) -> Dict[str, Any]:
+        authority_links = [
+            link for link in (links or [])
+            if isinstance(link, dict) and link.get('support_kind') == 'authority'
+        ]
+
+        rule_type_counts: Dict[str, int] = {}
+        authority_links_with_rule_candidates = 0
+        total_rule_candidate_count = 0
+        matched_claim_element_rule_count = 0
+        max_extraction_confidence = 0.0
+
+        for link in authority_links:
+            rule_candidates = link.get('rule_candidates', [])
+            if isinstance(rule_candidates, list) and rule_candidates:
+                authority_links_with_rule_candidates += 1
+                link_element_id = str(link.get('claim_element_id') or '')
+                link_element_text = str(link.get('claim_element_text') or '')
+                for candidate in rule_candidates:
+                    if not isinstance(candidate, dict):
+                        continue
+                    total_rule_candidate_count += 1
+                    rule_type = str(candidate.get('rule_type') or '')
+                    if rule_type:
+                        rule_type_counts[rule_type] = rule_type_counts.get(rule_type, 0) + 1
+                    candidate_element_id = str(candidate.get('claim_element_id') or '')
+                    candidate_element_text = str(candidate.get('claim_element_text') or '')
+                    if (
+                        candidate_element_id and candidate_element_id == link_element_id
+                    ) or (
+                        candidate_element_text and candidate_element_text == link_element_text
+                    ):
+                        matched_claim_element_rule_count += 1
+                    max_extraction_confidence = max(
+                        max_extraction_confidence,
+                        float(candidate.get('extraction_confidence', 0.0) or 0.0),
+                    )
+                continue
+
+            summary = (
+                (link.get('record_summary') or {}).get('rule_candidate_summary', {})
+                if isinstance(link.get('record_summary'), dict)
+                else {}
+            )
+            summary = summary if isinstance(summary, dict) else {}
+            record_count = int(summary.get('record_count', 0) or 0)
+            if record_count <= 0:
+                continue
+            authority_links_with_rule_candidates += 1
+            total_rule_candidate_count += record_count
+            matched_claim_element_rule_count += record_count
+            by_type = summary.get('by_type', {}) if isinstance(summary.get('by_type'), dict) else {}
+            for rule_type, count in by_type.items():
+                normalized_type = str(rule_type or '')
+                if normalized_type:
+                    rule_type_counts[normalized_type] = rule_type_counts.get(normalized_type, 0) + int(count or 0)
+            max_extraction_confidence = max(
+                max_extraction_confidence,
+                float(summary.get('max_confidence', 0.0) or 0.0),
+            )
+
+        return {
+            'authority_link_count': len(authority_links),
+            'authority_links_with_rule_candidates': authority_links_with_rule_candidates,
+            'total_rule_candidate_count': total_rule_candidate_count,
+            'matched_claim_element_rule_count': matched_claim_element_rule_count,
+            'rule_type_counts': rule_type_counts,
+            'max_extraction_confidence': max_extraction_confidence,
+        }
+
+    def _recommended_support_gap_action(self, element: Dict[str, Any]) -> str:
+        missing_support_kinds = list(element.get('missing_support_kinds', []) or [])
+        if not element.get('total_links', 0):
+            return 'collect_initial_support'
+
+        authority_treatment_summary = (
+            element.get('authority_treatment_summary', {})
+            if isinstance(element.get('authority_treatment_summary'), dict)
+            else {}
+        )
+        if int(authority_treatment_summary.get('adverse_authority_link_count', 0) or 0) > 0:
+            return 'review_adverse_authority'
+
+        authority_rule_candidate_summary = (
+            element.get('authority_rule_candidate_summary', {})
+            if isinstance(element.get('authority_rule_candidate_summary'), dict)
+            else {}
+        )
+        if (
+            missing_support_kinds == ['evidence']
+            and int(element.get('support_by_kind', {}).get('authority', 0) or 0) > 0
+            and int(authority_rule_candidate_summary.get('matched_claim_element_rule_count', 0) or 0) > 0
+        ):
+            return 'collect_fact_support'
+
+        return 'collect_missing_support_kind'
+
     def _build_support_trace(
         self,
         *,
@@ -782,7 +932,7 @@ class ClaimSupportHook:
                 return 'improve_parse_quality'
             if not (element.get('missing_support_kinds', []) or []):
                 return 'review_existing_support'
-            return 'collect_missing_support_kind'
+            return self._recommended_support_gap_action(element)
         return 'review_existing_support'
 
     def _element_has_parse_quality_gap(self, element: Dict[str, Any]) -> bool:
@@ -1218,6 +1368,8 @@ class ClaimSupportHook:
                 'total_links': element.get('total_links', 0),
                 'fact_count': element.get('fact_count', 0),
                 'support_by_kind': element.get('support_by_kind', {}),
+                'authority_treatment_summary': element.get('authority_treatment_summary', {}),
+                'authority_rule_candidate_summary': element.get('authority_rule_candidate_summary', {}),
                 'support_trace_summary': element.get('support_trace_summary', {}),
                 'graph_trace_summary': self._summarize_graph_traces(element.get('links', [])),
                 'contradiction_candidate_count': len(contradiction_candidates),
@@ -1892,7 +2044,16 @@ class ClaimSupportHook:
                 'graph_entity_count': authority_record.get('graph_entity_count', 0),
                 'graph_relationship_count': authority_record.get('graph_relationship_count', 0),
                 'parse_summary': self._extract_record_parse_summary(authority_record),
+                'treatment_summary': authority_record.get('treatment_summary', {}),
+                'rule_candidate_summary': authority_record.get('rule_candidate_summary', {}),
+                'search_program_count': len(authority_record.get('metadata', {}).get('search_programs', []) or [])
+                if isinstance(authority_record.get('metadata'), dict)
+                else 0,
             }
+            enriched['treatment_records'] = authority_record.get('treatment_records', [])
+            enriched['treatment_summary'] = authority_record.get('treatment_summary', {})
+            enriched['rule_candidates'] = authority_record.get('rule_candidates', [])
+            enriched['rule_candidate_summary'] = authority_record.get('rule_candidate_summary', {})
 
             if hasattr(authority_storage, 'get_authority_facts') and authority_record.get('id') is not None:
                 try:
@@ -2057,12 +2218,16 @@ class ClaimSupportHook:
                 element_fact_count = sum(int(link.get('fact_count', 0) or 0) for link in requirement_links)
                 if requirement_links:
                     covered_elements += 1
+                authority_treatment_summary = self._summarize_authority_treatment_signals(requirement_links)
+                authority_rule_candidate_summary = self._summarize_authority_rule_candidates(requirement_links)
                 element_summaries.append(
                     {
                         **requirement,
                         'total_links': len(requirement_links),
                         'fact_count': element_fact_count,
                         'support_by_kind': element_support_by_kind,
+                        'authority_treatment_summary': authority_treatment_summary,
+                        'authority_rule_candidate_summary': authority_rule_candidate_summary,
                         'links': requirement_links,
                     }
                 )
@@ -2074,6 +2239,8 @@ class ClaimSupportHook:
                 'total_elements': len(claim_requirements),
                 'covered_elements': covered_elements,
                 'uncovered_elements': max(len(claim_requirements) - covered_elements, 0),
+                'authority_treatment_summary': self._summarize_authority_treatment_signals(claim_links),
+                'authority_rule_candidate_summary': self._summarize_authority_rule_candidates(claim_links),
                 'elements': element_summaries,
                 'unassigned_links': unassigned_links,
                 'links': claim_links,
@@ -2177,6 +2344,8 @@ class ClaimSupportHook:
                 'total_links': 0,
                 'fact_count': 0,
                 'support_by_kind': {},
+                'authority_treatment_summary': {},
+                'authority_rule_candidate_summary': {},
                 'links': [],
             }
 
@@ -2186,6 +2355,8 @@ class ClaimSupportHook:
             'total_links': 0,
             'fact_count': 0,
             'support_by_kind': {},
+            'authority_treatment_summary': {},
+            'authority_rule_candidate_summary': {},
             'links': [],
         }
 
@@ -2277,6 +2448,8 @@ class ClaimSupportHook:
                         'element_text': element.get('element_text'),
                         'status': status,
                         'support_by_kind': element.get('support_by_kind', {}),
+                        'authority_treatment_summary': element.get('authority_treatment_summary', {}),
+                        'authority_rule_candidate_summary': element.get('authority_rule_candidate_summary', {}),
                         'total_links': element.get('total_links', 0),
                         'fact_count': element.get('fact_count', 0),
                         'missing_support_kinds': [
@@ -2302,6 +2475,8 @@ class ClaimSupportHook:
                 'total_links': support_link_total,
                 'total_facts': fact_total,
                 'support_by_kind': claim_summary.get('support_by_kind', {}),
+                'authority_treatment_summary': claim_summary.get('authority_treatment_summary', {}),
+                'authority_rule_candidate_summary': claim_summary.get('authority_rule_candidate_summary', {}),
                 'support_trace_summary': self._summarize_support_traces(claim_support_traces),
                 'support_packet_summary': self._summarize_support_packets(claim_support_packets),
                 'elements': elements,
@@ -2397,6 +2572,8 @@ class ClaimSupportHook:
                         'total_links': element.get('total_links', 0),
                         'fact_count': element.get('fact_count', 0),
                         'support_by_kind': element.get('support_by_kind', {}),
+                        'authority_treatment_summary': element.get('authority_treatment_summary', {}),
+                        'authority_rule_candidate_summary': element.get('authority_rule_candidate_summary', {}),
                         'links': element.get('links', []),
                         'support_facts': support_facts,
                         'support_traces': support_traces,
@@ -2409,11 +2586,7 @@ class ClaimSupportHook:
                             if element.get('total_links', 0)
                             and not (element.get('missing_support_kinds', []) or [])
                             and self._element_has_parse_quality_gap(element)
-                            else (
-                                'collect_missing_support_kind'
-                                if element.get('total_links', 0)
-                                else 'collect_initial_support'
-                            )
+                            else self._recommended_support_gap_action(element)
                         ),
                     }
                 )
@@ -3140,6 +3313,11 @@ class ClaimSupportHook:
                 'resolution_status': metadata.get('resolution_status', ''),
                 'resolution_notes': metadata.get('resolution_notes', ''),
                 'related_execution_id': metadata.get('related_execution_id'),
+                'selected_search_program_id': metadata.get('selected_search_program_id', ''),
+                'selected_search_program_type': metadata.get('selected_search_program_type', ''),
+                'selected_search_program_bias': metadata.get('selected_search_program_bias', ''),
+                'selected_search_program_rule_bias': metadata.get('selected_search_program_rule_bias', ''),
+                'selected_search_program_families': list(metadata.get('selected_search_program_families', []) or []),
             }
             current_claim = str(row[1] or '')
             claim_entries.setdefault(current_claim, []).append(entry)

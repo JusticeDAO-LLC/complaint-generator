@@ -194,6 +194,31 @@ manager.advance_to_formalization_phase()
 complaint = manager.generate_formal_complaint()
 ```
 
+### Export a Filing Draft
+
+```python
+draft = mediator.generate_formal_complaint(
+    district='New Mexico',
+    case_number='1:26-cv-____'
+)
+
+docx_result = mediator.export_formal_complaint(
+    'statefiles/formal_complaint.docx',
+    district='New Mexico',
+    case_number='1:26-cv-____'
+)
+
+pdf_result = mediator.export_formal_complaint(
+    'statefiles/formal_complaint.pdf',
+    district='New Mexico',
+    case_number='1:26-cv-____'
+)
+```
+
+The filing draft includes a traditional court header and caption, nature of the action,
+jurisdiction and venue, factual allegations, claims for relief with legal standards,
+requested relief, and linked exhibits sourced from stored evidence.
+
 [More examples →](docs/EXAMPLES.md) - 21 complete examples
 
 ---

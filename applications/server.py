@@ -16,6 +16,7 @@ from starlette.responses import RedirectResponse
 
 from .review_api import attach_claim_support_review_routes
 from .review_ui import attach_claim_support_review_ui_routes
+from .document_api import attach_document_routes
 
 
 class SERVER:
@@ -27,6 +28,7 @@ class SERVER:
         app = FastAPI()
         attach_claim_support_review_routes(app, mediator)
         attach_claim_support_review_ui_routes(app)
+        attach_document_routes(app, mediator)
         
         hostname = "http://10.10.0.10:1792"
 

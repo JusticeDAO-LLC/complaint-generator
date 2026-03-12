@@ -785,6 +785,22 @@
                 </div>
 
                 <div>
+                    <h2 style="margin-top: 18px;">Authority Signals</h2>
+                    <div class="signal-grid">
+                        <div class="signal-card">
+                            <span class="signal-label">Supportive authorities</span>
+                            <span class="signal-number" id="signal-supportive-authorities">0</span>
+                            <div class="chip-row" id="signal-supportive-authority-chips"></div>
+                        </div>
+                        <div class="signal-card">
+                            <span class="signal-label">Adverse or uncertain authorities</span>
+                            <span class="signal-number" id="signal-adverse-authorities">0</span>
+                            <div class="chip-row" id="signal-adverse-authority-chips"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
                     <h2 style="margin-top: 18px;">Follow-Up Signals</h2>
                     <div class="signal-grid">
                         <div class="signal-card">
@@ -856,9 +872,12 @@
             document.getElementById('status-line').textContent = message;
         }
 
-        function setSummary(summary) {
+        function setSummary(summary, planSummary) {
             const statusCounts = (summary && summary.status_counts) || {};
             const packetSummary = (summary && summary.support_packet_summary) || {};
+            const authorityTreatmentSummary = (summary && summary.authority_treatment_summary) || {};
+            const authorityProgramBiasCounts = (planSummary && planSummary.primary_authority_program_bias_counts) || {};
+            const authorityProgramRuleBiasCounts = (planSummary && planSummary.primary_authority_program_rule_bias_counts) || {};
             const parseQualityTierCounts = (summary && summary.parse_quality_tier_counts) || {};
             const parseQualityRecommendation = (summary && summary.parse_quality_recommendation) || '';
             const covered = statusCounts.covered || 0;
@@ -870,6 +889,9 @@
                 0,
             );
             const lowQualityRecords = Number(summary.low_quality_parsed_record_count || 0);
+            const supportiveAuthorities = Number(authorityTreatmentSummary.supportive_authority_link_count || 0);
+            const adverseAuthorities = Number(authorityTreatmentSummary.adverse_authority_link_count || 0);
+            const uncertainAuthorities = Number(authorityTreatmentSummary.uncertain_authority_link_count || 0);
             document.getElementById('hero-covered').textContent = covered;
             document.getElementById('hero-partial').textContent = partial;
             document.getElementById('hero-missing').textContent = missing;
@@ -879,6 +901,8 @@
             document.getElementById('signal-archive-captures').textContent = archiveCaptures;
             document.getElementById('signal-fallback-authorities').textContent = fallbackAuthorities;
             document.getElementById('signal-low-quality-records').textContent = lowQualityRecords;
+            document.getElementById('signal-supportive-authorities').textContent = supportiveAuthorities;
+            document.getElementById('signal-adverse-authorities').textContent = adverseAuthorities + uncertainAuthorities;
 
             const coverageChips = document.getElementById('coverage-chips');
             const labels = [];
@@ -886,6 +910,8 @@
             (summary.partially_supported_elements || []).forEach((label) => labels.push(`Partial: ${label}`));
             (summary.parse_quality_issue_elements || []).forEach((label) => labels.push(`Refresh parse: ${label}`));
             if (parseQualityRecommendation) labels.push(`Recommendation: ${parseQualityRecommendation}`);
+            if (adverseAuthorities) labels.push(`Adverse authorities: ${adverseAuthorities}`);
+            if (uncertainAuthorities) labels.push(`Uncertain authorities: ${uncertainAuthorities}`);
             coverageChips.innerHTML = labels.length
                 ? labels.map((label) => `<span class="chip">${label}</span>`).join('')
                 : '<span class="chip">No missing or partially supported labels.</span>';
@@ -904,6 +930,27 @@
                 'signal-low-quality-record-chips',
                 parseQualityTierCounts,
                 'No low-quality parse signals',
+            );
+            renderSignalChips(
+                'signal-supportive-authority-chips',
+                {
+                    supportive: supportiveAuthorities,
+                    untreated: Number(authorityTreatmentSummary.authority_link_count || 0) - Number(authorityTreatmentSummary.treated_authority_link_count || 0),
+                },
+                'No supportive authority signals',
+            );
+            renderSignalChips(
+                'signal-adverse-authority-chips',
+                {
+                    ...(authorityTreatmentSummary.treatment_type_counts || {}),
+                    ...Object.fromEntries(
+                        Object.entries(authorityProgramBiasCounts).map(([bias, count]) => [`bias_${bias}`, count])
+                    ),
+                    ...Object.fromEntries(
+                        Object.entries(authorityProgramRuleBiasCounts).map(([bias, count]) => [`rule_bias_${bias}`, count])
+                    ),
+                },
+                'No adverse or uncertain authority signals',
             );
         }
 
@@ -1213,7 +1260,9 @@
                     return `<div class="link-group"><h4>${kind}</h4>${items}</div>`;
                 }).join('');
                 const packetSummary = element.support_packet_summary || {};
+                const authorityTreatmentSummary = element.authority_treatment_summary || {};
                 const lineageChips = [];
+                const authorityChips = [];
                 if (packetSummary.historical_capture_count) {
                     lineageChips.push(`<span class="chip">Archived captures: ${packetSummary.historical_capture_count}</span>`);
                 }
@@ -1222,6 +1271,18 @@
                 });
                 Object.entries(packetSummary.content_origin_counts || {}).forEach(([origin, count]) => {
                     lineageChips.push(`<span class="chip">Origin ${origin}: ${count}</span>`);
+                });
+                if (Number(authorityTreatmentSummary.supportive_authority_link_count || 0)) {
+                    authorityChips.push(`<span class="chip">Supportive authorities: ${authorityTreatmentSummary.supportive_authority_link_count}</span>`);
+                }
+                if (Number(authorityTreatmentSummary.adverse_authority_link_count || 0)) {
+                    authorityChips.push(`<span class="chip">Adverse authorities: ${authorityTreatmentSummary.adverse_authority_link_count}</span>`);
+                }
+                if (Number(authorityTreatmentSummary.uncertain_authority_link_count || 0)) {
+                    authorityChips.push(`<span class="chip">Uncertain authorities: ${authorityTreatmentSummary.uncertain_authority_link_count}</span>`);
+                }
+                Object.entries(authorityTreatmentSummary.treatment_type_counts || {}).forEach(([kind, count]) => {
+                    authorityChips.push(`<span class="chip">Treatment ${kind}: ${count}</span>`);
                 });
                 const packetDetails = supportPackets.length
                     ? `
@@ -1295,6 +1356,7 @@
                         </div>
                         ${missingKinds}
                         ${lineageChips.length ? `<div class="chip-row">${lineageChips.join('')}</div>` : ''}
+                        ${authorityChips.length ? `<div class="chip-row">${authorityChips.join('')}</div>` : ''}
                         ${packetDetails}
                         <div class="link-groups">${linkGroups || '<div class="link-group">No linked support records.</div>'}</div>
                     </article>
@@ -1325,6 +1387,10 @@
                         ${(task.missing_support_kinds || []).map((kind) => `<span class="chip">Need ${kind}</span>`).join('')}
                         ${task.follow_up_focus ? `<span class="chip">focus ${task.follow_up_focus}</span>` : ''}
                         ${task.query_strategy ? `<span class="chip">strategy ${task.query_strategy}</span>` : ''}
+                        ${task.authority_search_program_summary && task.authority_search_program_summary.primary_program_type ? `<span class="chip">authority program ${task.authority_search_program_summary.primary_program_type}</span>` : ''}
+                        ${task.authority_search_program_summary && task.authority_search_program_summary.primary_program_bias ? `<span class="chip">authority bias ${task.authority_search_program_summary.primary_program_bias}</span>` : ''}
+                        ${task.authority_search_program_summary && task.authority_search_program_summary.primary_program_rule_bias ? `<span class="chip">rule bias ${task.authority_search_program_summary.primary_program_rule_bias}</span>` : ''}
+                        ${task.authority_search_program_summary && task.authority_search_program_summary.program_count ? `<span class="chip">authority bundle ${task.authority_search_program_summary.program_count}</span>` : ''}
                         ${task.recommended_action === 'improve_parse_quality' ? '<span class="chip">refresh source quality</span>' : ''}
                         ${task.blocked_by_cooldown ? '<span class="chip">Blocked by cooldown</span>' : ''}
                         ${task.should_suppress_retrieval ? '<span class="chip">Suppressed</span>' : ''}
@@ -1352,6 +1418,18 @@
                 summaryLabels.push(`Resolved: ${historySummary.resolved_entry_count || 0}`);
                 const latestAttemptedAt = historySummary.latest_attempted_at || 'none';
                 summaryLabels.push(`Latest: ${latestAttemptedAt}`);
+                const selectedProgramTypes = Object.entries(historySummary.selected_authority_program_type_counts || {});
+                const selectedProgramBiases = Object.entries(historySummary.selected_authority_program_bias_counts || {});
+                const selectedProgramRuleBiases = Object.entries(historySummary.selected_authority_program_rule_bias_counts || {});
+                if (selectedProgramTypes.length) {
+                    summaryLabels.push(`History programs: ${selectedProgramTypes.map(([label, count]) => `${label}=${count}`).join(', ')}`);
+                }
+                if (selectedProgramBiases.length) {
+                    summaryLabels.push(`History biases: ${selectedProgramBiases.map(([label, count]) => `${label}=${count}`).join(', ')}`);
+                }
+                if (selectedProgramRuleBiases.length) {
+                    summaryLabels.push(`History rule biases: ${selectedProgramRuleBiases.map(([label, count]) => `${label}=${count}`).join(', ')}`);
+                }
             }
             summaryChips.innerHTML = summaryLabels.length
                 ? summaryLabels.map((label) => `<span class="chip">${label}</span>`).join('')
@@ -1368,6 +1446,9 @@
                 if (entry.support_kind) chips.push(`<span class="chip">${entry.support_kind}</span>`);
                 if (entry.status) chips.push(`<span class="chip">${entry.status}</span>`);
                 if (entry.query_strategy) chips.push(`<span class="chip">${entry.query_strategy}</span>`);
+                if (entry.selected_search_program_type) chips.push(`<span class="chip">program: ${entry.selected_search_program_type}</span>`);
+                if (entry.selected_search_program_bias) chips.push(`<span class="chip">bias: ${entry.selected_search_program_bias}</span>`);
+                if (entry.selected_search_program_rule_bias) chips.push(`<span class="chip">rule bias: ${entry.selected_search_program_rule_bias}</span>`);
                 if (entry.resolution_applied) chips.push(`<span class="chip">normalized: ${entry.resolution_applied}</span>`);
                 if (entry.resolution_status) chips.push(`<span class="chip">resolution: ${entry.resolution_status}</span>`);
                 return `
@@ -1422,7 +1503,7 @@
             const historyEntries = primary.historyClaims[claimType] || [];
             const historySummary = primary.historySummaryClaims[claimType] || null;
 
-            setSummary(summary);
+            setSummary(summary, planSummary);
             setFollowUpSignals(planSummary, historySummary);
             renderElements(matrix.elements || []);
             renderTasks(plan, planSummary);

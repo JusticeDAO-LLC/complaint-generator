@@ -50,8 +50,11 @@ The end state should be a complaint generator that can answer, for every claim e
 
 - what evidence supports it
 - what legal authorities support it
+- what statutes, administrative rules, agency guidance, and case-law authorities govern it in the relevant jurisdiction
 - what archived or historical web records corroborate it
 - what facts are duplicated, clustered, or contradictory
+- what adverse authorities, limiting authorities, or stale authorities cut against it
+- which supporting authorities are still good law or procedurally relevant enough to cite confidently
 - what predicates are still missing for legal sufficiency
 - what follow-up action is most valuable next
 
@@ -148,6 +151,15 @@ The integration is successful when complaint-generator can do the following reli
 - rank legal authorities by claim relevance, jurisdiction, procedural posture, and contradiction value
 - persist parsed authority text and extracted facts where full text is available
 - distinguish supportive authority from adverse or contradictory authority
+- track whether a cited case or rule still appears usable after later authority treatment and citation-history checks
+
+### Claim-aware legal corpus search and shepherdization
+
+- search the legal corpus by claim element, defense theme, jurisdiction, forum, and time window instead of only by coarse claim type
+- search not only for supporting law, but also for limiting law, preemption, exhaustion requirements, procedural bars, and adverse authority
+- build authority-treatment records that capture whether a case, rule, or guidance document is supportive, adverse, distinguished, superseded, questioned, or merely procedural background
+- surface citation-history and treatment uncertainty directly in review, drafting, and follow-up planning instead of burying it in raw search results
+- use the graph and theorem-prover layers to connect facts to the specific legal propositions each authority supports or defeats
 
 ### Search and archiving
 
@@ -243,6 +255,9 @@ The repo already has legal authority search and storage hooks wired through the 
 - adverse authority handling is still limited
 - full-text parsing is inconsistent across source families
 - contradiction-aware authority analysis is not yet a first-class workflow
+- administrative-rule and agency-guidance coverage is not yet organized as a first-class claim-element workflow
+- there is no explicit shepherdization or citation-treatment layer for deciding whether case-law support is still reliable
+- claim-element search is still too query-centric and not yet proposition-centric
 
 ### Improvement goals
 
@@ -251,6 +266,8 @@ The repo already has legal authority search and storage hooks wired through the 
 3. Parse available authority text through the same document contract used for evidence.
 4. Extract authority facts, citations, obligations, exceptions, and procedural requirements.
 5. Feed both supportive and adverse authority into claim-element validation.
+6. Build a legal-corpus search workflow that can search for support and opposition for a fact pattern at the claim-element level.
+7. Add a citation-treatment workflow so supportive authorities can be checked for negative history, limiting treatment, or procedural weakness before drafting.
 
 ### Concrete implementation work
 
@@ -259,12 +276,73 @@ The repo already has legal authority search and storage hooks wired through the 
 - route authority full text through `integrations/ipfs_datasets/documents.py`
 - add claim-element-aware authority ranking in `mediator/legal_authority_hooks.py`
 - store contradiction-oriented authority tags such as `supports`, `limits`, `distinguishes`, and `adverse`
+- add normalized authority-family fields for `statute`, `regulation`, `administrative_rule`, `agency_guidance`, `case_law`, `docket_material`, and `secondary_source`
+- extend `mediator/legal_authority_hooks.py` to generate search programs per claim element, required proof element, defense theme, and jurisdiction rather than one flat query bundle
+- create an authority-treatment record in storage and review payloads that captures `treatment_type`, `treatment_source`, `treatment_confidence`, `treatment_date`, and `treatment_explanation`
+- model citation-history edges in `complaint_phases/legal_graph.py` so a cited authority can be linked to later authorities that affirm, limit, distinguish, or undermine it
+- add a drafting guardrail that suppresses or warns on authorities with unresolved negative treatment or stale procedural posture
 
 ### Success criteria
 
 - every stored authority has normalized metadata and provenance
 - full-text authorities produce parse summaries, chunks, facts, and graph metadata
 - review flows can show top supportive and top adverse authority per claim element
+- operators can see whether a case or administrative rule is still safe to rely on, questionable, or adverse to the current fact pattern
+
+## 1A. Claim-aware Legal Corpus Search and Shepherdization
+
+This is the missing workflow layer between legal acquisition and formal validation.
+
+The complaint generator should not treat legal research as one search box that returns raw authorities. It should treat legal research as a structured claim-support workflow that answers five questions for each claim element:
+
+1. What primary authority creates or defines the element?
+2. What authority applies the element to facts similar to the current case?
+3. What administrative rules, agency guidance, or procedural requirements condition the element?
+4. What authority weakens, narrows, distinguishes, or defeats the element?
+5. Which of the above authorities remain citeable after treatment and history checks?
+
+### Proposed search program types
+
+- element-definition search: locate statutes, rules, and core cases defining the element
+- fact-pattern search: locate authorities with similar facts, actors, timing, and causation patterns
+- procedural search: locate exhaustion, timeliness, venue, service, notice, and preservation requirements
+- adverse-authority search: deliberately search for defenses, exceptions, safe harbors, preemption, immunity, and narrowing constructions
+- treatment search: search for later cases, rule amendments, or guidance updates that affect whether a candidate authority is still reliable
+
+### Proposed treatment model
+
+Each authority candidate should be able to carry one or more treatment records:
+
+- `supports`
+- `adverse`
+- `limits`
+- `distinguishes`
+- `questioned`
+- `superseded`
+- `procedural_only`
+- `good_law_unconfirmed`
+
+These should not initially require perfect external shepherdization coverage. The first milestone is to create a complaint-generator-native treatment model that can accept evidence from:
+
+- later case-law search results
+- regulatory amendment dates
+- agency guidance revision history
+- operator review notes
+- theorem-prover contradiction outputs
+
+### Implementation targets
+
+- `integrations/ipfs_datasets/legal.py`: add normalized search wrappers for treatment-oriented queries and richer authority-type normalization
+- `mediator/legal_authority_hooks.py`: generate and persist per-element search programs and treatment candidates
+- `mediator/claim_support_hooks.py`: incorporate treatment state into support scoring, contradiction review, and follow-up planning
+- `complaint_phases/legal_graph.py`: represent authority-to-authority treatment edges and proposition coverage edges
+- `claim_support_review.py`: expose supportive, adverse, and treatment-summary counts in compact review payloads
+
+### Acceptance criteria
+
+- for a given claim element, the system can show both supportive and adverse authorities
+- at least one treatment record can be attached to a stored authority without breaking degraded mode
+- follow-up planning can prefer `find_better_authority` or `confirm_good_law` when support exists but treatment confidence is weak
 
 ## 2. Web Search and Web Archiving
 
@@ -574,6 +652,48 @@ Minimum fields:
 - confidence
 - claim-element links
 
+### 3A. Authority Record
+
+A normalized legal source object for statutes, regulations, administrative rules, agency guidance, case law, docket material, and other authority-family records.
+
+Minimum fields:
+
+- authority id
+- authority family and source family
+- citation and title
+- jurisdiction, forum, and precedential tier
+- effective-date window or procedural posture
+- provenance and text-availability metadata
+- parse, chunk, and graph handles where full text exists
+
+### 3B. Authority Treatment Edge
+
+A durable citation-history or amendment-history edge that explains how one authority affects another authority or rule candidate.
+
+Minimum fields:
+
+- treatment edge id
+- citing authority id
+- cited authority id
+- treatment label
+- treatment confidence
+- treatment source span or provenance reference
+- temporal marker such as decision date, amendment date, or effective date
+
+### 3C. Rule Candidate
+
+A normalized legal proposition extracted from authority text for later claim-element matching and predicate construction.
+
+Minimum fields:
+
+- rule id
+- authority id
+- normalized rule text
+- rule type such as element, defense, exception, remedy, or procedural prerequisite
+- jurisdiction and temporal scope
+- linked claim elements or predicate templates
+- source span and extraction confidence
+
 ### 4. Support Edge
 
 The join between a fact or authority and a claim element.
@@ -620,6 +740,7 @@ Minimum fields:
 | Evidence ingestion | `mediator/evidence_hooks.py` | parsing, storage, provenance, graph extraction | one parse contract and stronger fact extraction |
 | Web discovery | `mediator/web_evidence_hooks.py` | search, archive, scrape, queue-backed acquisition | archive-first discovery and temporal evidence handling |
 | Legal research | `mediator/legal_authority_hooks.py` | legal scrapers, archive search, authority normalization | deeper source coverage and contradiction-aware authority analysis |
+| Legal corpus search and shepherdization | `mediator/legal_authority_hooks.py`, `mediator/claim_support_hooks.py` | treatment-oriented search, citation-history normalization, authority graph edges | support-and-against analysis plus good-law confidence per claim element |
 | Support organization | `mediator/claim_support_hooks.py` | graph support, GraphRAG, logic diagnostics | claim-element support packets and graph-backed drilldown |
 | Formal validation | `complaint_phases/neurosymbolic_matcher.py` | logic, provers, neuro-symbolic reasoning | grounded proof and contradiction workflows |
 | Review and dashboard | review APIs and dashboard | compact summaries, provenance, graph, proof packets | operator workspace for support, contradictions, and history |
@@ -683,6 +804,29 @@ Primary files:
 - `mediator/claim_support_hooks.py`
 - persistence layers in mediator hooks
 - review payload builders
+
+## Phase 2A: Claim-aware legal corpus search and shepherdization
+
+Objective:
+
+- make statutes, administrative rules, guidance, and case law searchable and reviewable as support-for or support-against evidence at the claim-element level
+
+Key work:
+
+- create per-element legal search programs
+- add treatment-state persistence for authorities
+- distinguish supportive, adverse, and procedurally relevant authorities
+- extract rule candidates and procedural prerequisites from authority text into reusable claim-element support objects
+- add fact-pattern-to-rule matching so the system can explain whether the current facts satisfy, partially satisfy, or miss a legal element
+- add review and drafting warnings for unresolved negative treatment
+
+Primary files:
+
+- `integrations/ipfs_datasets/legal.py`
+- `mediator/legal_authority_hooks.py`
+- `mediator/claim_support_hooks.py`
+- `complaint_phases/legal_graph.py`
+- `claim_support_review.py`
 
 ## Phase 3: Graph persistence and support-path querying
 
@@ -827,6 +971,7 @@ Track these as operational and product metrics:
 ### Acquisition metrics
 
 - authority coverage by claim type and jurisdiction
+- authority coverage by claim element and authority family
 - archive capture rate for high-value URLs
 - percentage of discovered sources promoted into durable artifacts
 
@@ -847,6 +992,13 @@ Track these as operational and product metrics:
 - contradiction detection rate
 - proof-gap rate by claim type
 - percentage of follow-up tasks driven by reasoning versus missing support alone
+
+### Legal treatment metrics
+
+- percentage of cited authorities with treatment state recorded
+- percentage of claim elements with both supportive and adverse authority coverage
+- percentage of drafted authority citations marked safe, uncertain, or adverse
+- percentage of rule candidates linked to a claim element or predicate template
 
 ### Operator metrics
 
@@ -871,9 +1023,10 @@ If this plan is executed incrementally, the highest-value next batch is:
 
 1. Finish the shared parse contract across evidence, web evidence, and authority text.
 2. Expand the durable corpus model so archived pages and authority facts are first-class support sources.
-3. Deepen graph snapshot persistence and support-path queries.
-4. Implement the logic adapter enough to replace placeholder proof behavior with grounded contradiction and failed-premise outputs.
-5. Add operator support packets that combine provenance, graph trace, authority support, and proof status per claim element.
+3. Add claim-element legal corpus search programs and first-pass authority treatment records for statutes, administrative rules, and case law.
+4. Deepen graph snapshot persistence and support-path queries.
+5. Implement the logic adapter enough to replace placeholder proof behavior with grounded contradiction and failed-premise outputs.
+6. Add operator support packets that combine provenance, graph trace, authority support, authority treatment, and proof status per claim element.
 
 ## Summary
 

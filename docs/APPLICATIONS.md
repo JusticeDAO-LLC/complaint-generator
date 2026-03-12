@@ -60,6 +60,7 @@ commands are:
 !save       saves current state to disk
 !claim-review [claim_type] [key=value]
 !execute-follow-up [claim_type] [key=value]
+!export-complaint [output_dir] [key=value]
 
 Username:
 >
@@ -87,8 +88,9 @@ After authentication, the system enters interactive mode where:
 | `!reset` | Wipe current state and start over with a new complaint |
 | `!save` | Save current conversation state to disk |
 | `!resume` | Load a previously saved state from disk |
-| `!claim-review` | Print a compact parse-quality review summary, including the canonical `parse_quality_recommendation` when present, and then the claim-support review payload in JSON for a claim type |
-| `!execute-follow-up` | Execute follow-up retrieval tasks, print a compact execution-quality summary with the canonical `recommended_next_action` when parse-quality remediation is still needed, and then print the execution payload in JSON |
+| `!claim-review` | Print a compact parse-quality review summary, plus follow-up authority search-program counts and primary treatment-versus-rule bias mixes when present, and then the claim-support review payload in JSON for a claim type |
+| `!execute-follow-up` | Execute follow-up retrieval tasks, print a compact execution-quality summary with the canonical `recommended_next_action` when parse-quality remediation is still needed, include authority search-program counts and primary treatment-versus-rule bias mixes when present, and then print the execution payload in JSON |
+| `!export-complaint` | Build a court-style complaint draft and render document artifacts such as DOCX and PDF, then print a compact summary and the full package JSON |
 
 Review command examples:
 
@@ -97,6 +99,7 @@ Review command examples:
 !claim-review "civil rights" include_follow_up_plan=false
 !execute-follow-up "civil rights" follow_up_support_kind=authority follow_up_max_tasks_per_claim=1
 !execute-follow-up claim_type=retaliation follow_up_force=true include_post_execution_review=false
+!export-complaint statefiles district="Northern District of California" plaintiff_names="Jane Doe" defendant_names="Acme Corporation" case_number=25-cv-00001 output_formats=docx,pdf
 ```
 
 Supported `key=value` options:
@@ -113,6 +116,8 @@ Supported `key=value` options:
 - `include_post_execution_review`
 - `execute_follow_up` on `!claim-review` for backward-compatible opt-in execution
 - `follow_up_force` on `!execute-follow-up`
+- `court_name`, `district`, `division`, `case_number`, `court_header_override`, `title_override`, `output_dir`
+- `plaintiff_names`, `defendant_names`, `requested_relief`, and `output_formats` as comma-separated lists when used with `!export-complaint`
 
 ### Profile Storage
 
@@ -167,6 +172,8 @@ This mode serves:
 - `/claim-support-review` for the operator dashboard
 - `/api/claim-support/review` for read-only review payloads
 - `/api/claim-support/execute-follow-up` for explicit follow-up execution
+- `/api/documents/formal-complaint` for building formal complaint drafts and rendering DOCX/PDF artifacts
+- `/api/documents/download` for downloading generated DOCX/PDF artifacts from the managed output directory
 - `/health` for lightweight liveness and readiness checks on the dedicated review app
 
 ### API Endpoints
@@ -191,6 +198,8 @@ This mode serves:
 |----------|-------------|---------|
 | `/api/claim-support/review` | Claim-element review packet for operator or UI workflows | JSON payload with `claim_coverage_matrix`, `claim_coverage_summary`, `claim_support_gaps`, `claim_contradiction_candidates`, and optional `support_summary`, `claim_overview`, or `follow_up_plan`; coverage payloads include compact support-lineage packet summaries for archived captures and authority fallbacks; `follow_up_execution` remains compatibility-only |
 | `/api/claim-support/execute-follow-up` | Explicit side-effecting follow-up execution endpoint | JSON payload with `follow_up_execution`, `follow_up_execution_summary`, optional `execution_quality_summary`, and optional `post_execution_review` |
+| `/api/documents/formal-complaint` | Formal complaint export endpoint for court-style pleading drafts | JSON payload with the structured draft, generated artifact paths, selected output formats, and generation timestamp |
+| `/api/documents/download` | Download a generated complaint artifact from the managed output directory | Generated DOCX or PDF file response |
 
 ##### `/api/claim-support/review` - Claim Support Review
 
@@ -215,14 +224,15 @@ Example request:
 Example response fields:
 
 - `claim_coverage_matrix`: detailed per-claim and per-element grouped support links, plus per-element `support_packets` and `support_packet_summary` lineage rollups.
-- `claim_coverage_summary`: compact status counts plus missing, unresolved, contradiction, parse-quality, and `support_packet_summary` lineage labels.
+- `claim_coverage_summary`: compact status counts plus missing, unresolved, contradiction, parse-quality, authority-treatment, and `support_packet_summary` lineage labels.
 - `claim_coverage_summary[*].parse_quality_recommendation`: canonical compact recommendation exposed to the CLI and dashboard when parse-quality gaps remain.
+- `claim_coverage_summary[*].authority_treatment_summary`: compact supportive-versus-adverse-versus-uncertain authority counts plus treatment-type mix for review tooling.
 - The review dashboard currently renders per-element `support_packets` archive-first and fallback-next for operator triage, but API callers should treat packet ordering as presentation-specific unless they apply their own sort.
 - `claim_support_gaps`: unresolved-element diagnostics keyed by claim type.
 - `claim_contradiction_candidates`: heuristic contradiction candidates keyed by claim type.
 - `support_summary`: persisted support-link summary keyed by claim type.
 - `claim_overview`: covered, partially supported, and missing element buckets keyed by claim type.
-- `follow_up_plan`: actionable retrieval tasks keyed by claim type.
+- `follow_up_plan`: actionable retrieval tasks keyed by claim type; authority-targeted tasks now include claim-aware `authority_search_programs` bundles and a compact `authority_search_program_summary`.
 - `follow_up_plan_summary`: compact task, suppression, graph-support, and parse-remediation counts keyed by claim type.
 - `follow_up_execution`: compatibility-only opt-in execution results keyed by claim type when `execute_follow_up=true`.
 - `follow_up_execution_summary`: compatibility-only compact execution, suppression, cooldown-skip, and graph-support counts keyed by claim type.
@@ -257,6 +267,37 @@ Example request:
 Example response fields:
 
 - `follow_up_execution`: raw execution results keyed by claim type.
+
+##### `/api/documents/formal-complaint` - Formal Complaint Export
+
+POST to this endpoint to build a filing-style complaint package from the current intake, legal analysis, claim support, and evidence context. The export includes a court caption, parties, nature of the action, summary of facts, claims for relief, legal standards, requested relief, and linked exhibits.
+
+Example request:
+
+```json
+{
+  "district": "Northern District of California",
+  "case_number": "25-cv-00001",
+  "plaintiff_names": ["Jane Doe"],
+  "defendant_names": ["Acme Corporation"],
+  "output_formats": ["docx", "pdf"]
+}
+```
+
+Example response fields:
+
+- `draft`: structured complaint content used for rendering.
+- `artifacts.docx.path`: filesystem path to the generated DOCX document when requested.
+- `artifacts.pdf.path`: filesystem path to the generated PDF document when requested.
+- `artifacts.*.download_url`: application route for downloading generated artifacts when they were written under the managed output directory.
+- `output_formats`: formats rendered for the request.
+- `generated_at`: UTC timestamp for the export operation.
+
+##### `/api/documents/download` - Generated Artifact Download
+
+GET this endpoint with a `path` query parameter returned from the formal complaint export payload when you want the application to stream a generated artifact back to the browser.
+
+This route only serves files from the managed generated-documents directory and rejects requests outside that boundary.
 - `follow_up_execution_summary`: compact execution, suppression, cooldown-skip, and graph-support counts keyed by claim type.
 - `execution_quality_summary`: before-versus-after parse-quality comparison keyed by claim type when post-execution review is requested.
 - `execution_quality_summary[*].recommended_next_action`: canonical next-step recommendation exposed to the CLI and dashboard when post-execution review still shows parse-quality gaps.

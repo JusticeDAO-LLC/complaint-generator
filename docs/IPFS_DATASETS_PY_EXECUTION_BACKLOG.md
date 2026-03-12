@@ -23,6 +23,8 @@ This backlog assumes the repo already has:
 
 The goal now is not to sketch a hypothetical architecture. The goal is to finish the high-value workflow integrations that improve legal information organization, graph-backed support analysis, archival reliability, and formal validation.
 
+This now explicitly includes claim-aware legal corpus search across statutes, administrative rules, agency guidance, and case law, plus first-pass authority-treatment and shepherdization workflows so complaint drafting is not built on unchecked authority support.
+
 ## Execution Principles
 
 1. Keep `complaint_phases/` as the canonical workflow graph model.
@@ -86,6 +88,7 @@ These are the main execution targets:
 | W6 | Formal logic and theorem proving | In Progress | P1 | Claim-element sufficiency and contradiction validation |
 | W7 | Retrieval and follow-up optimization | In Progress | P1 | Retrieval is driven by missing support and provenance-aware ranking |
 | W8 | Review and operator tooling | In Progress | P1 | Existing coverage, follow-up, and dashboard payloads graduate into richer inspectable review surfaces |
+| W9 | Legal corpus search and authority treatment | Planned | P0 | Claim elements can be researched for support, opposition, and authority reliability |
 
 ## W1: Adapter Hardening
 
@@ -226,6 +229,26 @@ Acceptance criteria:
 - scraper workers idle or exit cleanly when there is no queued work
 - queued work can be inspected, claimed, executed, and marked completed or failed
 - queue semantics remain optional and do not break direct bounded-run entrypoints
+
+### Work Package W2.5: Authority treatment and citation-history records
+
+Status: Planned
+Target files:
+
+- `integrations/ipfs_datasets/types.py`
+- `mediator/legal_authority_hooks.py`
+- `mediator/claim_support_hooks.py`
+
+Tasks:
+
+- add durable typed records for authority treatment, citation history, and authority-to-authority relationships
+- standardize fields such as `treatment_type`, `treatment_source`, `treatment_confidence`, `treatment_date`, and `treatment_explanation`
+- keep authority records compatible with later graph and logic workflows that need to distinguish supportive from adverse or unreliable authority
+
+Acceptance criteria:
+
+- stored authorities can carry treatment records without breaking existing authority or support payloads
+- treatment data is available to support scoring and review payload generation
 
 ## W3: Document and Chunk Services
 
@@ -550,6 +573,26 @@ Acceptance criteria:
 
 - mediator can expose a formal validation report before draft generation
 
+### Work Package W6.4: Authority-derived rule grounding
+
+Status: Planned
+Target files:
+
+- `mediator/legal_authority_hooks.py`
+- `complaint_phases/legal_graph.py`
+- `complaint_phases/neurosymbolic_matcher.py`
+
+Tasks:
+
+- translate statutes, administrative rules, and guidance passages into obligation, prohibition, exception, and procedural-rule candidates
+- map authority treatment state into reasoning inputs so weakened or adverse authorities do not count like clean support
+- preserve provenance from authority passage to grounded rule candidate
+
+Acceptance criteria:
+
+- at least one authority family can produce grounded rule candidates that participate in claim-element validation
+- validation outputs can identify whether a failed premise came from missing facts, missing rules, or adverse authority
+
 ## W7: Retrieval and Follow-Up Optimization
 
 Status: In Progress
@@ -634,6 +677,116 @@ Acceptance criteria:
 
 - repeated follow-up execution produces fewer redundant queries and better targeted results
 
+### Work Package W7.5: Legal search program generation
+
+Status: Planned
+Target files:
+
+- `mediator/legal_authority_hooks.py`
+- `mediator/claim_support_hooks.py`
+- `complaint_analysis/indexer.py`
+
+Tasks:
+
+- generate separate legal search programs for element-definition, fact-pattern, procedural, adverse-authority, and treatment-confirmation searches
+- include jurisdiction, forum, time window, claim element, defense theme, and authority family in the generated program metadata
+- carry authority intent such as `support`, `oppose`, `procedural`, and `confirm_good_law` into follow-up task generation and execution history
+
+Acceptance criteria:
+
+- legal follow-up tasks are no longer a single flat query per claim type
+- review payloads can explain why a legal search was run and what authority intent it served
+
+## W9: Legal Corpus Search and Authority Treatment
+
+Status: Planned
+Priority: P0
+
+### Why this matters
+
+The system already finds and stores authorities, but it still treats legal research too much like generic retrieval. For complaint drafting and claim validation, the harder problem is deciding what governs the element, what cuts against it, and whether the cited authority is still safe to rely on.
+
+### Work Package W9.1: Claim-aware legal search programs
+
+Status: Planned
+Target files:
+
+- `integrations/ipfs_datasets/legal.py`
+- `mediator/legal_authority_hooks.py`
+
+Tasks:
+
+- create normalized search wrappers and mediator search plans for element-definition, fact-pattern, procedural, adverse-authority, and treatment-check searches
+- expand authority normalization for `administrative_rule`, `agency_guidance`, `docket_material`, and related authority families
+- persist search-program metadata alongside returned authorities
+
+Acceptance criteria:
+
+- the mediator can search the legal corpus for both support and opposition for a specific claim element
+
+### Work Package W9.2: Authority treatment persistence
+
+Status: Planned
+Target files:
+
+- `integrations/ipfs_datasets/types.py`
+- `mediator/legal_authority_hooks.py`
+- schema layer to be selected during implementation
+
+Tasks:
+
+- store authority-treatment rows or metadata edges for `supports`, `adverse`, `limits`, `distinguishes`, `questioned`, `superseded`, and `good_law_unconfirmed`
+- persist source, confidence, and explanation for each treatment entry
+- keep degraded-mode behavior by allowing empty treatment state when no upstream treatment source is available
+- add durable `Authority Record` and `Authority Treatment Edge` shapes that stay compatible with later graph and proof consumers
+
+Acceptance criteria:
+
+- at least one authority can accumulate treatment history without breaking existing storage and retrieval flows
+
+### Work Package W9.3: Rule-candidate extraction and fact-pattern matching
+
+Status: Planned
+Target files:
+
+- `integrations/ipfs_datasets/types.py`
+- `mediator/legal_authority_hooks.py`
+- `mediator/claim_support_hooks.py`
+- `complaint_analysis/decision_trees.py`
+
+Tasks:
+
+- extract first-pass `Rule Candidate` records from parsed authority text for elements, defenses, exceptions, remedies, and procedural prerequisites
+- connect rule candidates to claim elements, predicate templates, and jurisdiction or time-window constraints
+- add fact-pattern-to-rule matching so support review can distinguish `authority found but facts do not satisfy the rule` from `authority not found`
+- preserve passage-level provenance so operators can inspect the authority text that produced the rule candidate
+
+Acceptance criteria:
+
+- for at least one claim type, the system can link a stored authority passage to a rule candidate and to a claim element
+- claim-support outputs can distinguish missing law, adverse law, and missing factual satisfaction
+
+### Work Package W9.4: Authority graph and review integration
+
+Status: Planned
+Target files:
+
+- `complaint_phases/legal_graph.py`
+- `mediator/claim_support_hooks.py`
+- `claim_support_review.py`
+
+Tasks:
+
+- add authority-to-authority treatment edges and authority-to-proposition support edges
+- add authority-to-rule and rule-to-claim-element edges where the source material is strong enough to justify them
+- include supportive, adverse, and uncertain-authority counts in compact review payloads
+- allow follow-up planning to request `find_better_authority` or `confirm_good_law` when support exists but treatment confidence is weak
+
+Acceptance criteria:
+
+- review surfaces can show both supporting and adverse authorities plus treatment uncertainty per claim element
+- follow-up planning can react when existing authority support is legally weak rather than factually absent
+
 ## W8: Review and Operator Tooling
 
 Status: In Progress
@@ -688,16 +841,20 @@ Acceptance criteria:
 
 1. Finish the remaining W3 parse-contract completion for all source families and formats.
 2. Finish W2.3 shared fact-registry expansion to archived pages and unified corpus semantics.
-3. Deepen W4.1 and W4.4 so graph snapshots and coverage views become a stronger persistent query plane.
-4. Advance W6.1 and W6.3 from proof-aware placeholder flows to grounded validation runs.
-5. Stabilize W8.1 support packet reporting around the existing review and dashboard payloads.
+3. Add W2.5, W9.1, and W9.2 so authorities can carry treatment state and claim-aware legal search intent.
+4. Add W9.3 so parsed authority passages produce rule candidates and fact-pattern matching outputs.
+5. Deepen W4.1 and W4.4 so graph snapshots and coverage views become a stronger persistent query plane.
+6. Advance W6.1, W6.3, and W6.4 from proof-aware placeholder flows to grounded validation runs with authority-derived rules.
+7. Stabilize W8.1 support packet reporting around the existing review and dashboard payloads.
 
 ## Next sequence
 
 1. Finish W4.3 claim-element support queries and graph-path drilldown.
 2. Add W7.2 archive-first evidence acquisition.
-3. Start W5.1 ontology generation workflow.
-4. Add W8 timeline, archive-history, and provenance drilldown packets.
+3. Start W7.5 legal search program generation for support, adverse-authority, and treatment-confirmation tasks.
+4. Add W9.4 authority graph and review integration.
+5. Start W5.1 ontology generation workflow.
+6. Add W8 timeline, archive-history, and provenance drilldown packets.
 
 ## Later sequence
 
@@ -721,22 +878,26 @@ Definition of done:
 ### Sprint 2
 
 - W2.3
-- W4.1
-- W4.2
+- W2.5
+- W9.1
+- W9.2
 
 Definition of done:
 
-- facts and graph snapshots become persistent, provenance-linked records
+- facts, authorities, and first-pass treatment records become persistent, provenance-linked records
 
 ### Sprint 3
 
+- W9.3
 - W4.3
 - W4.4
+- W4.1
+- W4.2
 - W7.2
 
 Definition of done:
 
-- claim-element support can be queried across evidence, authorities, and archived web sources
+- claim-element support can be queried across evidence, authorities, archived web sources, and first-pass rule candidates
 
 ### Sprint 4
 
@@ -753,6 +914,7 @@ Definition of done:
 - W6.1
 - W6.2
 - W6.3
+- W6.4
 
 Definition of done:
 
@@ -805,5 +967,7 @@ Guardrail:
 
 1. Deepen `integrations/ipfs_datasets/documents.py`.
 2. Route `mediator/evidence_hooks.py` and `mediator/web_evidence_hooks.py` through the new document contract.
-3. Expand `integrations/ipfs_datasets/graphs.py` to persist and query graph snapshots.
-4. Expand the existing shared fact registry so claim elements, extracted facts, evidence, authorities, archived pages, and future predicates share one durable contract.
+3. Add typed authority-treatment storage and claim-aware legal search-program metadata in `mediator/legal_authority_hooks.py` and `integrations/ipfs_datasets/types.py`.
+4. Extract first-pass rule candidates from parsed authority text and map them to claim elements before deeper theorem-prover work.
+5. Expand `integrations/ipfs_datasets/graphs.py` to persist and query graph snapshots.
+6. Expand the existing shared fact registry so claim elements, extracted facts, evidence, authorities, archived pages, and future predicates share one durable contract.

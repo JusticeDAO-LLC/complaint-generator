@@ -66,6 +66,55 @@ class TestClaimSupportHook:
             if os.path.exists(db_path):
                 os.unlink(db_path)
 
+    def test_get_recent_follow_up_execution_exposes_selected_authority_program_metadata(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            record_id = hook.record_follow_up_execution(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_id='employment:1',
+                claim_element_text='Protected activity',
+                support_kind='authority',
+                query_text='employment Protected activity element definition statute regulation rule',
+                status='executed',
+                metadata={
+                    'execution_mode': 'retrieve_support',
+                    'validation_status': 'incomplete',
+                    'follow_up_focus': 'parse_quality_improvement',
+                    'query_strategy': 'quality_gap_targeted',
+                    'selected_search_program_id': 'legal_search_program:authority-1',
+                    'selected_search_program_type': 'element_definition_search',
+                    'selected_search_program_bias': 'uncertain',
+                    'selected_search_program_rule_bias': 'procedural_prerequisite',
+                    'selected_search_program_families': ['statute', 'regulation'],
+                },
+            )
+
+            history = hook.get_recent_follow_up_execution('testuser', 'employment', limit=5)
+            entry = history['claims']['employment'][0]
+
+            assert record_id > 0
+            assert entry['execution_id'] == record_id
+            assert entry['selected_search_program_id'] == 'legal_search_program:authority-1'
+            assert entry['selected_search_program_type'] == 'element_definition_search'
+            assert entry['selected_search_program_bias'] == 'uncertain'
+            assert entry['selected_search_program_rule_bias'] == 'procedural_prerequisite'
+            assert entry['selected_search_program_families'] == ['statute', 'regulation']
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
     def test_claim_support_hook_can_be_imported(self):
         try:
             from mediator.claim_support_hooks import ClaimSupportHook
@@ -647,6 +696,288 @@ class TestClaimSupportHook:
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)
+
+    def test_get_claim_coverage_matrix_summarizes_authority_treatment_signals(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.legal_authority_storage = Mock()
+
+        authority_records = {
+            'Supportive Source': {
+                'id': 51,
+                'citation': 'Supportive Source',
+                'title': 'Supportive Source',
+                'fact_count': 1,
+                'metadata': {},
+                'treatment_records': [],
+                'treatment_summary': {
+                    'record_count': 0,
+                    'by_type': {},
+                    'max_confidence': 0.0,
+                },
+                'graph_metadata': {
+                    'graph_snapshot': {'graph_id': 'graph:authority-51', 'created': True, 'reused': False}
+                },
+            },
+            'Questioned Source': {
+                'id': 52,
+                'citation': 'Questioned Source',
+                'title': 'Questioned Source',
+                'fact_count': 1,
+                'metadata': {},
+                'treatment_records': [
+                    {'treatment_type': 'questioned', 'treatment_confidence': 0.82}
+                ],
+                'treatment_summary': {
+                    'record_count': 1,
+                    'by_type': {'questioned': 1},
+                    'max_confidence': 0.82,
+                },
+                'graph_metadata': {
+                    'graph_snapshot': {'graph_id': 'graph:authority-52', 'created': False, 'reused': True}
+                },
+            },
+            'Unconfirmed Source': {
+                'id': 53,
+                'citation': 'Unconfirmed Source',
+                'title': 'Unconfirmed Source',
+                'fact_count': 1,
+                'metadata': {},
+                'treatment_records': [
+                    {'treatment_type': 'good_law_unconfirmed', 'treatment_confidence': 0.4}
+                ],
+                'treatment_summary': {
+                    'record_count': 1,
+                    'by_type': {'good_law_unconfirmed': 1},
+                    'max_confidence': 0.4,
+                },
+                'graph_metadata': {
+                    'graph_snapshot': {'graph_id': 'graph:authority-53', 'created': False, 'reused': True}
+                },
+            },
+        }
+
+        def _get_authority_by_citation(citation):
+            return authority_records.get(citation)
+
+        mock_mediator.legal_authority_storage.get_authority_by_citation = Mock(side_effect=_get_authority_by_citation)
+        mock_mediator.legal_authority_storage.get_authority_facts = Mock(return_value=[])
+        mock_mediator.legal_authority_storage.get_authority_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:a'}],
+            'relationships': [{'id': 'rel:a', 'relation_type': 'supports'}],
+        })
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            for citation in authority_records:
+                hook.add_support_link(
+                    user_id='testuser',
+                    claim_type='employment',
+                    claim_element_text='Protected activity',
+                    support_kind='authority',
+                    support_ref=citation,
+                    support_label=citation,
+                    source_table='legal_authorities',
+                )
+
+            matrix = hook.get_claim_coverage_matrix('testuser', 'employment')
+            claim = matrix['claims']['employment']
+            element = claim['elements'][0]
+
+            assert claim['authority_treatment_summary']['authority_link_count'] == 3
+            assert claim['authority_treatment_summary']['supportive_authority_link_count'] == 1
+            assert claim['authority_treatment_summary']['adverse_authority_link_count'] == 1
+            assert claim['authority_treatment_summary']['uncertain_authority_link_count'] == 1
+            assert claim['authority_treatment_summary']['treatment_type_counts'] == {
+                'questioned': 1,
+                'good_law_unconfirmed': 1,
+            }
+            assert element['authority_treatment_summary']['authority_link_count'] == 3
+            assert element['links_by_kind']['authority'][1]['record_summary']['treatment_summary']['by_type'] == {
+                'questioned': 1,
+            }
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_claim_support_gaps_distinguishes_fact_gaps_from_adverse_authority(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.legal_authority_storage = Mock()
+
+        authority_records = {
+            '42 U.S.C. 2000e-3(a)': {
+                'id': 61,
+                'citation': '42 U.S.C. 2000e-3(a)',
+                'title': 'Retaliation provision',
+                'fact_count': 0,
+                'metadata': {},
+                'treatment_records': [],
+                'treatment_summary': {
+                    'record_count': 0,
+                    'by_type': {},
+                    'max_confidence': 0.0,
+                },
+                'rule_candidates': [
+                    {
+                        'rule_id': 'rule:retaliation-element',
+                        'rule_text': 'Protected activity must precede the employer response.',
+                        'rule_type': 'element',
+                        'claim_element_id': 'employment:1',
+                        'claim_element_text': 'Protected activity',
+                        'predicate_template': 'Protected activity',
+                        'extraction_confidence': 0.78,
+                    },
+                    {
+                        'rule_id': 'rule:retaliation-exception',
+                        'rule_text': 'Except where the employer lacked notice, liability may not attach.',
+                        'rule_type': 'exception',
+                        'claim_element_id': 'employment:1',
+                        'claim_element_text': 'Protected activity',
+                        'predicate_template': 'Protected activity',
+                        'extraction_confidence': 0.71,
+                    },
+                ],
+                'rule_candidate_summary': {
+                    'record_count': 2,
+                    'by_type': {'element': 1, 'exception': 1},
+                    'max_confidence': 0.78,
+                },
+                'graph_metadata': {
+                    'graph_snapshot': {'graph_id': 'graph:authority-61', 'created': False, 'reused': True}
+                },
+            },
+            'Smith v. Example': {
+                'id': 62,
+                'citation': 'Smith v. Example',
+                'title': 'Adverse treatment decision',
+                'fact_count': 0,
+                'metadata': {},
+                'treatment_records': [
+                    {'treatment_type': 'questioned', 'treatment_confidence': 0.81}
+                ],
+                'treatment_summary': {
+                    'record_count': 1,
+                    'by_type': {'questioned': 1},
+                    'max_confidence': 0.81,
+                },
+                'rule_candidates': [
+                    {
+                        'rule_id': 'rule:adverse-element',
+                        'rule_text': 'Protected activity can support retaliation claims.',
+                        'rule_type': 'element',
+                        'claim_element_id': 'employment:1',
+                        'claim_element_text': 'Protected activity',
+                        'predicate_template': 'Protected activity',
+                        'extraction_confidence': 0.66,
+                    }
+                ],
+                'rule_candidate_summary': {
+                    'record_count': 1,
+                    'by_type': {'element': 1},
+                    'max_confidence': 0.66,
+                },
+                'graph_metadata': {
+                    'graph_snapshot': {'graph_id': 'graph:authority-62', 'created': False, 'reused': True}
+                },
+            },
+        }
+
+        def _get_authority_by_citation(citation):
+            return authority_records.get(citation)
+
+        mock_mediator.legal_authority_storage.get_authority_by_citation = Mock(side_effect=_get_authority_by_citation)
+        mock_mediator.legal_authority_storage.get_authority_facts = Mock(return_value=[])
+        mock_mediator.legal_authority_storage.get_authority_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:a'}],
+            'relationships': [{'id': 'rel:a', 'relation_type': 'supports'}],
+        })
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='authority',
+                support_ref='42 U.S.C. 2000e-3(a)',
+                support_label='42 U.S.C. 2000e-3(a)',
+                source_table='legal_authorities',
+            )
+
+            matrix = hook.get_claim_coverage_matrix('testuser', 'employment')
+            claim = matrix['claims']['employment']
+            element = claim['elements'][0]
+            gaps = hook.get_claim_support_gaps('testuser', 'employment')
+            gap = gaps['claims']['employment']['unresolved_elements'][0]
+
+            assert claim['authority_rule_candidate_summary']['authority_link_count'] == 1
+            assert claim['authority_rule_candidate_summary']['authority_links_with_rule_candidates'] == 1
+            assert claim['authority_rule_candidate_summary']['total_rule_candidate_count'] == 2
+            assert claim['authority_rule_candidate_summary']['matched_claim_element_rule_count'] == 2
+            assert claim['authority_rule_candidate_summary']['rule_type_counts'] == {
+                'element': 1,
+                'exception': 1,
+            }
+            assert element['links_by_kind']['authority'][0]['record_summary']['rule_candidate_summary']['by_type'] == {
+                'element': 1,
+                'exception': 1,
+            }
+            assert gap['recommended_action'] == 'collect_fact_support'
+
+            adverse_hook = ClaimSupportHook(mock_mediator, db_path=f'{db_path}.adverse')
+            adverse_hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            adverse_hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='authority',
+                support_ref='Smith v. Example',
+                support_label='Smith v. Example',
+                source_table='legal_authorities',
+            )
+
+            adverse_gaps = adverse_hook.get_claim_support_gaps('testuser', 'employment')
+            adverse_gap = adverse_gaps['claims']['employment']['unresolved_elements'][0]
+
+            assert adverse_gap['authority_treatment_summary']['adverse_authority_link_count'] == 1
+            assert adverse_gap['recommended_action'] == 'review_adverse_authority'
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+            adverse_db_path = f'{db_path}.adverse'
+            if os.path.exists(adverse_db_path):
+                os.unlink(adverse_db_path)
 
     def test_persist_claim_support_diagnostics_stores_and_returns_latest_snapshots(self):
         try:

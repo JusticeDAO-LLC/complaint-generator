@@ -8,16 +8,11 @@ into the adversarial testing framework:
 3. Legal corpus integration for better question generation
 """
 
-import sys
-import os
 import logging
 from typing import Dict, List, Any
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
-
-# Add mediator to path to access hooks
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 try:
     from mediator.web_evidence_hooks import WebEvidenceSearchHook, BRAVE_SEARCH_AVAILABLE

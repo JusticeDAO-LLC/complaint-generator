@@ -5,6 +5,7 @@ from integrations.ipfs_datasets import loader as loader_module
 from integrations.ipfs_datasets.loader import ImportFailure, import_failure_message, import_failure_type
 from integrations.ipfs_datasets.loader import RepoPaths, import_module_optional
 from integrations.ipfs_datasets.types import (
+    AuthorityTreatmentRecord,
     CapabilityStatus,
     CaseArtifact,
     CaseAuthority,
@@ -22,6 +23,7 @@ from integrations.ipfs_datasets.types import (
     GraphSupportMatch,
     GraphSupportResult,
     GraphSupportSummary,
+    LegalSearchProgram,
     FormalPredicate,
     ProvenanceRecord,
     ValidationRun,
@@ -132,6 +134,43 @@ def test_case_authority_generates_stable_identifier_and_claim_links():
     assert payload["type"] == "statute"
     assert payload["authority_id"].startswith("authority:")
     assert payload["claim_element_id"] == "civil_rights:1"
+
+
+def test_authority_treatment_record_generates_stable_identifier():
+    treatment = AuthorityTreatmentRecord(
+        authority_id="authority:1",
+        treatment_type="limits",
+        treated_by_citation="Smith v. Jones, 123 F.3d 456",
+        treatment_source="case_law_search",
+        treatment_confidence=0.82,
+        treatment_date="2026-03-12",
+        treatment_explanation="Later case narrows the causation standard.",
+    )
+
+    payload = treatment.as_dict()
+    assert payload["treatment_id"].startswith("authority_treatment:")
+    assert payload["treatment_type"] == "limits"
+    assert payload["treated_by_citation"] == "Smith v. Jones, 123 F.3d 456"
+
+
+def test_legal_search_program_generates_stable_identifier_and_serializes():
+    program = LegalSearchProgram(
+        program_type="adverse_authority_search",
+        claim_type="employment retaliation",
+        authority_intent="oppose",
+        query_text='retaliation adverse authority causation temporal proximity',
+        claim_element_id="employment_retaliation:3",
+        claim_element_text="Causal connection",
+        jurisdiction="9th Circuit",
+        forum="federal",
+        authority_families=["case_law", "administrative_rule"],
+        search_terms=["retaliation", "causal connection", "adverse authority"],
+    )
+
+    payload = program.as_dict()
+    assert payload["program_id"].startswith("legal_search_program:")
+    assert payload["authority_intent"] == "oppose"
+    assert payload["authority_families"] == ["case_law", "administrative_rule"]
 
 
 def test_document_parse_types_serialize_with_nested_contract():

@@ -351,6 +351,114 @@ class CaseAuthority:
 
 
 @dataclass(frozen=True)
+class AuthorityTreatmentRecord:
+    authority_id: str
+    treatment_type: str
+    treatment_id: str = ""
+    treated_by_authority_id: str = ""
+    treated_by_citation: str = ""
+    treatment_source: str = ""
+    treatment_confidence: float = 0.0
+    treatment_date: str = ""
+    treatment_explanation: str = ""
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    provenance: ProvenanceRecord = field(default_factory=ProvenanceRecord)
+
+    def __post_init__(self) -> None:
+        if not self.treatment_id:
+            object.__setattr__(
+                self,
+                "treatment_id",
+                _stable_identifier(
+                    "authority_treatment",
+                    self.authority_id,
+                    self.treatment_type,
+                    self.treated_by_authority_id,
+                    self.treated_by_citation,
+                    self.treatment_source,
+                    self.treatment_date,
+                ),
+            )
+
+    def as_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class RuleCandidate:
+    authority_id: str
+    rule_text: str
+    rule_type: str
+    rule_id: str = ""
+    claim_element_id: str = ""
+    claim_element_text: str = ""
+    predicate_template: str = ""
+    jurisdiction: str = ""
+    temporal_scope: str = ""
+    extraction_confidence: float = 0.0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    provenance: ProvenanceRecord = field(default_factory=ProvenanceRecord)
+
+    def __post_init__(self) -> None:
+        if not self.rule_id:
+            object.__setattr__(
+                self,
+                "rule_id",
+                _stable_identifier(
+                    "rule_candidate",
+                    self.authority_id,
+                    self.rule_type,
+                    self.claim_element_id,
+                    self.rule_text,
+                    self.predicate_template,
+                ),
+            )
+
+    def as_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class LegalSearchProgram:
+    program_type: str
+    claim_type: str
+    authority_intent: str
+    query_text: str
+    program_id: str = ""
+    claim_element_id: str = ""
+    claim_element_text: str = ""
+    jurisdiction: str = ""
+    forum: str = ""
+    time_window_start: str = ""
+    time_window_end: str = ""
+    authority_families: List[str] = field(default_factory=list)
+    search_terms: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    provenance: ProvenanceRecord = field(default_factory=ProvenanceRecord)
+
+    def __post_init__(self) -> None:
+        if not self.program_id:
+            object.__setattr__(
+                self,
+                "program_id",
+                _stable_identifier(
+                    "legal_search_program",
+                    self.program_type,
+                    self.claim_type,
+                    self.authority_intent,
+                    self.claim_element_id,
+                    self.claim_element_text,
+                    self.jurisdiction,
+                    self.forum,
+                    self.query_text,
+                ),
+            )
+
+    def as_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class CaseFact:
     fact_id: str
     text: str
@@ -461,6 +569,9 @@ __all__ = [
     "GraphSupportResult",
     "CaseArtifact",
     "CaseAuthority",
+    "AuthorityTreatmentRecord",
+    "RuleCandidate",
+    "LegalSearchProgram",
     "CaseFact",
     "CaseClaimElement",
     "CaseSupportEdge",

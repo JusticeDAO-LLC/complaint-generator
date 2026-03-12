@@ -9,6 +9,7 @@ from claim_support_review import (
     build_claim_support_manual_review_resolution_payload,
     build_claim_support_review_payload,
 )
+from .document_api import attach_document_routes
 
 
 REVIEW_EXECUTION_COMPATIBILITY_NOTICE = {
@@ -76,4 +77,6 @@ def attach_claim_support_review_routes(app: FastAPI, mediator: Any) -> FastAPI:
 
 def create_review_api_app(mediator: Any) -> FastAPI:
     app = FastAPI(title="Complaint Generator Review API")
-    return attach_claim_support_review_routes(app, mediator)
+    attach_claim_support_review_routes(app, mediator)
+    attach_document_routes(app, mediator)
+    return app
