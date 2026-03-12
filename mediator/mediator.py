@@ -1126,6 +1126,133 @@ class Mediator:
 					state_map[key] = entry
 		return state_map
 
+	def _build_retrieval_feedback_state_map(self, history_entries: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+		state_map: Dict[str, Dict[str, Any]] = {}
+		for entry in history_entries or []:
+			if not isinstance(entry, dict):
+				continue
+			if str(entry.get('support_kind') or '') == 'manual_review':
+				continue
+			if str(entry.get('status') or '') != 'executed':
+				continue
+			metadata = entry.get('metadata', {}) if isinstance(entry.get('metadata'), dict) else {}
+			follow_up_focus = str(entry.get('follow_up_focus') or metadata.get('follow_up_focus') or '')
+			if follow_up_focus != 'reasoning_gap_closure':
+				continue
+			try:
+				result_count = int(metadata.get('result_count', 0) or 0)
+			except (TypeError, ValueError):
+				result_count = 0
+			zero_result = bool(metadata.get('zero_result')) or result_count <= 0
+			claim_element_id = str(entry.get('claim_element_id') or '').strip()
+			claim_element_text = self._normalize_follow_up_history_key(entry.get('claim_element_text') or '')
+			lookup_keys = [
+				f'id:{claim_element_id}' if claim_element_id else '',
+				f'text:{claim_element_text}' if claim_element_text else '',
+			]
+			state: Optional[Dict[str, Any]] = None
+			for key in lookup_keys:
+				if key and key in state_map:
+					state = state_map[key]
+					break
+			if state is None:
+				state = {
+					'executed_attempt_count': 0,
+					'zero_result_attempt_count': 0,
+					'successful_result_attempt_count': 0,
+					'support_kind_counts': {},
+					'latest_attempted_at': entry.get('timestamp'),
+					'latest_zero_result_at': None,
+				}
+			state['executed_attempt_count'] += 1
+			support_kind = str(entry.get('support_kind') or 'unknown')
+			state['support_kind_counts'][support_kind] = state['support_kind_counts'].get(support_kind, 0) + 1
+			if zero_result:
+				state['zero_result_attempt_count'] += 1
+				if not state.get('latest_zero_result_at'):
+					state['latest_zero_result_at'] = entry.get('timestamp')
+			else:
+				state['successful_result_attempt_count'] += 1
+			for key in lookup_keys:
+				if key:
+					state_map[key] = state
+		return state_map
+
+	def _apply_reasoning_gap_execution_feedback(
+		self,
+		claim_type: str,
+		task: Dict[str, Any],
+		retrieval_feedback_state_map: Dict[str, Dict[str, Any]],
+	) -> Dict[str, Any]:
+		if task.get('follow_up_focus') != 'reasoning_gap_closure':
+			return task
+		if task.get('execution_mode') == 'manual_review':
+			return task
+
+		lookup_keys = [
+			f'id:{str(task.get("claim_element_id") or "").strip()}' if task.get('claim_element_id') else '',
+			f'text:{self._normalize_follow_up_history_key(task.get("claim_element") or "")}' if task.get('claim_element') else '',
+		]
+		retrieval_state: Optional[Dict[str, Any]] = None
+		for key in lookup_keys:
+			if key and key in retrieval_feedback_state_map:
+				retrieval_state = retrieval_feedback_state_map[key]
+				break
+		if not retrieval_state:
+			return task
+
+		adaptive_retry_state = {
+			'executed_attempt_count': int(retrieval_state.get('executed_attempt_count', 0) or 0),
+			'zero_result_attempt_count': int(retrieval_state.get('zero_result_attempt_count', 0) or 0),
+			'successful_result_attempt_count': int(retrieval_state.get('successful_result_attempt_count', 0) or 0),
+			'support_kind_counts': dict(retrieval_state.get('support_kind_counts') or {}),
+			'latest_attempted_at': retrieval_state.get('latest_attempted_at'),
+			'latest_zero_result_at': retrieval_state.get('latest_zero_result_at'),
+			'applied': False,
+			'priority_penalty': 0,
+			'adaptive_query_strategy': '',
+			'reason': '',
+		}
+		if (
+			adaptive_retry_state['zero_result_attempt_count'] >= 2
+			and adaptive_retry_state['successful_result_attempt_count'] == 0
+		):
+			adaptive_retry_state['applied'] = True
+			adaptive_retry_state['priority_penalty'] = 1
+			adaptive_retry_state['reason'] = 'repeated_zero_result_reasoning_gap'
+			if list(task.get('missing_support_kinds') or []):
+				adaptive_retry_state['adaptive_query_strategy'] = 'standard_gap_targeted'
+				task['query_strategy'] = 'standard_gap_targeted'
+				task['queries'] = self._build_follow_up_queries(
+					claim_type,
+					task.get('claim_element', ''),
+					list(task.get('missing_support_kinds') or []),
+					validation_status='',
+					proof_gaps=[],
+					proof_decision_trace={},
+				)
+		task['adaptive_retry_state'] = adaptive_retry_state
+		return task
+
+	def _count_evidence_follow_up_results(self, discovery_result: Dict[str, Any]) -> int:
+		if not isinstance(discovery_result, dict):
+			return 0
+		for key in ['discovered', 'stored', 'total_records']:
+			try:
+				return int(discovery_result.get(key, 0) or 0)
+			except (TypeError, ValueError):
+				continue
+		return 0
+
+	def _count_authority_follow_up_results(self, search_results: Dict[str, Any]) -> int:
+		if not isinstance(search_results, dict):
+			return 0
+		result_count = 0
+		for value in search_results.values():
+			if isinstance(value, list):
+				result_count += len(value)
+		return result_count
+
 	def _apply_manual_review_resolution_state(
 		self,
 		claim_type: str,
@@ -1351,6 +1478,16 @@ class Mediator:
 				if isinstance(manual_review_history, dict)
 				else []
 			)
+			retrieval_history = self.claim_support.get_recent_follow_up_execution(
+				user_id,
+				claim_type=current_claim,
+				limit=200,
+			)
+			retrieval_feedback_state_map = self._build_retrieval_feedback_state_map(
+				(retrieval_history.get('claims', {}) or {}).get(current_claim, [])
+				if isinstance(retrieval_history, dict)
+				else []
+			)
 			tasks = []
 			for element in claim_data.get('elements', []):
 				if not isinstance(element, dict) or element.get('validation_status') == 'supported':
@@ -1368,6 +1505,11 @@ class Mediator:
 				)
 				if task is None:
 					continue
+				task = self._apply_reasoning_gap_execution_feedback(
+					current_claim,
+					task,
+					retrieval_feedback_state_map,
+				)
 				tasks.append(task)
 			for task in tasks:
 				execution_status: Dict[str, Any] = {}
@@ -1398,6 +1540,11 @@ class Mediator:
 						adjusted_priority_score,
 						3 if task.get('execution_mode') == 'manual_review' else 2,
 					)
+				adaptive_retry_state = task.get('adaptive_retry_state', {}) if isinstance(task.get('adaptive_retry_state'), dict) else {}
+				adaptive_priority_penalty = int(adaptive_retry_state.get('priority_penalty', 0) or 0)
+				if adaptive_priority_penalty:
+					minimum_priority = 2 if task.get('follow_up_focus') == 'reasoning_gap_closure' else 1
+					adjusted_priority_score = max(minimum_priority, adjusted_priority_score - adaptive_priority_penalty)
 				task['graph_support'] = graph_support
 				task['has_graph_support'] = bool(graph_support.get('results'))
 				task['graph_support_strength'] = graph_support_assessment['strength']
@@ -1563,6 +1710,7 @@ class Mediator:
 							claim_type=current_claim,
 							min_relevance=min_relevance,
 						)
+						discovery_result_count = self._count_evidence_follow_up_results(discovery_result)
 						self.claim_support.record_follow_up_execution(
 							user_id=user_id,
 							claim_type=current_claim,
@@ -1575,6 +1723,11 @@ class Mediator:
 								task,
 								keywords=keywords,
 								query_variants=task.get('queries', {}).get('evidence', []),
+								result_count=discovery_result_count,
+								stored_result_count=int(discovery_result.get('stored', discovery_result.get('total_records', 0)) or 0)
+								if isinstance(discovery_result, dict)
+								else 0,
+								zero_result=discovery_result_count <= 0,
 							),
 						)
 						execution['executed']['evidence'] = {
@@ -1616,6 +1769,7 @@ class Mediator:
 							claim_type=current_claim,
 							search_all=True,
 						)
+						authority_result_count = self._count_authority_follow_up_results(search_results)
 						stored_counts = self.store_legal_authorities(
 							search_results,
 							claim_type=current_claim,
@@ -1634,6 +1788,9 @@ class Mediator:
 								task,
 								search_results={key: len(value) for key, value in search_results.items()},
 								query_variants=task.get('queries', {}).get('authority', []),
+								result_count=authority_result_count,
+								stored_result_count=int(stored_counts.get('total_records', 0) or 0),
+								zero_result=authority_result_count <= 0,
 							),
 						)
 						execution['executed']['authority'] = {

@@ -330,6 +330,205 @@ class TestMediatorWithMocks:
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
+    def test_follow_up_plan_adapts_reasoning_gap_queries_after_repeated_zero_result_runs(self):
+        """Repeated zero-result reasoning-gap retrievals should broaden back to standard queries and reduce urgency."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_recent_follow_up_execution.side_effect = [
+                {'claims': {'employment': []}},
+                {
+                    'claims': {
+                        'employment': [
+                            {
+                                'execution_id': 12,
+                                'claim_type': 'employment',
+                                'claim_element_id': 'employment:1',
+                                'claim_element_text': 'Protected activity',
+                                'support_kind': 'authority',
+                                'status': 'executed',
+                                'timestamp': '2026-03-12T11:00:00',
+                                'follow_up_focus': 'reasoning_gap_closure',
+                                'metadata': {
+                                    'follow_up_focus': 'reasoning_gap_closure',
+                                    'result_count': 0,
+                                    'zero_result': True,
+                                },
+                            },
+                            {
+                                'execution_id': 11,
+                                'claim_type': 'employment',
+                                'claim_element_id': 'employment:1',
+                                'claim_element_text': 'Protected activity',
+                                'support_kind': 'authority',
+                                'status': 'executed',
+                                'timestamp': '2026-03-12T10:00:00',
+                                'follow_up_focus': 'reasoning_gap_closure',
+                                'metadata': {
+                                    'follow_up_focus': 'reasoning_gap_closure',
+                                    'result_count': 0,
+                                    'zero_result': True,
+                                },
+                            },
+                        ]
+                    }
+                },
+            ]
+            mediator.claim_support.get_follow_up_execution_status = Mock(return_value={
+                'in_cooldown': False,
+            })
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'required_support_kinds': ['evidence', 'authority'],
+                        'elements': [
+                            {
+                                'element_id': 'employment:1',
+                                'element_text': 'Protected activity',
+                                'coverage_status': 'partially_supported',
+                                'validation_status': 'incomplete',
+                                'recommended_action': 'collect_missing_support_kind',
+                                'support_by_kind': {'evidence': 1},
+                                'proof_gap_count': 1,
+                                'proof_gaps': [
+                                    {'gap_type': 'logic_unprovable'},
+                                ],
+                                'proof_decision_trace': {
+                                    'decision_source': 'logic_proof_partial',
+                                    'logic_provable_count': 1,
+                                    'logic_unprovable_count': 1,
+                                    'ontology_validation_signal': 'valid',
+                                },
+                                'reasoning_diagnostics': {
+                                    'backend_available_count': 2,
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value={
+                'summary': {
+                    'total_fact_count': 0,
+                    'unique_fact_count': 0,
+                    'duplicate_fact_count': 0,
+                    'semantic_cluster_count': 0,
+                    'semantic_duplicate_count': 0,
+                    'max_score': 0.0,
+                },
+                'results': [],
+            })
+
+            plan = mediator.get_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                required_support_kinds=['evidence', 'authority'],
+            )
+            task = plan['claims']['employment']['tasks'][0]
+
+            assert task['execution_mode'] == 'review_and_retrieve'
+            assert task['follow_up_focus'] == 'reasoning_gap_closure'
+            assert task['query_strategy'] == 'standard_gap_targeted'
+            assert task['priority'] == 'medium'
+            assert task['queries']['authority'][0] == '"employment" "Protected activity" statute'
+            assert task['adaptive_retry_state']['applied'] is True
+            assert task['adaptive_retry_state']['reason'] == 'repeated_zero_result_reasoning_gap'
+            assert task['adaptive_retry_state']['priority_penalty'] == 1
+            assert task['adaptive_retry_state']['adaptive_query_strategy'] == 'standard_gap_targeted'
+            assert task['adaptive_retry_state']['zero_result_attempt_count'] == 2
+            assert task['adaptive_retry_state']['successful_result_attempt_count'] == 0
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_execute_follow_up_plan_records_zero_result_metadata(self):
+        """Executed follow-up retrievals should persist normalized zero-result metadata for future adaptive planning."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_recent_follow_up_execution.side_effect = [
+                {'claims': {'employment': []}},
+                {'claims': {'employment': []}},
+                {'claims': {'employment': []}},
+                {'claims': {'employment': []}},
+            ]
+            mediator.claim_support.get_follow_up_execution_status = Mock(return_value={
+                'in_cooldown': False,
+            })
+            mediator.claim_support.was_follow_up_executed = Mock(return_value=False)
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'required_support_kinds': ['evidence'],
+                        'elements': [
+                            {
+                                'element_id': 'employment:1',
+                                'element_text': 'Protected activity',
+                                'coverage_status': 'missing',
+                                'validation_status': 'incomplete',
+                                'recommended_action': 'collect_initial_support',
+                                'support_by_kind': {},
+                                'proof_gap_count': 1,
+                                'proof_gaps': [
+                                    {'gap_type': 'logic_unprovable'},
+                                ],
+                                'proof_decision_trace': {
+                                    'decision_source': 'logic_unprovable',
+                                    'logic_provable_count': 0,
+                                    'logic_unprovable_count': 1,
+                                    'ontology_validation_signal': 'valid',
+                                },
+                                'reasoning_diagnostics': {
+                                    'backend_available_count': 1,
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value={
+                'summary': {
+                    'total_fact_count': 0,
+                    'unique_fact_count': 0,
+                    'duplicate_fact_count': 0,
+                    'semantic_cluster_count': 0,
+                    'semantic_duplicate_count': 0,
+                    'max_score': 0.0,
+                },
+                'results': [],
+            })
+            mediator.discover_web_evidence = Mock(return_value={
+                'discovered': 0,
+                'stored': 0,
+                'total_records': 0,
+            })
+            mediator.get_claim_overview = Mock(return_value={'claims': {'employment': {}}})
+
+            mediator.execute_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                support_kind='evidence',
+                max_tasks_per_claim=1,
+            )
+
+            executed_call = mediator.claim_support.record_follow_up_execution.call_args_list[0]
+            assert executed_call.kwargs['status'] == 'executed'
+            assert executed_call.kwargs['metadata']['result_count'] == 0
+            assert executed_call.kwargs['metadata']['stored_result_count'] == 0
+            assert executed_call.kwargs['metadata']['zero_result'] is True
+            assert executed_call.kwargs['metadata']['follow_up_focus'] == 'reasoning_gap_closure'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
     def test_add_evidence_to_graphs_skips_duplicate_dependency_projection(self):
         """Duplicate evidence should not create duplicate dependency-graph nodes."""
         try:
