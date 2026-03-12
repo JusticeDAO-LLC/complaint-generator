@@ -78,6 +78,7 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
                 'parse_quality_issue_element_count': 1,
                 'avg_parse_quality_score': 62.5,
                 'parse_quality_issue_elements': ['Causal connection'],
+                'parse_quality_recommendation': 'improve_parse_quality',
             }
         }
     }
@@ -161,6 +162,7 @@ def test_execute_follow_up_command_prints_recommendation_when_parse_quality_stil
                 'parse_quality_task_count': 1,
                 'resolved_parse_quality_issue_elements': [],
                 'remaining_parse_quality_issue_elements': ['Causal connection'],
+                'recommended_next_action': 'improve_parse_quality',
             }
         },
     }

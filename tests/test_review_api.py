@@ -411,6 +411,7 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert payload["claim_coverage_summary"]["retaliation"]["ontology_invalid_element_count"] == 0
         assert payload["claim_coverage_summary"]["retaliation"]["low_quality_parsed_record_count"] == 0
         assert payload["claim_coverage_summary"]["retaliation"]["parse_quality_issue_element_count"] == 0
+        assert payload["claim_coverage_summary"]["retaliation"]["parse_quality_recommendation"] == ""
         assert payload["claim_support_validation"]["retaliation"]["validation_status"] == "contradicted"
         assert payload["claim_support_snapshot_summary"]["retaliation"] == {
             "total_snapshot_count": 0,
@@ -1177,6 +1178,7 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
         "parse_quality_task_count": 1,
         "quality_gap_targeted_task_count": 1,
         "quality_improvement_status": "improved",
+        "recommended_next_action": "",
     }
     assert payload["post_execution_review"]["claim_coverage_summary"]["retaliation"]["status_counts"]["covered"] == 2
     assert payload["post_execution_review"]["claim_coverage_summary"]["retaliation"]["low_quality_parsed_record_count"] == 0

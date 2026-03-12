@@ -19,6 +19,8 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "signal-low-quality-records" in content
     assert "signal-parse-quality-tasks" in content
     assert "execution-result-card" in content
+    assert "parse_quality_recommendation" in content
+    assert "recommended_next_action" in content
     assert "Lineage Signals" in content
     assert "Parse Signals" in content
     assert "View lineage packets" in content

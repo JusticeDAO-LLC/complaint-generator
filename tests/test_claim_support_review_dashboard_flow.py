@@ -317,6 +317,7 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert review_payload["claim_coverage_summary"]["retaliation"]["missing_elements"] == [
         "Causal connection"
     ]
+    assert review_payload["claim_coverage_summary"]["retaliation"]["parse_quality_recommendation"] == ""
     assert review_payload["claim_coverage_summary"]["retaliation"]["support_packet_summary"] == {
         "total_packet_count": 3,
         "fact_packet_count": 3,
@@ -384,6 +385,7 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert execute_payload["follow_up_execution"]["retaliation"]["task_count"] == 1
     assert execute_payload["execution_quality_summary"]["retaliation"]["quality_improvement_status"] == "unchanged"
     assert execute_payload["execution_quality_summary"]["retaliation"]["parse_quality_task_count"] == 1
+    assert execute_payload["execution_quality_summary"]["retaliation"]["recommended_next_action"] == ""
     assert execute_payload["post_execution_review"]["claim_coverage_summary"]["retaliation"][
         "missing_elements"
     ] == ["Causal connection"]

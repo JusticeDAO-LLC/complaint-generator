@@ -87,8 +87,8 @@ After authentication, the system enters interactive mode where:
 | `!reset` | Wipe current state and start over with a new complaint |
 | `!save` | Save current conversation state to disk |
 | `!resume` | Load a previously saved state from disk |
-| `!claim-review` | Print a compact parse-quality review summary, including an `improve_parse_quality` recommendation when present, and then the claim-support review payload in JSON for a claim type |
-| `!execute-follow-up` | Execute follow-up retrieval tasks, print a compact execution-quality summary with a recommendation when parse-quality remediation is still needed, and then print the execution payload in JSON |
+| `!claim-review` | Print a compact parse-quality review summary, including the canonical `parse_quality_recommendation` when present, and then the claim-support review payload in JSON for a claim type |
+| `!execute-follow-up` | Execute follow-up retrieval tasks, print a compact execution-quality summary with the canonical `recommended_next_action` when parse-quality remediation is still needed, and then print the execution payload in JSON |
 
 Review command examples:
 
@@ -216,6 +216,7 @@ Example response fields:
 
 - `claim_coverage_matrix`: detailed per-claim and per-element grouped support links, plus per-element `support_packets` and `support_packet_summary` lineage rollups.
 - `claim_coverage_summary`: compact status counts plus missing, unresolved, contradiction, parse-quality, and `support_packet_summary` lineage labels.
+- `claim_coverage_summary[*].parse_quality_recommendation`: canonical compact recommendation exposed to the CLI and dashboard when parse-quality gaps remain.
 - The review dashboard currently renders per-element `support_packets` archive-first and fallback-next for operator triage, but API callers should treat packet ordering as presentation-specific unless they apply their own sort.
 - `claim_support_gaps`: unresolved-element diagnostics keyed by claim type.
 - `claim_contradiction_candidates`: heuristic contradiction candidates keyed by claim type.
@@ -258,6 +259,7 @@ Example response fields:
 - `follow_up_execution`: raw execution results keyed by claim type.
 - `follow_up_execution_summary`: compact execution, suppression, cooldown-skip, and graph-support counts keyed by claim type.
 - `execution_quality_summary`: before-versus-after parse-quality comparison keyed by claim type when post-execution review is requested.
+- `execution_quality_summary[*].recommended_next_action`: canonical next-step recommendation exposed to the CLI and dashboard when post-execution review still shows parse-quality gaps.
 - `post_execution_review`: refreshed review payload after execution, including updated coverage and optional follow-up planning.
 
 Use this endpoint for new clients that want execution to be unambiguously side-effecting. The review endpoint remains available for read-only review and backward-compatible opt-in execution.
