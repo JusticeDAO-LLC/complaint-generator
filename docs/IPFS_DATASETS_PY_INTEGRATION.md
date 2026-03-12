@@ -162,7 +162,7 @@ Recommended use inside complaint-generator:
 Primary next improvements:
 
 - backing graph-store persistence beyond the current local created-versus-reused snapshot semantics
-- deeper graph-backed support tracing by claim element on top of the new typed graph snapshot and support-result contracts
+- deeper graph-backed support tracing by claim element on top of the new typed graph snapshot and support-result contracts; review-facing support links now already carry stored `graph_trace` packets from evidence and authority records
 - a coverage matrix built from facts, support edges, graph output, and validation state
 
 ### 5. GraphRAG and information organization

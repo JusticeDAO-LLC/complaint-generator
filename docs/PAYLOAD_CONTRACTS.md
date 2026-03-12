@@ -4,6 +4,45 @@ This document centralizes the response payloads returned by the complaint genera
 
 Use this page when you need the current response contract without stitching it together from multiple feature guides.
 
+## Adapter Operation Metadata
+
+Adapter-facing payloads under `integrations/ipfs_datasets/` now share one metadata family even when the top-level `status` differs by operation.
+
+Representative metadata shape:
+
+```json
+{
+  "status": "not_implemented",
+  "metadata": {
+    "operation": "text_to_fol",
+    "backend_available": true,
+    "implementation_status": "not_implemented"
+  }
+}
+```
+
+When an adapter is degraded or unavailable, payloads may also include:
+
+```json
+{
+  "status": "unavailable",
+  "degraded_reason": "No module named 'ipfs_datasets_py.logic'",
+  "metadata": {
+    "operation": "text_to_fol",
+    "backend_available": false,
+    "implementation_status": "unavailable",
+    "degraded_reason": "No module named 'ipfs_datasets_py.logic'"
+  }
+}
+```
+
+Metadata semantics:
+
+- `operation`: Canonical adapter operation name.
+- `backend_available`: Whether the underlying `ipfs_datasets_py` capability imported successfully.
+- `implementation_status`: Normalized implementation state for the adapter surface, such as `implemented`, `fallback`, `not_implemented`, `pending`, `noop`, `empty`, `error`, or `unavailable`.
+- `degraded_reason`: Import or availability reason when the adapter is running degraded.
+
 ## Evidence Submission
 
 `Mediator.submit_evidence(...)` and `Mediator.submit_evidence_file(...)` return the stored artifact payload plus deduplication and graph-projection metadata.
@@ -252,6 +291,20 @@ Representative shape:
                 "graph_summary": {
                   "entity_count": 2,
                   "relationship_count": 2
+                },
+                "graph_trace": {
+                  "source_table": "legal_authorities",
+                  "record_id": 7,
+                  "summary": {
+                    "status": "available",
+                    "entity_count": 2,
+                    "relationship_count": 2
+                  },
+                  "snapshot": {
+                    "graph_id": "graph:...",
+                    "created": true,
+                    "reused": false
+                  }
                 }
               }
             ]
@@ -280,6 +333,11 @@ Representative shape:
   }
 }
 ```
+
+Support-link semantics:
+
+- `graph_summary`: Compact counts from the currently available stored graph rows.
+- `graph_trace`: Provenance-oriented graph packet combining source table, record id, adapter snapshot semantics, and stored lineage metadata for review or downstream tracing.
 
 Interpretation notes:
 

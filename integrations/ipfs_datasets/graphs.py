@@ -13,6 +13,7 @@ from .types import (
     GraphSupportMatch,
     GraphSupportResult,
     GraphSupportSummary,
+    with_adapter_metadata,
 )
 
 
@@ -285,18 +286,24 @@ def extract_graph_from_text(
                 )
             )
 
-    return GraphPayload(
-        status="available-fallback" if KNOWLEDGE_GRAPHS_AVAILABLE else "unavailable",
-        source_id=source_id or "",
-        entities=entities,
-        relationships=relationships,
-        metadata={
-            **metadata,
-            "text_length": len(text),
-            "sentence_count": len(sentences),
-            "backend_available": KNOWLEDGE_GRAPHS_AVAILABLE,
-        },
-    ).as_dict()
+    implementation_status = "fallback" if KNOWLEDGE_GRAPHS_AVAILABLE else "unavailable"
+    return with_adapter_metadata(
+        GraphPayload(
+            status="available-fallback" if KNOWLEDGE_GRAPHS_AVAILABLE else "unavailable",
+            source_id=source_id or "",
+            entities=entities,
+            relationships=relationships,
+            metadata={
+                **metadata,
+                "text_length": len(text),
+                "sentence_count": len(sentences),
+            },
+        ).as_dict(),
+        operation="extract_graph_from_text",
+        backend_available=KNOWLEDGE_GRAPHS_AVAILABLE,
+        degraded_reason=GRAPHS_ERROR if not KNOWLEDGE_GRAPHS_AVAILABLE else None,
+        implementation_status=implementation_status,
+    )
 
 
 def query_graph_support(
@@ -414,28 +421,32 @@ def query_graph_support(
         for item in limited_results
     ]
 
-    return GraphSupportResult(
-        status="available-fallback" if KNOWLEDGE_GRAPHS_AVAILABLE else "unavailable",
-        claim_element_id=claim_element_id,
-        claim_type=claim_type or "",
-        claim_element_text=claim_element_text or "",
-        graph_id=graph_id or "",
-        results=typed_results,
-        summary=GraphSupportSummary(
-            result_count=len(limited_results),
-            total_fact_count=len(facts),
-            unique_fact_count=unique_fact_count,
-            duplicate_fact_count=duplicate_fact_count,
-            semantic_cluster_count=semantic_cluster_count,
-            semantic_duplicate_count=semantic_duplicate_count,
-            support_by_kind=support_by_kind,
-            support_by_source=support_by_source,
-            max_score=ranked_results[0]["score"] if ranked_results else 0.0,
-        ),
-        metadata={
-            "backend_available": KNOWLEDGE_GRAPHS_AVAILABLE,
-        },
-    ).as_dict()
+    return with_adapter_metadata(
+        GraphSupportResult(
+            status="available-fallback" if KNOWLEDGE_GRAPHS_AVAILABLE else "unavailable",
+            claim_element_id=claim_element_id,
+            claim_type=claim_type or "",
+            claim_element_text=claim_element_text or "",
+            graph_id=graph_id or "",
+            results=typed_results,
+            summary=GraphSupportSummary(
+                result_count=len(limited_results),
+                total_fact_count=len(facts),
+                unique_fact_count=unique_fact_count,
+                duplicate_fact_count=duplicate_fact_count,
+                semantic_cluster_count=semantic_cluster_count,
+                semantic_duplicate_count=semantic_duplicate_count,
+                support_by_kind=support_by_kind,
+                support_by_source=support_by_source,
+                max_score=ranked_results[0]["score"] if ranked_results else 0.0,
+            ),
+            metadata={},
+        ).as_dict(),
+        operation="query_graph_support",
+        backend_available=KNOWLEDGE_GRAPHS_AVAILABLE,
+        degraded_reason=GRAPHS_ERROR if not KNOWLEDGE_GRAPHS_AVAILABLE else None,
+        implementation_status="fallback" if KNOWLEDGE_GRAPHS_AVAILABLE else "unavailable",
+    )
 
 
 def persist_graph_snapshot(
@@ -460,25 +471,30 @@ def persist_graph_snapshot(
         str(relationship_count),
         str(metadata.get("text_length") or ""),
     )
-    return GraphSnapshotResult(
-        status="pending" if _graph_storage_module is not None else "noop",
-        graph_id=stable_graph_id,
-        persisted=False,
-        created=created,
-        reused=reused,
-        node_count=entity_count,
-        edge_count=relationship_count,
-        metadata={
-            "source_id": source_id,
-            "backend_available": _graph_storage_module is not None,
-            **(persistence_metadata or {}),
-            "lineage": {
-                "status": str(graph_payload.get("status") or "") if isinstance(graph_payload, dict) else "",
-                "text_length": metadata.get("text_length", 0),
-                "sentence_count": metadata.get("sentence_count", 0),
+    return with_adapter_metadata(
+        GraphSnapshotResult(
+            status="pending" if _graph_storage_module is not None else "noop",
+            graph_id=stable_graph_id,
+            persisted=False,
+            created=created,
+            reused=reused,
+            node_count=entity_count,
+            edge_count=relationship_count,
+            metadata={
+                "source_id": source_id,
+                **(persistence_metadata or {}),
+                "lineage": {
+                    "status": str(graph_payload.get("status") or "") if isinstance(graph_payload, dict) else "",
+                    "text_length": metadata.get("text_length", 0),
+                    "sentence_count": metadata.get("sentence_count", 0),
+                },
             },
-        },
-    ).as_dict()
+        ).as_dict(),
+        operation="persist_graph_snapshot",
+        backend_available=_graph_storage_module is not None,
+        degraded_reason=_graph_storage_error,
+        implementation_status="pending" if _graph_storage_module is not None else "noop",
+    )
 
 
 __all__ = [

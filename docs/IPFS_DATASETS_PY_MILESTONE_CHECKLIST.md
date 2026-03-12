@@ -134,7 +134,7 @@ Checklist:
 - [x] graph snapshot contracts exist behind the adapter boundary
 - [x] graph persistence semantics distinguish created versus reused graph content
 - [ ] support-query APIs can enumerate artifacts, authorities, and facts supporting a claim element
-- [ ] graph-support outputs preserve lineage back to source artifacts and authority records
+- [x] graph-support outputs preserve lineage back to source artifacts and authority records
 - [ ] coverage-matrix semantics are defined for mediator review and drafting readiness
 - [x] support queries expose duplicate and semantic-cluster context, not just raw counts
 

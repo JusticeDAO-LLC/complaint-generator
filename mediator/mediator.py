@@ -27,7 +27,10 @@ from .web_evidence_hooks import (
 	WebEvidenceIntegrationHook
 )
 from .claim_support_hooks import ClaimSupportHook
-from integrations.ipfs_datasets.capabilities import get_ipfs_datasets_capabilities
+from integrations.ipfs_datasets.capabilities import (
+	get_ipfs_datasets_capabilities,
+	summarize_ipfs_datasets_capability_report,
+)
 from integrations.ipfs_datasets.graphs import persist_graph_snapshot, query_graph_support
 from claim_support_review import (
 	ClaimSupportFollowUpExecuteRequest,
@@ -56,6 +59,7 @@ class Mediator:
 		self.state = State()
 		self.log(
 			'ipfs_datasets_capabilities',
+			capability_report=summarize_ipfs_datasets_capability_report(),
 			capabilities={
 				name: status.as_dict()
 				for name, status in get_ipfs_datasets_capabilities().items()

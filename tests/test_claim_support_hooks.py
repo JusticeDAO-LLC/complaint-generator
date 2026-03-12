@@ -250,11 +250,29 @@ class TestClaimSupportHook:
         mock_mediator.evidence_state.get_evidence_by_cid = Mock(return_value={
             'id': 12,
             'fact_count': 2,
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:evidence-12',
+                    'created': True,
+                    'reused': False,
+                    'metadata': {
+                        'lineage': {
+                            'status': 'available-fallback',
+                            'text_length': 64,
+                        }
+                    },
+                }
+            },
         })
         mock_mediator.evidence_state.get_evidence_facts = Mock(return_value=[
             {'fact_id': 'fact:1', 'text': 'Employee complained about discrimination.'},
             {'fact_id': 'fact:2', 'text': 'Complaint was sent to HR.'},
         ])
+        mock_mediator.evidence_state.get_evidence_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:1'}],
+            'relationships': [{'id': 'rel:1'}],
+        })
 
         with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
             db_path = f.name
@@ -300,11 +318,29 @@ class TestClaimSupportHook:
         mock_mediator.evidence_state.get_evidence_by_cid = Mock(return_value={
             'id': 12,
             'fact_count': 2,
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:evidence-12',
+                    'created': True,
+                    'reused': False,
+                    'metadata': {
+                        'lineage': {
+                            'status': 'available-fallback',
+                            'text_length': 64,
+                        }
+                    },
+                }
+            },
         })
         mock_mediator.evidence_state.get_evidence_facts = Mock(return_value=[
             {'fact_id': 'fact:1', 'text': 'Employee complained about discrimination.'},
             {'fact_id': 'fact:2', 'text': 'Complaint was sent to HR.'},
         ])
+        mock_mediator.evidence_state.get_evidence_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:1'}],
+            'relationships': [{'id': 'rel:1'}],
+        })
 
         with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
             db_path = f.name
@@ -336,6 +372,9 @@ class TestClaimSupportHook:
             assert facts[0]['claim_element_text'] == 'Protected activity'
             assert facts[0]['support_kind'] == 'evidence'
             assert facts[0]['evidence_record_id'] == 12
+            assert facts[0]['graph_summary']['entity_count'] == 1
+            assert facts[0]['graph_trace']['snapshot']['graph_id'] == 'graph:evidence-12'
+            assert facts[0]['graph_trace']['lineage']['text_length'] == 64
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)
@@ -422,6 +461,14 @@ class TestClaimSupportHook:
             'graph_entity_count': 3,
             'graph_relationship_count': 2,
             'fact_count': 2,
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:evidence-18',
+                    'created': True,
+                    'reused': False,
+                    'metadata': {'lineage': {'status': 'ready'}},
+                }
+            },
         })
         mock_mediator.evidence_state.get_evidence_facts = Mock(return_value=[
             {'fact_id': 'fact:1', 'text': 'Employee complained to HR.'},
@@ -444,6 +491,14 @@ class TestClaimSupportHook:
             'graph_entity_count': 1,
             'graph_relationship_count': 1,
             'fact_count': 1,
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:authority-7',
+                    'created': True,
+                    'reused': False,
+                    'metadata': {'lineage': {'status': 'ready'}},
+                }
+            },
         })
         mock_mediator.legal_authority_storage.get_authority_facts = Mock(return_value=[
             {'fact_id': 'auth:1', 'text': 'Section 1983 authorizes relief.'},
@@ -498,6 +553,8 @@ class TestClaimSupportHook:
             assert protected_activity['links_by_kind']['authority'][0]['record_summary']['citation'] == '42 U.S.C. § 1983'
             assert protected_activity['links_by_kind']['evidence'][0]['graph_summary']['entity_count'] == 3
             assert protected_activity['links_by_kind']['authority'][0]['graph_summary']['relationship_count'] == 1
+            assert protected_activity['links_by_kind']['evidence'][0]['graph_trace']['snapshot']['graph_id'] == 'graph:evidence-18'
+            assert protected_activity['links_by_kind']['authority'][0]['graph_trace']['snapshot']['graph_id'] == 'graph:authority-7'
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)

@@ -5,15 +5,19 @@ from unittest.mock import Mock, patch
 
 from integrations.ipfs_datasets.capabilities import (
     get_ipfs_datasets_capabilities,
+    summarize_ipfs_datasets_capability_report,
     summarize_ipfs_datasets_capabilities,
 )
 from integrations.ipfs_datasets.documents import parse_document_bytes, parse_document_file
 from integrations.ipfs_datasets.graphs import extract_graph_from_text, persist_graph_snapshot, query_graph_support
+from integrations.ipfs_datasets.graphrag import build_ontology, run_refinement_cycle, validate_ontology
 from integrations.ipfs_datasets.legal import (
     search_federal_register,
     search_recap_documents,
     search_us_code,
 )
+from integrations.ipfs_datasets.logic import text_to_fol
+from integrations.ipfs_datasets.mcp_gateway import execute_gateway_tool, list_gateway_tools
 from integrations.ipfs_datasets.scraper_daemon import ScraperDaemon, ScraperDaemonConfig
 from integrations.ipfs_datasets.search import (
     evaluate_scraped_content,
@@ -21,6 +25,7 @@ from integrations.ipfs_datasets.search import (
     search_brave_web,
     search_multi_engine_web,
 )
+from integrations.ipfs_datasets.vector_store import create_vector_index, search_vector_index
 
 
 def test_capability_registry_has_expected_keys():
@@ -44,6 +49,15 @@ def test_capability_summary_returns_strings():
     summary = summarize_ipfs_datasets_capabilities()
     assert summary
     assert all(isinstance(value, str) for value in summary.values())
+
+
+def test_capability_report_returns_counts_and_nested_statuses():
+    report = summarize_ipfs_datasets_capability_report()
+
+    assert report["status"] in {"available", "degraded"}
+    assert report["available_count"] + report["degraded_count"] == len(report["capabilities"])
+    assert isinstance(report["available_capabilities"], list)
+    assert isinstance(report["degraded_capabilities"], dict)
 
 
 def test_search_us_code_normalizes_results():
@@ -273,6 +287,8 @@ def test_parse_document_bytes_returns_normalized_shape():
     assert result['summary']['chunk_count'] == len(result['chunks'])
     assert result['summary']['parser_version'] == 'documents-adapter:1'
     assert result['metadata']['transform_lineage']['source'] == 'bytes'
+    assert result['metadata']['operation'] == 'parse_document_text'
+    assert result['metadata']['implementation_status'] in {'implemented', 'fallback'}
 
 
 def test_parse_document_bytes_normalizes_html_input():
@@ -314,6 +330,7 @@ def test_extract_graph_from_text_returns_normalized_shape():
     assert result['entities'][0]['id'] == 'artifact-1'
     assert any(entity['type'] == 'fact' for entity in result['entities'])
     assert any(relationship['relation_type'] == 'has_fact' for relationship in result['relationships'])
+    assert result['metadata']['operation'] == 'extract_graph_from_text'
 
 
 def test_persist_graph_snapshot_returns_stable_contract():
@@ -336,6 +353,7 @@ def test_persist_graph_snapshot_returns_stable_contract():
     assert result['metadata']['source_id'] == 'artifact-1'
     assert result['metadata']['projection_target'] == 'complaint_phase_knowledge_graph'
     assert result['metadata']['lineage']['status'] == graph_payload['status']
+    assert result['metadata']['operation'] == 'persist_graph_snapshot'
 
 
 def test_query_graph_support_ranks_fact_backed_results():
@@ -382,6 +400,7 @@ def test_query_graph_support_ranks_fact_backed_results():
     assert result['summary']['support_by_kind']['evidence'] == 2
     assert result['summary']['support_by_kind']['authority'] == 1
     assert result['metadata']['backend_available'] in {True, False}
+    assert result['metadata']['operation'] == 'query_graph_support'
     assert result['results'][0]['fact_id'] == 'fact:1'
     assert result['results'][0]['matched_claim_element'] is True
     assert result['results'][0]['duplicate_count'] == 2
@@ -422,3 +441,33 @@ def test_query_graph_support_clusters_semantically_similar_facts():
     assert result['summary']['semantic_duplicate_count'] == 1
     assert result['results'][0]['cluster_size'] == 2
     assert len(result['results'][0]['cluster_texts']) == 2
+
+
+def test_stubbed_adapters_expose_canonical_operation_metadata():
+    logic_result = text_to_fol('All employees are protected.')
+    vector_create = create_vector_index([{'text': 'A'}], index_name='test-index')
+    vector_search = search_vector_index('employees', index_name='test-index')
+    gateway_list = list_gateway_tools()
+    gateway_exec = execute_gateway_tool('search_cases', {'query': 'retaliation'})
+    ontology_result = build_ontology('Employment retaliation policy.')
+    validation_result = validate_ontology({'entities': [], 'relationships': []})
+    refinement_result = run_refinement_cycle({'entities': []}, rounds=2)
+
+    results = [
+        logic_result,
+        vector_create,
+        vector_search,
+        gateway_list,
+        gateway_exec,
+        ontology_result,
+        validation_result,
+        refinement_result,
+    ]
+
+    for result in results:
+        assert 'metadata' in result
+        assert result['metadata']['operation']
+        assert result['metadata']['implementation_status']
+        assert result['metadata']['backend_available'] in {True, False}
+
+    assert refinement_result['metadata']['rounds'] == 2

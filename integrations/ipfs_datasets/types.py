@@ -13,6 +13,37 @@ def _stable_identifier(prefix: str, *parts: str) -> str:
     return f"{prefix}:{digest}"
 
 
+def normalize_degraded_reason(reason: Any) -> str | None:
+    text = str(reason or "").strip()
+    return text or None
+
+
+def with_adapter_metadata(
+    payload: Dict[str, Any],
+    *,
+    operation: str,
+    backend_available: bool,
+    degraded_reason: Any = None,
+    implementation_status: str = "",
+    extra_metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    normalized_payload = dict(payload)
+    existing_metadata = normalized_payload.get("metadata")
+    metadata = dict(existing_metadata) if isinstance(existing_metadata, dict) else {}
+    metadata["operation"] = operation
+    metadata["backend_available"] = bool(backend_available)
+    if implementation_status:
+        metadata["implementation_status"] = implementation_status
+    normalized_reason = normalize_degraded_reason(degraded_reason)
+    if normalized_reason:
+        metadata["degraded_reason"] = normalized_reason
+        normalized_payload.setdefault("degraded_reason", normalized_reason)
+    if extra_metadata:
+        metadata.update(extra_metadata)
+    normalized_payload["metadata"] = metadata
+    return normalized_payload
+
+
 @dataclass(frozen=True)
 class ProvenanceRecord:
     source_url: str = ""
@@ -379,6 +410,8 @@ class ValidationRun:
 
 
 __all__ = [
+    "normalize_degraded_reason",
+    "with_adapter_metadata",
     "ProvenanceRecord",
     "DocumentChunk",
     "DocumentParseSummary",

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from .loader import import_module_optional
+from .types import with_adapter_metadata
 
 
 _mcp_server_module, _mcp_server_error = import_module_optional("ipfs_datasets_py.mcp_server")
@@ -12,22 +13,34 @@ MCP_GATEWAY_ERROR = _mcp_server_error
 
 
 def list_gateway_tools() -> Dict[str, Any]:
-    return {
-        "status": "not_implemented" if MCP_GATEWAY_AVAILABLE else "unavailable",
-        "tools": [],
-    }
+    return with_adapter_metadata(
+        {
+            "status": "not_implemented" if MCP_GATEWAY_AVAILABLE else "unavailable",
+            "tools": [],
+        },
+        operation="list_gateway_tools",
+        backend_available=MCP_GATEWAY_AVAILABLE,
+        degraded_reason=MCP_GATEWAY_ERROR if not MCP_GATEWAY_AVAILABLE else None,
+        implementation_status="not_implemented" if MCP_GATEWAY_AVAILABLE else "unavailable",
+    )
 
 
 def execute_gateway_tool(
     tool_name: str,
     payload: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    return {
-        "status": "not_implemented" if MCP_GATEWAY_AVAILABLE else "unavailable",
-        "tool_name": tool_name,
-        "payload": payload or {},
-        "result": None,
-    }
+    return with_adapter_metadata(
+        {
+            "status": "not_implemented" if MCP_GATEWAY_AVAILABLE else "unavailable",
+            "tool_name": tool_name,
+            "payload": payload or {},
+            "result": None,
+        },
+        operation="execute_gateway_tool",
+        backend_available=MCP_GATEWAY_AVAILABLE,
+        degraded_reason=MCP_GATEWAY_ERROR if not MCP_GATEWAY_AVAILABLE else None,
+        implementation_status="not_implemented" if MCP_GATEWAY_AVAILABLE else "unavailable",
+    )
 
 
 __all__ = [

@@ -362,6 +362,7 @@ Implemented baseline:
 
 - graph projection metadata is already returned through mediator flows
 - evidence graph metadata is already persisted even when a backing graph store is unavailable
+- claim-support enrichment now carries graph lineage packets from stored evidence and authority `graph_metadata`, so review-oriented support links and derived fact rows can trace back to adapter snapshot semantics and source records
 
 Acceptance criteria:
 
@@ -369,7 +370,7 @@ Acceptance criteria:
 
 ### Work Package W4.3: Claim-element support queries
 
-Status: Planned
+Status: In Progress
 Target files:
 
 - `mediator/claim_support_hooks.py`
@@ -381,6 +382,11 @@ Tasks:
 - add query APIs for artifacts supporting a claim element
 - add query APIs for authorities supporting or contradicting a claim element
 - add graph-backed unresolved-gap queries
+
+Implemented baseline:
+
+- claim-element support views already enumerate artifacts, authorities, and fact rows
+- enriched support links and derived fact rows now expose `graph_trace` packets for evidence and authority sources
 
 Acceptance criteria:
 

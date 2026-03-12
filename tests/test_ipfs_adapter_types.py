@@ -18,6 +18,8 @@ from integrations.ipfs_datasets.types import (
     FormalPredicate,
     ProvenanceRecord,
     ValidationRun,
+    normalize_degraded_reason,
+    with_adapter_metadata,
 )
 
 
@@ -214,3 +216,21 @@ def test_case_fact_serializes_with_provenance():
     assert payload["fact_id"] == "fact:1"
     assert payload["source_artifact_id"] == "artifact:1"
     assert payload["provenance"]["source_url"] == "https://example.com/evidence"
+
+
+def test_adapter_metadata_helper_normalizes_reason_and_preserves_payload():
+    payload = with_adapter_metadata(
+        {"status": "unavailable", "result": None},
+        operation="execute_gateway_tool",
+        backend_available=False,
+        degraded_reason="  missing dependency  ",
+        implementation_status="unavailable",
+        extra_metadata={"tool_family": "mcp_gateway"},
+    )
+
+    assert normalize_degraded_reason("  missing dependency  ") == "missing dependency"
+    assert payload["degraded_reason"] == "missing dependency"
+    assert payload["metadata"]["operation"] == "execute_gateway_tool"
+    assert payload["metadata"]["backend_available"] is False
+    assert payload["metadata"]["implementation_status"] == "unavailable"
+    assert payload["metadata"]["tool_family"] == "mcp_gateway"

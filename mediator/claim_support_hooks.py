@@ -147,6 +147,54 @@ class ClaimSupportHook:
             parts.append(support_label)
         return ' '.join(parts)
 
+    def _normalize_graph_summary(
+        self,
+        *,
+        graph_payload: Optional[Dict[str, Any]] = None,
+        default_status: str = '',
+        default_entity_count: int = 0,
+        default_relationship_count: int = 0,
+    ) -> Dict[str, Any]:
+        if isinstance(graph_payload, dict):
+            return {
+                'status': graph_payload.get('status', default_status),
+                'entity_count': len(graph_payload.get('entities', []) or []),
+                'relationship_count': len(graph_payload.get('relationships', []) or []),
+            }
+        return {
+            'status': default_status,
+            'entity_count': default_entity_count,
+            'relationship_count': default_relationship_count,
+        }
+
+    def _build_graph_trace(
+        self,
+        *,
+        source_table: Optional[str],
+        support_ref: Optional[str],
+        record_id: Optional[int],
+        graph_summary: Dict[str, Any],
+        graph_metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        normalized_metadata = graph_metadata if isinstance(graph_metadata, dict) else {}
+        snapshot = normalized_metadata.get('graph_snapshot', {})
+        snapshot = snapshot if isinstance(snapshot, dict) else {}
+        adapter_metadata = {
+            key: value
+            for key, value in normalized_metadata.items()
+            if key != 'graph_snapshot'
+        }
+        lineage = snapshot.get('metadata', {}) if isinstance(snapshot.get('metadata'), dict) else {}
+        return {
+            'source_table': source_table or '',
+            'support_ref': support_ref or '',
+            'record_id': record_id,
+            'summary': graph_summary,
+            'snapshot': snapshot,
+            'metadata': adapter_metadata,
+            'lineage': lineage.get('lineage', {}) if isinstance(lineage.get('lineage'), dict) else {},
+        }
+
     def _normalize_query_text(self, query_text: str) -> str:
         return ' '.join((query_text or '').strip().lower().split())
 
@@ -533,6 +581,7 @@ class ClaimSupportHook:
             enriched['authority_record_id'] = authority_record.get('id')
             authority_fact_count = authority_record.get('fact_count', 0)
             enriched['fact_count'] = authority_fact_count if isinstance(authority_fact_count, (int, float)) else 0
+            authority_graph_metadata = authority_record.get('graph_metadata', {}) if isinstance(authority_record.get('graph_metadata'), dict) else {}
             enriched['record_summary'] = {
                 'id': authority_record.get('id'),
                 'citation': authority_record.get('citation'),
@@ -562,17 +611,20 @@ class ClaimSupportHook:
                     authority_graph = {'status': 'error', 'entities': [], 'relationships': []}
                 if not isinstance(authority_graph, dict):
                     authority_graph = {'status': '', 'entities': [], 'relationships': []}
-                enriched['graph_summary'] = {
-                    'status': authority_graph.get('status', ''),
-                    'entity_count': len(authority_graph.get('entities', []) or []),
-                    'relationship_count': len(authority_graph.get('relationships', []) or []),
-                }
+                enriched['graph_summary'] = self._normalize_graph_summary(graph_payload=authority_graph)
             else:
-                enriched['graph_summary'] = {
-                    'status': authority_record.get('graph_status', ''),
-                    'entity_count': authority_record.get('graph_entity_count', 0) or 0,
-                    'relationship_count': authority_record.get('graph_relationship_count', 0) or 0,
-                }
+                enriched['graph_summary'] = self._normalize_graph_summary(
+                    default_status=authority_record.get('graph_status', ''),
+                    default_entity_count=authority_record.get('graph_entity_count', 0) or 0,
+                    default_relationship_count=authority_record.get('graph_relationship_count', 0) or 0,
+                )
+            enriched['graph_trace'] = self._build_graph_trace(
+                source_table=enriched.get('source_table'),
+                support_ref=enriched.get('support_ref'),
+                record_id=authority_record.get('id'),
+                graph_summary=enriched['graph_summary'],
+                graph_metadata=authority_graph_metadata,
+            )
             return enriched
 
         if enriched.get('source_table') != 'evidence':
@@ -596,6 +648,7 @@ class ClaimSupportHook:
         enriched['evidence_record_id'] = evidence_record.get('id')
         evidence_fact_count = evidence_record.get('fact_count', 0)
         enriched['fact_count'] = evidence_fact_count if isinstance(evidence_fact_count, (int, float)) else 0
+        evidence_graph_metadata = evidence_record.get('graph_metadata', {}) if isinstance(evidence_record.get('graph_metadata'), dict) else {}
         enriched['record_summary'] = {
             'id': evidence_record.get('id'),
             'cid': evidence_record.get('cid'),
@@ -625,17 +678,20 @@ class ClaimSupportHook:
                 evidence_graph = {'status': 'error', 'entities': [], 'relationships': []}
             if not isinstance(evidence_graph, dict):
                 evidence_graph = {'status': '', 'entities': [], 'relationships': []}
-            enriched['graph_summary'] = {
-                'status': evidence_graph.get('status', ''),
-                'entity_count': len(evidence_graph.get('entities', []) or []),
-                'relationship_count': len(evidence_graph.get('relationships', []) or []),
-            }
+            enriched['graph_summary'] = self._normalize_graph_summary(graph_payload=evidence_graph)
         else:
-            enriched['graph_summary'] = {
-                'status': evidence_record.get('graph_status', ''),
-                'entity_count': evidence_record.get('graph_entity_count', 0) or 0,
-                'relationship_count': evidence_record.get('graph_relationship_count', 0) or 0,
-            }
+            enriched['graph_summary'] = self._normalize_graph_summary(
+                default_status=evidence_record.get('graph_status', ''),
+                default_entity_count=evidence_record.get('graph_entity_count', 0) or 0,
+                default_relationship_count=evidence_record.get('graph_relationship_count', 0) or 0,
+            )
+        enriched['graph_trace'] = self._build_graph_trace(
+            source_table=enriched.get('source_table'),
+            support_ref=enriched.get('support_ref'),
+            record_id=evidence_record.get('id'),
+            graph_summary=enriched['graph_summary'],
+            graph_metadata=evidence_graph_metadata,
+        )
 
         return enriched
 
@@ -753,6 +809,9 @@ class ClaimSupportHook:
                         'source_table': link.get('source_table'),
                         'evidence_record_id': link.get('evidence_record_id'),
                         'authority_record_id': link.get('authority_record_id'),
+                        'graph_summary': link.get('graph_summary', {}),
+                        'graph_trace': link.get('graph_trace', {}),
+                        'record_summary': link.get('record_summary', {}),
                     }
                 )
 

@@ -1,6 +1,7 @@
 from .capabilities import (
 	CapabilityStatus,
 	get_ipfs_datasets_capabilities,
+	summarize_ipfs_datasets_capability_report,
 	summarize_ipfs_datasets_capabilities,
 )
 from .types import (
@@ -23,6 +24,8 @@ from .types import (
 	FormalPredicate,
 	ProvenanceRecord,
 	ValidationRun,
+	normalize_degraded_reason,
+	with_adapter_metadata,
 )
 from .search import (
 	evaluate_scraped_content,
@@ -35,6 +38,7 @@ from .search import (
 __all__ = [
 	"CapabilityStatus",
 	"get_ipfs_datasets_capabilities",
+	"summarize_ipfs_datasets_capability_report",
 	"summarize_ipfs_datasets_capabilities",
 	"CaseArtifact",
 	"CaseAuthority",
@@ -55,6 +59,8 @@ __all__ = [
 	"FormalPredicate",
 	"ProvenanceRecord",
 	"ValidationRun",
+	"normalize_degraded_reason",
+	"with_adapter_metadata",
 	"evaluate_scraped_content",
 	"scrape_archived_domain",
 	"scrape_web_content",

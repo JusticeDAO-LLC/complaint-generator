@@ -307,6 +307,10 @@ Tasks:
 - expose artifact, authority, fact, and graph-support traces for a claim element
 - prepare coverage-matrix semantics for mediator and review consumers
 
+Current state:
+
+- claim-support links and derived fact rows now carry `graph_trace` packets combining source-table identity, record id, graph summary, adapter snapshot semantics, and stored lineage metadata from evidence and authority `graph_metadata`
+
 Done when:
 
 - claim support is queryable as a provenance-backed support structure rather than only aggregated counts

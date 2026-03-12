@@ -12,6 +12,7 @@ from .types import (
     DocumentParseResult,
     DocumentParseSummary,
     DocumentTransformLineage,
+    with_adapter_metadata,
 )
 
 
@@ -252,7 +253,16 @@ def parse_document_text(
             "transform_lineage": transform_lineage.as_dict(),
         },
     )
-    return result.as_dict()
+    implementation_status = "implemented" if normalized_text else "empty"
+    if normalized_text and not DOCUMENTS_AVAILABLE:
+        implementation_status = "fallback"
+    return with_adapter_metadata(
+        result.as_dict(),
+        operation="parse_document_text",
+        backend_available=DOCUMENTS_AVAILABLE,
+        degraded_reason=DOCUMENTS_ERROR if not DOCUMENTS_AVAILABLE else None,
+        implementation_status=implementation_status,
+    )
 
 
 def parse_document_bytes(
