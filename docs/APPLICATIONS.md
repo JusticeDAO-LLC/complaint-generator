@@ -189,7 +189,7 @@ This mode serves:
 
 | Endpoint | Description | Returns |
 |----------|-------------|---------|
-| `/api/claim-support/review` | Claim-element review packet for operator or UI workflows | JSON payload with `claim_coverage_matrix`, `claim_coverage_summary`, and optional `support_summary`, `claim_overview`, or `follow_up_plan`; `follow_up_execution` remains compatibility-only |
+| `/api/claim-support/review` | Claim-element review packet for operator or UI workflows | JSON payload with `claim_coverage_matrix`, `claim_coverage_summary`, `claim_support_gaps`, `claim_contradiction_candidates`, and optional `support_summary`, `claim_overview`, or `follow_up_plan`; `follow_up_execution` remains compatibility-only |
 | `/api/claim-support/execute-follow-up` | Explicit side-effecting follow-up execution endpoint | JSON payload with `follow_up_execution`, `follow_up_execution_summary`, and optional `post_execution_review` |
 
 ##### `/api/claim-support/review` - Claim Support Review
@@ -215,7 +215,9 @@ Example request:
 Example response fields:
 
 - `claim_coverage_matrix`: detailed per-claim and per-element grouped support links.
-- `claim_coverage_summary`: compact status counts plus missing and partially supported element labels.
+- `claim_coverage_summary`: compact status counts plus missing, unresolved, and contradiction summary labels.
+- `claim_support_gaps`: unresolved-element diagnostics keyed by claim type.
+- `claim_contradiction_candidates`: heuristic contradiction candidates keyed by claim type.
 - `support_summary`: persisted support-link summary keyed by claim type.
 - `claim_overview`: covered, partially supported, and missing element buckets keyed by claim type.
 - `follow_up_plan`: actionable retrieval tasks keyed by claim type.

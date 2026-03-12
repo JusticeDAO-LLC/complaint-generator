@@ -1274,6 +1274,12 @@ class Mediator:
 			'gap_summary': current_gap_summary,
 			'contradiction_candidates': contradiction_candidates,
 			'support_facts': support_facts,
+			'support_traces': self.claim_support.get_claim_support_traces(
+				user_id,
+				claim_type,
+				claim_element_id=target_element_id,
+				claim_element_text=target_element_text,
+			),
 			'evidence': evidence_records,
 			'authorities': authority_records,
 			'total_facts': len(support_facts),

@@ -707,6 +707,84 @@ class TestClaimSupportHook:
             assert protected_activity['links_by_kind']['authority'][0]['graph_summary']['relationship_count'] == 1
             assert protected_activity['links_by_kind']['evidence'][0]['graph_trace']['snapshot']['graph_id'] == 'graph:evidence-18'
             assert protected_activity['links_by_kind']['authority'][0]['graph_trace']['snapshot']['graph_id'] == 'graph:authority-7'
+            assert claim_matrix['support_trace_summary']['trace_count'] == 3
+            assert claim_matrix['support_trace_summary']['unique_fact_count'] == 3
+            assert protected_activity['support_trace_summary']['trace_count'] == 3
+            assert protected_activity['support_trace_summary']['parse_source_counts']['unknown'] == 3
+            assert protected_activity['support_traces'][0]['trace_kind'] == 'fact'
+            assert protected_activity['support_traces'][0]['graph_id']
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_claim_support_traces_returns_fact_and_lineage_rows(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.evidence_state = Mock()
+        mock_mediator.evidence_state.get_evidence_by_cid = Mock(return_value={
+            'id': 52,
+            'cid': 'QmTrace1',
+            'fact_count': 1,
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:evidence-52',
+                    'created': True,
+                    'reused': False,
+                }
+            },
+        })
+        mock_mediator.evidence_state.get_evidence_facts = Mock(return_value=[
+            {
+                'fact_id': 'fact:trace-1',
+                'text': 'Employee complained to HR.',
+                'confidence': 0.7,
+                'metadata': {
+                    'parse_lineage': {
+                        'source': 'bytes',
+                        'parser_version': 'documents-adapter:1',
+                    }
+                },
+            }
+        ])
+        mock_mediator.evidence_state.get_evidence_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:1'}],
+            'relationships': [{'id': 'rel:1'}],
+        })
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements('testuser', {'employment': ['Protected activity']})
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmTrace1',
+                support_label='HR complaint email',
+                source_table='evidence',
+            )
+
+            traces = hook.get_claim_support_traces(
+                'testuser',
+                'employment',
+                claim_element_text='Protected activity',
+            )
+
+            assert len(traces) == 1
+            assert traces[0]['fact_id'] == 'fact:trace-1'
+            assert traces[0]['trace_kind'] == 'fact'
+            assert traces[0]['parse_lineage']['source'] == 'bytes'
+            assert traces[0]['graph_id'] == 'graph:evidence-52'
+            assert traces[0]['record_id'] == 52
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)

@@ -52,6 +52,8 @@ def _summarize_claim_coverage_claim(
     claim_type: str,
     coverage_claim: Dict[str, Any],
     overview_claim: Dict[str, Any],
+    gap_claim: Dict[str, Any],
+    contradiction_claim: Dict[str, Any],
 ) -> Dict[str, Any]:
     missing_elements = []
     partially_supported_elements = []
@@ -67,6 +69,33 @@ def _summarize_claim_coverage_claim(
             for element in overview_claim.get("partially_supported", [])
             if isinstance(element, dict) and element.get("element_text")
         ]
+
+    unresolved_elements = []
+    recommended_gap_actions: Dict[str, int] = {}
+    if isinstance(gap_claim, dict):
+        for element in gap_claim.get("unresolved_elements", []):
+            if not isinstance(element, dict):
+                continue
+            element_text = element.get("element_text")
+            if element_text:
+                unresolved_elements.append(element_text)
+            action = str(element.get("recommended_action") or "unspecified")
+            recommended_gap_actions[action] = recommended_gap_actions.get(action, 0) + 1
+
+    contradicted_elements = []
+    contradiction_candidate_count = 0
+    seen_contradicted_elements = set()
+    if isinstance(contradiction_claim, dict):
+        contradiction_candidate_count = int(
+            contradiction_claim.get("candidate_count", 0) or 0
+        )
+        for candidate in contradiction_claim.get("candidates", []):
+            if not isinstance(candidate, dict):
+                continue
+            element_text = candidate.get("claim_element_text")
+            if element_text and element_text not in seen_contradicted_elements:
+                seen_contradicted_elements.add(element_text)
+                contradicted_elements.append(element_text)
 
     traced_link_count = 0
     snapshot_created_count = 0
@@ -112,12 +141,20 @@ def _summarize_claim_coverage_claim(
         "total_links": coverage_claim.get("total_links", 0),
         "total_facts": coverage_claim.get("total_facts", 0),
         "support_by_kind": coverage_claim.get("support_by_kind", {}),
+        "support_trace_summary": coverage_claim.get("support_trace_summary", {}),
         "status_counts": coverage_claim.get(
             "status_counts",
             {"covered": 0, "partially_supported": 0, "missing": 0},
         ),
         "missing_elements": missing_elements,
         "partially_supported_elements": partially_supported_elements,
+        "unresolved_element_count": int(gap_claim.get("unresolved_count", 0) or 0)
+        if isinstance(gap_claim, dict)
+        else 0,
+        "unresolved_elements": unresolved_elements,
+        "recommended_gap_actions": recommended_gap_actions,
+        "contradiction_candidate_count": contradiction_candidate_count,
+        "contradicted_elements": contradicted_elements,
         "graph_trace_summary": {
             "traced_link_count": traced_link_count,
             "snapshot_created_count": snapshot_created_count,
@@ -214,11 +251,28 @@ def build_claim_support_review_payload(
 
     coverage_claims = matrix.get("claims", {}) if isinstance(matrix, dict) else {}
     overview_claims = overview.get("claims", {}) if isinstance(overview, dict) else {}
+    gaps = mediator.get_claim_support_gaps(
+        claim_type=request.claim_type,
+        user_id=resolved_user_id,
+        required_support_kinds=required_support_kinds,
+    )
+    contradiction_candidates = mediator.get_claim_contradiction_candidates(
+        claim_type=request.claim_type,
+        user_id=resolved_user_id,
+    )
+    gap_claims = gaps.get("claims", {}) if isinstance(gaps, dict) else {}
+    contradiction_claims = (
+        contradiction_candidates.get("claims", {})
+        if isinstance(contradiction_candidates, dict)
+        else {}
+    )
     coverage_summary = {
         claim_name: _summarize_claim_coverage_claim(
             claim_name,
             claim_matrix,
             overview_claims.get(claim_name, {}),
+            gap_claims.get(claim_name, {}),
+            contradiction_claims.get(claim_name, {}),
         )
         for claim_name, claim_matrix in coverage_claims.items()
         if isinstance(claim_matrix, dict)
@@ -230,6 +284,8 @@ def build_claim_support_review_payload(
         "required_support_kinds": required_support_kinds,
         "claim_coverage_matrix": coverage_claims,
         "claim_coverage_summary": coverage_summary,
+        "claim_support_gaps": gap_claims,
+        "claim_contradiction_candidates": contradiction_claims,
     }
 
     if request.include_follow_up_plan:

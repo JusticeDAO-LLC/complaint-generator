@@ -238,6 +238,110 @@ class ClaimSupportHook:
             'graph_id_count': len(seen_graph_ids),
         }
 
+    def _build_support_trace(
+        self,
+        *,
+        link: Dict[str, Any],
+        fact: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        fact = fact if isinstance(fact, dict) else {}
+        graph_trace = link.get('graph_trace', {}) if isinstance(link.get('graph_trace'), dict) else {}
+        graph_summary = link.get('graph_summary', {}) if isinstance(link.get('graph_summary'), dict) else {}
+        record_summary = link.get('record_summary', {}) if isinstance(link.get('record_summary'), dict) else {}
+        fact_metadata = fact.get('metadata', {}) if isinstance(fact.get('metadata'), dict) else {}
+        parse_lineage = fact_metadata.get('parse_lineage', {}) if isinstance(fact_metadata.get('parse_lineage'), dict) else {}
+        snapshot = graph_trace.get('snapshot', {}) if isinstance(graph_trace.get('snapshot'), dict) else {}
+        source_ref = link.get('support_ref') or parse_lineage.get('source_ref') or ''
+
+        return {
+            'claim_type': link.get('claim_type'),
+            'claim_element_id': link.get('claim_element_id'),
+            'claim_element_text': link.get('claim_element_text'),
+            'support_kind': link.get('support_kind'),
+            'support_ref': link.get('support_ref'),
+            'support_label': link.get('support_label'),
+            'source_table': link.get('source_table'),
+            'support_strength': link.get('support_strength', 0.0),
+            'record_id': graph_trace.get('record_id') or link.get('evidence_record_id') or link.get('authority_record_id'),
+            'fact_id': fact.get('fact_id', ''),
+            'fact_text': fact.get('text', ''),
+            'confidence': fact.get('confidence', 0.0),
+            'trace_kind': 'fact' if fact.get('fact_id') else 'link',
+            'parse_lineage': parse_lineage,
+            'source_lineage_ref': source_ref,
+            'record_summary': record_summary,
+            'graph_summary': graph_summary,
+            'graph_trace': graph_trace,
+            'graph_id': snapshot.get('graph_id', ''),
+            'evidence_record_id': link.get('evidence_record_id'),
+            'authority_record_id': link.get('authority_record_id'),
+        }
+
+    def _collect_support_traces_from_links(self, links: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        traces: List[Dict[str, Any]] = []
+        for link in links or []:
+            facts = link.get('facts', []) if isinstance(link.get('facts'), list) else []
+            if facts:
+                traces.extend(self._build_support_trace(link=link, fact=fact) for fact in facts)
+                continue
+            traces.append(self._build_support_trace(link=link))
+        return traces
+
+    def _summarize_support_traces(self, traces: List[Dict[str, Any]]) -> Dict[str, Any]:
+        support_by_kind: Dict[str, int] = {}
+        support_by_source: Dict[str, int] = {}
+        parse_source_counts: Dict[str, int] = {}
+        graph_status_counts: Dict[str, int] = {}
+        unique_fact_ids = set()
+        unique_graph_ids = set()
+        unique_record_ids = set()
+        fact_trace_count = 0
+        link_only_trace_count = 0
+
+        for trace in traces or []:
+            if not isinstance(trace, dict):
+                continue
+            support_kind = str(trace.get('support_kind') or 'unknown')
+            source_table = str(trace.get('source_table') or 'unknown')
+            support_by_kind[support_kind] = support_by_kind.get(support_kind, 0) + 1
+            support_by_source[source_table] = support_by_source.get(source_table, 0) + 1
+
+            parse_lineage = trace.get('parse_lineage', {}) if isinstance(trace.get('parse_lineage'), dict) else {}
+            parse_source = str(parse_lineage.get('source') or 'unknown')
+            parse_source_counts[parse_source] = parse_source_counts.get(parse_source, 0) + 1
+
+            graph_summary = trace.get('graph_summary', {}) if isinstance(trace.get('graph_summary'), dict) else {}
+            graph_status = str(graph_summary.get('status') or 'unknown')
+            graph_status_counts[graph_status] = graph_status_counts.get(graph_status, 0) + 1
+
+            fact_id = str(trace.get('fact_id') or '')
+            if fact_id:
+                fact_trace_count += 1
+                unique_fact_ids.add(fact_id)
+            else:
+                link_only_trace_count += 1
+
+            graph_id = str(trace.get('graph_id') or '')
+            if graph_id:
+                unique_graph_ids.add(graph_id)
+
+            record_id = trace.get('record_id')
+            if record_id not in (None, ''):
+                unique_record_ids.add(record_id)
+
+        return {
+            'trace_count': len([trace for trace in traces if isinstance(trace, dict)]),
+            'fact_trace_count': fact_trace_count,
+            'link_only_trace_count': link_only_trace_count,
+            'unique_fact_count': len(unique_fact_ids),
+            'unique_graph_id_count': len(unique_graph_ids),
+            'unique_record_count': len(unique_record_ids),
+            'support_by_kind': support_by_kind,
+            'support_by_source': support_by_source,
+            'parse_source_counts': parse_source_counts,
+            'graph_status_counts': graph_status_counts,
+        }
+
     def _fact_polarity(self, text: Optional[str]) -> str:
         lowered = str(text or '').lower()
         negative_markers = (
@@ -898,6 +1002,24 @@ class ClaimSupportHook:
 
         return facts
 
+    def get_claim_support_traces(
+        self,
+        user_id: str,
+        claim_type: Optional[str] = None,
+        *,
+        claim_element_id: Optional[str] = None,
+        claim_element_text: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        links = [self._enrich_support_link(link) for link in self.get_support_links(user_id, claim_type)]
+        filtered_links: List[Dict[str, Any]] = []
+        for link in links:
+            if claim_element_id and link.get('claim_element_id') != claim_element_id:
+                continue
+            if claim_element_text and link.get('claim_element_text') != claim_element_text:
+                continue
+            filtered_links.append(link)
+        return self._collect_support_traces_from_links(filtered_links)
+
     def get_claim_element_summary(
         self,
         user_id: str,
@@ -1029,6 +1151,9 @@ class ClaimSupportHook:
                 for link in element.get('links', []) or []:
                     links_by_kind.setdefault(link.get('support_kind', 'unknown'), []).append(link)
 
+                support_traces = self._collect_support_traces_from_links(element.get('links', []) or [])
+                support_trace_summary = self._summarize_support_traces(support_traces)
+
                 elements.append(
                     {
                         'element_id': element.get('element_id'),
@@ -1042,10 +1167,13 @@ class ClaimSupportHook:
                             if element.get('support_by_kind', {}).get(kind, 0) == 0
                         ],
                         'links_by_kind': links_by_kind,
+                        'support_traces': support_traces,
+                        'support_trace_summary': support_trace_summary,
                         'links': element.get('links', []),
                     }
                 )
 
+            claim_support_traces = self._collect_support_traces_from_links(claim_summary.get('links', []))
             matrix['claims'][current_claim] = {
                 'claim_type': current_claim,
                 'required_support_kinds': required_kinds,
@@ -1054,6 +1182,7 @@ class ClaimSupportHook:
                 'total_links': support_link_total,
                 'total_facts': fact_total,
                 'support_by_kind': claim_summary.get('support_by_kind', {}),
+                'support_trace_summary': self._summarize_support_traces(claim_support_traces),
                 'elements': elements,
                 'unassigned_links': claim_summary.get('unassigned_links', []),
             }
@@ -1090,6 +1219,12 @@ class ClaimSupportHook:
                     claim_element_id=element.get('element_id'),
                     claim_element_text=element.get('element_text'),
                 )
+                support_traces = self.get_claim_support_traces(
+                    user_id,
+                    current_claim,
+                    claim_element_id=element.get('element_id'),
+                    claim_element_text=element.get('element_text'),
+                )
                 unresolved_elements.append(
                     {
                         'element_id': element.get('element_id'),
@@ -1101,6 +1236,8 @@ class ClaimSupportHook:
                         'support_by_kind': element.get('support_by_kind', {}),
                         'links': element.get('links', []),
                         'support_facts': support_facts,
+                        'support_traces': support_traces,
+                        'support_trace_summary': self._summarize_support_traces(support_traces),
                         'graph_trace_summary': self._summarize_graph_traces(element.get('links', [])),
                         'recommended_action': (
                             'collect_missing_support_kind'

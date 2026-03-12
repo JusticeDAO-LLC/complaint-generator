@@ -316,6 +316,26 @@ Representative shape:
         "partially_supported": 1,
         "missing": 1
       },
+      "support_trace_summary": {
+        "trace_count": 1,
+        "fact_trace_count": 1,
+        "link_only_trace_count": 0,
+        "unique_fact_count": 1,
+        "unique_graph_id_count": 1,
+        "unique_record_count": 1,
+        "support_by_kind": {
+          "authority": 1
+        },
+        "support_by_source": {
+          "legal_authorities": 1
+        },
+        "parse_source_counts": {
+          "legal_authority": 1
+        },
+        "graph_status_counts": {
+          "available": 1
+        }
+      },
       "total_links": 1,
       "total_facts": 1,
       "support_by_kind": {
@@ -327,6 +347,26 @@ Representative shape:
           "element_text": "Protected activity",
           "status": "partially_supported",
           "missing_support_kinds": ["evidence"],
+          "support_trace_summary": {
+            "trace_count": 1,
+            "fact_trace_count": 1,
+            "link_only_trace_count": 0,
+            "unique_fact_count": 1,
+            "unique_graph_id_count": 1,
+            "unique_record_count": 1,
+            "support_by_kind": {
+              "authority": 1
+            },
+            "support_by_source": {
+              "legal_authorities": 1
+            },
+            "parse_source_counts": {
+              "legal_authority": 1
+            },
+            "graph_status_counts": {
+              "available": 1
+            }
+          },
           "links_by_kind": {
             "authority": [
               {
@@ -375,6 +415,14 @@ Representative shape:
         "partially_supported": 1,
         "missing": 1
       },
+      "unresolved_element_count": 2,
+      "unresolved_elements": ["Protected activity", "Adverse action"],
+      "recommended_gap_actions": {
+        "collect_missing_support_kind": 1,
+        "collect_initial_support": 1
+      },
+      "contradiction_candidate_count": 1,
+      "contradicted_elements": ["Protected activity"],
       "graph_trace_summary": {
         "traced_link_count": 1,
         "snapshot_created_count": 1,
@@ -390,6 +438,35 @@ Representative shape:
       "missing_elements": ["Adverse action"],
       "partially_supported_elements": ["Protected activity"]
     }
+  },
+  "claim_support_gaps": {
+    "civil rights": {
+      "unresolved_count": 2,
+      "unresolved_elements": [
+        {
+          "element_text": "Protected activity",
+          "status": "partially_supported",
+          "recommended_action": "collect_missing_support_kind"
+        },
+        {
+          "element_text": "Adverse action",
+          "status": "missing",
+          "recommended_action": "collect_initial_support"
+        }
+      ]
+    }
+  },
+  "claim_contradiction_candidates": {
+    "civil rights": {
+      "candidate_count": 1,
+      "candidates": [
+        {
+          "claim_element_text": "Protected activity",
+          "polarity": ["affirmative", "negative"],
+          "overlap_terms": ["complaint", "discrimination"]
+        }
+      ]
+    }
   }
 }
 ```
@@ -398,12 +475,18 @@ Support-link semantics:
 
 - `graph_summary`: Compact counts from the currently available stored graph rows.
 - `graph_trace`: Provenance-oriented graph packet combining source table, record id, adapter snapshot semantics, and stored lineage metadata for review or downstream tracing.
+- `support_traces`: Persisted fact-oriented trace rows derived from the stored support links, fact tables, and graph lineage. These are the strongest review-oriented explanation layer for why an element is currently covered or still weak.
+- `support_trace_summary`: Compact counts over `support_traces`, including fact-trace volume, parse-source mix, graph-status mix, and distinct record or graph counts.
 
 Interpretation notes:
 
 - `claim_coverage_matrix` is the review-oriented support payload for operator and UI workflows.
 - `claim_coverage_summary` is the compact companion payload for dashboards, logs, and quick status rendering.
 - `graph_trace_summary` is the compact lineage companion for dashboards and audit surfaces; it counts traced links, snapshot creation versus reuse, source-table mix, and distinct graph ids without requiring callers to inspect raw support links.
+- `unresolved_element_count`, `unresolved_elements`, and `recommended_gap_actions` compress the richer gap payload into one per-claim summary for dashboards.
+- `contradiction_candidate_count` and `contradicted_elements` surface likely support conflicts without requiring callers to scan every candidate pair.
+- `claim_support_gaps` exposes unresolved-element diagnostics with recommended actions and per-element support context.
+- `claim_contradiction_candidates` exposes heuristic contradiction candidates for operator review.
 - `status_counts` separates fully covered, partially supported, and still-missing elements.
 - `links_by_kind` groups evidence and authority support without requiring callers to regroup raw links.
 - `record_summary` and `graph_summary` provide lightweight parse and graph context inline with the support record.
@@ -779,7 +862,26 @@ Representative response shape:
         "missing": 1
       },
       "missing_elements": ["Causal connection"],
-      "partially_supported_elements": ["Adverse action"]
+      "partially_supported_elements": ["Adverse action"],
+      "unresolved_element_count": 2,
+      "recommended_gap_actions": {
+        "collect_initial_support": 1,
+        "collect_missing_support_kind": 1
+      },
+      "contradiction_candidate_count": 1,
+      "contradicted_elements": ["Adverse action"]
+    }
+  },
+  "claim_support_gaps": {
+    "retaliation": {
+      "unresolved_count": 2,
+      "unresolved_elements": []
+    }
+  },
+  "claim_contradiction_candidates": {
+    "retaliation": {
+      "candidate_count": 1,
+      "candidates": []
     }
   },
   "follow_up_plan_summary": {
@@ -813,6 +915,7 @@ Interpretation notes:
 - `execute_follow_up=false` keeps the endpoint read-only and omits `follow_up_execution` plus `follow_up_execution_summary`.
 - `follow_up_support_kind` narrows execution to one retrieval lane such as `evidence` or `authority` without changing the review-only sections.
 - `follow_up_max_tasks_per_claim` limits side-effecting execution only; it does not truncate `follow_up_plan`.
+- `claim_support_gaps` and `claim_contradiction_candidates` are the richer operator-facing review sections for unresolved support and possible support conflicts.
 - `claim_coverage_summary`, `follow_up_plan_summary`, and `follow_up_execution_summary` are the compact operator-facing surfaces intended for dashboards and review tools.
 - When `execute_follow_up=true`, the response adds `compatibility_notice` and emits `Deprecation`, `Sunset`, `Link`, and `Warning` headers so clients can migrate off the compatibility path.
 - New clients should prefer `POST /api/claim-support/execute-follow-up` for side effects and treat `execute_follow_up` on the review endpoint as a compatibility path.
