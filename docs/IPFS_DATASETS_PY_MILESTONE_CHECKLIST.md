@@ -41,10 +41,10 @@ Primary files:
 
 Checklist:
 
-- [ ] capability entries are stable for documents, knowledge graphs, GraphRAG, logic tools, vector store, and MCP gateway
-- [ ] degraded-reason payloads use a consistent shape across adapters
+- [x] capability entries are stable for documents, knowledge graphs, GraphRAG, logic tools, vector store, and MCP gateway
+- [x] degraded-reason payloads use a consistent shape across adapters
 - [ ] mediator startup logs one consistent capability summary across full, partial, and degraded modes
-- [ ] no production module imports `ipfs_datasets_py` internals directly outside `integrations/ipfs_datasets/`
+- [x] no production module imports `ipfs_datasets_py` internals directly outside `integrations/ipfs_datasets/`
 - [ ] direct production `sys.path` mutation is removed or explicitly isolated to tests only
 
 Acceptance criteria:

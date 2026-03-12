@@ -819,6 +819,8 @@ class TestWebEvidenceIntegrationHook:
                 'timestamp': '2026-03-12T10:19:00',
                 'adaptive_query_strategy': 'standard_gap_targeted',
                 'reason': 'repeated_zero_result_reasoning_gap',
+                'recency_bucket': 'fresh',
+                'is_stale': False,
             }
             assert result['follow_up_plan_summary']['employment discrimination']['recommended_actions']['review_existing_support'] == 1
             assert result['follow_up_history']['employment discrimination'][0]['support_kind'] == 'manual_review'
@@ -971,6 +973,8 @@ class TestWebEvidenceIntegrationHook:
                 'timestamp': '2026-03-12T11:05:00',
                 'adaptive_query_strategy': 'standard_gap_targeted',
                 'reason': 'repeated_zero_result_reasoning_gap',
+                'recency_bucket': 'fresh',
+                'is_stale': False,
             }
             assert result['follow_up_history_summary']['employment discrimination']['total_entry_count'] == 2
             assert result['follow_up_history_summary']['employment discrimination']['manual_review_entry_count'] == 1
@@ -988,6 +992,8 @@ class TestWebEvidenceIntegrationHook:
                 'timestamp': '2026-03-12T11:05:00',
                 'adaptive_query_strategy': 'standard_gap_targeted',
                 'reason': 'repeated_zero_result_reasoning_gap',
+                'recency_bucket': 'fresh',
+                'is_stale': False,
             }
             assert result['follow_up_history_summary']['employment discrimination']['zero_result_entry_count'] == 1
             assert result['follow_up_history_summary']['employment discrimination']['query_strategy_counts'] == {

@@ -51,6 +51,17 @@ def test_capability_summary_returns_strings():
     assert all(isinstance(value, str) for value in summary.values())
 
 
+def test_capability_registry_exposes_common_contract_fields():
+    capabilities = get_ipfs_datasets_capabilities()
+
+    for name, status in capabilities.items():
+        payload = status.as_dict()
+        assert payload["provider"] == "ipfs_datasets_py"
+        assert payload["module_path"].startswith("ipfs_datasets_py")
+        assert payload["details"]["capability"] == name
+        assert "error_type" in payload["details"]
+
+
 def test_capability_report_returns_counts_and_nested_statuses():
     report = summarize_ipfs_datasets_capability_report()
 
@@ -58,6 +69,8 @@ def test_capability_report_returns_counts_and_nested_statuses():
     assert report["available_count"] + report["degraded_count"] == len(report["capabilities"])
     assert isinstance(report["available_capabilities"], list)
     assert isinstance(report["degraded_capabilities"], dict)
+    assert all("provider" in payload for payload in report["capabilities"].values())
+    assert all("details" in payload for payload in report["capabilities"].values())
 
 
 def test_search_us_code_normalizes_results():
@@ -79,6 +92,11 @@ def test_search_us_code_normalizes_results():
     assert results[0]['source'] == 'us_code'
     assert results[0]['type'] == 'statute'
     assert results[0]['url'] == 'https://example.com/usc/1983'
+    assert results[0]['provider'] == 'ipfs_datasets_py'
+    assert results[0]['metadata']['provider'] == 'ipfs_datasets_py'
+    assert results[0]['metadata']['details']['operation'] == 'search_us_code'
+    assert results[0]['metadata']['details']['query'] == 'civil rights'
+    assert results[0]['metadata']['details']['source'] == 'us_code'
 
 
 def test_search_federal_register_normalizes_documents():
@@ -100,6 +118,9 @@ def test_search_federal_register_normalizes_documents():
     assert results[0]['source'] == 'federal_register'
     assert results[0]['type'] == 'regulation'
     assert results[0]['citation'] == '2026-0001'
+    assert results[0]['provider'] == 'ipfs_datasets_py'
+    assert results[0]['metadata']['details']['operation'] == 'search_federal_register'
+    assert results[0]['metadata']['details']['upstream_collection'] == 'documents'
 
 
 def test_search_recap_normalizes_documents():
@@ -121,6 +142,9 @@ def test_search_recap_normalizes_documents():
     assert results[0]['source'] == 'recap'
     assert results[0]['type'] == 'case_law'
     assert results[0]['title'] == 'Test v. Example'
+    assert results[0]['url'] == 'https://example.com/recap/1'
+    assert results[0]['provider'] == 'ipfs_datasets_py'
+    assert results[0]['metadata']['details']['operation'] == 'search_recap_documents'
 
 
 def test_search_brave_web_normalizes_results():
@@ -143,6 +167,11 @@ def test_search_brave_web_normalizes_results():
     assert len(results) == 1
     assert results[0]['source_type'] == 'brave_search'
     assert results[0]['metadata']['language'] == 'en'
+    assert results[0]['provider'] == 'ipfs_datasets_py'
+    assert results[0]['metadata']['provider'] == 'ipfs_datasets_py'
+    assert results[0]['metadata']['details']['operation'] == 'search_brave_search'
+    assert results[0]['metadata']['details']['query'] == 'example query'
+    assert results[0]['metadata']['details']['engine'] == 'brave'
 
 
 def test_search_multi_engine_web_normalizes_orchestrated_results():
@@ -169,6 +198,9 @@ def test_search_multi_engine_web_normalizes_orchestrated_results():
     assert results[0]['source_type'] == 'multi_engine_search'
     assert results[0]['metadata']['engine'] == 'duckduckgo'
     assert results[0]['metadata']['domain'] == 'example.com'
+    assert results[0]['provider'] == 'ipfs_datasets_py'
+    assert results[0]['metadata']['details']['operation'] == 'search_multi_engine_search'
+    assert results[0]['metadata']['details']['query'] == 'agency guidance'
 
 
 def test_scrape_web_content_normalizes_scraper_result():
@@ -196,6 +228,21 @@ def test_scrape_web_content_normalizes_scraper_result():
     assert result['success'] is True
     assert result['metadata']['method_used'] == 'wayback_machine'
     assert 'Relevant employment policy text' in result['content']
+    assert result['provider'] == 'ipfs_datasets_py'
+    assert result['metadata']['details']['operation'] == 'scrape_web_scrape'
+    assert result['metadata']['details']['source_type'] == 'web_scrape'
+
+
+def test_scrape_web_content_unavailable_uses_shared_degraded_contract():
+    with patch('integrations.ipfs_datasets.search.UNIFIED_WEB_SCRAPER_AVAILABLE', False):
+        result = scrape_web_content('https://example.com/page')
+
+    assert result['success'] is False
+    assert result['provider'] == 'ipfs_datasets_py'
+    assert result['degraded_reason'] == 'UnifiedWebScraper unavailable'
+    assert result['metadata']['provider'] == 'ipfs_datasets_py'
+    assert result['metadata']['details']['operation'] == 'scrape_web_scrape'
+    assert result['metadata']['details']['backend_available'] is False
 
 
 def test_evaluate_scraped_content_fallback_scores_non_empty_records():
@@ -470,8 +517,14 @@ def test_stubbed_adapters_expose_canonical_operation_metadata():
 
     for result in results:
         assert 'metadata' in result
+        assert result['provider'] == 'ipfs_datasets_py'
         assert result['metadata']['operation']
         assert result['metadata']['implementation_status']
         assert result['metadata']['backend_available'] in {True, False}
+        assert result['metadata']['provider'] == 'ipfs_datasets_py'
+        assert result['metadata']['details']['operation'] == result['metadata']['operation']
+        assert result['metadata']['details']['backend_available'] == result['metadata']['backend_available']
+        assert result['metadata']['details']['implementation_status'] == result['metadata']['implementation_status']
 
     assert refinement_result['metadata']['rounds'] == 2
+    assert refinement_result['metadata']['details']['rounds'] == 2

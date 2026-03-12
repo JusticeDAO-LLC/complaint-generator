@@ -1161,7 +1161,9 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
         "claim_element_text": "Protected activity",
         "timestamp": "2026-03-12T10:19:00",
         "adaptive_query_strategy": "standard_gap_targeted",
-        "reason": "repeated_zero_result_reasoning_gap"
+        "reason": "repeated_zero_result_reasoning_gap",
+        "recency_bucket": "fresh",
+        "is_stale": false
       },
       "recommended_actions": {
         "review_existing_support": 1,
@@ -1191,7 +1193,9 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
         "claim_element_text": "Protected activity",
         "timestamp": "2026-03-12T10:19:00",
         "adaptive_query_strategy": "standard_gap_targeted",
-        "reason": "repeated_zero_result_reasoning_gap"
+        "reason": "repeated_zero_result_reasoning_gap",
+        "recency_bucket": "fresh",
+        "is_stale": false
       }
     }
   }
@@ -1203,7 +1207,7 @@ Interpretation notes:
 - `follow_up_plan_summary` is a compact operator-facing view of the full `follow_up_plan` payload.
 - `contradiction_task_count`, `reasoning_gap_task_count`, `follow_up_focus_counts`, `query_strategy_counts`, `proof_decision_source_counts`, and `resolution_applied_counts` show why planned work exists, whether it has already been normalized by a manual-review resolution, and not just how much work is queued.
 - `adaptive_retry_task_count`, `priority_penalized_task_count`, `adaptive_query_strategy_counts`, and `adaptive_retry_reason_counts` surface when repeated zero-result reasoning-gap retrievals have already caused the planner to broaden queries or lower urgency.
-- `last_adaptive_retry` gives the most recent broadened retry’s claim element label and timestamp so dashboards can show recency without scanning raw task lists.
+- `last_adaptive_retry` gives the most recent broadened retry’s claim element label and timestamp plus `recency_bucket`/`is_stale` classification so dashboards can show freshness without scanning raw task lists.
 - `semantic_cluster_count` and `semantic_duplicate_count` summarize distinct versus near-duplicate graph-support clusters across planned tasks.
 - `follow_up_execution_summary` separates suppressed tasks from cooldown skips so dashboards can explain why follow-up work did not run.
 - `follow_up_execution_summary` also reports contradiction-versus-reasoning-gap task counts plus focus, query-strategy, proof-decision-source, and resolution-normalization mixes across executed and skipped work.
@@ -1371,7 +1375,9 @@ Representative response shape:
         "claim_element_text": "Causal connection",
         "timestamp": "2026-03-12T09:45:00",
         "adaptive_query_strategy": "standard_gap_targeted",
-        "reason": "repeated_zero_result_reasoning_gap"
+        "reason": "repeated_zero_result_reasoning_gap",
+        "recency_bucket": "fresh",
+        "is_stale": false
       },
       "manual_review_entry_count": 1,
       "resolved_entry_count": 0,
@@ -1441,7 +1447,7 @@ Interpretation notes:
 - `claim_support_snapshot_summary` is the compact review-facing lifecycle view for those persisted diagnostics, so dashboard consumers can see freshness and pruning at a glance without iterating the raw snapshot entries.
 - `claim_reasoning_review` is the compact review-facing reasoning surface for flagged claim elements, capturing fallback ontology use plus unavailable or degraded adapter states without forcing clients to inspect every `reasoning_diagnostics` packet.
 - `follow_up_history` exposes recent rows from the persisted `claim_follow_up_execution` ledger, including contradiction-targeted retrieval attempts and manual-review audit events.
-- `follow_up_history_summary` compresses that ledger into counts by status, support kind, execution mode, query strategy, contradiction focus, resolution normalization, adaptive retry markers, and any recorded manual-review resolutions. `last_adaptive_retry` highlights the most recent broadened retry with its claim element label and timestamp.
+- `follow_up_history_summary` compresses that ledger into counts by status, support kind, execution mode, query strategy, contradiction focus, resolution normalization, adaptive retry markers, and any recorded manual-review resolutions. `last_adaptive_retry` highlights the most recent broadened retry with its claim element label, timestamp, and freshness classification.
 - `claim_coverage_summary`, `follow_up_plan_summary`, and `follow_up_execution_summary` are the compact operator-facing surfaces intended for dashboards and review tools; `resolution_applied_counts` highlights tasks that are still active only because unresolved support gaps remain after manual review.
 - When `execute_follow_up=true`, the response adds `compatibility_notice` and emits `Deprecation`, `Sunset`, `Link`, and `Warning` headers so clients can migrate off the compatibility path.
 - New clients should prefer `POST /api/claim-support/execute-follow-up` for side effects and treat `execute_follow_up` on the review endpoint as a compatibility path.
@@ -1583,7 +1589,7 @@ Interpretation notes:
 - Reasoning-gap tasks are not auto-suppressed solely because graph support is already strong; they stay visible when the proof layer still marks the element as unprovable or ontology-invalid.
 - Repeated zero-result reasoning-gap retrievals are fed back into `Mediator.get_claim_follow_up_plan(...)`: mixed reasoning tasks keep their reasoning focus, but the planner lowers urgency and broadens retrieval back to `standard_gap_targeted` queries once the same element has multiple executed zero-result attempts with no successful retrievals.
 - When those broadened retries are executed, the ledger stores `adaptive_retry_applied`, `adaptive_retry_reason`, `adaptive_query_strategy`, and zero-result markers, and `follow_up_history_summary` aggregates them so operators can distinguish broadened retry history from ordinary retrieval attempts.
-- `last_adaptive_retry` is shared across follow-up history, plan, and execution summaries so dashboards can align the most recent broadened retry event with the currently queued or already executed work.
+- `last_adaptive_retry` is shared across follow-up history, plan, and execution summaries so dashboards can align the most recent broadened retry event with the currently queued or already executed work, including whether that retry is still fresh or already stale.
 - `manual_review_task_count` in both follow-up summaries tracks contradiction-review work that intentionally does not trigger evidence or authority retrieval.
 - `follow_up_execution_summary` rolls executed and skipped work into shared `follow_up_focus_counts`, `query_strategy_counts`, `proof_decision_source_counts`, and `resolution_applied_counts`, so the standalone execution API exposes the same planner/execution mix analytics as review, web-evidence, and automatic legal research.
 - `post_execution_review.follow_up_history_summary` reflects the refreshed ledger after execution, so clients can confirm that retrieval and manual-review events were recorded.

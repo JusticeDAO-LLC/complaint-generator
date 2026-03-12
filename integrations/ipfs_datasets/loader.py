@@ -17,6 +17,17 @@ class RepoPaths:
     ipfs_accelerate_repo: Path
 
 
+@dataclass(frozen=True)
+class ImportFailure:
+    module_name: str
+    error_type: str
+    message: str
+    attr_name: str = ""
+
+    def __str__(self) -> str:
+        return self.message
+
+
 @lru_cache(maxsize=1)
 def get_repo_paths() -> RepoPaths:
     repo_root = Path(__file__).resolve().parents[2]
@@ -39,22 +50,48 @@ def ensure_import_paths() -> RepoPaths:
     return paths
 
 
-def import_module_optional(module_name: str) -> tuple[Any | None, str | None]:
+def _build_import_failure(exc: BaseException, *, module_name: str, attr_name: str = "") -> ImportFailure:
+    return ImportFailure(
+        module_name=module_name,
+        attr_name=attr_name,
+        error_type=type(exc).__name__,
+        message=str(exc),
+    )
+
+
+def import_failure_message(error: Any) -> str | None:
+    if error is None:
+        return None
+    if isinstance(error, ImportFailure):
+        return error.message
+    message = str(error).strip()
+    return message or None
+
+
+def import_failure_type(error: Any) -> str:
+    if isinstance(error, ImportFailure):
+        return error.error_type
+    if error is None:
+        return ""
+    return type(error).__name__
+
+
+def import_module_optional(module_name: str) -> tuple[Any | None, ImportFailure | None]:
     ensure_import_paths()
     try:
         return importlib.import_module(module_name), None
     except Exception as exc:
-        return None, str(exc)
+        return None, _build_import_failure(exc, module_name=module_name)
 
 
-def import_attr_optional(module_name: str, attr_name: str) -> tuple[Any | None, str | None]:
+def import_attr_optional(module_name: str, attr_name: str) -> tuple[Any | None, ImportFailure | None]:
     module, error = import_module_optional(module_name)
     if module is None:
         return None, error
     try:
         return getattr(module, attr_name), None
     except Exception as exc:
-        return None, str(exc)
+        return None, _build_import_failure(exc, module_name=module_name, attr_name=attr_name)
 
 
 def run_async_compat(awaitable: Any) -> Any:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from .loader import import_attr_optional, run_async_compat
+from .types import with_adapter_metadata
 
 
 _search_us_code_async, _us_code_error = import_attr_optional(
@@ -29,12 +30,24 @@ LEGAL_SCRAPERS_AVAILABLE = any(
 LEGAL_SCRAPERS_ERROR = _us_code_error or _federal_register_error or _recap_error
 
 
+def _extract_payload_items(payload: Dict[str, Any], *keys: str) -> List[Dict[str, Any]]:
+    for key in keys:
+        items = payload.get(key)
+        if isinstance(items, list):
+            return [item for item in items if isinstance(item, dict)]
+    return []
+
+
 def _normalize_authority(
     item: Dict[str, Any],
     authority_type: str,
     source: str,
+    *,
+    query: str,
+    operation: str,
+    upstream_collection: str,
 ) -> Dict[str, Any]:
-    url = item.get("url") or item.get("html_url") or item.get("pdf_url") or ""
+    url = item.get("url") or item.get("absolute_url") or item.get("html_url") or item.get("pdf_url") or ""
     citation = (
         item.get("citation")
         or item.get("document_number")
@@ -64,7 +77,18 @@ def _normalize_authority(
             "relevance_score": item.get("relevance_score", 0.5),
         }
     )
-    return normalized
+    return with_adapter_metadata(
+        normalized,
+        operation=operation,
+        backend_available=True,
+        implementation_status="normalized",
+        extra_metadata={
+            "authority_type": normalized["type"],
+            "query": query,
+            "source": normalized["source"],
+            "upstream_collection": upstream_collection,
+        },
+    )
 
 
 def search_us_code(query: str, title: Optional[str] = None, max_results: int = 10) -> List[Dict[str, Any]]:
@@ -79,10 +103,17 @@ def search_us_code(query: str, title: Optional[str] = None, max_results: int = 1
     )
     if not isinstance(payload, dict) or payload.get("status") != "success":
         return []
+    items = _extract_payload_items(payload, "results", "documents")
     return [
-        _normalize_authority(item, "statute", "us_code")
-        for item in (payload.get("results", []) or [])[:max_results]
-        if isinstance(item, dict)
+        _normalize_authority(
+            item,
+            "statute",
+            "us_code",
+            query=query,
+            operation="search_us_code",
+            upstream_collection="results",
+        )
+        for item in items[:max_results]
     ]
 
 
@@ -104,10 +135,17 @@ def search_federal_register(
     )
     if not isinstance(payload, dict) or payload.get("status") != "success":
         return []
+    items = _extract_payload_items(payload, "documents", "results")
     return [
-        _normalize_authority(item, "regulation", "federal_register")
-        for item in (payload.get("documents", []) or [])[:max_results]
-        if isinstance(item, dict)
+        _normalize_authority(
+            item,
+            "regulation",
+            "federal_register",
+            query=query,
+            operation="search_federal_register",
+            upstream_collection="documents",
+        )
+        for item in items[:max_results]
     ]
 
 
@@ -127,10 +165,17 @@ def search_recap_documents(
     )
     if not isinstance(payload, dict) or payload.get("status") != "success":
         return []
+    items = _extract_payload_items(payload, "documents", "results")
     return [
-        _normalize_authority(item, "case_law", "recap")
-        for item in (payload.get("documents", []) or [])[:max_results]
-        if isinstance(item, dict)
+        _normalize_authority(
+            item,
+            "case_law",
+            "recap",
+            query=query,
+            operation="search_recap_documents",
+            upstream_collection="documents",
+        )
+        for item in items[:max_results]
     ]
 
 

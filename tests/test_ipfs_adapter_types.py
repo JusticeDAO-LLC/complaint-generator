@@ -1,4 +1,6 @@
+from integrations.ipfs_datasets.loader import ImportFailure, import_failure_message, import_failure_type
 from integrations.ipfs_datasets.types import (
+    CapabilityStatus,
     CaseArtifact,
     CaseAuthority,
     CaseClaimElement,
@@ -21,6 +23,35 @@ from integrations.ipfs_datasets.types import (
     normalize_degraded_reason,
     with_adapter_metadata,
 )
+
+
+def test_capability_status_serializes_with_provider_and_details():
+    payload = CapabilityStatus(
+        status="degraded",
+        available=False,
+        module_path="ipfs_datasets_py.logic",
+        degraded_reason="missing optional dependency",
+        details={"capability": "logic_tools", "error_type": "ModuleNotFoundError"},
+    ).as_dict()
+
+    assert payload["status"] == "degraded"
+    assert payload["available"] is False
+    assert payload["provider"] == "ipfs_datasets_py"
+    assert payload["details"]["capability"] == "logic_tools"
+    assert payload["details"]["error_type"] == "ModuleNotFoundError"
+
+
+def test_import_failure_helpers_preserve_message_and_exception_type():
+    error = ImportFailure(
+        module_name="ipfs_datasets_py.missing",
+        attr_name="",
+        error_type="ModuleNotFoundError",
+        message="No module named 'ipfs_datasets_py.missing'",
+    )
+
+    assert str(error) == "No module named 'ipfs_datasets_py.missing'"
+    assert import_failure_message(error) == "No module named 'ipfs_datasets_py.missing'"
+    assert import_failure_type(error) == "ModuleNotFoundError"
 
 
 def test_case_artifact_generates_stable_identifier_and_preserves_alias():
@@ -229,8 +260,15 @@ def test_adapter_metadata_helper_normalizes_reason_and_preserves_payload():
     )
 
     assert normalize_degraded_reason("  missing dependency  ") == "missing dependency"
+    assert payload["provider"] == "ipfs_datasets_py"
     assert payload["degraded_reason"] == "missing dependency"
     assert payload["metadata"]["operation"] == "execute_gateway_tool"
     assert payload["metadata"]["backend_available"] is False
+    assert payload["metadata"]["provider"] == "ipfs_datasets_py"
     assert payload["metadata"]["implementation_status"] == "unavailable"
     assert payload["metadata"]["tool_family"] == "mcp_gateway"
+    assert payload["metadata"]["details"]["operation"] == "execute_gateway_tool"
+    assert payload["metadata"]["details"]["backend_available"] is False
+    assert payload["metadata"]["details"]["implementation_status"] == "unavailable"
+    assert payload["metadata"]["details"]["degraded_reason"] == "missing dependency"
+    assert payload["metadata"]["details"]["tool_family"] == "mcp_gateway"

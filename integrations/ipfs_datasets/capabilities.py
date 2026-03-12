@@ -1,21 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 from functools import lru_cache
 
-from .loader import ensure_import_paths, import_module_optional
-from .types import normalize_degraded_reason
-
-
-@dataclass(frozen=True)
-class CapabilityStatus:
-    status: str
-    available: bool
-    module_path: str
-    degraded_reason: str | None = None
-
-    def as_dict(self) -> dict[str, object]:
-        return asdict(self)
+from .loader import (
+    ensure_import_paths,
+    import_failure_message,
+    import_failure_type,
+    import_module_optional,
+)
+from .types import CapabilityStatus
 
 
 @lru_cache(maxsize=1)
@@ -37,12 +30,16 @@ def get_ipfs_datasets_capabilities() -> dict[str, CapabilityStatus]:
     capabilities: dict[str, CapabilityStatus] = {}
     for name, module_path in module_map.items():
         module, error = import_module_optional(module_path)
-        degraded_reason = normalize_degraded_reason(error)
+        degraded_reason = import_failure_message(error)
         capabilities[name] = CapabilityStatus(
             status="available" if module is not None else "degraded",
             available=module is not None,
             module_path=module_path,
             degraded_reason=degraded_reason,
+            details={
+                "capability": name,
+                "error_type": import_failure_type(error),
+            },
         )
     return capabilities
 

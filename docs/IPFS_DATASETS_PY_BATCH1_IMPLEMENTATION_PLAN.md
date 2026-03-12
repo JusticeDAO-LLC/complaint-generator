@@ -1,7 +1,7 @@
 # IPFS Datasets Py Batch 1 Implementation Plan
 
 Date: 2026-03-12
-Status: Ready for execution
+Status: In progress
 
 Companion docs:
 
@@ -11,6 +11,7 @@ Companion docs:
 - `docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md`
 - `docs/IPFS_DATASETS_PY_FILE_WORKLIST.md`
 - `docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md`
+- `docs/IPFS_DATASETS_PY_DIRECT_IMPORT_AUDIT.md`
 
 ## Purpose
 
@@ -64,6 +65,10 @@ If a change is primarily about corpus parsing, graph querying, or validation sem
 
 ## Slice 1: Canonical capability type family
 
+Status:
+
+- completed on 2026-03-12
+
 Goal:
 
 - define one shared structural shape for capability reports and degraded results
@@ -90,6 +95,10 @@ Suggested issue title:
 - `Normalize IPFS adapter capability payload types`
 
 ## Slice 2: Centralized import probing and failure folding
+
+Status:
+
+- in progress on 2026-03-12
 
 Goal:
 
@@ -118,6 +127,10 @@ Suggested issue title:
 
 ## Slice 3: Legal and search adapter shape cleanup
 
+Status:
+
+- completed on 2026-03-12
+
 Goal:
 
 - remove upstream path and result-shape drift from the legal and search adapters before deeper workflow work lands
@@ -145,6 +158,10 @@ Suggested issue title:
 - `Normalize legal and web-search adapter result families`
 
 ## Slice 4: Graph and logic placeholder contract cleanup
+
+Status:
+
+- completed on 2026-03-12
 
 Goal:
 
@@ -218,6 +235,10 @@ Done when:
 
 - no production module depends on submodule path knowledge outside the adapter layer
 
+Current state:
+
+- production-code audit is clean as of 2026-03-12; remaining drift is primarily in documentation examples and should not be confused with adapter-boundary violations in live code
+
 Suggested issue title:
 
 - `Remove remaining direct production imports of ipfs_datasets_py`
@@ -232,6 +253,10 @@ Suggested issue title:
 6. Slice 6
 
 This order matters because type and loader normalization should land before adapter-specific cleanup, and mediator cleanup should come after the underlying summary helpers are stable.
+
+## Current execution note
+
+As of 2026-03-12, Batch 1 has completed shared capability typing, placeholder metadata normalization, and legal/search result-family normalization. The remaining active work is loader-side import failure folding and mediator startup summary cleanup.
 
 ## Validation plan
 

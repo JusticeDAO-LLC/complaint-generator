@@ -8,6 +8,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 from urllib.parse import urlparse
 
 from .loader import import_attr_optional, run_async_compat
+from .types import with_adapter_metadata
 
 
 CommonCrawlSearchEngine, _common_crawl_error = import_attr_optional(
@@ -103,7 +104,7 @@ def _normalize_search_item(item: Any, source_type: str, *, query: str = "") -> D
     domain = str(_coerce_value(item, "domain", "") or "") or _normalize_domain(url)
     engine = str(_coerce_value(item, "engine", "") or "")
 
-    return {
+    normalized = {
         "title": title,
         "url": url,
         "description": snippet,
@@ -119,6 +120,20 @@ def _normalize_search_item(item: Any, source_type: str, *, query: str = "") -> D
             "score": score_value,
         },
     }
+    return with_adapter_metadata(
+        normalized,
+        operation=f"search_{source_type}",
+        backend_available=True,
+        implementation_status="normalized",
+        extra_metadata={
+            "query": query,
+            "source_type": source_type,
+            "engine": engine,
+            "published_date": published_date,
+            "domain": domain,
+            "score": score_value,
+        },
+    )
 
 
 def _normalize_scrape_result(result: Any, source_type: str) -> Dict[str, Any]:
@@ -132,7 +147,7 @@ def _normalize_scrape_result(result: Any, source_type: str) -> Dict[str, Any]:
     content = text or str(_coerce_value(result, "content", "") or "")
     url = str(_coerce_value(result, "url", "") or "")
 
-    return {
+    normalized = {
         "title": str(_coerce_value(result, "title", "") or ""),
         "url": url,
         "description": content[:400],
@@ -150,6 +165,17 @@ def _normalize_scrape_result(result: Any, source_type: str) -> Dict[str, Any]:
             "extraction_time": _coerce_value(result, "extraction_time", 0.0),
         },
     }
+    return with_adapter_metadata(
+        normalized,
+        operation=f"scrape_{source_type}",
+        backend_available=True,
+        implementation_status="normalized",
+        extra_metadata={
+            "source_type": source_type,
+            "domain": _normalize_domain(url),
+            "success": bool(_coerce_value(result, "success", False)),
+        },
+    )
 
 
 def _coerce_scraper_methods(methods: Optional[Sequence[str]]) -> Optional[List[Any]]:
@@ -210,18 +236,20 @@ def search_brave_web(
         if not isinstance(item, dict):
             continue
         normalized.append(
-            {
-                "title": item.get("title", ""),
-                "url": item.get("url", ""),
-                "description": item.get("description", ""),
-                "content": item.get("description", ""),
-                "source_type": "brave_search",
-                "discovered_at": datetime.now().isoformat(),
-                "metadata": {
-                    "language": item.get("language", ""),
-                    "age": item.get("published_date", ""),
+            _normalize_search_item(
+                {
+                    **item,
+                    "snippet": item.get("description", ""),
+                    "engine": item.get("engine", "brave"),
+                    "published_date": item.get("published_date", item.get("age", "")),
+                    "metadata": {
+                        "language": item.get("language", ""),
+                        "age": item.get("published_date", item.get("age", "")),
+                    },
                 },
-            }
+                "brave_search",
+                query=query,
+            )
         )
     return normalized
 
@@ -252,7 +280,8 @@ def scrape_web_content(
     timeout: int = 30,
 ) -> Dict[str, Any]:
     if not UNIFIED_WEB_SCRAPER_AVAILABLE:
-        return {
+        return with_adapter_metadata(
+            {
             "url": url,
             "title": "",
             "description": "",
@@ -263,7 +292,17 @@ def scrape_web_content(
             "errors": ["UnifiedWebScraper unavailable"],
             "discovered_at": datetime.now().isoformat(),
             "metadata": {"domain": _normalize_domain(url)},
-        }
+            },
+            operation="scrape_web_scrape",
+            backend_available=False,
+            degraded_reason="UnifiedWebScraper unavailable",
+            implementation_status="unavailable",
+            extra_metadata={
+                "source_type": "web_scrape",
+                "domain": _normalize_domain(url),
+                "success": False,
+            },
+        )
 
     config = ScraperConfig(timeout=timeout)
     preferred_methods = _coerce_scraper_methods(methods)

@@ -26,315 +26,311 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         mediator = Mock()
         mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
         mediator.get_claim_coverage_matrix.return_value = {
-        "claims": {
-            "retaliation": {
-                "claim_type": "retaliation",
-                "total_elements": 3,
-                "total_links": 2,
-                "total_facts": 4,
-                "support_by_kind": {"evidence": 1, "authority": 1},
-                "support_trace_summary": {
-                    "trace_count": 3,
-                    "fact_trace_count": 3,
-                    "link_only_trace_count": 0,
-                    "unique_fact_count": 3,
-                    "unique_graph_id_count": 2,
-                    "unique_record_count": 2,
-                    "support_by_kind": {"evidence": 2, "authority": 1},
-                    "support_by_source": {"evidence": 2, "legal_authorities": 1},
-                    "parse_source_counts": {"bytes": 2, "legal_authority": 1},
-                    "graph_status_counts": {"available": 3},
-                },
-                "status_counts": {
-                    "covered": 1,
-                    "partially_supported": 1,
-                    "missing": 1,
-                },
-                "elements": [
-                    {
-                        "element_id": "retaliation:1",
-                        "element_text": "Protected activity",
-                        "links": [
-                            {
-                                "support_kind": "evidence",
-                                "graph_trace": {
-                                    "source_table": "evidence",
-                                    "summary": {"status": "available"},
-                                    "snapshot": {
-                                        "graph_id": "graph:evidence-1",
-                                        "created": True,
-                                        "reused": False,
-                                    },
-                                },
-                            },
-                            {
-                                "support_kind": "authority",
-                                "graph_trace": {
-                                    "source_table": "legal_authorities",
-                                    "summary": {"status": "available"},
-                                    "snapshot": {
-                                        "graph_id": "graph:authority-1",
-                                        "created": False,
-                                        "reused": True,
-                                    },
-                                },
-                            },
-                        ],
-                    }
-                ],
-            }
-        }
-    }
-    mediator.get_claim_overview.return_value = {
-        "claims": {
-            "retaliation": {
-                "missing": [{"element_text": "Causal connection"}],
-                "partially_supported": [{"element_text": "Adverse action"}],
-            }
-        }
-    }
-    mediator.get_claim_support_gaps.return_value = {
-        "claims": {
-            "retaliation": {
-                "unresolved_count": 2,
-                "unresolved_elements": [
-                    {
-                        "element_text": "Causal connection",
-                        "recommended_action": "collect_initial_support",
-                    },
-                    {
-                        "element_text": "Adverse action",
-                        "recommended_action": "collect_missing_support_kind",
-                    },
-                ],
-            }
-        }
-    }
-    mediator.get_claim_contradiction_candidates.return_value = {
-        "claims": {
-            "retaliation": {
-                "candidate_count": 1,
-                "candidates": [
-                    {
-                        "claim_element_text": "Adverse action",
-                    }
-                ],
-            }
-        }
-    }
-    mediator.get_claim_support_validation.return_value = {
-        "claims": {
-            "retaliation": {
-                "claim_type": "retaliation",
-                "validation_status": "contradicted",
-                "validation_status_counts": {
-                    "supported": 0,
-                    "incomplete": 1,
-                    "missing": 1,
-                    "contradicted": 1,
-                },
-                "proof_gap_count": 3,
-                "elements_requiring_follow_up": [
-                    "Adverse action",
-                    "Causal connection",
-                ],
-                "proof_diagnostics": {
-                    "reasoning": {
-                        "adapter_status_counts": {
-                            "logic_proof": {"not_implemented": 1},
-                            "logic_contradictions": {"not_implemented": 1},
-                            "ontology_build": {"implemented": 1},
-                            "ontology_validation": {"implemented": 1},
-                        },
-                        "backend_available_count": 4,
-                        "predicate_count": 6,
-                        "ontology_entity_count": 5,
-                        "ontology_relationship_count": 4,
-                        "fallback_ontology_count": 1,
-                    },
-                    "decision": {
-                        "decision_source_counts": {
-                            "heuristic_contradictions": 1,
-                            "partial_support": 1,
-                            "missing_support": 1,
-                        },
-                        "adapter_contradicted_element_count": 0,
-                        "fallback_ontology_element_count": 1,
-                        "proof_supported_element_count": 0,
-                        "logic_unprovable_element_count": 0,
-                        "ontology_invalid_element_count": 0,
-                    },
-                },
-                "elements": [
-                    {
-                        "element_id": "retaliation:2",
-                        "element_text": "Adverse action",
-                        "validation_status": "contradicted",
-                        "reasoning_diagnostics": {
-                            "predicate_count": 4,
-                            "used_fallback_ontology": True,
-                            "backend_available_count": 3,
-                            "adapter_statuses": {
-                                "logic_proof": {
-                                    "backend_available": True,
-                                    "implementation_status": "not_implemented",
-                                },
-                                "logic_contradictions": {
-                                    "backend_available": False,
-                                    "implementation_status": "unavailable",
-                                },
-                                "ontology_build": {
-                                    "backend_available": True,
-                                    "implementation_status": "implemented",
-                                },
-                                "ontology_validation": {
-                                    "backend_available": True,
-                                    "implementation_status": "implemented",
-                                },
-                            },
-                        },
-                    }
-                ],
-            }
-        }
-    }
-    mediator.get_recent_claim_follow_up_execution.return_value = {
-        "claims": {
-            "retaliation": [
-                {
-                    "execution_id": 21,
+            "claims": {
+                "retaliation": {
                     "claim_type": "retaliation",
-                    "claim_element_id": "retaliation:2",
-                    "claim_element_text": "Adverse action",
-                    "support_kind": "manual_review",
-                    "query_text": "manual_review::retaliation::retaliation:2::resolve_contradiction",
-                    "status": "skipped_manual_review",
-                    "timestamp": "2026-03-12T10:15:00",
-                    "execution_mode": "manual_review",
+                    "total_elements": 3,
+                    "total_links": 2,
+                    "total_facts": 4,
+                    "support_by_kind": {"evidence": 1, "authority": 1},
+                    "support_trace_summary": {
+                        "trace_count": 3,
+                        "fact_trace_count": 3,
+                        "link_only_trace_count": 0,
+                        "unique_fact_count": 3,
+                        "unique_graph_id_count": 2,
+                        "unique_record_count": 2,
+                        "support_by_kind": {"evidence": 2, "authority": 1},
+                        "support_by_source": {"evidence": 2, "legal_authorities": 1},
+                        "parse_source_counts": {"bytes": 2, "legal_authority": 1},
+                        "graph_status_counts": {"available": 3},
+                    },
+                    "status_counts": {
+                        "covered": 1,
+                        "partially_supported": 1,
+                        "missing": 1,
+                    },
+                    "elements": [
+                        {
+                            "element_id": "retaliation:1",
+                            "element_text": "Protected activity",
+                            "links": [
+                                {
+                                    "support_kind": "evidence",
+                                    "graph_trace": {
+                                        "source_table": "evidence",
+                                        "summary": {"status": "available"},
+                                        "snapshot": {
+                                            "graph_id": "graph:evidence-1",
+                                            "created": True,
+                                            "reused": False,
+                                        },
+                                    },
+                                },
+                                {
+                                    "support_kind": "authority",
+                                    "graph_trace": {
+                                        "source_table": "legal_authorities",
+                                        "summary": {"status": "available"},
+                                        "snapshot": {
+                                            "graph_id": "graph:authority-1",
+                                            "created": False,
+                                            "reused": True,
+                                        },
+                                    },
+                                },
+                            ],
+                        }
+                    ],
+                }
+            }
+        }
+        mediator.get_claim_overview.return_value = {
+            "claims": {
+                "retaliation": {
+                    "missing": [{"element_text": "Causal connection"}],
+                    "partially_supported": [{"element_text": "Adverse action"}],
+                }
+            }
+        }
+        mediator.get_claim_support_gaps.return_value = {
+            "claims": {
+                "retaliation": {
+                    "unresolved_count": 2,
+                    "unresolved_elements": [
+                        {
+                            "element_text": "Causal connection",
+                            "recommended_action": "collect_initial_support",
+                        },
+                        {
+                            "element_text": "Adverse action",
+                            "recommended_action": "collect_missing_support_kind",
+                        },
+                    ],
+                }
+            }
+        }
+        mediator.get_claim_contradiction_candidates.return_value = {
+            "claims": {
+                "retaliation": {
+                    "candidate_count": 1,
+                    "candidates": [{"claim_element_text": "Adverse action"}],
+                }
+            }
+        }
+        mediator.get_claim_support_validation.return_value = {
+            "claims": {
+                "retaliation": {
+                    "claim_type": "retaliation",
                     "validation_status": "contradicted",
-                    "follow_up_focus": "contradiction_resolution",
-                    "query_strategy": "standard_gap_targeted",
-                },
-                {
-                    "execution_id": 20,
-                    "claim_type": "retaliation",
-                    "claim_element_id": "retaliation:3",
-                    "claim_element_text": "Causal connection",
-                    "support_kind": "authority",
-                    "query_text": "\"retaliation\" \"Causal connection\" case law",
-                    "status": "executed",
-                    "timestamp": "2026-03-12T09:45:00",
-                    "execution_mode": "retrieve_support",
-                    "validation_status": "incomplete",
-                    "follow_up_focus": "support_gap_closure",
-                    "query_strategy": "standard_gap_targeted",
-                    "adaptive_retry_applied": True,
-                    "adaptive_retry_reason": "repeated_zero_result_reasoning_gap",
-                    "adaptive_query_strategy": "standard_gap_targeted",
-                    "adaptive_priority_penalty": 1,
-                    "zero_result": True,
-                    "resolution_applied": "manual_review_resolved",
-                },
-            ]
+                    "validation_status_counts": {
+                        "supported": 0,
+                        "incomplete": 1,
+                        "missing": 1,
+                        "contradicted": 1,
+                    },
+                    "proof_gap_count": 3,
+                    "elements_requiring_follow_up": [
+                        "Adverse action",
+                        "Causal connection",
+                    ],
+                    "proof_diagnostics": {
+                        "reasoning": {
+                            "adapter_status_counts": {
+                                "logic_proof": {"not_implemented": 1},
+                                "logic_contradictions": {"not_implemented": 1},
+                                "ontology_build": {"implemented": 1},
+                                "ontology_validation": {"implemented": 1},
+                            },
+                            "backend_available_count": 4,
+                            "predicate_count": 6,
+                            "ontology_entity_count": 5,
+                            "ontology_relationship_count": 4,
+                            "fallback_ontology_count": 1,
+                        },
+                        "decision": {
+                            "decision_source_counts": {
+                                "heuristic_contradictions": 1,
+                                "partial_support": 1,
+                                "missing_support": 1,
+                            },
+                            "adapter_contradicted_element_count": 0,
+                            "fallback_ontology_element_count": 1,
+                            "proof_supported_element_count": 0,
+                            "logic_unprovable_element_count": 0,
+                            "ontology_invalid_element_count": 0,
+                        },
+                    },
+                    "elements": [
+                        {
+                            "element_id": "retaliation:2",
+                            "element_text": "Adverse action",
+                            "validation_status": "contradicted",
+                            "reasoning_diagnostics": {
+                                "predicate_count": 4,
+                                "used_fallback_ontology": True,
+                                "backend_available_count": 3,
+                                "adapter_statuses": {
+                                    "logic_proof": {
+                                        "backend_available": True,
+                                        "implementation_status": "not_implemented",
+                                    },
+                                    "logic_contradictions": {
+                                        "backend_available": False,
+                                        "implementation_status": "unavailable",
+                                    },
+                                    "ontology_build": {
+                                        "backend_available": True,
+                                        "implementation_status": "implemented",
+                                    },
+                                    "ontology_validation": {
+                                        "backend_available": True,
+                                        "implementation_status": "implemented",
+                                    },
+                                },
+                            },
+                        }
+                    ],
+                }
+            }
         }
-    }
+        mediator.get_recent_claim_follow_up_execution.return_value = {
+            "claims": {
+                "retaliation": [
+                    {
+                        "execution_id": 21,
+                        "claim_type": "retaliation",
+                        "claim_element_id": "retaliation:2",
+                        "claim_element_text": "Adverse action",
+                        "support_kind": "manual_review",
+                        "query_text": "manual_review::retaliation::retaliation:2::resolve_contradiction",
+                        "status": "skipped_manual_review",
+                        "timestamp": "2026-03-12T10:15:00",
+                        "execution_mode": "manual_review",
+                        "validation_status": "contradicted",
+                        "follow_up_focus": "contradiction_resolution",
+                        "query_strategy": "standard_gap_targeted",
+                    },
+                    {
+                        "execution_id": 20,
+                        "claim_type": "retaliation",
+                        "claim_element_id": "retaliation:3",
+                        "claim_element_text": "Causal connection",
+                        "support_kind": "authority",
+                        "query_text": "\"retaliation\" \"Causal connection\" case law",
+                        "status": "executed",
+                        "timestamp": "2026-03-12T09:45:00",
+                        "execution_mode": "retrieve_support",
+                        "validation_status": "incomplete",
+                        "follow_up_focus": "support_gap_closure",
+                        "query_strategy": "standard_gap_targeted",
+                        "adaptive_retry_applied": True,
+                        "adaptive_retry_reason": "repeated_zero_result_reasoning_gap",
+                        "adaptive_query_strategy": "standard_gap_targeted",
+                        "adaptive_priority_penalty": 1,
+                        "zero_result": True,
+                        "resolution_applied": "manual_review_resolved",
+                    },
+                ]
+            }
+        }
         mediator.summarize_claim_support.return_value = {
-        "claims": {
-            "retaliation": {
-                "support_by_kind": {"evidence": 1, "authority": 1},
-                "total_links": 2,
+            "claims": {
+                "retaliation": {
+                    "support_by_kind": {"evidence": 1, "authority": 1},
+                    "total_links": 2,
+                }
             }
         }
-    }
         mediator.get_claim_follow_up_plan.return_value = {
-        "claims": {
-            "retaliation": {
-                "task_count": 2,
-                "blocked_task_count": 1,
-                "tasks": [
-                    {
-                        "claim_element": "Causal connection",
-                        "recommended_action": "retrieve_more_support",
-                        "has_graph_support": True,
-                        "should_suppress_retrieval": False,
-                        "resolution_applied": "manual_review_resolved",
-                        "adaptive_retry_state": {
-                            "applied": True,
-                            "priority_penalty": 1,
-                            "adaptive_query_strategy": "standard_gap_targeted",
-                            "reason": "repeated_zero_result_reasoning_gap",
-                            "latest_attempted_at": "2026-03-12T09:45:00",
+            "claims": {
+                "retaliation": {
+                    "task_count": 2,
+                    "blocked_task_count": 1,
+                    "tasks": [
+                        {
+                            "claim_element": "Causal connection",
+                            "recommended_action": "retrieve_more_support",
+                            "has_graph_support": True,
+                            "should_suppress_retrieval": False,
+                            "resolution_applied": "manual_review_resolved",
+                            "adaptive_retry_state": {
+                                "applied": True,
+                                "priority_penalty": 1,
+                                "adaptive_query_strategy": "standard_gap_targeted",
+                                "reason": "repeated_zero_result_reasoning_gap",
+                                "latest_attempted_at": "2026-03-12T09:45:00",
+                            },
+                            "graph_support": {
+                                "summary": {
+                                    "semantic_cluster_count": 2,
+                                    "semantic_duplicate_count": 3,
+                                }
+                            },
                         },
-                        "graph_support": {
-                            "summary": {
-                                "semantic_cluster_count": 2,
-                                "semantic_duplicate_count": 3,
-                            }
+                        {
+                            "claim_element": "Adverse action",
+                            "recommended_action": "target_missing_support_kind",
+                            "has_graph_support": False,
+                            "should_suppress_retrieval": True,
+                            "graph_support": {"summary": {}},
                         },
-                    },
-                    {
-                        "claim_element": "Adverse action",
-                        "recommended_action": "target_missing_support_kind",
-                        "has_graph_support": False,
-                        "should_suppress_retrieval": True,
-                        "graph_support": {"summary": {}},
-                    },
-                ],
+                    ],
+                }
             }
         }
-    }
         mediator.execute_claim_follow_up_plan.return_value = {
-        "claims": {
-            "retaliation": {
-                "task_count": 1,
-                "tasks": [
-                    {
-                        "claim_element": "Causal connection",
-                        "resolution_applied": "manual_review_resolved",
-                        "adaptive_retry_state": {
-                            "applied": True,
-                            "priority_penalty": 1,
-                            "adaptive_query_strategy": "standard_gap_targeted",
-                            "reason": "repeated_zero_result_reasoning_gap",
-                            "latest_attempted_at": "2026-03-12T09:45:00",
+            "claims": {
+                "retaliation": {
+                    "task_count": 1,
+                    "tasks": [
+                        {
+                            "claim_element": "Causal connection",
+                            "resolution_applied": "manual_review_resolved",
+                            "adaptive_retry_state": {
+                                "applied": True,
+                                "priority_penalty": 1,
+                                "adaptive_query_strategy": "standard_gap_targeted",
+                                "reason": "repeated_zero_result_reasoning_gap",
+                                "latest_attempted_at": "2026-03-12T09:45:00",
+                            },
+                            "graph_support": {
+                                "summary": {
+                                    "semantic_cluster_count": 1,
+                                    "semantic_duplicate_count": 2,
+                                }
+                            },
+                        }
+                    ],
+                    "skipped_tasks": [
+                        {
+                            "claim_element": "Adverse action",
+                            "graph_support": {
+                                "summary": {
+                                    "semantic_cluster_count": 2,
+                                    "semantic_duplicate_count": 1,
+                                }
+                            },
+                            "skipped": {
+                                "suppressed": {"reason": "existing_support_high_duplication"}
+                            },
                         },
-                        "graph_support": {
-                            "summary": {
-                                "semantic_cluster_count": 1,
-                                "semantic_duplicate_count": 2,
-                            }
+                        {
+                            "claim_element": "Protected activity",
+                            "graph_support": {
+                                "summary": {
+                                    "semantic_cluster_count": 0,
+                                    "semantic_duplicate_count": 1,
+                                }
+                            },
+                            "skipped": {
+                                "authority": {"reason": "duplicate_within_cooldown"}
+                            },
                         },
-                    }
-                ],
-                "skipped_tasks": [
-                    {
-                        "claim_element": "Adverse action",
-                        "graph_support": {
-                            "summary": {
-                                "semantic_cluster_count": 2,
-                                "semantic_duplicate_count": 1,
-                            }
-                        },
-                        "skipped": {
-                            "suppressed": {"reason": "existing_support_high_duplication"}
-                        },
-                    },
-                    {
-                        "claim_element": "Protected activity",
-                        "graph_support": {
-                            "summary": {
-                                "semantic_cluster_count": 0,
-                                "semantic_duplicate_count": 1,
-                            }
-                        },
-                        "skipped": {
-                            "authority": {"reason": "duplicate_within_cooldown"}
-                        },
-                    },
-                ],
+                    ],
+                }
             }
         }
-    }
 
         payload = build_claim_support_review_payload(
             mediator,
@@ -347,236 +343,245 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         )
 
         assert payload["user_id"] == "state-user"
-        assert payload["claim_coverage_matrix"]["retaliation"]["status_counts"]["covered"] == 1
+        assert (
+            payload["claim_coverage_matrix"]["retaliation"]["status_counts"]["covered"]
+            == 1
+        )
         assert payload["claim_coverage_summary"]["retaliation"]["missing_elements"] == [
-        "Causal connection"
+            "Causal connection"
         ]
         assert payload["claim_coverage_summary"]["retaliation"][
-        "partially_supported_elements"
+            "partially_supported_elements"
         ] == ["Adverse action"]
-    assert payload["claim_coverage_summary"]["retaliation"]["unresolved_element_count"] == 2
-    assert payload["claim_coverage_summary"]["retaliation"]["unresolved_elements"] == [
-        "Causal connection",
-        "Adverse action",
-    ]
-    assert payload["claim_coverage_summary"]["retaliation"]["recommended_gap_actions"] == {
-        "collect_initial_support": 1,
-        "collect_missing_support_kind": 1,
-    }
-    assert payload["claim_coverage_summary"]["retaliation"]["contradiction_candidate_count"] == 1
-    assert payload["claim_coverage_summary"]["retaliation"]["contradicted_elements"] == [
-        "Adverse action"
-    ]
-    assert payload["claim_coverage_summary"]["retaliation"]["validation_status"] == "contradicted"
-    assert payload["claim_coverage_summary"]["retaliation"]["proof_gap_count"] == 3
-    assert payload["claim_coverage_summary"]["retaliation"]["reasoning_backend_available_count"] == 4
-    assert payload["claim_coverage_summary"]["retaliation"]["reasoning_adapter_status_counts"]["ontology_build"] == {"implemented": 1}
-    assert payload["claim_coverage_summary"]["retaliation"]["reasoning_predicate_count"] == 6
-    assert payload["claim_coverage_summary"]["retaliation"]["reasoning_ontology_entity_count"] == 5
-    assert payload["claim_coverage_summary"]["retaliation"]["reasoning_ontology_relationship_count"] == 4
-    assert payload["claim_coverage_summary"]["retaliation"]["reasoning_fallback_ontology_count"] == 1
-    assert payload["claim_coverage_summary"]["retaliation"]["decision_source_counts"] == {
-        "heuristic_contradictions": 1,
-        "partial_support": 1,
-        "missing_support": 1,
-    }
-    assert payload["claim_coverage_summary"]["retaliation"]["adapter_contradicted_element_count"] == 0
-    assert payload["claim_coverage_summary"]["retaliation"]["decision_fallback_ontology_element_count"] == 1
-    assert payload["claim_coverage_summary"]["retaliation"]["proof_supported_element_count"] == 0
-    assert payload["claim_coverage_summary"]["retaliation"]["logic_unprovable_element_count"] == 0
-    assert payload["claim_coverage_summary"]["retaliation"]["ontology_invalid_element_count"] == 0
-    assert payload["claim_support_validation"]["retaliation"]["validation_status"] == "contradicted"
-    assert payload["claim_support_snapshot_summary"]["retaliation"] == {
-        "total_snapshot_count": 0,
-        "fresh_snapshot_count": 0,
-        "stale_snapshot_count": 0,
-        "snapshot_kinds": [],
-        "fresh_snapshot_kinds": [],
-        "stale_snapshot_kinds": [],
-        "retention_limits": [],
-        "total_pruned_snapshot_count": 0,
-    }
-    assert payload["follow_up_history"]["retaliation"][0]["support_kind"] == "manual_review"
-    assert payload["follow_up_history_summary"]["retaliation"] == {
-        "total_entry_count": 2,
-        "status_counts": {
-            "skipped_manual_review": 1,
-            "executed": 1,
-        },
-        "support_kind_counts": {
-            "manual_review": 1,
-            "authority": 1,
-        },
-        "execution_mode_counts": {
-            "manual_review": 1,
-            "retrieve_support": 1,
-        },
-        "query_strategy_counts": {
-            "standard_gap_targeted": 2,
-        },
-        "follow_up_focus_counts": {
-            "contradiction_resolution": 1,
-            "support_gap_closure": 1,
-        },
-        "resolution_status_counts": {},
-        "resolution_applied_counts": {
+        assert payload["claim_coverage_summary"]["retaliation"]["unresolved_element_count"] == 2
+        assert payload["claim_coverage_summary"]["retaliation"]["unresolved_elements"] == [
+            "Causal connection",
+            "Adverse action",
+        ]
+        assert payload["claim_coverage_summary"]["retaliation"]["recommended_gap_actions"] == {
+            "collect_initial_support": 1,
+            "collect_missing_support_kind": 1,
+        }
+        assert payload["claim_coverage_summary"]["retaliation"]["contradiction_candidate_count"] == 1
+        assert payload["claim_coverage_summary"]["retaliation"]["contradicted_elements"] == [
+            "Adverse action"
+        ]
+        assert payload["claim_coverage_summary"]["retaliation"]["validation_status"] == "contradicted"
+        assert payload["claim_coverage_summary"]["retaliation"]["proof_gap_count"] == 3
+        assert payload["claim_coverage_summary"]["retaliation"]["reasoning_backend_available_count"] == 4
+        assert payload["claim_coverage_summary"]["retaliation"]["reasoning_adapter_status_counts"]["ontology_build"] == {
+            "implemented": 1
+        }
+        assert payload["claim_coverage_summary"]["retaliation"]["reasoning_predicate_count"] == 6
+        assert payload["claim_coverage_summary"]["retaliation"]["reasoning_ontology_entity_count"] == 5
+        assert payload["claim_coverage_summary"]["retaliation"]["reasoning_ontology_relationship_count"] == 4
+        assert payload["claim_coverage_summary"]["retaliation"]["reasoning_fallback_ontology_count"] == 1
+        assert payload["claim_coverage_summary"]["retaliation"]["decision_source_counts"] == {
+            "heuristic_contradictions": 1,
+            "partial_support": 1,
+            "missing_support": 1,
+        }
+        assert payload["claim_coverage_summary"]["retaliation"]["adapter_contradicted_element_count"] == 0
+        assert payload["claim_coverage_summary"]["retaliation"]["decision_fallback_ontology_element_count"] == 1
+        assert payload["claim_coverage_summary"]["retaliation"]["proof_supported_element_count"] == 0
+        assert payload["claim_coverage_summary"]["retaliation"]["logic_unprovable_element_count"] == 0
+        assert payload["claim_coverage_summary"]["retaliation"]["ontology_invalid_element_count"] == 0
+        assert payload["claim_support_validation"]["retaliation"]["validation_status"] == "contradicted"
+        assert payload["claim_support_snapshot_summary"]["retaliation"] == {
+            "total_snapshot_count": 0,
+            "fresh_snapshot_count": 0,
+            "stale_snapshot_count": 0,
+            "snapshot_kinds": [],
+            "fresh_snapshot_kinds": [],
+            "stale_snapshot_kinds": [],
+            "retention_limits": [],
+            "total_pruned_snapshot_count": 0,
+        }
+        assert payload["follow_up_history"]["retaliation"][0]["support_kind"] == "manual_review"
+        assert payload["follow_up_history_summary"]["retaliation"] == {
+            "total_entry_count": 2,
+            "status_counts": {
+                "skipped_manual_review": 1,
+                "executed": 1,
+            },
+            "support_kind_counts": {
+                "manual_review": 1,
+                "authority": 1,
+            },
+            "execution_mode_counts": {
+                "manual_review": 1,
+                "retrieve_support": 1,
+            },
+            "query_strategy_counts": {
+                "standard_gap_targeted": 2,
+            },
+            "follow_up_focus_counts": {
+                "contradiction_resolution": 1,
+                "support_gap_closure": 1,
+            },
+            "resolution_status_counts": {},
+            "resolution_applied_counts": {
+                "manual_review_resolved": 1,
+            },
+            "adaptive_retry_entry_count": 1,
+            "priority_penalized_entry_count": 1,
+            "adaptive_query_strategy_counts": {
+                "standard_gap_targeted": 1,
+            },
+            "adaptive_retry_reason_counts": {
+                "repeated_zero_result_reasoning_gap": 1,
+            },
+            "last_adaptive_retry": {
+                "claim_element_id": "retaliation:3",
+                "claim_element_text": "Causal connection",
+                "timestamp": "2026-03-12T09:45:00",
+                "adaptive_query_strategy": "standard_gap_targeted",
+                "reason": "repeated_zero_result_reasoning_gap",
+                "recency_bucket": "fresh",
+                "is_stale": False,
+            },
+            "zero_result_entry_count": 1,
+            "manual_review_entry_count": 1,
+            "resolved_entry_count": 0,
+            "contradiction_related_entry_count": 1,
+            "latest_attempted_at": "2026-03-12T10:15:00",
+        }
+        assert payload["claim_reasoning_review"]["retaliation"] == {
+            "claim_type": "retaliation",
+            "total_element_count": 1,
+            "flagged_element_count": 1,
+            "fallback_ontology_element_count": 1,
+            "unavailable_backend_element_count": 1,
+            "degraded_adapter_element_count": 1,
+            "flagged_elements": [
+                {
+                    "element_id": "retaliation:2",
+                    "element_text": "Adverse action",
+                    "validation_status": "contradicted",
+                    "predicate_count": 4,
+                    "used_fallback_ontology": True,
+                    "backend_available_count": 3,
+                    "unavailable_adapters": ["logic_contradictions"],
+                    "degraded_adapters": ["logic_contradictions", "logic_proof"],
+                }
+            ],
+        }
+        assert payload["claim_coverage_summary"]["retaliation"]["support_trace_summary"]["trace_count"] == 3
+        assert payload["claim_coverage_summary"]["retaliation"]["graph_trace_summary"] == {
+            "traced_link_count": 2,
+            "snapshot_created_count": 1,
+            "snapshot_reused_count": 1,
+            "source_table_counts": {"evidence": 1, "legal_authorities": 1},
+            "graph_status_counts": {"available": 2},
+            "graph_id_count": 2,
+        }
+        assert payload["claim_support_gaps"]["retaliation"]["unresolved_count"] == 2
+        assert payload["claim_contradiction_candidates"]["retaliation"]["candidate_count"] == 1
+        assert payload["support_summary"]["retaliation"]["total_links"] == 2
+        assert payload["claim_overview"]["retaliation"]["missing"][0]["element_text"] == "Causal connection"
+        assert payload["follow_up_plan"]["retaliation"]["task_count"] == 2
+        assert payload["follow_up_plan_summary"]["retaliation"]["blocked_task_count"] == 1
+        assert payload["follow_up_plan_summary"]["retaliation"]["suppressed_task_count"] == 1
+        assert payload["follow_up_plan_summary"]["retaliation"]["contradiction_task_count"] == 0
+        assert payload["follow_up_plan_summary"]["retaliation"]["reasoning_gap_task_count"] == 0
+        assert payload["follow_up_plan_summary"]["retaliation"]["semantic_cluster_count"] == 2
+        assert payload["follow_up_plan_summary"]["retaliation"]["follow_up_focus_counts"] == {
+            "unknown": 2,
+        }
+        assert payload["follow_up_plan_summary"]["retaliation"]["query_strategy_counts"] == {
+            "unknown": 2,
+        }
+        assert payload["follow_up_plan_summary"]["retaliation"]["proof_decision_source_counts"] == {
+            "unknown": 2,
+        }
+        assert payload["follow_up_plan_summary"]["retaliation"]["resolution_applied_counts"] == {
             "manual_review_resolved": 1,
-        },
-        "adaptive_retry_entry_count": 1,
-        "priority_penalized_entry_count": 1,
-        "adaptive_query_strategy_counts": {
+        }
+        assert payload["follow_up_plan_summary"]["retaliation"]["adaptive_retry_task_count"] == 1
+        assert payload["follow_up_plan_summary"]["retaliation"]["priority_penalized_task_count"] == 1
+        assert payload["follow_up_plan_summary"]["retaliation"]["adaptive_query_strategy_counts"] == {
             "standard_gap_targeted": 1,
-        },
-        "adaptive_retry_reason_counts": {
+        }
+        assert payload["follow_up_plan_summary"]["retaliation"]["adaptive_retry_reason_counts"] == {
             "repeated_zero_result_reasoning_gap": 1,
-        },
-        "last_adaptive_retry": {
-            "claim_element_id": "retaliation:3",
+        }
+        assert payload["follow_up_plan_summary"]["retaliation"]["last_adaptive_retry"] == {
+            "claim_element_id": None,
             "claim_element_text": "Causal connection",
             "timestamp": "2026-03-12T09:45:00",
             "adaptive_query_strategy": "standard_gap_targeted",
             "reason": "repeated_zero_result_reasoning_gap",
-        },
-        "zero_result_entry_count": 1,
-        "manual_review_entry_count": 1,
-        "resolved_entry_count": 0,
-        "contradiction_related_entry_count": 1,
-        "latest_attempted_at": "2026-03-12T10:15:00",
-    }
-    assert payload["claim_reasoning_review"]["retaliation"] == {
-        "claim_type": "retaliation",
-        "total_element_count": 1,
-        "flagged_element_count": 1,
-        "fallback_ontology_element_count": 1,
-        "unavailable_backend_element_count": 1,
-        "degraded_adapter_element_count": 1,
-        "flagged_elements": [
-            {
-                "element_id": "retaliation:2",
-                "element_text": "Adverse action",
-                "validation_status": "contradicted",
-                "predicate_count": 4,
-                "used_fallback_ontology": True,
-                "backend_available_count": 3,
-                "unavailable_adapters": ["logic_contradictions"],
-                "degraded_adapters": ["logic_contradictions", "logic_proof"],
-            }
-        ],
-    }
-    assert payload["claim_coverage_summary"]["retaliation"]["support_trace_summary"]["trace_count"] == 3
-    assert payload["claim_coverage_summary"]["retaliation"]["graph_trace_summary"] == {
-        "traced_link_count": 2,
-        "snapshot_created_count": 1,
-        "snapshot_reused_count": 1,
-        "source_table_counts": {"evidence": 1, "legal_authorities": 1},
-        "graph_status_counts": {"available": 2},
-        "graph_id_count": 2,
-    }
-    assert payload["claim_support_gaps"]["retaliation"]["unresolved_count"] == 2
-    assert payload["claim_contradiction_candidates"]["retaliation"]["candidate_count"] == 1
-    assert payload["support_summary"]["retaliation"]["total_links"] == 2
-    assert payload["claim_overview"]["retaliation"]["missing"][0]["element_text"] == (
-        "Causal connection"
-    )
-    assert payload["follow_up_plan"]["retaliation"]["task_count"] == 2
-    assert payload["follow_up_plan_summary"]["retaliation"]["blocked_task_count"] == 1
-    assert payload["follow_up_plan_summary"]["retaliation"]["suppressed_task_count"] == 1
-    assert payload["follow_up_plan_summary"]["retaliation"]["contradiction_task_count"] == 0
-    assert payload["follow_up_plan_summary"]["retaliation"]["reasoning_gap_task_count"] == 0
-    assert payload["follow_up_plan_summary"]["retaliation"]["semantic_cluster_count"] == 2
-    assert payload["follow_up_plan_summary"]["retaliation"]["follow_up_focus_counts"] == {
-        "unknown": 2,
-    }
-    assert payload["follow_up_plan_summary"]["retaliation"]["query_strategy_counts"] == {
-        "unknown": 2,
-    }
-    assert payload["follow_up_plan_summary"]["retaliation"]["proof_decision_source_counts"] == {
-        "unknown": 2,
-    }
-    assert payload["follow_up_plan_summary"]["retaliation"]["resolution_applied_counts"] == {
-        "manual_review_resolved": 1,
-    }
-    assert payload["follow_up_plan_summary"]["retaliation"]["adaptive_retry_task_count"] == 1
-    assert payload["follow_up_plan_summary"]["retaliation"]["priority_penalized_task_count"] == 1
-    assert payload["follow_up_plan_summary"]["retaliation"]["adaptive_query_strategy_counts"] == {
-        "standard_gap_targeted": 1,
-    }
-    assert payload["follow_up_plan_summary"]["retaliation"]["adaptive_retry_reason_counts"] == {
-        "repeated_zero_result_reasoning_gap": 1,
-    }
-    assert payload["follow_up_plan_summary"]["retaliation"]["last_adaptive_retry"] == {
-        "claim_element_id": None,
-        "claim_element_text": "Causal connection",
-        "timestamp": "2026-03-12T09:45:00",
-        "adaptive_query_strategy": "standard_gap_targeted",
-        "reason": "repeated_zero_result_reasoning_gap",
-    }
-    assert payload["follow_up_plan_summary"]["retaliation"]["recommended_actions"] == {
-        "retrieve_more_support": 1,
-        "target_missing_support_kind": 1,
-    }
-    assert payload["follow_up_execution"]["retaliation"]["task_count"] == 1
-    assert payload["follow_up_execution_summary"]["retaliation"]["executed_task_count"] == 1
-    assert payload["follow_up_execution_summary"]["retaliation"]["skipped_task_count"] == 2
-    assert payload["follow_up_execution_summary"]["retaliation"]["suppressed_task_count"] == 1
-    assert payload["follow_up_execution_summary"]["retaliation"]["cooldown_skipped_task_count"] == 1
-    assert payload["follow_up_execution_summary"]["retaliation"]["semantic_cluster_count"] == 3
-    assert payload["follow_up_execution_summary"]["retaliation"]["semantic_duplicate_count"] == 4
-    assert payload["follow_up_execution_summary"]["retaliation"]["adaptive_retry_task_count"] == 1
-    assert payload["follow_up_execution_summary"]["retaliation"]["priority_penalized_task_count"] == 1
-    assert payload["follow_up_execution_summary"]["retaliation"]["adaptive_query_strategy_counts"] == {
-        "standard_gap_targeted": 1,
-    }
-    assert payload["follow_up_execution_summary"]["retaliation"]["resolution_applied_counts"] == {
-        "manual_review_resolved": 1,
-    }
-    assert payload["follow_up_execution_summary"]["retaliation"]["adaptive_retry_reason_counts"] == {
-        "repeated_zero_result_reasoning_gap": 1,
-    }
-    assert payload["follow_up_execution_summary"]["retaliation"]["last_adaptive_retry"] == {
-        "claim_element_id": None,
-        "claim_element_text": "Causal connection",
-        "timestamp": "2026-03-12T09:45:00",
-        "adaptive_query_strategy": "standard_gap_targeted",
-        "reason": "repeated_zero_result_reasoning_gap",
-    }
-    mediator.get_claim_coverage_matrix.assert_called_once_with(
-        claim_type="retaliation",
-        user_id="state-user",
-        required_support_kinds=["evidence", "authority"],
-    )
-    mediator.get_claim_follow_up_plan.assert_called_once_with(
-        claim_type="retaliation",
-        user_id="state-user",
-        required_support_kinds=["evidence", "authority"],
-        cooldown_seconds=3600,
-    )
-    mediator.get_claim_support_gaps.assert_called_once_with(
-        claim_type="retaliation",
-        user_id="state-user",
-        required_support_kinds=["evidence", "authority"],
-    )
-    mediator.get_claim_contradiction_candidates.assert_called_once_with(
-        claim_type="retaliation",
-        user_id="state-user",
-    )
-    mediator.get_claim_support_validation.assert_called_once_with(
-        claim_type="retaliation",
-        user_id="state-user",
-        required_support_kinds=["evidence", "authority"],
-    )
-    mediator.get_recent_claim_follow_up_execution.assert_called_once_with(
-        claim_type="retaliation",
-        user_id="state-user",
-        limit=10,
-    )
-    mediator.execute_claim_follow_up_plan.assert_called_once_with(
-        claim_type="retaliation",
-        user_id="state-user",
-        support_kind="authority",
-        max_tasks_per_claim=2,
-        cooldown_seconds=3600,
-    )
+            "recency_bucket": "fresh",
+            "is_stale": False,
+        }
+        assert payload["follow_up_plan_summary"]["retaliation"]["recommended_actions"] == {
+            "retrieve_more_support": 1,
+            "target_missing_support_kind": 1,
+        }
+        assert payload["follow_up_execution"]["retaliation"]["task_count"] == 1
+        assert payload["follow_up_execution_summary"]["retaliation"]["executed_task_count"] == 1
+        assert payload["follow_up_execution_summary"]["retaliation"]["skipped_task_count"] == 2
+        assert payload["follow_up_execution_summary"]["retaliation"]["suppressed_task_count"] == 1
+        assert payload["follow_up_execution_summary"]["retaliation"]["cooldown_skipped_task_count"] == 1
+        assert payload["follow_up_execution_summary"]["retaliation"]["semantic_cluster_count"] == 3
+        assert payload["follow_up_execution_summary"]["retaliation"]["semantic_duplicate_count"] == 4
+        assert payload["follow_up_execution_summary"]["retaliation"]["adaptive_retry_task_count"] == 1
+        assert payload["follow_up_execution_summary"]["retaliation"]["priority_penalized_task_count"] == 1
+        assert payload["follow_up_execution_summary"]["retaliation"]["adaptive_query_strategy_counts"] == {
+            "standard_gap_targeted": 1,
+        }
+        assert payload["follow_up_execution_summary"]["retaliation"]["resolution_applied_counts"] == {
+            "manual_review_resolved": 1,
+        }
+        assert payload["follow_up_execution_summary"]["retaliation"]["adaptive_retry_reason_counts"] == {
+            "repeated_zero_result_reasoning_gap": 1,
+        }
+        assert payload["follow_up_execution_summary"]["retaliation"]["last_adaptive_retry"] == {
+            "claim_element_id": None,
+            "claim_element_text": "Causal connection",
+            "timestamp": "2026-03-12T09:45:00",
+            "adaptive_query_strategy": "standard_gap_targeted",
+            "reason": "repeated_zero_result_reasoning_gap",
+            "recency_bucket": "fresh",
+            "is_stale": False,
+        }
+        mediator.get_claim_coverage_matrix.assert_called_once_with(
+            claim_type="retaliation",
+            user_id="state-user",
+            required_support_kinds=["evidence", "authority"],
+        )
+        mediator.get_claim_follow_up_plan.assert_called_once_with(
+            claim_type="retaliation",
+            user_id="state-user",
+            required_support_kinds=["evidence", "authority"],
+            cooldown_seconds=3600,
+        )
+        mediator.get_claim_support_gaps.assert_called_once_with(
+            claim_type="retaliation",
+            user_id="state-user",
+            required_support_kinds=["evidence", "authority"],
+        )
+        mediator.get_claim_contradiction_candidates.assert_called_once_with(
+            claim_type="retaliation",
+            user_id="state-user",
+        )
+        mediator.get_claim_support_validation.assert_called_once_with(
+            claim_type="retaliation",
+            user_id="state-user",
+            required_support_kinds=["evidence", "authority"],
+        )
+        mediator.get_recent_claim_follow_up_execution.assert_called_once_with(
+            claim_type="retaliation",
+            user_id="state-user",
+            limit=10,
+        )
+        mediator.execute_claim_follow_up_plan.assert_called_once_with(
+            claim_type="retaliation",
+            user_id="state-user",
+            support_kind="authority",
+            max_tasks_per_claim=2,
+            cooldown_seconds=3600,
+        )
 
 
 def test_claim_support_review_endpoint_allows_explicit_user_and_optional_sections():

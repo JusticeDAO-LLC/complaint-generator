@@ -18,6 +18,22 @@ def normalize_degraded_reason(reason: Any) -> str | None:
     return text or None
 
 
+@dataclass(frozen=True)
+class CapabilityStatus:
+    status: str
+    available: bool
+    module_path: str
+    degraded_reason: str | None = None
+    provider: str = "ipfs_datasets_py"
+    details: Dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> Dict[str, Any]:
+        payload = asdict(self)
+        payload["degraded_reason"] = normalize_degraded_reason(payload.get("degraded_reason"))
+        payload["details"] = dict(payload.get("details") or {})
+        return payload
+
+
 def with_adapter_metadata(
     payload: Dict[str, Any],
     *,
@@ -30,16 +46,28 @@ def with_adapter_metadata(
     normalized_payload = dict(payload)
     existing_metadata = normalized_payload.get("metadata")
     metadata = dict(existing_metadata) if isinstance(existing_metadata, dict) else {}
+    existing_details = metadata.get("details")
+    details = dict(existing_details) if isinstance(existing_details, dict) else {}
+
+    normalized_payload.setdefault("provider", "ipfs_datasets_py")
     metadata["operation"] = operation
     metadata["backend_available"] = bool(backend_available)
+    metadata["provider"] = "ipfs_datasets_py"
+
+    details["operation"] = operation
+    details["backend_available"] = bool(backend_available)
     if implementation_status:
         metadata["implementation_status"] = implementation_status
+        details["implementation_status"] = implementation_status
     normalized_reason = normalize_degraded_reason(degraded_reason)
     if normalized_reason:
         metadata["degraded_reason"] = normalized_reason
+        details["degraded_reason"] = normalized_reason
         normalized_payload.setdefault("degraded_reason", normalized_reason)
     if extra_metadata:
         metadata.update(extra_metadata)
+        details.update(extra_metadata)
+    metadata["details"] = details
     normalized_payload["metadata"] = metadata
     return normalized_payload
 
@@ -410,6 +438,7 @@ class ValidationRun:
 
 
 __all__ = [
+    "CapabilityStatus",
     "normalize_degraded_reason",
     "with_adapter_metadata",
     "ProvenanceRecord",
