@@ -1438,8 +1438,19 @@ Representative response shape:
       "suppressed_task_count": 0,
       "cooldown_skipped_task_count": 0,
       "manual_review_task_count": 1,
+      "contradiction_task_count": 1,
+      "reasoning_gap_task_count": 0,
       "semantic_cluster_count": 1,
-      "semantic_duplicate_count": 0
+      "semantic_duplicate_count": 0,
+      "follow_up_focus_counts": {
+        "contradiction_resolution": 2
+      },
+      "query_strategy_counts": {
+        "contradiction_targeted": 2
+      },
+      "proof_decision_source_counts": {
+        "contradiction_candidates": 2
+      }
     }
   },
   "post_execution_review": {
@@ -1479,6 +1490,7 @@ Interpretation notes:
 - The same downgrade applies to reasoning-gap `manual_review` work: once resolved, mixed reasoning tasks clear their reasoning-specific proof-gap markers and revert to ordinary support-gap queries, so follow-up summaries describe the remaining retrieval work rather than the already-resolved proof issue.
 - Reasoning-gap tasks are not auto-suppressed solely because graph support is already strong; they stay visible when the proof layer still marks the element as unprovable or ontology-invalid.
 - `manual_review_task_count` in both follow-up summaries tracks contradiction-review work that intentionally does not trigger evidence or authority retrieval.
+- `follow_up_execution_summary` rolls executed and skipped work into shared `follow_up_focus_counts`, `query_strategy_counts`, and `proof_decision_source_counts`, so the standalone execution API exposes the same planner/execution mix analytics as review, web-evidence, and automatic legal research.
 - `post_execution_review.follow_up_history_summary` reflects the refreshed ledger after execution, so clients can confirm that retrieval and manual-review events were recorded.
 
 - `follow_up_force=true` bypasses duplicate-within-cooldown suppression inside `Mediator.execute_claim_follow_up_plan(...)`.

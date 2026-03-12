@@ -815,6 +815,9 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
                 "tasks": [
                     {
                         "claim_element": "Causal connection",
+                        "follow_up_focus": "reasoning_gap_closure",
+                        "query_strategy": "reasoning_gap_targeted",
+                        "proof_decision_source": "logic_unprovable",
                         "graph_support": {
                             "summary": {
                                 "semantic_cluster_count": 1,
@@ -823,7 +826,20 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
                         },
                     }
                 ],
-                "skipped_tasks": [],
+                "skipped_tasks": [
+                    {
+                        "claim_element": "Protected activity",
+                        "execution_mode": "manual_review",
+                        "follow_up_focus": "contradiction_resolution",
+                        "query_strategy": "contradiction_targeted",
+                        "proof_decision_source": "contradiction_candidates",
+                        "skipped": {
+                            "manual_review": {
+                                "reason": "contradiction_requires_resolution",
+                            }
+                        },
+                    }
+                ],
             }
         }
     }
@@ -922,7 +938,29 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
     assert payload["follow_up_support_kind"] == "evidence"
     assert payload["follow_up_force"] is True
     assert payload["follow_up_execution"]["retaliation"]["task_count"] == 1
-    assert payload["follow_up_execution_summary"]["retaliation"]["executed_task_count"] == 1
+    assert payload["follow_up_execution_summary"]["retaliation"] == {
+        "executed_task_count": 1,
+        "skipped_task_count": 1,
+        "suppressed_task_count": 0,
+        "manual_review_task_count": 1,
+        "cooldown_skipped_task_count": 0,
+        "contradiction_task_count": 1,
+        "reasoning_gap_task_count": 1,
+        "semantic_cluster_count": 1,
+        "semantic_duplicate_count": 0,
+        "follow_up_focus_counts": {
+            "reasoning_gap_closure": 1,
+            "contradiction_resolution": 1,
+        },
+        "query_strategy_counts": {
+            "reasoning_gap_targeted": 1,
+            "contradiction_targeted": 1,
+        },
+        "proof_decision_source_counts": {
+            "logic_unprovable": 1,
+            "contradiction_candidates": 1,
+        },
+    }
     assert payload["post_execution_review"]["claim_coverage_summary"]["retaliation"]["status_counts"]["covered"] == 2
     assert payload["post_execution_review"]["claim_support_gaps"]["retaliation"]["unresolved_count"] == 1
     assert payload["post_execution_review"]["claim_contradiction_candidates"]["retaliation"]["candidate_count"] == 0
