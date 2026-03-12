@@ -214,7 +214,7 @@ Count semantics:
 
 ## Automatic Evidence Discovery
 
-`Mediator.discover_evidence_automatically(...)` and `WebEvidenceIntegrationHook.discover_evidence_for_case(...)` keep the legacy per-claim count and add a richer per-claim storage summary.
+`Mediator.discover_evidence_automatically(...)` and `WebEvidenceIntegrationHook.discover_evidence_for_case(...)` keep the legacy per-claim count and add richer per-claim storage, support, gap, contradiction, and follow-up summaries.
 
 Representative shape:
 
@@ -235,6 +235,44 @@ Representative shape:
       "total_support_links_added": 2,
       "total_support_links_reused": 0
     }
+  },
+  "claim_coverage_summary": {
+    "employment discrimination": {
+      "status_counts": {
+        "covered": 0,
+        "partially_supported": 1,
+        "missing": 1
+      },
+      "missing_elements": ["Adverse action"],
+      "partially_supported_elements": ["Protected activity"],
+      "unresolved_element_count": 2,
+      "recommended_gap_actions": {
+        "collect_missing_support_kind": 1,
+        "collect_initial_support": 1
+      },
+      "contradiction_candidate_count": 1,
+      "contradicted_elements": ["Protected activity"],
+      "graph_trace_summary": {
+        "traced_link_count": 0,
+        "snapshot_created_count": 0,
+        "snapshot_reused_count": 0,
+        "source_table_counts": {},
+        "graph_status_counts": {},
+        "graph_id_count": 0
+      }
+    }
+  },
+  "claim_support_gaps": {
+    "employment discrimination": {
+      "unresolved_count": 2,
+      "unresolved_elements": []
+    }
+  },
+  "claim_contradiction_candidates": {
+    "employment discrimination": {
+      "candidate_count": 1,
+      "candidates": []
+    }
   }
 }
 ```
@@ -243,6 +281,8 @@ Compatibility note:
 
 - `evidence_stored[claim_type]` remains an integer count.
 - `evidence_storage_summary[claim_type]` is the authoritative deduplication-aware breakdown.
+- `claim_coverage_summary[claim_type]` is the compact support-health snapshot for dashboards and automation.
+- `claim_support_gaps[claim_type]` and `claim_contradiction_candidates[claim_type]` expose the richer unresolved-support and conflict diagnostics behind that compact summary.
 
 ## Legal Authority Storage
 

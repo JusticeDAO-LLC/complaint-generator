@@ -381,11 +381,17 @@ class WebEvidenceIntegrationHook:
         claim_type: str,
         coverage_claim: Dict[str, Any],
         overview_claim: Dict[str, Any] = None,
+        gap_claim: Dict[str, Any] = None,
+        contradiction_claim: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
         if not isinstance(coverage_claim, dict):
             coverage_claim = {}
         if not isinstance(overview_claim, dict):
             overview_claim = {}
+        if not isinstance(gap_claim, dict):
+            gap_claim = {}
+        if not isinstance(contradiction_claim, dict):
+            contradiction_claim = {}
         elements = coverage_claim.get('elements', []) if isinstance(coverage_claim.get('elements', []), list) else []
         if elements:
             missing_elements = [
@@ -409,18 +415,85 @@ class WebEvidenceIntegrationHook:
                 for element in overview_claim.get('partially_supported', [])
                 if isinstance(element, dict) and element.get('element_text')
             ]
+        unresolved_elements = []
+        recommended_gap_actions: Dict[str, int] = {}
+        for element in gap_claim.get('unresolved_elements', []):
+            if not isinstance(element, dict):
+                continue
+            element_text = element.get('element_text')
+            if element_text:
+                unresolved_elements.append(element_text)
+            action = str(element.get('recommended_action') or 'unspecified')
+            recommended_gap_actions[action] = recommended_gap_actions.get(action, 0) + 1
+        contradicted_elements = []
+        contradiction_candidate_count = int(contradiction_claim.get('candidate_count', 0) or 0)
+        seen_contradicted_elements = set()
+        for candidate in contradiction_claim.get('candidates', []):
+            if not isinstance(candidate, dict):
+                continue
+            element_text = candidate.get('claim_element_text')
+            if element_text and element_text not in seen_contradicted_elements:
+                seen_contradicted_elements.add(element_text)
+                contradicted_elements.append(element_text)
+        traced_link_count = 0
+        snapshot_created_count = 0
+        snapshot_reused_count = 0
+        source_table_counts: Dict[str, int] = {}
+        graph_status_counts: Dict[str, int] = {}
+        graph_id_count = 0
+        seen_graph_ids = set()
+        for element in elements:
+            if not isinstance(element, dict):
+                continue
+            for link in element.get('links', []):
+                if not isinstance(link, dict):
+                    continue
+                graph_trace = link.get('graph_trace', {})
+                if not isinstance(graph_trace, dict) or not graph_trace:
+                    continue
+                traced_link_count += 1
+                source_table = str(graph_trace.get('source_table') or 'unknown')
+                source_table_counts[source_table] = source_table_counts.get(source_table, 0) + 1
+                summary = graph_trace.get('summary', {})
+                if isinstance(summary, dict):
+                    graph_status = str(summary.get('status') or 'unknown')
+                    graph_status_counts[graph_status] = graph_status_counts.get(graph_status, 0) + 1
+                snapshot = graph_trace.get('snapshot', {})
+                if isinstance(snapshot, dict):
+                    if bool(snapshot.get('created')):
+                        snapshot_created_count += 1
+                    if bool(snapshot.get('reused')):
+                        snapshot_reused_count += 1
+                    graph_id = str(snapshot.get('graph_id') or '')
+                    if graph_id and graph_id not in seen_graph_ids:
+                        seen_graph_ids.add(graph_id)
+                        graph_id_count += 1
         return {
             'claim_type': claim_type,
             'total_elements': coverage_claim.get('total_elements', 0),
             'total_links': coverage_claim.get('total_links', 0),
             'total_facts': coverage_claim.get('total_facts', 0),
             'support_by_kind': coverage_claim.get('support_by_kind', {}),
+            'support_trace_summary': coverage_claim.get('support_trace_summary', {}),
             'status_counts': coverage_claim.get(
                 'status_counts',
                 {'covered': 0, 'partially_supported': 0, 'missing': 0},
             ),
             'missing_elements': missing_elements,
             'partially_supported_elements': partially_supported_elements,
+            'unresolved_element_count': int(gap_claim.get('unresolved_count', 0) or 0),
+            'unresolved_elements': unresolved_elements,
+            'recommended_gap_actions': recommended_gap_actions,
+            'contradiction_candidate_count': contradiction_candidate_count,
+            'contradicted_elements': contradicted_elements,
+            'graph_trace_summary': {
+                'traced_link_count': traced_link_count,
+                'snapshot_created_count': snapshot_created_count,
+                'snapshot_reused_count': snapshot_reused_count,
+                'source_table_counts': source_table_counts,
+                'graph_status_counts': graph_status_counts,
+                'graph_id_count': graph_id_count,
+            },
         }
     
     def _get_search_hook(self):
@@ -910,6 +983,8 @@ class WebEvidenceIntegrationHook:
             'evidence_storage_summary': {},
             'support_summary': {},
             'claim_coverage_summary': {},
+            'claim_support_gaps': {},
+            'claim_contradiction_candidates': {},
             'claim_overview': {},
             'follow_up_plan': {},
             'follow_up_plan_summary': {},
@@ -981,6 +1056,27 @@ class WebEvidenceIntegrationHook:
                         'unassigned_links': [],
                     },
                 )
+            if hasattr(self.mediator, 'get_claim_support_gaps'):
+                claim_support_gaps = self.mediator.get_claim_support_gaps(claim_type=claim_type, user_id=user_id)
+                results['claim_support_gaps'][claim_type] = claim_support_gaps.get('claims', {}).get(
+                    claim_type,
+                    {
+                        'claim_type': claim_type,
+                        'required_support_kinds': ['evidence', 'authority'],
+                        'unresolved_count': 0,
+                        'unresolved_elements': [],
+                    },
+                )
+            if hasattr(self.mediator, 'get_claim_contradiction_candidates'):
+                claim_contradictions = self.mediator.get_claim_contradiction_candidates(claim_type=claim_type, user_id=user_id)
+                results['claim_contradiction_candidates'][claim_type] = claim_contradictions.get('claims', {}).get(
+                    claim_type,
+                    {
+                        'claim_type': claim_type,
+                        'candidate_count': 0,
+                        'candidates': [],
+                    },
+                )
             if hasattr(self.mediator, 'get_claim_follow_up_plan'):
                 follow_up_plan = self.mediator.get_claim_follow_up_plan(claim_type=claim_type, user_id=user_id)
                 claim_plan = follow_up_plan.get('claims', {}).get(
@@ -1011,6 +1107,8 @@ class WebEvidenceIntegrationHook:
                 claim_type,
                 results['claim_coverage_matrix'].get(claim_type, {}),
                 results['claim_overview'].get(claim_type, {}),
+                results['claim_support_gaps'].get(claim_type, {}),
+                results['claim_contradiction_candidates'].get(claim_type, {}),
             )
         
         self.mediator.log('auto_evidence_discovery_complete', results=results)

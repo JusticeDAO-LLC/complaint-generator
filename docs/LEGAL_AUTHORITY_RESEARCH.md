@@ -342,7 +342,9 @@ Per-claim results include:
 - `support_summary[claim_type]`: raw persisted support-link summary.
 - `claim_overview[claim_type]`: covered, partially supported, and missing element buckets.
 - `claim_coverage_matrix[claim_type]`: grouped claim-element support with `links_by_kind`, `missing_support_kinds`, and inline record or graph summaries.
-- `claim_coverage_summary[claim_type]`: compact coverage counts plus `missing_elements` and `partially_supported_elements` labels.
+- `claim_coverage_summary[claim_type]`: compact coverage counts plus missing, unresolved, and contradiction labels.
+- `claim_support_gaps[claim_type]`: unresolved-element diagnostics with recommended actions.
+- `claim_contradiction_candidates[claim_type]`: heuristic contradiction candidates for operator review.
 - `follow_up_plan[claim_type]`: next-step authority or evidence retrieval tasks derived from the current support gaps.
 
 ## Advanced Usage
