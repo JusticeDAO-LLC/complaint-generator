@@ -775,6 +775,21 @@ class Mediator:
 				)
 		return gap_analysis
 
+	def get_claim_support_validation(
+		self,
+		claim_type: str = None,
+		user_id: str = None,
+		required_support_kinds: List[str] = None,
+	):
+		"""Return normalized validation and proof-gap diagnostics for each claim element."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		return self.claim_support.get_claim_support_validation(
+			user_id,
+			claim_type=claim_type,
+			required_support_kinds=required_support_kinds,
+		)
+
 	def get_claim_contradiction_candidates(
 		self,
 		claim_type: str = None,
@@ -786,6 +801,42 @@ class Mediator:
 		return self.claim_support.get_claim_contradiction_candidates(
 			user_id,
 			claim_type=claim_type,
+		)
+
+	def persist_claim_support_diagnostics(
+		self,
+		claim_type: str = None,
+		user_id: str = None,
+		required_support_kinds: List[str] = None,
+		gaps: Dict[str, Any] = None,
+		contradictions: Dict[str, Any] = None,
+		metadata: Dict[str, Any] = None,
+	):
+		"""Persist gap and contradiction diagnostics for later review reuse."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		return self.claim_support.persist_claim_support_diagnostics(
+			user_id,
+			claim_type=claim_type,
+			required_support_kinds=required_support_kinds,
+			gaps=gaps,
+			contradictions=contradictions,
+			metadata=metadata,
+		)
+
+	def get_claim_support_diagnostic_snapshots(
+		self,
+		claim_type: str = None,
+		user_id: str = None,
+		required_support_kinds: List[str] = None,
+	):
+		"""Return the latest persisted gap and contradiction diagnostics by claim."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		return self.claim_support.get_claim_support_diagnostic_snapshots(
+			user_id,
+			claim_type=claim_type,
+			required_support_kinds=required_support_kinds,
 		)
 
 	def build_claim_support_review_payload(
@@ -870,11 +921,18 @@ class Mediator:
 				f'"{claim_type}" "{element_text}" case law',
 				f'"{element_text}" legal elements {claim_type}',
 			]
+		validation_status = element.get('validation_status', '')
+		if validation_status == 'contradicted':
+			priority = 'high'
 		return {
 			'claim_type': claim_type,
 			'claim_element_id': element.get('element_id'),
 			'claim_element': element_text,
 			'status': status,
+			'validation_status': validation_status,
+			'proof_gap_count': int(element.get('proof_gap_count', 0) or 0),
+			'proof_gaps': element.get('proof_gaps', []),
+			'validation_recommended_action': element.get('recommended_action', ''),
 			'priority': priority,
 			'priority_score': 3 if priority == 'high' else 2,
 			'missing_support_kinds': missing_support_kinds,
@@ -913,6 +971,11 @@ class Mediator:
 		return 'low'
 
 	def _should_suppress_follow_up_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+		if task.get('validation_status') == 'contradicted':
+			return {
+				'suppress': False,
+				'reason': '',
+			}
 		graph_summary = (task.get('graph_support') or {}).get('summary', {})
 		semantic_cluster_count = int(
 			graph_summary.get('semantic_cluster_count', graph_summary.get('unique_fact_count', graph_summary.get('total_fact_count', 0))) or 0
@@ -939,7 +1002,7 @@ class Mediator:
 		"""Generate targeted follow-up retrieval tasks from claim overview gaps."""
 		if user_id is None:
 			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
-		overview = self.get_claim_overview(
+		validation = self.get_claim_support_validation(
 			claim_type=claim_type,
 			user_id=user_id,
 			required_support_kinds=required_support_kinds,
@@ -948,20 +1011,15 @@ class Mediator:
 			'required_support_kinds': required_support_kinds or ['evidence', 'authority'],
 			'claims': {},
 		}
-		for current_claim, claim_data in overview.get('claims', {}).items():
+		for current_claim, claim_data in validation.get('claims', {}).items():
 			tasks = []
-			for element in claim_data.get('missing', []):
+			for element in claim_data.get('elements', []):
+				if not isinstance(element, dict) or element.get('validation_status') == 'supported':
+					continue
 				tasks.append(self._build_follow_up_task(
 					current_claim,
 					element,
-					'missing',
-					claim_data.get('required_support_kinds', plan['required_support_kinds']),
-				))
-			for element in claim_data.get('partially_supported', []):
-				tasks.append(self._build_follow_up_task(
-					current_claim,
-					element,
-					'partially_supported',
+					element.get('coverage_status', element.get('status', 'missing')),
 					claim_data.get('required_support_kinds', plan['required_support_kinds']),
 				))
 			for task in tasks:
@@ -986,10 +1044,14 @@ class Mediator:
 					1,
 					min(3, int(task.get('priority_score', 2)) + int(graph_support_assessment.get('priority_adjustment', 0))),
 				)
+				if task.get('validation_status') == 'contradicted':
+					adjusted_priority_score = 3
 				task['graph_support'] = graph_support
 				task['has_graph_support'] = bool(graph_support.get('results'))
 				task['graph_support_strength'] = graph_support_assessment['strength']
 				task['recommended_action'] = graph_support_assessment['recommended_action']
+				if task.get('validation_status') == 'contradicted':
+					task['recommended_action'] = 'resolve_contradiction'
 				task['priority_score'] = adjusted_priority_score
 				task['priority'] = self._priority_from_score(adjusted_priority_score)
 				suppression = self._should_suppress_follow_up_task(task)
@@ -1262,6 +1324,21 @@ class Mediator:
 			if candidate.get('claim_element_id') == target_element_id
 			or candidate.get('claim_element_text') == target_element_text
 		]
+		claim_validation = self.get_claim_support_validation(
+			claim_type=claim_type,
+			user_id=user_id,
+		).get('claims', {}).get(claim_type, {})
+		current_validation_summary = {
+			'element_id': target_element_id,
+			'element_text': target_element_text,
+			'validation_status': 'missing' if not element_summary.get('total_links', 0) else 'supported',
+			'proof_gap_count': 0,
+			'proof_gaps': [],
+		}
+		for validation_element in claim_validation.get('elements', []):
+			if validation_element.get('element_id') == target_element_id or validation_element.get('element_text') == target_element_text:
+				current_validation_summary = validation_element
+				break
 
 		return {
 			'claim_type': claim_type,
@@ -1272,6 +1349,7 @@ class Mediator:
 			'missing_support': element_summary.get('total_links', 0) == 0,
 			'support_summary': element_summary,
 			'gap_summary': current_gap_summary,
+			'validation_summary': current_validation_summary,
 			'contradiction_candidates': contradiction_candidates,
 			'support_facts': support_facts,
 			'support_traces': self.claim_support.get_claim_support_traces(
@@ -1336,6 +1414,7 @@ class Mediator:
 		overview_claim: Dict[str, Any] = None,
 		gap_claim: Dict[str, Any] = None,
 		contradiction_claim: Dict[str, Any] = None,
+		validation_claim: Dict[str, Any] = None,
 	) -> Dict[str, Any]:
 		if not isinstance(coverage_claim, dict):
 			coverage_claim = {}
@@ -1345,6 +1424,8 @@ class Mediator:
 			gap_claim = {}
 		if not isinstance(contradiction_claim, dict):
 			contradiction_claim = {}
+		if not isinstance(validation_claim, dict):
+			validation_claim = {}
 		elements = coverage_claim.get('elements', []) if isinstance(coverage_claim.get('elements', []), list) else []
 		if elements:
 			missing_elements = [
@@ -1423,6 +1504,10 @@ class Mediator:
 						graph_id_count += 1
 		return {
 			'claim_type': claim_type,
+			'validation_status': validation_claim.get('validation_status', ''),
+			'validation_status_counts': validation_claim.get('validation_status_counts', {}),
+			'proof_gap_count': int(validation_claim.get('proof_gap_count', 0) or 0),
+			'elements_requiring_follow_up': validation_claim.get('elements_requiring_follow_up', []),
 			'total_elements': coverage_claim.get('total_elements', 0),
 			'total_links': coverage_claim.get('total_links', 0),
 			'total_facts': coverage_claim.get('total_facts', 0),
@@ -1483,6 +1568,8 @@ class Mediator:
 			'claim_coverage_summary': {},
 			'claim_support_gaps': {},
 			'claim_contradiction_candidates': {},
+			'claim_support_validation': {},
+			'claim_support_snapshots': {},
 			'claim_overview': {},
 			'follow_up_plan': {},
 			'follow_up_execution': {}
@@ -1572,12 +1659,42 @@ class Mediator:
 					'candidates': [],
 				},
 			)
+			claim_validation = self.get_claim_support_validation(claim_type=claim_type, user_id=user_id)
+			results['claim_support_validation'][claim_type] = claim_validation.get('claims', {}).get(
+				claim_type,
+				{
+					'claim_type': claim_type,
+					'validation_status': 'missing',
+					'validation_status_counts': {
+						'supported': 0,
+						'incomplete': 0,
+						'missing': 0,
+						'contradicted': 0,
+					},
+					'proof_gap_count': 0,
+					'proof_gaps': [],
+					'elements': [],
+				},
+			)
+			persisted_diagnostics = self.persist_claim_support_diagnostics(
+				claim_type=claim_type,
+				user_id=user_id,
+				required_support_kinds=['evidence', 'authority'],
+				gaps={'claims': {claim_type: results['claim_support_gaps'][claim_type]}},
+				contradictions={'claims': {claim_type: results['claim_contradiction_candidates'][claim_type]}},
+				metadata={'source': 'research_case_automatically'},
+			)
+			results['claim_support_snapshots'][claim_type] = persisted_diagnostics.get('claims', {}).get(
+				claim_type,
+				{},
+			).get('snapshots', {})
 			results['claim_coverage_summary'][claim_type] = self._summarize_claim_coverage_claim(
 				results['claim_coverage_matrix'][claim_type],
 				claim_type,
 				results['claim_overview'][claim_type],
 				results['claim_support_gaps'][claim_type],
 				results['claim_contradiction_candidates'][claim_type],
+				results['claim_support_validation'][claim_type],
 			)
 			follow_up_plan = self.get_claim_follow_up_plan(claim_type=claim_type, user_id=user_id)
 			results['follow_up_plan'][claim_type] = follow_up_plan.get('claims', {}).get(

@@ -345,6 +345,7 @@ Per-claim results include:
 - `claim_coverage_summary[claim_type]`: compact coverage counts plus missing, unresolved, and contradiction labels.
 - `claim_support_gaps[claim_type]`: unresolved-element diagnostics with recommended actions.
 - `claim_contradiction_candidates[claim_type]`: heuristic contradiction candidates for operator review.
+- `claim_support_snapshots[claim_type]`: persisted snapshot ids and metadata for the stored gap and contradiction diagnostics.
 - `follow_up_plan[claim_type]`: next-step authority or evidence retrieval tasks derived from the current support gaps.
 
 ## Advanced Usage

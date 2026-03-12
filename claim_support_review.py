@@ -54,7 +54,9 @@ def _summarize_claim_coverage_claim(
     overview_claim: Dict[str, Any],
     gap_claim: Dict[str, Any],
     contradiction_claim: Dict[str, Any],
+    validation_claim: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    validation_claim = validation_claim if isinstance(validation_claim, dict) else {}
     missing_elements = []
     partially_supported_elements = []
 
@@ -137,6 +139,12 @@ def _summarize_claim_coverage_claim(
 
     return {
         "claim_type": claim_type,
+        "validation_status": validation_claim.get("validation_status", ""),
+        "validation_status_counts": validation_claim.get("validation_status_counts", {}),
+        "proof_gap_count": int(validation_claim.get("proof_gap_count", 0) or 0),
+        "elements_requiring_follow_up": validation_claim.get(
+            "elements_requiring_follow_up", []
+        ),
         "total_elements": coverage_claim.get("total_elements", 0),
         "total_links": coverage_claim.get("total_links", 0),
         "total_facts": coverage_claim.get("total_facts", 0),
@@ -251,21 +259,71 @@ def build_claim_support_review_payload(
 
     coverage_claims = matrix.get("claims", {}) if isinstance(matrix, dict) else {}
     overview_claims = overview.get("claims", {}) if isinstance(overview, dict) else {}
-    gaps = mediator.get_claim_support_gaps(
+    diagnostic_snapshots = mediator.get_claim_support_diagnostic_snapshots(
         claim_type=request.claim_type,
         user_id=resolved_user_id,
         required_support_kinds=required_support_kinds,
     )
-    contradiction_candidates = mediator.get_claim_contradiction_candidates(
-        claim_type=request.claim_type,
-        user_id=resolved_user_id,
-    )
-    gap_claims = gaps.get("claims", {}) if isinstance(gaps, dict) else {}
-    contradiction_claims = (
-        contradiction_candidates.get("claims", {})
-        if isinstance(contradiction_candidates, dict)
+    snapshot_claims = (
+        diagnostic_snapshots.get("claims", {})
+        if isinstance(diagnostic_snapshots, dict)
         else {}
     )
+    gap_claims = {
+        claim_name: claim_snapshot.get("gaps", {})
+        for claim_name, claim_snapshot in snapshot_claims.items()
+        if isinstance(claim_snapshot, dict)
+        and isinstance(claim_snapshot.get("gaps"), dict)
+        and not bool(
+            ((claim_snapshot.get("snapshots") or {}).get("gaps") or {}).get("is_stale")
+        )
+    }
+    contradiction_claims = {
+        claim_name: claim_snapshot.get("contradictions", {})
+        for claim_name, claim_snapshot in snapshot_claims.items()
+        if isinstance(claim_snapshot, dict)
+        and isinstance(claim_snapshot.get("contradictions"), dict)
+        and not bool(
+            ((claim_snapshot.get("snapshots") or {}).get("contradictions") or {}).get("is_stale")
+        )
+    }
+    missing_gap_claims = [
+        claim_name for claim_name in coverage_claims.keys()
+        if claim_name not in gap_claims or not gap_claims.get(claim_name)
+    ]
+    if missing_gap_claims:
+        gaps = mediator.get_claim_support_gaps(
+            claim_type=request.claim_type,
+            user_id=resolved_user_id,
+            required_support_kinds=required_support_kinds,
+        )
+        computed_gap_claims = gaps.get("claims", {}) if isinstance(gaps, dict) else {}
+        for claim_name in missing_gap_claims:
+            if isinstance(computed_gap_claims.get(claim_name), dict):
+                gap_claims[claim_name] = computed_gap_claims[claim_name]
+    missing_contradiction_claims = [
+        claim_name for claim_name in coverage_claims.keys()
+        if claim_name not in contradiction_claims or not contradiction_claims.get(claim_name)
+    ]
+    if missing_contradiction_claims:
+        contradiction_candidates = mediator.get_claim_contradiction_candidates(
+            claim_type=request.claim_type,
+            user_id=resolved_user_id,
+        )
+        computed_contradiction_claims = (
+            contradiction_candidates.get("claims", {})
+            if isinstance(contradiction_candidates, dict)
+            else {}
+        )
+        for claim_name in missing_contradiction_claims:
+            if isinstance(computed_contradiction_claims.get(claim_name), dict):
+                contradiction_claims[claim_name] = computed_contradiction_claims[claim_name]
+    validation = mediator.get_claim_support_validation(
+        claim_type=request.claim_type,
+        user_id=resolved_user_id,
+        required_support_kinds=required_support_kinds,
+    )
+    validation_claims = validation.get("claims", {}) if isinstance(validation, dict) else {}
     coverage_summary = {
         claim_name: _summarize_claim_coverage_claim(
             claim_name,
@@ -273,6 +331,7 @@ def build_claim_support_review_payload(
             overview_claims.get(claim_name, {}),
             gap_claims.get(claim_name, {}),
             contradiction_claims.get(claim_name, {}),
+            validation_claims.get(claim_name, {}),
         )
         for claim_name, claim_matrix in coverage_claims.items()
         if isinstance(claim_matrix, dict)
@@ -286,6 +345,12 @@ def build_claim_support_review_payload(
         "claim_coverage_summary": coverage_summary,
         "claim_support_gaps": gap_claims,
         "claim_contradiction_candidates": contradiction_claims,
+        "claim_support_validation": validation_claims,
+        "claim_support_snapshots": {
+            claim_name: claim_snapshot.get("snapshots", {})
+            for claim_name, claim_snapshot in snapshot_claims.items()
+            if isinstance(claim_snapshot, dict)
+        },
     }
 
     if request.include_follow_up_plan:

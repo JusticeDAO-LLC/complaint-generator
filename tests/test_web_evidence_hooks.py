@@ -688,6 +688,32 @@ class TestWebEvidenceIntegrationHook:
                     }
                 }
             })
+            mock_mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment discrimination': {
+                        'claim_type': 'employment discrimination',
+                        'validation_status': 'contradicted',
+                        'validation_status_counts': {
+                            'supported': 0,
+                            'incomplete': 1,
+                            'missing': 1,
+                            'contradicted': 1,
+                        },
+                        'proof_gap_count': 3,
+                        'elements': [],
+                    }
+                }
+            })
+            mock_mediator.persist_claim_support_diagnostics = Mock(return_value={
+                'claims': {
+                    'employment discrimination': {
+                        'snapshots': {
+                            'gaps': {'snapshot_id': 101},
+                            'contradictions': {'snapshot_id': 102},
+                        }
+                    }
+                }
+            })
 
             hook = WebEvidenceIntegrationHook(mock_mediator)
             hook._generate_search_keywords = Mock(return_value=['employment discrimination'])
@@ -722,8 +748,12 @@ class TestWebEvidenceIntegrationHook:
                 'collect_initial_support': 1,
             }
             assert result['claim_coverage_summary']['employment discrimination']['contradiction_candidate_count'] == 1
+            assert result['claim_coverage_summary']['employment discrimination']['validation_status'] == 'contradicted'
+            assert result['claim_support_validation']['employment discrimination']['proof_gap_count'] == 3
             assert result['claim_support_gaps']['employment discrimination']['unresolved_count'] == 2
             assert result['claim_contradiction_candidates']['employment discrimination']['candidate_count'] == 1
+            assert result['claim_support_snapshots']['employment discrimination']['gaps']['snapshot_id'] == 101
+            assert result['claim_support_snapshots']['employment discrimination']['contradictions']['snapshot_id'] == 102
             assert result['claim_overview']['employment discrimination']['missing_count'] == 1
             assert result['follow_up_plan']['employment discrimination']['task_count'] == 2
             assert result['follow_up_plan_summary']['employment discrimination']['task_count'] == 2
@@ -754,6 +784,8 @@ class TestWebEvidenceIntegrationHook:
             mock_mediator.get_claim_overview = Mock(return_value={'claims': {}})
             mock_mediator.get_claim_support_gaps = Mock(return_value={'claims': {}})
             mock_mediator.get_claim_contradiction_candidates = Mock(return_value={'claims': {}})
+            mock_mediator.get_claim_support_validation = Mock(return_value={'claims': {}})
+            mock_mediator.persist_claim_support_diagnostics = Mock(return_value={'claims': {}})
             mock_mediator.get_claim_follow_up_plan = Mock(return_value={'claims': {}})
             mock_mediator.execute_claim_follow_up_plan = Mock(return_value={
                 'claims': {

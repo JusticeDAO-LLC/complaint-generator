@@ -383,6 +383,7 @@ class WebEvidenceIntegrationHook:
         overview_claim: Dict[str, Any] = None,
         gap_claim: Dict[str, Any] = None,
         contradiction_claim: Dict[str, Any] = None,
+        validation_claim: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
         if not isinstance(coverage_claim, dict):
             coverage_claim = {}
@@ -392,6 +393,8 @@ class WebEvidenceIntegrationHook:
             gap_claim = {}
         if not isinstance(contradiction_claim, dict):
             contradiction_claim = {}
+        if not isinstance(validation_claim, dict):
+            validation_claim = {}
         elements = coverage_claim.get('elements', []) if isinstance(coverage_claim.get('elements', []), list) else []
         if elements:
             missing_elements = [
@@ -470,6 +473,10 @@ class WebEvidenceIntegrationHook:
                         graph_id_count += 1
         return {
             'claim_type': claim_type,
+            'validation_status': validation_claim.get('validation_status', ''),
+            'validation_status_counts': validation_claim.get('validation_status_counts', {}),
+            'proof_gap_count': int(validation_claim.get('proof_gap_count', 0) or 0),
+            'elements_requiring_follow_up': validation_claim.get('elements_requiring_follow_up', []),
             'total_elements': coverage_claim.get('total_elements', 0),
             'total_links': coverage_claim.get('total_links', 0),
             'total_facts': coverage_claim.get('total_facts', 0),
@@ -985,6 +992,8 @@ class WebEvidenceIntegrationHook:
             'claim_coverage_summary': {},
             'claim_support_gaps': {},
             'claim_contradiction_candidates': {},
+            'claim_support_validation': {},
+            'claim_support_snapshots': {},
             'claim_overview': {},
             'follow_up_plan': {},
             'follow_up_plan_summary': {},
@@ -1077,6 +1086,37 @@ class WebEvidenceIntegrationHook:
                         'candidates': [],
                     },
                 )
+            if hasattr(self.mediator, 'get_claim_support_validation'):
+                claim_validation = self.mediator.get_claim_support_validation(claim_type=claim_type, user_id=user_id)
+                results['claim_support_validation'][claim_type] = claim_validation.get('claims', {}).get(
+                    claim_type,
+                    {
+                        'claim_type': claim_type,
+                        'validation_status': 'missing',
+                        'validation_status_counts': {
+                            'supported': 0,
+                            'incomplete': 0,
+                            'missing': 0,
+                            'contradicted': 0,
+                        },
+                        'proof_gap_count': 0,
+                        'proof_gaps': [],
+                        'elements': [],
+                    },
+                )
+            if hasattr(self.mediator, 'persist_claim_support_diagnostics'):
+                persisted_diagnostics = self.mediator.persist_claim_support_diagnostics(
+                    claim_type=claim_type,
+                    user_id=user_id,
+                    required_support_kinds=['evidence', 'authority'],
+                    gaps={'claims': {claim_type: results['claim_support_gaps'].get(claim_type, {})}},
+                    contradictions={'claims': {claim_type: results['claim_contradiction_candidates'].get(claim_type, {})}},
+                    metadata={'source': 'discover_evidence_for_case'},
+                )
+                results['claim_support_snapshots'][claim_type] = persisted_diagnostics.get('claims', {}).get(
+                    claim_type,
+                    {},
+                ).get('snapshots', {})
             if hasattr(self.mediator, 'get_claim_follow_up_plan'):
                 follow_up_plan = self.mediator.get_claim_follow_up_plan(claim_type=claim_type, user_id=user_id)
                 claim_plan = follow_up_plan.get('claims', {}).get(
@@ -1109,6 +1149,7 @@ class WebEvidenceIntegrationHook:
                 results['claim_overview'].get(claim_type, {}),
                 results['claim_support_gaps'].get(claim_type, {}),
                 results['claim_contradiction_candidates'].get(claim_type, {}),
+                results['claim_support_validation'].get(claim_type, {}),
             )
         
         self.mediator.log('auto_evidence_discovery_complete', results=results)

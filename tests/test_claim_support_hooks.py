@@ -593,6 +593,254 @@ class TestClaimSupportHook:
             if os.path.exists(db_path):
                 os.unlink(db_path)
 
+    def test_persist_claim_support_diagnostics_stores_and_returns_latest_snapshots(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidencePersist',
+                support_label='HR complaint email',
+                source_table='evidence',
+            )
+
+            persisted = hook.persist_claim_support_diagnostics(
+                'testuser',
+                'employment',
+                required_support_kinds=['authority', 'evidence'],
+                metadata={'source': 'unit_test'},
+            )
+            snapshots = hook.get_claim_support_diagnostic_snapshots(
+                'testuser',
+                'employment',
+                required_support_kinds=['evidence', 'authority'],
+            )
+
+            assert persisted['claims']['employment']['snapshots']['gaps']['snapshot_id'] > 0
+            assert persisted['claims']['employment']['snapshots']['contradictions']['snapshot_id'] > 0
+            assert snapshots['claims']['employment']['gaps']['unresolved_count'] == 1
+            assert snapshots['claims']['employment']['contradictions']['candidate_count'] == 0
+            assert snapshots['claims']['employment']['snapshots']['gaps']['metadata']['source'] == 'unit_test'
+            assert snapshots['claims']['employment']['snapshots']['gaps']['required_support_kinds'] == [
+                'authority',
+                'evidence',
+            ]
+            assert snapshots['claims']['employment']['snapshots']['gaps']['is_stale'] is False
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_claim_support_diagnostic_snapshots_marks_stale_after_support_changes(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidencePersist',
+                support_label='HR complaint email',
+                source_table='evidence',
+            )
+            hook.persist_claim_support_diagnostics(
+                'testuser',
+                'employment',
+                required_support_kinds=['evidence', 'authority'],
+                metadata={'source': 'unit_test'},
+            )
+
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='authority',
+                support_ref='42 U.S.C. § 1983',
+                support_label='Civil Rights Act',
+                source_table='legal_authorities',
+            )
+
+            snapshots = hook.get_claim_support_diagnostic_snapshots(
+                'testuser',
+                'employment',
+                required_support_kinds=['evidence', 'authority'],
+            )
+
+            assert snapshots['claims']['employment']['snapshots']['gaps']['is_stale'] is True
+            assert snapshots['claims']['employment']['snapshots']['contradictions']['is_stale'] is True
+            assert snapshots['claims']['employment']['snapshots']['gaps']['stored_support_state_token'] != (
+                snapshots['claims']['employment']['snapshots']['gaps']['current_support_state_token']
+            )
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_claim_support_validation_returns_normalized_statuses(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.evidence_state = Mock()
+        evidence_records = {
+            'QmEvidenceConflict': {
+                'id': 31,
+                'cid': 'QmEvidenceConflict',
+                'fact_count': 1,
+                'graph_metadata': {
+                    'graph_snapshot': {
+                        'graph_id': 'graph:evidence-31',
+                        'created': True,
+                        'reused': False,
+                    }
+                },
+            },
+            'QmEvidenceOnly': {
+                'id': 32,
+                'cid': 'QmEvidenceOnly',
+                'fact_count': 1,
+                'graph_metadata': {
+                    'graph_snapshot': {
+                        'graph_id': 'graph:evidence-32',
+                        'created': True,
+                        'reused': False,
+                    }
+                },
+            },
+        }
+        evidence_facts = {
+            31: [
+                {'fact_id': 'fact:pos', 'text': 'Employee submitted a discrimination complaint to management.'},
+            ],
+            32: [
+                {'fact_id': 'fact:only', 'text': 'Employer terminated the employee after the complaint.'},
+            ],
+        }
+        mock_mediator.evidence_state.get_evidence_by_cid = Mock(
+            side_effect=lambda cid: evidence_records.get(cid)
+        )
+        mock_mediator.evidence_state.get_evidence_facts = Mock(
+            side_effect=lambda record_id: evidence_facts.get(record_id, [])
+        )
+        mock_mediator.evidence_state.get_evidence_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:1'}],
+            'relationships': [{'id': 'rel:1'}],
+        })
+        mock_mediator.legal_authority_storage = Mock()
+        mock_mediator.legal_authority_storage.get_authority_by_citation = Mock(return_value={
+            'id': 41,
+            'citation': 'Contrary Source',
+            'fact_count': 1,
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:authority-41',
+                    'created': False,
+                    'reused': True,
+                }
+            },
+        })
+        mock_mediator.legal_authority_storage.get_authority_facts = Mock(return_value=[
+            {'fact_id': 'fact:neg', 'text': 'Employee did not submit a discrimination complaint to management.'},
+        ])
+        mock_mediator.legal_authority_storage.get_authority_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:a'}],
+            'relationships': [{'id': 'rel:a'}],
+        })
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity', 'Adverse action', 'Causal connection']},
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidenceConflict',
+                support_label='HR complaint email',
+                source_table='evidence',
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='authority',
+                support_ref='Contrary Source',
+                support_label='Contrary Source',
+                source_table='legal_authorities',
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Adverse action',
+                support_kind='evidence',
+                support_ref='QmEvidenceOnly',
+                support_label='Termination notice',
+                source_table='evidence',
+            )
+
+            validation = hook.get_claim_support_validation('testuser', 'employment')
+            claim_validation = validation['claims']['employment']
+            element_statuses = {
+                element['element_text']: element['validation_status']
+                for element in claim_validation['elements']
+            }
+
+            assert claim_validation['validation_status'] == 'contradicted'
+            assert claim_validation['validation_status_counts'] == {
+                'supported': 0,
+                'incomplete': 1,
+                'missing': 1,
+                'contradicted': 1,
+            }
+            assert claim_validation['proof_gap_count'] == 4
+            assert element_statuses['Protected activity'] == 'contradicted'
+            assert element_statuses['Adverse action'] == 'incomplete'
+            assert element_statuses['Causal connection'] == 'missing'
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
     def test_get_claim_coverage_matrix_groups_links_by_support_kind(self):
         try:
             from mediator.claim_support_hooks import ClaimSupportHook

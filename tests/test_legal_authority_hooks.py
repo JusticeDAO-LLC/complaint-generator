@@ -616,7 +616,11 @@ class TestMediatorLegalAuthorityIntegration:
                 assert protected_activity_task['has_graph_support'] is True
                 assert protected_activity_task['graph_support']['summary']['support_by_kind']['authority'] >= 1
                 assert protected_activity_task['graph_support_strength'] in {'moderate', 'strong'}
-                assert protected_activity_task['recommended_action'] in {'target_missing_support_kind', 'review_existing_support'}
+                assert protected_activity_task['recommended_action'] in {
+                    'target_missing_support_kind',
+                    'collect_missing_support_kind',
+                    'review_existing_support',
+                }
                 assert protected_activity_task['priority'] in {'medium', 'low'}
                 assert adverse_action_task['missing_support_kinds'] == ['evidence', 'authority']
 
@@ -678,8 +682,13 @@ class TestMediatorLegalAuthorityIntegration:
                     'collect_missing_support_kind': 1,
                 }
                 assert auto_results['claim_coverage_summary']['civil rights']['contradiction_candidate_count'] == 0
+                assert auto_results['claim_coverage_summary']['civil rights']['validation_status'] == 'incomplete'
+                assert auto_results['claim_support_validation']['civil rights']['validation_status_counts']['incomplete'] == 1
+                assert auto_results['claim_support_validation']['civil rights']['proof_gap_count'] == 3
                 assert auto_results['claim_support_gaps']['civil rights']['unresolved_count'] == 2
                 assert auto_results['claim_contradiction_candidates']['civil rights']['candidate_count'] == 0
+                assert auto_results['claim_support_snapshots']['civil rights']['gaps']['snapshot_id'] > 0
+                assert auto_results['claim_support_snapshots']['civil rights']['contradictions']['snapshot_id'] > 0
                 assert auto_results['claim_overview']['civil rights']['partially_supported_count'] == 1
                 assert auto_results['claim_overview']['civil rights']['missing_count'] == 1
                 assert auto_results['follow_up_plan']['civil rights']['task_count'] == 2

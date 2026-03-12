@@ -102,6 +102,18 @@ class ClaimSupportHook:
                 )
             """)
             conn.execute("""
+                CREATE TABLE IF NOT EXISTS claim_support_snapshot (
+                    id BIGINT PRIMARY KEY DEFAULT nextval('claim_support_id_seq'),
+                    user_id VARCHAR,
+                    claim_type VARCHAR NOT NULL,
+                    snapshot_kind VARCHAR NOT NULL,
+                    required_support_kinds JSON,
+                    payload JSON,
+                    metadata JSON,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_claim_support_user_claim
                 ON claim_support(user_id, claim_type)
             """)
@@ -116,6 +128,10 @@ class ClaimSupportHook:
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_claim_follow_up_lookup
                 ON claim_follow_up_execution(user_id, claim_type, support_kind, query_hash)
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_claim_support_snapshot_lookup
+                ON claim_support_snapshot(user_id, claim_type, snapshot_kind)
             """)
             conn.execute("ALTER TABLE claim_support ADD COLUMN IF NOT EXISTS claim_element_id VARCHAR")
             conn.execute("ALTER TABLE claim_support ADD COLUMN IF NOT EXISTS claim_element_text TEXT")
@@ -342,6 +358,189 @@ class ClaimSupportHook:
             'graph_status_counts': graph_status_counts,
         }
 
+    def _validation_status_for_element(
+        self,
+        element: Dict[str, Any],
+        contradiction_candidates: List[Dict[str, Any]],
+    ) -> str:
+        if contradiction_candidates:
+            return 'contradicted'
+        if element.get('status') == 'covered':
+            return 'supported'
+        if int(element.get('total_links', 0) or 0) > 0:
+            return 'incomplete'
+        return 'missing'
+
+    def _proof_gaps_for_element(
+        self,
+        element: Dict[str, Any],
+        contradiction_candidates: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        proof_gaps: List[Dict[str, Any]] = []
+        for support_kind in element.get('missing_support_kinds', []) or []:
+            proof_gaps.append(
+                {
+                    'gap_type': 'missing_support_kind',
+                    'support_kind': support_kind,
+                    'message': f'Missing required {support_kind} support.',
+                }
+            )
+        if contradiction_candidates:
+            proof_gaps.append(
+                {
+                    'gap_type': 'contradiction_candidates',
+                    'candidate_count': len(contradiction_candidates),
+                    'message': 'Conflicting support facts require operator review.',
+                }
+            )
+        return proof_gaps
+
+    def _recommended_validation_action(
+        self,
+        validation_status: str,
+        element: Dict[str, Any],
+    ) -> str:
+        if validation_status == 'contradicted':
+            return 'resolve_contradiction'
+        if validation_status == 'missing':
+            return 'collect_initial_support'
+        if validation_status == 'incomplete':
+            return 'collect_missing_support_kind'
+        return 'review_existing_support'
+
+    def _build_claim_validation(
+        self,
+        claim_type: str,
+        claim_matrix: Dict[str, Any],
+        gap_claim: Dict[str, Any],
+        contradiction_claim: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        contradiction_by_element: Dict[str, List[Dict[str, Any]]] = {}
+        for candidate in contradiction_claim.get('candidates', []) or []:
+            if not isinstance(candidate, dict):
+                continue
+            element_key = candidate.get('claim_element_id') or candidate.get('claim_element_text')
+            if not element_key:
+                continue
+            contradiction_by_element.setdefault(str(element_key), []).append(candidate)
+
+        gap_by_element: Dict[str, Dict[str, Any]] = {}
+        for gap in gap_claim.get('unresolved_elements', []) or []:
+            if not isinstance(gap, dict):
+                continue
+            element_key = gap.get('element_id') or gap.get('element_text')
+            if element_key:
+                gap_by_element[str(element_key)] = gap
+
+        elements: List[Dict[str, Any]] = []
+        validation_status_counts = {
+            'supported': 0,
+            'incomplete': 0,
+            'missing': 0,
+            'contradicted': 0,
+        }
+        claim_proof_gaps: List[Dict[str, Any]] = []
+        elements_requiring_follow_up: List[str] = []
+
+        for element in claim_matrix.get('elements', []) or []:
+            if not isinstance(element, dict):
+                continue
+            element_key = element.get('element_id') or element.get('element_text') or ''
+            contradiction_candidates = contradiction_by_element.get(str(element_key), [])
+            if not contradiction_candidates and element.get('element_text'):
+                contradiction_candidates = contradiction_by_element.get(str(element.get('element_text')), [])
+            gap_element = gap_by_element.get(str(element_key), {})
+            if not gap_element and element.get('element_text'):
+                gap_element = gap_by_element.get(str(element.get('element_text')), {})
+
+            validation_status = self._validation_status_for_element(element, contradiction_candidates)
+            proof_gaps = self._proof_gaps_for_element(element, contradiction_candidates)
+            recommended_action = self._recommended_validation_action(validation_status, element)
+            proof_diagnostics = {
+                'support_trace_count': int((element.get('support_trace_summary') or {}).get('trace_count', 0) or 0),
+                'fact_trace_count': int((element.get('support_trace_summary') or {}).get('fact_trace_count', 0) or 0),
+                'graph_traced_link_count': int(self._summarize_graph_traces(element.get('links', [])).get('traced_link_count', 0) or 0),
+                'missing_support_kind_count': len(element.get('missing_support_kinds', []) or []),
+                'contradiction_candidate_count': len(contradiction_candidates),
+                'total_links': int(element.get('total_links', 0) or 0),
+                'fact_count': int(element.get('fact_count', 0) or 0),
+            }
+            validation_status_counts[validation_status] += 1
+            if validation_status != 'supported' and element.get('element_text'):
+                elements_requiring_follow_up.append(element.get('element_text'))
+
+            element_validation = {
+                'element_id': element.get('element_id'),
+                'element_text': element.get('element_text'),
+                'coverage_status': element.get('status'),
+                'validation_status': validation_status,
+                'recommended_action': recommended_action,
+                'missing_support_kinds': element.get('missing_support_kinds', []),
+                'total_links': element.get('total_links', 0),
+                'fact_count': element.get('fact_count', 0),
+                'support_by_kind': element.get('support_by_kind', {}),
+                'support_trace_summary': element.get('support_trace_summary', {}),
+                'graph_trace_summary': self._summarize_graph_traces(element.get('links', [])),
+                'contradiction_candidate_count': len(contradiction_candidates),
+                'contradiction_candidates': contradiction_candidates,
+                'proof_gap_count': len(proof_gaps),
+                'proof_gaps': proof_gaps,
+                'proof_diagnostics': proof_diagnostics,
+                'gap_context': gap_element,
+            }
+            elements.append(element_validation)
+
+            for proof_gap in proof_gaps:
+                claim_proof_gaps.append(
+                    {
+                        'element_id': element.get('element_id'),
+                        'element_text': element.get('element_text'),
+                        'validation_status': validation_status,
+                        'recommended_action': recommended_action,
+                        **proof_gap,
+                    }
+                )
+
+        if validation_status_counts['contradicted']:
+            claim_validation_status = 'contradicted'
+        elif claim_matrix.get('total_elements', 0) and validation_status_counts['supported'] == claim_matrix.get('total_elements', 0):
+            claim_validation_status = 'supported'
+        elif validation_status_counts['incomplete'] or validation_status_counts['supported']:
+            claim_validation_status = 'incomplete'
+        else:
+            claim_validation_status = 'missing'
+
+        graph_traced_link_count = sum(
+            int((element.get('graph_trace_summary') or {}).get('traced_link_count', 0) or 0)
+            for element in elements
+            if isinstance(element, dict)
+        )
+
+        return {
+            'claim_type': claim_type,
+            'required_support_kinds': claim_matrix.get('required_support_kinds', []),
+            'validation_status': claim_validation_status,
+            'validation_status_counts': validation_status_counts,
+            'total_elements': claim_matrix.get('total_elements', 0),
+            'supported_element_count': validation_status_counts['supported'],
+            'incomplete_element_count': validation_status_counts['incomplete'],
+            'missing_element_count': validation_status_counts['missing'],
+            'contradicted_element_count': validation_status_counts['contradicted'],
+            'elements_requiring_follow_up': elements_requiring_follow_up,
+            'unresolved_element_count': int(gap_claim.get('unresolved_count', 0) or 0),
+            'contradiction_candidate_count': int(contradiction_claim.get('candidate_count', 0) or 0),
+            'proof_gap_count': len(claim_proof_gaps),
+            'proof_gaps': claim_proof_gaps,
+            'proof_diagnostics': {
+                'support_trace_count': int((claim_matrix.get('support_trace_summary') or {}).get('trace_count', 0) or 0),
+                'fact_trace_count': int((claim_matrix.get('support_trace_summary') or {}).get('fact_trace_count', 0) or 0),
+                'total_links': int(claim_matrix.get('total_links', 0) or 0),
+                'total_facts': int(claim_matrix.get('total_facts', 0) or 0),
+                'graph_traced_link_count': graph_traced_link_count,
+            },
+            'elements': elements,
+        }
+
     def _fact_polarity(self, text: Optional[str]) -> str:
         lowered = str(text or '').lower()
         negative_markers = (
@@ -379,6 +578,107 @@ class ClaimSupportHook:
         left_terms = {term for term in self._tokenize_text(left) if term not in excluded}
         right_terms = {term for term in self._tokenize_text(right) if term not in excluded}
         return sorted(left_terms & right_terms)
+
+    def _normalize_required_support_kinds(
+        self,
+        required_support_kinds: Optional[List[str]],
+    ) -> List[str]:
+        kinds = required_support_kinds or []
+        normalized = []
+        seen = set()
+        for kind in kinds:
+            normalized_kind = str(kind or '').strip()
+            if not normalized_kind or normalized_kind in seen:
+                continue
+            seen.add(normalized_kind)
+            normalized.append(normalized_kind)
+        return sorted(normalized)
+
+    def _build_claim_support_state_token(
+        self,
+        user_id: str,
+        claim_type: str,
+        required_support_kinds: Optional[List[str]] = None,
+    ) -> str:
+        normalized_kinds = self._normalize_required_support_kinds(required_support_kinds)
+        requirements = self.get_claim_requirements(user_id, claim_type).get(claim_type, [])
+        links = [
+            self._enrich_support_link(link)
+            for link in self.get_support_links(user_id, claim_type)
+        ]
+        facts = self.get_claim_support_facts(user_id, claim_type)
+
+        requirement_rows = [
+            {
+                'element_id': item.get('element_id'),
+                'element_text': item.get('element_text'),
+                'element_index': item.get('element_index'),
+            }
+            for item in requirements
+            if isinstance(item, dict)
+        ]
+        link_rows = [
+            {
+                'id': link.get('id'),
+                'claim_element_id': link.get('claim_element_id'),
+                'claim_element_text': link.get('claim_element_text'),
+                'support_kind': link.get('support_kind'),
+                'support_ref': link.get('support_ref'),
+                'source_table': link.get('source_table'),
+                'fact_count': link.get('fact_count', 0),
+                'graph_summary': link.get('graph_summary', {}),
+                'graph_trace_summary': self._summarize_graph_traces([link]),
+            }
+            for link in links
+            if isinstance(link, dict)
+        ]
+        fact_rows = [
+            {
+                'fact_id': fact.get('fact_id'),
+                'text': fact.get('text'),
+                'claim_element_id': fact.get('claim_element_id'),
+                'claim_element_text': fact.get('claim_element_text'),
+                'support_kind': fact.get('support_kind'),
+                'support_ref': fact.get('support_ref'),
+                'source_table': fact.get('source_table'),
+            }
+            for fact in facts
+            if isinstance(fact, dict)
+        ]
+        payload = {
+            'claim_type': claim_type,
+            'required_support_kinds': normalized_kinds,
+            'requirements': sorted(
+                requirement_rows,
+                key=lambda item: (
+                    str(item.get('element_index') or ''),
+                    str(item.get('element_id') or ''),
+                    str(item.get('element_text') or ''),
+                ),
+            ),
+            'links': sorted(
+                link_rows,
+                key=lambda item: (
+                    str(item.get('id') or ''),
+                    str(item.get('claim_element_id') or ''),
+                    str(item.get('support_kind') or ''),
+                    str(item.get('support_ref') or ''),
+                ),
+            ),
+            'facts': sorted(
+                fact_rows,
+                key=lambda item: (
+                    str(item.get('fact_id') or ''),
+                    str(item.get('claim_element_id') or ''),
+                    str(item.get('support_kind') or ''),
+                    str(item.get('support_ref') or ''),
+                    str(item.get('text') or ''),
+                ),
+            ),
+        }
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True, default=str).encode('utf-8')
+        ).hexdigest()
 
     def _normalize_query_text(self, query_text: str) -> str:
         return ' '.join((query_text or '').strip().lower().split())
@@ -1189,6 +1489,47 @@ class ClaimSupportHook:
 
         return matrix
 
+    def get_claim_support_validation(
+        self,
+        user_id: str,
+        claim_type: Optional[str] = None,
+        required_support_kinds: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        required_kinds = required_support_kinds or ['evidence', 'authority']
+        matrix = self.get_claim_coverage_matrix(
+            user_id,
+            claim_type=claim_type,
+            required_support_kinds=required_kinds,
+        )
+        gaps = self.get_claim_support_gaps(
+            user_id,
+            claim_type=claim_type,
+            required_support_kinds=required_kinds,
+        )
+        contradictions = self.get_claim_contradiction_candidates(
+            user_id,
+            claim_type=claim_type,
+        )
+
+        validation: Dict[str, Any] = {
+            'available': matrix.get('available', False),
+            'required_support_kinds': required_kinds,
+            'claims': {},
+        }
+
+        gap_claims = gaps.get('claims', {}) if isinstance(gaps, dict) else {}
+        contradiction_claims = contradictions.get('claims', {}) if isinstance(contradictions, dict) else {}
+
+        for current_claim, claim_matrix in matrix.get('claims', {}).items():
+            validation['claims'][current_claim] = self._build_claim_validation(
+                current_claim,
+                claim_matrix,
+                gap_claims.get(current_claim, {}),
+                contradiction_claims.get(current_claim, {}),
+            )
+
+        return validation
+
     def get_claim_support_gaps(
         self,
         user_id: str,
@@ -1314,6 +1655,209 @@ class ClaimSupportHook:
             }
 
         return contradictions
+
+    def persist_claim_support_diagnostics(
+        self,
+        user_id: str,
+        claim_type: Optional[str] = None,
+        *,
+        required_support_kinds: Optional[List[str]] = None,
+        gaps: Optional[Dict[str, Any]] = None,
+        contradictions: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        if not DUCKDB_AVAILABLE:
+            return {
+                'available': False,
+                'required_support_kinds': self._normalize_required_support_kinds(required_support_kinds),
+                'claims': {},
+            }
+
+        normalized_kinds = self._normalize_required_support_kinds(required_support_kinds)
+        gap_payload = gaps if isinstance(gaps, dict) else self.get_claim_support_gaps(
+            user_id,
+            claim_type=claim_type,
+            required_support_kinds=normalized_kinds or None,
+        )
+        contradiction_payload = (
+            contradictions if isinstance(contradictions, dict)
+            else self.get_claim_contradiction_candidates(user_id, claim_type=claim_type)
+        )
+
+        gap_claims = gap_payload.get('claims', {}) if isinstance(gap_payload, dict) else {}
+        contradiction_claims = (
+            contradiction_payload.get('claims', {})
+            if isinstance(contradiction_payload, dict)
+            else {}
+        )
+        claim_names = sorted(set(gap_claims.keys()) | set(contradiction_claims.keys()))
+        persisted: Dict[str, Any] = {
+            'available': True,
+            'required_support_kinds': normalized_kinds,
+            'claims': {},
+        }
+
+        for current_claim in claim_names:
+            support_state_token = self._build_claim_support_state_token(
+                user_id,
+                current_claim,
+                normalized_kinds,
+            )
+            claim_metadata = {
+                **(metadata or {}),
+                'support_state_token': support_state_token,
+            }
+            claim_result = {
+                'gaps': gap_claims.get(current_claim, {}),
+                'contradictions': contradiction_claims.get(current_claim, {}),
+                'snapshots': {},
+            }
+            for snapshot_kind, payload in (
+                ('gaps', claim_result['gaps']),
+                ('contradictions', claim_result['contradictions']),
+            ):
+                if not isinstance(payload, dict) or not payload:
+                    continue
+                try:
+                    conn = duckdb.connect(self.db_path)
+                    result = conn.execute(
+                        """
+                        INSERT INTO claim_support_snapshot (
+                            user_id, claim_type, snapshot_kind,
+                            required_support_kinds, payload, metadata
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        RETURNING id, timestamp
+                        """,
+                        [
+                            user_id,
+                            current_claim,
+                            snapshot_kind,
+                            json.dumps(normalized_kinds, default=str),
+                            json.dumps(payload, default=str),
+                            json.dumps(claim_metadata, default=str),
+                        ],
+                    ).fetchone()
+                    conn.close()
+                    claim_result['snapshots'][snapshot_kind] = {
+                        'snapshot_id': result[0],
+                        'timestamp': result[1].isoformat() if hasattr(result[1], 'isoformat') else result[1],
+                        'required_support_kinds': normalized_kinds,
+                        'metadata': claim_metadata,
+                        'is_stale': False,
+                    }
+                except Exception as exc:
+                    self.mediator.log(
+                        'claim_support_snapshot_persist_error',
+                        error=str(exc),
+                        claim_type=current_claim,
+                        snapshot_kind=snapshot_kind,
+                    )
+                    claim_result['snapshots'][snapshot_kind] = {
+                        'snapshot_id': -1,
+                        'required_support_kinds': normalized_kinds,
+                        'metadata': claim_metadata,
+                        'is_stale': True,
+                        'error': str(exc),
+                    }
+            persisted['claims'][current_claim] = claim_result
+
+        return persisted
+
+    def get_claim_support_diagnostic_snapshots(
+        self,
+        user_id: str,
+        claim_type: Optional[str] = None,
+        *,
+        required_support_kinds: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        normalized_kinds = self._normalize_required_support_kinds(required_support_kinds)
+        if not DUCKDB_AVAILABLE:
+            return {
+                'available': False,
+                'required_support_kinds': normalized_kinds,
+                'claims': {},
+            }
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            if claim_type:
+                rows = conn.execute(
+                    """
+                    SELECT claim_type, snapshot_kind, required_support_kinds, payload, metadata, timestamp, id
+                    FROM claim_support_snapshot
+                    WHERE user_id = ? AND claim_type = ?
+                    ORDER BY claim_type ASC, snapshot_kind ASC, timestamp DESC, id DESC
+                    """,
+                    [user_id, claim_type],
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT claim_type, snapshot_kind, required_support_kinds, payload, metadata, timestamp, id
+                    FROM claim_support_snapshot
+                    WHERE user_id = ?
+                    ORDER BY claim_type ASC, snapshot_kind ASC, timestamp DESC, id DESC
+                    """,
+                    [user_id],
+                ).fetchall()
+            conn.close()
+        except Exception as exc:
+            self.mediator.log('claim_support_snapshot_query_error', error=str(exc))
+            return {
+                'available': False,
+                'required_support_kinds': normalized_kinds,
+                'claims': {},
+                'error': str(exc),
+            }
+
+        snapshots: Dict[str, Any] = {
+            'available': True,
+            'required_support_kinds': normalized_kinds,
+            'claims': {},
+        }
+        seen_keys = set()
+        for row in rows:
+            row_claim_type, snapshot_kind, stored_required_kinds, payload_json, metadata_json, timestamp, snapshot_id = row
+            stored_kinds = json.loads(stored_required_kinds) if stored_required_kinds else []
+            if normalized_kinds and stored_kinds != normalized_kinds:
+                continue
+            key = (row_claim_type, snapshot_kind)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            claim_entry = snapshots['claims'].setdefault(
+                row_claim_type,
+                {
+                    'gaps': {},
+                    'contradictions': {},
+                    'snapshots': {},
+                },
+            )
+            payload = json.loads(payload_json) if payload_json else {}
+            metadata = json.loads(metadata_json) if metadata_json else {}
+            current_support_state_token = self._build_claim_support_state_token(
+                user_id,
+                row_claim_type,
+                stored_kinds,
+            )
+            stored_support_state_token = str(metadata.get('support_state_token') or '')
+            is_stale = bool(stored_support_state_token) and stored_support_state_token != current_support_state_token
+            if snapshot_kind == 'gaps':
+                claim_entry['gaps'] = payload
+            elif snapshot_kind == 'contradictions':
+                claim_entry['contradictions'] = payload
+            claim_entry['snapshots'][snapshot_kind] = {
+                'snapshot_id': snapshot_id,
+                'timestamp': timestamp.isoformat() if hasattr(timestamp, 'isoformat') else timestamp,
+                'required_support_kinds': stored_kinds,
+                'metadata': metadata,
+                'stored_support_state_token': stored_support_state_token,
+                'current_support_state_token': current_support_state_token,
+                'is_stale': is_stale,
+            }
+
+        return snapshots
 
     def was_follow_up_executed(
         self,

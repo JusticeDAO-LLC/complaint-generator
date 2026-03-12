@@ -114,6 +114,26 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             }
         }
     }
+    mediator.get_claim_support_validation.return_value = {
+        "claims": {
+            "retaliation": {
+                "claim_type": "retaliation",
+                "validation_status": "contradicted",
+                "validation_status_counts": {
+                    "supported": 0,
+                    "incomplete": 1,
+                    "missing": 1,
+                    "contradicted": 1,
+                },
+                "proof_gap_count": 3,
+                "elements_requiring_follow_up": [
+                    "Adverse action",
+                    "Causal connection",
+                ],
+                "elements": [],
+            }
+        }
+    }
     mediator.summarize_claim_support.return_value = {
         "claims": {
             "retaliation": {
@@ -227,6 +247,9 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
     assert payload["claim_coverage_summary"]["retaliation"]["contradicted_elements"] == [
         "Adverse action"
     ]
+    assert payload["claim_coverage_summary"]["retaliation"]["validation_status"] == "contradicted"
+    assert payload["claim_coverage_summary"]["retaliation"]["proof_gap_count"] == 3
+    assert payload["claim_support_validation"]["retaliation"]["validation_status"] == "contradicted"
     assert payload["claim_coverage_summary"]["retaliation"]["support_trace_summary"]["trace_count"] == 3
     assert payload["claim_coverage_summary"]["retaliation"]["graph_trace_summary"] == {
         "traced_link_count": 2,
@@ -276,6 +299,11 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
     mediator.get_claim_contradiction_candidates.assert_called_once_with(
         claim_type="retaliation",
         user_id="state-user",
+    )
+    mediator.get_claim_support_validation.assert_called_once_with(
+        claim_type="retaliation",
+        user_id="state-user",
+        required_support_kinds=["evidence", "authority"],
     )
     mediator.execute_claim_follow_up_plan.assert_called_once_with(
         claim_type="retaliation",
@@ -335,6 +363,23 @@ def test_claim_support_review_endpoint_allows_explicit_user_and_optional_section
             }
         }
     }
+    mediator.get_claim_support_validation.return_value = {
+        "claims": {
+            "civil rights": {
+                "claim_type": "civil rights",
+                "validation_status": "incomplete",
+                "validation_status_counts": {
+                    "supported": 0,
+                    "incomplete": 1,
+                    "missing": 0,
+                    "contradicted": 0,
+                },
+                "proof_gap_count": 1,
+                "elements_requiring_follow_up": ["Protected activity"],
+                "elements": [],
+            }
+        }
+    }
     mediator.get_claim_follow_up_plan.return_value = {"claims": {}}
 
     payload = build_claim_support_review_payload(
@@ -353,6 +398,7 @@ def test_claim_support_review_endpoint_allows_explicit_user_and_optional_section
     assert payload["required_support_kinds"] == ["authority"]
     assert payload["claim_support_gaps"]["civil rights"]["unresolved_count"] == 1
     assert payload["claim_contradiction_candidates"]["civil rights"]["candidate_count"] == 0
+    assert payload["claim_support_validation"]["civil rights"]["validation_status"] == "incomplete"
     assert "support_summary" not in payload
     assert "claim_overview" not in payload
     assert "follow_up_plan" not in payload
@@ -369,6 +415,173 @@ def test_claim_support_review_endpoint_allows_explicit_user_and_optional_section
         claim_type="civil rights",
         user_id="api-user",
         required_support_kinds=["authority"],
+    )
+
+
+def test_claim_support_review_payload_reuses_persisted_diagnostic_snapshots():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.get_claim_coverage_matrix.return_value = {
+        "claims": {
+            "retaliation": {
+                "claim_type": "retaliation",
+                "total_elements": 1,
+                "total_links": 1,
+                "total_facts": 1,
+                "support_by_kind": {"evidence": 1},
+                "status_counts": {
+                    "covered": 0,
+                    "partially_supported": 1,
+                    "missing": 0,
+                },
+                "elements": [],
+            }
+        }
+    }
+    mediator.get_claim_overview.return_value = {
+        "claims": {
+            "retaliation": {
+                "missing": [],
+                "partially_supported": [{"element_text": "Protected activity"}],
+            }
+        }
+    }
+    mediator.get_claim_support_diagnostic_snapshots.return_value = {
+        "claims": {
+            "retaliation": {
+                "gaps": {
+                    "claim_type": "retaliation",
+                    "unresolved_count": 1,
+                    "unresolved_elements": [
+                        {
+                            "element_text": "Protected activity",
+                            "recommended_action": "collect_missing_support_kind",
+                        }
+                    ],
+                },
+                "contradictions": {
+                    "claim_type": "retaliation",
+                    "candidate_count": 1,
+                    "candidates": [
+                        {"claim_element_text": "Protected activity"}
+                    ],
+                },
+                "snapshots": {
+                    "gaps": {"snapshot_id": 11},
+                    "contradictions": {"snapshot_id": 12},
+                },
+            }
+        }
+    }
+    mediator.get_claim_support_gaps.side_effect = AssertionError("should reuse persisted gap snapshot")
+    mediator.get_claim_contradiction_candidates.side_effect = AssertionError(
+        "should reuse persisted contradiction snapshot"
+    )
+    mediator.get_claim_follow_up_plan.return_value = {"claims": {}}
+    mediator.summarize_claim_support.return_value = {"claims": {}}
+
+    payload = build_claim_support_review_payload(
+        mediator,
+        ClaimSupportReviewRequest(claim_type="retaliation", include_follow_up_plan=False),
+    )
+
+    assert payload["claim_support_gaps"]["retaliation"]["unresolved_count"] == 1
+    assert payload["claim_contradiction_candidates"]["retaliation"]["candidate_count"] == 1
+    assert payload["claim_support_snapshots"]["retaliation"]["gaps"]["snapshot_id"] == 11
+    assert payload["claim_support_snapshots"]["retaliation"]["contradictions"]["snapshot_id"] == 12
+    mediator.get_claim_support_diagnostic_snapshots.assert_called_once_with(
+        claim_type="retaliation",
+        user_id="state-user",
+        required_support_kinds=["evidence", "authority"],
+    )
+    mediator.get_claim_support_gaps.assert_not_called()
+    mediator.get_claim_contradiction_candidates.assert_not_called()
+
+
+def test_claim_support_review_payload_recomputes_stale_diagnostic_snapshots():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.get_claim_coverage_matrix.return_value = {
+        "claims": {
+            "retaliation": {
+                "claim_type": "retaliation",
+                "total_elements": 1,
+                "total_links": 1,
+                "total_facts": 1,
+                "support_by_kind": {"evidence": 1},
+                "status_counts": {
+                    "covered": 0,
+                    "partially_supported": 1,
+                    "missing": 0,
+                },
+                "elements": [],
+            }
+        }
+    }
+    mediator.get_claim_overview.return_value = {
+        "claims": {
+            "retaliation": {
+                "missing": [],
+                "partially_supported": [{"element_text": "Protected activity"}],
+            }
+        }
+    }
+    mediator.get_claim_support_diagnostic_snapshots.return_value = {
+        "claims": {
+            "retaliation": {
+                "gaps": {"claim_type": "retaliation", "unresolved_count": 99},
+                "contradictions": {"claim_type": "retaliation", "candidate_count": 99},
+                "snapshots": {
+                    "gaps": {"snapshot_id": 11, "is_stale": True},
+                    "contradictions": {"snapshot_id": 12, "is_stale": True},
+                },
+            }
+        }
+    }
+    mediator.get_claim_support_gaps.return_value = {
+        "claims": {
+            "retaliation": {
+                "claim_type": "retaliation",
+                "unresolved_count": 1,
+                "unresolved_elements": [
+                    {
+                        "element_text": "Protected activity",
+                        "recommended_action": "collect_missing_support_kind",
+                    }
+                ],
+            }
+        }
+    }
+    mediator.get_claim_contradiction_candidates.return_value = {
+        "claims": {
+            "retaliation": {
+                "claim_type": "retaliation",
+                "candidate_count": 0,
+                "candidates": [],
+            }
+        }
+    }
+    mediator.get_claim_support_validation.return_value = {"claims": {"retaliation": {"validation_status": "incomplete"}}}
+    mediator.get_claim_follow_up_plan.return_value = {"claims": {}}
+    mediator.summarize_claim_support.return_value = {"claims": {}}
+
+    payload = build_claim_support_review_payload(
+        mediator,
+        ClaimSupportReviewRequest(claim_type="retaliation", include_follow_up_plan=False),
+    )
+
+    assert payload["claim_support_gaps"]["retaliation"]["unresolved_count"] == 1
+    assert payload["claim_contradiction_candidates"]["retaliation"]["candidate_count"] == 0
+    assert payload["claim_support_snapshots"]["retaliation"]["gaps"]["is_stale"] is True
+    assert payload["claim_support_snapshots"]["retaliation"]["contradictions"]["is_stale"] is True
+    mediator.get_claim_support_gaps.assert_called_once_with(
+        claim_type="retaliation",
+        user_id="state-user",
+        required_support_kinds=["evidence", "authority"],
+    )
+    mediator.get_claim_contradiction_candidates.assert_called_once_with(
+        claim_type="retaliation",
+        user_id="state-user",
     )
 
 
@@ -440,6 +653,23 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
             }
         }
     }
+    mediator.get_claim_support_validation.return_value = {
+        "claims": {
+            "retaliation": {
+                "claim_type": "retaliation",
+                "validation_status": "incomplete",
+                "validation_status_counts": {
+                    "supported": 2,
+                    "incomplete": 0,
+                    "missing": 1,
+                    "contradicted": 0,
+                },
+                "proof_gap_count": 1,
+                "elements_requiring_follow_up": ["Causal connection"],
+                "elements": [],
+            }
+        }
+    }
     mediator.get_claim_follow_up_plan.return_value = {
         "claims": {
             "retaliation": {
@@ -476,6 +706,7 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
     assert payload["post_execution_review"]["claim_coverage_summary"]["retaliation"]["status_counts"]["covered"] == 2
     assert payload["post_execution_review"]["claim_support_gaps"]["retaliation"]["unresolved_count"] == 1
     assert payload["post_execution_review"]["claim_contradiction_candidates"]["retaliation"]["candidate_count"] == 0
+    assert payload["post_execution_review"]["claim_support_validation"]["retaliation"]["proof_gap_count"] == 1
     mediator.execute_claim_follow_up_plan.assert_called_once_with(
         claim_type="retaliation",
         user_id="state-user",

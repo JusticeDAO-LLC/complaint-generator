@@ -273,6 +273,28 @@ Representative shape:
       "candidate_count": 1,
       "candidates": []
     }
+  },
+  "claim_support_snapshots": {
+    "employment discrimination": {
+      "gaps": {
+        "snapshot_id": 101,
+        "required_support_kinds": ["evidence", "authority"],
+        "is_stale": false,
+        "metadata": {
+          "source": "discover_evidence_for_case",
+          "support_state_token": "..."
+        }
+      },
+      "contradictions": {
+        "snapshot_id": 102,
+        "required_support_kinds": ["evidence", "authority"],
+        "is_stale": false,
+        "metadata": {
+          "source": "discover_evidence_for_case",
+          "support_state_token": "..."
+        }
+      }
+    }
   }
 }
 ```
@@ -283,6 +305,7 @@ Compatibility note:
 - `evidence_storage_summary[claim_type]` is the authoritative deduplication-aware breakdown.
 - `claim_coverage_summary[claim_type]` is the compact support-health snapshot for dashboards and automation.
 - `claim_support_gaps[claim_type]` and `claim_contradiction_candidates[claim_type]` expose the richer unresolved-support and conflict diagnostics behind that compact summary.
+- `claim_support_snapshots[claim_type]` exposes the persisted snapshot ids, support-kind scope, and freshness metadata for the stored diagnostics that automatic workflows just wrote.
 
 ## Legal Authority Storage
 
@@ -443,6 +466,15 @@ Representative shape:
   },
   "claim_coverage_summary": {
     "civil rights": {
+      "validation_status": "contradicted",
+      "validation_status_counts": {
+        "supported": 0,
+        "incomplete": 0,
+        "missing": 1,
+        "contradicted": 1
+      },
+      "proof_gap_count": 3,
+      "elements_requiring_follow_up": ["Protected activity", "Adverse action"],
       "claim_type": "civil rights",
       "total_elements": 2,
       "total_links": 1,
@@ -507,6 +539,64 @@ Representative shape:
         }
       ]
     }
+  },
+  "claim_support_validation": {
+    "civil rights": {
+      "validation_status": "contradicted",
+      "validation_status_counts": {
+        "supported": 0,
+        "incomplete": 0,
+        "missing": 1,
+        "contradicted": 1
+      },
+      "proof_gap_count": 3,
+      "proof_gaps": [
+        {
+          "element_text": "Protected activity",
+          "gap_type": "contradiction_candidates",
+          "candidate_count": 1,
+          "recommended_action": "resolve_contradiction"
+        },
+        {
+          "element_text": "Adverse action",
+          "gap_type": "missing_support_kind",
+          "support_kind": "evidence",
+          "recommended_action": "collect_initial_support"
+        }
+      ],
+      "elements": [
+        {
+          "element_text": "Protected activity",
+          "coverage_status": "partially_supported",
+          "validation_status": "contradicted",
+          "contradiction_candidate_count": 1,
+          "proof_gap_count": 2,
+          "recommended_action": "resolve_contradiction"
+        }
+      ]
+    }
+  },
+  "claim_support_snapshots": {
+    "civil rights": {
+      "gaps": {
+        "snapshot_id": 21,
+        "required_support_kinds": ["evidence", "authority"],
+        "is_stale": false,
+        "metadata": {
+          "source": "research_case_automatically",
+          "support_state_token": "..."
+        }
+      },
+      "contradictions": {
+        "snapshot_id": 22,
+        "required_support_kinds": ["evidence", "authority"],
+        "is_stale": false,
+        "metadata": {
+          "source": "research_case_automatically",
+          "support_state_token": "..."
+        }
+      }
+    }
   }
 }
 ```
@@ -522,11 +612,14 @@ Interpretation notes:
 
 - `claim_coverage_matrix` is the review-oriented support payload for operator and UI workflows.
 - `claim_coverage_summary` is the compact companion payload for dashboards, logs, and quick status rendering.
+- `validation_status`, `validation_status_counts`, and `proof_gap_count` lift proof-health into the compact summary without requiring callers to inspect per-element diagnostics.
 - `graph_trace_summary` is the compact lineage companion for dashboards and audit surfaces; it counts traced links, snapshot creation versus reuse, source-table mix, and distinct graph ids without requiring callers to inspect raw support links.
 - `unresolved_element_count`, `unresolved_elements`, and `recommended_gap_actions` compress the richer gap payload into one per-claim summary for dashboards.
 - `contradiction_candidate_count` and `contradicted_elements` surface likely support conflicts without requiring callers to scan every candidate pair.
 - `claim_support_gaps` exposes unresolved-element diagnostics with recommended actions and per-element support context.
 - `claim_contradiction_candidates` exposes heuristic contradiction candidates for operator review.
+- `claim_support_validation` is the normalized proof-oriented companion payload. It classifies each element as `supported`, `incomplete`, `missing`, or `contradicted`, emits `proof_gaps`, and provides one recommended action per element.
+- `claim_support_snapshots` exposes the persisted snapshot ids, metadata, and `is_stale` freshness flag for the gap and contradiction diagnostics written by automatic legal research.
 - `status_counts` separates fully covered, partially supported, and still-missing elements.
 - `links_by_kind` groups evidence and authority support without requiring callers to regroup raw links.
 - `record_summary` and `graph_summary` provide lightweight parse and graph context inline with the support record.
@@ -896,6 +989,14 @@ Representative response shape:
   "required_support_kinds": ["evidence", "authority"],
   "claim_coverage_summary": {
     "retaliation": {
+      "validation_status": "contradicted",
+      "validation_status_counts": {
+        "supported": 0,
+        "incomplete": 1,
+        "missing": 1,
+        "contradicted": 1
+      },
+      "proof_gap_count": 3,
       "status_counts": {
         "covered": 1,
         "partially_supported": 1,
@@ -922,6 +1023,25 @@ Representative response shape:
     "retaliation": {
       "candidate_count": 1,
       "candidates": []
+    }
+  },
+  "claim_support_validation": {
+    "retaliation": {
+      "validation_status": "contradicted",
+      "proof_gap_count": 3,
+      "elements": []
+    }
+  },
+  "claim_support_snapshots": {
+    "retaliation": {
+      "gaps": {
+        "snapshot_id": 11,
+        "is_stale": false
+      },
+      "contradictions": {
+        "snapshot_id": 12,
+        "is_stale": false
+      }
     }
   },
   "follow_up_plan_summary": {
@@ -956,6 +1076,8 @@ Interpretation notes:
 - `follow_up_support_kind` narrows execution to one retrieval lane such as `evidence` or `authority` without changing the review-only sections.
 - `follow_up_max_tasks_per_claim` limits side-effecting execution only; it does not truncate `follow_up_plan`.
 - `claim_support_gaps` and `claim_contradiction_candidates` are the richer operator-facing review sections for unresolved support and possible support conflicts.
+- `claim_support_validation` is the first-class proof-status surface for the review API. Follow-up planning uses the same normalized validation statuses, so contradiction-heavy elements can be prioritized and are not auto-suppressed.
+- `claim_support_snapshots` exposes any persisted diagnostic snapshot ids reused by the review payload; when a stored snapshot no longer matches current support state it is marked with `is_stale=true` and the payload falls back to recomputation for that claim.
 - `claim_coverage_summary`, `follow_up_plan_summary`, and `follow_up_execution_summary` are the compact operator-facing surfaces intended for dashboards and review tools.
 - When `execute_follow_up=true`, the response adds `compatibility_notice` and emits `Deprecation`, `Sunset`, `Link`, and `Warning` headers so clients can migrate off the compatibility path.
 - New clients should prefer `POST /api/claim-support/execute-follow-up` for side effects and treat `execute_follow_up` on the review endpoint as a compatibility path.
