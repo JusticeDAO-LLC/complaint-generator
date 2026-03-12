@@ -1,9 +1,51 @@
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
 
 DEFAULT_REQUIRED_SUPPORT_KINDS = ["evidence", "authority"]
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _parse_iso_timestamp(value: Any) -> Optional[datetime]:
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    normalized = text.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _classify_adaptive_retry_recency(timestamp: Any) -> Dict[str, Any]:
+    parsed = _parse_iso_timestamp(timestamp)
+    if not parsed:
+        return {
+            "recency_bucket": "unknown",
+            "is_stale": False,
+        }
+
+    age_seconds = max(0.0, (_utcnow() - parsed).total_seconds())
+    if age_seconds <= 6 * 3600:
+        bucket = "fresh"
+    elif age_seconds <= 48 * 3600:
+        bucket = "recent"
+    else:
+        bucket = "stale"
+    return {
+        "recency_bucket": bucket,
+        "is_stale": bucket == "stale",
+    }
 
 
 class ClaimSupportReviewRequest(BaseModel):
@@ -198,6 +240,12 @@ def summarize_follow_up_history_claim(
     follow_up_focus_counts: Dict[str, int] = {}
     resolution_status_counts: Dict[str, int] = {}
     resolution_applied_counts: Dict[str, int] = {}
+    adaptive_query_strategy_counts: Dict[str, int] = {}
+    adaptive_retry_reason_counts: Dict[str, int] = {}
+    adaptive_retry_entry_count = 0
+    priority_penalized_entry_count = 0
+    zero_result_entry_count = 0
+    last_adaptive_retry: Optional[Dict[str, Any]] = None
 
     for entry in entries:
         if not isinstance(entry, dict):
@@ -209,6 +257,11 @@ def summarize_follow_up_history_claim(
         follow_up_focus = str(entry.get("follow_up_focus") or "unknown")
         resolution_status = str(entry.get("resolution_status") or "")
         resolution_applied = str(entry.get("resolution_applied") or "")
+        adaptive_retry_applied = bool(entry.get("adaptive_retry_applied", False))
+        adaptive_query_strategy = str(entry.get("adaptive_query_strategy") or "")
+        adaptive_retry_reason = str(entry.get("adaptive_retry_reason") or "")
+        adaptive_priority_penalty = int(entry.get("adaptive_priority_penalty", 0) or 0)
+        zero_result = bool(entry.get("zero_result", False))
 
         status_counts[status] = status_counts.get(status, 0) + 1
         support_kind_counts[support_kind] = support_kind_counts.get(support_kind, 0) + 1
@@ -221,6 +274,29 @@ def summarize_follow_up_history_claim(
             resolution_applied_counts[resolution_applied] = (
                 resolution_applied_counts.get(resolution_applied, 0) + 1
             )
+        if adaptive_retry_applied:
+            adaptive_retry_entry_count += 1
+        if adaptive_priority_penalty > 0:
+            priority_penalized_entry_count += 1
+        if adaptive_query_strategy:
+            adaptive_query_strategy_counts[adaptive_query_strategy] = (
+                adaptive_query_strategy_counts.get(adaptive_query_strategy, 0) + 1
+            )
+        if adaptive_retry_reason:
+            adaptive_retry_reason_counts[adaptive_retry_reason] = (
+                adaptive_retry_reason_counts.get(adaptive_retry_reason, 0) + 1
+            )
+        if zero_result:
+            zero_result_entry_count += 1
+        if adaptive_retry_applied:
+            last_adaptive_retry = _select_last_adaptive_retry(
+                last_adaptive_retry,
+                timestamp=entry.get("timestamp"),
+                claim_element_id=entry.get("claim_element_id"),
+                claim_element_text=entry.get("claim_element_text"),
+                adaptive_query_strategy=adaptive_query_strategy,
+                reason=adaptive_retry_reason,
+            )
 
     return {
         "total_entry_count": len([entry for entry in entries if isinstance(entry, dict)]),
@@ -231,6 +307,12 @@ def summarize_follow_up_history_claim(
         "follow_up_focus_counts": follow_up_focus_counts,
         "resolution_status_counts": resolution_status_counts,
         "resolution_applied_counts": resolution_applied_counts,
+        "adaptive_retry_entry_count": adaptive_retry_entry_count,
+        "priority_penalized_entry_count": priority_penalized_entry_count,
+        "adaptive_query_strategy_counts": adaptive_query_strategy_counts,
+        "adaptive_retry_reason_counts": adaptive_retry_reason_counts,
+        "zero_result_entry_count": zero_result_entry_count,
+        "last_adaptive_retry": last_adaptive_retry,
         "manual_review_entry_count": len(
             [
                 entry
@@ -453,11 +535,41 @@ def _aggregate_graph_support_metrics(tasks: List[Dict[str, Any]]) -> Dict[str, i
     }
 
 
+def _select_last_adaptive_retry(
+    current: Optional[Dict[str, Any]],
+    *,
+    timestamp: Any,
+    claim_element_id: Any,
+    claim_element_text: Any,
+    adaptive_query_strategy: Any,
+    reason: Any,
+) -> Dict[str, Any]:
+    candidate = {
+        "claim_element_id": claim_element_id,
+        "claim_element_text": claim_element_text,
+        "timestamp": timestamp,
+        "adaptive_query_strategy": adaptive_query_strategy,
+        "reason": reason,
+        **_classify_adaptive_retry_recency(timestamp),
+    }
+    if not isinstance(current, dict):
+        return candidate
+
+    current_timestamp = str(current.get("timestamp") or "")
+    candidate_timestamp = str(timestamp or "")
+    if candidate_timestamp and current_timestamp:
+        return candidate if candidate_timestamp >= current_timestamp else current
+    if candidate_timestamp and not current_timestamp:
+        return candidate
+    return current
+
+
 def _aggregate_adaptive_retry_metrics(tasks: List[Dict[str, Any]]) -> Dict[str, Any]:
     adaptive_retry_task_count = 0
     priority_penalized_task_count = 0
     adaptive_query_strategy_counts: Dict[str, int] = {}
     adaptive_retry_reason_counts: Dict[str, int] = {}
+    last_adaptive_retry: Optional[Dict[str, Any]] = None
 
     for task in tasks:
         adaptive_retry_state = (
@@ -483,12 +595,24 @@ def _aggregate_adaptive_retry_metrics(tasks: List[Dict[str, Any]]) -> Dict[str, 
             adaptive_retry_reason_counts[adaptive_retry_reason] = (
                 adaptive_retry_reason_counts.get(adaptive_retry_reason, 0) + 1
             )
+        last_adaptive_retry = _select_last_adaptive_retry(
+            last_adaptive_retry,
+            timestamp=(
+                adaptive_retry_state.get("latest_attempted_at")
+                or adaptive_retry_state.get("latest_zero_result_at")
+            ),
+            claim_element_id=task.get("claim_element_id"),
+            claim_element_text=task.get("claim_element"),
+            adaptive_query_strategy=adaptive_query_strategy,
+            reason=adaptive_retry_reason,
+        )
 
     return {
         "adaptive_retry_task_count": adaptive_retry_task_count,
         "priority_penalized_task_count": priority_penalized_task_count,
         "adaptive_query_strategy_counts": adaptive_query_strategy_counts,
         "adaptive_retry_reason_counts": adaptive_retry_reason_counts,
+        "last_adaptive_retry": last_adaptive_retry,
     }
 
 
@@ -559,6 +683,7 @@ def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any
         "adaptive_retry_reason_counts": adaptive_retry_metrics[
             "adaptive_retry_reason_counts"
         ],
+        "last_adaptive_retry": adaptive_retry_metrics["last_adaptive_retry"],
         "recommended_actions": recommended_actions,
     }
 
@@ -630,6 +755,7 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
         "adaptive_retry_reason_counts": adaptive_retry_metrics[
             "adaptive_retry_reason_counts"
         ],
+        "last_adaptive_retry": adaptive_retry_metrics["last_adaptive_retry"],
     }
 
 

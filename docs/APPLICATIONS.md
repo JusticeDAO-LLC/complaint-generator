@@ -178,7 +178,7 @@ This mode serves:
 | `/` | Main landing page | HTML template (index.html) |
 | `/home` | Home page after login | HTML template (home.html) |
 | `/chat` | Chat interface | HTML template (chat.html) |
-| `/claim-support-review` | Operator review dashboard for claim support and follow-up execution | HTML template (claim_support_review.html) |
+| `/claim-support-review` | Operator review dashboard for claim support, follow-up execution, recent follow-up history, and manual-review resolution | HTML template (claim_support_review.html) |
 | `/profile` | User profile page | HTML template (profile.html) |
 | `/results` | Results/complaint display | HTML template (results.html) |
 | `/document` | Document viewer | HTML template (document.html) |

@@ -134,7 +134,8 @@
         }
 
         input,
-        select {
+        select,
+        textarea {
             width: 100%;
             padding: 12px 14px;
             border-radius: 14px;
@@ -142,6 +143,11 @@
             background: rgba(255, 255, 255, 0.88);
             color: var(--ink);
             font-size: 0.96rem;
+        }
+
+        textarea {
+            min-height: 92px;
+            resize: vertical;
         }
 
         .checkbox-row {
@@ -173,6 +179,12 @@
             flex-wrap: wrap;
             gap: 12px;
             margin-top: 18px;
+        }
+
+        .button-tertiary {
+            background: rgba(255, 244, 232, 0.7);
+            color: var(--accent);
+            border: 1px dashed rgba(154, 52, 18, 0.28);
         }
 
         button {
@@ -238,6 +250,62 @@
             border: 1px solid rgba(154, 52, 18, 0.14);
         }
 
+        .resolution-panel {
+            margin-top: 18px;
+            padding: 16px;
+            border-radius: 18px;
+            background: rgba(255, 244, 232, 0.62);
+            border: 1px solid rgba(154, 52, 18, 0.14);
+        }
+
+        .resolution-feedback {
+            margin-top: 14px;
+            padding: 14px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.82);
+            border: 1px solid rgba(22, 101, 52, 0.16);
+        }
+
+        .resolution-feedback.is-error {
+            border-color: rgba(185, 28, 28, 0.2);
+            background: rgba(254, 242, 242, 0.92);
+        }
+
+        .resolution-feedback-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .resolution-feedback-title {
+            font-size: 0.92rem;
+            font-weight: 700;
+        }
+
+        .resolution-feedback-body {
+            margin-top: 10px;
+            color: var(--muted);
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: rgba(22, 101, 52, 0.12);
+            color: var(--good);
+            font-size: 0.82rem;
+            font-weight: 700;
+        }
+
+        .resolution-feedback.is-error .status-pill {
+            background: rgba(185, 28, 28, 0.12);
+            color: var(--bad);
+        }
+
         .signal-label {
             display: block;
             color: var(--muted);
@@ -285,12 +353,25 @@
             gap: 12px;
         }
 
+        .history-list {
+            display: grid;
+            gap: 12px;
+            margin-top: 14px;
+        }
+
         .element-card,
         .task-card {
             border-radius: 18px;
             background: var(--panel-strong);
             border: 1px solid var(--line);
             padding: 16px;
+        }
+
+        .history-card {
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.72);
+            border: 1px solid var(--line);
+            padding: 14px;
         }
 
         .row-head {
@@ -460,6 +541,49 @@
                     <button class="button-primary" id="review-button" type="button">Load Review</button>
                     <button class="button-secondary" id="execute-button" type="button">Execute Follow-Up</button>
                 </div>
+
+                <div class="resolution-panel">
+                    <h2 style="margin: 0 0 14px;">Manual Review Resolution</h2>
+                    <div class="control-grid">
+                        <div>
+                            <label for="resolution-element-id">Claim Element ID</label>
+                            <input id="resolution-element-id" type="text" placeholder="retaliation:2">
+                        </div>
+                        <div>
+                            <label for="resolution-related-id">Related Execution ID</label>
+                            <input id="resolution-related-id" type="number" min="1" placeholder="optional execution id">
+                        </div>
+                        <div>
+                            <label for="resolution-status">Resolution Status</label>
+                            <select id="resolution-status">
+                                <option value="resolved_supported">resolved_supported</option>
+                                <option value="resolved_unsupported">resolved_unsupported</option>
+                                <option value="resolved_partial">resolved_partial</option>
+                                <option value="resolved">resolved</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="resolution-element-text">Claim Element</label>
+                            <input id="resolution-element-text" type="text" placeholder="Adverse action">
+                        </div>
+                    </div>
+                    <div style="margin-top: 12px;">
+                        <label for="resolution-notes">Resolution Notes</label>
+                        <textarea id="resolution-notes" placeholder="Operator notes for contradiction or reasoning-gap resolution."></textarea>
+                    </div>
+                    <div class="button-row" style="margin-top: 14px;">
+                        <button class="button-secondary" id="resolve-button" type="button">Resolve Manual Review</button>
+                        <button class="button-tertiary" id="clear-resolution-button" type="button">Clear Resolution Form</button>
+                    </div>
+                    <div class="resolution-feedback" id="resolution-result-card" hidden>
+                        <div class="resolution-feedback-head">
+                            <div class="resolution-feedback-title" id="resolution-result-title">Resolution recorded</div>
+                            <span class="status-pill" id="resolution-result-status">resolved</span>
+                        </div>
+                        <div class="chip-row" id="resolution-result-chips"></div>
+                        <div class="resolution-feedback-body" id="resolution-result-notes"></div>
+                    </div>
+                </div>
                 <div class="status-line" id="status-line">Ready.</div>
             </div>
         </section>
@@ -512,6 +636,11 @@
             <div class="panel">
                 <h2>Claim Elements</h2>
                 <div class="element-list" id="element-list"></div>
+
+                <h2 style="margin-top: 18px;">Recent Follow-Up History</h2>
+                <div class="chip-row" id="history-summary-chips"></div>
+                <div class="history-list" id="history-list"></div>
+
                 <pre class="raw-output" id="raw-output">No payload loaded yet.</pre>
             </div>
         </section>
@@ -583,6 +712,90 @@
                 : `<span class="chip">${emptyLabel}</span>`;
         }
 
+        function clearResolutionForm() {
+            document.getElementById('resolution-element-id').value = '';
+            document.getElementById('resolution-related-id').value = '';
+            document.getElementById('resolution-status').value = 'resolved_supported';
+            document.getElementById('resolution-element-text').value = '';
+            document.getElementById('resolution-notes').value = '';
+        }
+
+        function clearResolutionFeedback() {
+            const card = document.getElementById('resolution-result-card');
+            card.hidden = true;
+            card.classList.remove('is-error');
+            document.getElementById('resolution-result-title').textContent = 'Resolution recorded';
+            document.getElementById('resolution-result-status').textContent = 'resolved';
+            document.getElementById('resolution-result-chips').innerHTML = '';
+            document.getElementById('resolution-result-notes').textContent = '';
+        }
+
+        function prefillResolutionForm(values) {
+            if (values.claimElementId) {
+                document.getElementById('resolution-element-id').value = values.claimElementId;
+            }
+            if (values.relatedExecutionId) {
+                document.getElementById('resolution-related-id').value = values.relatedExecutionId;
+            }
+            if (values.claimElementText) {
+                document.getElementById('resolution-element-text').value = values.claimElementText;
+            }
+            if (values.resolutionStatus) {
+                document.getElementById('resolution-status').value = values.resolutionStatus;
+            }
+            if (values.resolutionNotes) {
+                document.getElementById('resolution-notes').value = values.resolutionNotes;
+            }
+        }
+
+        function buildResolutionRequest() {
+            const relatedExecutionIdRaw = document.getElementById('resolution-related-id').value;
+            return {
+                claim_type: document.getElementById('claim-type').value.trim() || null,
+                user_id: document.getElementById('user-id').value.trim() || null,
+                claim_element_id: document.getElementById('resolution-element-id').value.trim() || null,
+                claim_element: document.getElementById('resolution-element-text').value.trim() || null,
+                resolution_status: document.getElementById('resolution-status').value || 'resolved_supported',
+                resolution_notes: document.getElementById('resolution-notes').value.trim() || null,
+                related_execution_id: relatedExecutionIdRaw ? Number(relatedExecutionIdRaw) : null,
+                required_support_kinds: parseRequiredSupportKinds(),
+                include_post_resolution_review: true,
+                include_support_summary: document.getElementById('include-support').checked,
+                include_overview: document.getElementById('include-overview').checked,
+                include_follow_up_plan: document.getElementById('include-plan').checked,
+            };
+        }
+
+        function renderResolutionFeedback(result, requestPayload) {
+            const card = document.getElementById('resolution-result-card');
+            const status = (result && result.status) || requestPayload.resolution_status || 'resolved';
+            const executionId = result && result.execution_id;
+            const recorded = !result || result.recorded !== false;
+            const title = recorded ? 'Resolution recorded' : 'Resolution not recorded';
+            const chips = [];
+            if (requestPayload.claim_element_id) {
+                chips.push(`<span class="chip">${requestPayload.claim_element_id}</span>`);
+            }
+            if (requestPayload.claim_element) {
+                chips.push(`<span class="chip">${requestPayload.claim_element}</span>`);
+            }
+            if (typeof executionId === 'number') {
+                chips.push(`<span class="chip">execution ${executionId}</span>`);
+            }
+            if (requestPayload.related_execution_id) {
+                chips.push(`<span class="chip">linked ${requestPayload.related_execution_id}</span>`);
+            }
+
+            card.hidden = false;
+            card.classList.toggle('is-error', !recorded);
+            document.getElementById('resolution-result-title').textContent = title;
+            document.getElementById('resolution-result-status').textContent = status;
+            document.getElementById('resolution-result-chips').innerHTML = chips.join('');
+            document.getElementById('resolution-result-notes').textContent = requestPayload.resolution_notes
+                ? requestPayload.resolution_notes
+                : 'No operator notes were recorded for this resolution.';
+        }
+
         function setFollowUpSignals(planSummary, historySummary) {
             const planResolutionCounts = (planSummary && planSummary.resolution_applied_counts) || {};
             const historyResolutionCounts = (historySummary && historySummary.resolution_applied_counts) || {};
@@ -652,9 +865,70 @@
                         ${(task.missing_support_kinds || []).map((kind) => `<span class="chip">Need ${kind}</span>`).join('')}
                         ${task.blocked_by_cooldown ? '<span class="chip">Blocked by cooldown</span>' : ''}
                         ${task.should_suppress_retrieval ? '<span class="chip">Suppressed</span>' : ''}
+                        ${task.resolution_applied ? `<span class="chip">normalized: ${task.resolution_applied}</span>` : ''}
+                    </div>
+                    <div class="button-row" style="margin-top: 12px;">
+                        <button
+                            class="button-tertiary prefill-resolution-button"
+                            type="button"
+                            data-claim-element-id="${task.claim_element_id || ''}"
+                            data-claim-element-text="${task.claim_element || ''}"
+                        >Load Into Resolution Form</button>
                     </div>
                 </article>
             `).join('');
+        }
+
+        function renderHistory(historyEntries, historySummary) {
+            const summaryChips = document.getElementById('history-summary-chips');
+            const historyList = document.getElementById('history-list');
+            const summaryLabels = [];
+            if (historySummary) {
+                summaryLabels.push(`Entries: ${historySummary.total_entry_count || 0}`);
+                summaryLabels.push(`Manual review: ${historySummary.manual_review_entry_count || 0}`);
+                summaryLabels.push(`Resolved: ${historySummary.resolved_entry_count || 0}`);
+                const latestAttemptedAt = historySummary.latest_attempted_at || 'none';
+                summaryLabels.push(`Latest: ${latestAttemptedAt}`);
+            }
+            summaryChips.innerHTML = summaryLabels.length
+                ? summaryLabels.map((label) => `<span class="chip">${label}</span>`).join('')
+                : '<span class="chip">No history summary available.</span>';
+
+            const entries = historyEntries || [];
+            if (!entries.length) {
+                historyList.innerHTML = '<div class="history-card">No follow-up history returned.</div>';
+                return;
+            }
+
+            historyList.innerHTML = entries.map((entry) => {
+                const chips = [];
+                if (entry.support_kind) chips.push(`<span class="chip">${entry.support_kind}</span>`);
+                if (entry.status) chips.push(`<span class="chip">${entry.status}</span>`);
+                if (entry.query_strategy) chips.push(`<span class="chip">${entry.query_strategy}</span>`);
+                if (entry.resolution_applied) chips.push(`<span class="chip">normalized: ${entry.resolution_applied}</span>`);
+                if (entry.resolution_status) chips.push(`<span class="chip">resolution: ${entry.resolution_status}</span>`);
+                return `
+                    <article class="history-card">
+                        <div class="row-head">
+                            <div>
+                                <div class="row-title">${entry.claim_element_text || entry.claim_element_id || 'Follow-up event'}</div>
+                                <div class="meta">${entry.timestamp || 'no timestamp'} · ${entry.execution_mode || 'unknown mode'}</div>
+                            </div>
+                        </div>
+                        <div class="chip-row">${chips.join('')}</div>
+                        <div class="button-row" style="margin-top: 12px;">
+                            <button
+                                class="button-tertiary prefill-resolution-button"
+                                type="button"
+                                data-claim-element-id="${entry.claim_element_id || ''}"
+                                data-claim-element-text="${entry.claim_element_text || ''}"
+                                data-related-execution-id="${entry.execution_id || ''}"
+                                data-resolution-status="${entry.resolution_status || 'resolved_supported'}"
+                            >Load Into Resolution Form</button>
+                        </div>
+                    </article>
+                `;
+            }).join('');
         }
 
         function extractPrimaryClaim(payload) {
@@ -662,6 +936,7 @@
             const coverageClaims = payload.claim_coverage_summary || {};
             const planClaims = payload.follow_up_plan || {};
             const planSummaryClaims = payload.follow_up_plan_summary || {};
+            const historyClaims = payload.follow_up_history || {};
             const historySummaryClaims = payload.follow_up_history_summary || {};
             const fallbackClaim = Object.keys(coverageClaims)[0] || Object.keys(planClaims)[0] || claimType;
             return {
@@ -669,6 +944,7 @@
                 coverageClaims,
                 planClaims,
                 planSummaryClaims,
+                historyClaims,
                 historySummaryClaims,
             };
         }
@@ -680,12 +956,14 @@
             const matrix = (payload.claim_coverage_matrix || {})[claimType] || { elements: [] };
             const plan = primary.planClaims[claimType] || { tasks: [] };
             const planSummary = primary.planSummaryClaims[claimType] || null;
+            const historyEntries = primary.historyClaims[claimType] || [];
             const historySummary = primary.historySummaryClaims[claimType] || null;
 
             setSummary(summary);
             setFollowUpSignals(planSummary, historySummary);
             renderElements(matrix.elements || []);
             renderTasks(plan, planSummary);
+            renderHistory(historyEntries, historySummary);
             document.getElementById('raw-output').textContent = JSON.stringify(payload, null, 2);
         }
 
@@ -694,6 +972,7 @@
                 ...baseRequest(),
                 execute_follow_up: false,
             };
+            clearResolutionFeedback();
             setStatus('Loading review payload...');
             try {
                 const result = await postJson('/api/claim-support/review', payload);
@@ -710,6 +989,7 @@
                 follow_up_force: document.getElementById('force-execution').checked,
                 include_post_execution_review: document.getElementById('post-review').checked,
             };
+            clearResolutionFeedback();
             setStatus('Executing follow-up tasks...');
             try {
                 const result = await postJson('/api/claim-support/execute-follow-up', payload);
@@ -721,8 +1001,41 @@
             }
         }
 
+        async function resolveManualReview() {
+            const payload = buildResolutionRequest();
+            setStatus('Recording manual review resolution...');
+            try {
+                const result = await postJson('/api/claim-support/resolve-manual-review', payload);
+                renderPayload(result.post_resolution_review || result);
+                renderResolutionFeedback(result.resolution_result || null, payload);
+                document.getElementById('raw-output').textContent = JSON.stringify(result, null, 2);
+                const executionId = result && result.resolution_result ? result.resolution_result.execution_id : null;
+                setStatus(
+                    executionId
+                        ? `Manual review resolution recorded under execution ${executionId}.`
+                        : 'Manual review resolution recorded.'
+                );
+            } catch (error) {
+                clearResolutionFeedback();
+                setStatus(`Resolution request failed: ${error.message}`);
+            }
+        }
+
         document.getElementById('review-button').addEventListener('click', loadReview);
         document.getElementById('execute-button').addEventListener('click', executeFollowUp);
+        document.getElementById('resolve-button').addEventListener('click', resolveManualReview);
+        document.getElementById('clear-resolution-button').addEventListener('click', clearResolutionForm);
+        document.addEventListener('click', (event) => {
+            const button = event.target.closest('.prefill-resolution-button');
+            if (!button) return;
+            prefillResolutionForm({
+                claimElementId: button.dataset.claimElementId || '',
+                claimElementText: button.dataset.claimElementText || '',
+                relatedExecutionId: button.dataset.relatedExecutionId || '',
+                resolutionStatus: button.dataset.resolutionStatus || '',
+            });
+            setStatus('Resolution form prefilled from selected follow-up item.');
+        });
         loadReview();
     </script>
 </body>

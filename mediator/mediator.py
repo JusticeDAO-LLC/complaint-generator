@@ -1059,6 +1059,7 @@ class Mediator:
 
 	def _build_follow_up_record_metadata(self, task: Dict[str, Any], **extra: Any) -> Dict[str, Any]:
 		graph_summary = ((task.get('graph_support') or {}).get('summary', {})) if isinstance(task.get('graph_support'), dict) else {}
+		adaptive_retry_state = task.get('adaptive_retry_state', {}) if isinstance(task.get('adaptive_retry_state'), dict) else {}
 		metadata = {
 			'execution_mode': task.get('execution_mode', 'retrieve_support'),
 			'validation_status': task.get('validation_status', ''),
@@ -1075,6 +1076,12 @@ class Mediator:
 			'missing_support_kinds': list(task.get('missing_support_kinds') or []),
 			'follow_up_focus': task.get('follow_up_focus', ''),
 			'query_strategy': task.get('query_strategy', ''),
+			'adaptive_retry_applied': bool(adaptive_retry_state.get('applied', False)),
+			'adaptive_retry_reason': adaptive_retry_state.get('reason', ''),
+			'adaptive_query_strategy': adaptive_retry_state.get('adaptive_query_strategy', ''),
+			'adaptive_priority_penalty': int(adaptive_retry_state.get('priority_penalty', 0) or 0),
+			'adaptive_zero_result_attempt_count': int(adaptive_retry_state.get('zero_result_attempt_count', 0) or 0),
+			'adaptive_successful_result_attempt_count': int(adaptive_retry_state.get('successful_result_attempt_count', 0) or 0),
 			'graph_support_strength': task.get('graph_support_strength', ''),
 			'graph_support_summary': {
 				'total_fact_count': int(graph_summary.get('total_fact_count', 0) or 0),

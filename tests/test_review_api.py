@@ -1,5 +1,7 @@
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+
+from datetime import datetime, timezone
 
 from fastapi import Response
 from claim_support_review import (
@@ -17,9 +19,13 @@ from applications.review_api import (
 
 
 def test_claim_support_review_payload_returns_matrix_and_summary():
-    mediator = Mock()
-    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
-    mediator.get_claim_coverage_matrix.return_value = {
+    with patch(
+        "claim_support_review._utcnow",
+        return_value=datetime(2026, 3, 12, 12, 0, 0, tzinfo=timezone.utc),
+    ):
+        mediator = Mock()
+        mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+        mediator.get_claim_coverage_matrix.return_value = {
         "claims": {
             "retaliation": {
                 "claim_type": "retaliation",
@@ -222,12 +228,17 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                     "validation_status": "incomplete",
                     "follow_up_focus": "support_gap_closure",
                     "query_strategy": "standard_gap_targeted",
+                    "adaptive_retry_applied": True,
+                    "adaptive_retry_reason": "repeated_zero_result_reasoning_gap",
+                    "adaptive_query_strategy": "standard_gap_targeted",
+                    "adaptive_priority_penalty": 1,
+                    "zero_result": True,
                     "resolution_applied": "manual_review_resolved",
                 },
             ]
         }
     }
-    mediator.summarize_claim_support.return_value = {
+        mediator.summarize_claim_support.return_value = {
         "claims": {
             "retaliation": {
                 "support_by_kind": {"evidence": 1, "authority": 1},
@@ -235,7 +246,7 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             }
         }
     }
-    mediator.get_claim_follow_up_plan.return_value = {
+        mediator.get_claim_follow_up_plan.return_value = {
         "claims": {
             "retaliation": {
                 "task_count": 2,
@@ -252,6 +263,7 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                             "priority_penalty": 1,
                             "adaptive_query_strategy": "standard_gap_targeted",
                             "reason": "repeated_zero_result_reasoning_gap",
+                            "latest_attempted_at": "2026-03-12T09:45:00",
                         },
                         "graph_support": {
                             "summary": {
@@ -271,7 +283,7 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             }
         }
     }
-    mediator.execute_claim_follow_up_plan.return_value = {
+        mediator.execute_claim_follow_up_plan.return_value = {
         "claims": {
             "retaliation": {
                 "task_count": 1,
@@ -284,6 +296,7 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                             "priority_penalty": 1,
                             "adaptive_query_strategy": "standard_gap_targeted",
                             "reason": "repeated_zero_result_reasoning_gap",
+                            "latest_attempted_at": "2026-03-12T09:45:00",
                         },
                         "graph_support": {
                             "summary": {
@@ -323,24 +336,24 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         }
     }
 
-    payload = build_claim_support_review_payload(
-        mediator,
-        ClaimSupportReviewRequest(
-            claim_type="retaliation",
-            execute_follow_up=True,
-            follow_up_support_kind="authority",
-            follow_up_max_tasks_per_claim=2,
-        ),
-    )
+        payload = build_claim_support_review_payload(
+            mediator,
+            ClaimSupportReviewRequest(
+                claim_type="retaliation",
+                execute_follow_up=True,
+                follow_up_support_kind="authority",
+                follow_up_max_tasks_per_claim=2,
+            ),
+        )
 
-    assert payload["user_id"] == "state-user"
-    assert payload["claim_coverage_matrix"]["retaliation"]["status_counts"]["covered"] == 1
-    assert payload["claim_coverage_summary"]["retaliation"]["missing_elements"] == [
+        assert payload["user_id"] == "state-user"
+        assert payload["claim_coverage_matrix"]["retaliation"]["status_counts"]["covered"] == 1
+        assert payload["claim_coverage_summary"]["retaliation"]["missing_elements"] == [
         "Causal connection"
-    ]
-    assert payload["claim_coverage_summary"]["retaliation"][
+        ]
+        assert payload["claim_coverage_summary"]["retaliation"][
         "partially_supported_elements"
-    ] == ["Adverse action"]
+        ] == ["Adverse action"]
     assert payload["claim_coverage_summary"]["retaliation"]["unresolved_element_count"] == 2
     assert payload["claim_coverage_summary"]["retaliation"]["unresolved_elements"] == [
         "Causal connection",
@@ -409,6 +422,22 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         "resolution_applied_counts": {
             "manual_review_resolved": 1,
         },
+        "adaptive_retry_entry_count": 1,
+        "priority_penalized_entry_count": 1,
+        "adaptive_query_strategy_counts": {
+            "standard_gap_targeted": 1,
+        },
+        "adaptive_retry_reason_counts": {
+            "repeated_zero_result_reasoning_gap": 1,
+        },
+        "last_adaptive_retry": {
+            "claim_element_id": "retaliation:3",
+            "claim_element_text": "Causal connection",
+            "timestamp": "2026-03-12T09:45:00",
+            "adaptive_query_strategy": "standard_gap_targeted",
+            "reason": "repeated_zero_result_reasoning_gap",
+        },
+        "zero_result_entry_count": 1,
         "manual_review_entry_count": 1,
         "resolved_entry_count": 0,
         "contradiction_related_entry_count": 1,
@@ -475,6 +504,13 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
     assert payload["follow_up_plan_summary"]["retaliation"]["adaptive_retry_reason_counts"] == {
         "repeated_zero_result_reasoning_gap": 1,
     }
+    assert payload["follow_up_plan_summary"]["retaliation"]["last_adaptive_retry"] == {
+        "claim_element_id": None,
+        "claim_element_text": "Causal connection",
+        "timestamp": "2026-03-12T09:45:00",
+        "adaptive_query_strategy": "standard_gap_targeted",
+        "reason": "repeated_zero_result_reasoning_gap",
+    }
     assert payload["follow_up_plan_summary"]["retaliation"]["recommended_actions"] == {
         "retrieve_more_support": 1,
         "target_missing_support_kind": 1,
@@ -496,6 +532,13 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
     }
     assert payload["follow_up_execution_summary"]["retaliation"]["adaptive_retry_reason_counts"] == {
         "repeated_zero_result_reasoning_gap": 1,
+    }
+    assert payload["follow_up_execution_summary"]["retaliation"]["last_adaptive_retry"] == {
+        "claim_element_id": None,
+        "claim_element_text": "Causal connection",
+        "timestamp": "2026-03-12T09:45:00",
+        "adaptive_query_strategy": "standard_gap_targeted",
+        "reason": "repeated_zero_result_reasoning_gap",
     }
     mediator.get_claim_coverage_matrix.assert_called_once_with(
         claim_type="retaliation",
@@ -1005,6 +1048,7 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
         "priority_penalized_task_count": 0,
         "adaptive_query_strategy_counts": {},
         "adaptive_retry_reason_counts": {},
+        "last_adaptive_retry": None,
     }
     assert payload["post_execution_review"]["claim_coverage_summary"]["retaliation"]["status_counts"]["covered"] == 2
     assert payload["post_execution_review"]["claim_support_gaps"]["retaliation"]["unresolved_count"] == 1

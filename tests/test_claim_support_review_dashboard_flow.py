@@ -9,6 +9,7 @@ from applications.review_api import attach_claim_support_review_routes
 from applications.review_ui import attach_claim_support_review_ui_routes
 from claim_support_review import (
     ClaimSupportFollowUpExecuteRequest,
+    ClaimSupportManualReviewResolveRequest,
     ClaimSupportReviewRequest,
 )
 
@@ -71,6 +72,20 @@ def _build_dashboard_mediator() -> Mock:
         "claims": {
             "retaliation": [
                 {
+                    "execution_id": 21,
+                    "claim_type": "retaliation",
+                    "claim_element_id": "retaliation:2",
+                    "claim_element_text": "Adverse action",
+                    "support_kind": "manual_review",
+                    "query_text": "manual_review::retaliation::retaliation:2::resolve_contradiction",
+                    "status": "skipped_manual_review",
+                    "timestamp": "2026-03-12T12:35:00",
+                    "execution_mode": "manual_review",
+                    "follow_up_focus": "contradiction_resolution",
+                    "query_strategy": "standard_gap_targeted",
+                    "resolution_applied": "",
+                },
+                {
                     "execution_id": 44,
                     "claim_type": "retaliation",
                     "claim_element_id": "retaliation:2",
@@ -86,6 +101,11 @@ def _build_dashboard_mediator() -> Mock:
                 }
             ]
         }
+    }
+    mediator.resolve_claim_follow_up_manual_review.return_value = {
+        "recorded": True,
+        "status": "resolved_manual_review",
+        "execution_id": 91,
     }
     mediator.get_claim_follow_up_plan.return_value = {
         "claims": {
@@ -141,6 +161,11 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
         for route in app.routes
         if getattr(route, "path", None) == "/api/claim-support/execute-follow-up"
     )
+    resolve_route = next(
+        route
+        for route in app.routes
+        if getattr(route, "path", None) == "/api/claim-support/resolve-manual-review"
+    )
 
     page_html = await page_route.endpoint()
 
@@ -149,8 +174,17 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert soup.find(id="required-kinds") is not None
     assert soup.find(id="review-button") is not None
     assert soup.find(id="execute-button") is not None
+    assert soup.find(id="resolve-button") is not None
+    assert soup.find(id="clear-resolution-button") is not None
+    assert soup.find(id="resolution-element-id") is not None
+    assert soup.find(id="resolution-notes") is not None
+    assert soup.find(id="resolution-result-card") is not None
+    assert soup.find(id="resolution-result-status") is not None
+    assert soup.find(id="resolution-result-chips") is not None
     assert soup.find(id="signal-plan-normalized") is not None
     assert soup.find(id="signal-history-normalized") is not None
+    assert soup.find(id="history-list") is not None
+    assert soup.find(id="history-summary-chips") is not None
 
     review_payload = await review_route.endpoint(
         ClaimSupportReviewRequest(
@@ -173,7 +207,27 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert review_payload["follow_up_plan_summary"]["retaliation"]["resolution_applied_counts"] == {
         "manual_review_resolved": 1,
     }
+    assert review_payload["follow_up_history_summary"]["retaliation"]["manual_review_entry_count"] == 1
+    assert any(
+        entry.get("resolution_applied") == "manual_review_resolved"
+        for entry in review_payload["follow_up_history"]["retaliation"]
+    )
     assert review_payload["follow_up_history_summary"]["retaliation"]["resolution_applied_counts"] == {
+        "manual_review_resolved": 1,
+    }
+
+    resolution_payload = await resolve_route.endpoint(
+        ClaimSupportManualReviewResolveRequest(
+            claim_type="retaliation",
+            claim_element_id="retaliation:2",
+            claim_element="Adverse action",
+            resolution_status="resolved_supported",
+            resolution_notes="Operator reconciled the contradiction from the dashboard.",
+            related_execution_id=21,
+        ),
+    )
+    assert resolution_payload["resolution_result"]["status"] == "resolved_manual_review"
+    assert resolution_payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["resolution_applied_counts"] == {
         "manual_review_resolved": 1,
     }
 

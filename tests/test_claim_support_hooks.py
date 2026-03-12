@@ -13,6 +13,59 @@ pytestmark = pytest.mark.no_auto_network
 
 
 class TestClaimSupportHook:
+    def test_get_recent_follow_up_execution_exposes_adaptive_retry_metadata(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            record_id = hook.record_follow_up_execution(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_id='employment:1',
+                claim_element_text='Protected activity',
+                support_kind='authority',
+                query_text='"employment" "Protected activity" statute',
+                status='executed',
+                metadata={
+                    'execution_mode': 'review_and_retrieve',
+                    'validation_status': 'incomplete',
+                    'follow_up_focus': 'reasoning_gap_closure',
+                    'query_strategy': 'standard_gap_targeted',
+                    'adaptive_retry_applied': True,
+                    'adaptive_retry_reason': 'repeated_zero_result_reasoning_gap',
+                    'adaptive_query_strategy': 'standard_gap_targeted',
+                    'adaptive_priority_penalty': 1,
+                    'result_count': 0,
+                    'stored_result_count': 0,
+                    'zero_result': True,
+                },
+            )
+
+            history = hook.get_recent_follow_up_execution('testuser', 'employment', limit=5)
+            entry = history['claims']['employment'][0]
+
+            assert record_id > 0
+            assert entry['execution_id'] == record_id
+            assert entry['adaptive_retry_applied'] is True
+            assert entry['adaptive_retry_reason'] == 'repeated_zero_result_reasoning_gap'
+            assert entry['adaptive_query_strategy'] == 'standard_gap_targeted'
+            assert entry['adaptive_priority_penalty'] == 1
+            assert entry['result_count'] == 0
+            assert entry['stored_result_count'] == 0
+            assert entry['zero_result'] is True
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
     def test_claim_support_hook_can_be_imported(self):
         try:
             from mediator.claim_support_hooks import ClaimSupportHook

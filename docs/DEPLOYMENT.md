@@ -88,7 +88,7 @@ python run.py --config config.review_surface.json
 
 Access at: http://localhost:8000
 
-For the focused operator workflow, `config.review_surface.json` starts only the claim-support dashboard and its review/follow-up API routes. The dashboard is available at `http://localhost:8000/claim-support-review`, and the dedicated review app exposes `http://localhost:8000/health` for lightweight health checks.
+For the focused operator workflow, `config.review_surface.json` starts only the claim-support dashboard and its review/follow-up API routes. The dashboard is available at `http://localhost:8000/claim-support-review`, and the dedicated review app exposes `http://localhost:8000/health` for lightweight health checks. The dashboard surfaces current coverage, follow-up signals, recent follow-up history, and manual-review resolution controls from the same review payloads used by the API.
 
 ## Single Server Deployment
 

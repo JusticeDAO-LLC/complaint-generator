@@ -640,6 +640,7 @@ class TestWebEvidenceIntegrationHook:
                                     'priority_penalty': 1,
                                     'adaptive_query_strategy': 'standard_gap_targeted',
                                     'reason': 'repeated_zero_result_reasoning_gap',
+                                    'latest_attempted_at': '2026-03-12T10:19:00',
                                 },
                                 'graph_support': {
                                     'summary': {
@@ -812,6 +813,13 @@ class TestWebEvidenceIntegrationHook:
             assert result['follow_up_plan_summary']['employment discrimination']['adaptive_retry_reason_counts'] == {
                 'repeated_zero_result_reasoning_gap': 1,
             }
+            assert result['follow_up_plan_summary']['employment discrimination']['last_adaptive_retry'] == {
+                'claim_element_id': None,
+                'claim_element_text': 'Protected activity',
+                'timestamp': '2026-03-12T10:19:00',
+                'adaptive_query_strategy': 'standard_gap_targeted',
+                'reason': 'repeated_zero_result_reasoning_gap',
+            }
             assert result['follow_up_plan_summary']['employment discrimination']['recommended_actions']['review_existing_support'] == 1
             assert result['follow_up_history']['employment discrimination'][0]['support_kind'] == 'manual_review'
             assert result['follow_up_history_summary']['employment discrimination']['manual_review_entry_count'] == 1
@@ -850,6 +858,13 @@ class TestWebEvidenceIntegrationHook:
                         'validation_status': 'contradicted',
                         'follow_up_focus': 'contradiction_resolution',
                         'query_strategy': 'contradiction_targeted',
+                        'claim_element_id': 'employment discrimination:2',
+                        'claim_element_text': 'Adverse action',
+                        'adaptive_retry_applied': True,
+                        'adaptive_retry_reason': 'repeated_zero_result_reasoning_gap',
+                        'adaptive_query_strategy': 'standard_gap_targeted',
+                        'adaptive_priority_penalty': 1,
+                        'zero_result': True,
                         'timestamp': '2026-03-12T11:05:00',
                     },
                     {
@@ -876,6 +891,7 @@ class TestWebEvidenceIntegrationHook:
                                     'priority_penalty': 1,
                                     'adaptive_query_strategy': 'standard_gap_targeted',
                                     'reason': 'repeated_zero_result_reasoning_gap',
+                                    'latest_attempted_at': '2026-03-12T11:05:00',
                                 },
                                 'graph_support': {
                                     'summary': {
@@ -949,8 +965,31 @@ class TestWebEvidenceIntegrationHook:
             assert result['follow_up_execution_summary']['employment discrimination']['adaptive_retry_reason_counts'] == {
                 'repeated_zero_result_reasoning_gap': 1,
             }
+            assert result['follow_up_execution_summary']['employment discrimination']['last_adaptive_retry'] == {
+                'claim_element_id': None,
+                'claim_element_text': 'Adverse action',
+                'timestamp': '2026-03-12T11:05:00',
+                'adaptive_query_strategy': 'standard_gap_targeted',
+                'reason': 'repeated_zero_result_reasoning_gap',
+            }
             assert result['follow_up_history_summary']['employment discrimination']['total_entry_count'] == 2
             assert result['follow_up_history_summary']['employment discrimination']['manual_review_entry_count'] == 1
+            assert result['follow_up_history_summary']['employment discrimination']['adaptive_retry_entry_count'] == 1
+            assert result['follow_up_history_summary']['employment discrimination']['priority_penalized_entry_count'] == 1
+            assert result['follow_up_history_summary']['employment discrimination']['adaptive_query_strategy_counts'] == {
+                'standard_gap_targeted': 1,
+            }
+            assert result['follow_up_history_summary']['employment discrimination']['adaptive_retry_reason_counts'] == {
+                'repeated_zero_result_reasoning_gap': 1,
+            }
+            assert result['follow_up_history_summary']['employment discrimination']['last_adaptive_retry'] == {
+                'claim_element_id': 'employment discrimination:2',
+                'claim_element_text': 'Adverse action',
+                'timestamp': '2026-03-12T11:05:00',
+                'adaptive_query_strategy': 'standard_gap_targeted',
+                'reason': 'repeated_zero_result_reasoning_gap',
+            }
+            assert result['follow_up_history_summary']['employment discrimination']['zero_result_entry_count'] == 1
             assert result['follow_up_history_summary']['employment discrimination']['query_strategy_counts'] == {
                 'contradiction_targeted': 1,
                 'standard_gap_targeted': 1,

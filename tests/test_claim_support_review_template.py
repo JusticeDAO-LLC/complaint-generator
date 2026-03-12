@@ -10,8 +10,10 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     content = template_path.read_text()
     assert "/api/claim-support/review" in content
     assert "/api/claim-support/execute-follow-up" in content
+    assert "/api/claim-support/resolve-manual-review" in content
     assert "Load Review" in content
     assert "Execute Follow-Up" in content
+    assert "resolution-result-card" in content
 
 
 def test_landing_pages_link_to_claim_support_review_dashboard():
