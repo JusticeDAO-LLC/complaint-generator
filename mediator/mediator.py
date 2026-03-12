@@ -922,6 +922,96 @@ class Mediator:
 			),
 		)
 
+	def _extract_proof_gap_types(self, proof_gaps: List[Dict[str, Any]]) -> List[str]:
+		gap_types: List[str] = []
+		for gap in proof_gaps or []:
+			if not isinstance(gap, dict):
+				continue
+			gap_type = str(gap.get('gap_type') or '').strip()
+			if gap_type and gap_type not in gap_types:
+				gap_types.append(gap_type)
+		return gap_types
+
+	def _build_follow_up_queries(
+		self,
+		claim_type: str,
+		element_text: str,
+		missing_support_kinds: List[str],
+		validation_status: str = '',
+		proof_gaps: List[Dict[str, Any]] = None,
+	) -> Dict[str, List[str]]:
+		queries: Dict[str, List[str]] = {}
+		proof_gap_types = self._extract_proof_gap_types(proof_gaps or [])
+		gap_focus = ' '.join(
+			gap_type.replace('_', ' ')
+			for gap_type in proof_gap_types
+			if gap_type != 'contradiction_candidates'
+		)[:80].strip()
+
+		def _compose_query(*parts: str) -> str:
+			return ' '.join(part for part in parts if part).strip()
+
+		contradiction_targeted = validation_status == 'contradicted' and bool(missing_support_kinds)
+		if 'evidence' in missing_support_kinds:
+			if contradiction_targeted:
+				queries['evidence'] = [
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'contradictory evidence rebuttal', gap_focus),
+					_compose_query(f'"{element_text}"', 'corroborating records inconsistency', claim_type),
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'timeline witness statement conflict'),
+				]
+			else:
+				queries['evidence'] = [
+					f'"{claim_type}" "{element_text}" evidence',
+					f'"{element_text}" documentation {claim_type}',
+					f'"{element_text}" facts witness records {claim_type}',
+				]
+		if 'authority' in missing_support_kinds:
+			if contradiction_targeted:
+				queries['authority'] = [
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'contradiction case law', gap_focus),
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'conflicting evidence burden of proof'),
+					_compose_query(f'"{element_text}"', 'inconsistent statements legal standard', claim_type),
+				]
+			else:
+				queries['authority'] = [
+					f'"{claim_type}" "{element_text}" statute',
+					f'"{claim_type}" "{element_text}" case law',
+					f'"{element_text}" legal elements {claim_type}',
+				]
+		return queries
+
+	def _build_follow_up_record_metadata(self, task: Dict[str, Any], **extra: Any) -> Dict[str, Any]:
+		graph_summary = ((task.get('graph_support') or {}).get('summary', {})) if isinstance(task.get('graph_support'), dict) else {}
+		metadata = {
+			'execution_mode': task.get('execution_mode', 'retrieve_support'),
+			'validation_status': task.get('validation_status', ''),
+			'recommended_action': task.get('recommended_action', ''),
+			'requires_manual_review': task.get('requires_manual_review', False),
+			'reasoning_backed': task.get('reasoning_backed', False),
+			'proof_gap_count': int(task.get('proof_gap_count', 0) or 0),
+			'proof_gap_types': list(task.get('proof_gap_types') or []),
+			'missing_support_kinds': list(task.get('missing_support_kinds') or []),
+			'follow_up_focus': task.get('follow_up_focus', ''),
+			'query_strategy': task.get('query_strategy', ''),
+			'graph_support_strength': task.get('graph_support_strength', ''),
+			'graph_support_summary': {
+				'total_fact_count': int(graph_summary.get('total_fact_count', 0) or 0),
+				'unique_fact_count': int(graph_summary.get('unique_fact_count', 0) or 0),
+				'duplicate_fact_count': int(graph_summary.get('duplicate_fact_count', 0) or 0),
+				'semantic_cluster_count': int(graph_summary.get('semantic_cluster_count', 0) or 0),
+				'semantic_duplicate_count': int(graph_summary.get('semantic_duplicate_count', 0) or 0),
+			},
+		}
+		for key, value in extra.items():
+			if value is not None:
+				metadata[key] = value
+		return metadata
+
+	def _build_manual_review_audit_query(self, claim_type: str, task: Dict[str, Any]) -> str:
+		element_ref = task.get('claim_element_id') or task.get('claim_element') or 'unknown_element'
+		action = task.get('recommended_action') or 'manual_review'
+		return f'manual_review::{claim_type}::{element_ref}::{action}'
+
 	def _build_follow_up_task(self, claim_type: str, element: Dict[str, Any], status: str,
 			required_support_kinds: List[str]) -> Dict[str, Any]:
 		element_text = element.get('element_text') or element.get('claim_element') or 'Unknown element'
@@ -931,20 +1021,16 @@ class Mediator:
 			if support_by_kind.get(kind, 0) == 0
 		]
 		priority = 'high' if status == 'missing' else 'medium'
-		queries: Dict[str, List[str]] = {}
-		if 'evidence' in missing_support_kinds:
-			queries['evidence'] = [
-				f'"{claim_type}" "{element_text}" evidence',
-				f'"{element_text}" documentation {claim_type}',
-				f'"{element_text}" facts witness records {claim_type}',
-			]
-		if 'authority' in missing_support_kinds:
-			queries['authority'] = [
-				f'"{claim_type}" "{element_text}" statute',
-				f'"{claim_type}" "{element_text}" case law',
-				f'"{element_text}" legal elements {claim_type}',
-			]
 		validation_status = element.get('validation_status', '')
+		proof_gaps = element.get('proof_gaps', []) if isinstance(element.get('proof_gaps'), list) else []
+		proof_gap_types = self._extract_proof_gap_types(proof_gaps)
+		queries = self._build_follow_up_queries(
+			claim_type,
+			element_text,
+			missing_support_kinds,
+			validation_status=validation_status,
+			proof_gaps=proof_gaps,
+		)
 		if validation_status == 'contradicted':
 			priority = 'high'
 		execution_mode = 'retrieve_support'
@@ -952,6 +1038,8 @@ class Mediator:
 			execution_mode = 'review_and_retrieve'
 		elif validation_status == 'contradicted':
 			execution_mode = 'manual_review'
+		follow_up_focus = 'contradiction_resolution' if validation_status == 'contradicted' else 'support_gap_closure'
+		query_strategy = 'contradiction_targeted' if execution_mode == 'review_and_retrieve' else 'standard_gap_targeted'
 		return {
 			'claim_type': claim_type,
 			'claim_element_id': element.get('element_id'),
@@ -959,11 +1047,14 @@ class Mediator:
 			'status': status,
 			'validation_status': validation_status,
 			'proof_gap_count': int(element.get('proof_gap_count', 0) or 0),
-			'proof_gaps': element.get('proof_gaps', []),
+			'proof_gaps': proof_gaps,
+			'proof_gap_types': proof_gap_types,
 			'validation_recommended_action': element.get('recommended_action', ''),
 			'execution_mode': execution_mode,
 			'requires_manual_review': execution_mode in {'manual_review', 'review_and_retrieve'},
 			'reasoning_backed': bool(((element.get('reasoning_diagnostics') or {}).get('backend_available_count', 0) or 0) > 0),
+			'follow_up_focus': follow_up_focus,
+			'query_strategy': query_strategy,
 			'priority': priority,
 			'priority_score': 3 if priority == 'high' else 2,
 			'missing_support_kinds': missing_support_kinds,
@@ -1153,17 +1244,37 @@ class Mediator:
 					'execution_mode': task.get('execution_mode', 'retrieve_support'),
 					'requires_manual_review': task.get('requires_manual_review', False),
 					'reasoning_backed': task.get('reasoning_backed', False),
+					'follow_up_focus': task.get('follow_up_focus', ''),
+					'query_strategy': task.get('query_strategy', ''),
+					'proof_gap_count': int(task.get('proof_gap_count', 0) or 0),
+					'proof_gap_types': list(task.get('proof_gap_types') or []),
 					'graph_support': task.get('graph_support', {}),
 					'should_suppress_retrieval': task.get('should_suppress_retrieval', False),
 					'suppression_reason': task.get('suppression_reason', ''),
 					'executed': {},
 				}
 				if task.get('execution_mode') == 'manual_review':
+					manual_review_query = self._build_manual_review_audit_query(current_claim, task)
+					self.claim_support.record_follow_up_execution(
+						user_id=user_id,
+						claim_type=current_claim,
+						claim_element_id=task.get('claim_element_id'),
+						claim_element_text=task.get('claim_element'),
+						support_kind='manual_review',
+						query_text=manual_review_query,
+						status='skipped_manual_review',
+						metadata=self._build_follow_up_record_metadata(
+							task,
+							skip_reason='contradiction_requires_resolution',
+							audit_query=manual_review_query,
+						),
+					)
 					skipped_tasks.append({
 						**execution,
 						'skipped': {
 							'manual_review': {
 								'reason': 'contradiction_requires_resolution',
+								'audit_query': manual_review_query,
 							}
 						},
 					})
@@ -1196,7 +1307,11 @@ class Mediator:
 							support_kind='evidence',
 							query_text=query_text,
 							status='skipped_duplicate',
-							metadata={'cooldown_seconds': cooldown_seconds},
+							metadata=self._build_follow_up_record_metadata(
+								task,
+								cooldown_seconds=cooldown_seconds,
+								query_variants=task.get('queries', {}).get('evidence', []),
+							),
 						)
 						skipped_tasks.append({
 							**execution,
@@ -1222,7 +1337,11 @@ class Mediator:
 							support_kind='evidence',
 							query_text=query_text,
 							status='executed',
-							metadata={'keywords': keywords},
+							metadata=self._build_follow_up_record_metadata(
+								task,
+								keywords=keywords,
+								query_variants=task.get('queries', {}).get('evidence', []),
+							),
 						)
 						execution['executed']['evidence'] = {
 							'query': query_text,
@@ -1247,7 +1366,11 @@ class Mediator:
 							support_kind='authority',
 							query_text=query_text,
 							status='skipped_duplicate',
-							metadata={'cooldown_seconds': cooldown_seconds},
+							metadata=self._build_follow_up_record_metadata(
+								task,
+								cooldown_seconds=cooldown_seconds,
+								query_variants=task.get('queries', {}).get('authority', []),
+							),
 						)
 						skipped_tasks.append({
 							**execution,
@@ -1273,7 +1396,11 @@ class Mediator:
 							support_kind='authority',
 							query_text=query_text,
 							status='executed',
-							metadata={'search_results': {key: len(value) for key, value in search_results.items()}},
+							metadata=self._build_follow_up_record_metadata(
+								task,
+								search_results={key: len(value) for key, value in search_results.items()},
+								query_variants=task.get('queries', {}).get('authority', []),
+							),
 						)
 						execution['executed']['authority'] = {
 							'query': query_text,

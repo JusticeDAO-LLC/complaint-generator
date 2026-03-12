@@ -1248,28 +1248,50 @@ Representative response shape:
   "follow_up_execution": {
     "retaliation": {
       "task_count": 1,
-      "tasks": [],
-      "skipped_tasks": []
+      "tasks": [
+        {
+          "claim_element": "Protected activity",
+          "execution_mode": "review_and_retrieve",
+          "follow_up_focus": "contradiction_resolution",
+          "query_strategy": "contradiction_targeted",
+          "proof_gap_types": ["contradiction_candidates"],
+          "executed": {
+            "evidence": {
+              "query": "\"retaliation\" \"Protected activity\" contradictory evidence rebuttal",
+              "keywords": ["retaliation", "Protected activity", "contradictory", "evidence", "rebuttal"]
+            }
+          }
+        }
+      ],
+      "skipped_tasks": [
+        {
+          "claim_element": "Adverse action",
+          "execution_mode": "manual_review",
+          "follow_up_focus": "contradiction_resolution",
+          "skipped": {
+            "manual_review": {
+              "reason": "contradiction_requires_resolution",
+              "audit_query": "manual_review::retaliation::retaliation:2::resolve_contradiction"
+            }
+          }
+        }
+      ]
     }
   },
   "follow_up_execution_summary": {
     "retaliation": {
       "executed_task_count": 1,
-      "skipped_task_count": 0,
+      "skipped_task_count": 1,
       "suppressed_task_count": 0,
       "cooldown_skipped_task_count": 0,
       "manual_review_task_count": 1,
-      "semantic_cluster_count": 3,
-      "semantic_duplicate_count": 4
       "semantic_cluster_count": 1,
       "semantic_duplicate_count": 0
     }
   },
-  - `execution_mode` on follow-up tasks now distinguishes normal retrieval work from contradiction-driven `manual_review` or mixed `review_and_retrieve` tasks.
   "post_execution_review": {
     "claim_coverage_summary": {
       "retaliation": {
-  - `manual_review_task_count` in both follow-up summaries tracks contradiction-review work that intentionally does not trigger evidence or authority retrieval.
         "status_counts": {
           "covered": 2,
           "partially_supported": 0,
@@ -1282,6 +1304,12 @@ Representative response shape:
 ```
 
 Interpretation notes:
+
+- `execution_mode` distinguishes normal retrieval work from contradiction-driven `manual_review` or mixed `review_and_retrieve` tasks.
+- `follow_up_focus` captures whether the task is closing an ordinary support gap or resolving a contradiction-heavy element.
+- `query_strategy` records whether generated search text used the standard support-gap templates or contradiction-targeted retrieval prompts.
+- `manual_review` skips are also written into the `claim_follow_up_execution` DuckDB ledger with `support_kind="manual_review"`, so contradiction-resolution work has an audit trail even when no retrieval runs.
+- `manual_review_task_count` in both follow-up summaries tracks contradiction-review work that intentionally does not trigger evidence or authority retrieval.
 
 - `follow_up_force=true` bypasses duplicate-within-cooldown suppression inside `Mediator.execute_claim_follow_up_plan(...)`.
 - `include_post_execution_review=false` returns only execution results and skips the extra post-run coverage refresh.
