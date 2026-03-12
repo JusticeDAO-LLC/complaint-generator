@@ -634,6 +634,13 @@ class TestWebEvidenceIntegrationHook:
                                 'has_graph_support': True,
                                 'recommended_action': 'review_existing_support',
                                 'should_suppress_retrieval': True,
+                                'resolution_applied': 'manual_review_resolved',
+                                'adaptive_retry_state': {
+                                    'applied': True,
+                                    'priority_penalty': 1,
+                                    'adaptive_query_strategy': 'standard_gap_targeted',
+                                    'reason': 'repeated_zero_result_reasoning_gap',
+                                },
                                 'graph_support': {
                                     'summary': {
                                         'semantic_cluster_count': 1,
@@ -794,6 +801,17 @@ class TestWebEvidenceIntegrationHook:
             assert result['follow_up_plan_summary']['employment discrimination']['proof_decision_source_counts'] == {
                 'unknown': 2,
             }
+            assert result['follow_up_plan_summary']['employment discrimination']['resolution_applied_counts'] == {
+                'manual_review_resolved': 1,
+            }
+            assert result['follow_up_plan_summary']['employment discrimination']['adaptive_retry_task_count'] == 1
+            assert result['follow_up_plan_summary']['employment discrimination']['priority_penalized_task_count'] == 1
+            assert result['follow_up_plan_summary']['employment discrimination']['adaptive_query_strategy_counts'] == {
+                'standard_gap_targeted': 1,
+            }
+            assert result['follow_up_plan_summary']['employment discrimination']['adaptive_retry_reason_counts'] == {
+                'repeated_zero_result_reasoning_gap': 1,
+            }
             assert result['follow_up_plan_summary']['employment discrimination']['recommended_actions']['review_existing_support'] == 1
             assert result['follow_up_history']['employment discrimination'][0]['support_kind'] == 'manual_review'
             assert result['follow_up_history_summary']['employment discrimination']['manual_review_entry_count'] == 1
@@ -852,6 +870,13 @@ class TestWebEvidenceIntegrationHook:
                         'tasks': [
                             {
                                 'claim_element': 'Adverse action',
+                                'resolution_applied': 'manual_review_resolved',
+                                'adaptive_retry_state': {
+                                    'applied': True,
+                                    'priority_penalty': 1,
+                                    'adaptive_query_strategy': 'standard_gap_targeted',
+                                    'reason': 'repeated_zero_result_reasoning_gap',
+                                },
                                 'graph_support': {
                                     'summary': {
                                         'semantic_cluster_count': 1,
@@ -912,6 +937,17 @@ class TestWebEvidenceIntegrationHook:
             }
             assert result['follow_up_execution_summary']['employment discrimination']['proof_decision_source_counts'] == {
                 'unknown': 2,
+            }
+            assert result['follow_up_execution_summary']['employment discrimination']['resolution_applied_counts'] == {
+                'manual_review_resolved': 1,
+            }
+            assert result['follow_up_execution_summary']['employment discrimination']['adaptive_retry_task_count'] == 1
+            assert result['follow_up_execution_summary']['employment discrimination']['priority_penalized_task_count'] == 1
+            assert result['follow_up_execution_summary']['employment discrimination']['adaptive_query_strategy_counts'] == {
+                'standard_gap_targeted': 1,
+            }
+            assert result['follow_up_execution_summary']['employment discrimination']['adaptive_retry_reason_counts'] == {
+                'repeated_zero_result_reasoning_gap': 1,
             }
             assert result['follow_up_history_summary']['employment discrimination']['total_entry_count'] == 2
             assert result['follow_up_history_summary']['employment discrimination']['manual_review_entry_count'] == 1

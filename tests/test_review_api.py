@@ -222,6 +222,7 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                     "validation_status": "incomplete",
                     "follow_up_focus": "support_gap_closure",
                     "query_strategy": "standard_gap_targeted",
+                    "resolution_applied": "manual_review_resolved",
                 },
             ]
         }
@@ -245,6 +246,13 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                         "recommended_action": "retrieve_more_support",
                         "has_graph_support": True,
                         "should_suppress_retrieval": False,
+                        "resolution_applied": "manual_review_resolved",
+                        "adaptive_retry_state": {
+                            "applied": True,
+                            "priority_penalty": 1,
+                            "adaptive_query_strategy": "standard_gap_targeted",
+                            "reason": "repeated_zero_result_reasoning_gap",
+                        },
                         "graph_support": {
                             "summary": {
                                 "semantic_cluster_count": 2,
@@ -270,6 +278,13 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 "tasks": [
                     {
                         "claim_element": "Causal connection",
+                        "resolution_applied": "manual_review_resolved",
+                        "adaptive_retry_state": {
+                            "applied": True,
+                            "priority_penalty": 1,
+                            "adaptive_query_strategy": "standard_gap_targeted",
+                            "reason": "repeated_zero_result_reasoning_gap",
+                        },
                         "graph_support": {
                             "summary": {
                                 "semantic_cluster_count": 1,
@@ -391,6 +406,9 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "support_gap_closure": 1,
         },
         "resolution_status_counts": {},
+        "resolution_applied_counts": {
+            "manual_review_resolved": 1,
+        },
         "manual_review_entry_count": 1,
         "resolved_entry_count": 0,
         "contradiction_related_entry_count": 1,
@@ -446,6 +464,17 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
     assert payload["follow_up_plan_summary"]["retaliation"]["proof_decision_source_counts"] == {
         "unknown": 2,
     }
+    assert payload["follow_up_plan_summary"]["retaliation"]["resolution_applied_counts"] == {
+        "manual_review_resolved": 1,
+    }
+    assert payload["follow_up_plan_summary"]["retaliation"]["adaptive_retry_task_count"] == 1
+    assert payload["follow_up_plan_summary"]["retaliation"]["priority_penalized_task_count"] == 1
+    assert payload["follow_up_plan_summary"]["retaliation"]["adaptive_query_strategy_counts"] == {
+        "standard_gap_targeted": 1,
+    }
+    assert payload["follow_up_plan_summary"]["retaliation"]["adaptive_retry_reason_counts"] == {
+        "repeated_zero_result_reasoning_gap": 1,
+    }
     assert payload["follow_up_plan_summary"]["retaliation"]["recommended_actions"] == {
         "retrieve_more_support": 1,
         "target_missing_support_kind": 1,
@@ -457,6 +486,17 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
     assert payload["follow_up_execution_summary"]["retaliation"]["cooldown_skipped_task_count"] == 1
     assert payload["follow_up_execution_summary"]["retaliation"]["semantic_cluster_count"] == 3
     assert payload["follow_up_execution_summary"]["retaliation"]["semantic_duplicate_count"] == 4
+    assert payload["follow_up_execution_summary"]["retaliation"]["adaptive_retry_task_count"] == 1
+    assert payload["follow_up_execution_summary"]["retaliation"]["priority_penalized_task_count"] == 1
+    assert payload["follow_up_execution_summary"]["retaliation"]["adaptive_query_strategy_counts"] == {
+        "standard_gap_targeted": 1,
+    }
+    assert payload["follow_up_execution_summary"]["retaliation"]["resolution_applied_counts"] == {
+        "manual_review_resolved": 1,
+    }
+    assert payload["follow_up_execution_summary"]["retaliation"]["adaptive_retry_reason_counts"] == {
+        "repeated_zero_result_reasoning_gap": 1,
+    }
     mediator.get_claim_coverage_matrix.assert_called_once_with(
         claim_type="retaliation",
         user_id="state-user",
@@ -960,6 +1000,11 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
             "logic_unprovable": 1,
             "contradiction_candidates": 1,
         },
+        "resolution_applied_counts": {},
+        "adaptive_retry_task_count": 0,
+        "priority_penalized_task_count": 0,
+        "adaptive_query_strategy_counts": {},
+        "adaptive_retry_reason_counts": {},
     }
     assert payload["post_execution_review"]["claim_coverage_summary"]["retaliation"]["status_counts"]["covered"] == 2
     assert payload["post_execution_review"]["claim_support_gaps"]["retaliation"]["unresolved_count"] == 1
@@ -1032,6 +1077,7 @@ def test_claim_support_manual_review_resolution_payload_returns_post_resolution_
                     "follow_up_focus": "contradiction_resolution",
                     "query_strategy": "manual_review_resolution",
                     "resolution_status": "resolved_supported",
+                    "resolution_applied": "manual_review_resolved",
                 }
             ]
         }
@@ -1057,6 +1103,9 @@ def test_claim_support_manual_review_resolution_payload_returns_post_resolution_
     assert payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["resolved_entry_count"] == 1
     assert payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["resolution_status_counts"] == {
         "resolved_supported": 1,
+    }
+    assert payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["resolution_applied_counts"] == {
+        "manual_review_resolved": 1,
     }
     mediator.resolve_claim_follow_up_manual_review.assert_called_once_with(
         claim_type="retaliation",

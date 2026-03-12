@@ -713,6 +713,7 @@ class TestMediatorLegalAuthorityIntegration:
                     'missing_support': 1,
                     'partial_support': 1,
                 }
+                assert auto_results['follow_up_plan_summary']['civil rights']['resolution_applied_counts'] == {}
 
                 mediator.search_legal_authorities = Mock(return_value={
                     'statutes': [],
@@ -742,6 +743,7 @@ class TestMediatorLegalAuthorityIntegration:
                 assert auto_results_with_execution['follow_up_execution_summary']['civil rights']['executed_task_count'] == 0
                 assert auto_results_with_execution['follow_up_execution_summary']['civil rights']['contradiction_task_count'] == 0
                 assert auto_results_with_execution['follow_up_execution_summary']['civil rights']['reasoning_gap_task_count'] == 0
+                assert auto_results_with_execution['follow_up_execution_summary']['civil rights']['resolution_applied_counts'] == {}
                 assert auto_results_with_execution['follow_up_history_summary']['civil rights']['total_entry_count'] == 0
             finally:
                 if os.path.exists(db_path):

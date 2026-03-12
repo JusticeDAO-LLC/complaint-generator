@@ -197,6 +197,7 @@ def summarize_follow_up_history_claim(
     query_strategy_counts: Dict[str, int] = {}
     follow_up_focus_counts: Dict[str, int] = {}
     resolution_status_counts: Dict[str, int] = {}
+    resolution_applied_counts: Dict[str, int] = {}
 
     for entry in entries:
         if not isinstance(entry, dict):
@@ -207,6 +208,7 @@ def summarize_follow_up_history_claim(
         query_strategy = str(entry.get("query_strategy") or "unknown")
         follow_up_focus = str(entry.get("follow_up_focus") or "unknown")
         resolution_status = str(entry.get("resolution_status") or "")
+        resolution_applied = str(entry.get("resolution_applied") or "")
 
         status_counts[status] = status_counts.get(status, 0) + 1
         support_kind_counts[support_kind] = support_kind_counts.get(support_kind, 0) + 1
@@ -215,6 +217,10 @@ def summarize_follow_up_history_claim(
         follow_up_focus_counts[follow_up_focus] = follow_up_focus_counts.get(follow_up_focus, 0) + 1
         if resolution_status:
             resolution_status_counts[resolution_status] = resolution_status_counts.get(resolution_status, 0) + 1
+        if resolution_applied:
+            resolution_applied_counts[resolution_applied] = (
+                resolution_applied_counts.get(resolution_applied, 0) + 1
+            )
 
     return {
         "total_entry_count": len([entry for entry in entries if isinstance(entry, dict)]),
@@ -224,6 +230,7 @@ def summarize_follow_up_history_claim(
         "query_strategy_counts": query_strategy_counts,
         "follow_up_focus_counts": follow_up_focus_counts,
         "resolution_status_counts": resolution_status_counts,
+        "resolution_applied_counts": resolution_applied_counts,
         "manual_review_entry_count": len(
             [
                 entry
@@ -446,12 +453,52 @@ def _aggregate_graph_support_metrics(tasks: List[Dict[str, Any]]) -> Dict[str, i
     }
 
 
+def _aggregate_adaptive_retry_metrics(tasks: List[Dict[str, Any]]) -> Dict[str, Any]:
+    adaptive_retry_task_count = 0
+    priority_penalized_task_count = 0
+    adaptive_query_strategy_counts: Dict[str, int] = {}
+    adaptive_retry_reason_counts: Dict[str, int] = {}
+
+    for task in tasks:
+        adaptive_retry_state = (
+            task.get("adaptive_retry_state") if isinstance(task, dict) else None
+        )
+        if not isinstance(adaptive_retry_state, dict):
+            continue
+        if not adaptive_retry_state.get("applied"):
+            continue
+        adaptive_retry_task_count += 1
+        priority_penalty = int(adaptive_retry_state.get("priority_penalty", 0) or 0)
+        if priority_penalty > 0:
+            priority_penalized_task_count += 1
+        adaptive_query_strategy = str(
+            adaptive_retry_state.get("adaptive_query_strategy") or ""
+        )
+        if adaptive_query_strategy:
+            adaptive_query_strategy_counts[adaptive_query_strategy] = (
+                adaptive_query_strategy_counts.get(adaptive_query_strategy, 0) + 1
+            )
+        adaptive_retry_reason = str(adaptive_retry_state.get("reason") or "")
+        if adaptive_retry_reason:
+            adaptive_retry_reason_counts[adaptive_retry_reason] = (
+                adaptive_retry_reason_counts.get(adaptive_retry_reason, 0) + 1
+            )
+
+    return {
+        "adaptive_retry_task_count": adaptive_retry_task_count,
+        "priority_penalized_task_count": priority_penalized_task_count,
+        "adaptive_query_strategy_counts": adaptive_query_strategy_counts,
+        "adaptive_retry_reason_counts": adaptive_retry_reason_counts,
+    }
+
+
 def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any]:
     tasks = claim_plan.get("tasks", []) if isinstance(claim_plan, dict) else []
     recommended_actions: Dict[str, int] = {}
     follow_up_focus_counts: Dict[str, int] = {}
     query_strategy_counts: Dict[str, int] = {}
     proof_decision_source_counts: Dict[str, int] = {}
+    resolution_applied_counts: Dict[str, int] = {}
     for task in tasks:
         action = str(task.get("recommended_action") or "unspecified")
         recommended_actions[action] = recommended_actions.get(action, 0) + 1
@@ -463,7 +510,13 @@ def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any
         proof_decision_source_counts[decision_source] = (
             proof_decision_source_counts.get(decision_source, 0) + 1
         )
+        resolution_applied = str(task.get("resolution_applied") or "")
+        if resolution_applied:
+            resolution_applied_counts[resolution_applied] = (
+                resolution_applied_counts.get(resolution_applied, 0) + 1
+            )
     graph_support_metrics = _aggregate_graph_support_metrics(tasks)
+    adaptive_retry_metrics = _aggregate_adaptive_retry_metrics(tasks)
     return {
         "task_count": len(tasks),
         "blocked_task_count": claim_plan.get("blocked_task_count", 0),
@@ -495,6 +548,17 @@ def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any
         "follow_up_focus_counts": follow_up_focus_counts,
         "query_strategy_counts": query_strategy_counts,
         "proof_decision_source_counts": proof_decision_source_counts,
+        "resolution_applied_counts": resolution_applied_counts,
+        "adaptive_retry_task_count": adaptive_retry_metrics["adaptive_retry_task_count"],
+        "priority_penalized_task_count": adaptive_retry_metrics[
+            "priority_penalized_task_count"
+        ],
+        "adaptive_query_strategy_counts": adaptive_retry_metrics[
+            "adaptive_query_strategy_counts"
+        ],
+        "adaptive_retry_reason_counts": adaptive_retry_metrics[
+            "adaptive_retry_reason_counts"
+        ],
         "recommended_actions": recommended_actions,
     }
 
@@ -521,6 +585,7 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
     follow_up_focus_counts: Dict[str, int] = {}
     query_strategy_counts: Dict[str, int] = {}
     proof_decision_source_counts: Dict[str, int] = {}
+    resolution_applied_counts: Dict[str, int] = {}
     for task in all_tasks:
         focus = str(task.get("follow_up_focus") or "unknown")
         follow_up_focus_counts[focus] = follow_up_focus_counts.get(focus, 0) + 1
@@ -530,7 +595,13 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
         proof_decision_source_counts[decision_source] = (
             proof_decision_source_counts.get(decision_source, 0) + 1
         )
+        resolution_applied = str(task.get("resolution_applied") or "")
+        if resolution_applied:
+            resolution_applied_counts[resolution_applied] = (
+                resolution_applied_counts.get(resolution_applied, 0) + 1
+            )
     graph_support_metrics = _aggregate_graph_support_metrics(executed_tasks + skipped_tasks)
+    adaptive_retry_metrics = _aggregate_adaptive_retry_metrics(all_tasks)
     return {
         "executed_task_count": len(executed_tasks),
         "skipped_task_count": len(skipped_tasks),
@@ -548,6 +619,17 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
         "follow_up_focus_counts": follow_up_focus_counts,
         "query_strategy_counts": query_strategy_counts,
         "proof_decision_source_counts": proof_decision_source_counts,
+        "resolution_applied_counts": resolution_applied_counts,
+        "adaptive_retry_task_count": adaptive_retry_metrics["adaptive_retry_task_count"],
+        "priority_penalized_task_count": adaptive_retry_metrics[
+            "priority_penalized_task_count"
+        ],
+        "adaptive_query_strategy_counts": adaptive_retry_metrics[
+            "adaptive_query_strategy_counts"
+        ],
+        "adaptive_retry_reason_counts": adaptive_retry_metrics[
+            "adaptive_retry_reason_counts"
+        ],
     }
 
 

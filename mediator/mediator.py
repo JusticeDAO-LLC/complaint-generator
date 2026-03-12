@@ -1065,6 +1065,7 @@ class Mediator:
 			'recommended_action': task.get('recommended_action', ''),
 			'requires_manual_review': task.get('requires_manual_review', False),
 			'reasoning_backed': task.get('reasoning_backed', False),
+			'resolution_applied': task.get('resolution_applied', ''),
 			'proof_decision_source': task.get('proof_decision_source', ''),
 			'logic_provable_count': int(task.get('logic_provable_count', 0) or 0),
 			'logic_unprovable_count': int(task.get('logic_unprovable_count', 0) or 0),

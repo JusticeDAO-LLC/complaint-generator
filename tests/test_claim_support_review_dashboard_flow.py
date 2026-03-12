@@ -67,6 +67,26 @@ def _build_dashboard_mediator() -> Mock:
             }
         }
     }
+    mediator.get_recent_claim_follow_up_execution.return_value = {
+        "claims": {
+            "retaliation": [
+                {
+                    "execution_id": 44,
+                    "claim_type": "retaliation",
+                    "claim_element_id": "retaliation:2",
+                    "claim_element_text": "Causal connection",
+                    "support_kind": "authority",
+                    "query_text": '"retaliation" "Causal connection" statute',
+                    "status": "executed",
+                    "timestamp": "2026-03-12T12:30:00",
+                    "execution_mode": "retrieve_support",
+                    "follow_up_focus": "support_gap_closure",
+                    "query_strategy": "standard_gap_targeted",
+                    "resolution_applied": "manual_review_resolved",
+                }
+            ]
+        }
+    }
     mediator.get_claim_follow_up_plan.return_value = {
         "claims": {
             "retaliation": {
@@ -81,6 +101,7 @@ def _build_dashboard_mediator() -> Mock:
                         "missing_support_kinds": ["authority"],
                         "blocked_by_cooldown": False,
                         "should_suppress_retrieval": False,
+                        "resolution_applied": "manual_review_resolved",
                     }
                 ],
             }
@@ -128,6 +149,8 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert soup.find(id="required-kinds") is not None
     assert soup.find(id="review-button") is not None
     assert soup.find(id="execute-button") is not None
+    assert soup.find(id="signal-plan-normalized") is not None
+    assert soup.find(id="signal-history-normalized") is not None
 
     review_payload = await review_route.endpoint(
         ClaimSupportReviewRequest(
@@ -147,6 +170,12 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
         "Causal connection"
     ]
     assert review_payload["follow_up_plan_summary"]["retaliation"]["task_count"] == 1
+    assert review_payload["follow_up_plan_summary"]["retaliation"]["resolution_applied_counts"] == {
+        "manual_review_resolved": 1,
+    }
+    assert review_payload["follow_up_history_summary"]["retaliation"]["resolution_applied_counts"] == {
+        "manual_review_resolved": 1,
+    }
 
     execute_payload = await execute_route.endpoint(
         ClaimSupportFollowUpExecuteRequest(

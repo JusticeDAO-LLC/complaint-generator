@@ -327,6 +327,16 @@ class TestMediatorWithMocks:
             assert task['ontology_validation_signal'] == ''
             assert task['resolution_applied'] == 'manual_review_resolved'
             assert task['queries']['authority'][0] == '"employment" "Protected activity" statute'
+
+            mediator.search_legal_authorities = Mock(return_value={'statutes': [], 'cases': []})
+            mediator.execute_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                support_kind='authority',
+                max_tasks_per_claim=1,
+            )
+            executed_call = mediator.claim_support.record_follow_up_execution.call_args_list[0]
+            assert executed_call.kwargs['metadata']['resolution_applied'] == 'manual_review_resolved'
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 

@@ -729,6 +729,7 @@ Representative shape:
       "query_strategy_counts": {},
       "follow_up_focus_counts": {},
       "resolution_status_counts": {},
+      "resolution_applied_counts": {},
       "manual_review_entry_count": 0,
       "resolved_entry_count": 0,
       "contradiction_related_entry_count": 0,
@@ -756,6 +757,7 @@ Representative shape:
         "missing_support": 1,
         "partial_support": 1
       },
+      "resolution_applied_counts": {},
       "recommended_actions": {
         "collect_initial_support": 1,
         "collect_missing_support_kind": 1
@@ -775,7 +777,8 @@ Representative shape:
       "semantic_duplicate_count": 0,
       "follow_up_focus_counts": {},
       "query_strategy_counts": {},
-      "proof_decision_source_counts": {}
+      "proof_decision_source_counts": {},
+      "resolution_applied_counts": {}
     }
   }
 }
@@ -1136,6 +1139,17 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
         "heuristic_contradictions": 1,
         "missing_support": 1
       },
+      "resolution_applied_counts": {
+        "manual_review_resolved": 1
+      },
+      "adaptive_retry_task_count": 1,
+      "priority_penalized_task_count": 1,
+      "adaptive_query_strategy_counts": {
+        "standard_gap_targeted": 1
+      },
+      "adaptive_retry_reason_counts": {
+        "repeated_zero_result_reasoning_gap": 1
+      },
       "recommended_actions": {
         "review_existing_support": 1,
         "retrieve_more_support": 1
@@ -1150,7 +1164,15 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
       "manual_review_task_count": 1,
       "cooldown_skipped_task_count": 0,
       "semantic_cluster_count": 3,
-      "semantic_duplicate_count": 4
+      "semantic_duplicate_count": 4,
+      "adaptive_retry_task_count": 1,
+      "priority_penalized_task_count": 1,
+      "adaptive_query_strategy_counts": {
+        "standard_gap_targeted": 1
+      },
+      "adaptive_retry_reason_counts": {
+        "repeated_zero_result_reasoning_gap": 1
+      }
     }
   }
 }
@@ -1159,10 +1181,12 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
 Interpretation notes:
 
 - `follow_up_plan_summary` is a compact operator-facing view of the full `follow_up_plan` payload.
-- `contradiction_task_count`, `reasoning_gap_task_count`, `follow_up_focus_counts`, `query_strategy_counts`, and `proof_decision_source_counts` show why planned work exists, not just how much work is queued.
+- `contradiction_task_count`, `reasoning_gap_task_count`, `follow_up_focus_counts`, `query_strategy_counts`, `proof_decision_source_counts`, and `resolution_applied_counts` show why planned work exists, whether it has already been normalized by a manual-review resolution, and not just how much work is queued.
+- `adaptive_retry_task_count`, `priority_penalized_task_count`, `adaptive_query_strategy_counts`, and `adaptive_retry_reason_counts` surface when repeated zero-result reasoning-gap retrievals have already caused the planner to broaden queries or lower urgency.
 - `semantic_cluster_count` and `semantic_duplicate_count` summarize distinct versus near-duplicate graph-support clusters across planned tasks.
 - `follow_up_execution_summary` separates suppressed tasks from cooldown skips so dashboards can explain why follow-up work did not run.
-- `follow_up_execution_summary` also reports contradiction-versus-reasoning-gap task counts plus focus, query-strategy, and proof-decision-source mixes across executed and skipped work.
+- `follow_up_execution_summary` also reports contradiction-versus-reasoning-gap task counts plus focus, query-strategy, proof-decision-source, and resolution-normalization mixes across executed and skipped work.
+- The same adaptive retry fields appear on `follow_up_execution_summary`, so operator tooling can tell when executed or skipped work came from an already-broadened retry path.
 - `follow_up_execution_summary.semantic_cluster_count` and `follow_up_execution_summary.semantic_duplicate_count` aggregate graph-support clusters across executed and skipped tasks, preserving the support context that informed execution decisions.
 - `claim_coverage_matrix[claim_type]` exposes the same grouped claim-element support view used by automatic legal research.
 - `claim_coverage_summary[claim_type]` provides the smaller per-claim status snapshot with counts and missing-element labels.
@@ -1309,6 +1333,9 @@ Representative response shape:
         "support_gap_closure": 1
       },
       "resolution_status_counts": {},
+      "resolution_applied_counts": {
+        "manual_review_resolved": 1
+      },
       "manual_review_entry_count": 1,
       "resolved_entry_count": 0,
       "contradiction_related_entry_count": 1,
@@ -1333,6 +1360,13 @@ Representative response shape:
       "proof_decision_source_counts": {
         "unknown": 2
       },
+      "resolution_applied_counts": {
+        "manual_review_resolved": 1
+      },
+      "adaptive_retry_task_count": 0,
+      "priority_penalized_task_count": 0,
+      "adaptive_query_strategy_counts": {},
+      "adaptive_retry_reason_counts": {},
       "recommended_actions": {
         "retrieve_more_support": 1,
         "target_missing_support_kind": 1
@@ -1346,7 +1380,12 @@ Representative response shape:
       "suppressed_task_count": 1,
       "cooldown_skipped_task_count": 1,
       "semantic_cluster_count": 3,
-      "semantic_duplicate_count": 4
+      "semantic_duplicate_count": 4,
+      "resolution_applied_counts": {},
+      "adaptive_retry_task_count": 0,
+      "priority_penalized_task_count": 0,
+      "adaptive_query_strategy_counts": {},
+      "adaptive_retry_reason_counts": {}
     }
   }
 }
@@ -1363,8 +1402,8 @@ Interpretation notes:
 - `claim_support_snapshot_summary` is the compact review-facing lifecycle view for those persisted diagnostics, so dashboard consumers can see freshness and pruning at a glance without iterating the raw snapshot entries.
 - `claim_reasoning_review` is the compact review-facing reasoning surface for flagged claim elements, capturing fallback ontology use plus unavailable or degraded adapter states without forcing clients to inspect every `reasoning_diagnostics` packet.
 - `follow_up_history` exposes recent rows from the persisted `claim_follow_up_execution` ledger, including contradiction-targeted retrieval attempts and manual-review audit events.
-- `follow_up_history_summary` compresses that ledger into counts by status, support kind, execution mode, query strategy, contradiction focus, and any recorded manual-review resolutions.
-- `claim_coverage_summary`, `follow_up_plan_summary`, and `follow_up_execution_summary` are the compact operator-facing surfaces intended for dashboards and review tools.
+- `follow_up_history_summary` compresses that ledger into counts by status, support kind, execution mode, query strategy, contradiction focus, resolution normalization, and any recorded manual-review resolutions.
+- `claim_coverage_summary`, `follow_up_plan_summary`, and `follow_up_execution_summary` are the compact operator-facing surfaces intended for dashboards and review tools; `resolution_applied_counts` highlights tasks that are still active only because unresolved support gaps remain after manual review.
 - When `execute_follow_up=true`, the response adds `compatibility_notice` and emits `Deprecation`, `Sunset`, `Link`, and `Warning` headers so clients can migrate off the compatibility path.
 - New clients should prefer `POST /api/claim-support/execute-follow-up` for side effects and treat `execute_follow_up` on the review endpoint as a compatibility path.
 
@@ -1450,7 +1489,12 @@ Representative response shape:
       },
       "proof_decision_source_counts": {
         "contradiction_candidates": 2
-      }
+      },
+      "resolution_applied_counts": {},
+      "adaptive_retry_task_count": 0,
+      "priority_penalized_task_count": 0,
+      "adaptive_query_strategy_counts": {},
+      "adaptive_retry_reason_counts": {}
     }
   },
   "post_execution_review": {
@@ -1461,6 +1505,9 @@ Representative response shape:
         "resolved_entry_count": 1,
         "resolution_status_counts": {
           "resolved_supported": 1
+        },
+        "resolution_applied_counts": {
+          "manual_review_resolved": 1
         },
         "contradiction_related_entry_count": 2,
         "latest_attempted_at": "2026-03-12T11:05:00"
@@ -1491,7 +1538,7 @@ Interpretation notes:
 - Reasoning-gap tasks are not auto-suppressed solely because graph support is already strong; they stay visible when the proof layer still marks the element as unprovable or ontology-invalid.
 - Repeated zero-result reasoning-gap retrievals are fed back into `Mediator.get_claim_follow_up_plan(...)`: mixed reasoning tasks keep their reasoning focus, but the planner lowers urgency and broadens retrieval back to `standard_gap_targeted` queries once the same element has multiple executed zero-result attempts with no successful retrievals.
 - `manual_review_task_count` in both follow-up summaries tracks contradiction-review work that intentionally does not trigger evidence or authority retrieval.
-- `follow_up_execution_summary` rolls executed and skipped work into shared `follow_up_focus_counts`, `query_strategy_counts`, and `proof_decision_source_counts`, so the standalone execution API exposes the same planner/execution mix analytics as review, web-evidence, and automatic legal research.
+- `follow_up_execution_summary` rolls executed and skipped work into shared `follow_up_focus_counts`, `query_strategy_counts`, `proof_decision_source_counts`, and `resolution_applied_counts`, so the standalone execution API exposes the same planner/execution mix analytics as review, web-evidence, and automatic legal research.
 - `post_execution_review.follow_up_history_summary` reflects the refreshed ledger after execution, so clients can confirm that retrieval and manual-review events were recorded.
 
 - `follow_up_force=true` bypasses duplicate-within-cooldown suppression inside `Mediator.execute_claim_follow_up_plan(...)`.

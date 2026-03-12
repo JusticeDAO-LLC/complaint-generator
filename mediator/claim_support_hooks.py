@@ -2869,6 +2869,7 @@ class ClaimSupportHook:
                 'validation_status': metadata.get('validation_status', ''),
                 'follow_up_focus': metadata.get('follow_up_focus', ''),
                 'query_strategy': metadata.get('query_strategy', ''),
+                'resolution_applied': metadata.get('resolution_applied', ''),
                 'recommended_action': metadata.get('recommended_action', ''),
                 'skip_reason': metadata.get('skip_reason', ''),
                 'resolution_status': metadata.get('resolution_status', ''),

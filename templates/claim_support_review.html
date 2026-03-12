@@ -217,11 +217,41 @@
             gap: 12px;
         }
 
+        .signal-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 18px;
+        }
+
         .summary-card {
             border-radius: 18px;
             padding: 14px;
             background: var(--panel-strong);
             border: 1px solid var(--line);
+        }
+
+        .signal-card {
+            border-radius: 18px;
+            padding: 14px;
+            background: rgba(255, 244, 232, 0.78);
+            border: 1px solid rgba(154, 52, 18, 0.14);
+        }
+
+        .signal-label {
+            display: block;
+            color: var(--muted);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .signal-number {
+            display: block;
+            margin-top: 6px;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent);
         }
 
         .summary-card.good .summary-number { color: var(--good); }
@@ -458,6 +488,22 @@
                 </div>
 
                 <div>
+                    <h2 style="margin-top: 18px;">Follow-Up Signals</h2>
+                    <div class="signal-grid">
+                        <div class="signal-card">
+                            <span class="signal-label">Plan normalized tasks</span>
+                            <span class="signal-number" id="signal-plan-normalized">0</span>
+                            <div class="chip-row" id="signal-plan-normalized-chips"></div>
+                        </div>
+                        <div class="signal-card">
+                            <span class="signal-label">History normalized events</span>
+                            <span class="signal-number" id="signal-history-normalized">0</span>
+                            <div class="chip-row" id="signal-history-normalized-chips"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
                     <h2 style="margin-top: 18px;">Follow-Up Plan</h2>
                     <div class="task-list" id="task-list"></div>
                 </div>
@@ -529,6 +575,25 @@
                 : '<span class="chip">No missing or partially supported labels.</span>';
         }
 
+        function renderSignalChips(containerId, counts, emptyLabel) {
+            const container = document.getElementById(containerId);
+            const entries = Object.entries(counts || {});
+            container.innerHTML = entries.length
+                ? entries.map(([label, count]) => `<span class="chip">${label}: ${count}</span>`).join('')
+                : `<span class="chip">${emptyLabel}</span>`;
+        }
+
+        function setFollowUpSignals(planSummary, historySummary) {
+            const planResolutionCounts = (planSummary && planSummary.resolution_applied_counts) || {};
+            const historyResolutionCounts = (historySummary && historySummary.resolution_applied_counts) || {};
+            const planNormalized = Object.values(planResolutionCounts).reduce((total, value) => total + Number(value || 0), 0);
+            const historyNormalized = Object.values(historyResolutionCounts).reduce((total, value) => total + Number(value || 0), 0);
+            document.getElementById('signal-plan-normalized').textContent = planNormalized;
+            document.getElementById('signal-history-normalized').textContent = historyNormalized;
+            renderSignalChips('signal-plan-normalized-chips', planResolutionCounts, 'No normalized plan tasks');
+            renderSignalChips('signal-history-normalized-chips', historyResolutionCounts, 'No normalized history events');
+        }
+
         function renderElements(elements) {
             const container = document.getElementById('element-list');
             if (!elements.length) {
@@ -597,12 +662,14 @@
             const coverageClaims = payload.claim_coverage_summary || {};
             const planClaims = payload.follow_up_plan || {};
             const planSummaryClaims = payload.follow_up_plan_summary || {};
+            const historySummaryClaims = payload.follow_up_history_summary || {};
             const fallbackClaim = Object.keys(coverageClaims)[0] || Object.keys(planClaims)[0] || claimType;
             return {
                 claimType: coverageClaims[claimType] ? claimType : fallbackClaim,
                 coverageClaims,
                 planClaims,
                 planSummaryClaims,
+                historySummaryClaims,
             };
         }
 
@@ -613,8 +680,10 @@
             const matrix = (payload.claim_coverage_matrix || {})[claimType] || { elements: [] };
             const plan = primary.planClaims[claimType] || { tasks: [] };
             const planSummary = primary.planSummaryClaims[claimType] || null;
+            const historySummary = primary.historySummaryClaims[claimType] || null;
 
             setSummary(summary);
+            setFollowUpSignals(planSummary, historySummary);
             renderElements(matrix.elements || []);
             renderTasks(plan, planSummary);
             document.getElementById('raw-output').textContent = JSON.stringify(payload, null, 2);
