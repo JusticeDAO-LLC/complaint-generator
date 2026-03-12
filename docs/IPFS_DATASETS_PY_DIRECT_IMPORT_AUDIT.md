@@ -112,6 +112,21 @@ In other words, Batch 1 is now primarily a contract-stabilization pass, not a pr
    - adapter-based examples for complaint-generator docs, or
    - validated current upstream module paths where direct upstream examples are intentional.
 
+## Cleanup progress note
+
+Follow-up documentation cleanup on 2026-03-12 updated several complaint-generator-facing docs to use adapter-based examples instead of stale direct imports, including:
+
+- `docs/COMPLAINT_ANALYSIS_EXAMPLES.md`
+- `docs/LEGAL_HOOKS.md`
+- `docs/HACC_VS_IPFS_DATASETS_QUICK.md`
+- `docs/HACC_IPFS_HYBRID_USAGE.md`
+- `docs/SEARCH_HOOKS.md`
+- `docs/WEB_EVIDENCE_DISCOVERY.md`
+- `docs/IPFS_DATASETS_INTEGRATION.md`
+- `docs/IPFS_DATASETS_PY_INTEGRATION.md`
+
+As of the latest cleanup pass, the previously flagged complaint-generator-facing integration guides have been rewritten to use adapter-based examples. The remaining mentions of stale upstream class names in this audit document are intentional historical references describing the drift that was cleaned up.
+
 ## Exit statement
 
 As of this audit, complaint-generator production code appears to respect the intended `integrations/ipfs_datasets/` import boundary. The remaining cleanup surface is primarily documentation correctness and keeping future production changes from bypassing the adapter seam.

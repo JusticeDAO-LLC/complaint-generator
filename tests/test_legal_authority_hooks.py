@@ -335,7 +335,10 @@ class TestLegalAuthorityStorageHook:
                 assert authority['parsed_text_preview'].startswith('Employers must preserve records.')
                 assert authority['parse_metadata']['parser_version'] == 'documents-adapter:1'
                 assert authority['parse_metadata']['source'] == 'legal_authority'
+                assert authority['parse_metadata']['content_origin'] == 'authority_full_text'
+                assert authority['parse_metadata']['content_source_field'] == 'content'
                 assert authority['parse_metadata']['transform_lineage']['source'] == 'legal_authority'
+                assert authority['parse_metadata']['transform_lineage']['content_origin'] == 'authority_full_text'
                 assert len(chunks) >= 1
                 assert chunks[0]['chunk_id'] == 'chunk-0'
                 assert chunks[0]['metadata']['source'] == 'legal_authority'
@@ -343,6 +346,86 @@ class TestLegalAuthorityStorageHook:
                 assert len(facts) >= 1
                 assert facts[0]['source_authority_id'] == f'authority:{record_id}'
                 assert facts[0]['metadata']['parse_lineage']['source'] == 'legal_authority'
+            finally:
+                if os.path.exists(db_path):
+                    os.unlink(db_path)
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_add_authority_preserves_html_parse_contract(self):
+        """Test authority HTML content is normalized through the shared parse contract."""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthorityStorageHook
+            import duckdb
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                db_path = f.name
+
+            try:
+                hook = LegalAuthorityStorageHook(mock_mediator, db_path=db_path)
+
+                authority_data = {
+                    'type': 'regulation',
+                    'source': 'federal_register',
+                    'citation': '92 Fed. Reg. 67890',
+                    'title': 'Workplace investigations',
+                    'html_body': '<html><body><h1>Investigation duties</h1><p>Employers must investigate complaints promptly.</p></body></html>',
+                }
+
+                record_id = hook.add_authority(authority_data, 'testuser', claim_type='employment')
+                authority = hook.get_authority_by_id(record_id)
+                chunks = hook.get_authority_chunks(record_id)
+                facts = hook.get_authority_facts(record_id)
+
+                assert record_id > 0
+                assert authority['parse_metadata']['input_format'] == 'html'
+                assert authority['parse_metadata']['content_origin'] == 'authority_full_text'
+                assert authority['parse_metadata']['content_source_field'] == 'html_body'
+                assert authority['parse_metadata']['transform_lineage']['input_format'] == 'html'
+                assert authority['parse_metadata']['transform_lineage']['normalization'] == 'html_to_text'
+                assert authority['parsed_text_preview'].startswith('Investigation duties')
+                assert chunks[0]['metadata']['input_format'] == 'html'
+                assert facts[0]['metadata']['parse_lineage']['input_format'] == 'html'
+            finally:
+                if os.path.exists(db_path):
+                    os.unlink(db_path)
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_add_authority_marks_reference_fallback_lineage(self):
+        """Test citation-only authority records expose fallback parse lineage."""
+        try:
+            from mediator.legal_authority_hooks import LegalAuthorityStorageHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                db_path = f.name
+
+            try:
+                hook = LegalAuthorityStorageHook(mock_mediator, db_path=db_path)
+
+                authority_data = {
+                    'type': 'case_law',
+                    'source': 'recap',
+                    'citation': 'Smith v. Jones, 123 F.3d 456',
+                    'title': 'Smith v. Jones',
+                }
+
+                record_id = hook.add_authority(authority_data, 'testuser', claim_type='employment')
+                authority = hook.get_authority_by_id(record_id)
+
+                assert record_id > 0
+                assert authority['parse_metadata']['content_origin'] == 'authority_reference_fallback'
+                assert authority['parse_metadata']['content_source_field'] == 'citation_title_fallback'
+                assert authority['parse_metadata']['fallback_mode'] == 'citation_title_only'
+                assert authority['parse_metadata']['transform_lineage']['content_origin'] == 'authority_reference_fallback'
+                assert authority['parse_metadata']['transform_lineage']['fallback_mode'] == 'citation_title_only'
+                assert authority['parsed_text_preview'].startswith('Smith v. Jones')
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)

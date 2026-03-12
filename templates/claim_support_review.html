@@ -431,6 +431,138 @@
             padding: 6px 0;
         }
 
+        .packet-details {
+            margin-top: 14px;
+            border: 1px solid rgba(154, 52, 18, 0.14);
+            border-radius: 14px;
+            background: rgba(255, 247, 237, 0.72);
+            overflow: hidden;
+        }
+
+        .packet-details summary {
+            cursor: pointer;
+            list-style: none;
+            padding: 12px 14px;
+            font-weight: 700;
+            color: var(--accent);
+            background: rgba(255, 244, 232, 0.78);
+        }
+
+        .packet-details summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .packet-list {
+            display: grid;
+            gap: 10px;
+            padding: 12px 14px 14px;
+        }
+
+        .packet-filter-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 0 14px 12px;
+        }
+
+        .packet-filter-summary {
+            padding: 0 14px 12px;
+            color: var(--muted);
+            font-size: 0.84rem;
+        }
+
+        .packet-filter-button {
+            background: rgba(255, 244, 232, 0.88);
+            color: var(--accent);
+            border: 1px solid rgba(154, 52, 18, 0.14);
+            padding: 8px 12px;
+            font-size: 0.82rem;
+            font-weight: 700;
+        }
+
+        .packet-filter-button.is-active {
+            background: linear-gradient(135deg, #9a3412, #c2410c);
+            color: #fff;
+            border-color: rgba(154, 52, 18, 0.32);
+        }
+
+        .packet-filter-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 1.5rem;
+            margin-left: 6px;
+            padding: 2px 6px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.72);
+            color: inherit;
+            font-size: 0.76rem;
+            line-height: 1;
+        }
+
+        .packet-filter-button.is-active .packet-filter-count {
+            background: rgba(255, 255, 255, 0.18);
+        }
+
+        .packet-card {
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.82);
+            padding: 12px;
+        }
+
+        .packet-card.is-hidden,
+        .packet-empty-state.is-hidden {
+            display: none;
+        }
+
+        .packet-card-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+
+        .packet-card-meta {
+            margin-top: 6px;
+            color: var(--muted);
+            font-size: 0.84rem;
+            line-height: 1.4;
+        }
+
+        .packet-action-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .packet-action-button {
+            background: rgba(255, 244, 232, 0.88);
+            color: var(--accent);
+            border: 1px solid rgba(154, 52, 18, 0.14);
+            padding: 8px 10px;
+            font-size: 0.8rem;
+            font-weight: 700;
+        }
+
+        .packet-action-feedback {
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 0.8rem;
+        }
+
+        .packet-action-feedback.is-active {
+            color: var(--accent);
+        }
+
+        .packet-empty-state {
+            border-radius: 12px;
+            border: 1px dashed var(--line);
+            background: rgba(255, 255, 255, 0.68);
+            color: var(--muted);
+            padding: 12px;
+            font-size: 0.86rem;
+        }
+
         .raw-output {
             margin-top: 20px;
             padding: 16px;
@@ -542,6 +674,15 @@
                     <button class="button-secondary" id="execute-button" type="button">Execute Follow-Up</button>
                 </div>
 
+                <div class="resolution-feedback" id="execution-result-card" hidden>
+                    <div class="resolution-feedback-head">
+                        <div class="resolution-feedback-title" id="execution-result-title">Execution completed</div>
+                        <span class="status-pill" id="execution-result-status">unchanged</span>
+                    </div>
+                    <div class="chip-row" id="execution-result-chips"></div>
+                    <div class="resolution-feedback-body" id="execution-result-notes"></div>
+                </div>
+
                 <div class="resolution-panel">
                     <h2 style="margin: 0 0 14px;">Manual Review Resolution</h2>
                     <div class="control-grid">
@@ -609,6 +750,38 @@
                 <div>
                     <h2 style="margin-top: 18px;">Coverage Labels</h2>
                     <div class="chip-row" id="coverage-chips"></div>
+                </div>
+
+                <div>
+                    <h2 style="margin-top: 18px;">Lineage Signals</h2>
+                    <div class="signal-grid">
+                        <div class="signal-card">
+                            <span class="signal-label">Archive captures</span>
+                            <span class="signal-number" id="signal-archive-captures">0</span>
+                            <div class="chip-row" id="signal-archive-chips"></div>
+                        </div>
+                        <div class="signal-card">
+                            <span class="signal-label">Fallback authorities</span>
+                            <span class="signal-number" id="signal-fallback-authorities">0</span>
+                            <div class="chip-row" id="signal-fallback-chips"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h2 style="margin-top: 18px;">Parse Signals</h2>
+                    <div class="signal-grid">
+                        <div class="signal-card">
+                            <span class="signal-label">Low-quality parsed records</span>
+                            <span class="signal-number" id="signal-low-quality-records">0</span>
+                            <div class="chip-row" id="signal-low-quality-record-chips"></div>
+                        </div>
+                        <div class="signal-card">
+                            <span class="signal-label">Parse remediation tasks</span>
+                            <span class="signal-number" id="signal-parse-quality-tasks">0</span>
+                            <div class="chip-row" id="signal-parse-quality-task-chips"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <div>
@@ -685,23 +858,53 @@
 
         function setSummary(summary) {
             const statusCounts = (summary && summary.status_counts) || {};
+            const packetSummary = (summary && summary.support_packet_summary) || {};
+            const parseQualityTierCounts = (summary && summary.parse_quality_tier_counts) || {};
+            const parseQualityRecommendation = (summary && summary.parse_quality_recommendation) || '';
             const covered = statusCounts.covered || 0;
             const partial = statusCounts.partially_supported || 0;
             const missing = statusCounts.missing || 0;
+            const archiveCaptures = Number(packetSummary.historical_capture_count || 0);
+            const fallbackAuthorities = Object.values(packetSummary.fallback_mode_counts || {}).reduce(
+                (total, value) => total + Number(value || 0),
+                0,
+            );
+            const lowQualityRecords = Number(summary.low_quality_parsed_record_count || 0);
             document.getElementById('hero-covered').textContent = covered;
             document.getElementById('hero-partial').textContent = partial;
             document.getElementById('hero-missing').textContent = missing;
             document.getElementById('summary-covered').textContent = covered;
             document.getElementById('summary-partial').textContent = partial;
             document.getElementById('summary-missing').textContent = missing;
+            document.getElementById('signal-archive-captures').textContent = archiveCaptures;
+            document.getElementById('signal-fallback-authorities').textContent = fallbackAuthorities;
+            document.getElementById('signal-low-quality-records').textContent = lowQualityRecords;
 
             const coverageChips = document.getElementById('coverage-chips');
             const labels = [];
             (summary.missing_elements || []).forEach((label) => labels.push(`Missing: ${label}`));
             (summary.partially_supported_elements || []).forEach((label) => labels.push(`Partial: ${label}`));
+            (summary.parse_quality_issue_elements || []).forEach((label) => labels.push(`Refresh parse: ${label}`));
+            if (parseQualityRecommendation) labels.push(`Recommendation: ${parseQualityRecommendation}`);
             coverageChips.innerHTML = labels.length
                 ? labels.map((label) => `<span class="chip">${label}</span>`).join('')
                 : '<span class="chip">No missing or partially supported labels.</span>';
+
+            renderSignalChips(
+                'signal-archive-chips',
+                packetSummary.capture_source_counts || packetSummary.content_origin_counts || {},
+                'No archived capture lineage',
+            );
+            renderSignalChips(
+                'signal-fallback-chips',
+                packetSummary.fallback_mode_counts || packetSummary.content_source_field_counts || {},
+                'No fallback authority lineage',
+            );
+            renderSignalChips(
+                'signal-low-quality-record-chips',
+                parseQualityTierCounts,
+                'No low-quality parse signals',
+            );
         }
 
         function renderSignalChips(containerId, counts, emptyLabel) {
@@ -710,6 +913,111 @@
             container.innerHTML = entries.length
                 ? entries.map(([label, count]) => `<span class="chip">${label}: ${count}</span>`).join('')
                 : `<span class="chip">${emptyLabel}</span>`;
+        }
+
+        async function copyPacketUrl(url, label) {
+            if (!url) {
+                throw new Error('No packet URL available to copy.');
+                return;
+            }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(url);
+                return;
+            }
+            const input = document.createElement('textarea');
+            input.value = url;
+            input.setAttribute('readonly', 'readonly');
+            input.style.position = 'absolute';
+            input.style.left = '-9999px';
+            document.body.appendChild(input);
+            input.select();
+            document.execCommand('copy');
+            document.body.removeChild(input);
+        }
+
+        function openPacketUrl(url, label) {
+            if (!url) {
+                throw new Error('No packet URL available to open.');
+            }
+            window.open(url, '_blank', 'noopener,noreferrer');
+        }
+
+        function setPacketActionFeedback(sourceElement, message, isError = false) {
+            const packetCard = sourceElement ? sourceElement.closest('.packet-card') : null;
+            const feedback = packetCard ? packetCard.querySelector('[data-packet-action-feedback]') : null;
+            if (feedback) {
+                feedback.textContent = message;
+                feedback.classList.toggle('is-active', !isError);
+            }
+            setStatus(message);
+        }
+
+        function packetMatchesFilter(packet, filterValue) {
+            if (!packet || filterValue === 'all') {
+                return true;
+            }
+            const lineage = packet.lineage_summary || {};
+            if (filterValue === 'archived') {
+                return Boolean(lineage.historical_capture);
+            }
+            if (filterValue === 'fallback') {
+                return Boolean(lineage.fallback_mode);
+            }
+            return true;
+        }
+
+        function packetSortRank(packet) {
+            const lineage = packet && packet.lineage_summary ? packet.lineage_summary : {};
+            if (lineage.historical_capture) {
+                return 0;
+            }
+            if (lineage.fallback_mode) {
+                return 1;
+            }
+            return 2;
+        }
+
+        function sortSupportPackets(packets) {
+            return [...(Array.isArray(packets) ? packets : [])].sort((left, right) => {
+                const rankDifference = packetSortRank(left) - packetSortRank(right);
+                if (rankDifference !== 0) {
+                    return rankDifference;
+                }
+                const leftLabel = String(left?.support_label || left?.support_ref || left?.fact?.fact_id || '');
+                const rightLabel = String(right?.support_label || right?.support_ref || right?.fact?.fact_id || '');
+                return leftLabel.localeCompare(rightLabel);
+            });
+        }
+
+        function applyPacketFilter(detailsElement, filterValue) {
+            if (!detailsElement) {
+                return;
+            }
+            const filter = filterValue || 'all';
+            const cards = Array.from(detailsElement.querySelectorAll('[data-packet-filter-card]'));
+            const totalCount = cards.length;
+            let visibleCount = 0;
+            cards.forEach((card) => {
+                const cardFilterTags = (card.getAttribute('data-packet-filter-tags') || '').split(' ').filter(Boolean);
+                const isVisible = filter === 'all' || cardFilterTags.includes(filter);
+                card.classList.toggle('is-hidden', !isVisible);
+                if (isVisible) {
+                    visibleCount += 1;
+                }
+            });
+            detailsElement.querySelectorAll('[data-packet-filter-button]').forEach((button) => {
+                const isActive = button.getAttribute('data-filter-value') === filter;
+                button.classList.toggle('is-active', isActive);
+                button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            });
+            const summary = detailsElement.querySelector('[data-packet-filter-summary]');
+            if (summary) {
+                summary.textContent = `Showing ${visibleCount} of ${totalCount} packets · ${filter}`;
+            }
+            const emptyState = detailsElement.querySelector('[data-packet-empty-state]');
+            if (emptyState) {
+                emptyState.classList.toggle('is-hidden', visibleCount !== 0);
+            }
         }
 
         function clearResolutionForm() {
@@ -728,6 +1036,16 @@
             document.getElementById('resolution-result-status').textContent = 'resolved';
             document.getElementById('resolution-result-chips').innerHTML = '';
             document.getElementById('resolution-result-notes').textContent = '';
+        }
+
+        function clearExecutionFeedback() {
+            const card = document.getElementById('execution-result-card');
+            card.hidden = true;
+            card.classList.remove('is-error');
+            document.getElementById('execution-result-title').textContent = 'Execution completed';
+            document.getElementById('execution-result-status').textContent = 'unchanged';
+            document.getElementById('execution-result-chips').innerHTML = '';
+            document.getElementById('execution-result-notes').textContent = '';
         }
 
         function prefillResolutionForm(values) {
@@ -796,15 +1114,79 @@
                 : 'No operator notes were recorded for this resolution.';
         }
 
+        function renderExecutionFeedback(result, requestPayload) {
+            const card = document.getElementById('execution-result-card');
+            const claimType = (requestPayload && requestPayload.claim_type) || document.getElementById('claim-type').value.trim();
+            const qualitySummaryMap = (result && result.execution_quality_summary) || {};
+            const qualitySummary = qualitySummaryMap[claimType]
+                || qualitySummaryMap[Object.keys(qualitySummaryMap)[0]]
+                || null;
+            const executionSummaryMap = (result && result.follow_up_execution_summary) || {};
+            const executionSummary = executionSummaryMap[claimType]
+                || executionSummaryMap[Object.keys(executionSummaryMap)[0]]
+                || null;
+            const taskCount = executionSummary ? Number(executionSummary.executed_task_count || 0) : 0;
+            const parseQualityTaskCount = qualitySummary ? Number(qualitySummary.parse_quality_task_count || 0) : 0;
+            const status = qualitySummary ? (qualitySummary.quality_improvement_status || 'unknown') : 'unknown';
+            const recommendedNextAction = qualitySummary ? (qualitySummary.recommended_next_action || '') : '';
+            const preLowQualityCount = qualitySummary ? Number(qualitySummary.pre_low_quality_parsed_record_count || 0) : 0;
+            const postLowQualityCount = qualitySummary ? Number(qualitySummary.post_low_quality_parsed_record_count || 0) : 0;
+            const resolvedElements = qualitySummary ? (qualitySummary.resolved_parse_quality_issue_elements || []) : [];
+            const remainingElements = qualitySummary ? (qualitySummary.remaining_parse_quality_issue_elements || []) : [];
+            const title = parseQualityTaskCount > 0 ? 'Execution parse-quality outcome' : 'Execution completed';
+            const chips = [];
+            if (taskCount) chips.push(`<span class="chip">executed ${taskCount}</span>`);
+            if (parseQualityTaskCount) chips.push(`<span class="chip">parse tasks ${parseQualityTaskCount}</span>`);
+            chips.push(`<span class="chip">low-quality ${preLowQualityCount} → ${postLowQualityCount}</span>`);
+            if (recommendedNextAction) chips.push(`<span class="chip">recommendation ${recommendedNextAction}</span>`);
+            resolvedElements.forEach((element) => chips.push(`<span class="chip">resolved ${element}</span>`));
+            if (!resolvedElements.length && remainingElements.length) {
+                remainingElements.forEach((element) => chips.push(`<span class="chip">remaining ${element}</span>`));
+            }
+
+            let notes = 'Execution completed without post-review quality comparison.';
+            if (qualitySummary) {
+                if (status === 'improved') {
+                    notes = 'Post-execution review shows fewer low-quality parse signals after retrieval.';
+                } else if (status === 'regressed') {
+                    notes = 'Post-execution review shows more low-quality parse signals than before execution.';
+                } else if (status === 'unchanged') {
+                    notes = parseQualityTaskCount > 0
+                        ? 'Parse-remediation work ran, but the compact low-quality signals did not improve in the refreshed review.'
+                        : 'Post-execution review shows no parse-quality change.';
+                } else if (status === 'not_targeted') {
+                    notes = 'This follow-up run did not target parse-quality remediation.';
+                }
+            }
+
+            card.hidden = false;
+            card.classList.toggle('is-error', status === 'regressed');
+            document.getElementById('execution-result-title').textContent = title;
+            document.getElementById('execution-result-status').textContent = status;
+            document.getElementById('execution-result-chips').innerHTML = chips.join('');
+            document.getElementById('execution-result-notes').textContent = notes;
+        }
+
         function setFollowUpSignals(planSummary, historySummary) {
             const planResolutionCounts = (planSummary && planSummary.resolution_applied_counts) || {};
             const historyResolutionCounts = (historySummary && historySummary.resolution_applied_counts) || {};
             const planNormalized = Object.values(planResolutionCounts).reduce((total, value) => total + Number(value || 0), 0);
             const historyNormalized = Object.values(historyResolutionCounts).reduce((total, value) => total + Number(value || 0), 0);
+            const parseQualityTaskCount = Number((planSummary && planSummary.parse_quality_task_count) || 0);
+            const parseQualityTaskSignals = {};
+            if (parseQualityTaskCount) {
+                parseQualityTaskSignals.parse_quality_improvement = parseQualityTaskCount;
+            }
+            const qualityGapTargetedCount = Number((planSummary && planSummary.quality_gap_targeted_task_count) || 0);
+            if (qualityGapTargetedCount) {
+                parseQualityTaskSignals.quality_gap_targeted = qualityGapTargetedCount;
+            }
             document.getElementById('signal-plan-normalized').textContent = planNormalized;
             document.getElementById('signal-history-normalized').textContent = historyNormalized;
+            document.getElementById('signal-parse-quality-tasks').textContent = parseQualityTaskCount;
             renderSignalChips('signal-plan-normalized-chips', planResolutionCounts, 'No normalized plan tasks');
             renderSignalChips('signal-history-normalized-chips', historyResolutionCounts, 'No normalized history events');
+            renderSignalChips('signal-parse-quality-task-chips', parseQualityTaskSignals, 'No parse remediation tasks');
         }
 
         function renderElements(elements) {
@@ -815,6 +1197,13 @@
             }
 
             container.innerHTML = elements.map((element) => {
+                const supportPackets = sortSupportPackets(element.support_packets || []);
+                const archivedPacketCount = supportPackets.filter(
+                    (packet) => Boolean(packet?.lineage_summary?.historical_capture),
+                ).length;
+                const fallbackPacketCount = supportPackets.filter(
+                    (packet) => Boolean(packet?.lineage_summary?.fallback_mode),
+                ).length;
                 const linkGroups = Object.entries(element.links_by_kind || {}).map(([kind, links]) => {
                     const items = links.map((link) => {
                         const title = link.support_label || link.support_ref || 'support record';
@@ -823,6 +1212,75 @@
                     }).join('');
                     return `<div class="link-group"><h4>${kind}</h4>${items}</div>`;
                 }).join('');
+                const packetSummary = element.support_packet_summary || {};
+                const lineageChips = [];
+                if (packetSummary.historical_capture_count) {
+                    lineageChips.push(`<span class="chip">Archived captures: ${packetSummary.historical_capture_count}</span>`);
+                }
+                Object.entries(packetSummary.fallback_mode_counts || {}).forEach(([mode, count]) => {
+                    lineageChips.push(`<span class="chip">Fallback ${mode}: ${count}</span>`);
+                });
+                Object.entries(packetSummary.content_origin_counts || {}).forEach(([origin, count]) => {
+                    lineageChips.push(`<span class="chip">Origin ${origin}: ${count}</span>`);
+                });
+                const packetDetails = supportPackets.length
+                    ? `
+                        <details class="packet-details" id="packet-details-${(element.element_text || 'element').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'element'}">
+                            <summary>View lineage packets (${supportPackets.length})</summary>
+                            <div class="packet-filter-row">
+                                <button class="packet-filter-button is-active" type="button" data-packet-filter-button data-filter-value="all" aria-pressed="true">All packets <span class="packet-filter-count">${supportPackets.length}</span></button>
+                                <button class="packet-filter-button" type="button" data-packet-filter-button data-filter-value="archived" aria-pressed="false">Archived only <span class="packet-filter-count">${archivedPacketCount}</span></button>
+                                <button class="packet-filter-button" type="button" data-packet-filter-button data-filter-value="fallback" aria-pressed="false">Fallback only <span class="packet-filter-count">${fallbackPacketCount}</span></button>
+                            </div>
+                            <div class="packet-filter-summary" data-packet-filter-summary>Showing ${supportPackets.length} of ${supportPackets.length} packets · all</div>
+                            <div class="packet-list">
+                                ${supportPackets.map((packet) => {
+                                    const lineage = packet.lineage_summary || {};
+                                    const packetTitle = packet.support_label || packet.support_ref || packet.fact?.fact_id || 'support packet';
+                                    const packetChips = [];
+                                    const filterTags = ['all'];
+                                    if (packet.support_kind) packetChips.push(`<span class="chip">${packet.support_kind}</span>`);
+                                    if (lineage.content_origin) packetChips.push(`<span class="chip">origin ${lineage.content_origin}</span>`);
+                                    if (lineage.fallback_mode) packetChips.push(`<span class="chip">fallback ${lineage.fallback_mode}</span>`);
+                                    if (lineage.capture_source) packetChips.push(`<span class="chip">capture ${lineage.capture_source}</span>`);
+                                    if (lineage.historical_capture) {
+                                        packetChips.push('<span class="chip">archived</span>');
+                                        filterTags.push('archived');
+                                    }
+                                    if (lineage.fallback_mode) {
+                                        filterTags.push('fallback');
+                                    }
+                                    const factText = packet.fact && packet.fact.text ? packet.fact.text : '';
+                                    const metaLines = [
+                                        lineage.archive_url ? `archive: ${lineage.archive_url}` : '',
+                                        lineage.original_url ? `original: ${lineage.original_url}` : '',
+                                        lineage.content_source_field ? `source field: ${lineage.content_source_field}` : '',
+                                        factText ? `fact: ${factText}` : '',
+                                    ].filter(Boolean);
+                                    const actionButtons = [];
+                                    if (lineage.archive_url) {
+                                        actionButtons.push(`<button class="packet-action-button" type="button" data-packet-url-action="open" data-packet-url-label="archive URL" data-packet-url="${lineage.archive_url}">Open archive</button>`);
+                                        actionButtons.push(`<button class="packet-action-button" type="button" data-packet-url-action="copy" data-packet-url-label="archive URL" data-packet-url="${lineage.archive_url}">Copy archive</button>`);
+                                    }
+                                    if (lineage.original_url) {
+                                        actionButtons.push(`<button class="packet-action-button" type="button" data-packet-url-action="open" data-packet-url-label="original URL" data-packet-url="${lineage.original_url}">Open original</button>`);
+                                        actionButtons.push(`<button class="packet-action-button" type="button" data-packet-url-action="copy" data-packet-url-label="original URL" data-packet-url="${lineage.original_url}">Copy original</button>`);
+                                    }
+                                    return `
+                                        <div class="packet-card" data-packet-filter-card data-packet-filter-tags="${filterTags.join(' ')}">
+                                            <div class="packet-card-title">${packetTitle}</div>
+                                            ${packetChips.length ? `<div class="chip-row">${packetChips.join('')}</div>` : ''}
+                                            ${metaLines.length ? `<div class="packet-card-meta">${metaLines.join('<br>')}</div>` : ''}
+                                            ${actionButtons.length ? `<div class="packet-action-row">${actionButtons.join('')}</div>` : ''}
+                                            ${actionButtons.length ? '<div class="packet-action-feedback" data-packet-action-feedback>Ready.</div>' : ''}
+                                        </div>
+                                    `;
+                                }).join('')}
+                                <div class="packet-empty-state is-hidden" data-packet-empty-state>No packets match the selected lineage filter.</div>
+                            </div>
+                        </details>
+                    `
+                    : '';
                 const missingKinds = (element.missing_support_kinds || []).length
                     ? `<div class="chip-row">${element.missing_support_kinds.map((kind) => `<span class="chip">Missing ${kind}</span>`).join('')}</div>`
                     : '';
@@ -836,6 +1294,8 @@
                             <span class="badge ${element.status}">${element.status || 'unknown'}</span>
                         </div>
                         ${missingKinds}
+                        ${lineageChips.length ? `<div class="chip-row">${lineageChips.join('')}</div>` : ''}
+                        ${packetDetails}
                         <div class="link-groups">${linkGroups || '<div class="link-group">No linked support records.</div>'}</div>
                     </article>
                 `;
@@ -863,6 +1323,9 @@
                     </div>
                     <div class="chip-row">
                         ${(task.missing_support_kinds || []).map((kind) => `<span class="chip">Need ${kind}</span>`).join('')}
+                        ${task.follow_up_focus ? `<span class="chip">focus ${task.follow_up_focus}</span>` : ''}
+                        ${task.query_strategy ? `<span class="chip">strategy ${task.query_strategy}</span>` : ''}
+                        ${task.recommended_action === 'improve_parse_quality' ? '<span class="chip">refresh source quality</span>' : ''}
                         ${task.blocked_by_cooldown ? '<span class="chip">Blocked by cooldown</span>' : ''}
                         ${task.should_suppress_retrieval ? '<span class="chip">Suppressed</span>' : ''}
                         ${task.resolution_applied ? `<span class="chip">normalized: ${task.resolution_applied}</span>` : ''}
@@ -972,6 +1435,7 @@
                 ...baseRequest(),
                 execute_follow_up: false,
             };
+            clearExecutionFeedback();
             clearResolutionFeedback();
             setStatus('Loading review payload...');
             try {
@@ -989,20 +1453,24 @@
                 follow_up_force: document.getElementById('force-execution').checked,
                 include_post_execution_review: document.getElementById('post-review').checked,
             };
+            clearExecutionFeedback();
             clearResolutionFeedback();
             setStatus('Executing follow-up tasks...');
             try {
                 const result = await postJson('/api/claim-support/execute-follow-up', payload);
                 renderPayload(result.post_execution_review || result);
+                renderExecutionFeedback(result, payload);
                 document.getElementById('raw-output').textContent = JSON.stringify(result, null, 2);
                 setStatus('Follow-up execution completed.');
             } catch (error) {
+                clearExecutionFeedback();
                 setStatus(`Execution request failed: ${error.message}`);
             }
         }
 
         async function resolveManualReview() {
             const payload = buildResolutionRequest();
+            clearExecutionFeedback();
             setStatus('Recording manual review resolution...');
             try {
                 const result = await postJson('/api/claim-support/resolve-manual-review', payload);
@@ -1026,6 +1494,33 @@
         document.getElementById('resolve-button').addEventListener('click', resolveManualReview);
         document.getElementById('clear-resolution-button').addEventListener('click', clearResolutionForm);
         document.addEventListener('click', (event) => {
+            const urlActionButton = event.target.closest('[data-packet-url-action]');
+            if (urlActionButton) {
+                const action = urlActionButton.getAttribute('data-packet-url-action') || '';
+                const url = urlActionButton.getAttribute('data-packet-url') || '';
+                const label = urlActionButton.getAttribute('data-packet-url-label') || 'packet URL';
+                if (action === 'copy') {
+                    copyPacketUrl(url, label)
+                        .then(() => setPacketActionFeedback(urlActionButton, `${label} copied.`))
+                        .catch((error) => setPacketActionFeedback(urlActionButton, `Copy failed: ${error.message}`, true));
+                    return;
+                }
+                if (action === 'open') {
+                    try {
+                        openPacketUrl(url, label);
+                        setPacketActionFeedback(urlActionButton, `Opened ${label}.`);
+                    } catch (error) {
+                        setPacketActionFeedback(urlActionButton, `Open failed: ${error.message}`, true);
+                    }
+                    return;
+                }
+            }
+            const filterButton = event.target.closest('[data-packet-filter-button]');
+            if (filterButton) {
+                const detailsElement = filterButton.closest('.packet-details');
+                applyPacketFilter(detailsElement, filterButton.getAttribute('data-filter-value') || 'all');
+                return;
+            }
             const button = event.target.closest('.prefill-resolution-button');
             if (!button) return;
             prefillResolutionForm({

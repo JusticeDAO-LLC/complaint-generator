@@ -1,7 +1,7 @@
 # IPFS Datasets Py Batch 1 Implementation Plan
 
 Date: 2026-03-12
-Status: In progress
+Status: Ready for execution
 
 Companion docs:
 
@@ -11,237 +11,199 @@ Companion docs:
 - `docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md`
 - `docs/IPFS_DATASETS_PY_FILE_WORKLIST.md`
 - `docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md`
-- `docs/IPFS_DATASETS_PY_DIRECT_IMPORT_AUDIT.md`
+- `docs/IPFS_DATASETS_PY_BATCH1_STATUS_AUDIT.md`
+- `docs/IPFS_DATASETS_PY_BATCH1_SLICE1_TASKLIST.md`
 
 ## Purpose
 
-Turn Batch 1, adapter contract stabilization, into issue-sized implementation slices that can be executed without reopening architecture questions.
+Turn the current Batch 1, parse completion and corpus unification, into issue-sized implementation slices that can be executed without reopening architecture questions.
 
 This plan assumes the current repository state described in the companion docs is accurate:
 
-- the adapter boundary already exists under `integrations/ipfs_datasets/`
+- adapter hardening and capability normalization are already substantially complete
 - evidence, web evidence, and legal-authority flows already consume adapter-backed integrations in part
-- mediator startup already reports capability information
-- later batches depend on Batch 1 producing stable capability and degraded-mode payloads
+- typed parse and graph contracts already exist under `integrations/ipfs_datasets/types.py`
+- later batches depend on Batch 1 producing one dependable artifact, chunk, fact, and provenance model across source families
 
 ## Batch 1 outcome
 
-At the end of Batch 1, complaint-generator should have one stable adapter contract family for:
+At the end of Batch 1, complaint-generator should have one stable parse and corpus contract family for:
 
-- capability reporting
-- degraded-mode payloads
-- placeholder or not-yet-implemented payloads
-- startup diagnostics and operator-visible capability summaries
+- uploaded evidence
+- discovered and scraped web pages
+- archived captures
+- legal authority text when source text is available
 
-The main success criterion is that later parse, graph, GraphRAG, and logic work can evolve without forcing repeated caller rewrites.
+The main success criterion is that graph, retrieval, GraphRAG, and proof workflows can consume the same artifact, chunk, fact, and provenance model regardless of source family.
 
 ## Non-goals
 
 Batch 1 should not attempt to:
 
-- deepen parse pipelines
-- add graph persistence
-- add GraphRAG scoring
-- implement theorem-prover workflows
-- redesign mediator review payloads beyond capability reporting
+- redesign adapter capability reporting
+- add full graph-store persistence
+- add GraphRAG support scoring
+- implement theorem-prover workflows end to end
+- build the full operator drilldown workspace
 
-If a change is primarily about corpus parsing, graph querying, or validation semantics, it belongs to later batches.
+If a change is primarily about graph-path scoring, theorem-prover orchestration, or review packet productization, it belongs to later batches.
 
 ## Target files
 
-- `integrations/ipfs_datasets/capabilities.py`
-- `integrations/ipfs_datasets/loader.py`
-- `integrations/ipfs_datasets/legal.py`
-- `integrations/ipfs_datasets/search.py`
-- `integrations/ipfs_datasets/graphs.py`
-- `integrations/ipfs_datasets/logic.py`
+- `integrations/ipfs_datasets/documents.py`
+- `integrations/ipfs_datasets/provenance.py`
 - `integrations/ipfs_datasets/types.py`
-- `integrations/ipfs_datasets/__init__.py`
-- `mediator/mediator.py`
-- `tests/test_ipfs_adapter_types.py`
-- `tests/test_ipfs_adapter_layer.py`
+- `mediator/evidence_hooks.py`
+- `mediator/web_evidence_hooks.py`
+- `mediator/legal_authority_hooks.py`
+- `mediator/claim_support_hooks.py`
+- `tests/test_evidence_hooks.py`
+- `tests/test_web_evidence_hooks.py`
+- `tests/test_legal_authority_hooks.py`
+- `tests/test_claim_support_hooks.py`
 
 ## Implementation slices
 
-## Slice 1: Canonical capability type family
-
-Status:
-
-- completed on 2026-03-12
+## Slice 1: Canonical parse envelope completion
 
 Goal:
 
-- define one shared structural shape for capability reports and degraded results
+- finish the shared parse contract so all major ingestion paths produce the same parse envelope
 
 Primary files:
 
+- `integrations/ipfs_datasets/documents.py`
 - `integrations/ipfs_datasets/types.py`
-- `integrations/ipfs_datasets/capabilities.py`
 
 Tasks:
 
-- define or normalize typed payloads for adapter capability status
-- define required fields for all capability families such as `available`, `reason`, `details`, and `provider` or `module`
-- define one degraded payload family that adapters can return consistently
-- ensure placeholder adapters and missing-module adapters share the same top-level keys
+- ensure bytes, file-path, fetched-page, and authority-text parsing return one canonical `DocumentParseResult` family
+- standardize parse summary fields for content type, extraction mode, OCR usage, page count, chunk count, and warnings
+- standardize chunk identity, offsets, page references, and section labels where available
+- preserve degraded behavior when format-specific extras are unavailable
 
 Done when:
 
-- callers can assert one stable shape for all adapter capability responses
-- adapter tests no longer need per-adapter shape exceptions
+- downstream callers can treat parse output identically across evidence, web evidence, archived pages, and authority text
+- hook code no longer needs source-family-specific parse-shape logic
 
 Suggested issue title:
 
-- `Normalize IPFS adapter capability payload types`
+- `Complete canonical parse envelope across all case artifact families`
 
-## Slice 2: Centralized import probing and failure folding
-
-Status:
-
-- in progress on 2026-03-12
+## Slice 2: Provenance and transform-lineage alignment
 
 Goal:
 
-- make upstream import drift degrade into explicit status instead of leaking ad hoc import behavior into each adapter
+- align provenance and lineage metadata so all artifacts can be traced across acquisition, parsing, and later extraction stages
 
 Primary files:
 
-- `integrations/ipfs_datasets/loader.py`
-- `integrations/ipfs_datasets/capabilities.py`
+- `integrations/ipfs_datasets/provenance.py`
+- `integrations/ipfs_datasets/types.py`
+- `mediator/evidence_hooks.py`
+- `mediator/web_evidence_hooks.py`
+- `mediator/legal_authority_hooks.py`
 
 Tasks:
 
-- centralize import probing helpers
-- centralize exception-to-degraded-status conversion
-- remove duplicate import failure handling from adapters where it is only boilerplate
-- ensure loader helpers preserve actionable failure reasons such as missing module, deprecated path, or optional dependency unavailable
+- standardize acquisition method, source system, content hash, archive metadata, and parse-source fields
+- preserve transform lineage for parse, graph extraction, and future logic translation stages
+- ensure archived pages and authority text use the same provenance model as uploaded evidence
+- preserve passage-level lineage needed for later support, contradiction, and predicate review
 
 Done when:
 
-- adapter modules rely on shared loader behavior for import probing
-- degraded mode exposes informative reason strings without stack-trace-shaped payloads
+- every stored artifact and authority can be traced from acquisition source through parse stage using one lineage model
 
 Suggested issue title:
 
-- `Centralize IPFS adapter import probing and degraded fallback handling`
+- `Unify artifact provenance and transform lineage across evidence, archives, and authorities`
 
-## Slice 3: Legal and search adapter shape cleanup
-
-Status:
-
-- completed on 2026-03-12
+## Slice 3: Archived-page corpus normalization
 
 Goal:
 
-- remove upstream path and result-shape drift from the legal and search adapters before deeper workflow work lands
+- make archived and fetched web pages first-class case artifacts rather than adjacent evidence-like records
 
 Primary files:
 
+- `mediator/web_evidence_hooks.py`
+- `integrations/ipfs_datasets/documents.py`
+- `integrations/ipfs_datasets/provenance.py`
+- `mediator/claim_support_hooks.py`
+
+Tasks:
+
+- ensure fetched and archived page content routes through the shared parse contract
+- preserve archive-specific provenance such as capture source, archive timestamp, and historical-context markers
+- ensure web evidence storage produces chunk, fact, and parse outputs compatible with uploaded evidence
+- surface enough live-versus-archived lineage for later review and timeline drilldown
+
+Done when:
+
+- archived pages can participate in claim support and follow-up review as ordinary corpus artifacts
+
+Suggested issue title:
+
+- `Normalize archived and fetched web pages into the shared case corpus`
+
+## Slice 4: Legal authority text as corpus asset
+
+Goal:
+
+- make legal authorities behave like parseable corpus assets whenever full text is available
+
+Primary files:
+
+- `mediator/legal_authority_hooks.py`
 - `integrations/ipfs_datasets/legal.py`
-- `integrations/ipfs_datasets/search.py`
-- `tests/test_ipfs_adapter_layer.py`
+- `integrations/ipfs_datasets/documents.py`
+- `integrations/ipfs_datasets/provenance.py`
 
 Tasks:
 
-- ensure legal wrappers normalize async upstream scraper results into one sync-safe contract
-- ensure search wrappers normalize current web, archive, and Common Crawl outputs into one result family
-- keep stable handling for `BraveSearchAPI` and nested Common Crawl module paths
-- ensure degraded payloads match the common family defined in Slice 1
+- ensure authority text parsing uses the same parse family as evidence and archived pages
+- preserve authority parse summaries, chunks, facts, and graph metadata through one normalized contract
+- capture passage-level provenance needed for adverse-authority review, contradiction checks, and later predicate grounding
+- keep citation-only fallback behavior explicit when source text is unavailable
 
 Done when:
 
-- mediator consumers do not branch on `results` versus `documents`
-- mediator consumers do not care which search backend produced the normalized result family
+- authorities with source text can participate in chunk-, fact-, and passage-level support review instead of remaining citation-only records
 
 Suggested issue title:
 
-- `Normalize legal and web-search adapter result families`
+- `Promote legal authority full text into the shared parse and corpus pipeline`
 
-## Slice 4: Graph and logic placeholder contract cleanup
-
-Status:
-
-- completed on 2026-03-12
+## Slice 5: Shared fact-registry completion
 
 Goal:
 
-- make graph and logic adapters safe to extend later without breaking caller assumptions twice
+- finish the transition from source-specific extracted facts to one durable case fact model
 
 Primary files:
 
-- `integrations/ipfs_datasets/graphs.py`
-- `integrations/ipfs_datasets/logic.py`
-- `tests/test_ipfs_adapter_layer.py`
+- `mediator/claim_support_hooks.py`
+- `mediator/evidence_hooks.py`
+- `mediator/web_evidence_hooks.py`
+- `mediator/legal_authority_hooks.py`
+- `integrations/ipfs_datasets/types.py`
 
 Tasks:
 
-- normalize placeholder success or not-implemented payloads
-- normalize degraded payloads for unavailable graph or logic dependencies
-- ensure graph adapter capability and placeholder query responses use the shared contract family
-- ensure logic adapter placeholder proof responses expose stable fields that later batches can extend without removing keys
+- ensure facts derived from uploaded evidence, archived pages, fetched pages, and authority text share one durable contract
+- link facts to artifacts, claim elements, chunks or passage spans, and future graph or validation outputs
+- preserve enough lineage that later graph and logic consumers do not need source-family exceptions
+- keep review and follow-up payloads compatible while upgrading the source fact substrate underneath them
 
 Done when:
 
-- graph and logic callers can treat current placeholder outputs as stable contracts rather than temporary ad hoc dicts
+- claim-element support can enumerate artifact-backed facts across all acquisition paths using one durable fact model
 
 Suggested issue title:
 
-- `Stabilize graph and logic adapter placeholder contracts`
-
-## Slice 5: Mediator capability summary and startup behavior
-
-Goal:
-
-- make mediator startup consume the shared adapter capability family consistently and visibly
-
-Primary files:
-
-- `mediator/mediator.py`
-- `integrations/ipfs_datasets/__init__.py`
-
-Tasks:
-
-- consume the canonical capability summary helper rather than piecing together adapter-specific status checks
-- keep startup logs stable across full, partial, and degraded runtime modes
-- avoid direct dependency on upstream module path quirks from mediator startup or health reporting
-
-Done when:
-
-- mediator startup logs the same capability groups in all runtime modes
-- missing optional features degrade into useful diagnostics rather than surprising behavior
-
-Suggested issue title:
-
-- `Unify mediator startup capability reporting for IPFS adapters`
-
-## Slice 6: Direct-import drift audit
-
-Goal:
-
-- confirm that production code reaches `ipfs_datasets_py` only through the adapter boundary
-
-Primary files:
-
-- `complaint_analysis/indexer.py`
-- any additional production modules found during search
-
-Tasks:
-
-- search for direct `ipfs_datasets_py` imports outside `integrations/ipfs_datasets/`
-- move remaining production imports behind adapters
-- isolate any unavoidable exceptions to tests, benchmarks, or intentionally diagnostic scripts
-
-Done when:
-
-- no production module depends on submodule path knowledge outside the adapter layer
-
-Current state:
-
-- production-code audit is clean as of 2026-03-12; remaining drift is primarily in documentation examples and should not be confused with adapter-boundary violations in live code
-
-Suggested issue title:
-
-- `Remove remaining direct production imports of ipfs_datasets_py`
+- `Complete shared fact registry across evidence, archives, and authority text`
 
 ## Recommended execution order
 
@@ -250,84 +212,81 @@ Suggested issue title:
 3. Slice 3
 4. Slice 4
 5. Slice 5
-6. Slice 6
 
-This order matters because type and loader normalization should land before adapter-specific cleanup, and mediator cleanup should come after the underlying summary helpers are stable.
-
-## Current execution note
-
-As of 2026-03-12, Batch 1 has completed shared capability typing, placeholder metadata normalization, and legal/search result-family normalization. The remaining active work is loader-side import failure folding and mediator startup summary cleanup.
+This order matters because parse-envelope completion and lineage alignment should land before archived-page and authority normalization, and the fact-registry pass should sit on top of those contracts.
 
 ## Validation plan
 
 Minimum focused validation after each slice:
 
 ```bash
-./.venv/bin/python -m pytest tests/test_ipfs_adapter_types.py -q
-./.venv/bin/python -m pytest tests/test_ipfs_adapter_layer.py -q
+./.venv/bin/python -m pytest tests/test_evidence_hooks.py -q
+./.venv/bin/python -m pytest tests/test_web_evidence_hooks.py -q
+./.venv/bin/python -m pytest tests/test_legal_authority_hooks.py -q
 ```
 
-Additional slice-specific validation:
+Additional Batch 1 corpus validation:
 
 ```bash
-./.venv/bin/python -m pytest tests/test_review_api.py tests/test_claim_support_hooks.py -q
+./.venv/bin/python -m pytest tests/test_claim_support_hooks.py -q
+./.venv/bin/python -m pytest tests/test_review_api.py -q
 ```
 
-Use the mediator-focused slice when startup or capability summary behavior changes.
+Use the claim-support and review slice when parse, fact, or provenance changes alter the support substrate rather than only ingestion.
 
 ## Stop or go criteria
 
 Go to Batch 2 only when all of the following are true:
 
-- capability payloads are structurally consistent across adapters
-- degraded-mode payloads expose explicit reason fields
-- legal and search adapters no longer leak upstream result-shape drift
-- graph and logic placeholders expose stable contracts
-- mediator startup can render one stable capability summary
-- focused adapter tests pass without adapter-specific shape workarounds
+- uploaded evidence, archived pages, fetched pages, and authority text all emit one compatible parse-result family
+- provenance and transform-lineage fields are structurally aligned across source families
+- archived pages and authority text participate in the shared case corpus rather than as special cases
+- the shared fact registry can enumerate cross-source facts for claim-element support
+- focused evidence, web-evidence, authority, and claim-support tests pass without source-family-specific shape workarounds
 
-Do not start Batch 2 if Batch 1 still requires mediator callers to branch on adapter-specific payload keys.
+Do not start Batch 2 if the graph and support-query work would still need to branch on different parse, chunk, or fact shapes by source family.
 
 ## Risks
 
-### Risk: over-editing adapters before contract decisions are pinned
+### Risk: source-family edge cases reopen contract drift
 
 Mitigation:
 
-- treat Batch 1 as a contract pass, not a feature pass
-- keep later-batch parsing, graph, and validation work out of scope
+- treat Batch 1 as a contract-completion pass, not a feature-sprawl pass
+- standardize parse and provenance fields before deepening later graph and proof work
 
-### Risk: loader cleanup hides useful failure details
-
-Mitigation:
-
-- preserve original import failure context inside reason or details fields
-- test degraded payloads explicitly
-
-### Risk: mediator logs drift from actual adapter state
+### Risk: archived or authority text behaves like a special-case ingestion path
 
 Mitigation:
 
-- derive startup summaries from the shared capability helper instead of duplicating logic in mediator code
+- force all available source text through the shared parse contract
+- keep citation-only or metadata-only fallback explicit rather than hidden in divergent shapes
+
+### Risk: downstream support logic inherits weak lineage
+
+Mitigation:
+
+- require chunk- or passage-level lineage where available
+- keep fact records linked to source artifacts and claim elements from the start
 
 ## Deliverable checklist
 
-- [ ] shared capability payload family is stable
-- [ ] degraded payload family is stable
-- [ ] legal adapter success and degraded outputs are normalized
-- [ ] search adapter success and degraded outputs are normalized
-- [ ] graph placeholder outputs are normalized
-- [ ] logic placeholder outputs are normalized
-- [ ] mediator startup uses the shared capability summary
-- [ ] remaining direct production imports are removed or explicitly isolated
-- [ ] focused adapter tests pass
+- [ ] one canonical parse envelope across source families
+- [ ] one provenance and transform-lineage model across source families
+- [ ] archived and fetched web pages normalized into the shared case corpus
+- [ ] legal authority full text normalized into the shared case corpus
+- [ ] shared fact registry completed across evidence, archives, and authority text
+- [ ] focused ingestion and claim-support tests pass
 
-## Immediate next coding slice
+## Recommended first coding slice
 
 If Batch 1 starts now, the recommended first coding slice is:
 
-1. normalize capability payload types in `integrations/ipfs_datasets/types.py`
-2. consume those types in `integrations/ipfs_datasets/capabilities.py`
-3. add or tighten focused assertions in `tests/test_ipfs_adapter_types.py`
+1. `integrations/ipfs_datasets/documents.py`
+2. `integrations/ipfs_datasets/provenance.py`
+3. `mediator/web_evidence_hooks.py`
+4. `mediator/legal_authority_hooks.py`
+5. `tests/test_web_evidence_hooks.py`
+6. `tests/test_legal_authority_hooks.py`
 
-That slice has the highest leverage because every other Batch 1 task depends on the contract it establishes.
+That slice has the highest leverage because it closes the remaining parse and provenance drift for the two source families most likely to fragment the corpus contract: archived pages and authority text.

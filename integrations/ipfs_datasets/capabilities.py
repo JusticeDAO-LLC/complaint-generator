@@ -3,7 +3,6 @@ from __future__ import annotations
 from functools import lru_cache
 
 from .loader import (
-    ensure_import_paths,
     import_failure_message,
     import_failure_type,
     import_module_optional,
@@ -13,7 +12,6 @@ from .types import CapabilityStatus
 
 @lru_cache(maxsize=1)
 def get_ipfs_datasets_capabilities() -> dict[str, CapabilityStatus]:
-    ensure_import_paths()
     module_map = {
         "llm_router": "ipfs_datasets_py.llm_router",
         "ipfs_storage": "ipfs_datasets_py.ipfs_backend_router",
@@ -68,6 +66,18 @@ def summarize_ipfs_datasets_capability_report() -> dict[str, object]:
         "degraded_count": len(degraded_capabilities),
         "available_capabilities": available_capabilities,
         "degraded_capabilities": degraded_capabilities,
+        "capabilities": {
+            name: status.as_dict()
+            for name, status in capabilities.items()
+        },
+    }
+
+
+def summarize_ipfs_datasets_startup_payload() -> dict[str, object]:
+    capabilities = get_ipfs_datasets_capabilities()
+    capability_report = summarize_ipfs_datasets_capability_report()
+    return {
+        "capability_report": capability_report,
         "capabilities": {
             name: status.as_dict()
             for name, status in capabilities.items()

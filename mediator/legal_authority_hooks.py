@@ -10,8 +10,9 @@ from integrations.ipfs_datasets.provenance import (
     build_document_parse_contract,
     build_fact_lineage_metadata,
     build_provenance,
+    enrich_document_parse,
 )
-from integrations.ipfs_datasets.documents import parse_document_text
+from integrations.ipfs_datasets.documents import detect_document_input_format, parse_document_text
 from integrations.ipfs_datasets.graphs import extract_graph_from_text, persist_graph_snapshot
 from integrations.ipfs_datasets.types import CaseAuthority, CaseFact
 from integrations.ipfs_datasets.legal import (
@@ -448,20 +449,71 @@ class LegalAuthorityStorageHook:
             self.mediator.log('legal_authority_schema_error', error=str(e))
 
     def _parse_authority_text(self, authority: Dict[str, Any]) -> Dict[str, Any]:
-        authority_text = authority.get('content') or authority.get('text') or ''
+        authority_metadata = authority.get('metadata', {}) if isinstance(authority.get('metadata'), dict) else {}
+        content_field = ''
+        authority_text = ''
+        for candidate in ('content', 'text', 'html_body', 'raw_html'):
+            candidate_value = str(authority.get(candidate) or '')
+            if candidate_value:
+                content_field = candidate
+                authority_text = candidate_value
+                break
+        used_reference_fallback = False
         if not authority_text:
+            used_reference_fallback = True
+            content_field = 'citation_title_fallback'
             authority_text = '\n\n'.join(
                 part for part in [authority.get('title') or '', authority.get('citation') or ''] if part
             )
 
+        filename = str(authority.get('citation') or authority.get('title') or authority.get('url') or 'authority.txt')
+        input_format = detect_document_input_format(
+            text=str(authority_text),
+            filename=filename,
+            mime_type=str(authority_metadata.get('mime_type') or authority.get('mime_type') or ''),
+        )
+        mime_type_map = {
+            'html': 'text/html',
+            'text': 'text/plain',
+            'email': 'message/rfc822',
+            'rtf': 'application/rtf',
+            'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'pdf': 'application/pdf',
+        }
+
         parsed = parse_document_text(
-            authority_text,
-            filename=(authority.get('citation') or authority.get('title') or authority.get('url') or 'authority.txt'),
-            mime_type='text/plain',
+            str(authority_text),
+            filename=filename,
+            mime_type=mime_type_map.get(input_format, 'text/plain'),
             source='legal_authority',
         )
+        content_origin = 'authority_reference_fallback' if used_reference_fallback else 'authority_full_text'
+        fallback_mode = 'citation_title_only' if used_reference_fallback else ''
+        parsed = enrich_document_parse(
+            parsed,
+            default_source='legal_authority',
+            extra_metadata={
+                'content_origin': content_origin,
+                'content_source_field': content_field,
+                'authority_type': str(authority.get('type') or ''),
+                'authority_source': str(authority.get('source') or ''),
+                'citation': str(authority.get('citation') or ''),
+                'title': str(authority.get('title') or ''),
+                'source_url': str(authority.get('url') or ''),
+                'fallback_mode': fallback_mode,
+            },
+            extra_lineage={
+                'content_origin': content_origin,
+                'content_source_field': content_field,
+                'authority_type': str(authority.get('type') or ''),
+                'authority_source': str(authority.get('source') or ''),
+                'citation': str(authority.get('citation') or ''),
+                'title': str(authority.get('title') or ''),
+                'source_url': str(authority.get('url') or ''),
+                'fallback_mode': fallback_mode,
+            },
+        )
         parse_contract = build_document_parse_contract(parsed, default_source='legal_authority')
-        authority_metadata = authority.get('metadata', {}) if isinstance(authority.get('metadata'), dict) else {}
         authority_metadata['document_parse_summary'] = parse_contract['summary']
         authority_metadata['document_parse_contract'] = parse_contract
         authority['metadata'] = authority_metadata
@@ -811,7 +863,13 @@ class LegalAuthorityStorageHook:
                 source=authority_data.get('source', 'unknown'),
                 citation=authority_data.get('citation') or '',
                 title=authority_data.get('title') or '',
-                content=authority_data.get('content') or authority_data.get('text') or '',
+                content=(
+                    authority_data.get('content')
+                    or authority_data.get('text')
+                    or authority_data.get('html_body')
+                    or authority_data.get('raw_html')
+                    or ''
+                ),
                 url=authority_data.get('url') or '',
                 jurisdiction=provenance.jurisdiction,
                 source_system=provenance.source_system,

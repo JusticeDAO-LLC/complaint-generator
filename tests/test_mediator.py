@@ -45,6 +45,72 @@ class TestMediatorWithMocks:
             assert mediator.state is not None
         except ImportError as e:
             pytest.skip(f"Mediator class has dependency issues: {e}")
+
+    def test_mediator_logs_canonical_ipfs_adapter_startup_payload(self):
+        """Mediator startup should log the canonical adapter capability payload without rebuilding it inline."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+
+            startup_payload = {
+                'capability_report': {
+                    'status': 'degraded',
+                    'available_count': 1,
+                    'degraded_count': 1,
+                    'available_capabilities': ['documents'],
+                    'degraded_capabilities': {'logic_tools': 'missing dependency'},
+                    'capabilities': {
+                        'documents': {
+                            'status': 'available',
+                            'available': True,
+                            'module_path': 'ipfs_datasets_py.processors',
+                            'provider': 'ipfs_datasets_py',
+                            'degraded_reason': None,
+                            'details': {'capability': 'documents', 'error_type': ''},
+                        },
+                        'logic_tools': {
+                            'status': 'degraded',
+                            'available': False,
+                            'module_path': 'ipfs_datasets_py.logic',
+                            'provider': 'ipfs_datasets_py',
+                            'degraded_reason': 'missing dependency',
+                            'details': {'capability': 'logic_tools', 'error_type': 'ModuleNotFoundError'},
+                        },
+                    },
+                },
+                'capabilities': {
+                    'documents': {
+                        'status': 'available',
+                        'available': True,
+                        'module_path': 'ipfs_datasets_py.processors',
+                        'provider': 'ipfs_datasets_py',
+                        'degraded_reason': None,
+                        'details': {'capability': 'documents', 'error_type': ''},
+                    },
+                    'logic_tools': {
+                        'status': 'degraded',
+                        'available': False,
+                        'module_path': 'ipfs_datasets_py.logic',
+                        'provider': 'ipfs_datasets_py',
+                        'degraded_reason': 'missing dependency',
+                        'details': {'capability': 'logic_tools', 'error_type': 'ModuleNotFoundError'},
+                    },
+                },
+            }
+
+            with patch('mediator.mediator.summarize_ipfs_datasets_startup_payload', return_value=startup_payload):
+                mediator = Mediator(backends=[mock_backend])
+
+            startup_log = next(
+                entry for entry in mediator.state.log
+                if entry.get('type') == 'ipfs_datasets_capabilities'
+            )
+            assert startup_log['capability_report'] == startup_payload['capability_report']
+            assert startup_log['capabilities'] == startup_payload['capabilities']
+        except ImportError as e:
+            pytest.skip(f"Mediator class has dependency issues: {e}")
         
     def test_mediator_reset(self):
         """Test that reset creates new state"""
@@ -337,6 +403,86 @@ class TestMediatorWithMocks:
             )
             executed_call = mediator.claim_support.record_follow_up_execution.call_args_list[0]
             assert executed_call.kwargs['metadata']['resolution_applied'] == 'manual_review_resolved'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_follow_up_plan_uses_quality_targeted_queries_for_low_quality_support(self):
+        """Low-quality parsed support should trigger retrieval aimed at better source quality, not generic review-only follow-up."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
+                'claims': {'employment': []}
+            })
+            mediator.claim_support.get_follow_up_execution_status = Mock(return_value={
+                'in_cooldown': False,
+            })
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'required_support_kinds': ['evidence'],
+                        'elements': [
+                            {
+                                'element_id': 'employment:1',
+                                'element_text': 'Protected activity',
+                                'coverage_status': 'covered',
+                                'validation_status': 'incomplete',
+                                'recommended_action': 'improve_parse_quality',
+                                'support_by_kind': {'evidence': 1},
+                                'support_trace_summary': {
+                                    'parsed_record_count': 1,
+                                    'parse_quality_tier_counts': {'empty': 1},
+                                    'avg_parse_quality_score': 0.0,
+                                },
+                                'proof_gap_count': 0,
+                                'proof_gaps': [],
+                                'proof_decision_trace': {
+                                    'decision_source': 'heuristic_support_only',
+                                    'logic_provable_count': 0,
+                                    'logic_unprovable_count': 0,
+                                    'ontology_validation_signal': 'unknown',
+                                },
+                                'reasoning_diagnostics': {
+                                    'backend_available_count': 0,
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value={
+                'summary': {
+                    'total_fact_count': 3,
+                    'unique_fact_count': 1,
+                    'duplicate_fact_count': 2,
+                    'semantic_cluster_count': 1,
+                    'semantic_duplicate_count': 2,
+                    'max_score': 2.1,
+                },
+                'results': [
+                    {'fact_id': 'fact:1', 'score': 2.1, 'matched_claim_element': True},
+                ],
+            })
+
+            plan = mediator.get_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                required_support_kinds=['evidence'],
+            )
+            task = plan['claims']['employment']['tasks'][0]
+
+            assert task['execution_mode'] == 'retrieve_support'
+            assert task['follow_up_focus'] == 'parse_quality_improvement'
+            assert task['query_strategy'] == 'quality_gap_targeted'
+            assert task['priority'] == 'high'
+            assert task['should_suppress_retrieval'] is False
+            assert task['recommended_action'] == 'improve_parse_quality'
+            assert task['queries']['evidence'][0] == '"employment" "Protected activity" clearer copy OCR readable evidence'
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 

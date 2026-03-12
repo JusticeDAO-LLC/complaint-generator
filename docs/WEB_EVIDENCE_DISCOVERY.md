@@ -215,7 +215,7 @@ Searches current web content using Brave Search API.
 
 **Requirements:**
 - Set `BRAVE_SEARCH_API_KEY` environment variable
-- Available through ipfs_datasets_py.web_archiving.brave_search_client
+- Available through complaint-generator's `integrations.ipfs_datasets.search` adapter layer
 
 **Features:**
 - Real-time web search
@@ -375,8 +375,8 @@ Automatic discovery results also include compact follow-up summaries:
 
 - `follow_up_plan_summary[claim_type]`: task, blocked, graph-supported, and suppressed counts plus semantic-cluster totals and recommended-action totals.
 - `follow_up_execution_summary[claim_type]`: executed, skipped, suppressed, and cooldown-skipped task counts plus semantic-cluster totals when `execute_follow_up=True`.
-- `claim_coverage_matrix[claim_type]`: claim-element support status with grouped evidence or authority links and lightweight record or graph summaries.
-- `claim_coverage_summary[claim_type]`: compact coverage counts plus missing, unresolved, and contradiction summary labels.
+- `claim_coverage_matrix[claim_type]`: claim-element support status with grouped evidence or authority links, lightweight record or graph summaries, and per-element support-packet lineage rollups.
+- `claim_coverage_summary[claim_type]`: compact coverage counts plus missing, unresolved, contradiction, and support-packet lineage summary labels.
 - `claim_support_gaps[claim_type]`: unresolved-element diagnostics with recommended actions.
 - `claim_contradiction_candidates[claim_type]`: heuristic contradiction candidates for operator review.
 - `claim_support_snapshots[claim_type]`: persisted snapshot ids and metadata for the stored gap and contradiction diagnostics.

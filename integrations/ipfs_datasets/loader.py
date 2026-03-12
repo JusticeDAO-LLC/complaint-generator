@@ -40,14 +40,40 @@ def get_repo_paths() -> RepoPaths:
     )
 
 
-def ensure_import_paths() -> RepoPaths:
+def _matches_package_root(module_name: str, package_root: str) -> bool:
+    return module_name == package_root or module_name.startswith(f"{package_root}.")
+
+
+def ensure_import_paths(module_name: str = "", missing_module_name: str = "") -> RepoPaths:
     paths = get_repo_paths()
-    for path in (paths.ipfs_datasets_repo, paths.ipfs_accelerate_repo):
+    candidate_paths: list[Path] = []
+
+    if _matches_package_root(module_name, "ipfs_datasets_py") or _matches_package_root(
+        missing_module_name, "ipfs_datasets_py"
+    ):
+        candidate_paths.append(paths.ipfs_datasets_repo)
+
+    if _matches_package_root(module_name, "ipfs_accelerate_py") or _matches_package_root(
+        missing_module_name, "ipfs_accelerate_py"
+    ):
+        candidate_paths.append(paths.ipfs_accelerate_repo)
+
+    for path in candidate_paths:
         if path.exists():
             path_str = str(path)
             if path_str not in sys.path:
                 sys.path.insert(0, path_str)
     return paths
+
+
+def _should_retry_with_repo_paths(module_name: str, error: ModuleNotFoundError) -> bool:
+    missing_module_name = str(getattr(error, "name", "") or "")
+    return any(
+        _matches_package_root(value, package_root)
+        for package_root in ("ipfs_datasets_py", "ipfs_accelerate_py")
+        for value in (module_name, missing_module_name)
+        if value
+    )
 
 
 def _build_import_failure(exc: BaseException, *, module_name: str, attr_name: str = "") -> ImportFailure:
@@ -77,9 +103,16 @@ def import_failure_type(error: Any) -> str:
 
 
 def import_module_optional(module_name: str) -> tuple[Any | None, ImportFailure | None]:
-    ensure_import_paths()
     try:
         return importlib.import_module(module_name), None
+    except ModuleNotFoundError as exc:
+        if _should_retry_with_repo_paths(module_name, exc):
+            ensure_import_paths(module_name=module_name, missing_module_name=str(getattr(exc, "name", "") or ""))
+            try:
+                return importlib.import_module(module_name), None
+            except Exception as retry_exc:
+                return None, _build_import_failure(retry_exc, module_name=module_name)
+        return None, _build_import_failure(exc, module_name=module_name)
     except Exception as exc:
         return None, _build_import_failure(exc, module_name=module_name)
 

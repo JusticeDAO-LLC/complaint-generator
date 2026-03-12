@@ -372,12 +372,18 @@ class TestWebEvidenceIntegrationHook:
             assert result['parse_summary']['total_chunks'] == 2
             assert result['parse_summary']['total_paragraphs'] == 2
             assert result['parse_summary']['total_text_length'] == 84
+            assert result['parse_summary']['total_pages'] == 2
             assert result['parse_summary']['status_counts']['fallback'] == 2
             assert result['parse_summary']['input_format_counts']['text'] == 2
+            assert result['parse_summary']['quality_tier_counts']['high'] == 2
+            assert result['parse_summary']['avg_quality_score'] > 90.0
             assert 'documents-adapter:1' in result['parse_summary']['parser_versions']
             assert len(result['parse_details']) == 2
             assert result['parse_details'][0]['parser_version'] == 'documents-adapter:1'
             assert result['parse_details'][0]['input_format'] == 'text'
+            assert result['parse_details'][0]['extraction_method'] == 'text_normalization'
+            assert result['parse_details'][0]['quality_tier'] == 'high'
+            assert result['parse_details'][0]['quality_score'] > 90.0
             assert result['parse_details'][0]['source'] == 'web_document'
             assert result['parse_details'][0]['lineage']['source'] == 'web_document'
             assert len(result['graph_projection']) == 2
@@ -403,6 +409,221 @@ class TestWebEvidenceIntegrationHook:
             assert add_record_kwargs['claim_element_id'] == 'employment_discrimination:1'
             assert add_record_kwargs['claim_element'] == 'Protected activity'
             assert add_record_kwargs['evidence_info']['document_parse']['status'] == 'fallback'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_store_evidence_items_preserves_html_parse_contract(self):
+        """Test discovered HTML evidence preserves HTML parse metadata through storage."""
+        try:
+            from mediator.evidence_hooks import EvidenceStorageHook
+            from mediator.web_evidence_hooks import WebEvidenceIntegrationHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.state = Mock()
+            mock_mediator.state.username = 'testuser'
+            mock_mediator.state.complaint_id = 'complaint-1'
+            mock_mediator.phase_manager = Mock()
+            mock_mediator.phase_manager.get_phase_data = Mock(return_value=None)
+            mock_mediator.add_evidence_to_graphs = Mock(return_value={})
+            mock_mediator.web_evidence_search = Mock()
+            mock_mediator.web_evidence_search.validate_evidence = Mock(return_value={
+                'valid': True,
+                'relevance_score': 0.9,
+            })
+            mock_mediator.evidence_storage = EvidenceStorageHook(mock_mediator)
+            mock_mediator.evidence_state = Mock()
+            mock_mediator.evidence_state.upsert_evidence_record = Mock(return_value={
+                'record_id': 1,
+                'created': True,
+                'reused': False,
+            })
+            mock_mediator.claim_support = Mock()
+            mock_mediator.claim_support.resolve_claim_element = Mock(return_value={
+                'claim_element_id': 'employment_discrimination:1',
+                'claim_element_text': 'Protected activity',
+            })
+            mock_mediator.claim_support.upsert_support_link = Mock(return_value={
+                'record_id': 1,
+                'created': True,
+                'reused': False,
+            })
+
+            hook = WebEvidenceIntegrationHook(mock_mediator)
+            result = hook._store_evidence_items(
+                [
+                    {
+                        'title': 'Policy page',
+                        'url': 'https://example.com/policy',
+                        'content': '<html><body><h1>Policy</h1><p>Retaliation is prohibited.</p></body></html>',
+                        'source_type': 'common_crawl',
+                    }
+                ],
+                keywords=['retaliation'],
+                user_id='testuser',
+                claim_type='employment discrimination',
+                min_relevance=0.5,
+            )
+
+            assert result['stored'] == 1
+            assert result['parse_summary']['input_format_counts']['html'] == 1
+            assert result['parse_summary']['quality_tier_counts']['high'] == 1
+            assert result['parse_details'][0]['input_format'] == 'html'
+            assert result['parse_details'][0]['extraction_method'] == 'html_to_text'
+            add_record_kwargs = mock_mediator.evidence_state.upsert_evidence_record.call_args.kwargs
+            assert add_record_kwargs['evidence_info']['document_parse']['summary']['input_format'] == 'html'
+            assert add_record_kwargs['evidence_info']['document_parse']['summary']['quality_tier'] == 'high'
+            assert add_record_kwargs['evidence_info']['metadata']['document_parse_contract']['lineage']['input_format'] == 'html'
+            assert add_record_kwargs['evidence_info']['metadata']['document_parse_contract']['parse_quality']['quality_tier'] == 'high'
+            support_kwargs = mock_mediator.claim_support.upsert_support_link.call_args.kwargs
+            assert support_kwargs['metadata']['source_type'] == 'common_crawl'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_store_evidence_items_normalizes_archive_lineage(self):
+        """Test archived web evidence records historical capture context in parse lineage."""
+        try:
+            from mediator.web_evidence_hooks import WebEvidenceIntegrationHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.state = Mock()
+            mock_mediator.state.username = 'testuser'
+            mock_mediator.state.complaint_id = 'complaint-1'
+            mock_mediator.phase_manager = Mock()
+            mock_mediator.phase_manager.get_phase_data = Mock(return_value=None)
+            mock_mediator.web_evidence_search = Mock()
+            mock_mediator.web_evidence_search.validate_evidence = Mock(return_value={
+                'valid': True,
+                'relevance_score': 0.82,
+            })
+            mock_mediator.evidence_storage = Mock()
+            mock_mediator.evidence_storage.store_evidence = Mock(return_value={
+                'cid': 'QmArchive123',
+                'size': 180,
+                'type': 'web_document',
+                'metadata': {
+                    'document_parse_summary': {
+                        'status': 'available-fallback',
+                        'chunk_count': 1,
+                        'text_length': 64,
+                        'parser_version': 'documents-adapter:1',
+                        'input_format': 'html',
+                        'paragraph_count': 1,
+                    },
+                    'document_parse_contract': {
+                        'status': 'available-fallback',
+                        'source': 'web_document',
+                        'chunk_count': 1,
+                        'summary': {
+                            'status': 'available-fallback',
+                            'chunk_count': 1,
+                            'text_length': 64,
+                            'parser_version': 'documents-adapter:1',
+                            'input_format': 'html',
+                            'paragraph_count': 1,
+                        },
+                        'lineage': {
+                            'source': 'web_document',
+                            'parser_version': 'documents-adapter:1',
+                            'input_format': 'html',
+                            'normalization': 'html_to_text',
+                        },
+                    },
+                },
+                'document_parse': {
+                    'status': 'available-fallback',
+                    'text': 'Archived policy snapshot',
+                    'summary': {
+                        'status': 'available-fallback',
+                        'chunk_count': 1,
+                        'text_length': 23,
+                        'parser_version': 'documents-adapter:1',
+                        'input_format': 'html',
+                        'paragraph_count': 1,
+                        'page_count': 1,
+                        'extraction_method': 'html_to_text',
+                        'quality_tier': 'high',
+                        'quality_score': 95.0,
+                    },
+                    'lineage': {
+                        'source': 'web_document',
+                        'parser_version': 'documents-adapter:1',
+                        'input_format': 'html',
+                        'normalization': 'html_to_text',
+                    },
+                    'chunks': [
+                        {
+                            'chunk_id': 'chunk-0',
+                            'index': 0,
+                            'start': 0,
+                            'end': 23,
+                            'text': 'Archived policy snapshot',
+                        }
+                    ],
+                    'metadata': {
+                        'filename': 'policy-page.html',
+                        'mime_type': 'text/html',
+                        'input_format': 'html',
+                        'parse_quality': {
+                            'quality_score': 95.0,
+                            'quality_tier': 'high',
+                        },
+                        'source_span': {
+                            'page_count': 1,
+                            'text_length': 23,
+                        },
+                        'transform_lineage': {
+                            'source': 'web_document',
+                            'parser_version': 'documents-adapter:1',
+                            'input_format': 'html',
+                            'normalization': 'html_to_text',
+                        },
+                    },
+                },
+            })
+
+            mock_mediator.evidence_state = Mock()
+            mock_mediator.evidence_state.upsert_evidence_record = Mock(return_value={
+                'record_id': 7,
+                'created': True,
+                'reused': False,
+            })
+
+            hook = WebEvidenceIntegrationHook(mock_mediator)
+            result = hook._store_evidence_items(
+                [
+                    {
+                        'title': 'Archived policy page',
+                        'url': 'https://web.archive.org/web/20240101120000/https://example.com/policy',
+                        'content': '<html><body><p>Archived policy snapshot</p></body></html>',
+                        'source_type': 'archived_domain_scrape',
+                        'discovered_at': '2024-01-02T00:00:00Z',
+                        'metadata': {
+                            'archive_url': 'https://web.archive.org/web/20240101120000/https://example.com/policy',
+                            'original_url': 'https://example.com/policy',
+                            'captured_at': '2024-01-01T12:00:00Z',
+                            'original_source_type': 'common_crawl',
+                        },
+                    }
+                ],
+                keywords=['policy'],
+                user_id='testuser',
+                claim_type=None,
+                min_relevance=0.5,
+            )
+
+            assert result['stored_new'] == 1
+            assert result['parse_details'][0]['lineage']['content_origin'] == 'historical_archive_capture'
+            assert result['parse_details'][0]['lineage']['historical_capture'] is True
+            assert result['parse_details'][0]['lineage']['capture_source'] == 'archived_domain_scrape'
+            assert result['parse_details'][0]['lineage']['archive_url'] == 'https://web.archive.org/web/20240101120000/https://example.com/policy'
+            assert result['parse_details'][0]['lineage']['version_of'] == 'https://example.com/policy'
+            persisted_info = mock_mediator.evidence_state.upsert_evidence_record.call_args.kwargs['evidence_info']
+            persisted_lineage = persisted_info['document_parse']['metadata']['transform_lineage']
+            assert persisted_lineage['content_origin'] == 'historical_archive_capture'
+            assert persisted_lineage['captured_at'] == '2024-01-01T12:00:00Z'
+            assert persisted_lineage['observed_at'] == '2024-01-02T00:00:00Z'
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 

@@ -341,8 +341,8 @@ Per-claim results include:
 - `authorities_stored[claim_type]`: storage and deduplication counts for the authority batch.
 - `support_summary[claim_type]`: raw persisted support-link summary.
 - `claim_overview[claim_type]`: covered, partially supported, and missing element buckets.
-- `claim_coverage_matrix[claim_type]`: grouped claim-element support with `links_by_kind`, `missing_support_kinds`, and inline record or graph summaries.
-- `claim_coverage_summary[claim_type]`: compact coverage counts plus missing, unresolved, and contradiction labels.
+- `claim_coverage_matrix[claim_type]`: grouped claim-element support with `links_by_kind`, `missing_support_kinds`, inline record or graph summaries, and per-element support-packet lineage rollups.
+- `claim_coverage_summary[claim_type]`: compact coverage counts plus missing, unresolved, contradiction, and support-packet lineage labels.
 - `claim_support_gaps[claim_type]`: unresolved-element diagnostics with recommended actions.
 - `claim_contradiction_candidates[claim_type]`: heuristic contradiction candidates for operator review.
 - `claim_support_snapshots[claim_type]`: persisted snapshot ids and metadata for the stored gap and contradiction diagnostics.

@@ -108,6 +108,10 @@ class DocumentParseSummary:
     parser_version: str = ""
     input_format: str = ""
     paragraph_count: int = 0
+    extraction_method: str = ""
+    quality_tier: str = ""
+    quality_score: float = 0.0
+    page_count: int = 0
 
     def as_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -120,6 +124,8 @@ class DocumentTransformLineage:
     input_format: str = ""
     normalization: str = ""
     chunking: Dict[str, Any] = field(default_factory=dict)
+    extraction: Dict[str, Any] = field(default_factory=dict)
+    source_span: Dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> Dict[str, Any]:
         return asdict(self)

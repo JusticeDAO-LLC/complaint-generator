@@ -43,7 +43,7 @@ Checklist:
 
 - [x] capability entries are stable for documents, knowledge graphs, GraphRAG, logic tools, vector store, and MCP gateway
 - [x] degraded-reason payloads use a consistent shape across adapters
-- [ ] mediator startup logs one consistent capability summary across full, partial, and degraded modes
+- [x] mediator startup logs one consistent capability summary across full, partial, and degraded modes
 - [x] no production module imports `ipfs_datasets_py` internals directly outside `integrations/ipfs_datasets/`
 - [ ] direct production `sys.path` mutation is removed or explicitly isolated to tests only
 
@@ -51,6 +51,7 @@ Acceptance criteria:
 
 - complaint-generator starts cleanly with or without optional `ipfs_datasets_py` extras
 - missing features degrade into explicit capability payloads rather than import errors
+- adapter loader path setup is limited to vendored import fallback instead of eager mutation during routine capability probing
 
 Validation:
 
@@ -162,6 +163,10 @@ Goal:
 
 - layer GraphRAG scoring and formal validation on top of the stabilized parse, fact, and graph substrates
 
+Status:
+
+- core proof-aware review, contradiction diagnostics, reasoning diagnostics, and reasoning-aware follow-up planning are already in place; the remaining work is to deepen GraphRAG and replace placeholder-heavy logic-adapter behavior with grounded validation workflows
+
 Primary files:
 
 - `integrations/ipfs_datasets/graphrag.py`
@@ -175,11 +180,12 @@ Primary files:
 Checklist:
 
 - [ ] GraphRAG exposes ontology-quality or support-path scoring in a mediator-consumable shape
-- [ ] support overviews surface quality signals rather than raw support counts alone
-- [ ] follow-up planning can consume graph-quality or ontology-gap signals
-- [ ] logic adapter wraps text-to-predicate, contradiction, and proof workflows behind stable normalized outputs
+- [x] support overviews surface quality signals rather than raw support counts alone
+- [x] proof-gap and contradiction outputs are persisted or exposed through review surfaces
+- [x] follow-up planning consumes proof-decision and reasoning-gap signals from the current validation layer
+- [ ] logic adapter wraps text-to-predicate, contradiction, and proof workflows behind stable normalized outputs rather than placeholder-heavy capability output
+- [ ] GraphRAG-driven graph-quality or ontology-gap signals are consumable by follow-up planning
 - [ ] at least one complaint type has explicit predicate templates and grounded fact mapping
-- [ ] proof-gap and contradiction outputs are persisted or exposed through review surfaces
 
 Acceptance criteria:
 
@@ -201,6 +207,10 @@ Goal:
 
 - turn the current review payloads into a fuller operator-facing support workspace
 
+Status:
+
+- the repo already has review payloads, compact coverage summaries, follow-up history summaries, and a dashboard round-trip flow; the remaining work is richer drilldown and support-packet productization
+
 Primary files:
 
 - `applications/review_api.py`
@@ -212,12 +222,12 @@ Primary files:
 
 Checklist:
 
-- [ ] review payloads expose support packets with evidence, authority, fact, provenance, and graph-support detail
-- [ ] contradiction and missing-support summaries are operator-visible
+- [ ] review payloads expose full support packets with evidence, authority, fact, provenance, and graph-support detail
+- [x] contradiction and missing-support summaries are operator-visible
 - [ ] timeline, archive-history, and graph-trace drilldowns are operator-visible
 - [ ] queued acquisition and enrichment state can be inspected from review surfaces
 - [ ] long-running archive, graph, and validation work can move into explicit background workflows where necessary
-- [ ] documentation for review and execution routes is aligned with actual payloads and compatibility behavior
+- [x] documentation for review and execution routes is aligned with actual payloads and compatibility behavior
 
 Acceptance criteria:
 

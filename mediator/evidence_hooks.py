@@ -16,7 +16,7 @@ from integrations.ipfs_datasets.provenance import (
     merge_metadata_with_provenance,
     stable_content_hash,
 )
-from integrations.ipfs_datasets.documents import parse_document_bytes
+from integrations.ipfs_datasets.documents import parse_document_bytes, should_parse_document_input
 from integrations.ipfs_datasets.graphs import extract_graph_from_text, persist_graph_snapshot
 from integrations.ipfs_datasets.types import CaseArtifact, CaseFact
 from integrations.ipfs_datasets.storage import (
@@ -57,11 +57,11 @@ class EvidenceStorageHook:
         parse_flag = (metadata or {}).get('parse_document')
         if parse_flag is not None:
             return bool(parse_flag)
-        normalized_type = (evidence_type or '').lower()
-        if normalized_type in {'document', 'text', 'email', 'pdf'}:
-            return True
-        mime_type = str((metadata or {}).get('mime_type', '')).lower()
-        return mime_type.startswith('text/') or mime_type == 'application/pdf'
+        return should_parse_document_input(
+            evidence_type=evidence_type,
+            filename=str((metadata or {}).get('filename', '')),
+            mime_type=str((metadata or {}).get('mime_type', '')),
+        )
     
     def store_evidence(self, data: bytes, evidence_type: str, 
                       metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:

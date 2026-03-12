@@ -18,6 +18,14 @@ This document is the practical integration guide that sits between:
 
 The main principle is simple: complaint-generator remains the orchestrator, and `ipfs_datasets_py` provides acquisition, parsing, graph, archival, retrieval, and reasoning capabilities through the adapter layer under `integrations/ipfs_datasets/`.
 
+## Adapter-First Guidance
+
+When writing complaint-generator code examples, prefer adapter imports from `integrations/ipfs_datasets/*` instead of direct `ipfs_datasets_py.*` imports.
+
+Use direct upstream import examples only when the document is intentionally describing upstream package internals or upstream-only experimentation.
+
+This keeps complaint-generator docs aligned with the actual production boundary, degraded-mode behavior, and normalized payload contracts used by mediator flows.
+
 ## Integration Goals
 
 The `ipfs_datasets_py` integration should improve complaint-generator in five concrete ways:
@@ -316,14 +324,10 @@ results = collector.search(query)
 
 **With:**
 ```python
-# NEW (ipfs_datasets_py)
-from ipfs_datasets_py.web_archiving import BraveSearchClient
-client = BraveSearchClient(
-    api_key=os.getenv('BRAVE_API_KEY'),
-    cache_ipfs=True,  # Distributed caching
-    cache_ttl=86400   # 24 hour cache
-)
-results = client.search(query, count=50)
+# NEW (complaint-generator adapter seam)
+from integrations.ipfs_datasets.search import search_brave_web
+
+results = search_brave_web(query, max_results=50)
 ```
 
 **Benefits:**
@@ -347,21 +351,17 @@ text = parser.parse_pdf(pdf_path)
 
 **With:**
 ```python
-# NEW (ipfs_datasets_py)
-from ipfs_datasets_py.pdf_processing import PDFProcessor
-processor = PDFProcessor(
-    enable_ocr=True,
-    enable_graphrag=True,
-    hardware_acceleration=True  # 2-20x speedup
-)
-result = await processor.process_document(pdf_path)
+# NEW (complaint-generator adapter seam)
+from integrations.ipfs_datasets.documents import parse_document_file
+
+document_parse = parse_document_file(pdf_path)
 
 # Result includes:
-# - result.text (extracted text)
-# - result.entities (extracted entities)
-# - result.knowledge_graph (relationships)
-# - result.ipld_cid (IPFS storage)
-# - result.metadata (PDF metadata)
+# - document_parse['text']
+# - document_parse['chunks']
+# - document_parse['summary']
+# - document_parse['metadata']
+# - document_parse['provider']
 ```
 
 **Benefits:**
@@ -379,27 +379,27 @@ result = await processor.process_document(pdf_path)
 **Combine ipfs_datasets_py's vector search with HACC's keyword tagging:**
 
 ```python
-from ipfs_datasets_py.embeddings_router import EmbeddingsRouter
-from ipfs_datasets_py.search import VectorSearch
+from integrations.ipfs_datasets.vector_store import create_vector_index
 from hacc_integration.keywords import COMPLAINT_KEYWORDS
 
 class HybridDocumentIndexer:
     def __init__(self):
-        self.embeddings = EmbeddingsRouter()
-        self.vector_search = VectorSearch()
         self.complaint_keywords = COMPLAINT_KEYWORDS
     
     async def index_document(self, text, metadata):
-        # Vector embeddings (ipfs_datasets_py)
-        embedding = await self.embeddings.embed_text(text)
-        await self.vector_search.add_document(embedding, metadata)
+        # Vector indexing is routed through complaint-generator's adapter seam.
+        vector_result = create_vector_index(
+            [{"text": text, "metadata": metadata}],
+            index_name="complaint_documents",
+        )
         
         # Keyword tagging (HACC)
         tags = self._extract_keywords(text)
         risk_score = self._calculate_risk(tags)
         
         return {
-            'vector_indexed': True,
+            'vector_indexed': vector_result.get('status') != 'unavailable',
+            'vector_status': vector_result.get('status'),
             'keywords': tags,
             'risk_score': risk_score
         }
@@ -465,27 +465,23 @@ class ComplaintLegalPatternExtractor:
 **Integrate with ipfs_datasets_py's GraphRAG:**
 
 ```python
-from ipfs_datasets_py.graphrag import GraphRAGIntegrator
+from integrations.ipfs_datasets.documents import parse_document_file
+from integrations.ipfs_datasets.graphrag import build_ontology
 from hacc_integration.legal_patterns import ComplaintLegalPatternExtractor
 
-async def analyze_legal_document(pdf_path):
-    # Process with ipfs_datasets_py
-    processor = PDFProcessor()
-    result = await processor.process_document(pdf_path)
+def analyze_legal_document(pdf_path):
+    # Process through complaint-generator's adapter seam
+    result = parse_document_file(pdf_path)
     
     # Extract legal provisions (HACC)
     extractor = ComplaintLegalPatternExtractor()
-    provisions = extractor.extract_provisions(result.text)
+    provisions = extractor.extract_provisions(result.get('text', ''))
     
-    # Build knowledge graph (ipfs_datasets_py)
-    graphrag = GraphRAGIntegrator()
-    kg = await graphrag.integrate_document(
-        result,
-        custom_entities=provisions  # Inject HACC's legal terms
-    )
+    # Build ontology payload through the adapter seam
+    kg = build_ontology(result.get('text', ''))
     
     return {
-        'text': result.text,
+        'text': result.get('text', ''),
         'legal_provisions': provisions,
         'knowledge_graph': kg
     }
@@ -518,7 +514,7 @@ async def analyze_legal_document(pdf_path):
 
 **Migrate to ipfs_datasets_py's search infrastructure:**
 
-1. ✅ Use `BraveSearchClient` instead of HACC's wrapper
+1. ✅ Use `integrations.ipfs_datasets.search.search_brave_web` instead of HACC's wrapper
 2. ✅ Enable IPFS caching for search results
 3. ✅ Integrate `CommonCrawlSearchEngine`
 4. ✅ Set up distributed caching
@@ -597,12 +593,12 @@ async def analyze_legal_document(pdf_path):
 
 ### ❌ REPLACE - Infrastructure
 
-1. **Web Search** - Use ipfs_datasets_py's `BraveSearchClient`
-2. **PDF Processing** - Use ipfs_datasets_py's `PDFProcessor`
+1. **Web Search** - Use `integrations.ipfs_datasets.search.search_brave_web`
+2. **PDF Processing** - Use `integrations.ipfs_datasets.documents.parse_document_file`
 3. **Document Storage** - Use ipfs_datasets_py's IPFS integration
 4. **OCR Processing** - Use ipfs_datasets_py's `MultiEngineOCR`
-5. **Vector Search** - Use ipfs_datasets_py's `EmbeddingsRouter`
-6. **Knowledge Graphs** - Use ipfs_datasets_py's GraphRAG
+5. **Vector Search** - Use `integrations.ipfs_datasets.vector_store.create_vector_index` and `search_vector_index`
+6. **Knowledge Graphs** - Use `integrations.ipfs_datasets.graphrag` and `integrations.ipfs_datasets.graphs`
 
 ---
 
@@ -611,23 +607,14 @@ async def analyze_legal_document(pdf_path):
 ### Example 1: Complete Evidence Pipeline
 
 ```python
-from ipfs_datasets_py.web_archiving import BraveSearchClient
-from ipfs_datasets_py.pdf_processing import PDFProcessor
-from ipfs_datasets_py.embeddings_router import EmbeddingsRouter
+from integrations.ipfs_datasets.documents import parse_document_file
+from integrations.ipfs_datasets.search import search_brave_web
+from integrations.ipfs_datasets.vector_store import create_vector_index
 from hacc_integration.legal_patterns import ComplaintLegalPatternExtractor
 from hacc_integration.risk_scoring import ComplaintRiskScorer
 
 class ComplaintEvidencePipeline:
     def __init__(self):
-        # ipfs_datasets_py infrastructure
-        self.search = BraveSearchClient(cache_ipfs=True)
-        self.pdf_processor = PDFProcessor(
-            enable_ocr=True,
-            enable_graphrag=True,
-            hardware_acceleration=True
-        )
-        self.embeddings = EmbeddingsRouter()
-        
         # HACC domain knowledge
         self.legal_extractor = ComplaintLegalPatternExtractor()
         self.risk_scorer = ComplaintRiskScorer()
@@ -635,32 +622,35 @@ class ComplaintEvidencePipeline:
     async def process_complaint(self, complaint_text, keywords):
         # 1. Search for evidence
         search_query = f"site:gov {' OR '.join(keywords)}"
-        results = self.search.search(search_query, count=50)
+        results = search_brave_web(search_query, max_results=50)
         
         # 2. Download and process PDFs
         evidence = []
         for result in results:
             if result['url'].endswith('.pdf'):
-                # Process with ipfs_datasets_py
-                processed = await self.pdf_processor.process_document(result['url'])
+                # Process through the adapter seam
+                processed = parse_document_file(result['url'])
                 
                 # Extract legal provisions (HACC)
-                provisions = self.legal_extractor.extract_provisions(processed.text)
+                provisions = self.legal_extractor.extract_provisions(processed.get('text', ''))
                 
                 # Calculate risk (HACC)
-                risk = self.risk_scorer.calculate_risk(processed.text, provisions)
+                risk = self.risk_scorer.calculate_risk(processed.get('text', ''), provisions)
                 
-                # Generate embeddings (ipfs_datasets_py)
-                embedding = await self.embeddings.embed_text(processed.text)
+                # Route vector indexing through the adapter seam
+                vector_result = create_vector_index(
+                    [{"text": processed.get('text', ''), "metadata": {"url": result['url']}}],
+                    index_name="complaint_evidence",
+                )
                 
                 evidence.append({
                     'url': result['url'],
-                    'text': processed.text,
-                    'ipfs_cid': processed.ipld_cid,
+                    'text': processed.get('text', ''),
+                    'provider': processed.get('provider'),
                     'legal_provisions': provisions,
                     'risk_score': risk,
-                    'embedding': embedding,
-                    'knowledge_graph': processed.knowledge_graph
+                    'vector_result': vector_result,
+                    'parse_summary': processed.get('summary', {})
                 })
         
         return evidence
@@ -669,34 +659,27 @@ class ComplaintEvidencePipeline:
 ### Example 2: Hybrid Search
 
 ```python
-from ipfs_datasets_py.search import VectorSearch
+from integrations.ipfs_datasets.search import search_brave_web
+from integrations.ipfs_datasets.vector_store import search_vector_index
 from hacc_integration.keywords import COMPLAINT_KEYWORDS
 
 class HybridComplaintSearch:
     def __init__(self):
-        self.vector_search = VectorSearch()
         self.keywords = COMPLAINT_KEYWORDS
     
-    async def search(self, query, complaint_type):
-        # Vector search (semantic)
-        vector_results = await self.vector_search.search(query, top_k=50)
+    def search(self, query, complaint_type):
+        # Vector search (semantic, adapter-backed)
+        vector_results = search_vector_index(query, index_name=complaint_type, top_k=50)
+        web_results = search_brave_web(query, max_results=25)
         
         # Keyword filtering (domain-specific)
-        filtered_results = []
-        for result in vector_results:
-            tags = self._extract_keywords(result.text)
-            if self._is_relevant(tags, complaint_type):
-                result.tags = tags
-                result.relevance = self._calculate_relevance(tags, complaint_type)
-                filtered_results.append(result)
-        
-        # Sort by combined score
-        filtered_results.sort(
-            key=lambda x: x.vector_score * 0.7 + x.relevance * 0.3,
-            reverse=True
-        )
-        
-        return filtered_results[:20]
+        keyword_hits = [kw for kw in self.keywords if kw.lower() in query.lower()]
+
+        return {
+            'vector_results': vector_results,
+            'web_results': web_results,
+            'keyword_hits': keyword_hits,
+        }
     
     def _extract_keywords(self, text):
         found = []
@@ -726,7 +709,7 @@ class HybridComplaintSearch:
 |-----------|-----------------|------|---------|
 | PDF parsing (100 pages) | PyMuPDF + pdfplumber | ~3s | 1.7x |
 | OCR (scanned, 100 pages) | MultiEngineOCR + GPU | ~30s | **10x** |
-| Web search (50 results) | BraveSearchClient + cache | ~0.2s | **10x** (cached) |
+| Web search (50 results) | search_brave_web adapter + cache | ~0.2s | **10x** (cached) |
 | CommonCrawl query | Local DuckDB index | ~5s | **6x** |
 | Vector embedding (1000 docs) | EmbeddingsRouter + GPU | ~10s | **20x** |
 
@@ -793,33 +776,30 @@ torch>=2.0.0  # for CUDA
 # tests/test_ipfs_datasets_integration.py
 
 import pytest
-from ipfs_datasets_py.pdf_processing import PDFProcessor
+from integrations.ipfs_datasets.documents import parse_document_file
+from integrations.ipfs_datasets.search import search_brave_web
 from hacc_integration.legal_patterns import ComplaintLegalPatternExtractor
 
 @pytest.mark.integration
-async def test_pdf_processing_with_legal_extraction():
-    """Test ipfs_datasets_py PDF processing + HACC legal extraction."""
-    processor = PDFProcessor(enable_ocr=True)
+def test_pdf_processing_with_legal_extraction():
+    """Test adapter-based document parsing + HACC legal extraction."""
     extractor = ComplaintLegalPatternExtractor()
     
     # Process test PDF
-    result = await processor.process_document('tests/data/sample_complaint.pdf')
+    result = parse_document_file('tests/data/sample_complaint.pdf')
     
     # Extract legal provisions
-    provisions = extractor.extract_provisions(result.text)
+    provisions = extractor.extract_provisions(result.get('text', ''))
     
     # Verify
-    assert result.text is not None
+    assert result.get('text') is not None
     assert len(provisions) > 0
     assert any('discrimination' in p['term'].lower() for p in provisions)
 
 @pytest.mark.integration
 def test_brave_search_with_complaint_keywords():
-    """Test ipfs_datasets_py Brave search with complaint keywords."""
-    from ipfs_datasets_py.web_archiving import BraveSearchClient
-    
-    client = BraveSearchClient()
-    results = client.search('site:gov "fair housing" filetype:pdf', count=10)
+    """Test adapter-based Brave search with complaint keywords."""
+    results = search_brave_web('site:gov "fair housing" filetype:pdf', max_results=10)
     
     assert len(results) > 0
     assert all('url' in r for r in results)

@@ -64,22 +64,47 @@ Representative shape:
       "parser_version": "documents-adapter:1",
       "input_format": "text",
       "paragraph_count": 1,
+      "extraction_method": "text_normalization",
+      "quality_tier": "high",
+      "quality_score": 98.0,
+      "page_count": 1,
       "source": "web_document"
+    },
+    "parse_quality": {
+      "quality_score": 98.0,
+      "quality_tier": "high",
+      "quality_flags": [],
+      "ocr_used": false
+    },
+    "source_span": {
+      "char_start": 0,
+      "char_end": 900,
+      "text_length": 900,
+      "raw_size": 900,
+      "page_count": 1
     },
     "storage_metadata": {
       "filename": "example.txt",
       "parser_version": "documents-adapter:1",
       "source": "web_document",
+      "parse_quality": {
+        "quality_score": 98.0,
+        "quality_tier": "high",
+        "quality_flags": [],
+        "ocr_used": false
+      },
       "transform_lineage": {
         "source": "web_document",
         "parser_version": "documents-adapter:1",
-        "input_format": "text"
+        "input_format": "text",
+        "normalization": "text_normalization"
       }
     },
     "lineage": {
       "source": "web_document",
       "parser_version": "documents-adapter:1",
-      "input_format": "text"
+      "input_format": "text",
+      "normalization": "text_normalization"
     }
   }
 }
@@ -90,6 +115,9 @@ Compatibility notes:
 - `metadata.document_parse_summary` remains present for existing callers.
 - Stored DuckDB parse columns still use `parse_status`, `chunk_count`, `parsed_text_preview`, and `parse_metadata`.
 - `document_parse_contract` is the canonical bundle those compatibility fields are now derived from.
+- `summary.input_format` and `lineage.input_format` may now be `text`, `html`, `email`, `rtf`, `docx`, or `pdf`, depending on the adapter-owned normalization path.
+- `summary.extraction_method`, `summary.quality_tier`, `summary.quality_score`, and `summary.page_count` expose adapter-level extraction diagnostics without requiring callers to inspect raw metadata.
+- `document_parse_contract.parse_quality` and `document_parse_contract.source_span` expose extraction quality flags, OCR status, and character/page span metadata for downstream provenance consumers.
 
 ## Evidence Submission
 
@@ -169,8 +197,11 @@ Representative fields:
     "total_chunks": 4,
     "total_paragraphs": 3,
     "total_text_length": 1800,
+    "total_pages": 2,
     "status_counts": {"fallback": 2},
     "input_format_counts": {"text": 2},
+    "quality_tier_counts": {"high": 2},
+    "avg_quality_score": 98.0,
     "parser_versions": ["documents-adapter:1"]
   },
   "parse_details": [
@@ -181,7 +212,11 @@ Representative fields:
       "text_length": 900,
       "parser_version": "documents-adapter:1",
       "input_format": "text",
-      "paragraph_count": 1
+      "paragraph_count": 1,
+      "page_count": 1,
+      "extraction_method": "text_normalization",
+      "quality_tier": "high",
+      "quality_score": 98.0
     }
   ],
   "evidence_cids": ["Qm...", "Qm..."],
@@ -211,6 +246,8 @@ Count semantics:
 - `support_links_reused`: Support links that already existed.
 - `parse_summary`: Aggregate parse statistics for stored web evidence in the request.
 - `parse_details`: Per-record parse metadata extracted from `document_parse_summary`.
+- `parse_summary.avg_quality_score`: Mean adapter-reported quality score across stored web evidence for the request.
+- `parse_details[*].quality_tier` and `parse_details[*].source_span`: Per-record extraction diagnostics derived from the shared parse contract.
 
 ## Automatic Evidence Discovery
 
@@ -252,6 +289,25 @@ Representative shape:
       },
       "contradiction_candidate_count": 1,
       "contradicted_elements": ["Protected activity"],
+      "support_packet_summary": {
+        "total_packet_count": 2,
+        "fact_packet_count": 2,
+        "link_only_packet_count": 0,
+        "historical_capture_count": 1,
+        "content_origin_counts": {
+          "historical_archive_capture": 1,
+          "authority_reference_fallback": 1
+        },
+        "capture_source_counts": {
+          "archived_domain_scrape": 1
+        },
+        "fallback_mode_counts": {
+          "citation_title_only": 1
+        },
+        "content_source_field_counts": {
+          "citation_title_fallback": 1
+        }
+      },
       "graph_trace_summary": {
         "traced_link_count": 0,
         "snapshot_created_count": 0,
@@ -320,6 +376,7 @@ Compatibility note:
 - `evidence_stored[claim_type]` remains an integer count.
 - `evidence_storage_summary[claim_type]` is the authoritative deduplication-aware breakdown.
 - `claim_coverage_summary[claim_type]` is the compact support-health snapshot for dashboards and automation.
+- `claim_coverage_summary[claim_type].support_packet_summary` adds compact lineage counts for archive captures, fallback-only authority text, capture sources, and source-field fallbacks.
 - `claim_support_gaps[claim_type]` and `claim_contradiction_candidates[claim_type]` expose the richer unresolved-support and conflict diagnostics behind that compact summary.
 - `claim_support_snapshots[claim_type]` exposes the persisted snapshot ids, support-kind scope, freshness metadata, and bounded-retention pruning metadata for the stored diagnostics that automatic workflows just wrote.
 - `claim_support_snapshot_summary[claim_type]` compresses that lifecycle state into fresh versus stale counts, snapshot kinds, retention limits, and total pruning for dashboard-style consumers.
@@ -768,15 +825,12 @@ Representative shape:
         "collect_initial_support": 1,
         "collect_missing_support_kind": 1
       }
-    }
-  },
+    },
   "follow_up_execution_summary": {
     "civil rights": {
       "executed_task_count": 0,
       "skipped_task_count": 0,
       "suppressed_task_count": 0,
-      "manual_review_task_count": 0,
-      "cooldown_skipped_task_count": 0,
       "contradiction_task_count": 0,
       "reasoning_gap_task_count": 0,
       "semantic_cluster_count": 0,
@@ -796,6 +850,7 @@ Support-link semantics:
 - `graph_trace`: Provenance-oriented graph packet combining source table, record id, adapter snapshot semantics, and stored lineage metadata for review or downstream tracing.
 - `support_traces`: Persisted fact-oriented trace rows derived from the stored support links, fact tables, and graph lineage. These are the strongest review-oriented explanation layer for why an element is currently covered or still weak.
 - `support_trace_summary`: Compact counts over `support_traces`, including fact-trace volume, parse-source mix, graph-status mix, and distinct record or graph counts.
+- `support_packet_summary`: Compact lineage counts over the traced support corpus, including archive-capture totals, capture-source mix, authority fallback modes, and source-field fallback mix.
 
 Interpretation notes:
 
@@ -805,7 +860,9 @@ Interpretation notes:
 - `reasoning_adapter_status_counts`, `reasoning_backend_available_count`, `reasoning_predicate_count`, `reasoning_ontology_entity_count`, `reasoning_ontology_relationship_count`, and `reasoning_fallback_ontology_count` summarize what the `ipfs_datasets` logic and GraphRAG adapters contributed to the current validation pass.
 - `decision_source_counts`, `adapter_contradicted_element_count`, and `decision_fallback_ontology_element_count` summarize how proof decisions were reached across the claim, including whether adapter contradiction output changed any element status.
 - `proof_supported_element_count`, `logic_unprovable_element_count`, and `ontology_invalid_element_count` summarize how often proof and ontology adapters positively supported an element, downgraded an element as unprovable, or reported an invalid reasoning graph.
+- `support_packet_summary` summarizes operator-visible parse lineage across the claim, including archive captures, capture-source mix, citation-only fallback modes, and content-source-field fallbacks.
 - `graph_trace_summary` is the compact lineage companion for dashboards and audit surfaces; it counts traced links, snapshot creation versus reuse, source-table mix, and distinct graph ids without requiring callers to inspect raw support links.
+- `support_trace_summary` remains the parse-diagnostics aggregate, while `support_packet_summary` is the operator-facing lineage aggregate built from those traced records.
 - `unresolved_element_count`, `unresolved_elements`, and `recommended_gap_actions` compress the richer gap payload into one per-claim summary for dashboards.
 - `contradiction_candidate_count` and `contradicted_elements` surface likely support conflicts without requiring callers to scan every candidate pair.
 - `claim_support_gaps` exposes unresolved-element diagnostics with recommended actions and per-element support context.
@@ -975,6 +1032,31 @@ Representative shape:
       "authority_record_id": 12
     }
   ],
+  "support_packets": [
+    {
+      "support_kind": "evidence",
+      "support_ref": "Qm...",
+      "support_label": "Archived timeline email",
+      "lineage_summary": {
+        "content_origin": "historical_archive_capture",
+        "historical_capture": true,
+        "capture_source": "archived_domain_scrape",
+        "archive_url": "https://web.archive.org/web/.../https://example.com/timeline-email",
+        "original_url": "https://example.com/timeline-email"
+      }
+    },
+    {
+      "support_kind": "authority",
+      "support_ref": "42 U.S.C. § 1983",
+      "support_label": "Citation fallback",
+      "lineage_summary": {
+        "content_origin": "authority_reference_fallback",
+        "historical_capture": false,
+        "fallback_mode": "citation_title_only",
+        "content_source_field": "citation_title_fallback"
+      }
+    }
+  ],
   "evidence": [
     {
       "id": 14,
@@ -1001,6 +1083,9 @@ Interpretation notes:
 - `gap_summary` surfaces unresolved or partially satisfied support requirements for the same element, plus graph-backed trace counts and graph-support lookup output.
 - `contradiction_candidates` contains heuristic fact-pair conflicts for the element when support facts disagree with opposite polarity over materially overlapping terms.
 - `support_facts` is the flattened fact list collected from the element's enriched evidence and authority support links.
+- `support_packets` is the review-friendly lineage packet view over that same element-level support.
+- `support_packets[*].lineage_summary` carries archive-history fields such as `archive_url` and `capture_source`, plus fallback markers such as `fallback_mode` and `content_source_field`.
+- The raw API preserves support-packet data without imposing a display order; the review dashboard currently renders archive captures first, fallback-only authority packets next, and remaining packets after that for faster operator scanning.
 - `evidence` and `authorities` are the matching stored rows for the resolved claim element.
 
 ## Support Fact Retrieval
@@ -1214,7 +1299,10 @@ Interpretation notes:
 - The same adaptive retry fields appear on `follow_up_execution_summary`, so operator tooling can tell when executed or skipped work came from an already-broadened retry path.
 - `follow_up_execution_summary.semantic_cluster_count` and `follow_up_execution_summary.semantic_duplicate_count` aggregate graph-support clusters across executed and skipped tasks, preserving the support context that informed execution decisions.
 - `claim_coverage_matrix[claim_type]` exposes the same grouped claim-element support view used by automatic legal research.
+- `claim_coverage_matrix[claim_type]` also includes per-element `support_packets` and `support_packet_summary` lineage rollups.
+- `claim_coverage_summary[claim_type]` includes the compact per-claim `support_packet_summary` totals used by operator dashboards.
 - `claim_coverage_summary[claim_type]` provides the smaller per-claim status snapshot with counts and missing-element labels.
+- Operator-facing review surfaces currently sort packet drilldowns archive-first and fallback-next, but that ordering is a dashboard convention layered on top of the raw `support_packets` payload rather than an API ordering guarantee.
 
 ## Claim Support Review API
 
@@ -1254,6 +1342,8 @@ Representative response shape:
       },
       "proof_gap_count": 3,
       "reasoning_backend_available_count": 4,
+      "low_quality_parsed_record_count": 0,
+      "parse_quality_issue_element_count": 0,
       "status_counts": {
         "covered": 1,
         "partially_supported": 1,
@@ -1267,7 +1357,26 @@ Representative response shape:
         "collect_missing_support_kind": 1
       },
       "contradiction_candidate_count": 1,
-      "contradicted_elements": ["Adverse action"]
+      "contradicted_elements": ["Adverse action"],
+      "support_packet_summary": {
+        "total_packet_count": 3,
+        "fact_packet_count": 3,
+        "link_only_packet_count": 0,
+        "historical_capture_count": 2,
+        "content_origin_counts": {
+          "historical_archive_capture": 2,
+          "authority_reference_fallback": 1
+        },
+        "capture_source_counts": {
+          "archived_domain_scrape": 2
+        },
+        "fallback_mode_counts": {
+          "citation_title_only": 1
+        },
+        "content_source_field_counts": {
+          "citation_title_fallback": 1
+        }
+      }
     }
   },
   "claim_support_gaps": {
@@ -1392,6 +1501,8 @@ Representative response shape:
       "suppressed_task_count": 1,
       "contradiction_task_count": 0,
       "reasoning_gap_task_count": 0,
+      "parse_quality_task_count": 0,
+      "quality_gap_targeted_task_count": 0,
       "semantic_cluster_count": 2,
       "semantic_duplicate_count": 3,
       "follow_up_focus_counts": {
@@ -1448,6 +1559,8 @@ Interpretation notes:
 - `claim_reasoning_review` is the compact review-facing reasoning surface for flagged claim elements, capturing fallback ontology use plus unavailable or degraded adapter states without forcing clients to inspect every `reasoning_diagnostics` packet.
 - `follow_up_history` exposes recent rows from the persisted `claim_follow_up_execution` ledger, including contradiction-targeted retrieval attempts and manual-review audit events.
 - `follow_up_history_summary` compresses that ledger into counts by status, support kind, execution mode, query strategy, contradiction focus, resolution normalization, adaptive retry markers, and any recorded manual-review resolutions. `last_adaptive_retry` highlights the most recent broadened retry with its claim element label, timestamp, and freshness classification.
+- `claim_coverage_summary` now carries compact parse-quality review signals such as `low_quality_parsed_record_count`, `parse_quality_issue_element_count`, and `parse_quality_issue_elements`, so dashboard clients can spot extraction-quality problems without traversing raw validation elements.
+- `follow_up_plan_summary` and `follow_up_execution_summary` now include `parse_quality_task_count` plus `quality_gap_targeted_task_count`, allowing review surfaces to distinguish parse-remediation work from ordinary support-gap or contradiction follow-up.
 - `claim_coverage_summary`, `follow_up_plan_summary`, and `follow_up_execution_summary` are the compact operator-facing surfaces intended for dashboards and review tools; `resolution_applied_counts` highlights tasks that are still active only because unresolved support gaps remain after manual review.
 - When `execute_follow_up=true`, the response adds `compatibility_notice` and emits `Deprecation`, `Sunset`, `Link`, and `Warning` headers so clients can migrate off the compatibility path.
 - New clients should prefer `POST /api/claim-support/execute-follow-up` for side effects and treat `execute_follow_up` on the review endpoint as a compatibility path.
@@ -1542,6 +1655,24 @@ Representative response shape:
       "adaptive_retry_reason_counts": {}
     }
   },
+  "execution_quality_summary": {
+    "retaliation": {
+      "pre_low_quality_parsed_record_count": 1,
+      "post_low_quality_parsed_record_count": 0,
+      "low_quality_parsed_record_delta": -1,
+      "pre_parse_quality_issue_element_count": 1,
+      "post_parse_quality_issue_element_count": 0,
+      "parse_quality_issue_element_delta": -1,
+      "pre_parse_quality_issue_elements": ["Protected activity"],
+      "post_parse_quality_issue_elements": [],
+      "resolved_parse_quality_issue_elements": ["Protected activity"],
+      "remaining_parse_quality_issue_elements": [],
+      "newly_flagged_parse_quality_issue_elements": [],
+      "parse_quality_task_count": 1,
+      "quality_gap_targeted_task_count": 1,
+      "quality_improvement_status": "improved"
+    }
+  },
   "post_execution_review": {
     "follow_up_history_summary": {
       "retaliation": {
@@ -1592,6 +1723,7 @@ Interpretation notes:
 - `last_adaptive_retry` is shared across follow-up history, plan, and execution summaries so dashboards can align the most recent broadened retry event with the currently queued or already executed work, including whether that retry is still fresh or already stale.
 - `manual_review_task_count` in both follow-up summaries tracks contradiction-review work that intentionally does not trigger evidence or authority retrieval.
 - `follow_up_execution_summary` rolls executed and skipped work into shared `follow_up_focus_counts`, `query_strategy_counts`, `proof_decision_source_counts`, and `resolution_applied_counts`, so the standalone execution API exposes the same planner/execution mix analytics as review, web-evidence, and automatic legal research.
+- `execution_quality_summary` compares the compact pre-execution and post-execution parse-quality signals, so operator dashboards can tell whether parse-remediation retrieval actually reduced low-quality parsed records or cleared flagged elements.
 - `post_execution_review.follow_up_history_summary` reflects the refreshed ledger after execution, so clients can confirm that retrieval and manual-review events were recorded.
 
 - `follow_up_force=true` bypasses duplicate-within-cooldown suppression inside `Mediator.execute_claim_follow_up_plan(...)`.

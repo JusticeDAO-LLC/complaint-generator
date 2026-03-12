@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
 from bs4 import BeautifulSoup
 from fastapi import FastAPI
 from fastapi import Response
@@ -12,6 +13,9 @@ from claim_support_review import (
     ClaimSupportManualReviewResolveRequest,
     ClaimSupportReviewRequest,
 )
+
+
+pytestmark = pytest.mark.no_auto_network
 
 
 def _build_dashboard_app(mediator: Mock) -> FastAPI:
@@ -32,6 +36,25 @@ def _build_dashboard_mediator() -> Mock:
                 "total_links": 2,
                 "total_facts": 3,
                 "support_by_kind": {"evidence": 1, "authority": 1},
+                "support_packet_summary": {
+                    "total_packet_count": 3,
+                    "fact_packet_count": 3,
+                    "link_only_packet_count": 0,
+                    "historical_capture_count": 2,
+                    "content_origin_counts": {
+                        "historical_archive_capture": 2,
+                        "authority_reference_fallback": 1,
+                    },
+                    "capture_source_counts": {
+                        "archived_domain_scrape": 2,
+                    },
+                    "fallback_mode_counts": {
+                        "citation_title_only": 1,
+                    },
+                    "content_source_field_counts": {
+                        "citation_title_fallback": 1,
+                    },
+                },
                 "status_counts": {
                     "covered": 1,
                     "partially_supported": 0,
@@ -44,6 +67,59 @@ def _build_dashboard_mediator() -> Mock:
                         "fact_count": 2,
                         "total_links": 2,
                         "missing_support_kinds": [],
+                        "support_packet_summary": {
+                            "total_packet_count": 3,
+                            "fact_packet_count": 3,
+                            "link_only_packet_count": 0,
+                            "historical_capture_count": 2,
+                            "content_origin_counts": {
+                                "historical_archive_capture": 2,
+                                "authority_reference_fallback": 1,
+                            },
+                            "fallback_mode_counts": {
+                                "citation_title_only": 1,
+                            },
+                        },
+                        "support_packets": [
+                            {
+                                "support_kind": "evidence",
+                                "support_ref": "QmTimelineEmail",
+                                "support_label": "Timeline email",
+                                "fact": {
+                                    "fact_id": "fact:timeline-email",
+                                    "text": "Employee preserved the retaliation timeline in an archived email.",
+                                    "confidence": 0.98,
+                                },
+                                "lineage_summary": {
+                                    "content_origin": "historical_archive_capture",
+                                    "historical_capture": True,
+                                    "capture_source": "archived_domain_scrape",
+                                    "archive_url": "https://web.archive.org/web/20240101120000/https://example.com/timeline-email",
+                                    "original_url": "https://example.com/timeline-email",
+                                    "fallback_mode": "",
+                                    "content_source_field": "content",
+                                },
+                            },
+                            {
+                                "support_kind": "authority",
+                                "support_ref": "42 U.S.C. § 2000e-3",
+                                "support_label": "Retaliation citation",
+                                "fact": {
+                                    "fact_id": "fact:retaliation-citation",
+                                    "text": "Title and citation fallback preserved the retaliation authority reference.",
+                                    "confidence": 0.91,
+                                },
+                                "lineage_summary": {
+                                    "content_origin": "authority_reference_fallback",
+                                    "historical_capture": False,
+                                    "capture_source": "",
+                                    "archive_url": "",
+                                    "original_url": "",
+                                    "fallback_mode": "citation_title_only",
+                                    "content_source_field": "citation_title_fallback",
+                                },
+                            },
+                        ],
                         "links_by_kind": {
                             "evidence": [
                                 {
@@ -95,8 +171,8 @@ def _build_dashboard_mediator() -> Mock:
                     "status": "executed",
                     "timestamp": "2026-03-12T12:30:00",
                     "execution_mode": "retrieve_support",
-                    "follow_up_focus": "support_gap_closure",
-                    "query_strategy": "standard_gap_targeted",
+                    "follow_up_focus": "parse_quality_improvement",
+                    "query_strategy": "quality_gap_targeted",
                     "resolution_applied": "manual_review_resolved",
                 }
             ]
@@ -117,7 +193,9 @@ def _build_dashboard_mediator() -> Mock:
                         "claim_element": "Causal connection",
                         "status": "missing",
                         "priority": "high",
-                        "recommended_action": "retrieve_more_support",
+                        "recommended_action": "improve_parse_quality",
+                        "follow_up_focus": "parse_quality_improvement",
+                        "query_strategy": "quality_gap_targeted",
                         "missing_support_kinds": ["authority"],
                         "blocked_by_cooldown": False,
                         "should_suppress_retrieval": False,
@@ -139,7 +217,13 @@ def _build_dashboard_mediator() -> Mock:
         "claims": {
             "retaliation": {
                 "task_count": 1,
-                "tasks": [{"claim_element": "Causal connection"}],
+                "tasks": [
+                    {
+                        "claim_element": "Causal connection",
+                        "follow_up_focus": "parse_quality_improvement",
+                        "query_strategy": "quality_gap_targeted",
+                    }
+                ],
                 "skipped_tasks": [],
             }
         }
@@ -181,10 +265,40 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert soup.find(id="resolution-result-card") is not None
     assert soup.find(id="resolution-result-status") is not None
     assert soup.find(id="resolution-result-chips") is not None
+    assert soup.find(id="execution-result-card") is not None
+    assert soup.find(id="execution-result-status") is not None
     assert soup.find(id="signal-plan-normalized") is not None
     assert soup.find(id="signal-history-normalized") is not None
+    assert soup.find(id="signal-archive-captures") is not None
+    assert soup.find(id="signal-fallback-authorities") is not None
+    assert soup.find(id="signal-low-quality-records") is not None
+    assert soup.find(id="signal-parse-quality-tasks") is not None
     assert soup.find(id="history-list") is not None
     assert soup.find(id="history-summary-chips") is not None
+    assert "View lineage packets" in page_html
+    assert "packet-details" in page_html
+    assert "All packets" in page_html
+    assert "Archived only" in page_html
+    assert "Fallback only" in page_html
+    assert "data-packet-filter-button" in page_html
+    assert "packet-filter-count" in page_html
+    assert "data-packet-filter-summary" in page_html
+    assert "data-packet-url-action" in page_html
+    assert "supportPackets.length" in page_html
+    assert "archivedPacketCount" in page_html
+    assert "fallbackPacketCount" in page_html
+    assert "Showing ${supportPackets.length} of ${supportPackets.length} packets" in page_html
+    assert "Showing ${visibleCount} of ${totalCount} packets" in page_html
+    assert "Open archive" in page_html
+    assert "Copy archive" in page_html
+    assert "Open original" in page_html
+    assert "Copy original" in page_html
+    assert "copyPacketUrl" in page_html
+    assert "openPacketUrl" in page_html
+    assert "data-packet-action-feedback" in page_html
+    assert "setPacketActionFeedback" in page_html
+    assert "packetSortRank" in page_html
+    assert "sortSupportPackets" in page_html
 
     review_payload = await review_route.endpoint(
         ClaimSupportReviewRequest(
@@ -203,7 +317,30 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert review_payload["claim_coverage_summary"]["retaliation"]["missing_elements"] == [
         "Causal connection"
     ]
+    assert review_payload["claim_coverage_summary"]["retaliation"]["support_packet_summary"] == {
+        "total_packet_count": 3,
+        "fact_packet_count": 3,
+        "link_only_packet_count": 0,
+        "historical_capture_count": 2,
+        "content_origin_counts": {
+            "historical_archive_capture": 2,
+            "authority_reference_fallback": 1,
+        },
+        "capture_source_counts": {
+            "archived_domain_scrape": 2,
+        },
+        "fallback_mode_counts": {
+            "citation_title_only": 1,
+        },
+        "content_source_field_counts": {
+            "citation_title_fallback": 1,
+        },
+    }
+    assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_packets"][0]["lineage_summary"]["archive_url"] == "https://web.archive.org/web/20240101120000/https://example.com/timeline-email"
+    assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_packets"][1]["lineage_summary"]["fallback_mode"] == "citation_title_only"
     assert review_payload["follow_up_plan_summary"]["retaliation"]["task_count"] == 1
+    assert review_payload["follow_up_plan_summary"]["retaliation"]["parse_quality_task_count"] == 1
+    assert review_payload["follow_up_plan_summary"]["retaliation"]["quality_gap_targeted_task_count"] == 1
     assert review_payload["follow_up_plan_summary"]["retaliation"]["resolution_applied_counts"] == {
         "manual_review_resolved": 1,
     }
@@ -245,6 +382,8 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
         ),
     )
     assert execute_payload["follow_up_execution"]["retaliation"]["task_count"] == 1
+    assert execute_payload["execution_quality_summary"]["retaliation"]["quality_improvement_status"] == "unchanged"
+    assert execute_payload["execution_quality_summary"]["retaliation"]["parse_quality_task_count"] == 1
     assert execute_payload["post_execution_review"]["claim_coverage_summary"]["retaliation"][
         "missing_elements"
     ] == ["Causal connection"]

@@ -359,6 +359,11 @@ def _summarize_claim_coverage_claim(
     validation_claim: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     validation_claim = validation_claim if isinstance(validation_claim, dict) else {}
+    support_trace_summary = (
+        coverage_claim.get("support_trace_summary", {})
+        if isinstance(coverage_claim.get("support_trace_summary"), dict)
+        else {}
+    )
     reasoning_summary = (
         (validation_claim.get("proof_diagnostics") or {}).get("reasoning", {})
         if isinstance(validation_claim.get("proof_diagnostics"), dict)
@@ -368,6 +373,11 @@ def _summarize_claim_coverage_claim(
         (validation_claim.get("proof_diagnostics") or {}).get("decision", {})
         if isinstance(validation_claim.get("proof_diagnostics"), dict)
         else {}
+    )
+    validation_elements = (
+        validation_claim.get("elements", [])
+        if isinstance(validation_claim.get("elements"), list)
+        else []
     )
     missing_elements = []
     partially_supported_elements = []
@@ -449,6 +459,30 @@ def _summarize_claim_coverage_claim(
                     seen_graph_ids.add(graph_id)
                     graph_id_count += 1
 
+    parse_quality_tier_counts = (
+        support_trace_summary.get("parse_quality_tier_counts", {})
+        if isinstance(support_trace_summary.get("parse_quality_tier_counts"), dict)
+        else {}
+    )
+    low_quality_parsed_record_count = int(parse_quality_tier_counts.get("low", 0) or 0) + int(
+        parse_quality_tier_counts.get("empty", 0) or 0
+    )
+    parse_quality_issue_elements = []
+    seen_parse_quality_issue_elements = set()
+    for element in validation_elements:
+        if not isinstance(element, dict):
+            continue
+        action = str(element.get("recommended_action") or "")
+        decision_source = str(
+            ((element.get("proof_decision_trace") or {}).get("decision_source") or "")
+        )
+        if action != "improve_parse_quality" and decision_source != "low_quality_parse":
+            continue
+        element_text = str(element.get("element_text") or "").strip()
+        if element_text and element_text not in seen_parse_quality_issue_elements:
+            seen_parse_quality_issue_elements.add(element_text)
+            parse_quality_issue_elements.append(element_text)
+
     return {
         "claim_type": claim_type,
         "validation_status": validation_claim.get("validation_status", ""),
@@ -491,11 +525,23 @@ def _summarize_claim_coverage_claim(
         "ontology_invalid_element_count": int(
             decision_summary.get("ontology_invalid_element_count", 0) or 0
         ),
+        "parsed_record_count": int(support_trace_summary.get("parsed_record_count", 0) or 0),
+        "parse_quality_tier_counts": parse_quality_tier_counts,
+        "avg_parse_quality_score": float(
+            support_trace_summary.get("avg_parse_quality_score", 0.0) or 0.0
+        ),
+        "low_quality_parsed_record_count": low_quality_parsed_record_count,
+        "parse_quality_issue_element_count": len(parse_quality_issue_elements),
+        "parse_quality_issue_elements": parse_quality_issue_elements,
+        "parse_quality_recommendation": (
+            "improve_parse_quality" if parse_quality_issue_elements else ""
+        ),
         "total_elements": coverage_claim.get("total_elements", 0),
         "total_links": coverage_claim.get("total_links", 0),
         "total_facts": coverage_claim.get("total_facts", 0),
         "support_by_kind": coverage_claim.get("support_by_kind", {}),
-        "support_trace_summary": coverage_claim.get("support_trace_summary", {}),
+        "support_trace_summary": support_trace_summary,
+        "support_packet_summary": coverage_claim.get("support_packet_summary", {}),
         "status_counts": coverage_claim.get(
             "status_counts",
             {"covered": 0, "partially_supported": 0, "missing": 0},
@@ -667,6 +713,20 @@ def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any
                 if task.get("follow_up_focus") == "reasoning_gap_closure"
             ]
         ),
+        "parse_quality_task_count": len(
+            [
+                task
+                for task in tasks
+                if task.get("follow_up_focus") == "parse_quality_improvement"
+            ]
+        ),
+        "quality_gap_targeted_task_count": len(
+            [
+                task
+                for task in tasks
+                if task.get("query_strategy") == "quality_gap_targeted"
+            ]
+        ),
         "semantic_cluster_count": graph_support_metrics["semantic_cluster_count"],
         "semantic_duplicate_count": graph_support_metrics["semantic_duplicate_count"],
         "follow_up_focus_counts": follow_up_focus_counts,
@@ -739,6 +799,12 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
         "reasoning_gap_task_count": len(
             [task for task in all_tasks if task.get("follow_up_focus") == "reasoning_gap_closure"]
         ),
+        "parse_quality_task_count": len(
+            [task for task in all_tasks if task.get("follow_up_focus") == "parse_quality_improvement"]
+        ),
+        "quality_gap_targeted_task_count": len(
+            [task for task in all_tasks if task.get("query_strategy") == "quality_gap_targeted"]
+        ),
         "semantic_cluster_count": graph_support_metrics["semantic_cluster_count"],
         "semantic_duplicate_count": graph_support_metrics["semantic_duplicate_count"],
         "follow_up_focus_counts": follow_up_focus_counts,
@@ -756,6 +822,84 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
             "adaptive_retry_reason_counts"
         ],
         "last_adaptive_retry": adaptive_retry_metrics["last_adaptive_retry"],
+    }
+
+
+def _summarize_execution_quality_claim(
+    pre_claim_summary: Optional[Dict[str, Any]],
+    post_claim_summary: Optional[Dict[str, Any]],
+    execution_summary: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    pre_summary = pre_claim_summary if isinstance(pre_claim_summary, dict) else {}
+    post_summary = post_claim_summary if isinstance(post_claim_summary, dict) else {}
+    execution = execution_summary if isinstance(execution_summary, dict) else {}
+
+    pre_low_quality_count = int(pre_summary.get("low_quality_parsed_record_count", 0) or 0)
+    post_low_quality_count = int(post_summary.get("low_quality_parsed_record_count", 0) or 0)
+    pre_issue_elements = sorted(
+        {
+            str(element).strip()
+            for element in (pre_summary.get("parse_quality_issue_elements", []) or [])
+            if str(element).strip()
+        }
+    )
+    post_issue_elements = sorted(
+        {
+            str(element).strip()
+            for element in (post_summary.get("parse_quality_issue_elements", []) or [])
+            if str(element).strip()
+        }
+    )
+    parse_quality_task_count = int(execution.get("parse_quality_task_count", 0) or 0)
+    quality_gap_targeted_task_count = int(
+        execution.get("quality_gap_targeted_task_count", 0) or 0
+    )
+
+    resolved_issue_elements = [
+        element for element in pre_issue_elements if element not in post_issue_elements
+    ]
+    newly_flagged_issue_elements = [
+        element for element in post_issue_elements if element not in pre_issue_elements
+    ]
+
+    if parse_quality_task_count <= 0 and quality_gap_targeted_task_count <= 0:
+        improvement_status = "not_targeted"
+    elif (
+        post_low_quality_count < pre_low_quality_count
+        or len(post_issue_elements) < len(pre_issue_elements)
+    ):
+        improvement_status = "improved"
+    elif (
+        post_low_quality_count > pre_low_quality_count
+        or len(post_issue_elements) > len(pre_issue_elements)
+    ):
+        improvement_status = "regressed"
+    else:
+        improvement_status = "unchanged"
+
+    return {
+        "pre_low_quality_parsed_record_count": pre_low_quality_count,
+        "post_low_quality_parsed_record_count": post_low_quality_count,
+        "low_quality_parsed_record_delta": post_low_quality_count - pre_low_quality_count,
+        "pre_parse_quality_issue_element_count": len(pre_issue_elements),
+        "post_parse_quality_issue_element_count": len(post_issue_elements),
+        "parse_quality_issue_element_delta": len(post_issue_elements) - len(pre_issue_elements),
+        "pre_parse_quality_issue_elements": pre_issue_elements,
+        "post_parse_quality_issue_elements": post_issue_elements,
+        "resolved_parse_quality_issue_elements": resolved_issue_elements,
+        "remaining_parse_quality_issue_elements": post_issue_elements,
+        "newly_flagged_parse_quality_issue_elements": newly_flagged_issue_elements,
+        "parse_quality_task_count": parse_quality_task_count,
+        "quality_gap_targeted_task_count": quality_gap_targeted_task_count,
+        "quality_improvement_status": improvement_status,
+        "recommended_next_action": (
+            "improve_parse_quality"
+            if (
+                post_low_quality_count > 0
+                and improvement_status in {"unchanged", "regressed"}
+            )
+            else ""
+        ),
     }
 
 
@@ -966,6 +1110,24 @@ def build_claim_support_follow_up_execution_payload(
         request.required_support_kinds or list(DEFAULT_REQUIRED_SUPPORT_KINDS)
     )
 
+    pre_execution_review: Optional[Dict[str, Any]] = None
+    if request.include_post_execution_review:
+        pre_execution_review = build_claim_support_review_payload(
+            mediator,
+            ClaimSupportReviewRequest(
+                user_id=resolved_user_id,
+                claim_type=request.claim_type,
+                required_support_kinds=required_support_kinds,
+                follow_up_cooldown_seconds=request.follow_up_cooldown_seconds,
+                include_support_summary=request.include_support_summary,
+                include_overview=request.include_overview,
+                include_follow_up_plan=request.include_follow_up_plan,
+                execute_follow_up=False,
+                follow_up_support_kind=request.follow_up_support_kind,
+                follow_up_max_tasks_per_claim=request.follow_up_max_tasks_per_claim,
+            ),
+        )
+
     follow_up_execution = mediator.execute_claim_follow_up_plan(
         claim_type=request.claim_type,
         user_id=resolved_user_id,
@@ -995,7 +1157,7 @@ def build_claim_support_follow_up_execution_payload(
     }
 
     if request.include_post_execution_review:
-        payload["post_execution_review"] = build_claim_support_review_payload(
+        post_execution_review = build_claim_support_review_payload(
             mediator,
             ClaimSupportReviewRequest(
                 user_id=resolved_user_id,
@@ -1010,6 +1172,30 @@ def build_claim_support_follow_up_execution_payload(
                 follow_up_max_tasks_per_claim=request.follow_up_max_tasks_per_claim,
             ),
         )
+        payload["post_execution_review"] = post_execution_review
+        pre_quality_claims = (
+            (pre_execution_review or {}).get("claim_coverage_summary", {})
+            if isinstance(pre_execution_review, dict)
+            else {}
+        )
+        post_quality_claims = (
+            post_execution_review.get("claim_coverage_summary", {})
+            if isinstance(post_execution_review, dict)
+            else {}
+        )
+        execution_quality_claims = payload.get("follow_up_execution_summary", {})
+        payload["execution_quality_summary"] = {
+            claim_name: _summarize_execution_quality_claim(
+                pre_quality_claims.get(claim_name, {}),
+                post_quality_claims.get(claim_name, {}),
+                execution_quality_claims.get(claim_name, {}),
+            )
+            for claim_name in sorted(
+                set(pre_quality_claims.keys())
+                | set(post_quality_claims.keys())
+                | set(execution_quality_claims.keys())
+            )
+        }
 
     return payload
 

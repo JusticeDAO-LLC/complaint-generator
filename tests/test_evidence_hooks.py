@@ -54,7 +54,7 @@ class TestEvidenceStorageHook:
             assert result['document_parse']['status'] in {'fallback', 'available-fallback', 'empty'}
             assert result['metadata']['document_parse_summary']['chunk_count'] >= 1
             assert result['metadata']['document_parse_summary']['parser_version']
-            assert result['metadata']['document_parse_summary']['input_format'] == 'text'
+            assert result['metadata']['document_parse_summary']['input_format'] == 'pdf'
             assert result['metadata']['document_parse_summary']['paragraph_count'] >= 1
             assert result['document_parse']['summary']['chunk_count'] == result['metadata']['document_parse_summary']['chunk_count']
             assert result['document_parse']['metadata']['transform_lineage']['source'] == 'bytes'
@@ -62,6 +62,32 @@ class TestEvidenceStorageHook:
             assert result['metadata']['document_parse_contract']['lineage']['source'] == 'bytes'
             assert result['document_graph']['status'] in {'unavailable', 'available-fallback'}
             assert result['metadata']['document_graph_summary']['entity_count'] >= 1
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_store_evidence_parses_email_mime_via_adapter(self):
+        try:
+            from mediator.evidence_hooks import EvidenceStorageHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+
+            hook = EvidenceStorageHook(mock_mediator)
+
+            payload = (
+                b"Subject: Escalation\n"
+                b"From: worker@example.com\n\n"
+                b"I reported harassment to HR yesterday."
+            )
+            result = hook.store_evidence(
+                payload,
+                "attachment",
+                {"filename": "escalation.eml", "mime_type": "message/rfc822"},
+            )
+
+            assert result['metadata']['document_parse_summary']['input_format'] == 'email'
+            assert 'Subject: Escalation' in result['document_parse']['text']
+            assert 'I reported harassment to HR yesterday.' in result['document_parse']['text']
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
     

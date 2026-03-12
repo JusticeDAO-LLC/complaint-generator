@@ -69,6 +69,30 @@ def test_claim_review_command_calls_mediator_builder():
     cli.print_response.assert_called_once()
 
 
+def test_claim_review_command_prints_parse_quality_summary_before_json():
+    mediator = Mock()
+    mediator.build_claim_support_review_payload.return_value = {
+        'claim_coverage_summary': {
+            'retaliation': {
+                'low_quality_parsed_record_count': 2,
+                'parse_quality_issue_element_count': 1,
+                'avg_parse_quality_score': 62.5,
+                'parse_quality_issue_elements': ['Causal connection'],
+            }
+        }
+    }
+    cli = _make_cli(mediator)
+
+    cli.claim_review(['claim_type=retaliation'])
+
+    rendered = cli.print_response.call_args[0][0]
+    assert 'claim review parse-quality summary:' in rendered
+    assert '- retaliation: low_quality=2 issue_elements=1 avg_quality=62.50' in rendered
+    assert 'refresh: Causal connection' in rendered
+    assert 'recommendation: improve_parse_quality' in rendered
+    assert '"claim_coverage_summary"' in rendered
+
+
 def test_execute_follow_up_command_calls_mediator_builder():
     mediator = Mock()
     mediator.build_claim_support_follow_up_execution_payload.return_value = {'executed': True}
@@ -97,6 +121,55 @@ def test_execute_follow_up_command_calls_mediator_builder():
         include_follow_up_plan=True,
     )
     cli.print_response.assert_called_once()
+
+
+def test_execute_follow_up_command_prints_execution_quality_summary_before_json():
+    mediator = Mock()
+    mediator.build_claim_support_follow_up_execution_payload.return_value = {
+        'follow_up_execution': {'retaliation': {'task_count': 1}},
+        'execution_quality_summary': {
+            'retaliation': {
+                'quality_improvement_status': 'improved',
+                'pre_low_quality_parsed_record_count': 1,
+                'post_low_quality_parsed_record_count': 0,
+                'parse_quality_task_count': 1,
+                'resolved_parse_quality_issue_elements': ['Causal connection'],
+                'remaining_parse_quality_issue_elements': [],
+            }
+        },
+    }
+    cli = _make_cli(mediator)
+
+    cli.execute_follow_up(['claim_type=retaliation'])
+
+    rendered = cli.print_response.call_args[0][0]
+    assert 'follow-up execution quality summary:' in rendered
+    assert '- retaliation: status=improved low_quality=1->0 parse_tasks=1' in rendered
+    assert 'resolved: Causal connection' in rendered
+    assert '"execution_quality_summary"' in rendered
+
+
+def test_execute_follow_up_command_prints_recommendation_when_parse_quality_still_needed():
+    mediator = Mock()
+    mediator.build_claim_support_follow_up_execution_payload.return_value = {
+        'follow_up_execution': {'retaliation': {'task_count': 1}},
+        'execution_quality_summary': {
+            'retaliation': {
+                'quality_improvement_status': 'unchanged',
+                'pre_low_quality_parsed_record_count': 1,
+                'post_low_quality_parsed_record_count': 1,
+                'parse_quality_task_count': 1,
+                'resolved_parse_quality_issue_elements': [],
+                'remaining_parse_quality_issue_elements': ['Causal connection'],
+            }
+        },
+    }
+    cli = _make_cli(mediator)
+
+    cli.execute_follow_up(['claim_type=retaliation'])
+
+    rendered = cli.print_response.call_args[0][0]
+    assert 'recommendation: improve_parse_quality still needed' in rendered
 
 
 def test_interpret_command_routes_new_commands():

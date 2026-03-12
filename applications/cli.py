@@ -127,7 +127,33 @@ class CLI:
 			follow_up_support_kind=options.get('follow_up_support_kind'),
 			follow_up_max_tasks_per_claim=options.get('follow_up_max_tasks_per_claim', 3),
 		)
-		self.print_response(json.dumps(payload, indent=2, default=str))
+		self.print_response(self._format_claim_review_output(payload))
+
+	def _format_claim_review_output(self, payload):
+		sections = []
+		claim_coverage_summary = payload.get('claim_coverage_summary', {}) if isinstance(payload, dict) else {}
+		if isinstance(claim_coverage_summary, dict) and claim_coverage_summary:
+			sections.append(self._format_claim_review_quality_summary(claim_coverage_summary))
+		sections.append(json.dumps(payload, indent=2, default=str))
+		return '\n\n'.join(section for section in sections if section)
+
+	def _format_claim_review_quality_summary(self, claim_coverage_summary):
+		lines = ['claim review parse-quality summary:']
+		for claim_type in sorted(claim_coverage_summary.keys()):
+			summary = claim_coverage_summary.get(claim_type, {})
+			if not isinstance(summary, dict):
+				continue
+			low_quality_count = int(summary.get('low_quality_parsed_record_count', 0) or 0)
+			issue_count = int(summary.get('parse_quality_issue_element_count', 0) or 0)
+			avg_quality = float(summary.get('avg_parse_quality_score', 0.0) or 0.0)
+			issue_elements = summary.get('parse_quality_issue_elements', []) if isinstance(summary.get('parse_quality_issue_elements'), list) else []
+			recommendation = str(summary.get('parse_quality_recommendation') or '')
+			lines.append(f'- {claim_type}: low_quality={low_quality_count} issue_elements={issue_count} avg_quality={avg_quality:.2f}')
+			if issue_elements:
+				lines.append(f"  refresh: {', '.join(str(element) for element in issue_elements)}")
+			if recommendation:
+				lines.append(f'  recommendation: {recommendation}')
+		return '\n'.join(lines)
 
 	def execute_follow_up(self, args):
 		positionals, options = self._parse_command_options(args)
@@ -147,7 +173,37 @@ class CLI:
 			include_overview=options.get('include_overview', True),
 			include_follow_up_plan=options.get('include_follow_up_plan', True),
 		)
-		self.print_response(json.dumps(payload, indent=2, default=str))
+		self.print_response(self._format_execute_follow_up_output(payload))
+
+	def _format_execute_follow_up_output(self, payload):
+		sections = []
+		execution_quality_summary = payload.get('execution_quality_summary', {}) if isinstance(payload, dict) else {}
+		if isinstance(execution_quality_summary, dict) and execution_quality_summary:
+			sections.append(self._format_execution_quality_summary(execution_quality_summary))
+		sections.append(json.dumps(payload, indent=2, default=str))
+		return '\n\n'.join(section for section in sections if section)
+
+	def _format_execution_quality_summary(self, execution_quality_summary):
+		lines = ['follow-up execution quality summary:']
+		for claim_type in sorted(execution_quality_summary.keys()):
+			summary = execution_quality_summary.get(claim_type, {})
+			if not isinstance(summary, dict):
+				continue
+			status = str(summary.get('quality_improvement_status') or 'unknown')
+			pre_count = int(summary.get('pre_low_quality_parsed_record_count', 0) or 0)
+			post_count = int(summary.get('post_low_quality_parsed_record_count', 0) or 0)
+			parse_task_count = int(summary.get('parse_quality_task_count', 0) or 0)
+			resolved_elements = summary.get('resolved_parse_quality_issue_elements', []) if isinstance(summary.get('resolved_parse_quality_issue_elements'), list) else []
+			remaining_elements = summary.get('remaining_parse_quality_issue_elements', []) if isinstance(summary.get('remaining_parse_quality_issue_elements'), list) else []
+			recommended_next_action = str(summary.get('recommended_next_action') or '')
+			lines.append(f'- {claim_type}: status={status} low_quality={pre_count}->{post_count} parse_tasks={parse_task_count}')
+			if resolved_elements:
+				lines.append(f"  resolved: {', '.join(str(element) for element in resolved_elements)}")
+			if remaining_elements:
+				lines.append(f"  remaining: {', '.join(str(element) for element in remaining_elements)}")
+			if recommended_next_action:
+				lines.append(f'  recommendation: {recommended_next_action} still needed')
+		return '\n'.join(lines)
 
 
 	def save(self):

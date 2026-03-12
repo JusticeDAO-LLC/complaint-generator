@@ -3,6 +3,7 @@ from .capabilities import (
 	get_ipfs_datasets_capabilities,
 	summarize_ipfs_datasets_capability_report,
 	summarize_ipfs_datasets_capabilities,
+	summarize_ipfs_datasets_startup_payload,
 )
 from .types import (
 	CaseArtifact,
@@ -40,6 +41,7 @@ __all__ = [
 	"get_ipfs_datasets_capabilities",
 	"summarize_ipfs_datasets_capability_report",
 	"summarize_ipfs_datasets_capabilities",
+	"summarize_ipfs_datasets_startup_payload",
 	"CaseArtifact",
 	"CaseAuthority",
 	"CaseClaimElement",

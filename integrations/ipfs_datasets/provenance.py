@@ -32,12 +32,65 @@ def stable_content_hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _merge_nonempty_values(base: Dict[str, Any], extra: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    payload = dict(base)
+    if not isinstance(extra, dict):
+        return payload
+
+    for key, value in extra.items():
+        if value in (None, "", [], (), {}):
+            continue
+        existing = payload.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            payload[key] = _merge_nonempty_values(existing, value)
+        else:
+            payload[key] = value
+    return payload
+
+
 def merge_metadata_with_provenance(
     metadata: Optional[Dict[str, Any]],
     provenance: ProvenanceRecord,
 ) -> Dict[str, Any]:
     payload = dict(metadata or {})
     payload.setdefault("provenance", provenance.as_dict())
+    return payload
+
+
+def enrich_document_parse(
+    document_parse: Optional[Dict[str, Any]],
+    *,
+    default_source: str = "",
+    extra_summary: Optional[Dict[str, Any]] = None,
+    extra_metadata: Optional[Dict[str, Any]] = None,
+    extra_lineage: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    if not isinstance(document_parse, dict):
+        return {}
+
+    payload = dict(document_parse)
+    summary = dict(payload.get("summary") or {})
+    metadata = dict(payload.get("metadata") or {})
+    lineage = metadata.get("transform_lineage")
+    if not isinstance(lineage, dict):
+        lineage = payload.get("lineage") if isinstance(payload.get("lineage"), dict) else {}
+    lineage = dict(lineage)
+
+    source = str(metadata.get("source") or lineage.get("source") or summary.get("source") or default_source or "")
+    if source:
+        metadata["source"] = source
+        summary["source"] = source
+        lineage["source"] = source
+
+    summary = _merge_nonempty_values(summary, extra_summary)
+    metadata = _merge_nonempty_values(metadata, extra_metadata)
+    lineage = _merge_nonempty_values(lineage, extra_lineage)
+    metadata["transform_lineage"] = lineage
+
+    payload["metadata"] = metadata
+    payload["lineage"] = lineage
+    if summary:
+        payload["summary"] = summary
     return payload
 
 
@@ -100,6 +153,8 @@ def build_document_parse_contract(
             "summary": {},
             "storage_metadata": {},
             "lineage": {},
+            "parse_quality": {},
+            "source_span": {},
         }
 
     summary = build_document_parse_summary_metadata(document_parse, default_source=default_source)
@@ -110,6 +165,8 @@ def build_document_parse_contract(
     lineage = storage_metadata.get("transform_lineage")
     if not isinstance(lineage, dict):
         lineage = {}
+    parse_quality = storage_metadata.get("parse_quality") if isinstance(storage_metadata.get("parse_quality"), dict) else {}
+    source_span = storage_metadata.get("source_span") if isinstance(storage_metadata.get("source_span"), dict) else {}
 
     return {
         "status": str(document_parse.get("status") or summary.get("status") or ""),
@@ -120,6 +177,8 @@ def build_document_parse_contract(
         "summary": summary,
         "storage_metadata": storage_metadata,
         "lineage": dict(lineage),
+        "parse_quality": dict(parse_quality),
+        "source_span": dict(source_span),
     }
 
 
@@ -140,7 +199,11 @@ def build_fact_lineage_metadata(
         "source": str(parse_contract.get("source") or summary.get("source") or ""),
         "parser_version": str(summary.get("parser_version") or lineage.get("parser_version") or ""),
         "input_format": str(summary.get("input_format") or lineage.get("input_format") or ""),
+        "quality_tier": str(summary.get("quality_tier") or (parse_contract.get("parse_quality") or {}).get("quality_tier") or ""),
+        "quality_score": float(summary.get("quality_score") or (parse_contract.get("parse_quality") or {}).get("quality_score") or 0.0),
         "transform_lineage": dict(lineage),
+        "parse_quality": dict(parse_contract.get("parse_quality") or {}),
+        "source_span": dict(parse_contract.get("source_span") or {}),
     }
     if record_scope:
         parse_lineage["record_scope"] = record_scope
@@ -153,6 +216,7 @@ def build_fact_lineage_metadata(
 __all__ = [
     "build_provenance",
     "stable_content_hash",
+    "enrich_document_parse",
     "merge_metadata_with_provenance",
     "build_document_parse_summary_metadata",
     "build_storage_parse_metadata",

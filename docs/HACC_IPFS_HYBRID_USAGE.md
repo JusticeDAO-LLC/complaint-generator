@@ -16,8 +16,8 @@ This guide shows how to use HACC's complaint-specific legal patterns with ipfs_d
 │  ipfs_datasets_py    │        │  hacc_integration    │
 │  (Infrastructure)    │        │  (Legal Expertise)   │
 ├──────────────────────┤        ├──────────────────────┤
-│ • BraveSearchClient  │        │ • Legal Patterns     │
-│ • PDFProcessor       │        │ • Complaint Keywords │
+│ • search_brave_web   │        │ • Legal Patterns     │
+│ • parse_document_*   │        │ • Complaint Keywords │
 │ • EmbeddingsRouter   │        │ • Risk Scoring       │
 │ • GraphRAG          │        │ • Hybrid Indexer     │
 │ • IPFS Storage      │        │ • Report Templates   │
@@ -38,8 +38,8 @@ This guide shows how to use HACC's complaint-specific legal patterns with ipfs_d
 ### 1. Evidence Processing with Legal Analysis
 
 ```python
-from ipfs_datasets_py.pdf_processing import PDFProcessor
-from ipfs_datasets_py.web_archiving import BraveSearchClient
+from integrations.ipfs_datasets.documents import parse_document_file
+from integrations.ipfs_datasets.search import search_brave_web, search_multi_engine_web
 from hacc_integration import (
     ComplaintLegalPatternExtractor,
     ComplaintRiskScorer,
@@ -50,43 +50,39 @@ async def process_complaint_evidence(pdf_path, complaint_keywords):
     """
     Complete evidence processing pipeline combining both systems.
     """
-    # Step 1: Use ipfs_datasets_py for PDF processing
-    pdf_processor = PDFProcessor(
-        enable_ocr=True,
-        enable_graphrag=True,
-        hardware_acceleration=True  # GPU acceleration for 10x speedup
-    )
-    
-    pdf_result = await pdf_processor.process_document(pdf_path)
+    # Step 1: Use complaint-generator's adapter seam for document parsing
+    document_parse = parse_document_file(pdf_path)
+    complaint_text = document_parse.get('text', '')
     
     # Step 2: Use HACC for legal analysis
     legal_extractor = ComplaintLegalPatternExtractor()
-    legal_provisions = legal_extractor.extract_provisions(pdf_result.text)
-    citations = legal_extractor.extract_citations(pdf_result.text)
-    categories = legal_extractor.categorize_complaint_type(pdf_result.text)
-    protected_classes = legal_extractor.find_protected_classes(pdf_result.text)
+    legal_provisions = legal_extractor.extract_provisions(complaint_text)
+    citations = legal_extractor.extract_citations(complaint_text)
+    categories = legal_extractor.categorize_complaint_type(complaint_text)
+    protected_classes = legal_extractor.find_protected_classes(complaint_text)
     
     # Step 3: Calculate risk with HACC
     risk_scorer = ComplaintRiskScorer()
-    risk = risk_scorer.calculate_risk(pdf_result.text, legal_provisions['provisions'])
+    risk = risk_scorer.calculate_risk(complaint_text, legal_provisions['provisions'])
     
     # Step 4: Create hybrid index
     indexer = HybridDocumentIndexer()
     index_result = await indexer.index_document(
-        pdf_result.text,
+        complaint_text,
         metadata={
             'source': 'complaint_evidence',
             'pdf_path': pdf_path,
-            'ipfs_cid': pdf_result.ipld_cid
+            'provider': document_parse.get('provider'),
+            'parse_status': document_parse.get('status')
         }
     )
     
     return {
         'pdf_processing': {
-            'text': pdf_result.text,
-            'ipfs_cid': pdf_result.ipld_cid,
-            'knowledge_graph': pdf_result.knowledge_graph,
-            'entities': pdf_result.entities
+            'text': complaint_text,
+            'summary': document_parse.get('summary', {}),
+            'provider': document_parse.get('provider'),
+            'metadata': document_parse.get('metadata', {})
         },
         'legal_analysis': {
             'provisions': legal_provisions,
@@ -102,22 +98,19 @@ async def process_complaint_evidence(pdf_path, complaint_keywords):
 ### 2. Web Evidence Discovery with Legal Filtering
 
 ```python
-from ipfs_datasets_py.web_archiving import BraveSearchClient, CommonCrawlSearchEngine
+from integrations.ipfs_datasets.search import search_brave_web, search_multi_engine_web
 from hacc_integration import ComplaintLegalPatternExtractor, ComplaintRiskScorer
 
 async def discover_complaint_evidence(complaint_type, keywords):
     """
     Discover and filter web evidence using both systems.
     """
-    # Step 1: Search with ipfs_datasets_py (distributed caching)
-    brave_client = BraveSearchClient(cache_ipfs=True, cache_ttl=86400)
-    cc_engine = CommonCrawlSearchEngine(mode='local')
-    
     # Build query with complaint keywords
     query = f"site:gov {' OR '.join(keywords)} filetype:pdf"
-    brave_results = brave_client.search(query, count=50)
+    brave_results = search_brave_web(query, max_results=50)
     
-    # Also search historical archives
+    # Also search alternate engines through the normalized multi-engine adapter
+    archive_results = search_multi_engine_web(query, max_results=25)
     cc_results = await cc_engine.search_domain('gov', keywords=keywords, max_results=50)
     
     # Step 2: Filter and score with HACC
@@ -129,22 +122,21 @@ async def discover_complaint_evidence(complaint_type, keywords):
         # Download and analyze
         if result.get('url', '').endswith('.pdf'):
             try:
-                # Process document
-                pdf_processor = PDFProcessor()
-                doc_result = await pdf_processor.process_document(result['url'])
+                # Process document through complaint-generator's adapter seam
+                doc_result = parse_document_file(result['url'])
                 
                 # Extract legal provisions
-                provisions = legal_extractor.extract_provisions(doc_result.text)
-                risk = risk_scorer.calculate_risk(doc_result.text, provisions['provisions'])
+                provisions = legal_extractor.extract_provisions(doc_result.get('text', ''))
+                risk = risk_scorer.calculate_risk(doc_result.get('text', ''), provisions['provisions'])
                 
                 # Only keep relevant, high-risk results
                 if risk['score'] >= 2:  # Medium or high risk
                     scored_results.append({
                         'url': result['url'],
-                        'text': doc_result.text[:500],  # Preview
+                        'text': doc_result.get('text', '')[:500],  # Preview
                         'risk': risk,
                         'provisions': provisions,
-                        'ipfs_cid': doc_result.ipld_cid
+                        'provider': doc_result.get('provider')
                     })
             except Exception as e:
                 print(f"Error processing {result.get('url')}: {e}")
@@ -162,7 +154,7 @@ Here's how to integrate into existing mediator hooks:
 ```python
 # mediator/evidence_hooks.py (enhanced)
 
-from ipfs_datasets_py.pdf_processing import PDFProcessor
+from integrations.ipfs_datasets.documents import parse_document_bytes
 from hacc_integration import ComplaintLegalPatternExtractor, ComplaintRiskScorer
 
 class EvidenceAnalysisHook:
@@ -170,7 +162,6 @@ class EvidenceAnalysisHook:
     
     def __init__(self, mediator):
         self.mediator = mediator
-        self.pdf_processor = PDFProcessor(enable_ocr=True, hardware_acceleration=True)
         self.legal_extractor = ComplaintLegalPatternExtractor()
         self.risk_scorer = ComplaintRiskScorer()
     
@@ -181,10 +172,10 @@ class EvidenceAnalysisHook:
         # Retrieve from IPFS
         evidence_data = await self.mediator.retrieve_evidence(evidence_cid)
         
-        # Process with ipfs_datasets_py
+        # Process with complaint-generator's adapter seam
         if evidence_data['type'] == 'pdf':
-            result = await self.pdf_processor.process_document(evidence_data['data'])
-            text = result.text
+            document_parse = parse_document_bytes(evidence_data['data'], filename='evidence.pdf')
+            text = document_parse.get('text', '')
         else:
             text = evidence_data['data'].decode('utf-8')
         
@@ -211,8 +202,8 @@ async def process_new_complaint(complaint_text, attachments):
     """
     Complete workflow for new complaint processing.
     """
-    from ipfs_datasets_py.pdf_processing import PDFProcessor
-    from ipfs_datasets_py.web_archiving import BraveSearchClient
+    from integrations.ipfs_datasets.documents import parse_document_file
+    from integrations.ipfs_datasets.search import search_brave_web
     from hacc_integration import (
         ComplaintLegalPatternExtractor,
         ComplaintRiskScorer,
@@ -220,8 +211,6 @@ async def process_new_complaint(complaint_text, attachments):
     )
     
     # Initialize components
-    pdf_processor = PDFProcessor(enable_ocr=True, hardware_acceleration=True)
-    search_client = BraveSearchClient(cache_ipfs=True)
     legal_extractor = ComplaintLegalPatternExtractor()
     risk_scorer = ComplaintRiskScorer()
     indexer = HybridDocumentIndexer()
@@ -241,23 +230,23 @@ async def process_new_complaint(complaint_text, attachments):
     print("\nStep 2: Processing attachments...")
     processed_attachments = []
     for attachment in attachments:
-        result = await pdf_processor.process_document(attachment)
-        provisions = legal_extractor.extract_provisions(result.text)
+        document_parse = parse_document_file(attachment)
+        provisions = legal_extractor.extract_provisions(document_parse.get('text', ''))
         
         processed_attachments.append({
             'filename': attachment,
-            'ipfs_cid': result.ipld_cid,
-            'text_preview': result.text[:200],
+            'provider': document_parse.get('provider'),
+            'text_preview': document_parse.get('text', '')[:200],
             'provisions': provisions,
-            'entities': result.entities
+            'summary': document_parse.get('summary', {})
         })
-        print(f"  Processed: {attachment} -> {result.ipld_cid}")
+        print(f"  Processed: {attachment} -> {document_parse.get('status')}")
     
     # Step 3: Search for related evidence
     print("\nStep 3: Searching for related evidence...")
     keywords = list(complaint_provisions['terms_found'])[:5]  # Top 5 terms
     query = f"site:gov {' OR '.join(keywords)}"
-    search_results = search_client.search(query, count=20)
+    search_results = search_brave_web(query, max_results=20)
     print(f"  Found {len(search_results)} potential evidence sources")
     
     # Step 4: Create comprehensive index

@@ -14,7 +14,8 @@ from claim_support_review import (
     summarize_claim_support_snapshot_lifecycle,
     summarize_follow_up_history_claim,
 )
-from integrations.ipfs_datasets.provenance import build_document_parse_contract
+from integrations.ipfs_datasets.documents import detect_document_input_format
+from integrations.ipfs_datasets.provenance import build_document_parse_contract, enrich_document_parse
 from integrations.ipfs_datasets.search import (
     BRAVE_SEARCH_AVAILABLE,
     COMMON_CRAWL_AVAILABLE,
@@ -518,7 +519,14 @@ class WebEvidenceIntegrationHook:
         title = str(evidence_item.get('title') or '').strip()
         url = str(evidence_item.get('url') or '').strip()
         description = str(evidence_item.get('description') or '').strip()
+        html_content = str(
+            evidence_item.get('html')
+            or evidence_item.get('html_content')
+            or evidence_item.get('raw_html')
+            or ''
+        ).strip()
         content = str(evidence_item.get('content') or '').strip()
+        parse_source_content = html_content or content
 
         if title:
             sections.append(f"Title: {title}")
@@ -526,14 +534,56 @@ class WebEvidenceIntegrationHook:
             sections.append(f"URL: {url}")
         if description:
             sections.append(f"Description: {description}")
-        if content:
+        if parse_source_content:
             sections.append("Content:")
-            sections.append(content)
+            sections.append(parse_source_content)
 
         if not sections:
             sections.append(json.dumps(evidence_item, sort_keys=True))
 
         return "\n\n".join(sections).encode('utf-8', errors='ignore')
+
+    def _build_web_evidence_parse_metadata(self, evidence_item: Dict[str, Any]) -> Dict[str, str]:
+        """Infer filename and mime type so web evidence preserves source format through parsing."""
+        content = str(
+            evidence_item.get('html')
+            or evidence_item.get('html_content')
+            or evidence_item.get('raw_html')
+            or evidence_item.get('content')
+            or ''
+        )
+        metadata = evidence_item.get('metadata', {}) if isinstance(evidence_item.get('metadata'), dict) else {}
+        explicit_mime_type = str(metadata.get('mime_type') or evidence_item.get('mime_type') or '').strip()
+        input_format = detect_document_input_format(
+            text=content,
+            filename=str(evidence_item.get('url') or evidence_item.get('title') or ''),
+            mime_type=explicit_mime_type,
+        )
+        extension_map = {
+            'html': '.html',
+            'text': '.txt',
+            'email': '.eml',
+            'rtf': '.rtf',
+            'docx': '.docx',
+            'pdf': '.pdf',
+        }
+        mime_type_map = {
+            'html': 'text/html',
+            'text': 'text/plain',
+            'email': 'message/rfc822',
+            'rtf': 'application/rtf',
+            'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'pdf': 'application/pdf',
+        }
+        filename = self._build_web_evidence_filename(evidence_item)
+        extension = extension_map.get(input_format, '.txt')
+        if not filename.endswith(extension):
+            filename = f"{Path(filename).stem}{extension}"
+        return {
+            'input_format': input_format,
+            'filename': filename,
+            'mime_type': explicit_mime_type or mime_type_map.get(input_format, 'text/plain'),
+        }
 
     def _build_web_evidence_filename(self, evidence_item: Dict[str, Any]) -> str:
         """Create a stable filename-like label for document parsing metadata."""
@@ -542,6 +592,108 @@ class WebEvidenceIntegrationHook:
         if not slug:
             slug = 'web-evidence'
         return f"{slug}.txt"
+
+    def _build_web_evidence_lineage_context(self, evidence_item: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        """Normalize archive and capture context so stored web evidence keeps durable provenance."""
+        metadata = evidence_item.get('metadata', {}) if isinstance(evidence_item.get('metadata'), dict) else {}
+        source_type = str(evidence_item.get('source_type') or metadata.get('source_type') or 'web').strip()
+        original_source_type = str(metadata.get('original_source_type') or '').strip()
+        effective_source_type = original_source_type or source_type
+        archive_url = str(
+            metadata.get('archive_url')
+            or metadata.get('wayback_url')
+            or metadata.get('capture_url')
+            or ''
+        ).strip()
+        original_url = str(
+            metadata.get('original_url')
+            or metadata.get('live_url')
+            or metadata.get('canonical_url')
+            or ''
+        ).strip()
+        captured_at = str(
+            metadata.get('captured_at')
+            or metadata.get('archive_timestamp')
+            or metadata.get('capture_timestamp')
+            or metadata.get('timestamp')
+            or metadata.get('crawl_timestamp')
+            or ''
+        ).strip()
+        observed_at = str(evidence_item.get('discovered_at') or metadata.get('observed_at') or '').strip()
+        historical_capture = bool(
+            archive_url
+            or captured_at
+            or source_type in {'archived_domain_scrape', 'common_crawl'}
+            or effective_source_type in {'archived_domain_scrape', 'common_crawl'}
+        )
+        content_origin = 'historical_archive_capture' if historical_capture else 'live_web_capture'
+
+        context = {
+            'content_origin': content_origin,
+            'capture_source': source_type or effective_source_type,
+            'historical_capture': historical_capture,
+            'source_type': source_type or effective_source_type,
+            'effective_source_type': effective_source_type,
+            'title': str(evidence_item.get('title') or '').strip(),
+        }
+        if original_source_type:
+            context['original_source_type'] = original_source_type
+        if archive_url:
+            context['archive_url'] = archive_url
+        if original_url:
+            context['original_url'] = original_url
+            context['version_of'] = original_url
+        if captured_at:
+            context['captured_at'] = captured_at
+        if observed_at:
+            context['observed_at'] = observed_at
+
+        return {
+            'metadata': context,
+            'lineage': context,
+        }
+
+    def _enrich_storage_result_parse_contract(
+        self,
+        storage_result: Dict[str, Any],
+        evidence_item: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Rebuild stored parse metadata after attaching archive-aware lineage context."""
+        document_parse = storage_result.get('document_parse') if isinstance(storage_result.get('document_parse'), dict) else None
+        if not isinstance(document_parse, dict):
+            return storage_result
+
+        metadata = storage_result.get('metadata', {}) if isinstance(storage_result.get('metadata'), dict) else {}
+        existing_contract = (
+            metadata.get('document_parse_contract')
+            if isinstance(metadata.get('document_parse_contract'), dict)
+            else {}
+        )
+        existing_summary = (
+            metadata.get('document_parse_summary')
+            if isinstance(metadata.get('document_parse_summary'), dict)
+            else existing_contract.get('summary', {}) if isinstance(existing_contract.get('summary'), dict) else {}
+        )
+        existing_lineage = existing_contract.get('lineage') if isinstance(existing_contract.get('lineage'), dict) else {}
+        lineage_context = self._build_web_evidence_lineage_context(evidence_item)
+        enriched_parse = enrich_document_parse(
+            document_parse,
+            default_source='web_document',
+            extra_summary=existing_summary,
+            extra_metadata=lineage_context.get('metadata'),
+            extra_lineage={
+                **existing_lineage,
+                **lineage_context.get('lineage', {}),
+            },
+        )
+        parse_contract = build_document_parse_contract(enriched_parse, default_source='web_document')
+
+        metadata.update(lineage_context.get('metadata', {}))
+        metadata['document_parse_summary'] = parse_contract['summary']
+        metadata['document_parse_contract'] = parse_contract
+        storage_result['document_parse'] = enriched_parse
+        storage_result['metadata'] = metadata
+        return storage_result
 
     def _extract_parse_detail(self, storage_result: Dict[str, Any]) -> Dict[str, Any]:
         """Normalize parse metadata from stored web evidence for reporting."""
@@ -553,16 +705,62 @@ class WebEvidenceIntegrationHook:
                 default_source=str(metadata.get('parse_source') or 'web_document'),
             )
         parse_summary = parse_contract.get('summary', {}) if isinstance(parse_contract.get('summary'), dict) else {}
+        parse_quality = parse_contract.get('parse_quality', {}) if isinstance(parse_contract.get('parse_quality'), dict) else {}
+        lineage = parse_contract.get('lineage', {}) if isinstance(parse_contract.get('lineage'), dict) else {}
+        input_format = str(parse_summary.get('input_format', '') or '')
+        text_length = int(parse_summary.get('text_length', 0) or 0)
+        page_count = int(parse_summary.get('page_count', 0) or 0)
+        if page_count == 0 and text_length > 0:
+            page_count = 1
+
+        extraction_method = str(parse_summary.get('extraction_method') or lineage.get('normalization') or '')
+        if not extraction_method:
+            extraction_method = {
+                'html': 'html_to_text',
+                'email': 'email_to_text',
+                'rtf': 'rtf_to_text',
+                'docx': 'docx_xml_to_text',
+                'pdf': 'pdf_text_fallback',
+            }.get(input_format, 'text_normalization' if text_length > 0 else '')
+
+        quality_score = float(parse_summary.get('quality_score', parse_quality.get('quality_score', 0.0)) or 0.0)
+        if quality_score == 0.0 and text_length > 0:
+            quality_score = {
+                'text': 98.0,
+                'html': 95.0,
+                'email': 93.0,
+                'docx': 88.0,
+                'rtf': 82.0,
+                'pdf': 68.0,
+            }.get(input_format, 75.0)
+
+        quality_tier = str(parse_summary.get('quality_tier') or parse_quality.get('quality_tier') or '')
+        if not quality_tier:
+            if quality_score >= 90.0:
+                quality_tier = 'high'
+            elif quality_score >= 75.0:
+                quality_tier = 'medium'
+            elif quality_score > 0.0:
+                quality_tier = 'low'
+            else:
+                quality_tier = 'empty'
+
         return {
             'cid': storage_result.get('cid', ''),
             'status': parse_contract.get('status', ''),
             'source': parse_contract.get('source', ''),
             'chunk_count': int(parse_contract.get('chunk_count', 0) or 0),
-            'text_length': int(parse_summary.get('text_length', 0) or 0),
+            'text_length': text_length,
             'parser_version': parse_summary.get('parser_version', ''),
-            'input_format': parse_summary.get('input_format', ''),
+            'input_format': input_format,
             'paragraph_count': int(parse_summary.get('paragraph_count', 0) or 0),
-            'lineage': parse_contract.get('lineage', {}) if isinstance(parse_contract.get('lineage'), dict) else {},
+            'page_count': page_count,
+            'extraction_method': extraction_method,
+            'quality_tier': quality_tier,
+            'quality_score': quality_score,
+            'parse_quality': parse_quality,
+            'source_span': parse_contract.get('source_span', {}) if isinstance(parse_contract.get('source_span'), dict) else {},
+            'lineage': lineage,
         }
 
     def _accumulate_parse_detail(self, aggregate: Dict[str, Any], detail: Dict[str, Any]) -> None:
@@ -571,6 +769,8 @@ class WebEvidenceIntegrationHook:
         aggregate['total_chunks'] += detail.get('chunk_count', 0)
         aggregate['total_paragraphs'] += detail.get('paragraph_count', 0)
         aggregate['total_text_length'] += detail.get('text_length', 0)
+        aggregate['total_pages'] += detail.get('page_count', 0)
+        aggregate['quality_score_total'] += float(detail.get('quality_score', 0.0) or 0.0)
 
         status = detail.get('status', '')
         if status:
@@ -583,6 +783,14 @@ class WebEvidenceIntegrationHook:
         parser_version = detail.get('parser_version', '')
         if parser_version and parser_version not in aggregate['parser_versions']:
             aggregate['parser_versions'].append(parser_version)
+
+        quality_tier = detail.get('quality_tier', '')
+        if quality_tier:
+            aggregate['quality_tier_counts'][quality_tier] = aggregate['quality_tier_counts'].get(quality_tier, 0) + 1
+
+        processed = aggregate.get('processed', 0)
+        if processed > 0:
+            aggregate['avg_quality_score'] = round(aggregate['quality_score_total'] / processed, 2)
 
     def _empty_storage_summary(self, discovered_count: int = 0) -> Dict[str, Any]:
         return {
@@ -606,8 +814,12 @@ class WebEvidenceIntegrationHook:
                 'total_chunks': 0,
                 'total_paragraphs': 0,
                 'total_text_length': 0,
+                'total_pages': 0,
                 'status_counts': {},
                 'input_format_counts': {},
+                'quality_tier_counts': {},
+                'quality_score_total': 0.0,
+                'avg_quality_score': 0.0,
                 'parser_versions': [],
             },
         }
@@ -659,6 +871,7 @@ class WebEvidenceIntegrationHook:
 
             try:
                 evidence_data = self._build_web_evidence_payload(evidence_item)
+                parse_metadata = self._build_web_evidence_parse_metadata(evidence_item)
 
                 storage_result = self.mediator.evidence_storage.store_evidence(
                     data=evidence_data,
@@ -668,10 +881,11 @@ class WebEvidenceIntegrationHook:
                         'source_url': evidence_item.get('url'),
                         'acquisition_method': 'web_discovery',
                         'source_system': 'ipfs_datasets_py',
-                        'filename': self._build_web_evidence_filename(evidence_item),
-                        'mime_type': 'text/plain',
+                        'filename': parse_metadata['filename'],
+                        'mime_type': parse_metadata['mime_type'],
                         'parse_source': 'web_document',
                         'parse_document': True,
+                        'parse_input_format': parse_metadata['input_format'],
                         'auto_discovered': True,
                         'relevance_score': validation['relevance_score'],
                         'keywords': keywords,
@@ -681,6 +895,7 @@ class WebEvidenceIntegrationHook:
                         'search_metadata': evidence_item.get('metadata', {}),
                     }
                 )
+                storage_result = self._enrich_storage_result_parse_contract(storage_result, evidence_item)
 
                 resolved_element = {'claim_element_id': None, 'claim_element_text': None}
                 if claim_type and hasattr(self.mediator, 'claim_support'):

@@ -21,7 +21,7 @@
 | Caching | ❌ JSON file | ✅ IPFS + disk + TTL | ipfs_datasets_py |
 | Performance | 1x | 10x (cached) | ipfs_datasets_py |
 
-**Verdict:** Use `ipfs_datasets_py.web_archiving.BraveSearchClient`
+**Verdict:** Use complaint-generator's `integrations.ipfs_datasets.search.search_brave_web`
 
 ---
 
@@ -35,7 +35,7 @@
 | Knowledge graphs | ❌ No | ✅ GraphRAG | ipfs_datasets_py |
 | IPFS storage | ❌ No | ✅ IPLD native | ipfs_datasets_py |
 
-**Verdict:** Use `ipfs_datasets_py.pdf_processing.PDFProcessor`
+**Verdict:** Use complaint-generator's `integrations.ipfs_datasets.documents.parse_document_file`
 
 ---
 
@@ -69,8 +69,8 @@
 
 ### ❌ Don't Use From HACC
 
-- `collect_brave.py` → Use ipfs_datasets_py's `BraveSearchClient`
-- `parse_pdfs.py` → Use ipfs_datasets_py's `PDFProcessor`
+- `collect_brave.py` → Use `integrations.ipfs_datasets.search.search_brave_web`
+- `parse_pdfs.py` → Use `integrations.ipfs_datasets.documents.parse_document_file`
 - `download_manager.py` → Use ipfs_datasets_py's IPFS integration
 - `seeded_commoncrawl_discovery.py` → Use ipfs_datasets_py's `CommonCrawlSearchEngine`
 - `batch_ocr_parallel.py` → Use ipfs_datasets_py's `MultiEngineOCR`
@@ -110,20 +110,18 @@ text = parser.parse_pdf('evidence.pdf')
 ### ✅ NEW (ipfs_datasets_py + HACC patterns)
 
 ```python
-from ipfs_datasets_py.web_archiving import BraveSearchClient
-from ipfs_datasets_py.pdf_processing import PDFProcessor
+from integrations.ipfs_datasets.documents import parse_document_file
+from integrations.ipfs_datasets.search import search_brave_web
 from hacc_integration.legal_patterns import ComplaintLegalPatternExtractor
 
-# Use ipfs_datasets_py for infrastructure
-search = BraveSearchClient(cache_ipfs=True)  # Distributed cache!
-results = search.search('site:gov "fair housing"', count=50)
+# Use complaint-generator's ipfs_datasets adapters for infrastructure
+results = search_brave_web('site:gov "fair housing"', max_results=50)
 
-processor = PDFProcessor(enable_ocr=True, hardware_acceleration=True)  # GPU!
-result = await processor.process_document('evidence.pdf')
+document_parse = parse_document_file('evidence.pdf')
 
 # Use HACC for legal expertise
 extractor = ComplaintLegalPatternExtractor()
-legal_provisions = extractor.extract_provisions(result.text)
+legal_provisions = extractor.extract_provisions(document_parse.get('text', ''))
 ```
 
 ---
@@ -155,8 +153,8 @@ legal_provisions = extractor.extract_provisions(result.text)
 
 ## Migration Steps
 
-1. Replace HACC search → ipfs_datasets_py `BraveSearchClient`
-2. Replace HACC PDF parser → ipfs_datasets_py `PDFProcessor`
+1. Replace HACC search → `integrations.ipfs_datasets.search.search_brave_web`
+2. Replace HACC PDF parser → `integrations.ipfs_datasets.documents.parse_document_file`
 3. Extract HACC legal patterns → `hacc_integration/legal_patterns.py`
 4. Extract HACC keywords → `hacc_integration/keywords.py`
 5. Build hybrid search (vectors + keywords)

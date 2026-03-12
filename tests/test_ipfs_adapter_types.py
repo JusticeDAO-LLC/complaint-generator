@@ -1,4 +1,9 @@
+from pathlib import Path
+from unittest.mock import patch
+
+from integrations.ipfs_datasets import loader as loader_module
 from integrations.ipfs_datasets.loader import ImportFailure, import_failure_message, import_failure_type
+from integrations.ipfs_datasets.loader import RepoPaths, import_module_optional
 from integrations.ipfs_datasets.types import (
     CapabilityStatus,
     CaseArtifact,
@@ -52,6 +57,48 @@ def test_import_failure_helpers_preserve_message_and_exception_type():
     assert str(error) == "No module named 'ipfs_datasets_py.missing'"
     assert import_failure_message(error) == "No module named 'ipfs_datasets_py.missing'"
     assert import_failure_type(error) == "ModuleNotFoundError"
+
+
+def test_import_module_optional_retries_with_vendored_paths_for_missing_ipfs_package():
+    sentinel_module = object()
+    first_error = ModuleNotFoundError("No module named 'ipfs_datasets_py'")
+    first_error.name = 'ipfs_datasets_py'
+
+    with patch.object(
+        loader_module.importlib,
+        'import_module',
+        side_effect=[first_error, sentinel_module],
+    ) as import_module_mock:
+        with patch.object(
+            loader_module,
+            'ensure_import_paths',
+            return_value=RepoPaths(Path('/repo'), Path('/repo/vendor_datasets'), Path('/repo/vendor_aux')),
+        ) as ensure_paths_mock:
+            module, error = import_module_optional('ipfs_datasets_py.logic')
+
+    assert module is sentinel_module
+    assert error is None
+    ensure_paths_mock.assert_called_once_with(
+        module_name='ipfs_datasets_py.logic',
+        missing_module_name='ipfs_datasets_py',
+    )
+    assert import_module_mock.call_count == 2
+
+
+def test_import_module_optional_does_not_retry_non_module_errors():
+    with patch.object(
+        loader_module.importlib,
+        'import_module',
+        side_effect=RuntimeError('boom'),
+    ) as import_module_mock:
+        with patch.object(loader_module, 'ensure_import_paths') as ensure_paths_mock:
+            module, error = import_module_optional('ipfs_datasets_py.logic')
+
+    assert module is None
+    assert error is not None
+    assert error.error_type == 'RuntimeError'
+    ensure_paths_mock.assert_not_called()
+    import_module_mock.assert_called_once_with('ipfs_datasets_py.logic')
 
 
 def test_case_artifact_generates_stable_identifier_and_preserves_alias():

@@ -1295,6 +1295,88 @@ class TestClaimSupportHook:
             if os.path.exists(db_path):
                 os.unlink(db_path)
 
+    def test_get_claim_support_validation_recommends_parse_quality_improvement_for_low_quality_support(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.evidence_state = Mock()
+        mock_mediator.evidence_state.get_evidence_by_cid = Mock(return_value={
+            'id': 91,
+            'cid': 'QmEvidenceLowQuality',
+            'type': 'document',
+            'parse_status': 'fallback',
+            'chunk_count': 1,
+            'parsed_text_preview': '',
+            'parse_metadata': {
+                'source': 'bytes',
+                'input_format': 'pdf',
+                'extraction_method': 'pdf_unparsed',
+                'quality_tier': 'empty',
+                'quality_score': 0.0,
+                'page_count': 1,
+                'parse_quality': {'quality_tier': 'empty', 'quality_score': 0.0, 'quality_flags': ['requires_ocr_or_binary_pdf']},
+                'source_span': {'char_start': 0, 'char_end': 0, 'text_length': 0, 'raw_size': 4096, 'page_count': 1},
+                'transform_lineage': {'source': 'bytes', 'input_format': 'pdf', 'normalization': 'pdf_unparsed'},
+            },
+            'fact_count': 1,
+            'graph_metadata': {'graph_snapshot': {'graph_id': 'graph:evidence-91', 'created': True, 'reused': False}},
+        })
+        mock_mediator.evidence_state.get_evidence_facts = Mock(return_value=[
+            {'fact_id': 'fact:1', 'text': 'Complaint appears in a low-quality PDF exhibit.'},
+        ])
+        mock_mediator.evidence_state.get_evidence_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:1'}],
+            'relationships': [{'id': 'rel:1'}],
+        })
+        mock_mediator.legal_authority_storage = Mock()
+        mock_mediator.legal_authority_storage.get_authority_by_citation = Mock(return_value=None)
+        mock_mediator.legal_authority_storage.get_authority_facts = Mock(return_value=[])
+        mock_mediator.legal_authority_storage.get_authority_graph = Mock(return_value={})
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook._run_element_reasoning_diagnostics = Mock(return_value={
+                'backend_available_count': 0,
+                'predicate_count': 0,
+                'ontology_entity_count': 0,
+                'ontology_relationship_count': 0,
+                'adapter_statuses': {},
+                'used_fallback_ontology': True,
+            })
+            hook.register_claim_requirements('testuser', {'employment': ['Protected activity']})
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidenceLowQuality',
+                support_label='Unreadable PDF exhibit',
+                source_table='evidence',
+            )
+
+            validation = hook.get_claim_support_validation(
+                'testuser',
+                'employment',
+                required_support_kinds=['evidence'],
+            )
+
+            protected_activity = validation['claims']['employment']['elements'][0]
+            assert protected_activity['validation_status'] == 'incomplete'
+            assert protected_activity['recommended_action'] == 'improve_parse_quality'
+            assert protected_activity['support_trace_summary']['parse_quality_tier_counts']['empty'] == 1
+            assert protected_activity['support_trace_summary']['avg_parse_quality_score'] == 0.0
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
     def test_resolve_follow_up_manual_review_appends_resolution_event(self):
         try:
             from mediator.claim_support_hooks import ClaimSupportHook
@@ -1380,6 +1462,31 @@ class TestClaimSupportHook:
             'source_url': 'https://example.com/evidence',
             'parse_status': 'parsed',
             'chunk_count': 2,
+            'parsed_text_preview': 'Subject: HR complaint\n\nI reported discrimination.',
+            'parse_metadata': {
+                'source': 'bytes',
+                'input_format': 'email',
+                'extraction_method': 'email_to_text',
+                'quality_tier': 'high',
+                'quality_score': 96.0,
+                'page_count': 1,
+                'content_origin': 'historical_archive_capture',
+                'historical_capture': True,
+                'capture_source': 'archived_domain_scrape',
+                'archive_url': 'https://web.archive.org/web/20240101120000/https://example.com/evidence',
+                'version_of': 'https://example.com/evidence',
+                'source_span': {'char_start': 0, 'char_end': 52, 'text_length': 52, 'raw_size': 64, 'page_count': 1},
+                'transform_lineage': {
+                    'source': 'bytes',
+                    'input_format': 'email',
+                    'normalization': 'email_to_text',
+                    'content_origin': 'historical_archive_capture',
+                    'historical_capture': True,
+                    'capture_source': 'archived_domain_scrape',
+                    'archive_url': 'https://web.archive.org/web/20240101120000/https://example.com/evidence',
+                    'version_of': 'https://example.com/evidence',
+                },
+            },
             'graph_status': 'ready',
             'graph_entity_count': 3,
             'graph_relationship_count': 2,
@@ -1410,6 +1517,27 @@ class TestClaimSupportHook:
             'url': 'https://example.com/usc/1983',
             'parse_status': 'parsed',
             'chunk_count': 1,
+            'parsed_text_preview': 'Civil Rights Act\n\nSection 1983 authorizes relief.',
+            'parse_metadata': {
+                'source': 'legal_authority',
+                'input_format': 'html',
+                'extraction_method': 'html_to_text',
+                'quality_tier': 'high',
+                'quality_score': 95.0,
+                'page_count': 1,
+                'content_origin': 'authority_reference_fallback',
+                'content_source_field': 'citation_title_fallback',
+                'fallback_mode': 'citation_title_only',
+                'source_span': {'char_start': 0, 'char_end': 48, 'text_length': 48, 'raw_size': 60, 'page_count': 1},
+                'transform_lineage': {
+                    'source': 'legal_authority',
+                    'input_format': 'html',
+                    'normalization': 'html_to_text',
+                    'content_origin': 'authority_reference_fallback',
+                    'content_source_field': 'citation_title_fallback',
+                    'fallback_mode': 'citation_title_only',
+                },
+            },
             'graph_status': 'ready',
             'graph_entity_count': 1,
             'graph_relationship_count': 1,
@@ -1474,16 +1602,44 @@ class TestClaimSupportHook:
             assert len(protected_activity['links_by_kind']['authority']) == 1
             assert protected_activity['links_by_kind']['evidence'][0]['record_summary']['cid'] == 'QmEvidence6'
             assert protected_activity['links_by_kind']['authority'][0]['record_summary']['citation'] == '42 U.S.C. § 1983'
+            assert protected_activity['links_by_kind']['evidence'][0]['record_summary']['parse_summary']['input_format'] == 'email'
+            assert protected_activity['links_by_kind']['authority'][0]['record_summary']['parse_summary']['input_format'] == 'html'
             assert protected_activity['links_by_kind']['evidence'][0]['graph_summary']['entity_count'] == 3
             assert protected_activity['links_by_kind']['authority'][0]['graph_summary']['relationship_count'] == 1
             assert protected_activity['links_by_kind']['evidence'][0]['graph_trace']['snapshot']['graph_id'] == 'graph:evidence-18'
             assert protected_activity['links_by_kind']['authority'][0]['graph_trace']['snapshot']['graph_id'] == 'graph:authority-7'
             assert claim_matrix['support_trace_summary']['trace_count'] == 3
             assert claim_matrix['support_trace_summary']['unique_fact_count'] == 3
+            assert claim_matrix['support_trace_summary']['parsed_record_count'] == 2
+            assert claim_matrix['support_trace_summary']['parse_input_format_counts']['email'] == 1
+            assert claim_matrix['support_trace_summary']['parse_input_format_counts']['html'] == 1
+            assert claim_matrix['support_trace_summary']['parse_quality_tier_counts']['high'] == 2
+            assert claim_matrix['support_trace_summary']['avg_parse_quality_score'] == 95.5
+            assert claim_matrix['support_packet_summary']['historical_capture_count'] == 2
+            assert claim_matrix['support_packet_summary']['content_origin_counts'] == {
+                'historical_archive_capture': 2,
+                'authority_reference_fallback': 1,
+            }
+            assert claim_matrix['support_packet_summary']['fallback_mode_counts'] == {
+                'citation_title_only': 1,
+            }
             assert protected_activity['support_trace_summary']['trace_count'] == 3
             assert protected_activity['support_trace_summary']['parse_source_counts']['unknown'] == 3
+            assert protected_activity['support_trace_summary']['parse_input_format_counts']['email'] == 1
+            assert protected_activity['support_traces'][0]['record_summary']['parse_summary']['quality_tier'] == 'high'
             assert protected_activity['support_traces'][0]['trace_kind'] == 'fact'
             assert protected_activity['support_traces'][0]['graph_id']
+            historical_packet = next(
+                packet for packet in protected_activity['support_packets']
+                if packet['lineage_summary']['content_origin'] == 'historical_archive_capture'
+            )
+            fallback_packet = next(
+                packet for packet in protected_activity['support_packets']
+                if packet['lineage_summary']['fallback_mode'] == 'citation_title_only'
+            )
+            assert historical_packet['lineage_summary']['archive_url'] == 'https://web.archive.org/web/20240101120000/https://example.com/evidence'
+            assert fallback_packet['lineage_summary']['fallback_mode'] == 'citation_title_only'
+            assert protected_activity['support_packet_summary']['historical_capture_count'] == 2
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)

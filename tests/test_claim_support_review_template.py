@@ -14,6 +14,31 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Load Review" in content
     assert "Execute Follow-Up" in content
     assert "resolution-result-card" in content
+    assert "signal-archive-captures" in content
+    assert "signal-fallback-authorities" in content
+    assert "signal-low-quality-records" in content
+    assert "signal-parse-quality-tasks" in content
+    assert "execution-result-card" in content
+    assert "Lineage Signals" in content
+    assert "Parse Signals" in content
+    assert "View lineage packets" in content
+    assert "packet-details" in content
+    assert "All packets" in content
+    assert "Archived only" in content
+    assert "Fallback only" in content
+    assert "data-packet-filter-button" in content
+    assert "packet-filter-count" in content
+    assert "data-packet-filter-summary" in content
+    assert "Showing ${visibleCount} of ${totalCount} packets" in content
+    assert "data-packet-url-action" in content
+    assert "Open archive" in content
+    assert "Copy archive" in content
+    assert "Open original" in content
+    assert "Copy original" in content
+    assert "data-packet-action-feedback" in content
+    assert "setPacketActionFeedback" in content
+    assert "packetSortRank" in content
+    assert "sortSupportPackets" in content
 
 
 def test_landing_pages_link_to_claim_support_review_dashboard():

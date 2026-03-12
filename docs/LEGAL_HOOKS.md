@@ -308,22 +308,21 @@ class CustomClassificationHook(LegalClassificationHook):
 
 ### Using Legal Scrapers
 
-The `StatuteRetrievalHook` can be extended to use actual statute text from ipfs_datasets_py:
+The `StatuteRetrievalHook` can be extended to use complaint-generator's legal adapter layer rather than importing upstream scraper modules directly:
 
 ```python
-from ipfs_datasets_py.legal_scrapers import us_code_scraper
+from integrations.ipfs_datasets.legal import search_us_code
 
 class EnhancedStatuteRetrieval(StatuteRetrievalHook):
     def retrieve_statutes(self, classification):
         # Get statute citations from LLM
         statutes = super().retrieve_statutes(classification)
         
-        # Retrieve actual statute text
+        # Retrieve actual statute text through the normalized adapter seam
         for statute in statutes:
             if 'U.S.C.' in statute['citation']:
-                statute['full_text'] = us_code_scraper.get_statute_text(
-                    statute['citation']
-                )
+                matches = search_us_code(statute['citation'], max_results=1)
+                statute['full_text'] = matches[0].get('content', '') if matches else ''
         
         return statutes
 ```

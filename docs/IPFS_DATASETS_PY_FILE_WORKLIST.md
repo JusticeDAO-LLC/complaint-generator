@@ -13,6 +13,7 @@ This is the most execution-oriented companion to:
 - `docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md`
 - `docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md`
 - `docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md`
+- `docs/IPFS_DATASETS_PY_BATCH1_STATUS_AUDIT.md`
 
 Use this document when selecting the next coding slice.
 
@@ -424,8 +425,9 @@ Validation:
 ## Recommended First Coding Slice
 
 1. `integrations/ipfs_datasets/documents.py`
-2. `mediator/evidence_hooks.py`
+2. `integrations/ipfs_datasets/provenance.py`
 3. `mediator/web_evidence_hooks.py`
-4. focused evidence and web-evidence tests
+4. `mediator/legal_authority_hooks.py`
+5. focused web-evidence and legal-authority tests
 
-This is the best first slice because it strengthens the shared parse contract without depending on graph persistence or theorem-prover work.
+This is the best first slice because it closes the remaining parse and provenance drift for the two source families most likely to fragment the shared corpus contract: archived pages and authority text.

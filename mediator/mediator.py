@@ -28,8 +28,7 @@ from .web_evidence_hooks import (
 )
 from .claim_support_hooks import ClaimSupportHook
 from integrations.ipfs_datasets.capabilities import (
-	get_ipfs_datasets_capabilities,
-	summarize_ipfs_datasets_capability_report,
+	summarize_ipfs_datasets_startup_payload,
 )
 from integrations.ipfs_datasets.graphs import persist_graph_snapshot, query_graph_support
 from claim_support_review import (
@@ -62,13 +61,10 @@ class Mediator:
 		self.backends = backends
 		# Initialize state early because hooks may log during construction.
 		self.state = State()
+		startup_payload = summarize_ipfs_datasets_startup_payload()
 		self.log(
 			'ipfs_datasets_capabilities',
-			capability_report=summarize_ipfs_datasets_capability_report(),
-			capabilities={
-				name: status.as_dict()
-				for name, status in get_ipfs_datasets_capabilities().items()
-			},
+			**startup_payload,
 		)
 		self.inquiries = Inquiries(self)
 		self.complaint = Complaint(self)
@@ -984,6 +980,8 @@ class Mediator:
 		claim_type: str,
 		element_text: str,
 		missing_support_kinds: List[str],
+		support_by_kind: Dict[str, Any] = None,
+		recommended_action: str = '',
 		validation_status: str = '',
 		proof_gaps: List[Dict[str, Any]] = None,
 		proof_decision_trace: Dict[str, Any] = None,
@@ -991,6 +989,7 @@ class Mediator:
 		queries: Dict[str, List[str]] = {}
 		proof_gap_types = self._extract_proof_gap_types(proof_gaps or [])
 		decision_trace = proof_decision_trace if isinstance(proof_decision_trace, dict) else {}
+		support_kind_counts = support_by_kind if isinstance(support_by_kind, dict) else {}
 		gap_focus = ' '.join(
 			gap_type.replace('_', ' ')
 			for gap_type in proof_gap_types
@@ -1002,7 +1001,16 @@ class Mediator:
 
 		contradiction_targeted = validation_status == 'contradicted' and bool(missing_support_kinds)
 		reasoning_targeted = self._is_reasoning_gap_follow_up(proof_gap_types, decision_trace)
-		if 'evidence' in missing_support_kinds:
+		quality_targeted = recommended_action == 'improve_parse_quality' and not contradiction_targeted and not reasoning_targeted
+		target_support_kinds = list(missing_support_kinds)
+		if quality_targeted and not target_support_kinds:
+			target_support_kinds = [
+				kind for kind, count in support_kind_counts.items()
+				if int(count or 0) > 0
+			]
+			if not target_support_kinds:
+				target_support_kinds = ['evidence']
+		if 'evidence' in target_support_kinds:
 			if contradiction_targeted:
 				queries['evidence'] = [
 					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'contradictory evidence rebuttal', gap_focus),
@@ -1015,13 +1023,19 @@ class Mediator:
 					_compose_query(f'"{element_text}"', 'corroborating records legal elements', claim_type, gap_focus),
 					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'evidence burden of proof'),
 				]
+			elif quality_targeted:
+				queries['evidence'] = [
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'clearer copy OCR readable evidence'),
+					_compose_query(f'"{element_text}"', 'better scan legible document witness record', claim_type),
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'original PDF attachment readable'),
+				]
 			else:
 				queries['evidence'] = [
 					f'"{claim_type}" "{element_text}" evidence',
 					f'"{element_text}" documentation {claim_type}',
 					f'"{element_text}" facts witness records {claim_type}',
 				]
-		if 'authority' in missing_support_kinds:
+		if 'authority' in target_support_kinds:
 			if contradiction_targeted:
 				queries['authority'] = [
 					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'contradiction case law', gap_focus),
@@ -1033,6 +1047,12 @@ class Mediator:
 					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'formal proof case law', gap_focus),
 					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'legal standard burden of proof', gap_focus),
 					_compose_query(f'"{element_text}"', 'formal elements precedent', claim_type),
+				]
+			elif quality_targeted:
+				queries['authority'] = [
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'official statute opinion PDF text'),
+					_compose_query(f'"{element_text}"', 'authoritative source readable full text', claim_type),
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'certified opinion clear scan'),
 				]
 			else:
 				queries['authority'] = [
@@ -1331,6 +1351,7 @@ class Mediator:
 			required_support_kinds: List[str]) -> Dict[str, Any]:
 		element_text = element.get('element_text') or element.get('claim_element') or 'Unknown element'
 		support_by_kind = element.get('support_by_kind', {})
+		recommended_action = str(element.get('recommended_action') or '')
 		missing_support_kinds = [
 			kind for kind in required_support_kinds
 			if support_by_kind.get(kind, 0) == 0
@@ -1345,6 +1366,8 @@ class Mediator:
 			claim_type,
 			element_text,
 			missing_support_kinds,
+			support_by_kind=support_by_kind,
+			recommended_action=recommended_action,
 			validation_status=validation_status,
 			proof_gaps=proof_gaps,
 			proof_decision_trace=proof_decision_trace,
@@ -1352,6 +1375,8 @@ class Mediator:
 		if validation_status == 'contradicted':
 			priority = 'high'
 		elif reasoning_gap_targeted:
+			priority = 'high'
+		elif recommended_action == 'improve_parse_quality':
 			priority = 'high'
 		execution_mode = 'retrieve_support'
 		if validation_status == 'contradicted' and missing_support_kinds:
@@ -1367,11 +1392,15 @@ class Mediator:
 			follow_up_focus = 'contradiction_resolution'
 		elif reasoning_gap_targeted:
 			follow_up_focus = 'reasoning_gap_closure'
+		elif recommended_action == 'improve_parse_quality':
+			follow_up_focus = 'parse_quality_improvement'
 		query_strategy = 'standard_gap_targeted'
 		if follow_up_focus == 'contradiction_resolution' and execution_mode == 'review_and_retrieve':
 			query_strategy = 'contradiction_targeted'
 		elif follow_up_focus == 'reasoning_gap_closure':
 			query_strategy = 'reasoning_gap_targeted'
+		elif follow_up_focus == 'parse_quality_improvement':
+			query_strategy = 'quality_gap_targeted'
 		return {
 			'claim_type': claim_type,
 			'claim_element_id': element.get('element_id'),
@@ -1385,7 +1414,7 @@ class Mediator:
 			'proof_gap_count': int(element.get('proof_gap_count', 0) or 0),
 			'proof_gaps': proof_gaps,
 			'proof_gap_types': proof_gap_types,
-			'validation_recommended_action': element.get('recommended_action', ''),
+			'validation_recommended_action': recommended_action,
 			'execution_mode': execution_mode,
 			'requires_manual_review': execution_mode in {'manual_review', 'review_and_retrieve'},
 			'reasoning_backed': bool(((element.get('reasoning_diagnostics') or {}).get('backend_available_count', 0) or 0) > 0),
@@ -1393,6 +1422,7 @@ class Mediator:
 			'query_strategy': query_strategy,
 			'priority': priority,
 			'priority_score': 3 if priority == 'high' else 2,
+			'recommended_action': recommended_action,
 			'missing_support_kinds': missing_support_kinds,
 			'queries': queries,
 		}
@@ -1434,7 +1464,7 @@ class Mediator:
 				'suppress': False,
 				'reason': '',
 			}
-		if task.get('follow_up_focus') == 'reasoning_gap_closure':
+		if task.get('follow_up_focus') in {'reasoning_gap_closure', 'parse_quality_improvement'}:
 			return {
 				'suppress': False,
 				'reason': '',
@@ -1548,15 +1578,20 @@ class Mediator:
 						adjusted_priority_score,
 						3 if task.get('execution_mode') == 'manual_review' else 2,
 					)
+				if task.get('follow_up_focus') == 'parse_quality_improvement':
+					adjusted_priority_score = max(adjusted_priority_score, 3)
 				adaptive_retry_state = task.get('adaptive_retry_state', {}) if isinstance(task.get('adaptive_retry_state'), dict) else {}
 				adaptive_priority_penalty = int(adaptive_retry_state.get('priority_penalty', 0) or 0)
 				if adaptive_priority_penalty:
-					minimum_priority = 2 if task.get('follow_up_focus') == 'reasoning_gap_closure' else 1
+					minimum_priority = 2 if task.get('follow_up_focus') in {'reasoning_gap_closure', 'parse_quality_improvement'} else 1
 					adjusted_priority_score = max(minimum_priority, adjusted_priority_score - adaptive_priority_penalty)
 				task['graph_support'] = graph_support
 				task['has_graph_support'] = bool(graph_support.get('results'))
 				task['graph_support_strength'] = graph_support_assessment['strength']
-				task['recommended_action'] = graph_support_assessment['recommended_action']
+				if task.get('follow_up_focus') == 'parse_quality_improvement':
+					task['recommended_action'] = 'improve_parse_quality'
+				else:
+					task['recommended_action'] = graph_support_assessment['recommended_action']
 				if task.get('validation_status') == 'contradicted' and not task.get('manual_review_resolved'):
 					task['recommended_action'] = 'resolve_contradiction'
 				if task.get('execution_mode') == 'manual_review' and not task.get('manual_review_resolved'):
@@ -1861,6 +1896,17 @@ class Mediator:
 			claim_element_id=target_element_id,
 			claim_element_text=target_element_text,
 		)
+		support_traces = self.claim_support.get_claim_support_traces(
+			user_id,
+			claim_type,
+			claim_element_id=target_element_id,
+			claim_element_text=target_element_text,
+		)
+		support_packets = [
+			self.claim_support._build_support_packet(trace)
+			for trace in support_traces
+			if isinstance(trace, dict)
+		]
 		gap_analysis = self.get_claim_support_gaps(
 			claim_type=claim_type,
 			user_id=user_id,
@@ -1924,12 +1970,9 @@ class Mediator:
 			'validation_summary': current_validation_summary,
 			'contradiction_candidates': contradiction_candidates,
 			'support_facts': support_facts,
-			'support_traces': self.claim_support.get_claim_support_traces(
-				user_id,
-				claim_type,
-				claim_element_id=target_element_id,
-				claim_element_text=target_element_text,
-			),
+			'support_traces': support_traces,
+			'support_packets': support_packets,
+			'support_packet_summary': self.claim_support._summarize_support_packets(support_packets),
 			'evidence': evidence_records,
 			'authorities': authority_records,
 			'total_facts': len(support_facts),

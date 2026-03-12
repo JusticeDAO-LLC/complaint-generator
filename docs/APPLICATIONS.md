@@ -87,8 +87,8 @@ After authentication, the system enters interactive mode where:
 | `!reset` | Wipe current state and start over with a new complaint |
 | `!save` | Save current conversation state to disk |
 | `!resume` | Load a previously saved state from disk |
-| `!claim-review` | Print the claim-support review payload in JSON for a claim type |
-| `!execute-follow-up` | Execute follow-up retrieval tasks and print the execution payload in JSON |
+| `!claim-review` | Print a compact parse-quality review summary, including an `improve_parse_quality` recommendation when present, and then the claim-support review payload in JSON for a claim type |
+| `!execute-follow-up` | Execute follow-up retrieval tasks, print a compact execution-quality summary with a recommendation when parse-quality remediation is still needed, and then print the execution payload in JSON |
 
 Review command examples:
 
@@ -178,7 +178,7 @@ This mode serves:
 | `/` | Main landing page | HTML template (index.html) |
 | `/home` | Home page after login | HTML template (home.html) |
 | `/chat` | Chat interface | HTML template (chat.html) |
-| `/claim-support-review` | Operator review dashboard for claim support, follow-up execution, recent follow-up history, and manual-review resolution | HTML template (claim_support_review.html) |
+| `/claim-support-review` | Operator review dashboard for claim support, parse-quality signals, follow-up execution, recent follow-up history, and manual-review resolution | HTML template (claim_support_review.html) |
 | `/profile` | User profile page | HTML template (profile.html) |
 | `/results` | Results/complaint display | HTML template (results.html) |
 | `/document` | Document viewer | HTML template (document.html) |
@@ -189,8 +189,8 @@ This mode serves:
 
 | Endpoint | Description | Returns |
 |----------|-------------|---------|
-| `/api/claim-support/review` | Claim-element review packet for operator or UI workflows | JSON payload with `claim_coverage_matrix`, `claim_coverage_summary`, `claim_support_gaps`, `claim_contradiction_candidates`, and optional `support_summary`, `claim_overview`, or `follow_up_plan`; `follow_up_execution` remains compatibility-only |
-| `/api/claim-support/execute-follow-up` | Explicit side-effecting follow-up execution endpoint | JSON payload with `follow_up_execution`, `follow_up_execution_summary`, and optional `post_execution_review` |
+| `/api/claim-support/review` | Claim-element review packet for operator or UI workflows | JSON payload with `claim_coverage_matrix`, `claim_coverage_summary`, `claim_support_gaps`, `claim_contradiction_candidates`, and optional `support_summary`, `claim_overview`, or `follow_up_plan`; coverage payloads include compact support-lineage packet summaries for archived captures and authority fallbacks; `follow_up_execution` remains compatibility-only |
+| `/api/claim-support/execute-follow-up` | Explicit side-effecting follow-up execution endpoint | JSON payload with `follow_up_execution`, `follow_up_execution_summary`, optional `execution_quality_summary`, and optional `post_execution_review` |
 
 ##### `/api/claim-support/review` - Claim Support Review
 
@@ -214,14 +214,15 @@ Example request:
 
 Example response fields:
 
-- `claim_coverage_matrix`: detailed per-claim and per-element grouped support links.
-- `claim_coverage_summary`: compact status counts plus missing, unresolved, and contradiction summary labels.
+- `claim_coverage_matrix`: detailed per-claim and per-element grouped support links, plus per-element `support_packets` and `support_packet_summary` lineage rollups.
+- `claim_coverage_summary`: compact status counts plus missing, unresolved, contradiction, parse-quality, and `support_packet_summary` lineage labels.
+- The review dashboard currently renders per-element `support_packets` archive-first and fallback-next for operator triage, but API callers should treat packet ordering as presentation-specific unless they apply their own sort.
 - `claim_support_gaps`: unresolved-element diagnostics keyed by claim type.
 - `claim_contradiction_candidates`: heuristic contradiction candidates keyed by claim type.
 - `support_summary`: persisted support-link summary keyed by claim type.
 - `claim_overview`: covered, partially supported, and missing element buckets keyed by claim type.
 - `follow_up_plan`: actionable retrieval tasks keyed by claim type.
-- `follow_up_plan_summary`: compact task, suppression, and graph-support counts keyed by claim type.
+- `follow_up_plan_summary`: compact task, suppression, graph-support, and parse-remediation counts keyed by claim type.
 - `follow_up_execution`: compatibility-only opt-in execution results keyed by claim type when `execute_follow_up=true`.
 - `follow_up_execution_summary`: compatibility-only compact execution, suppression, cooldown-skip, and graph-support counts keyed by claim type.
 - `compatibility_notice`: route-level deprecation metadata returned only when `execute_follow_up=true`.
@@ -256,6 +257,7 @@ Example response fields:
 
 - `follow_up_execution`: raw execution results keyed by claim type.
 - `follow_up_execution_summary`: compact execution, suppression, cooldown-skip, and graph-support counts keyed by claim type.
+- `execution_quality_summary`: before-versus-after parse-quality comparison keyed by claim type when post-execution review is requested.
 - `post_execution_review`: refreshed review payload after execution, including updated coverage and optional follow-up planning.
 
 Use this endpoint for new clients that want execution to be unambiguously side-effecting. The review endpoint remains available for read-only review and backward-compatible opt-in execution.

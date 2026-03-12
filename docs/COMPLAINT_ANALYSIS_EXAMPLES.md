@@ -358,45 +358,44 @@ class HousingRiskScorer(BaseRiskScorer):
 ### Complete Evidence Pipeline
 
 ```python
-from ipfs_datasets_py.pdf_processing import PDFProcessor
-from ipfs_datasets_py.web_archiving import BraveSearchClient
+from integrations.ipfs_datasets.documents import parse_document_file
+from integrations.ipfs_datasets.search import search_brave_web
 from complaint_analysis import ComplaintAnalyzer, register_consumer_complaint
 
-async def process_complaint_with_evidence(pdf_path, search_keywords):
+def process_complaint_with_evidence(pdf_path, search_keywords):
     """
     Complete workflow: PDF processing + web evidence + legal analysis.
     """
-    # Step 1: Process PDF with ipfs_datasets_py
-    processor = PDFProcessor(enable_ocr=True, hardware_acceleration=True)
-    pdf_result = await processor.process_document(pdf_path)
+    # Step 1: Parse the document through complaint-generator's adapter layer
+    document_parse = parse_document_file(pdf_path)
+    complaint_text = document_parse.get('text', '')
     
     # Step 2: Analyze complaint with complaint_analysis
     register_consumer_complaint()  # If consumer complaint
     analyzer = ComplaintAnalyzer(complaint_type='consumer')
-    analysis = analyzer.analyze(pdf_result.text)
+    analysis = analyzer.analyze(complaint_text)
     
-    # Step 3: Search for evidence
+    # Step 3: Search for evidence through the normalized web-search adapter
     if analysis['risk_score'] >= 2:  # Medium or high risk
-        search = BraveSearchClient(cache_ipfs=True)
         query = f"site:gov {' OR '.join(search_keywords)}"
-        evidence = search.search(query, count=20)
+        evidence = search_brave_web(query, max_results=20)
     else:
         evidence = []
     
     return {
         'complaint_analysis': analysis,
         'pdf_processing': {
-            'ipfs_cid': pdf_result.ipld_cid,
-            'text_length': len(pdf_result.text),
-            'entities': pdf_result.entities
+            'status': document_parse.get('status'),
+            'text_length': len(complaint_text),
+            'chunk_count': document_parse.get('summary', {}).get('chunk_count', 0),
+            'provider': document_parse.get('provider')
         },
         'evidence_sources': len(evidence),
         'actionable': analysis['risk_score'] >= 2
     }
 
 # Usage
-result = await process_complaint_with_evidence('complaint.pdf', 
-                                               ['consumer fraud', 'ftc'])
+result = process_complaint_with_evidence('complaint.pdf', ['consumer fraud', 'ftc'])
 print(f"Analysis complete: Risk={result['complaint_analysis']['risk_level']}")
 ```
 

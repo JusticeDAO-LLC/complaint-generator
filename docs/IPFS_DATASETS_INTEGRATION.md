@@ -4,13 +4,19 @@
 
 The complaint-generator system integrates with the `ipfs_datasets_py` package to leverage previous work on document processing, web archiving, and legal research capabilities.
 
+## Adapter-First Guidance
+
+Complaint-generator production examples should prefer `integrations/ipfs_datasets/*` imports over direct `ipfs_datasets_py.*` imports.
+
+Use direct upstream imports in this repository's docs only when the goal is to describe upstream implementation details rather than complaint-generator integration patterns.
+
 ## Integration Points
 
 ### 1. Web Evidence Discovery (`mediator/web_evidence_hooks.py`)
 
 **Components Used:**
 - `ipfs_datasets_py.web_archiving.CommonCrawlSearchEngine` - Search archived web pages
-- `ipfs_datasets_py.web_archiving.brave_search_client.BraveSearchClient` - Current web search
+- `integrations.ipfs_datasets.search.search_brave_web` - Current web search through the adapter seam
 
 **Features:**
 - Automatic evidence discovery from web sources
@@ -101,22 +107,19 @@ opinion = hook.fetch_opinion(citation="42 U.S.C. § 2000e")
 
 ### 4. Document Processing (Future Integration)
 
-**Available in ipfs_datasets_py:**
-- `PDFProcessor` - PDF parsing with OCR fallback
-- `DocumentIndexer` - Full-text indexing
-- `MetadataExtractor` - Document metadata extraction
+**Available through complaint-generator adapters:**
+- `integrations.ipfs_datasets.documents.parse_document_file` - normalized document parsing
+- `integrations.ipfs_datasets.documents.parse_document_bytes` - in-memory parsing
+- `integrations.ipfs_datasets.documents.summarize_document_parse` - stable parse summaries
 
 **Planned Integration:**
 ```python
-# Future: Process uploaded evidence documents
-from ipfs_datasets_py.document_processing import PDFProcessor
+# Future: Process uploaded evidence documents through the adapter seam
+from integrations.ipfs_datasets.documents import parse_document_file
 
-processor = PDFProcessor()
-text, metadata = processor.process(pdf_path)
-
-# Extract structured data
-entities = processor.extract_entities(text)
-citations = processor.extract_citations(text)
+document_parse = parse_document_file(pdf_path)
+text = document_parse['text']
+metadata = document_parse['metadata']
 ```
 
 ### 5. GraphRAG (Future Integration)
@@ -129,16 +132,18 @@ citations = processor.extract_citations(text)
 **Planned Integration:**
 ```python
 # Future: Enhanced legal research with GraphRAG
-from ipfs_datasets_py.graphrag import GraphRAG
+from integrations.ipfs_datasets.graphrag import build_ontology, validate_ontology
 
-graph_rag = GraphRAG()
-graph_rag.ingest_documents(legal_documents)
+ontology_result = build_ontology("\n\n".join(legal_documents))
+validation_result = validate_ontology(ontology_result.get('ontology'))
 
 # Query with graph-based retrieval
-relevant_info = graph_rag.query(
-    "What are the requirements for Title VII claim?",
-    complaint_type="employment_discrimination"
-)
+relevant_info = {
+    'ontology_result': ontology_result,
+    'validation_result': validation_result,
+    'question': "What are the requirements for Title VII claim?",
+    'complaint_type': "employment_discrimination",
+}
 ```
 
 ## Setup Instructions
@@ -202,12 +207,7 @@ The system is designed to work with or without ipfs_datasets_py:
 
 **Example:**
 ```python
-try:
-    from ipfs_datasets_py.web_archiving import CommonCrawlSearchEngine
-    COMMON_CRAWL_AVAILABLE = True
-except ImportError:
-    COMMON_CRAWL_AVAILABLE = False
-    CommonCrawlSearchEngine = None
+from integrations.ipfs_datasets.search import COMMON_CRAWL_AVAILABLE
 
 # Later in code
 if COMMON_CRAWL_AVAILABLE:
@@ -268,13 +268,9 @@ Tests are designed to work without ipfs_datasets_py:
 # tests/test_web_evidence_hooks.py
 import pytest
 
-try:
-    from ipfs_datasets_py.web_archiving import CommonCrawlSearchEngine
-    IPFS_DATASETS_AVAILABLE = True
-except ImportError:
-    IPFS_DATASETS_AVAILABLE = False
+from integrations.ipfs_datasets.search import COMMON_CRAWL_AVAILABLE
 
-@pytest.mark.skipif(not IPFS_DATASETS_AVAILABLE, 
+@pytest.mark.skipif(not COMMON_CRAWL_AVAILABLE, 
                    reason="Requires ipfs_datasets_py")
 def test_common_crawl_search():
     # Test only runs if ipfs_datasets_py available

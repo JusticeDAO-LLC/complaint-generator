@@ -1,14 +1,21 @@
 """Tests for the complaint-generator ipfs_datasets adapter layer."""
 
+from io import BytesIO
 import tempfile
 from unittest.mock import Mock, patch
+import zipfile
 
 from integrations.ipfs_datasets.capabilities import (
     get_ipfs_datasets_capabilities,
     summarize_ipfs_datasets_capability_report,
     summarize_ipfs_datasets_capabilities,
+    summarize_ipfs_datasets_startup_payload,
 )
-from integrations.ipfs_datasets.documents import parse_document_bytes, parse_document_file
+from integrations.ipfs_datasets.documents import (
+    parse_document_bytes,
+    parse_document_file,
+    should_parse_document_input,
+)
 from integrations.ipfs_datasets.graphs import extract_graph_from_text, persist_graph_snapshot, query_graph_support
 from integrations.ipfs_datasets.graphrag import build_ontology, run_refinement_cycle, validate_ontology
 from integrations.ipfs_datasets.legal import (
@@ -71,6 +78,14 @@ def test_capability_report_returns_counts_and_nested_statuses():
     assert isinstance(report["degraded_capabilities"], dict)
     assert all("provider" in payload for payload in report["capabilities"].values())
     assert all("details" in payload for payload in report["capabilities"].values())
+
+
+def test_startup_payload_reuses_canonical_capability_summary_contract():
+    startup_payload = summarize_ipfs_datasets_startup_payload()
+
+    assert startup_payload["capability_report"]["capabilities"] == startup_payload["capabilities"]
+    assert startup_payload["capability_report"]["status"] in {"available", "degraded"}
+    assert all(payload["provider"] == "ipfs_datasets_py" for payload in startup_payload["capabilities"].values())
 
 
 def test_search_us_code_normalizes_results():
@@ -333,7 +348,12 @@ def test_parse_document_bytes_returns_normalized_shape():
     assert 'chunks' in result
     assert result['summary']['chunk_count'] == len(result['chunks'])
     assert result['summary']['parser_version'] == 'documents-adapter:1'
+    assert result['summary']['extraction_method'] == 'text_normalization'
+    assert result['summary']['quality_tier'] == 'high'
+    assert result['summary']['quality_score'] > 90.0
     assert result['metadata']['transform_lineage']['source'] == 'bytes'
+    assert result['metadata']['source_span']['char_end'] == len('Hello world')
+    assert result['lineage']['extraction']['method'] == 'text_normalization'
     assert result['metadata']['operation'] == 'parse_document_text'
     assert result['metadata']['implementation_status'] in {'implemented', 'fallback'}
 
@@ -350,6 +370,86 @@ def test_parse_document_bytes_normalizes_html_input():
     assert result['metadata']['chunk_count'] >= 1
     assert result['summary']['input_format'] == 'html'
     assert result['lineage']['normalization'] == 'html_to_text'
+    assert result['summary']['extraction_method'] == 'html_to_text'
+    assert result['metadata']['parse_quality']['quality_tier'] == 'high'
+
+
+def test_parse_document_bytes_normalizes_email_input():
+    payload = (
+        b"Subject: HR Complaint\n"
+        b"From: employee@example.com\n"
+        b"To: hr@example.com\n\n"
+        b"I reported discrimination on March 5."
+    )
+
+    result = parse_document_bytes(payload, filename='complaint.eml', mime_type='message/rfc822')
+
+    assert 'Subject: HR Complaint' in result['text']
+    assert 'I reported discrimination on March 5.' in result['text']
+    assert result['metadata']['input_format'] == 'email'
+    assert result['summary']['input_format'] == 'email'
+    assert result['lineage']['normalization'] == 'email_to_text'
+
+
+def test_parse_document_bytes_normalizes_rtf_input():
+    payload = b'{\\rtf1\\ansi This is \\b important\\b0 evidence.\\par Next paragraph.}'
+
+    result = parse_document_bytes(payload, filename='timeline.rtf', mime_type='application/rtf')
+
+    assert 'important evidence.' in result['text']
+    assert 'Next paragraph.' in result['text']
+    assert '\\rtf1' not in result['text']
+    assert result['metadata']['input_format'] == 'rtf'
+    assert result['lineage']['normalization'] == 'rtf_to_text'
+
+
+def test_parse_document_bytes_extracts_docx_xml_text():
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as archive:
+        archive.writestr(
+            '[Content_Types].xml',
+            '<?xml version="1.0" encoding="UTF-8"?>',
+        )
+        archive.writestr(
+            'word/document.xml',
+            (
+                '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+                '<w:body><w:p><w:r><w:t>Witness statement</w:t></w:r></w:p>'
+                '<w:p><w:r><w:t>Retaliation followed two days later.</w:t></w:r></w:p>'
+                '</w:body></w:document>'
+            ),
+        )
+
+    result = parse_document_bytes(
+        buffer.getvalue(),
+        filename='statement.docx',
+        mime_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    )
+
+    assert 'Witness statement' in result['text']
+    assert 'Retaliation followed two days later.' in result['text']
+    assert result['metadata']['input_format'] == 'docx'
+    assert result['summary']['input_format'] == 'docx'
+    assert result['lineage']['normalization'] == 'docx_xml_to_text'
+    assert result['summary']['quality_tier'] in {'medium', 'high'}
+    assert result['metadata']['source_span']['page_count'] == 1
+
+
+def test_parse_document_bytes_reports_low_quality_for_unparsed_pdf():
+    result = parse_document_bytes(b'%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n', filename='scan.pdf', mime_type='application/pdf')
+
+    assert result['summary']['input_format'] == 'pdf'
+    assert result['summary']['extraction_method'] == 'pdf_unparsed'
+    assert result['summary']['quality_tier'] == 'empty'
+    assert result['summary']['quality_score'] == 0.0
+    assert 'requires_ocr_or_binary_pdf' in result['metadata']['parse_quality']['quality_flags']
+    assert result['metadata']['source_span']['raw_size'] == len(b'%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n')
+
+
+def test_should_parse_document_input_covers_adapter_supported_formats():
+    assert should_parse_document_input(evidence_type='attachment', filename='message.eml', mime_type='message/rfc822') is True
+    assert should_parse_document_input(evidence_type='attachment', filename='notes.docx', mime_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document') is True
+    assert should_parse_document_input(evidence_type='image', filename='photo.png', mime_type='image/png') is False
 
 
 def test_parse_document_file_reads_and_normalizes_file():

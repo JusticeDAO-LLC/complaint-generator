@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import email.policy
 import mimetypes
 import re
+import zipfile
+from email.parser import BytesParser
 from html import unescape
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -47,6 +51,31 @@ DOCUMENTS_ERROR = (
 
 PARSER_VERSION = "documents-adapter:1"
 
+_TEXT_LIKE_MIME_PREFIXES = (
+    "text/",
+    "message/",
+)
+_PARSEABLE_MIME_TYPES = {
+    "application/pdf",
+    "application/rtf",
+    "text/rtf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+_PARSEABLE_EXTENSIONS = {
+    ".txt",
+    ".text",
+    ".md",
+    ".html",
+    ".htm",
+    ".xhtml",
+    ".pdf",
+    ".rtf",
+    ".doc",
+    ".docx",
+    ".eml",
+}
+
 
 def _build_parse_summary(
     *,
@@ -56,6 +85,10 @@ def _build_parse_summary(
     parser_version: str,
     input_format: str,
     paragraph_count: int,
+    extraction_method: str,
+    quality_tier: str,
+    quality_score: float,
+    page_count: int,
 ) -> DocumentParseSummary:
     return DocumentParseSummary(
         status=status,
@@ -64,6 +97,10 @@ def _build_parse_summary(
         parser_version=parser_version,
         input_format=input_format,
         paragraph_count=paragraph_count,
+        extraction_method=extraction_method,
+        quality_tier=quality_tier,
+        quality_score=quality_score,
+        page_count=page_count,
     )
 
 
@@ -75,18 +112,114 @@ def _build_transform_lineage(
     chunk_size: int,
     overlap: int,
     chunk_count: int,
+    normalization: str,
+    extraction: Dict[str, Any],
+    source_span: Dict[str, Any],
 ) -> DocumentTransformLineage:
     return DocumentTransformLineage(
         source=source,
         parser_version=parser_version,
         input_format=input_format,
-        normalization="html_to_text" if input_format == "html" else "text_normalization",
+        normalization=normalization,
         chunking={
             "chunk_size": chunk_size,
             "overlap": overlap,
             "chunk_count": chunk_count,
         },
+        extraction=dict(extraction),
+        source_span=dict(source_span),
     )
+
+
+def _determine_normalization_label(input_format: str, text_present: bool) -> str:
+    if input_format == "html":
+        return "html_to_text"
+    if input_format == "email":
+        return "email_to_text"
+    if input_format == "rtf":
+        return "rtf_to_text"
+    if input_format == "docx":
+        return "docx_xml_to_text"
+    if input_format == "pdf":
+        return "pdf_text_fallback" if text_present else "pdf_unparsed"
+    return "text_normalization"
+
+
+def _estimate_page_count(input_format: str, text: str, data: Optional[bytes]) -> int:
+    if input_format == "pdf":
+        if isinstance(data, (bytes, bytearray)) and data:
+            page_count = bytes(data).count(b"/Type /Page")
+            if page_count > 0:
+                return page_count
+        return 1 if text else 0
+    if not text:
+        return 0
+    return max(1, text.count("\f") + 1)
+
+
+def _compute_parse_quality(
+    *,
+    input_format: str,
+    text: str,
+    data: Optional[bytes],
+    raw_size: int,
+) -> Dict[str, Any]:
+    text_present = bool(text.strip())
+    page_count = _estimate_page_count(input_format, text, data)
+    extraction_method = _determine_normalization_label(input_format, text_present)
+    flags: List[str] = []
+
+    if not text_present:
+        flags.append("empty_text")
+    if input_format == "pdf":
+        flags.append("pdf_binary_fallback" if text_present else "requires_ocr_or_binary_pdf")
+    if input_format in {"docx", "rtf"} and not text_present:
+        flags.append("format_extraction_empty")
+
+    if text_present and raw_size > 0 and (len(text) / max(raw_size, 1)) < 0.05:
+        flags.append("low_text_density")
+
+    base_scores = {
+        "text": 98.0,
+        "html": 95.0,
+        "email": 93.0,
+        "docx": 88.0,
+        "rtf": 82.0,
+        "pdf": 68.0,
+    }
+    quality_score = 0.0 if not text_present else base_scores.get(input_format, 75.0)
+    if "low_text_density" in flags:
+        quality_score = max(quality_score - 15.0, 5.0)
+
+    if quality_score >= 90.0:
+        quality_tier = "high"
+    elif quality_score >= 75.0:
+        quality_tier = "medium"
+    elif quality_score > 0.0:
+        quality_tier = "low"
+    else:
+        quality_tier = "empty"
+
+    return {
+        "quality_score": round(quality_score, 2),
+        "quality_tier": quality_tier,
+        "quality_flags": flags,
+        "page_count": page_count,
+        "extraction_method": extraction_method,
+        "ocr_used": False,
+        "source_span": {
+            "char_start": 0,
+            "char_end": len(text or ""),
+            "text_length": len(text or ""),
+            "raw_size": int(raw_size or 0),
+            "page_count": page_count,
+        },
+        "extraction": {
+            "method": extraction_method,
+            "ocr_used": False,
+            "page_count": page_count,
+        },
+    }
 
 
 def _decode_text_fallback(data: bytes) -> str:
@@ -98,6 +231,15 @@ def _decode_text_fallback(data: bytes) -> str:
         except UnicodeDecodeError:
             continue
     return data.decode("utf-8", errors="ignore")
+
+
+def _is_mostly_text(text: str) -> bool:
+    sample = text[:2000]
+    visible = [char for char in sample if not char.isspace()]
+    if not visible:
+        return False
+    printable = sum(1 for char in visible if char.isprintable() and char != "\x00")
+    return printable / len(visible) >= 0.85
 
 
 def _normalize_whitespace(text: str) -> str:
@@ -129,6 +271,183 @@ def _looks_like_html(text: str, mime_type: str, filename: str) -> bool:
         or "<!doctype html" in lowered_text
         or ("<body" in lowered_text and "</" in lowered_text)
     )
+
+
+def _looks_like_rtf(text: str, mime_type: str, filename: str) -> bool:
+    lowered_text = (text or "")[:128].lower().lstrip()
+    lowered_mime = (mime_type or "").lower()
+    lowered_name = (filename or "").lower()
+    return (
+        lowered_mime in {"application/rtf", "text/rtf"}
+        or lowered_name.endswith(".rtf")
+        or lowered_text.startswith("{\\rtf")
+    )
+
+
+def _looks_like_email(text: str, mime_type: str, filename: str) -> bool:
+    lowered_text = (text or "")[:512].lower()
+    lowered_mime = (mime_type or "").lower()
+    lowered_name = (filename or "").lower()
+    return (
+        lowered_mime == "message/rfc822"
+        or lowered_name.endswith(".eml")
+        or ("subject:" in lowered_text and "from:" in lowered_text)
+    )
+
+
+def _detect_text_input_format(text: str, mime_type: str, filename: str) -> str:
+    if _looks_like_html(text, mime_type, filename):
+        return "html"
+    if _looks_like_email(text, mime_type, filename):
+        return "email"
+    if _looks_like_rtf(text, mime_type, filename):
+        return "rtf"
+    return "text"
+
+
+def _strip_rtf(text: str) -> str:
+    if not text:
+        return ""
+    cleaned = re.sub(r"\\par[d]?\b", "\n", text)
+    cleaned = re.sub(r"\\tab\b", " ", cleaned)
+    cleaned = re.sub(r"\\'[0-9a-fA-F]{2}", " ", cleaned)
+    cleaned = re.sub(r"\\[a-zA-Z]+-?\d* ?", " ", cleaned)
+    cleaned = cleaned.replace("{", " ").replace("}", " ")
+    return _normalize_whitespace(unescape(cleaned))
+
+
+def _extract_email_text(data: bytes) -> str:
+    if not data:
+        return ""
+    try:
+        message = BytesParser(policy=email.policy.default).parsebytes(data)
+    except Exception:
+        return _normalize_whitespace(_decode_text_fallback(data))
+
+    header_lines = []
+    for header in ("Subject", "From", "To", "Date"):
+        value = str(message.get(header) or "").strip()
+        if value:
+            header_lines.append(f"{header}: {value}")
+
+    body_parts: List[str] = []
+    if message.is_multipart():
+        for part in message.walk():
+            content_disposition = str(part.get_content_disposition() or "")
+            if content_disposition == "attachment":
+                continue
+            content_type = str(part.get_content_type() or "")
+            try:
+                payload = part.get_payload(decode=True) or b""
+            except Exception:
+                payload = b""
+            if not payload:
+                continue
+            if content_type == "text/html":
+                body_parts.append(_strip_html(_decode_text_fallback(payload)))
+            elif content_type.startswith("text/"):
+                body_parts.append(_normalize_whitespace(_decode_text_fallback(payload)))
+    else:
+        try:
+            payload = message.get_payload(decode=True) or b""
+        except Exception:
+            payload = b""
+        content_type = str(message.get_content_type() or "")
+        decoded = _decode_text_fallback(payload)
+        if content_type == "text/html":
+            body_parts.append(_strip_html(decoded))
+        else:
+            body_parts.append(_normalize_whitespace(decoded))
+
+    combined = "\n\n".join(part for part in ["\n".join(header_lines)] + body_parts if part)
+    return _normalize_whitespace(combined)
+
+
+def _extract_docx_text(data: bytes) -> str:
+    if not data:
+        return ""
+    try:
+        with zipfile.ZipFile(BytesIO(data)) as archive:
+            xml_parts: List[str] = []
+            for name in archive.namelist():
+                if not name.startswith("word/"):
+                    continue
+                if not name.endswith(".xml"):
+                    continue
+                if not any(token in name for token in ("document", "header", "footer", "footnotes", "endnotes")):
+                    continue
+                xml_parts.append(archive.read(name).decode("utf-8", errors="ignore"))
+    except (zipfile.BadZipFile, KeyError, RuntimeError, ValueError):
+        return ""
+
+    if not xml_parts:
+        return ""
+
+    text = "\n".join(xml_parts)
+    text = re.sub(r"</w:p>", "\n", text)
+    text = re.sub(r"</w:tr>", "\n", text)
+    text = re.sub(r"<w:tab[^>]*/>", " ", text)
+    text = re.sub(r"<[^>]+>", " ", text)
+    return _normalize_whitespace(unescape(text))
+
+
+def _extract_pdf_text_fallback(data: bytes) -> str:
+    decoded = _decode_text_fallback(data)
+    if not _is_mostly_text(decoded):
+        return ""
+    cleaned = re.sub(r"%PDF-[\d.]+", " ", decoded)
+    cleaned = re.sub(r"\b(?:obj|endobj|stream|endstream)\b", " ", cleaned)
+    cleaned = _normalize_whitespace(cleaned)
+    alpha_chars = sum(1 for char in cleaned if char.isalpha())
+    if alpha_chars < 20:
+        return ""
+    return cleaned
+
+
+def detect_document_input_format(
+    *,
+    data: Optional[bytes] = None,
+    filename: Optional[str] = None,
+    mime_type: Optional[str] = None,
+    text: Optional[str] = None,
+) -> str:
+    normalized_mime = _guess_mime_type(filename or "", mime_type or "")
+    lowered_mime = normalized_mime.lower()
+    lowered_name = (filename or "").lower()
+    binary_prefix = data[:8] if isinstance(data, (bytes, bytearray)) else b""
+
+    if lowered_mime == "message/rfc822" or lowered_name.endswith(".eml"):
+        return "email"
+    if lowered_mime in {"application/rtf", "text/rtf"} or lowered_name.endswith(".rtf"):
+        return "rtf"
+    if lowered_mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" or lowered_name.endswith(".docx"):
+        return "docx"
+    if lowered_mime == "application/pdf" or lowered_name.endswith(".pdf") or binary_prefix.startswith(b"%PDF-"):
+        return "pdf"
+    if text is not None:
+        return _detect_text_input_format(text, normalized_mime, filename or "")
+    if isinstance(data, (bytes, bytearray)):
+        decoded = _decode_text_fallback(bytes(data))
+        return _detect_text_input_format(decoded, normalized_mime, filename or "")
+    return _detect_text_input_format("", normalized_mime, filename or "")
+
+
+def should_parse_document_input(
+    *,
+    evidence_type: Optional[str] = None,
+    filename: Optional[str] = None,
+    mime_type: Optional[str] = None,
+) -> bool:
+    normalized_type = (evidence_type or "").lower()
+    if normalized_type in {"document", "text", "email", "pdf"}:
+        return True
+    normalized_mime = _guess_mime_type(filename or "", mime_type or "")
+    lowered_mime = normalized_mime.lower()
+    if lowered_mime.startswith(_TEXT_LIKE_MIME_PREFIXES):
+        return True
+    if lowered_mime in _PARSEABLE_MIME_TYPES:
+        return True
+    return Path(filename or "").suffix.lower() in _PARSEABLE_EXTENSIONS
 
 
 def _split_into_paragraphs(text: str) -> List[str]:
@@ -198,9 +517,20 @@ def parse_document_text(
 ) -> Dict[str, Any]:
     normalized_mime = _guess_mime_type(filename or "", mime_type or "")
     raw_text = text or ""
-    input_format = "html" if _looks_like_html(raw_text, normalized_mime, filename or "") else "text"
-    normalized_text = _strip_html(raw_text) if input_format == "html" else _normalize_whitespace(raw_text)
+    input_format = detect_document_input_format(text=raw_text, filename=filename, mime_type=normalized_mime)
+    if input_format == "html":
+        normalized_text = _strip_html(raw_text)
+    elif input_format == "rtf":
+        normalized_text = _strip_rtf(raw_text)
+    else:
+        normalized_text = _normalize_whitespace(raw_text)
     paragraphs = _split_into_paragraphs(normalized_text)
+    parse_quality = _compute_parse_quality(
+        input_format=input_format,
+        text=normalized_text,
+        data=None,
+        raw_size=len(raw_text.encode("utf-8", errors="ignore")),
+    )
     chunks = chunk_text(normalized_text, chunk_size=chunk_size, overlap=overlap) if normalized_text else []
     typed_chunks = [
         DocumentChunk(
@@ -224,6 +554,10 @@ def parse_document_text(
         parser_version=PARSER_VERSION,
         input_format=input_format,
         paragraph_count=len(paragraphs),
+        extraction_method=str(parse_quality["extraction_method"]),
+        quality_tier=str(parse_quality["quality_tier"]),
+        quality_score=float(parse_quality["quality_score"]),
+        page_count=int(parse_quality["page_count"]),
     )
     transform_lineage = _build_transform_lineage(
         source=source,
@@ -232,6 +566,9 @@ def parse_document_text(
         chunk_size=chunk_size,
         overlap=overlap,
         chunk_count=len(typed_chunks),
+        normalization=str(parse_quality["extraction_method"]),
+        extraction=dict(parse_quality["extraction"]),
+        source_span=dict(parse_quality["source_span"]),
     )
     result = DocumentParseResult(
         status=status,
@@ -250,6 +587,15 @@ def parse_document_text(
             "paragraph_count": len(paragraphs),
             "text_length": len(normalized_text),
             "input_format": input_format,
+            "page_count": parse_quality["page_count"],
+            "extraction_method": parse_quality["extraction_method"],
+            "parse_quality": {
+                "quality_score": parse_quality["quality_score"],
+                "quality_tier": parse_quality["quality_tier"],
+                "quality_flags": list(parse_quality["quality_flags"]),
+                "ocr_used": parse_quality["ocr_used"],
+            },
+            "source_span": dict(parse_quality["source_span"]),
             "transform_lineage": transform_lineage.as_dict(),
         },
     )
@@ -273,14 +619,57 @@ def parse_document_bytes(
     chunk_size: int = 1000,
     overlap: int = 100,
 ) -> Dict[str, Any]:
+    normalized_mime = _guess_mime_type(filename or "", mime_type or "")
+    input_format = detect_document_input_format(data=data, filename=filename, mime_type=normalized_mime)
+
+    if input_format == "html":
+        text = _strip_html(_decode_text_fallback(data))
+    elif input_format == "email":
+        text = _extract_email_text(data)
+    elif input_format == "rtf":
+        text = _strip_rtf(_decode_text_fallback(data))
+    elif input_format == "docx":
+        text = _extract_docx_text(data)
+    elif input_format == "pdf":
+        text = _extract_pdf_text_fallback(data)
+    else:
+        text = _normalize_whitespace(_decode_text_fallback(data))
+
+    parse_quality = _compute_parse_quality(
+        input_format=input_format,
+        text=text,
+        data=data,
+        raw_size=len(data),
+    )
+
     parsed = parse_document_text(
-        _decode_text_fallback(data),
+        text,
         filename=filename,
-        mime_type=mime_type,
+        mime_type=normalized_mime,
         source=source,
         chunk_size=chunk_size,
         overlap=overlap,
     )
+    parsed["summary"]["input_format"] = input_format
+    parsed["summary"]["extraction_method"] = str(parse_quality["extraction_method"])
+    parsed["summary"]["quality_tier"] = str(parse_quality["quality_tier"])
+    parsed["summary"]["quality_score"] = float(parse_quality["quality_score"])
+    parsed["summary"]["page_count"] = int(parse_quality["page_count"])
+    parsed["lineage"]["input_format"] = input_format
+    parsed["lineage"]["normalization"] = str(parse_quality["extraction_method"])
+    parsed["lineage"]["extraction"] = dict(parse_quality["extraction"])
+    parsed["lineage"]["source_span"] = dict(parse_quality["source_span"])
+    parsed["metadata"]["input_format"] = input_format
+    parsed["metadata"]["page_count"] = parse_quality["page_count"]
+    parsed["metadata"]["extraction_method"] = parse_quality["extraction_method"]
+    parsed["metadata"]["parse_quality"] = {
+        "quality_score": parse_quality["quality_score"],
+        "quality_tier": parse_quality["quality_tier"],
+        "quality_flags": list(parse_quality["quality_flags"]),
+        "ocr_used": parse_quality["ocr_used"],
+    }
+    parsed["metadata"]["source_span"] = dict(parse_quality["source_span"])
+    parsed["metadata"]["transform_lineage"] = dict(parsed["lineage"])
     parsed["metadata"]["size"] = len(data)
     return parsed
 
@@ -344,8 +733,10 @@ __all__ = [
     "DOCUMENTS_ERROR",
     "PARSER_VERSION",
     "chunk_text",
+    "detect_document_input_format",
     "parse_document_text",
     "parse_document_bytes",
     "parse_document_file",
+    "should_parse_document_input",
     "summarize_document_parse",
 ]

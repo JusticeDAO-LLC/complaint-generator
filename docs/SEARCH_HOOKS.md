@@ -125,7 +125,7 @@ statute = hook.search_statute_text(
 #### Requirements
 
 - Brave Search API key: Set `BRAVE_SEARCH_API_KEY` environment variable
-- ipfs_datasets_py submodule with BraveSearchClient
+- complaint-generator's `integrations.ipfs_datasets.search` adapter layer
 
 #### Features
 
@@ -355,7 +355,7 @@ export BRAVE_SEARCH_FRESHNESS="pw"  # past week
 
 ```python
 # Required for full functionality
-- ipfs_datasets_py (with BraveSearchClient)
+- integrations.ipfs_datasets.search
 - complaint_analysis module
 - mediator module
 - adversarial_harness module
@@ -555,12 +555,12 @@ pytest tests/test_search_hooks.py::TestLegalCorpusRAGHook -v
 import os
 print("API Key:", "SET" if os.getenv('BRAVE_SEARCH_API_KEY') else "NOT SET")
 
-# Check if BraveSearchClient available
+# Check if the normalized Brave adapter is available
 try:
-    from ipfs_datasets_py.web_archiving.brave_search_client import BraveSearchClient
-    print("BraveSearchClient: AVAILABLE")
-except ImportError as e:
-    print(f"BraveSearchClient: NOT AVAILABLE - {e}")
+    from integrations.ipfs_datasets.search import BRAVE_SEARCH_AVAILABLE
+    print(f"search_brave_web adapter available: {BRAVE_SEARCH_AVAILABLE}")
+except Exception as e:
+    print(f"Brave search adapter unavailable: {e}")
 ```
 
 ### Legal Corpus Not Loading

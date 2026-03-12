@@ -1,11 +1,11 @@
 # IPFS Datasets Py Next Batch Plan
 
 Date: 2026-03-12
-Status: Near-term execution schedule
+Status: Near-term execution schedule aligned to current baseline
 
 ## Purpose
 
-Translate the broader `ipfs_datasets_py` roadmap into the next four concrete implementation batches that can be executed in sequence without reopening architecture decisions each time.
+Translate the broader `ipfs_datasets_py` roadmap into the next four concrete implementation batches that should be executed from the repository's current state.
 
 This document is intentionally narrower than:
 
@@ -16,16 +16,18 @@ This document is intentionally narrower than:
 
 Use it when selecting the next coding slice.
 
-## Planning Assumptions
+## Current Baseline
 
 These batches assume the repository already has:
 
 - a stable adapter boundary under `integrations/ipfs_datasets/`
-- evidence, web evidence, and legal-authority ingestion flows already using adapter-backed contracts in part
-- persisted claim-support, follow-up planning, and review payloads
-- review API, CLI, and dashboard surfaces already in place for operator inspection
+- typed parse and graph contracts through `DocumentParseResult`, `GraphSnapshotResult`, and `GraphSupportResult`
+- evidence, web evidence, and legal-authority ingestion using adapter-backed flows
+- persisted claim-support links, follow-up history, and compact review payloads
+- graph-trace summaries, contradiction diagnostics, reasoning diagnostics, and proof-aware follow-up planning
+- review API and dashboard surfaces already in place for operator inspection
 
-The aim is to deepen the existing slices, not redesign them.
+The aim is to finish the highest-value workflow integrations from that baseline, not to redesign the architecture.
 
 ## Batch Selection Rules
 
@@ -35,56 +37,11 @@ The aim is to deepen the existing slices, not redesign them.
 4. Every batch must preserve degraded mode.
 5. Every externally visible payload change must update `docs/PAYLOAD_CONTRACTS.md`.
 
-## Batch 1: Adapter Contract Stabilization
+## Batch 1: Parse Completion and Corpus Unification
 
 ### Goal
 
-Stabilize adapter payload shapes and capability reporting so later parse, graph, and validation work does not keep re-breaking callers.
-
-### Primary files
-
-- `integrations/ipfs_datasets/capabilities.py`
-- `integrations/ipfs_datasets/loader.py`
-- `integrations/ipfs_datasets/legal.py`
-- `integrations/ipfs_datasets/search.py`
-- `integrations/ipfs_datasets/graphs.py`
-- `integrations/ipfs_datasets/logic.py`
-- `integrations/ipfs_datasets/types.py`
-- `integrations/ipfs_datasets/__init__.py`
-- `mediator/mediator.py`
-- `tests/test_ipfs_adapter_types.py`
-
-### Work
-
-- normalize capability payloads across documents, graphs, GraphRAG, logic, vector store, and MCP gateway
-- standardize degraded-reason fields and success payload families
-- remove remaining adapter-specific shape differences that force mediator branching
-- confirm production modules do not import `ipfs_datasets_py` internals directly
-- expose one stable capability summary helper for diagnostics and startup logging
-
-### Expected output
-
-- one canonical capability-report family
-- one canonical degraded-payload family
-- stable adapter type shapes that later batches can build on
-
-### Stop condition
-
-- mediator startup behaves the same across full and degraded environments
-- adapter tests do not need adapter-specific assertions for payload shape drift
-
-### Suggested validation
-
-```bash
-./.venv/bin/python -m pytest tests/test_ipfs_adapter_types.py -q
-./.venv/bin/python -m pytest tests/test_ipfs_adapter_layer.py -q
-```
-
-## Batch 2: Shared Parse and Provenance Contract
-
-### Goal
-
-Make uploaded evidence, discovered web evidence, archived captures, and legal authority text flow through one parse and lineage contract.
+Finish the shared parse contract so uploaded evidence, discovered pages, archived pages, and legal authority text all behave like one case corpus.
 
 ### Primary files
 
@@ -94,26 +51,26 @@ Make uploaded evidence, discovered web evidence, archived captures, and legal au
 - `mediator/evidence_hooks.py`
 - `mediator/web_evidence_hooks.py`
 - `mediator/legal_authority_hooks.py`
+- `mediator/claim_support_hooks.py`
 
 ### Work
 
-- route bytes, files, and fetched page content through one canonical parse call
-- align parse summary, chunk metadata, and transform lineage fields
-- ensure web evidence and legal authority text preserve the same provenance model as uploaded evidence
-- normalize PDF, DOCX, RTF, HTML, email, and office-document parsing so hook code does not branch by file type
-- deepen the shared fact registry so facts derived from archived pages and authority text look like first-class case facts
-- remove hook-local parse-shape assumptions where they still exist
+- close remaining format-specific gaps for PDF, DOCX, RTF, HTML, email-style text, and office documents inside the adapter layer
+- standardize parse quality, OCR usage, page-span, and chunk-offset metadata
+- ensure authority text and archived page content preserve the same parse and provenance model as uploaded evidence
+- expand the shared fact registry so archived pages and authority-derived facts are first-class support sources rather than adjacent special cases
+- make chunk- and fact-level lineage dependable enough for later graph and logic consumers
 
 ### Expected output
 
-- one parse-result family across evidence, web evidence, and legal authorities
+- one parse-result family across evidence, archived web material, and legal authorities
 - one provenance model across artifact families
-- chunk- and fact-level lineage suitable for later graph and logic consumers
-- one document-service contract that can organize heterogeneous exhibits into the same case corpus
+- one durable corpus shape for artifacts, chunks, and facts
 
 ### Stop condition
 
-- evidence, web evidence, and legal-authority tests assert the same contract family rather than separate hook-local shapes
+- evidence, web-evidence, and legal-authority flows assert the same parse and provenance contract family
+- downstream consumers can treat archived pages and authority text as ordinary case artifacts
 
 ### Suggested validation
 
@@ -121,99 +78,136 @@ Make uploaded evidence, discovered web evidence, archived captures, and legal au
 ./.venv/bin/python -m pytest tests/test_evidence_hooks.py -q
 ./.venv/bin/python -m pytest tests/test_web_evidence_hooks.py -q
 ./.venv/bin/python -m pytest tests/test_legal_authority_hooks.py -q
+./.venv/bin/python -m pytest tests/test_claim_support_hooks.py -q
 ```
 
-## Batch 3: Persistent Support and Graph Query Plane
+## Batch 2: Durable Support Corpus and Graph Query Hardening
 
 ### Goal
 
-Move from graph extraction metadata and fallback support summaries into persisted, queryable, provenance-backed support traces.
+Turn the existing graph snapshot and support-trace work into a more durable claim-element support query plane.
 
 ### Primary files
 
 - `integrations/ipfs_datasets/graphs.py`
 - `integrations/ipfs_datasets/types.py`
 - `mediator/claim_support_hooks.py`
-- `mediator/evidence_hooks.py`
-- `mediator/web_evidence_hooks.py`
-- `mediator/legal_authority_hooks.py`
 - `mediator/mediator.py`
 - `complaint_phases/knowledge_graph.py`
-- `complaint_phases/dependency_graph.py`
+- `complaint_phases/legal_graph.py`
+- `claim_support_review.py`
 
 ### Work
 
-- formalize graph snapshot and graph lineage contracts behind the adapter boundary
-- expose support-tracing query APIs for claim elements
-- deepen coverage-matrix semantics so support is organized around artifacts, authorities, facts, duplicates, and semantic clusters
-- preserve lineage from support rows back to source artifacts and graph snapshots
-- make graph-backed support traces available to dashboard and review surfaces in a drilldown-friendly shape
-- make graph-backed support traces available to review and drafting readiness flows
+- deepen graph snapshot persistence beyond created-versus-reused metadata into durable snapshot and lineage handles
+- add stronger cross-document entity and event resolution across uploads, archived pages, and authorities
+- expose graph-backed support-path queries for claim elements rather than only compact support summaries
+- define or persist a stronger coverage-matrix substrate so review and drafting can query one authoritative support view
+- keep duplicate and semantic-cluster handling operator-visible, but move the source of truth from stitched summaries toward durable support-query outputs
 
 ### Expected output
 
 - graph-backed support queries for claim elements
-- a persisted claim-element coverage matrix model that is stronger than stitched summaries
-- provenance-backed explanations for covered, partial, and missing states
-- review-ready support packets that can later expose timeline, contradiction, and proof-gap drilldowns
+- stronger persisted support traces and lineage
+- a more authoritative coverage-matrix model for review and drafting readiness
 
 ### Stop condition
 
-- operator review flows can explain a claim-element coverage state from persisted support traces instead of only raw counts and ad hoc summaries
+- operator review flows can drill from a claim-element status into graph-backed support paths and persisted support traces without reconstructing context ad hoc
 
 ### Suggested validation
 
 ```bash
 ./.venv/bin/python -m pytest tests/test_claim_support_hooks.py -q
 ./.venv/bin/python -m pytest tests/test_review_api.py -q
-./.venv/bin/python -m pytest tests/test_web_evidence_hooks.py tests/test_legal_authority_hooks.py tests/test_claim_support_hooks.py -q
+./.venv/bin/python -m pytest tests/test_web_evidence_hooks.py tests/test_legal_authority_hooks.py tests/test_claim_support_review_dashboard_flow.py -q
 ```
 
-## Batch 4: Support Quality and Formal Validation Starter Slice
+## Batch 3: Logic Adapter Grounding and Validation Persistence
 
 ### Goal
 
-Add the first mediator-consumable support-quality, contradiction, and proof-gap outputs for at least one complaint workflow.
+Replace placeholder proof behavior with grounded contradiction, failed-premise, and proof-gap outputs that are persisted and reviewable.
 
 ### Primary files
 
-- `integrations/ipfs_datasets/graphrag.py`
 - `integrations/ipfs_datasets/logic.py`
-- `complaint_phases/legal_graph.py`
+- `integrations/ipfs_datasets/types.py`
 - `complaint_phases/neurosymbolic_matcher.py`
-- `complaint_phases/phase_manager.py`
+- `complaint_phases/legal_graph.py`
 - `mediator/claim_support_hooks.py`
 - `mediator/mediator.py`
 - `docs/PAYLOAD_CONTRACTS.md`
 
 ### Work
 
-- expose GraphRAG support-quality or support-path scoring in a normalized adapter payload
-- define at least one claim-type-specific predicate template family
-- map a small set of extracted facts and authority rules into grounded predicates
-- surface proof gaps, missing premises, or contradictions through mediator-visible outputs
-- feed those validation signals into review payloads and follow-up planning, even if only for one claim type initially
+- implement stable logic-adapter outputs for contradiction checks, support checks, and proof-gap reporting
+- define at least one claim-type-specific predicate template family grounded in stored facts and authority-derived rules
+- persist validation runs, failed premises, and proof traces in a mediator-consumable shape
+- keep degraded mode explicit when theorem-prover extras or upstream bridges are unavailable
+- maintain compatibility with the existing review and follow-up payload family while upgrading the source quality of those outputs
 
 ### Expected output
 
-- support quality stronger than raw support counts
-- one starter proof-gap or contradiction payload family
-- review surfaces that can distinguish covered, weakly supported, contradictory, and structurally missing support
-- a path to operator-facing provenance and contradiction drilldown without redesigning the payload family later
+- grounded contradiction and proof-gap records
+- persisted validation runs with explainable inputs and outputs
+- mediator-visible proof signals that are no longer primarily placeholder-driven
 
 ### Stop condition
 
-- at least one complaint flow can emit structured validation output before drafting
-- GraphRAG and logic outputs are consumable from mediator review flows rather than isolated adapter demos
+- at least one complaint flow can emit grounded contradiction or failed-premise outputs before drafting
+- review flows can inspect validation provenance without reading raw adapter output
+
+### Suggested validation
+
+```bash
+./.venv/bin/python -m pytest tests/test_claim_support_hooks.py -q
+./.venv/bin/python -m pytest tests/test_review_api.py -q
+./.venv/bin/python -m pytest tests/test_web_evidence_hooks.py tests/test_legal_authority_hooks.py -q
+```
+
+Add dedicated focused logic-adapter tests before landing this batch; do not rely only on broad suite coverage.
+
+## Batch 4: Operator Support Packets and Drilldown Workflow
+
+### Goal
+
+Turn the existing compact review, dashboard, and follow-up summaries into a fuller operator-facing support workspace.
+
+### Primary files
+
+- `applications/review_api.py`
+- `claim_support_review.py`
+- `mediator/mediator.py`
+- `mediator/web_evidence_hooks.py`
+- `docs/PAYLOAD_CONTRACTS.md`
+- `docs/APPLICATIONS.md`
+
+### Work
+
+- add support packets that combine evidence, authority, fact, provenance, graph-trace, and validation detail per claim element
+- add timeline and archive-history drilldown for sourced evidence where historical changes matter
+- expose contradiction packets and failed-premise packets in an operator-readable shape
+- surface queued acquisition and enrichment state where it materially affects support coverage
+- keep the compact summary layer for dashboards, but make drilldown packets first-class review outputs
+
+### Expected output
+
+- richer operator support packets
+- provenance and timeline drilldown
+- contradiction and failed-premise drilldown without losing existing compact summaries
+
+### Stop condition
+
+- operators can inspect one claim element end-to-end from summary status to artifacts, passages, archived versions, graph support, and validation state
 
 ### Suggested validation
 
 ```bash
 ./.venv/bin/python -m pytest tests/test_review_api.py -q
-./.venv/bin/python -m pytest tests/test_claim_support_hooks.py -q
+./.venv/bin/python -m pytest tests/test_claim_support_review_dashboard_flow.py -q
+./.venv/bin/python -m pytest tests/test_web_evidence_hooks.py tests/test_claim_support_hooks.py tests/test_review_api.py -q
 ```
-
-Add dedicated focused GraphRAG and logic tests before landing this batch; do not rely only on broad suite coverage.
 
 ## Recommended Delivery Order
 
@@ -224,25 +218,29 @@ Add dedicated focused GraphRAG and logic tests before landing this batch; do not
 
 ## Recommended Ownership Split
 
-### Track A: Adapter and contract work
+### Track A: Parse and corpus work
 
 - Batch 1
-- adapter-heavy portions of Batch 2
 
-### Track B: Mediator and support organization work
+### Track B: Support organization and graph work
 
-- mediator-heavy portions of Batch 2
-- Batch 3
+- Batch 2
 
-### Track C: Reasoning and validation work
+### Track C: Logic and validation work
 
-- Batch 4 after Batch 3 outputs are stable
+- Batch 3 after Batch 2 outputs are stable
+
+### Track D: Operator productization
+
+- Batch 4 after Batch 2 and Batch 3 stabilize their payloads
 
 ## Exit Condition For This Plan
 
-This near-term batch plan is complete when the team can pick the next coding slice without re-litigating:
+This near-term plan is complete when the team can pick the next coding slice without re-litigating:
 
 - which files to touch
-- which validation commands to run
-- what counts as done for the slice
-- what the next slice depends on
+- what the slice depends on
+- what counts as done
+- which focused validations to run
+
+At that point, the repo should be positioned to move from architecture and contract completion into sustained implementation of the graph, proof, and operator-workspace layers.

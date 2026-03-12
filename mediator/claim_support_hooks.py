@@ -297,6 +297,140 @@ class ClaimSupportHook:
             'authority_record_id': link.get('authority_record_id'),
         }
 
+    def _extract_record_parse_summary(self, record: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        payload = record if isinstance(record, dict) else {}
+        parse_metadata = payload.get('parse_metadata', {}) if isinstance(payload.get('parse_metadata'), dict) else {}
+        transform_lineage = parse_metadata.get('transform_lineage', {}) if isinstance(parse_metadata.get('transform_lineage'), dict) else {}
+        source_span = parse_metadata.get('source_span', {}) if isinstance(parse_metadata.get('source_span'), dict) else {}
+        parse_quality = parse_metadata.get('parse_quality', {}) if isinstance(parse_metadata.get('parse_quality'), dict) else {}
+
+        input_format = str(parse_metadata.get('input_format') or transform_lineage.get('input_format') or '')
+        extraction_method = str(parse_metadata.get('extraction_method') or transform_lineage.get('normalization') or '')
+        quality_tier = str(parse_metadata.get('quality_tier') or parse_quality.get('quality_tier') or '')
+        quality_score = float(parse_metadata.get('quality_score') or parse_quality.get('quality_score') or 0.0)
+        page_count = int(parse_metadata.get('page_count', source_span.get('page_count', 0)) or 0)
+
+        return {
+            'parse_status': payload.get('parse_status'),
+            'chunk_count': int(payload.get('chunk_count', 0) or 0),
+            'input_format': input_format,
+            'extraction_method': extraction_method,
+            'quality_tier': quality_tier,
+            'quality_score': quality_score,
+            'page_count': page_count,
+            'source': str(parse_metadata.get('source') or transform_lineage.get('source') or ''),
+            'content_origin': str(parse_metadata.get('content_origin') or transform_lineage.get('content_origin') or ''),
+            'historical_capture': bool(parse_metadata.get('historical_capture', transform_lineage.get('historical_capture', False))),
+            'capture_source': str(parse_metadata.get('capture_source') or transform_lineage.get('capture_source') or ''),
+            'archive_url': str(parse_metadata.get('archive_url') or transform_lineage.get('archive_url') or ''),
+            'original_url': str(parse_metadata.get('original_url') or transform_lineage.get('original_url') or ''),
+            'version_of': str(parse_metadata.get('version_of') or transform_lineage.get('version_of') or ''),
+            'captured_at': str(parse_metadata.get('captured_at') or transform_lineage.get('captured_at') or ''),
+            'observed_at': str(parse_metadata.get('observed_at') or transform_lineage.get('observed_at') or ''),
+            'content_source_field': str(parse_metadata.get('content_source_field') or transform_lineage.get('content_source_field') or ''),
+            'fallback_mode': str(parse_metadata.get('fallback_mode') or transform_lineage.get('fallback_mode') or ''),
+            'parsed_text_preview': str(payload.get('parsed_text_preview') or ''),
+            'source_span': dict(source_span),
+        }
+
+    def _build_support_packet_lineage_summary(
+        self,
+        *,
+        trace: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        parse_lineage = trace.get('parse_lineage', {}) if isinstance(trace.get('parse_lineage'), dict) else {}
+        record_summary = trace.get('record_summary', {}) if isinstance(trace.get('record_summary'), dict) else {}
+        record_parse_summary = record_summary.get('parse_summary', {}) if isinstance(record_summary.get('parse_summary'), dict) else {}
+        source_span = parse_lineage.get('source_span') if isinstance(parse_lineage.get('source_span'), dict) else record_parse_summary.get('source_span', {}) if isinstance(record_parse_summary.get('source_span'), dict) else {}
+
+        return {
+            'source': str(parse_lineage.get('source') or record_parse_summary.get('source') or ''),
+            'input_format': str(parse_lineage.get('input_format') or record_parse_summary.get('input_format') or ''),
+            'parser_version': str(parse_lineage.get('parser_version') or ''),
+            'content_origin': str(parse_lineage.get('content_origin') or record_parse_summary.get('content_origin') or ''),
+            'historical_capture': bool(parse_lineage.get('historical_capture', record_parse_summary.get('historical_capture', False))),
+            'capture_source': str(parse_lineage.get('capture_source') or record_parse_summary.get('capture_source') or ''),
+            'archive_url': str(parse_lineage.get('archive_url') or record_parse_summary.get('archive_url') or ''),
+            'original_url': str(parse_lineage.get('original_url') or record_parse_summary.get('original_url') or ''),
+            'version_of': str(parse_lineage.get('version_of') or record_parse_summary.get('version_of') or ''),
+            'captured_at': str(parse_lineage.get('captured_at') or record_parse_summary.get('captured_at') or ''),
+            'observed_at': str(parse_lineage.get('observed_at') or record_parse_summary.get('observed_at') or ''),
+            'content_source_field': str(parse_lineage.get('content_source_field') or record_parse_summary.get('content_source_field') or ''),
+            'fallback_mode': str(parse_lineage.get('fallback_mode') or record_parse_summary.get('fallback_mode') or ''),
+            'quality_tier': str(record_parse_summary.get('quality_tier') or parse_lineage.get('quality_tier') or ''),
+            'quality_score': float(record_parse_summary.get('quality_score') or parse_lineage.get('quality_score') or 0.0),
+            'page_count': int(record_parse_summary.get('page_count', 0) or 0),
+            'source_span': dict(source_span),
+        }
+
+    def _build_support_packet(self, trace: Dict[str, Any]) -> Dict[str, Any]:
+        record_summary = trace.get('record_summary', {}) if isinstance(trace.get('record_summary'), dict) else {}
+        return {
+            'trace_kind': str(trace.get('trace_kind') or 'link'),
+            'support_kind': trace.get('support_kind'),
+            'support_ref': trace.get('support_ref'),
+            'support_label': trace.get('support_label'),
+            'source_table': trace.get('source_table'),
+            'record_id': trace.get('record_id'),
+            'fact': {
+                'fact_id': trace.get('fact_id', ''),
+                'text': trace.get('fact_text', ''),
+                'confidence': trace.get('confidence', 0.0),
+            },
+            'record_summary': record_summary,
+            'lineage_summary': self._build_support_packet_lineage_summary(trace=trace),
+            'source_lineage_ref': trace.get('source_lineage_ref', ''),
+            'graph_summary': trace.get('graph_summary', {}),
+            'graph_trace': trace.get('graph_trace', {}),
+            'graph_id': trace.get('graph_id', ''),
+        }
+
+    def _summarize_support_packets(self, packets: List[Dict[str, Any]]) -> Dict[str, Any]:
+        content_origin_counts: Dict[str, int] = {}
+        capture_source_counts: Dict[str, int] = {}
+        fallback_mode_counts: Dict[str, int] = {}
+        content_source_field_counts: Dict[str, int] = {}
+        historical_capture_count = 0
+        fact_packet_count = 0
+        link_only_packet_count = 0
+
+        for packet in packets or []:
+            if not isinstance(packet, dict):
+                continue
+            if packet.get('trace_kind') == 'fact':
+                fact_packet_count += 1
+            else:
+                link_only_packet_count += 1
+
+            lineage_summary = packet.get('lineage_summary', {}) if isinstance(packet.get('lineage_summary'), dict) else {}
+            content_origin = str(lineage_summary.get('content_origin') or '')
+            capture_source = str(lineage_summary.get('capture_source') or '')
+            fallback_mode = str(lineage_summary.get('fallback_mode') or '')
+            content_source_field = str(lineage_summary.get('content_source_field') or '')
+            historical_capture = bool(lineage_summary.get('historical_capture', False))
+
+            if content_origin:
+                content_origin_counts[content_origin] = content_origin_counts.get(content_origin, 0) + 1
+            if capture_source:
+                capture_source_counts[capture_source] = capture_source_counts.get(capture_source, 0) + 1
+            if fallback_mode:
+                fallback_mode_counts[fallback_mode] = fallback_mode_counts.get(fallback_mode, 0) + 1
+            if content_source_field:
+                content_source_field_counts[content_source_field] = content_source_field_counts.get(content_source_field, 0) + 1
+            if historical_capture:
+                historical_capture_count += 1
+
+        return {
+            'total_packet_count': len([packet for packet in packets if isinstance(packet, dict)]),
+            'fact_packet_count': fact_packet_count,
+            'link_only_packet_count': link_only_packet_count,
+            'historical_capture_count': historical_capture_count,
+            'content_origin_counts': content_origin_counts,
+            'capture_source_counts': capture_source_counts,
+            'fallback_mode_counts': fallback_mode_counts,
+            'content_source_field_counts': content_source_field_counts,
+        }
+
     def _collect_support_traces_from_links(self, links: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         traces: List[Dict[str, Any]] = []
         for link in links or []:
@@ -311,10 +445,15 @@ class ClaimSupportHook:
         support_by_kind: Dict[str, int] = {}
         support_by_source: Dict[str, int] = {}
         parse_source_counts: Dict[str, int] = {}
+        parse_input_format_counts: Dict[str, int] = {}
+        parse_quality_tier_counts: Dict[str, int] = {}
+        content_origin_counts: Dict[str, int] = {}
+        fallback_mode_counts: Dict[str, int] = {}
         graph_status_counts: Dict[str, int] = {}
         unique_fact_ids = set()
         unique_graph_ids = set()
         unique_record_ids = set()
+        unique_parsed_records: Dict[str, Dict[str, Any]] = {}
         fact_trace_count = 0
         link_only_trace_count = 0
 
@@ -329,6 +468,12 @@ class ClaimSupportHook:
             parse_lineage = trace.get('parse_lineage', {}) if isinstance(trace.get('parse_lineage'), dict) else {}
             parse_source = str(parse_lineage.get('source') or 'unknown')
             parse_source_counts[parse_source] = parse_source_counts.get(parse_source, 0) + 1
+            content_origin = str(parse_lineage.get('content_origin') or '')
+            if content_origin:
+                content_origin_counts[content_origin] = content_origin_counts.get(content_origin, 0) + 1
+            fallback_mode = str(parse_lineage.get('fallback_mode') or '')
+            if fallback_mode:
+                fallback_mode_counts[fallback_mode] = fallback_mode_counts.get(fallback_mode, 0) + 1
 
             graph_summary = trace.get('graph_summary', {}) if isinstance(trace.get('graph_summary'), dict) else {}
             graph_status = str(graph_summary.get('status') or 'unknown')
@@ -349,6 +494,27 @@ class ClaimSupportHook:
             if record_id not in (None, ''):
                 unique_record_ids.add(record_id)
 
+            record_summary = trace.get('record_summary', {}) if isinstance(trace.get('record_summary'), dict) else {}
+            parse_summary = record_summary.get('parse_summary', {}) if isinstance(record_summary.get('parse_summary'), dict) else {}
+            if parse_summary:
+                parse_key = str(record_id or trace.get('support_ref') or trace.get('source_lineage_ref') or '')
+                if parse_key:
+                    unique_parsed_records[parse_key] = parse_summary
+
+        quality_score_total = 0.0
+        for parse_summary in unique_parsed_records.values():
+            input_format = str(parse_summary.get('input_format') or '')
+            if input_format:
+                parse_input_format_counts[input_format] = parse_input_format_counts.get(input_format, 0) + 1
+
+            quality_tier = str(parse_summary.get('quality_tier') or '')
+            if quality_tier:
+                parse_quality_tier_counts[quality_tier] = parse_quality_tier_counts.get(quality_tier, 0) + 1
+
+            quality_score_total += float(parse_summary.get('quality_score', 0.0) or 0.0)
+
+        parsed_record_count = len(unique_parsed_records)
+
         return {
             'trace_count': len([trace for trace in traces if isinstance(trace, dict)]),
             'fact_trace_count': fact_trace_count,
@@ -356,9 +522,15 @@ class ClaimSupportHook:
             'unique_fact_count': len(unique_fact_ids),
             'unique_graph_id_count': len(unique_graph_ids),
             'unique_record_count': len(unique_record_ids),
+            'parsed_record_count': parsed_record_count,
             'support_by_kind': support_by_kind,
             'support_by_source': support_by_source,
             'parse_source_counts': parse_source_counts,
+            'parse_input_format_counts': parse_input_format_counts,
+            'parse_quality_tier_counts': parse_quality_tier_counts,
+            'content_origin_counts': content_origin_counts,
+            'fallback_mode_counts': fallback_mode_counts,
+            'avg_parse_quality_score': round(quality_score_total / parsed_record_count, 2) if parsed_record_count else 0.0,
             'graph_status_counts': graph_status_counts,
         }
 
@@ -477,6 +649,9 @@ class ClaimSupportHook:
         elif ontology_validation_signal == 'invalid' and total_links > 0:
             decision_source = 'ontology_validation_failed'
             validation_status = 'incomplete'
+        elif coverage_status == 'covered' and total_links > 0 and self._element_has_parse_quality_gap(element):
+            decision_source = 'low_quality_parse'
+            validation_status = 'incomplete'
         elif ontology_validation_signal == 'valid' and coverage_status == 'covered' and missing_support_kind_count == 0:
             decision_source = 'ontology_validation_supported'
             validation_status = 'supported'
@@ -503,6 +678,8 @@ class ClaimSupportHook:
             notes.append('Ontology validation returned an invalid or inconsistent result for this element.')
         elif ontology_validation_signal == 'valid':
             notes.append('Ontology validation reported a valid or consistent result for this element.')
+        if validation_status == 'incomplete' and decision_source == 'low_quality_parse':
+            notes.append('Available support was parsed with low extraction quality and should be refreshed from a better source copy.')
         if missing_support_kind_count:
             notes.append('Required support kinds are still missing for this element.')
         if reasoning.get('used_fallback_ontology'):
@@ -587,16 +764,77 @@ class ClaimSupportHook:
         self,
         validation_status: str,
         element: Dict[str, Any],
+        proof_gaps: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
         if validation_status == 'contradicted':
             return 'resolve_contradiction'
         if validation_status == 'missing':
             return 'collect_initial_support'
         if validation_status == 'incomplete':
+            if (
+                not (element.get('missing_support_kinds', []) or [])
+                and not self._has_reasoning_gap_signals(
+                    self._extract_proof_gap_types(proof_gaps or []),
+                    element.get('proof_decision_trace', {}) if isinstance(element.get('proof_decision_trace'), dict) else {},
+                )
+                and self._element_has_parse_quality_gap(element)
+            ):
+                return 'improve_parse_quality'
             if not (element.get('missing_support_kinds', []) or []):
                 return 'review_existing_support'
             return 'collect_missing_support_kind'
         return 'review_existing_support'
+
+    def _element_has_parse_quality_gap(self, element: Dict[str, Any]) -> bool:
+        summary = element.get('support_trace_summary', {}) if isinstance(element.get('support_trace_summary'), dict) else {}
+        parsed_record_count = int(summary.get('parsed_record_count', 0) or 0)
+        quality_counts = summary.get('parse_quality_tier_counts', {}) if isinstance(summary.get('parse_quality_tier_counts'), dict) else {}
+        low_count = int(quality_counts.get('low', 0) or 0)
+        empty_count = int(quality_counts.get('empty', 0) or 0)
+        if parsed_record_count > 0:
+            if low_count > 0 or empty_count > 0:
+                return True
+
+            avg_quality_score = float(summary.get('avg_parse_quality_score', 0.0) or 0.0)
+            return 0.0 < avg_quality_score < 75.0
+
+        for trace in self._collect_support_traces_from_links(element.get('links', []) or []):
+            if not isinstance(trace, dict):
+                continue
+            record_summary = trace.get('record_summary', {}) if isinstance(trace.get('record_summary'), dict) else {}
+            parse_summary = record_summary.get('parse_summary', {}) if isinstance(record_summary.get('parse_summary'), dict) else {}
+            quality_tier = str(parse_summary.get('quality_tier') or '')
+            if quality_tier in {'low', 'empty'}:
+                return True
+            quality_score = float(parse_summary.get('quality_score', 0.0) or 0.0)
+            if 0.0 < quality_score < 75.0:
+                return True
+        return False
+
+    def _extract_proof_gap_types(self, proof_gaps: List[Dict[str, Any]]) -> List[str]:
+        gap_types: List[str] = []
+        for gap in proof_gaps or []:
+            if not isinstance(gap, dict):
+                continue
+            gap_type = str(gap.get('gap_type') or '').strip()
+            if gap_type and gap_type not in gap_types:
+                gap_types.append(gap_type)
+        return gap_types
+
+    def _has_reasoning_gap_signals(
+        self,
+        proof_gap_types: List[str],
+        proof_decision_trace: Dict[str, Any] = None,
+    ) -> bool:
+        decision_trace = proof_decision_trace if isinstance(proof_decision_trace, dict) else {}
+        decision_source = str(decision_trace.get('decision_source') or '')
+        ontology_validation_signal = str(decision_trace.get('ontology_validation_signal') or '')
+        return (
+            'logic_unprovable' in (proof_gap_types or [])
+            or 'ontology_validation_failed' in (proof_gap_types or [])
+            or decision_source in {'logic_unprovable', 'logic_proof_partial', 'ontology_validation_failed'}
+            or ontology_validation_signal == 'invalid'
+        )
 
     def _build_reasoning_predicates(
         self,
@@ -947,7 +1185,11 @@ class ClaimSupportHook:
                 contradiction_candidates,
                 reasoning_diagnostics,
             )
-            recommended_action = self._recommended_validation_action(validation_status, element)
+            recommended_action = self._recommended_validation_action(
+                validation_status,
+                element,
+                proof_gaps=proof_gaps,
+            )
             proof_diagnostics.update(
                 {
                     'reasoning_backend_available_count': int(reasoning_diagnostics.get('backend_available_count', 0) or 0),
@@ -1649,6 +1891,7 @@ class ClaimSupportHook:
                 'graph_status': authority_record.get('graph_status'),
                 'graph_entity_count': authority_record.get('graph_entity_count', 0),
                 'graph_relationship_count': authority_record.get('graph_relationship_count', 0),
+                'parse_summary': self._extract_record_parse_summary(authority_record),
             }
 
             if hasattr(authority_storage, 'get_authority_facts') and authority_record.get('id') is not None:
@@ -1716,6 +1959,7 @@ class ClaimSupportHook:
             'graph_status': evidence_record.get('graph_status'),
             'graph_entity_count': evidence_record.get('graph_entity_count', 0),
             'graph_relationship_count': evidence_record.get('graph_relationship_count', 0),
+            'parse_summary': self._extract_record_parse_summary(evidence_record),
         }
 
         if hasattr(evidence_state, 'get_evidence_facts') and evidence_record.get('id') is not None:
@@ -2025,6 +2269,7 @@ class ClaimSupportHook:
 
                 support_traces = self._collect_support_traces_from_links(element.get('links', []) or [])
                 support_trace_summary = self._summarize_support_traces(support_traces)
+                support_packets = [self._build_support_packet(trace) for trace in support_traces]
 
                 elements.append(
                     {
@@ -2041,11 +2286,14 @@ class ClaimSupportHook:
                         'links_by_kind': links_by_kind,
                         'support_traces': support_traces,
                         'support_trace_summary': support_trace_summary,
+                        'support_packets': support_packets,
+                        'support_packet_summary': self._summarize_support_packets(support_packets),
                         'links': element.get('links', []),
                     }
                 )
 
             claim_support_traces = self._collect_support_traces_from_links(claim_summary.get('links', []))
+            claim_support_packets = [self._build_support_packet(trace) for trace in claim_support_traces]
             matrix['claims'][current_claim] = {
                 'claim_type': current_claim,
                 'required_support_kinds': required_kinds,
@@ -2055,6 +2303,7 @@ class ClaimSupportHook:
                 'total_facts': fact_total,
                 'support_by_kind': claim_summary.get('support_by_kind', {}),
                 'support_trace_summary': self._summarize_support_traces(claim_support_traces),
+                'support_packet_summary': self._summarize_support_packets(claim_support_packets),
                 'elements': elements,
                 'unassigned_links': claim_summary.get('unassigned_links', []),
             }
@@ -2138,6 +2387,7 @@ class ClaimSupportHook:
                     claim_element_id=element.get('element_id'),
                     claim_element_text=element.get('element_text'),
                 )
+                support_packets = [self._build_support_packet(trace) for trace in support_traces]
                 unresolved_elements.append(
                     {
                         'element_id': element.get('element_id'),
@@ -2151,11 +2401,19 @@ class ClaimSupportHook:
                         'support_facts': support_facts,
                         'support_traces': support_traces,
                         'support_trace_summary': self._summarize_support_traces(support_traces),
+                        'support_packets': support_packets,
+                        'support_packet_summary': self._summarize_support_packets(support_packets),
                         'graph_trace_summary': self._summarize_graph_traces(element.get('links', [])),
                         'recommended_action': (
-                            'collect_missing_support_kind'
+                            'improve_parse_quality'
                             if element.get('total_links', 0)
-                            else 'collect_initial_support'
+                            and not (element.get('missing_support_kinds', []) or [])
+                            and self._element_has_parse_quality_gap(element)
+                            else (
+                                'collect_missing_support_kind'
+                                if element.get('total_links', 0)
+                                else 'collect_initial_support'
+                            )
                         ),
                     }
                 )

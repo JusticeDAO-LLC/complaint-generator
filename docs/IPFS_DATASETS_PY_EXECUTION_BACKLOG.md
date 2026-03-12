@@ -83,7 +83,7 @@ These are the main execution targets:
 | W3 | Document and chunk services | In Progress | P0 | Source material becomes reusable parsed corpus data across PDF, DOCX, RTF, HTML, email, and office documents |
 | W4 | Graph persistence and support queries | In Progress | P0 | Cross-artifact support can be queried and explained |
 | W5 | GraphRAG support analysis | Planned | P1 | Ontology refinement improves support ranking and gap detection |
-| W6 | Formal logic and theorem proving | Planned | P1 | Claim-element sufficiency and contradiction validation |
+| W6 | Formal logic and theorem proving | In Progress | P1 | Claim-element sufficiency and contradiction validation |
 | W7 | Retrieval and follow-up optimization | In Progress | P1 | Retrieval is driven by missing support and provenance-aware ranking |
 | W8 | Review and operator tooling | In Progress | P1 | Existing coverage, follow-up, and dashboard payloads graduate into richer inspectable review surfaces |
 
@@ -481,16 +481,16 @@ Acceptance criteria:
 
 ## W6: Formal Logic and Theorem Proving
 
-Status: Planned
+Status: In Progress
 Priority: P1
 
 ### Why this matters
 
-The formal logic layer should expose concrete proof-gap and contradiction outputs before drafting, not just advertise prover availability.
+The formal logic layer already influences review and follow-up planning through proof-aware diagnostics, contradiction-aware validation states, and reasoning-gap task generation. The remaining gap is to replace placeholder-heavy adapter behavior with grounded, persisted validation workflows.
 
 ### Work Package W6.1: Logic adapter implementation
 
-Status: Planned
+Status: In Progress
 Target files:
 
 - `integrations/ipfs_datasets/logic.py`
@@ -526,7 +526,7 @@ Acceptance criteria:
 
 ### Work Package W6.3: Formal validation loop
 
-Status: Planned
+Status: In Progress
 Target files:
 
 - `complaint_phases/neurosymbolic_matcher.py`
@@ -538,6 +538,13 @@ Tasks:
 - validate grounded facts against claim-element predicates
 - surface unsupported and contradictory elements
 - persist validation artifacts and feed missing premises back into follow-up planning
+
+Implemented baseline:
+
+- claim-support validation already emits contradiction-aware and proof-aware statuses
+- review and dashboard surfaces already expose proof-gap, reasoning, and contradiction summaries
+- follow-up planning already consumes proof-decision traces, logic-unprovable outcomes, ontology-invalid signals, and reasoning-gap states
+- follow-up history, plan, and execution summaries already carry proof-aware retry and review context for operator inspection
 
 Acceptance criteria:
 
@@ -679,19 +686,18 @@ Acceptance criteria:
 
 ## Immediate sequence
 
-1. Finish W1.1 capability reporting cleanup.
-2. Implement W3.1 `documents.py`.
-3. Execute W3.2 parse-pipeline unification.
-4. Finish W2.3 shared fact registry expansion to archived pages and unified corpus semantics.
-5. Deepen W4.1 graph adapter persistence and query contracts.
-6. Stabilize W8.1 support packet reporting around the existing review payloads.
+1. Finish the remaining W3 parse-contract completion for all source families and formats.
+2. Finish W2.3 shared fact-registry expansion to archived pages and unified corpus semantics.
+3. Deepen W4.1 and W4.4 so graph snapshots and coverage views become a stronger persistent query plane.
+4. Advance W6.1 and W6.3 from proof-aware placeholder flows to grounded validation runs.
+5. Stabilize W8.1 support packet reporting around the existing review and dashboard payloads.
 
 ## Next sequence
 
-1. Implement W4.3 claim-element support queries.
+1. Finish W4.3 claim-element support queries and graph-path drilldown.
 2. Add W7.2 archive-first evidence acquisition.
 3. Start W5.1 ontology generation workflow.
-4. Implement W6.1 logic adapter contracts.
+4. Add W8 timeline, archive-history, and provenance drilldown packets.
 
 ## Later sequence
 
