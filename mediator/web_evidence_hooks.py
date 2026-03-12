@@ -353,6 +353,7 @@ class WebEvidenceIntegrationHook:
             'task_count': len(tasks),
             'blocked_task_count': claim_plan.get('blocked_task_count', 0),
             'graph_supported_task_count': len([task for task in tasks if task.get('has_graph_support')]),
+            'manual_review_task_count': len([task for task in tasks if task.get('execution_mode') == 'manual_review']),
             'suppressed_task_count': len([task for task in tasks if task.get('should_suppress_retrieval')]),
             'semantic_cluster_count': graph_support_metrics['semantic_cluster_count'],
             'semantic_duplicate_count': graph_support_metrics['semantic_duplicate_count'],
@@ -363,6 +364,7 @@ class WebEvidenceIntegrationHook:
         executed_tasks = claim_execution.get('tasks', []) if isinstance(claim_execution, dict) else []
         skipped_tasks = claim_execution.get('skipped_tasks', []) if isinstance(claim_execution, dict) else []
         suppressed = [task for task in skipped_tasks if 'suppressed' in task.get('skipped', {})]
+        manual_review_skips = [task for task in skipped_tasks if 'manual_review' in task.get('skipped', {})]
         cooldown_skips = [
             task for task in skipped_tasks
             if any(value.get('reason') == 'duplicate_within_cooldown' for value in task.get('skipped', {}).values() if isinstance(value, dict))
@@ -372,6 +374,7 @@ class WebEvidenceIntegrationHook:
             'executed_task_count': len(executed_tasks),
             'skipped_task_count': len(skipped_tasks),
             'suppressed_task_count': len(suppressed),
+            'manual_review_task_count': len(manual_review_skips),
             'cooldown_skipped_task_count': len(cooldown_skips),
             'semantic_cluster_count': graph_support_metrics['semantic_cluster_count'],
             'semantic_duplicate_count': graph_support_metrics['semantic_duplicate_count'],

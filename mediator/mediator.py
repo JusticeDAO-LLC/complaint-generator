@@ -946,6 +946,11 @@ class Mediator:
 		validation_status = element.get('validation_status', '')
 		if validation_status == 'contradicted':
 			priority = 'high'
+		execution_mode = 'retrieve_support'
+		if validation_status == 'contradicted' and missing_support_kinds:
+			execution_mode = 'review_and_retrieve'
+		elif validation_status == 'contradicted':
+			execution_mode = 'manual_review'
 		return {
 			'claim_type': claim_type,
 			'claim_element_id': element.get('element_id'),
@@ -955,6 +960,9 @@ class Mediator:
 			'proof_gap_count': int(element.get('proof_gap_count', 0) or 0),
 			'proof_gaps': element.get('proof_gaps', []),
 			'validation_recommended_action': element.get('recommended_action', ''),
+			'execution_mode': execution_mode,
+			'requires_manual_review': execution_mode in {'manual_review', 'review_and_retrieve'},
+			'reasoning_backed': bool(((element.get('reasoning_diagnostics') or {}).get('backend_available_count', 0) or 0) > 0),
 			'priority': priority,
 			'priority_score': 3 if priority == 'high' else 2,
 			'missing_support_kinds': missing_support_kinds,
@@ -1074,6 +1082,8 @@ class Mediator:
 				task['recommended_action'] = graph_support_assessment['recommended_action']
 				if task.get('validation_status') == 'contradicted':
 					task['recommended_action'] = 'resolve_contradiction'
+				if task.get('execution_mode') == 'manual_review':
+					task['recommended_action'] = 'resolve_contradiction'
 				task['priority_score'] = adjusted_priority_score
 				task['priority'] = self._priority_from_score(adjusted_priority_score)
 				suppression = self._should_suppress_follow_up_task(task)
@@ -1139,11 +1149,24 @@ class Mediator:
 					'status': task.get('status'),
 					'priority': task.get('priority'),
 					'recommended_action': task.get('recommended_action'),
+					'execution_mode': task.get('execution_mode', 'retrieve_support'),
+					'requires_manual_review': task.get('requires_manual_review', False),
+					'reasoning_backed': task.get('reasoning_backed', False),
 					'graph_support': task.get('graph_support', {}),
 					'should_suppress_retrieval': task.get('should_suppress_retrieval', False),
 					'suppression_reason': task.get('suppression_reason', ''),
 					'executed': {},
 				}
+				if task.get('execution_mode') == 'manual_review':
+					skipped_tasks.append({
+						**execution,
+						'skipped': {
+							'manual_review': {
+								'reason': 'contradiction_requires_resolution',
+							}
+						},
+					})
+					continue
 				if not force and task.get('should_suppress_retrieval'):
 					skipped_tasks.append({
 						**execution,

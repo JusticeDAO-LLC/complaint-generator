@@ -864,3 +864,92 @@ class TestMediatorEvidenceIntegration:
         finally:
             if os.path.exists(claim_support_db_path):
                 os.unlink(claim_support_db_path)
+
+    @pytest.mark.integration
+    def test_follow_up_plan_routes_contradiction_only_tasks_to_manual_review(self):
+        """Contradicted elements with no missing support kinds should become manual-review tasks, not retrieval tasks."""
+        try:
+            from mediator import Mediator
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+        mock_backend = Mock()
+        mock_backend.id = 'test-backend'
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            claim_support_db_path = f.name
+
+        try:
+            mediator = Mediator(
+                backends=[mock_backend],
+                claim_support_db_path=claim_support_db_path,
+            )
+            mediator.state.username = 'testuser'
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'breach of contract': {
+                        'required_support_kinds': ['evidence', 'authority'],
+                        'elements': [
+                            {
+                                'element_id': 'breach_of_contract:1',
+                                'element_text': 'Valid contract',
+                                'coverage_status': 'covered',
+                                'validation_status': 'contradicted',
+                                'recommended_action': 'resolve_contradiction',
+                                'support_by_kind': {'evidence': 1, 'authority': 1},
+                                'proof_gap_count': 1,
+                                'proof_gaps': [
+                                    {
+                                        'gap_type': 'contradiction_candidates',
+                                        'message': 'Conflicting support facts require operator review.',
+                                    }
+                                ],
+                                'reasoning_diagnostics': {
+                                    'backend_available_count': 1,
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value={
+                'claim_element_id': 'breach_of_contract:1',
+                'summary': {
+                    'total_fact_count': 2,
+                    'unique_fact_count': 2,
+                    'duplicate_fact_count': 0,
+                    'max_score': 1.0,
+                    'support_by_kind': {'evidence': 1, 'authority': 1},
+                },
+                'results': [
+                    {'fact_id': 'fact:1', 'score': 1.0, 'matched_claim_element': True},
+                ],
+            })
+            mediator.discover_web_evidence = Mock(return_value={'total_records': 1})
+
+            follow_up_plan = mediator.get_claim_follow_up_plan(
+                claim_type='breach of contract',
+                user_id='testuser',
+            )
+            task = follow_up_plan['claims']['breach of contract']['tasks'][0]
+
+            assert task['execution_mode'] == 'manual_review'
+            assert task['requires_manual_review'] is True
+            assert task['missing_support_kinds'] == []
+            assert task['recommended_action'] == 'resolve_contradiction'
+
+            follow_up_execution = mediator.execute_claim_follow_up_plan(
+                claim_type='breach of contract',
+                user_id='testuser',
+                support_kind='evidence',
+                max_tasks_per_claim=1,
+            )
+            assert follow_up_execution['claims']['breach of contract']['task_count'] == 0
+            assert follow_up_execution['claims']['breach of contract']['skipped_task_count'] == 1
+            skipped_task = follow_up_execution['claims']['breach of contract']['skipped_tasks'][0]
+            assert skipped_task['execution_mode'] == 'manual_review'
+            assert skipped_task['skipped']['manual_review']['reason'] == 'contradiction_requires_resolution'
+            mediator.discover_web_evidence.assert_not_called()
+        finally:
+            if os.path.exists(claim_support_db_path):
+                os.unlink(claim_support_db_path)

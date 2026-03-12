@@ -789,6 +789,69 @@ def test_claim_support_follow_up_execution_payload_can_skip_post_review():
     mediator.get_claim_follow_up_plan.assert_not_called()
 
 
+def test_claim_support_review_payload_summarizes_manual_review_tasks():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.get_claim_coverage_matrix.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_claim_overview.return_value = {"claims": {"retaliation": {"missing": [], "partially_supported": []}}}
+    mediator.get_claim_support_diagnostic_snapshots.return_value = {"claims": {}}
+    mediator.get_claim_support_gaps.return_value = {"claims": {"retaliation": {"unresolved_count": 0, "unresolved_elements": []}}}
+    mediator.get_claim_contradiction_candidates.return_value = {"claims": {"retaliation": {"candidate_count": 1, "candidates": []}}}
+    mediator.get_claim_support_validation.return_value = {
+        "claims": {
+            "retaliation": {
+                "validation_status": "contradicted",
+                "proof_gap_count": 1,
+                "proof_diagnostics": {"reasoning": {}},
+            }
+        }
+    }
+    mediator.get_claim_follow_up_plan.return_value = {
+        "claims": {
+            "retaliation": {
+                "task_count": 1,
+                "blocked_task_count": 0,
+                "tasks": [
+                    {
+                        "claim_element": "Protected activity",
+                        "recommended_action": "resolve_contradiction",
+                        "execution_mode": "manual_review",
+                        "has_graph_support": True,
+                        "should_suppress_retrieval": False,
+                        "graph_support": {"summary": {"semantic_cluster_count": 1, "semantic_duplicate_count": 0}},
+                    }
+                ],
+            }
+        }
+    }
+    mediator.execute_claim_follow_up_plan.return_value = {
+        "claims": {
+            "retaliation": {
+                "task_count": 0,
+                "tasks": [],
+                "skipped_tasks": [
+                    {
+                        "claim_element": "Protected activity",
+                        "execution_mode": "manual_review",
+                        "graph_support": {"summary": {"semantic_cluster_count": 1, "semantic_duplicate_count": 0}},
+                        "skipped": {"manual_review": {"reason": "contradiction_requires_resolution"}},
+                    }
+                ],
+            }
+        }
+    }
+    mediator.summarize_claim_support.return_value = {"claims": {"retaliation": {"total_links": 2}}}
+
+    payload = build_claim_support_review_payload(
+        mediator,
+        ClaimSupportReviewRequest(claim_type="retaliation", execute_follow_up=True),
+    )
+
+    assert payload["follow_up_plan_summary"]["retaliation"]["manual_review_task_count"] == 1
+    assert payload["follow_up_execution_summary"]["retaliation"]["manual_review_task_count"] == 1
+    assert payload["follow_up_plan_summary"]["retaliation"]["recommended_actions"] == {"resolve_contradiction": 1}
+
+
 def test_claim_support_review_endpoint_is_registered_on_app():
     mediator = Mock()
 

@@ -999,6 +999,7 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
     "employment discrimination": {
       "task_count": 2,
       "blocked_task_count": 1,
+      "manual_review_task_count": 1,
       "graph_supported_task_count": 1,
       "suppressed_task_count": 1,
       "semantic_cluster_count": 1,
@@ -1014,6 +1015,7 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
       "executed_task_count": 1,
       "skipped_task_count": 1,
       "suppressed_task_count": 1,
+      "manual_review_task_count": 1,
       "cooldown_skipped_task_count": 0,
       "semantic_cluster_count": 3,
       "semantic_duplicate_count": 4
@@ -1210,13 +1212,18 @@ Representative response shape:
       "skipped_task_count": 0,
       "suppressed_task_count": 0,
       "cooldown_skipped_task_count": 0,
+      "manual_review_task_count": 1,
+      "semantic_cluster_count": 3,
+      "semantic_duplicate_count": 4
       "semantic_cluster_count": 1,
       "semantic_duplicate_count": 0
     }
   },
+  - `execution_mode` on follow-up tasks now distinguishes normal retrieval work from contradiction-driven `manual_review` or mixed `review_and_retrieve` tasks.
   "post_execution_review": {
     "claim_coverage_summary": {
       "retaliation": {
+  - `manual_review_task_count` in both follow-up summaries tracks contradiction-review work that intentionally does not trigger evidence or authority retrieval.
         "status_counts": {
           "covered": 2,
           "partially_supported": 0,
