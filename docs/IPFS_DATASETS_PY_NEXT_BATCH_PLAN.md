@@ -84,7 +84,7 @@ Stabilize adapter payload shapes and capability reporting so later parse, graph,
 
 ### Goal
 
-Make uploaded evidence, discovered web evidence, and legal authority text flow through one parse and lineage contract.
+Make uploaded evidence, discovered web evidence, archived captures, and legal authority text flow through one parse and lineage contract.
 
 ### Primary files
 
@@ -100,6 +100,7 @@ Make uploaded evidence, discovered web evidence, and legal authority text flow t
 - route bytes, files, and fetched page content through one canonical parse call
 - align parse summary, chunk metadata, and transform lineage fields
 - ensure web evidence and legal authority text preserve the same provenance model as uploaded evidence
+- normalize PDF, DOCX, RTF, HTML, email, and office-document parsing so hook code does not branch by file type
 - deepen the shared fact registry so facts derived from archived pages and authority text look like first-class case facts
 - remove hook-local parse-shape assumptions where they still exist
 
@@ -108,6 +109,7 @@ Make uploaded evidence, discovered web evidence, and legal authority text flow t
 - one parse-result family across evidence, web evidence, and legal authorities
 - one provenance model across artifact families
 - chunk- and fact-level lineage suitable for later graph and logic consumers
+- one document-service contract that can organize heterogeneous exhibits into the same case corpus
 
 ### Stop condition
 
@@ -145,6 +147,7 @@ Move from graph extraction metadata and fallback support summaries into persiste
 - expose support-tracing query APIs for claim elements
 - deepen coverage-matrix semantics so support is organized around artifacts, authorities, facts, duplicates, and semantic clusters
 - preserve lineage from support rows back to source artifacts and graph snapshots
+- make graph-backed support traces available to dashboard and review surfaces in a drilldown-friendly shape
 - make graph-backed support traces available to review and drafting readiness flows
 
 ### Expected output
@@ -152,6 +155,7 @@ Move from graph extraction metadata and fallback support summaries into persiste
 - graph-backed support queries for claim elements
 - a persisted claim-element coverage matrix model that is stronger than stitched summaries
 - provenance-backed explanations for covered, partial, and missing states
+- review-ready support packets that can later expose timeline, contradiction, and proof-gap drilldowns
 
 ### Stop condition
 
@@ -169,7 +173,7 @@ Move from graph extraction metadata and fallback support summaries into persiste
 
 ### Goal
 
-Add the first mediator-consumable support-quality and proof-gap outputs for at least one complaint workflow.
+Add the first mediator-consumable support-quality, contradiction, and proof-gap outputs for at least one complaint workflow.
 
 ### Primary files
 
@@ -195,6 +199,7 @@ Add the first mediator-consumable support-quality and proof-gap outputs for at l
 - support quality stronger than raw support counts
 - one starter proof-gap or contradiction payload family
 - review surfaces that can distinguish covered, weakly supported, contradictory, and structurally missing support
+- a path to operator-facing provenance and contradiction drilldown without redesigning the payload family later
 
 ### Stop condition
 

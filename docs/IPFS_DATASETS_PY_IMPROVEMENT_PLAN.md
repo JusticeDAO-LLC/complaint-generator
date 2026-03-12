@@ -1,6 +1,6 @@
 # IPFS Datasets Py Improvement Plan
 
-Date: 2026-03-11
+Date: 2026-03-12
 
 ## Purpose
 
@@ -47,6 +47,33 @@ This roadmap should be read alongside:
 - `docs/EVIDENCE_MANAGEMENT.md`
 - `docs/WEB_EVIDENCE_DISCOVERY.md`
 - `docs/LEGAL_AUTHORITY_RESEARCH.md`
+
+## Validated `ipfs_datasets_py` capability map
+
+The checked-out submodule already contains the concrete module families needed for a serious legal-information integration plan. The main execution mistake to avoid is treating these as generic utilities instead of mapping them to complaint-generator workflows and data contracts.
+
+| Capability Area | Validated `ipfs_datasets_py` module family | Readiness | Complaint-generator entrypoint | Main integration note |
+|---|---|---|---|---|
+| Legal scrapers and dataset search | `ipfs_datasets_py.processors.legal_scrapers.*` | Production-ready | `integrations/ipfs_datasets/legal.py` → `mediator/legal_authority_hooks.py` | Async upstream APIs must stay normalized behind sync-safe adapters. |
+| Web search and archiving | `ipfs_datasets_py.web_archiving`, nested `processors/web_archiving/*` | Production-ready | `integrations/ipfs_datasets/search.py` → `mediator/web_evidence_hooks.py` | `BraveSearchAPI` is the stable export; Common Crawl remains a nested module. |
+| Document parsing and file conversion | `ipfs_datasets_py.processors.file_converter` | Production-ready | `integrations/ipfs_datasets/documents.py` → evidence and authority ingestion hooks | PDF, DOCX, RTF, HTML, archive, and office parsing should converge on one parse contract. |
+| Knowledge graph extraction and storage | `ipfs_datasets_py.knowledge_graphs.extraction`, `query`, `storage`, `lineage`, `neo4j_compat` | Mostly production-ready | `integrations/ipfs_datasets/graphs.py` → `complaint_phases/*` | Use subpackages only; avoid deprecated root imports. |
+| GraphRAG and ontology optimization | `ipfs_datasets_py.optimizers.graphrag` | Advanced | `integrations/ipfs_datasets/graphrag.py` | Best used after the shared corpus and graph lineage model are stable. |
+| Formal logic and theorem proving | `ipfs_datasets_py.logic.*`, `logic.external_provers.*`, `logic.integration.*` | Exploratory but real | `integrations/ipfs_datasets/logic.py` → `complaint_phases/neurosymbolic_matcher.py` | Start with structured contradiction and proof-gap outputs; do not jump directly to full automation. |
+| Vector search and hybrid retrieval | `ipfs_datasets_py.vector_stores.*` | Production-ready | `integrations/ipfs_datasets/vector_store.py` | Useful once evidence, authority, archive, and chunk corpora share durable IDs and metadata. |
+| Provenance and lineage | graph lineage plus parse provenance models | Partial but useful | `integrations/ipfs_datasets/provenance.py` | Enough exists now to make provenance queryable across artifacts, chunks, facts, and support edges. |
+
+## Information organization objectives
+
+The integration plan should optimize for information organization, not only acquisition breadth. The complaint generator should evolve toward seven case-level organizational guarantees:
+
+1. Every uploaded or discovered artifact becomes a normalized case artifact with provenance, parse output, and durable identifiers.
+2. Every artifact can yield reusable chunks, extracted facts, graph entities, graph relationships, and citations when the source quality allows it.
+3. Every fact or authority reference can be linked to specific claim elements, timelines, legal requirements, and support gaps.
+4. Every claim element can be inspected through one coverage lens that combines evidence, authority, archive, graph, and validation state.
+5. Every contradiction or proof gap can be traced back to the facts, authorities, and graph paths that produced it.
+6. Every expensive acquisition or validation task can run in a background job model instead of blocking operator workflows.
+7. Every workflow must preserve full, partial, and degraded runtime modes when optional `ipfs_datasets_py` dependencies are absent.
 
 ## Current State Assessment
 
@@ -150,7 +177,7 @@ The largest gaps are now product and workflow gaps, not import gaps:
 - no GraphRAG-backed retrieval or ontology refinement in complaint workflows
 - no durable corpus service yet spans uploaded evidence, archived pages, authorities, graph artifacts, and future predicates under one query contract
 - legal-authority parsing exists for stored authority text, but source coverage, ranking depth, and contradiction handling are still incomplete
-- operator-facing review payloads and coverage summaries exist, but there is no dedicated dashboard or contradiction-review workspace yet
+- operator-facing review payloads and a dedicated dashboard now exist, but the system still lacks a full contradiction-review and provenance-review workspace with timeline and support-path drilldown
 - no general job boundary for parse, graph, authority, and reasoning tasks beyond the scraper queue
 
 ## Strategic Objective
@@ -171,14 +198,29 @@ Use `ipfs_datasets_py` to turn complaint-generator from a complaint drafting wor
 | Capability Area | Current Status | What Exists Now | Primary Gap |
 |---|---|---|---|
 | Legal scrapers | Partial | adapter-backed search and normalized authority storage | richer authority ranking, contradiction handling, state and agency expansion |
-| Web search and archiving | In Progress | Brave, Common Crawl, archive sweeps, direct scraping, persisted scraper runs, queue-backed worker | archive-first capture policy, temporal diffing, stronger source clustering |
-| Document parsing | In Progress | uploaded and web evidence parse summaries, chunks, graph extraction, facts, plus authority parse summaries, authority chunk persistence, and stored parse metadata | one shared corpus service contract across all source families |
+| Web search and archiving | In Progress | Brave, Common Crawl, archive sweeps, direct scraping, persisted scraper runs, queue-backed worker, and archived evidence normalization | archive-first capture policy, temporal diffing, stronger source clustering |
+| Document parsing | In Progress | uploaded and web evidence parse summaries, chunks, graph extraction, facts, authority parse summaries, authority chunk persistence, stored parse metadata, and a viable file-conversion backend for PDF, DOCX, RTF, HTML, and office documents | one shared corpus service contract across all source families |
 | Knowledge graphs | In Progress | local graph projection into complaint phases, evidence graph metadata persistence, authority graph entity and relationship persistence, and graph-support fallback queries with duplicate and semantic clustering | backing graph store, graph snapshot persistence, support query plane |
-| GraphRAG | Planned | adapter capability boundary only | ontology generation, support-path scoring, follow-up integration |
-| Logic and theorem proving | Planned | capability probing and placeholder adapter | predicate templates, proof execution, contradiction persistence |
-| Vector search | Planned | adapter shell only | retrieval indexing and hybrid search integration |
-| Review and operator surfaces | In Progress | review payloads, coverage summaries, follow-up plan summaries, and execution summaries | dedicated dashboard, contradiction workspace, and richer support packets |
+| GraphRAG | Planned | validated upstream optimizer stack plus adapter capability boundary | ontology generation, support-path scoring, follow-up integration |
+| Logic and theorem proving | Planned | validated upstream logic stack plus placeholder complaint-generator adapter | predicate templates, proof execution, contradiction persistence |
+| Vector search | Planned | validated upstream vector-store backends plus adapter shell | retrieval indexing and hybrid search integration |
+| Review and operator surfaces | In Progress | review payloads, coverage summaries, follow-up plan summaries, execution summaries, recent follow-up history, and dashboard-based manual-review resolution | contradiction workspace, richer support packets, and provenance/timeline drilldown |
 | MCP gateway | Planned | adapter shell only | tool exposure and workflow-level orchestration |
+
+## Target workflow-by-workflow integration model
+
+The highest-value way to use `ipfs_datasets_py` inside complaint-generator is to bind each capability family to a specific complaint lifecycle stage instead of integrating features in isolation.
+
+| Complaint lifecycle stage | Primary complaint-generator owner | `ipfs_datasets_py` feature family | Expected output |
+|---|---|---|---|
+| Intake and denoising | `complaint_analysis/*`, `complaint_phases/denoiser.py` | legal search, citation extraction, lightweight graph extraction | better initial claim-type framing, procedural hints, and intake questions |
+| Evidence ingestion | `mediator/evidence_hooks.py` | IPFS storage, file conversion, parse lineage, metadata extraction | normalized artifacts, text, chunks, facts, and provenance |
+| Web evidence acquisition | `mediator/web_evidence_hooks.py`, scraper queue | Brave, Common Crawl, Wayback, archive capture, unified web scraping | archived and deduplicated public evidence tied to claim elements and timelines |
+| Legal authority acquisition | `mediator/legal_authority_hooks.py` | US Code, Federal Register, RECAP, state and municipal legal scrapers | ranked authority packets tied to claim elements and procedural requirements |
+| Case graph construction | `complaint_phases/knowledge_graph.py`, `complaint_phases/legal_graph.py` | graph extraction, storage, lineage, query | graph-backed support paths across facts, entities, events, and authorities |
+| Support review and follow-up | `mediator/mediator.py`, review APIs, review dashboard | graph query, support clustering, archive lineage, hybrid retrieval | claim-element coverage matrix, targeted follow-up tasks, operator review packets |
+| Formal validation | `complaint_phases/neurosymbolic_matcher.py` | FOL, deontic, TDFOL, SMT bridges, neuro-symbolic orchestration | proof gaps, contradictions, unsupported premises, and validation status |
+| Drafting and bundle export | review surfaces plus complaint generation path | provenance bundles, graph traces, authority citations, archive references | filing-ready support bundles and explainable draft substantiation |
 
 ## Recommended Delivery Phases
 
@@ -661,11 +703,14 @@ Deliverables:
 - `documents.py` adapter
 - chunk-level parsing APIs
 - OCR and file-type fallback handling
+- PDF, DOCX, RTF, HTML, email, and office-document normalization through one contract
 - citation and timeline extraction helpers
+- shared parse metadata fields for authority texts, uploaded exhibits, archived pages, and generated summaries
 
 Acceptance criteria:
 
 - uploaded evidence, fetched pages, and authority texts all produce consistent parse outputs
+- file-format-specific behavior is visible only inside the adapter layer, not spread across mediator hooks
 
 ## Workstream D: Graph persistence and graph queries
 
@@ -738,11 +783,14 @@ Deliverables:
 - provenance-linked evidence review packets
 - authority review views
 - contradiction and missing-support reports
+- timeline and archive-history review packets
+- graph-trace and proof-gap drilldown for claim elements
 - background jobs for long-running acquisition and validation work
 
 Acceptance criteria:
 
 - operators can inspect why a claim element is marked covered, partial, or missing
+- operators can trace a support decision back to artifacts, chunks, authorities, archive captures, graph paths, and validation outputs
 
 ## Phased Roadmap
 
@@ -834,8 +882,8 @@ Priority files:
 ## Next 2 weeks
 
 1. Finish production import boundary cleanup.
-2. Deepen `documents.py` and normalize parsing outputs.
-3. Standardize provenance fields and chunk lineage.
+2. Deepen `documents.py` around PDF, DOCX, RTF, HTML, and email normalization so all source families share one parse contract.
+3. Standardize provenance fields and chunk lineage across evidence, archives, and authorities.
 4. Add graph snapshot persistence contracts and tests.
 
 ## Next 30 days
@@ -843,14 +891,14 @@ Priority files:
 1. Integrate graph support queries into mediator review flows.
 2. Archive important web evidence eagerly and store archive metadata.
 3. Expand legal authority normalization and ranking.
-4. Expand the existing fact registry to archived pages, graph artifacts, and unified review semantics.
+4. Expand the existing fact registry to archived pages, graph artifacts, parsed authority text, and unified review semantics.
 
 ## Next 60 to 90 days
 
 1. Connect GraphRAG to support-path scoring and denoiser planning.
 2. Implement claim-type-specific predicate templates.
 3. Add contradiction detection and proof-gap outputs.
-4. Build operator-facing support and provenance review views.
+4. Build operator-facing support, provenance, timeline, and contradiction review views.
 
 ## Risks and Guardrails
 
@@ -907,7 +955,7 @@ The integration should be considered successful when the system can demonstrate:
 3. Connect `integrations/ipfs_datasets/graphrag.py` outputs to support scoring and denoiser gap detection.
 4. Replace `integrations/ipfs_datasets/logic.py` placeholders with claim-element proof and contradiction workflows.
 5. Expand the existing fact registry so evidence, archived pages, authorities, and future predicates share one durable corpus contract.
-6. Deepen the existing operator review endpoints and reports for support coverage, provenance, and contradictions.
+6. Deepen the existing operator review endpoints and reports for support coverage, provenance, timelines, archive history, and contradictions.
 
 ## Summary
 

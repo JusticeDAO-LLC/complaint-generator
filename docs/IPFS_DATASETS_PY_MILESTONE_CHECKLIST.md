@@ -1,6 +1,6 @@
 # IPFS Datasets Py Milestone Checklist
 
-Date: 2026-03-11
+Date: 2026-03-12
 
 ## Purpose
 
@@ -90,11 +90,13 @@ Checklist:
 - [x] web evidence ingestion routes through the shared parse contract instead of hook-local parse shapes
 - [x] legal authority text uses the same parse family when source text is available
 - [x] provenance fields align across evidence, archived pages, and authority text
+- [ ] PDF, DOCX, RTF, HTML, email, and office-document parsing behavior is fully encapsulated inside the adapter layer with no hook-local format branching
 - [ ] the existing fact registry is extended to future predicate-bearing artifacts; archived pages already flow through the evidence-backed fact path
 
 Acceptance criteria:
 
 - uploaded evidence, discovered web evidence, and parsed authority text produce one contract family for downstream graph and logic consumers
+- document-format handling does not leak into mediator orchestration code
 
 Validation:
 
@@ -212,6 +214,7 @@ Checklist:
 
 - [ ] review payloads expose support packets with evidence, authority, fact, provenance, and graph-support detail
 - [ ] contradiction and missing-support summaries are operator-visible
+- [ ] timeline, archive-history, and graph-trace drilldowns are operator-visible
 - [ ] queued acquisition and enrichment state can be inspected from review surfaces
 - [ ] long-running archive, graph, and validation work can move into explicit background workflows where necessary
 - [ ] documentation for review and execution routes is aligned with actual payloads and compatibility behavior
@@ -219,6 +222,7 @@ Checklist:
 Acceptance criteria:
 
 - operators can inspect coverage, contradictions, provenance, and queued enrichment work without consulting raw tables
+- operators can trace a support decision back to passages, artifacts, archive captures, and graph or validation outputs
 
 Validation:
 

@@ -1,6 +1,6 @@
 # IPFS Datasets Py File Worklist
 
-Date: 2026-03-11
+Date: 2026-03-12
 
 ## Purpose
 
@@ -156,6 +156,7 @@ Tasks:
 
 - make one canonical parse contract for bytes, files, and fetched page content
 - standardize parse summary, chunk metadata, MIME handling, and transform lineage
+- fully encapsulate PDF, DOCX, RTF, HTML, email, and office-document parsing differences behind the adapter layer
 - preserve degraded behavior when OCR or PDF extras are unavailable
 
 Current state:
@@ -165,6 +166,7 @@ Current state:
 Done when:
 
 - downstream consumers can call one parse API regardless of source family
+- downstream consumers do not branch on document format outside the adapter layer
 
 Validation:
 
@@ -238,6 +240,7 @@ Tasks:
 
 - route fetched and discovered page content through the shared parse contract
 - preserve archive or fetch provenance in the same lineage model as uploaded evidence
+- preserve enough timeline and archive metadata for later operator history and comparison views
 
 Current state:
 
@@ -260,6 +263,7 @@ Tasks:
 - ensure authority text parsing uses the same parse family when full text exists
 - preserve authority parse summaries, chunks, facts, and graph metadata through one normalized contract
 - align authority provenance with evidence and archived pages
+- capture passage-level provenance needed for future contradiction, support-path, and predicate review
 
 Done when:
 

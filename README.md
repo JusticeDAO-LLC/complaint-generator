@@ -234,6 +234,7 @@ User Interface (CLI/Web) → Mediator → LLM Router Backend
 - [Improvement Plan](docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md) - Comprehensive integration plan for legal scrapers, legal dataset search, graph databases, theorem provers, web archiving, search engines, and information organization
 - [Integration Guide](docs/IPFS_DATASETS_PY_INTEGRATION.md) - Current production integration model and adapter boundary
 - [Execution Backlog](docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md) - Workstream-by-workstream implementation backlog and sequencing
+- [Batch 1 Implementation Plan](docs/IPFS_DATASETS_PY_BATCH1_IMPLEMENTATION_PLAN.md) - Issue-sized execution plan for adapter contract stabilization, capability reporting, and import-boundary cleanup
 
 ### Features
 - [Complaint Analysis](docs/COMPLAINT_ANALYSIS_INTEGRATION.md) - 14 complaint types

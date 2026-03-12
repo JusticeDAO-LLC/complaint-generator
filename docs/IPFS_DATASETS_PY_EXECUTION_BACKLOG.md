@@ -1,6 +1,6 @@
 # IPFS Datasets Py Execution Backlog
 
-Date: 2026-03-11
+Date: 2026-03-12
 Status: Active execution backlog
 
 Companion docs:
@@ -65,7 +65,7 @@ These are the main execution targets:
 - `integrations/ipfs_datasets/logic.py` still returns `not_implemented` for proof workflows
 - the shared fact registry exists for evidence and authorities but does not yet provide one durable corpus service across archived pages, graph artifacts, and future predicates
 - no graph-store persistence or query plane exists for multi-artifact support tracing
-- review payloads exist, but there is still no dedicated dashboard or contradiction-review workspace
+- review payloads and a dedicated dashboard now exist, but there is still no full contradiction, provenance, timeline, and support-path review workspace
 
 ## Status Legend
 
@@ -80,12 +80,12 @@ These are the main execution targets:
 |---|---|---|---|---|
 | W1 | Adapter hardening | In Progress | P0 | Stable feature detection and runtime-mode handling |
 | W2 | Unified acquisition and provenance | In Progress | P0 | Evidence, authorities, and archived web material share one case model |
-| W3 | Document and chunk services | In Progress | P0 | Source material becomes reusable parsed corpus data |
+| W3 | Document and chunk services | In Progress | P0 | Source material becomes reusable parsed corpus data across PDF, DOCX, RTF, HTML, email, and office documents |
 | W4 | Graph persistence and support queries | In Progress | P0 | Cross-artifact support can be queried and explained |
 | W5 | GraphRAG support analysis | Planned | P1 | Ontology refinement improves support ranking and gap detection |
 | W6 | Formal logic and theorem proving | Planned | P1 | Claim-element sufficiency and contradiction validation |
 | W7 | Retrieval and follow-up optimization | In Progress | P1 | Retrieval is driven by missing support and provenance-aware ranking |
-| W8 | Review and operator tooling | In Progress | P1 | Existing coverage and follow-up payloads graduate into richer inspectable review surfaces |
+| W8 | Review and operator tooling | In Progress | P1 | Existing coverage, follow-up, and dashboard payloads graduate into richer inspectable review surfaces |
 
 ## W1: Adapter Hardening
 
@@ -248,11 +248,13 @@ Tasks:
 - wrap file type detection
 - wrap PDF and OCR extraction when available
 - expose chunking and metadata extraction
+- normalize PDF, DOCX, RTF, HTML, email, and office-document parsing behind one adapter contract
 - return normalized parse outputs with provenance hooks
 
 Acceptance criteria:
 
 - one adapter call can convert raw bytes, file paths, or fetched page content into a normalized parse result
+- mediator hooks do not need per-format parsing branches outside the adapter layer
 
 Validation:
 
@@ -272,6 +274,7 @@ Tasks:
 - route parsing through `documents.py`
 - normalize chunk metadata and parse lineage
 - expose reusable parse summaries rather than hook-local output shapes
+- ensure archived captures, live fetches, and uploaded exhibits can all be compared through the same chunk and provenance model
 
 Implemented baseline:
 
@@ -296,6 +299,7 @@ Tasks:
 - parse authority text into chunked records when full text is available
 - extract citation and requirement candidates from parsed authority text
 - connect parsed authority text to the legal graph and future predicate translation
+- preserve authority-document lineage so review surfaces can trace support back to passage-level source text
 
 Implemented baseline:
 
@@ -648,10 +652,12 @@ Tasks:
 - deepen existing support coverage summaries with direct evidence, authority, fact, and graph-support traces
 - expose provenance summaries and bundle manifests
 - expose contradiction and missing-support reports
+- add timeline, archive-history, and graph-trace drilldown packets for operator review
 
 Acceptance criteria:
 
 - one mediator call can produce a reviewable support packet for a complaint or claim type
+- operators can inspect which artifacts, authority passages, archive captures, graph traces, and validation outputs drove a support state
 
 ### Work Package W8.2: Background jobs for long-running workflows
 
