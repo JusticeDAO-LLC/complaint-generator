@@ -665,6 +665,28 @@ Representative shape:
       "retention_limits": [3],
       "total_pruned_snapshot_count": 0
     }
+  },
+  "claim_reasoning_review": {
+    "civil rights": {
+      "claim_type": "civil rights",
+      "total_element_count": 2,
+      "flagged_element_count": 1,
+      "fallback_ontology_element_count": 0,
+      "unavailable_backend_element_count": 0,
+      "degraded_adapter_element_count": 1,
+      "flagged_elements": [
+        {
+          "element_id": "civil_rights:1",
+          "element_text": "Protected activity",
+          "validation_status": "contradicted",
+          "predicate_count": 3,
+          "used_fallback_ontology": false,
+          "backend_available_count": 4,
+          "unavailable_adapters": [],
+          "degraded_adapters": ["logic_contradictions", "logic_proof"]
+        }
+      ]
+    }
   }
 }
 ```
@@ -691,6 +713,7 @@ Interpretation notes:
 - `proof_diagnostics.reasoning` aggregates backend-oriented diagnostics from the logic and GraphRAG adapters, while `reasoning_diagnostics` preserves the per-element adapter packets used to produce those aggregates.
 - `claim_support_snapshots` exposes the persisted snapshot ids, metadata, `is_stale` freshness flag, and snapshot-retention pruning metadata for the gap and contradiction diagnostics written by automatic legal research.
 - `claim_support_snapshot_summary` is the compact lifecycle companion for those persisted diagnostics. It reports how many snapshots are fresh versus stale, which kinds are present, the active retention limits, and how much pruning happened during persistence.
+- `claim_reasoning_review` is the compact operator-facing reasoning review surface. It highlights claim elements that were contradicted, required fallback ontology, or encountered unavailable or degraded adapter states during validation.
 - `status_counts` separates fully covered, partially supported, and still-missing elements.
 - `links_by_kind` groups evidence and authority support without requiring callers to regroup raw links.
 - `record_summary` and `graph_summary` provide lightweight parse and graph context inline with the support record.
@@ -1130,6 +1153,28 @@ Representative response shape:
       "total_pruned_snapshot_count": 0
     }
   },
+  "claim_reasoning_review": {
+    "retaliation": {
+      "claim_type": "retaliation",
+      "total_element_count": 1,
+      "flagged_element_count": 1,
+      "fallback_ontology_element_count": 1,
+      "unavailable_backend_element_count": 1,
+      "degraded_adapter_element_count": 1,
+      "flagged_elements": [
+        {
+          "element_id": "retaliation:2",
+          "element_text": "Adverse action",
+          "validation_status": "contradicted",
+          "predicate_count": 4,
+          "used_fallback_ontology": true,
+          "backend_available_count": 3,
+          "unavailable_adapters": ["logic_contradictions"],
+          "degraded_adapters": ["logic_contradictions", "logic_proof"]
+        }
+      ]
+    }
+  },
   "follow_up_plan_summary": {
     "retaliation": {
       "task_count": 2,
@@ -1165,6 +1210,7 @@ Interpretation notes:
 - `claim_support_validation` is the first-class proof-status surface for the review API. Follow-up planning uses the same normalized validation statuses, so contradiction-heavy elements can be prioritized and are not auto-suppressed.
 - `claim_support_snapshots` exposes any persisted diagnostic snapshot ids reused by the review payload; when a stored snapshot no longer matches current support state it is marked with `is_stale=true` and the payload falls back to recomputation for that claim.
 - `claim_support_snapshot_summary` is the compact review-facing lifecycle view for those persisted diagnostics, so dashboard consumers can see freshness and pruning at a glance without iterating the raw snapshot entries.
+- `claim_reasoning_review` is the compact review-facing reasoning surface for flagged claim elements, capturing fallback ontology use plus unavailable or degraded adapter states without forcing clients to inspect every `reasoning_diagnostics` packet.
 - `claim_coverage_summary`, `follow_up_plan_summary`, and `follow_up_execution_summary` are the compact operator-facing surfaces intended for dashboards and review tools.
 - When `execute_follow_up=true`, the response adds `compatibility_notice` and emits `Deprecation`, `Sunset`, `Link`, and `Warning` headers so clients can migrate off the compatibility path.
 - New clients should prefer `POST /api/claim-support/execute-follow-up` for side effects and treat `execute_follow_up` on the review endpoint as a compatibility path.

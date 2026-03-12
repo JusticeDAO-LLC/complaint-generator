@@ -145,7 +145,36 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                         "fallback_ontology_count": 1,
                     }
                 },
-                "elements": [],
+                "elements": [
+                    {
+                        "element_id": "retaliation:2",
+                        "element_text": "Adverse action",
+                        "validation_status": "contradicted",
+                        "reasoning_diagnostics": {
+                            "predicate_count": 4,
+                            "used_fallback_ontology": True,
+                            "backend_available_count": 3,
+                            "adapter_statuses": {
+                                "logic_proof": {
+                                    "backend_available": True,
+                                    "implementation_status": "not_implemented",
+                                },
+                                "logic_contradictions": {
+                                    "backend_available": False,
+                                    "implementation_status": "unavailable",
+                                },
+                                "ontology_build": {
+                                    "backend_available": True,
+                                    "implementation_status": "implemented",
+                                },
+                                "ontology_validation": {
+                                    "backend_available": True,
+                                    "implementation_status": "implemented",
+                                },
+                            },
+                        },
+                    }
+                ],
             }
         }
     }
@@ -280,6 +309,26 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         "stale_snapshot_kinds": [],
         "retention_limits": [],
         "total_pruned_snapshot_count": 0,
+    }
+    assert payload["claim_reasoning_review"]["retaliation"] == {
+        "claim_type": "retaliation",
+        "total_element_count": 1,
+        "flagged_element_count": 1,
+        "fallback_ontology_element_count": 1,
+        "unavailable_backend_element_count": 1,
+        "degraded_adapter_element_count": 1,
+        "flagged_elements": [
+            {
+                "element_id": "retaliation:2",
+                "element_text": "Adverse action",
+                "validation_status": "contradicted",
+                "predicate_count": 4,
+                "used_fallback_ontology": True,
+                "backend_available_count": 3,
+                "unavailable_adapters": ["logic_contradictions"],
+                "degraded_adapters": ["logic_contradictions", "logic_proof"],
+            }
+        ],
     }
     assert payload["claim_coverage_summary"]["retaliation"]["support_trace_summary"]["trace_count"] == 3
     assert payload["claim_coverage_summary"]["retaliation"]["graph_trace_summary"] == {
@@ -530,6 +579,15 @@ def test_claim_support_review_payload_reuses_persisted_diagnostic_snapshots():
         "retention_limits": [],
         "total_pruned_snapshot_count": 0,
     }
+    assert payload["claim_reasoning_review"]["retaliation"] == {
+        "claim_type": "",
+        "total_element_count": 0,
+        "flagged_element_count": 0,
+        "fallback_ontology_element_count": 0,
+        "unavailable_backend_element_count": 0,
+        "degraded_adapter_element_count": 0,
+        "flagged_elements": [],
+    }
     mediator.get_claim_support_diagnostic_snapshots.assert_called_once_with(
         claim_type="retaliation",
         user_id="state-user",
@@ -624,6 +682,15 @@ def test_claim_support_review_payload_recomputes_stale_diagnostic_snapshots():
         "stale_snapshot_kinds": ["contradictions", "gaps"],
         "retention_limits": [],
         "total_pruned_snapshot_count": 0,
+    }
+    assert payload["claim_reasoning_review"]["retaliation"] == {
+        "claim_type": "",
+        "total_element_count": 0,
+        "flagged_element_count": 0,
+        "fallback_ontology_element_count": 0,
+        "unavailable_backend_element_count": 0,
+        "degraded_adapter_element_count": 0,
+        "flagged_elements": [],
     }
     mediator.get_claim_support_gaps.assert_called_once_with(
         claim_type="retaliation",

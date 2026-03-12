@@ -87,6 +87,88 @@ def summarize_claim_support_snapshot_lifecycle(
     }
 
 
+def summarize_claim_reasoning_review(
+    validation_claim: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    claim_validation = validation_claim if isinstance(validation_claim, dict) else {}
+    elements = claim_validation.get("elements", [])
+    if not isinstance(elements, list):
+        elements = []
+
+    flagged_elements: List[Dict[str, Any]] = []
+    fallback_ontology_element_count = 0
+    unavailable_backend_element_count = 0
+    degraded_adapter_element_count = 0
+
+    for element in elements:
+        if not isinstance(element, dict):
+            continue
+        reasoning = element.get("reasoning_diagnostics", {})
+        if not isinstance(reasoning, dict):
+            reasoning = {}
+        adapter_statuses = reasoning.get("adapter_statuses", {})
+        if not isinstance(adapter_statuses, dict):
+            adapter_statuses = {}
+
+        unavailable_adapters = sorted(
+            name
+            for name, summary in adapter_statuses.items()
+            if isinstance(summary, dict) and not bool(summary.get("backend_available", False))
+        )
+        degraded_adapters = sorted(
+            name
+            for name, summary in adapter_statuses.items()
+            if isinstance(summary, dict)
+            and str(
+                summary.get("implementation_status") or summary.get("status") or ""
+            )
+            in {"unavailable", "error", "not_implemented"}
+        )
+        used_fallback_ontology = bool(reasoning.get("used_fallback_ontology"))
+
+        if used_fallback_ontology:
+            fallback_ontology_element_count += 1
+        if unavailable_adapters:
+            unavailable_backend_element_count += 1
+        if degraded_adapters:
+            degraded_adapter_element_count += 1
+
+        if not (
+            used_fallback_ontology
+            or unavailable_adapters
+            or degraded_adapters
+            or str(element.get("validation_status") or "") == "contradicted"
+        ):
+            continue
+
+        flagged_elements.append(
+            {
+                "element_id": element.get("element_id"),
+                "element_text": element.get("element_text"),
+                "validation_status": element.get("validation_status", ""),
+                "predicate_count": int(reasoning.get("predicate_count", 0) or 0),
+                "used_fallback_ontology": used_fallback_ontology,
+                "backend_available_count": int(
+                    reasoning.get("backend_available_count", 0) or 0
+                ),
+                "unavailable_adapters": unavailable_adapters,
+                "degraded_adapters": degraded_adapters,
+            }
+        )
+
+    return {
+        "claim_type": claim_validation.get("claim_type", ""),
+        "total_element_count": len(
+            [element for element in elements if isinstance(element, dict)]
+        ),
+        "flagged_element_count": len(flagged_elements),
+        "fallback_ontology_element_count": fallback_ontology_element_count,
+        "unavailable_backend_element_count": unavailable_backend_element_count,
+        "degraded_adapter_element_count": degraded_adapter_element_count,
+        "flagged_elements": flagged_elements,
+    }
+
+
 def _summarize_claim_coverage_claim(
     claim_type: str,
     coverage_claim: Dict[str, Any],
@@ -423,6 +505,12 @@ def build_claim_support_review_payload(
         "claim_support_snapshot_summary": {
             claim_name: summarize_claim_support_snapshot_lifecycle(
                 (snapshot_claims.get(claim_name, {}) or {}).get("snapshots", {})
+            )
+            for claim_name in coverage_claims.keys()
+        },
+        "claim_reasoning_review": {
+            claim_name: summarize_claim_reasoning_review(
+                validation_claims.get(claim_name, {})
             )
             for claim_name in coverage_claims.keys()
         },

@@ -7,7 +7,10 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pathlib import Path
 
-from claim_support_review import summarize_claim_support_snapshot_lifecycle
+from claim_support_review import (
+    summarize_claim_reasoning_review,
+    summarize_claim_support_snapshot_lifecycle,
+)
 from integrations.ipfs_datasets.provenance import build_document_parse_contract
 from integrations.ipfs_datasets.search import (
     BRAVE_SEARCH_AVAILABLE,
@@ -1010,6 +1013,7 @@ class WebEvidenceIntegrationHook:
             'claim_support_validation': {},
             'claim_support_snapshots': {},
             'claim_support_snapshot_summary': {},
+            'claim_reasoning_review': {},
             'claim_overview': {},
             'follow_up_plan': {},
             'follow_up_plan_summary': {},
@@ -1136,6 +1140,9 @@ class WebEvidenceIntegrationHook:
                 results['claim_support_snapshot_summary'][claim_type] = summarize_claim_support_snapshot_lifecycle(
                     results['claim_support_snapshots'][claim_type]
                 )
+            results['claim_reasoning_review'][claim_type] = summarize_claim_reasoning_review(
+                results['claim_support_validation'].get(claim_type, {})
+            )
             if hasattr(self.mediator, 'get_claim_follow_up_plan'):
                 follow_up_plan = self.mediator.get_claim_follow_up_plan(claim_type=claim_type, user_id=user_id)
                 claim_plan = follow_up_plan.get('claims', {}).get(

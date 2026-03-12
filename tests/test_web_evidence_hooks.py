@@ -757,6 +757,9 @@ class TestWebEvidenceIntegrationHook:
             assert result['claim_support_snapshot_summary']['employment discrimination']['total_snapshot_count'] == 2
             assert result['claim_support_snapshot_summary']['employment discrimination']['fresh_snapshot_count'] == 2
             assert result['claim_support_snapshot_summary']['employment discrimination']['stale_snapshot_count'] == 0
+            assert result['claim_reasoning_review']['employment discrimination']['total_element_count'] == len(
+                result['claim_support_validation']['employment discrimination']['elements']
+            )
             assert result['claim_overview']['employment discrimination']['missing_count'] == 1
             assert result['follow_up_plan']['employment discrimination']['task_count'] == 2
             assert result['follow_up_plan_summary']['employment discrimination']['task_count'] == 2

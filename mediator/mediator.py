@@ -37,6 +37,7 @@ from claim_support_review import (
 	ClaimSupportReviewRequest,
 	build_claim_support_follow_up_execution_payload,
 	build_claim_support_review_payload,
+	summarize_claim_reasoning_review,
 	summarize_claim_support_snapshot_lifecycle,
 )
 
@@ -1627,6 +1628,7 @@ class Mediator:
 			'claim_support_validation': {},
 			'claim_support_snapshots': {},
 			'claim_support_snapshot_summary': {},
+			'claim_reasoning_review': {},
 			'claim_overview': {},
 			'follow_up_plan': {},
 			'follow_up_execution': {}
@@ -1747,6 +1749,9 @@ class Mediator:
 			).get('snapshots', {})
 			results['claim_support_snapshot_summary'][claim_type] = summarize_claim_support_snapshot_lifecycle(
 				results['claim_support_snapshots'][claim_type]
+			)
+			results['claim_reasoning_review'][claim_type] = summarize_claim_reasoning_review(
+				results['claim_support_validation'][claim_type]
 			)
 			results['claim_coverage_summary'][claim_type] = self._summarize_claim_coverage_claim(
 				results['claim_coverage_matrix'][claim_type],
