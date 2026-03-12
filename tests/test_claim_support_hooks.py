@@ -4,6 +4,7 @@ import os
 import tempfile
 from unittest.mock import Mock
 
+import duckdb
 import pytest
 
 
@@ -706,6 +707,137 @@ class TestClaimSupportHook:
             if os.path.exists(db_path):
                 os.unlink(db_path)
 
+    def test_persist_claim_support_diagnostics_prunes_older_snapshot_history(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidencePersist',
+                support_label='HR complaint email',
+                source_table='evidence',
+            )
+
+            persisted = {}
+            for run_number in range(3):
+                persisted = hook.persist_claim_support_diagnostics(
+                    'testuser',
+                    'employment',
+                    required_support_kinds=['evidence', 'authority'],
+                    metadata={'run_number': run_number},
+                    retention_limit=2,
+                )
+
+            conn = duckdb.connect(db_path)
+            rows = conn.execute(
+                """
+                SELECT snapshot_kind, COUNT(*)
+                FROM claim_support_snapshot
+                WHERE user_id = ? AND claim_type = ?
+                GROUP BY snapshot_kind
+                ORDER BY snapshot_kind ASC
+                """,
+                ['testuser', 'employment'],
+            ).fetchall()
+            conn.close()
+
+            row_counts = {row[0]: row[1] for row in rows}
+            assert row_counts['contradictions'] == 2
+            assert row_counts['gaps'] == 2
+            assert persisted['retention_limit'] == 2
+            assert persisted['pruned_snapshot_count'] == 2
+            assert persisted['claims']['employment']['snapshots']['gaps']['pruned_snapshot_count'] == 1
+            assert persisted['claims']['employment']['snapshots']['contradictions']['pruned_snapshot_count'] == 1
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_prune_claim_support_diagnostic_snapshots_removes_older_rows(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidencePersist',
+                support_label='HR complaint email',
+                source_table='evidence',
+            )
+
+            for run_number in range(3):
+                hook.persist_claim_support_diagnostics(
+                    'testuser',
+                    'employment',
+                    required_support_kinds=['evidence', 'authority'],
+                    metadata={'run_number': run_number},
+                    retention_limit=6,
+                )
+
+            pruned = hook.prune_claim_support_diagnostic_snapshots(
+                'testuser',
+                'employment',
+                required_support_kinds=['authority', 'evidence'],
+                keep_latest=1,
+            )
+
+            conn = duckdb.connect(db_path)
+            rows = conn.execute(
+                """
+                SELECT snapshot_kind, COUNT(*)
+                FROM claim_support_snapshot
+                WHERE user_id = ? AND claim_type = ?
+                GROUP BY snapshot_kind
+                ORDER BY snapshot_kind ASC
+                """,
+                ['testuser', 'employment'],
+            ).fetchall()
+            conn.close()
+
+            row_counts = {row[0]: row[1] for row in rows}
+            assert row_counts['contradictions'] == 1
+            assert row_counts['gaps'] == 1
+            assert pruned['retention_limit'] == 1
+            assert pruned['pruned_snapshot_count'] == 4
+            assert pruned['claims']['employment']['snapshots']['gaps']['pruned_snapshot_count'] == 2
+            assert pruned['claims']['employment']['snapshots']['contradictions']['pruned_snapshot_count'] == 2
+            assert len(pruned['claims']['employment']['snapshots']['gaps']['deleted_snapshot_ids']) == 2
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
     def test_get_claim_support_validation_returns_normalized_statuses(self):
         try:
             from mediator.claim_support_hooks import ClaimSupportHook
@@ -834,6 +966,16 @@ class TestClaimSupportHook:
                 'contradicted': 1,
             }
             assert claim_validation['proof_gap_count'] == 4
+            assert claim_validation['proof_diagnostics']['reasoning']['predicate_count'] >= 3
+            assert 'logic_proof' in claim_validation['proof_diagnostics']['reasoning']['adapter_status_counts']
+            protected_activity = next(
+                element for element in claim_validation['elements']
+                if element['element_text'] == 'Protected activity'
+            )
+            assert protected_activity['reasoning_diagnostics']['adapter_statuses']['logic_proof']['operation'] == 'prove_claim_elements'
+            assert protected_activity['reasoning_diagnostics']['adapter_statuses']['logic_contradictions']['operation'] == 'check_contradictions'
+            assert protected_activity['reasoning_diagnostics']['adapter_statuses']['ontology_build']['operation'] == 'build_ontology'
+            assert protected_activity['reasoning_diagnostics']['adapter_statuses']['ontology_validation']['operation'] == 'validate_ontology'
             assert element_statuses['Protected activity'] == 'contradicted'
             assert element_statuses['Adverse action'] == 'incomplete'
             assert element_statuses['Causal connection'] == 'missing'

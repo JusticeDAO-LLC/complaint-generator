@@ -16,7 +16,7 @@ from integrations.ipfs_datasets.legal import (
     search_recap_documents,
     search_us_code,
 )
-from integrations.ipfs_datasets.logic import text_to_fol
+from integrations.ipfs_datasets.logic import check_contradictions, prove_claim_elements, text_to_fol
 from integrations.ipfs_datasets.mcp_gateway import execute_gateway_tool, list_gateway_tools
 from integrations.ipfs_datasets.scraper_daemon import ScraperDaemon, ScraperDaemonConfig
 from integrations.ipfs_datasets.search import (
@@ -445,6 +445,8 @@ def test_query_graph_support_clusters_semantically_similar_facts():
 
 def test_stubbed_adapters_expose_canonical_operation_metadata():
     logic_result = text_to_fol('All employees are protected.')
+    proof_result = prove_claim_elements([{'predicate_type': 'claim_element', 'text': 'Protected activity'}])
+    contradiction_result = check_contradictions([{'predicate_type': 'support_trace', 'text': 'No adverse action occurred.'}])
     vector_create = create_vector_index([{'text': 'A'}], index_name='test-index')
     vector_search = search_vector_index('employees', index_name='test-index')
     gateway_list = list_gateway_tools()
@@ -455,6 +457,8 @@ def test_stubbed_adapters_expose_canonical_operation_metadata():
 
     results = [
         logic_result,
+        proof_result,
+        contradiction_result,
         vector_create,
         vector_search,
         gateway_list,

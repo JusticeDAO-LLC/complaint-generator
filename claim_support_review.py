@@ -48,6 +48,45 @@ def _resolve_user_id(mediator: Any, user_id: Optional[str]) -> str:
     )
 
 
+def summarize_claim_support_snapshot_lifecycle(
+    snapshots: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    snapshot_map = snapshots if isinstance(snapshots, dict) else {}
+    snapshot_kinds = sorted(
+        kind for kind, snapshot in snapshot_map.items() if isinstance(snapshot, dict)
+    )
+    stale_snapshot_kinds = sorted(
+        kind
+        for kind in snapshot_kinds
+        if bool((snapshot_map.get(kind) or {}).get("is_stale"))
+    )
+    fresh_snapshot_kinds = [
+        kind for kind in snapshot_kinds if kind not in stale_snapshot_kinds
+    ]
+    retention_limits = sorted(
+        {
+            int(snapshot.get("retention_limit"))
+            for snapshot in snapshot_map.values()
+            if isinstance(snapshot, dict) and snapshot.get("retention_limit") is not None
+        }
+    )
+    total_pruned_snapshot_count = sum(
+        int((snapshot.get("pruned_snapshot_count", 0) or 0))
+        for snapshot in snapshot_map.values()
+        if isinstance(snapshot, dict)
+    )
+    return {
+        "total_snapshot_count": len(snapshot_kinds),
+        "fresh_snapshot_count": len(fresh_snapshot_kinds),
+        "stale_snapshot_count": len(stale_snapshot_kinds),
+        "snapshot_kinds": snapshot_kinds,
+        "fresh_snapshot_kinds": fresh_snapshot_kinds,
+        "stale_snapshot_kinds": stale_snapshot_kinds,
+        "retention_limits": retention_limits,
+        "total_pruned_snapshot_count": total_pruned_snapshot_count,
+    }
+
+
 def _summarize_claim_coverage_claim(
     claim_type: str,
     coverage_claim: Dict[str, Any],
@@ -57,6 +96,11 @@ def _summarize_claim_coverage_claim(
     validation_claim: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     validation_claim = validation_claim if isinstance(validation_claim, dict) else {}
+    reasoning_summary = (
+        (validation_claim.get("proof_diagnostics") or {}).get("reasoning", {})
+        if isinstance(validation_claim.get("proof_diagnostics"), dict)
+        else {}
+    )
     missing_elements = []
     partially_supported_elements = []
 
@@ -144,6 +188,24 @@ def _summarize_claim_coverage_claim(
         "proof_gap_count": int(validation_claim.get("proof_gap_count", 0) or 0),
         "elements_requiring_follow_up": validation_claim.get(
             "elements_requiring_follow_up", []
+        ),
+        "reasoning_adapter_status_counts": reasoning_summary.get(
+            "adapter_status_counts", {}
+        ),
+        "reasoning_backend_available_count": int(
+            reasoning_summary.get("backend_available_count", 0) or 0
+        ),
+        "reasoning_predicate_count": int(
+            reasoning_summary.get("predicate_count", 0) or 0
+        ),
+        "reasoning_ontology_entity_count": int(
+            reasoning_summary.get("ontology_entity_count", 0) or 0
+        ),
+        "reasoning_ontology_relationship_count": int(
+            reasoning_summary.get("ontology_relationship_count", 0) or 0
+        ),
+        "reasoning_fallback_ontology_count": int(
+            reasoning_summary.get("fallback_ontology_count", 0) or 0
         ),
         "total_elements": coverage_claim.get("total_elements", 0),
         "total_links": coverage_claim.get("total_links", 0),
@@ -350,6 +412,12 @@ def build_claim_support_review_payload(
             claim_name: claim_snapshot.get("snapshots", {})
             for claim_name, claim_snapshot in snapshot_claims.items()
             if isinstance(claim_snapshot, dict)
+        },
+        "claim_support_snapshot_summary": {
+            claim_name: summarize_claim_support_snapshot_lifecycle(
+                (snapshot_claims.get(claim_name, {}) or {}).get("snapshots", {})
+            )
+            for claim_name in coverage_claims.keys()
         },
     }
 

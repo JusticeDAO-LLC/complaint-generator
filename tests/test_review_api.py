@@ -130,6 +130,21 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                     "Adverse action",
                     "Causal connection",
                 ],
+                "proof_diagnostics": {
+                    "reasoning": {
+                        "adapter_status_counts": {
+                            "logic_proof": {"not_implemented": 1},
+                            "logic_contradictions": {"not_implemented": 1},
+                            "ontology_build": {"implemented": 1},
+                            "ontology_validation": {"implemented": 1},
+                        },
+                        "backend_available_count": 4,
+                        "predicate_count": 6,
+                        "ontology_entity_count": 5,
+                        "ontology_relationship_count": 4,
+                        "fallback_ontology_count": 1,
+                    }
+                },
                 "elements": [],
             }
         }
@@ -249,7 +264,23 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
     ]
     assert payload["claim_coverage_summary"]["retaliation"]["validation_status"] == "contradicted"
     assert payload["claim_coverage_summary"]["retaliation"]["proof_gap_count"] == 3
+    assert payload["claim_coverage_summary"]["retaliation"]["reasoning_backend_available_count"] == 4
+    assert payload["claim_coverage_summary"]["retaliation"]["reasoning_adapter_status_counts"]["ontology_build"] == {"implemented": 1}
+    assert payload["claim_coverage_summary"]["retaliation"]["reasoning_predicate_count"] == 6
+    assert payload["claim_coverage_summary"]["retaliation"]["reasoning_ontology_entity_count"] == 5
+    assert payload["claim_coverage_summary"]["retaliation"]["reasoning_ontology_relationship_count"] == 4
+    assert payload["claim_coverage_summary"]["retaliation"]["reasoning_fallback_ontology_count"] == 1
     assert payload["claim_support_validation"]["retaliation"]["validation_status"] == "contradicted"
+    assert payload["claim_support_snapshot_summary"]["retaliation"] == {
+        "total_snapshot_count": 0,
+        "fresh_snapshot_count": 0,
+        "stale_snapshot_count": 0,
+        "snapshot_kinds": [],
+        "fresh_snapshot_kinds": [],
+        "stale_snapshot_kinds": [],
+        "retention_limits": [],
+        "total_pruned_snapshot_count": 0,
+    }
     assert payload["claim_coverage_summary"]["retaliation"]["support_trace_summary"]["trace_count"] == 3
     assert payload["claim_coverage_summary"]["retaliation"]["graph_trace_summary"] == {
         "traced_link_count": 2,
@@ -489,6 +520,16 @@ def test_claim_support_review_payload_reuses_persisted_diagnostic_snapshots():
     assert payload["claim_contradiction_candidates"]["retaliation"]["candidate_count"] == 1
     assert payload["claim_support_snapshots"]["retaliation"]["gaps"]["snapshot_id"] == 11
     assert payload["claim_support_snapshots"]["retaliation"]["contradictions"]["snapshot_id"] == 12
+    assert payload["claim_support_snapshot_summary"]["retaliation"] == {
+        "total_snapshot_count": 2,
+        "fresh_snapshot_count": 2,
+        "stale_snapshot_count": 0,
+        "snapshot_kinds": ["contradictions", "gaps"],
+        "fresh_snapshot_kinds": ["contradictions", "gaps"],
+        "stale_snapshot_kinds": [],
+        "retention_limits": [],
+        "total_pruned_snapshot_count": 0,
+    }
     mediator.get_claim_support_diagnostic_snapshots.assert_called_once_with(
         claim_type="retaliation",
         user_id="state-user",
@@ -574,6 +615,16 @@ def test_claim_support_review_payload_recomputes_stale_diagnostic_snapshots():
     assert payload["claim_contradiction_candidates"]["retaliation"]["candidate_count"] == 0
     assert payload["claim_support_snapshots"]["retaliation"]["gaps"]["is_stale"] is True
     assert payload["claim_support_snapshots"]["retaliation"]["contradictions"]["is_stale"] is True
+    assert payload["claim_support_snapshot_summary"]["retaliation"] == {
+        "total_snapshot_count": 2,
+        "fresh_snapshot_count": 0,
+        "stale_snapshot_count": 2,
+        "snapshot_kinds": ["contradictions", "gaps"],
+        "fresh_snapshot_kinds": [],
+        "stale_snapshot_kinds": ["contradictions", "gaps"],
+        "retention_limits": [],
+        "total_pruned_snapshot_count": 0,
+    }
     mediator.get_claim_support_gaps.assert_called_once_with(
         claim_type="retaliation",
         user_id="state-user",

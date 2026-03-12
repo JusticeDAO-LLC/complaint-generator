@@ -37,6 +37,7 @@ from claim_support_review import (
 	ClaimSupportReviewRequest,
 	build_claim_support_follow_up_execution_payload,
 	build_claim_support_review_payload,
+	summarize_claim_support_snapshot_lifecycle,
 )
 
 # Import three-phase complaint processing
@@ -811,6 +812,7 @@ class Mediator:
 		gaps: Dict[str, Any] = None,
 		contradictions: Dict[str, Any] = None,
 		metadata: Dict[str, Any] = None,
+		retention_limit: int = 3,
 	):
 		"""Persist gap and contradiction diagnostics for later review reuse."""
 		if user_id is None:
@@ -822,6 +824,26 @@ class Mediator:
 			gaps=gaps,
 			contradictions=contradictions,
 			metadata=metadata,
+			retention_limit=retention_limit,
+		)
+
+	def prune_claim_support_diagnostic_snapshots(
+		self,
+		claim_type: str = None,
+		user_id: str = None,
+		required_support_kinds: List[str] = None,
+		snapshot_kind: str = None,
+		keep_latest: int = 3,
+	):
+		"""Prune older persisted diagnostic snapshots while retaining the newest rows per scope."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		return self.claim_support.prune_claim_support_diagnostic_snapshots(
+			user_id,
+			claim_type=claim_type,
+			required_support_kinds=required_support_kinds,
+			snapshot_kind=snapshot_kind,
+			keep_latest=keep_latest,
 		)
 
 	def get_claim_support_diagnostic_snapshots(
@@ -1426,6 +1448,11 @@ class Mediator:
 			contradiction_claim = {}
 		if not isinstance(validation_claim, dict):
 			validation_claim = {}
+		reasoning_summary = (
+			(validation_claim.get('proof_diagnostics') or {}).get('reasoning', {})
+			if isinstance(validation_claim.get('proof_diagnostics'), dict)
+			else {}
+		)
 		elements = coverage_claim.get('elements', []) if isinstance(coverage_claim.get('elements', []), list) else []
 		if elements:
 			missing_elements = [
@@ -1508,6 +1535,12 @@ class Mediator:
 			'validation_status_counts': validation_claim.get('validation_status_counts', {}),
 			'proof_gap_count': int(validation_claim.get('proof_gap_count', 0) or 0),
 			'elements_requiring_follow_up': validation_claim.get('elements_requiring_follow_up', []),
+			'reasoning_adapter_status_counts': reasoning_summary.get('adapter_status_counts', {}),
+			'reasoning_backend_available_count': int(reasoning_summary.get('backend_available_count', 0) or 0),
+			'reasoning_predicate_count': int(reasoning_summary.get('predicate_count', 0) or 0),
+			'reasoning_ontology_entity_count': int(reasoning_summary.get('ontology_entity_count', 0) or 0),
+			'reasoning_ontology_relationship_count': int(reasoning_summary.get('ontology_relationship_count', 0) or 0),
+			'reasoning_fallback_ontology_count': int(reasoning_summary.get('fallback_ontology_count', 0) or 0),
 			'total_elements': coverage_claim.get('total_elements', 0),
 			'total_links': coverage_claim.get('total_links', 0),
 			'total_facts': coverage_claim.get('total_facts', 0),
@@ -1570,6 +1603,7 @@ class Mediator:
 			'claim_contradiction_candidates': {},
 			'claim_support_validation': {},
 			'claim_support_snapshots': {},
+			'claim_support_snapshot_summary': {},
 			'claim_overview': {},
 			'follow_up_plan': {},
 			'follow_up_execution': {}
@@ -1688,6 +1722,9 @@ class Mediator:
 				claim_type,
 				{},
 			).get('snapshots', {})
+			results['claim_support_snapshot_summary'][claim_type] = summarize_claim_support_snapshot_lifecycle(
+				results['claim_support_snapshots'][claim_type]
+			)
 			results['claim_coverage_summary'][claim_type] = self._summarize_claim_coverage_claim(
 				results['claim_coverage_matrix'][claim_type],
 				claim_type,

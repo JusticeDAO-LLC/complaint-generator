@@ -689,6 +689,9 @@ class TestMediatorLegalAuthorityIntegration:
                 assert auto_results['claim_contradiction_candidates']['civil rights']['candidate_count'] == 0
                 assert auto_results['claim_support_snapshots']['civil rights']['gaps']['snapshot_id'] > 0
                 assert auto_results['claim_support_snapshots']['civil rights']['contradictions']['snapshot_id'] > 0
+                assert auto_results['claim_support_snapshot_summary']['civil rights']['total_snapshot_count'] == 2
+                assert auto_results['claim_support_snapshot_summary']['civil rights']['fresh_snapshot_count'] == 2
+                assert auto_results['claim_support_snapshot_summary']['civil rights']['stale_snapshot_count'] == 0
                 assert auto_results['claim_overview']['civil rights']['partially_supported_count'] == 1
                 assert auto_results['claim_overview']['civil rights']['missing_count'] == 1
                 assert auto_results['follow_up_plan']['civil rights']['task_count'] == 2

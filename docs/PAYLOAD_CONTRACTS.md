@@ -280,6 +280,8 @@ Representative shape:
         "snapshot_id": 101,
         "required_support_kinds": ["evidence", "authority"],
         "is_stale": false,
+        "retention_limit": 3,
+        "pruned_snapshot_count": 0,
         "metadata": {
           "source": "discover_evidence_for_case",
           "support_state_token": "..."
@@ -289,11 +291,25 @@ Representative shape:
         "snapshot_id": 102,
         "required_support_kinds": ["evidence", "authority"],
         "is_stale": false,
+        "retention_limit": 3,
+        "pruned_snapshot_count": 0,
         "metadata": {
           "source": "discover_evidence_for_case",
           "support_state_token": "..."
         }
       }
+    }
+  },
+  "claim_support_snapshot_summary": {
+    "employment discrimination": {
+      "total_snapshot_count": 2,
+      "fresh_snapshot_count": 2,
+      "stale_snapshot_count": 0,
+      "snapshot_kinds": ["contradictions", "gaps"],
+      "fresh_snapshot_kinds": ["contradictions", "gaps"],
+      "stale_snapshot_kinds": [],
+      "retention_limits": [3],
+      "total_pruned_snapshot_count": 0
     }
   }
 }
@@ -305,7 +321,8 @@ Compatibility note:
 - `evidence_storage_summary[claim_type]` is the authoritative deduplication-aware breakdown.
 - `claim_coverage_summary[claim_type]` is the compact support-health snapshot for dashboards and automation.
 - `claim_support_gaps[claim_type]` and `claim_contradiction_candidates[claim_type]` expose the richer unresolved-support and conflict diagnostics behind that compact summary.
-- `claim_support_snapshots[claim_type]` exposes the persisted snapshot ids, support-kind scope, and freshness metadata for the stored diagnostics that automatic workflows just wrote.
+- `claim_support_snapshots[claim_type]` exposes the persisted snapshot ids, support-kind scope, freshness metadata, and bounded-retention pruning metadata for the stored diagnostics that automatic workflows just wrote.
+- `claim_support_snapshot_summary[claim_type]` compresses that lifecycle state into fresh versus stale counts, snapshot kinds, retention limits, and total pruning for dashboard-style consumers.
 
 ## Legal Authority Storage
 
@@ -475,6 +492,17 @@ Representative shape:
       },
       "proof_gap_count": 3,
       "elements_requiring_follow_up": ["Protected activity", "Adverse action"],
+      "reasoning_adapter_status_counts": {
+        "logic_proof": {"not_implemented": 1},
+        "logic_contradictions": {"not_implemented": 1},
+        "ontology_build": {"implemented": 1},
+        "ontology_validation": {"implemented": 1}
+      },
+      "reasoning_backend_available_count": 4,
+      "reasoning_predicate_count": 4,
+      "reasoning_ontology_entity_count": 3,
+      "reasoning_ontology_relationship_count": 2,
+      "reasoning_fallback_ontology_count": 0,
       "claim_type": "civil rights",
       "total_elements": 2,
       "total_links": 1,
@@ -564,6 +592,21 @@ Representative shape:
           "recommended_action": "collect_initial_support"
         }
       ],
+      "proof_diagnostics": {
+        "reasoning": {
+          "adapter_status_counts": {
+            "logic_proof": {"not_implemented": 1},
+            "logic_contradictions": {"not_implemented": 1},
+            "ontology_build": {"implemented": 1},
+            "ontology_validation": {"implemented": 1}
+          },
+          "backend_available_count": 4,
+          "predicate_count": 4,
+          "ontology_entity_count": 3,
+          "ontology_relationship_count": 2,
+          "fallback_ontology_count": 0
+        }
+      },
       "elements": [
         {
           "element_text": "Protected activity",
@@ -571,7 +614,16 @@ Representative shape:
           "validation_status": "contradicted",
           "contradiction_candidate_count": 1,
           "proof_gap_count": 2,
-          "recommended_action": "resolve_contradiction"
+          "recommended_action": "resolve_contradiction",
+          "reasoning_diagnostics": {
+            "predicate_count": 3,
+            "adapter_statuses": {
+              "logic_proof": {"operation": "prove_claim_elements"},
+              "logic_contradictions": {"operation": "check_contradictions"},
+              "ontology_build": {"operation": "build_ontology"},
+              "ontology_validation": {"operation": "validate_ontology"}
+            }
+          }
         }
       ]
     }
@@ -582,6 +634,8 @@ Representative shape:
         "snapshot_id": 21,
         "required_support_kinds": ["evidence", "authority"],
         "is_stale": false,
+        "retention_limit": 3,
+        "pruned_snapshot_count": 0,
         "metadata": {
           "source": "research_case_automatically",
           "support_state_token": "..."
@@ -591,11 +645,25 @@ Representative shape:
         "snapshot_id": 22,
         "required_support_kinds": ["evidence", "authority"],
         "is_stale": false,
+        "retention_limit": 3,
+        "pruned_snapshot_count": 0,
         "metadata": {
           "source": "research_case_automatically",
           "support_state_token": "..."
         }
       }
+    }
+  },
+  "claim_support_snapshot_summary": {
+    "civil rights": {
+      "total_snapshot_count": 2,
+      "fresh_snapshot_count": 2,
+      "stale_snapshot_count": 0,
+      "snapshot_kinds": ["contradictions", "gaps"],
+      "fresh_snapshot_kinds": ["contradictions", "gaps"],
+      "stale_snapshot_kinds": [],
+      "retention_limits": [3],
+      "total_pruned_snapshot_count": 0
     }
   }
 }
@@ -613,13 +681,16 @@ Interpretation notes:
 - `claim_coverage_matrix` is the review-oriented support payload for operator and UI workflows.
 - `claim_coverage_summary` is the compact companion payload for dashboards, logs, and quick status rendering.
 - `validation_status`, `validation_status_counts`, and `proof_gap_count` lift proof-health into the compact summary without requiring callers to inspect per-element diagnostics.
+- `reasoning_adapter_status_counts`, `reasoning_backend_available_count`, `reasoning_predicate_count`, `reasoning_ontology_entity_count`, `reasoning_ontology_relationship_count`, and `reasoning_fallback_ontology_count` summarize what the `ipfs_datasets` logic and GraphRAG adapters contributed to the current validation pass.
 - `graph_trace_summary` is the compact lineage companion for dashboards and audit surfaces; it counts traced links, snapshot creation versus reuse, source-table mix, and distinct graph ids without requiring callers to inspect raw support links.
 - `unresolved_element_count`, `unresolved_elements`, and `recommended_gap_actions` compress the richer gap payload into one per-claim summary for dashboards.
 - `contradiction_candidate_count` and `contradicted_elements` surface likely support conflicts without requiring callers to scan every candidate pair.
 - `claim_support_gaps` exposes unresolved-element diagnostics with recommended actions and per-element support context.
 - `claim_contradiction_candidates` exposes heuristic contradiction candidates for operator review.
 - `claim_support_validation` is the normalized proof-oriented companion payload. It classifies each element as `supported`, `incomplete`, `missing`, or `contradicted`, emits `proof_gaps`, and provides one recommended action per element.
-- `claim_support_snapshots` exposes the persisted snapshot ids, metadata, and `is_stale` freshness flag for the gap and contradiction diagnostics written by automatic legal research.
+- `proof_diagnostics.reasoning` aggregates backend-oriented diagnostics from the logic and GraphRAG adapters, while `reasoning_diagnostics` preserves the per-element adapter packets used to produce those aggregates.
+- `claim_support_snapshots` exposes the persisted snapshot ids, metadata, `is_stale` freshness flag, and snapshot-retention pruning metadata for the gap and contradiction diagnostics written by automatic legal research.
+- `claim_support_snapshot_summary` is the compact lifecycle companion for those persisted diagnostics. It reports how many snapshots are fresh versus stale, which kinds are present, the active retention limits, and how much pruning happened during persistence.
 - `status_counts` separates fully covered, partially supported, and still-missing elements.
 - `links_by_kind` groups evidence and authority support without requiring callers to regroup raw links.
 - `record_summary` and `graph_summary` provide lightweight parse and graph context inline with the support record.
@@ -997,6 +1068,7 @@ Representative response shape:
         "contradicted": 1
       },
       "proof_gap_count": 3,
+      "reasoning_backend_available_count": 4,
       "status_counts": {
         "covered": 1,
         "partially_supported": 1,
@@ -1044,6 +1116,18 @@ Representative response shape:
       }
     }
   },
+  "claim_support_snapshot_summary": {
+    "retaliation": {
+      "total_snapshot_count": 2,
+      "fresh_snapshot_count": 2,
+      "stale_snapshot_count": 0,
+      "snapshot_kinds": ["contradictions", "gaps"],
+      "fresh_snapshot_kinds": ["contradictions", "gaps"],
+      "stale_snapshot_kinds": [],
+      "retention_limits": [],
+      "total_pruned_snapshot_count": 0
+    }
+  },
   "follow_up_plan_summary": {
     "retaliation": {
       "task_count": 2,
@@ -1078,6 +1162,7 @@ Interpretation notes:
 - `claim_support_gaps` and `claim_contradiction_candidates` are the richer operator-facing review sections for unresolved support and possible support conflicts.
 - `claim_support_validation` is the first-class proof-status surface for the review API. Follow-up planning uses the same normalized validation statuses, so contradiction-heavy elements can be prioritized and are not auto-suppressed.
 - `claim_support_snapshots` exposes any persisted diagnostic snapshot ids reused by the review payload; when a stored snapshot no longer matches current support state it is marked with `is_stale=true` and the payload falls back to recomputation for that claim.
+- `claim_support_snapshot_summary` is the compact review-facing lifecycle view for those persisted diagnostics, so dashboard consumers can see freshness and pruning at a glance without iterating the raw snapshot entries.
 - `claim_coverage_summary`, `follow_up_plan_summary`, and `follow_up_execution_summary` are the compact operator-facing surfaces intended for dashboards and review tools.
 - When `execute_follow_up=true`, the response adds `compatibility_notice` and emits `Deprecation`, `Sunset`, `Link`, and `Warning` headers so clients can migrate off the compatibility path.
 - New clients should prefer `POST /api/claim-support/execute-follow-up` for side effects and treat `execute_follow_up` on the review endpoint as a compatibility path.

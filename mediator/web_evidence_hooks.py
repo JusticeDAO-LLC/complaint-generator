@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pathlib import Path
 
+from claim_support_review import summarize_claim_support_snapshot_lifecycle
 from integrations.ipfs_datasets.provenance import build_document_parse_contract
 from integrations.ipfs_datasets.search import (
     BRAVE_SEARCH_AVAILABLE,
@@ -395,6 +396,11 @@ class WebEvidenceIntegrationHook:
             contradiction_claim = {}
         if not isinstance(validation_claim, dict):
             validation_claim = {}
+        reasoning_summary = (
+            (validation_claim.get('proof_diagnostics') or {}).get('reasoning', {})
+            if isinstance(validation_claim.get('proof_diagnostics'), dict)
+            else {}
+        )
         elements = coverage_claim.get('elements', []) if isinstance(coverage_claim.get('elements', []), list) else []
         if elements:
             missing_elements = [
@@ -477,6 +483,12 @@ class WebEvidenceIntegrationHook:
             'validation_status_counts': validation_claim.get('validation_status_counts', {}),
             'proof_gap_count': int(validation_claim.get('proof_gap_count', 0) or 0),
             'elements_requiring_follow_up': validation_claim.get('elements_requiring_follow_up', []),
+            'reasoning_adapter_status_counts': reasoning_summary.get('adapter_status_counts', {}),
+            'reasoning_backend_available_count': int(reasoning_summary.get('backend_available_count', 0) or 0),
+            'reasoning_predicate_count': int(reasoning_summary.get('predicate_count', 0) or 0),
+            'reasoning_ontology_entity_count': int(reasoning_summary.get('ontology_entity_count', 0) or 0),
+            'reasoning_ontology_relationship_count': int(reasoning_summary.get('ontology_relationship_count', 0) or 0),
+            'reasoning_fallback_ontology_count': int(reasoning_summary.get('fallback_ontology_count', 0) or 0),
             'total_elements': coverage_claim.get('total_elements', 0),
             'total_links': coverage_claim.get('total_links', 0),
             'total_facts': coverage_claim.get('total_facts', 0),
@@ -994,6 +1006,7 @@ class WebEvidenceIntegrationHook:
             'claim_contradiction_candidates': {},
             'claim_support_validation': {},
             'claim_support_snapshots': {},
+            'claim_support_snapshot_summary': {},
             'claim_overview': {},
             'follow_up_plan': {},
             'follow_up_plan_summary': {},
@@ -1117,6 +1130,9 @@ class WebEvidenceIntegrationHook:
                     claim_type,
                     {},
                 ).get('snapshots', {})
+                results['claim_support_snapshot_summary'][claim_type] = summarize_claim_support_snapshot_lifecycle(
+                    results['claim_support_snapshots'][claim_type]
+                )
             if hasattr(self.mediator, 'get_claim_follow_up_plan'):
                 follow_up_plan = self.mediator.get_claim_follow_up_plan(claim_type=claim_type, user_id=user_id)
                 claim_plan = follow_up_plan.get('claims', {}).get(

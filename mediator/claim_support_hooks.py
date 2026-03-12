@@ -9,6 +9,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from integrations.ipfs_datasets.graphrag import build_ontology, validate_ontology
+from integrations.ipfs_datasets.logic import check_contradictions, prove_claim_elements
+
 try:
     import duckdb
     DUCKDB_AVAILABLE = True
@@ -408,6 +411,249 @@ class ClaimSupportHook:
             return 'collect_missing_support_kind'
         return 'review_existing_support'
 
+    def _build_reasoning_predicates(
+        self,
+        claim_type: str,
+        element: Dict[str, Any],
+        contradiction_candidates: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        predicates: List[Dict[str, Any]] = [
+            {
+                'predicate_id': str(element.get('element_id') or element.get('element_text') or claim_type),
+                'predicate_type': 'claim_element',
+                'claim_type': claim_type,
+                'claim_element_id': element.get('element_id'),
+                'claim_element_text': element.get('element_text'),
+                'coverage_status': element.get('status'),
+                'support_by_kind': element.get('support_by_kind', {}),
+                'missing_support_kinds': element.get('missing_support_kinds', []),
+            }
+        ]
+
+        for trace in element.get('support_traces', []) or []:
+            if not isinstance(trace, dict):
+                continue
+            predicates.append(
+                {
+                    'predicate_id': str(trace.get('fact_id') or trace.get('support_ref') or ''),
+                    'predicate_type': 'support_trace',
+                    'claim_type': claim_type,
+                    'claim_element_id': element.get('element_id'),
+                    'claim_element_text': element.get('element_text'),
+                    'support_kind': trace.get('support_kind'),
+                    'support_ref': trace.get('support_ref'),
+                    'source_table': trace.get('source_table'),
+                    'text': trace.get('fact_text') or trace.get('support_label') or '',
+                    'confidence': trace.get('confidence', 0.0),
+                }
+            )
+
+        for index, candidate in enumerate(contradiction_candidates):
+            if not isinstance(candidate, dict):
+                continue
+            predicates.append(
+                {
+                    'predicate_id': f"contradiction:{element.get('element_id') or element.get('element_text') or claim_type}:{index}",
+                    'predicate_type': 'contradiction_candidate',
+                    'claim_type': claim_type,
+                    'claim_element_id': element.get('element_id'),
+                    'claim_element_text': element.get('element_text'),
+                    'support_refs': candidate.get('support_refs', []),
+                    'overlap_terms': candidate.get('overlap_terms', []),
+                    'texts': candidate.get('texts', []),
+                    'polarity': candidate.get('polarity', []),
+                }
+            )
+
+        return predicates
+
+    def _build_reasoning_ontology_fallback(
+        self,
+        claim_type: str,
+        element: Dict[str, Any],
+        contradiction_candidates: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        claim_entity_id = str(element.get('element_id') or element.get('element_text') or claim_type or 'claim-element')
+        entities: List[Dict[str, Any]] = [
+            {
+                'id': claim_entity_id,
+                'label': str(element.get('element_text') or claim_type),
+                'type': 'claim_element',
+            }
+        ]
+        relationships: List[Dict[str, Any]] = []
+
+        for trace in element.get('support_traces', []) or []:
+            if not isinstance(trace, dict):
+                continue
+            support_id = str(trace.get('fact_id') or trace.get('support_ref') or '')
+            if not support_id:
+                continue
+            entities.append(
+                {
+                    'id': support_id,
+                    'label': str(trace.get('fact_text') or trace.get('support_label') or support_id),
+                    'type': str(trace.get('support_kind') or 'support'),
+                }
+            )
+            relationships.append(
+                {
+                    'source': support_id,
+                    'target': claim_entity_id,
+                    'type': 'supports',
+                }
+            )
+
+        for index, candidate in enumerate(contradiction_candidates):
+            if not isinstance(candidate, dict):
+                continue
+            contradiction_id = f"contradiction:{claim_entity_id}:{index}"
+            entities.append(
+                {
+                    'id': contradiction_id,
+                    'label': str(element.get('element_text') or claim_type),
+                    'type': 'contradiction_candidate',
+                }
+            )
+            relationships.append(
+                {
+                    'source': contradiction_id,
+                    'target': claim_entity_id,
+                    'type': 'contradicts',
+                }
+            )
+
+        return {
+            'entities': entities,
+            'relationships': relationships,
+            'claim_type': claim_type,
+        }
+
+    def _summarize_adapter_result(self, adapter_result: Dict[str, Any], count_fields: Optional[List[str]] = None) -> Dict[str, Any]:
+        adapter_result = adapter_result if isinstance(adapter_result, dict) else {}
+        metadata = adapter_result.get('metadata', {}) if isinstance(adapter_result.get('metadata'), dict) else {}
+        summary = {
+            'status': str(adapter_result.get('status') or ''),
+            'operation': str(metadata.get('operation') or ''),
+            'implementation_status': str(metadata.get('implementation_status') or ''),
+            'backend_available': bool(metadata.get('backend_available', False)),
+            'degraded_reason': str(metadata.get('degraded_reason') or adapter_result.get('degraded_reason') or ''),
+        }
+        for field in count_fields or []:
+            if field in adapter_result:
+                value = adapter_result.get(field)
+                if isinstance(value, list):
+                    summary[f'{field}_count'] = len(value)
+                elif isinstance(value, dict):
+                    summary[f'{field}_key_count'] = len(value)
+                elif value is not None:
+                    summary[field] = value
+        return summary
+
+    def _run_element_reasoning_diagnostics(
+        self,
+        claim_type: str,
+        element: Dict[str, Any],
+        contradiction_candidates: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        support_texts = [
+            str(trace.get('fact_text') or trace.get('support_label') or '')
+            for trace in element.get('support_traces', []) or []
+            if isinstance(trace, dict) and (trace.get('fact_text') or trace.get('support_label'))
+        ]
+        ontology_seed_text = '\n'.join(
+            part for part in [
+                f"Claim type: {claim_type}",
+                f"Claim element: {element.get('element_text') or ''}",
+                'Support facts:',
+                *support_texts,
+            ]
+            if part
+        )
+        predicates = self._build_reasoning_predicates(claim_type, element, contradiction_candidates)
+        ontology_build = build_ontology(ontology_seed_text)
+        fallback_ontology = self._build_reasoning_ontology_fallback(claim_type, element, contradiction_candidates)
+        ontology_payload = ontology_build.get('ontology') if isinstance(ontology_build, dict) else None
+        ontology_for_validation = ontology_payload if ontology_payload not in (None, '') else fallback_ontology
+        logic_proof = prove_claim_elements(predicates)
+        logic_contradictions = check_contradictions(predicates)
+        ontology_validation = validate_ontology(ontology_for_validation)
+
+        adapter_statuses = {
+            'ontology_build': self._summarize_adapter_result(
+                ontology_build,
+                count_fields=['ontology'],
+            ),
+            'logic_proof': self._summarize_adapter_result(
+                logic_proof,
+                count_fields=['predicate_count', 'provable_elements', 'unprovable_elements'],
+            ),
+            'logic_contradictions': self._summarize_adapter_result(
+                logic_contradictions,
+                count_fields=['predicate_count', 'contradictions'],
+            ),
+            'ontology_validation': self._summarize_adapter_result(
+                ontology_validation,
+                count_fields=['result'],
+            ),
+        }
+
+        return {
+            'predicate_count': len(predicates),
+            'ontology_entity_count': len(fallback_ontology.get('entities', []) or []),
+            'ontology_relationship_count': len(fallback_ontology.get('relationships', []) or []),
+            'used_fallback_ontology': ontology_payload in (None, ''),
+            'adapter_statuses': adapter_statuses,
+            'backend_available_count': len(
+                [summary for summary in adapter_statuses.values() if summary.get('backend_available')]
+            ),
+            'ontology_build': ontology_build,
+            'logic_proof': logic_proof,
+            'logic_contradictions': logic_contradictions,
+            'ontology_validation': ontology_validation,
+        }
+
+    def _summarize_claim_reasoning_diagnostics(self, elements: List[Dict[str, Any]]) -> Dict[str, Any]:
+        adapter_status_counts: Dict[str, Dict[str, int]] = {
+            'ontology_build': {},
+            'logic_proof': {},
+            'logic_contradictions': {},
+            'ontology_validation': {},
+        }
+        backend_available_count = 0
+        predicate_count = 0
+        ontology_entity_count = 0
+        ontology_relationship_count = 0
+        fallback_ontology_count = 0
+
+        for element in elements:
+            if not isinstance(element, dict):
+                continue
+            reasoning = element.get('reasoning_diagnostics', {})
+            if not isinstance(reasoning, dict):
+                continue
+            predicate_count += int(reasoning.get('predicate_count', 0) or 0)
+            ontology_entity_count += int(reasoning.get('ontology_entity_count', 0) or 0)
+            ontology_relationship_count += int(reasoning.get('ontology_relationship_count', 0) or 0)
+            backend_available_count += int(reasoning.get('backend_available_count', 0) or 0)
+            if reasoning.get('used_fallback_ontology'):
+                fallback_ontology_count += 1
+            for adapter_name, summary in (reasoning.get('adapter_statuses') or {}).items():
+                if not isinstance(summary, dict):
+                    continue
+                status = str(summary.get('implementation_status') or summary.get('status') or 'unknown')
+                adapter_counts = adapter_status_counts.setdefault(adapter_name, {})
+                adapter_counts[status] = adapter_counts.get(status, 0) + 1
+
+        return {
+            'adapter_status_counts': adapter_status_counts,
+            'backend_available_count': backend_available_count,
+            'predicate_count': predicate_count,
+            'ontology_entity_count': ontology_entity_count,
+            'ontology_relationship_count': ontology_relationship_count,
+            'fallback_ontology_count': fallback_ontology_count,
+        }
+
     def _build_claim_validation(
         self,
         claim_type: str,
@@ -465,6 +711,20 @@ class ClaimSupportHook:
                 'total_links': int(element.get('total_links', 0) or 0),
                 'fact_count': int(element.get('fact_count', 0) or 0),
             }
+            reasoning_diagnostics = self._run_element_reasoning_diagnostics(
+                claim_type,
+                element,
+                contradiction_candidates,
+            )
+            proof_diagnostics.update(
+                {
+                    'reasoning_backend_available_count': int(reasoning_diagnostics.get('backend_available_count', 0) or 0),
+                    'reasoning_predicate_count': int(reasoning_diagnostics.get('predicate_count', 0) or 0),
+                    'reasoning_ontology_entity_count': int(reasoning_diagnostics.get('ontology_entity_count', 0) or 0),
+                    'reasoning_ontology_relationship_count': int(reasoning_diagnostics.get('ontology_relationship_count', 0) or 0),
+                    'reasoning_adapter_statuses': reasoning_diagnostics.get('adapter_statuses', {}),
+                }
+            )
             validation_status_counts[validation_status] += 1
             if validation_status != 'supported' and element.get('element_text'):
                 elements_requiring_follow_up.append(element.get('element_text'))
@@ -486,6 +746,7 @@ class ClaimSupportHook:
                 'proof_gap_count': len(proof_gaps),
                 'proof_gaps': proof_gaps,
                 'proof_diagnostics': proof_diagnostics,
+                'reasoning_diagnostics': reasoning_diagnostics,
                 'gap_context': gap_element,
             }
             elements.append(element_validation)
@@ -537,6 +798,7 @@ class ClaimSupportHook:
                 'total_links': int(claim_matrix.get('total_links', 0) or 0),
                 'total_facts': int(claim_matrix.get('total_facts', 0) or 0),
                 'graph_traced_link_count': graph_traced_link_count,
+                'reasoning': self._summarize_claim_reasoning_diagnostics(elements),
             },
             'elements': elements,
         }
@@ -593,6 +855,77 @@ class ClaimSupportHook:
             seen.add(normalized_kind)
             normalized.append(normalized_kind)
         return sorted(normalized)
+
+    def _normalize_snapshot_retention_limit(
+        self,
+        retention_limit: Optional[int],
+        *,
+        default: int = 3,
+    ) -> int:
+        try:
+            normalized = int(retention_limit)
+        except (TypeError, ValueError):
+            normalized = default
+        return max(1, normalized)
+
+    def _prune_snapshot_history(
+        self,
+        *,
+        user_id: str,
+        claim_type: str,
+        snapshot_kind: str,
+        required_support_kinds: Optional[List[str]] = None,
+        keep_latest: int = 3,
+    ) -> Dict[str, Any]:
+        normalized_kinds = self._normalize_required_support_kinds(required_support_kinds)
+        normalized_keep_latest = self._normalize_snapshot_retention_limit(keep_latest)
+        if not DUCKDB_AVAILABLE:
+            return {
+                'pruned_snapshot_count': 0,
+                'deleted_snapshot_ids': [],
+                'retention_limit': normalized_keep_latest,
+            }
+
+        required_kinds_json = json.dumps(normalized_kinds, default=str)
+        try:
+            conn = duckdb.connect(self.db_path)
+            rows = conn.execute(
+                """
+                SELECT id
+                FROM claim_support_snapshot
+                WHERE user_id = ?
+                  AND claim_type = ?
+                  AND snapshot_kind = ?
+                  AND required_support_kinds = ?
+                ORDER BY timestamp DESC, id DESC
+                """,
+                [user_id, claim_type, snapshot_kind, required_kinds_json],
+            ).fetchall()
+            deleted_snapshot_ids = [row[0] for row in rows[normalized_keep_latest:]]
+            if deleted_snapshot_ids:
+                conn.execute(
+                    "DELETE FROM claim_support_snapshot WHERE id IN (SELECT UNNEST(?))",
+                    [deleted_snapshot_ids],
+                )
+            conn.close()
+            return {
+                'pruned_snapshot_count': len(deleted_snapshot_ids),
+                'deleted_snapshot_ids': deleted_snapshot_ids,
+                'retention_limit': normalized_keep_latest,
+            }
+        except Exception as exc:
+            self.mediator.log(
+                'claim_support_snapshot_prune_error',
+                error=str(exc),
+                claim_type=claim_type,
+                snapshot_kind=snapshot_kind,
+            )
+            return {
+                'pruned_snapshot_count': 0,
+                'deleted_snapshot_ids': [],
+                'retention_limit': normalized_keep_latest,
+                'error': str(exc),
+            }
 
     def _build_claim_support_state_token(
         self,
@@ -1665,11 +1998,15 @@ class ClaimSupportHook:
         gaps: Optional[Dict[str, Any]] = None,
         contradictions: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        retention_limit: Optional[int] = 3,
     ) -> Dict[str, Any]:
+        normalized_retention_limit = self._normalize_snapshot_retention_limit(retention_limit)
         if not DUCKDB_AVAILABLE:
             return {
                 'available': False,
                 'required_support_kinds': self._normalize_required_support_kinds(required_support_kinds),
+                'retention_limit': normalized_retention_limit,
+                'pruned_snapshot_count': 0,
                 'claims': {},
             }
 
@@ -1694,6 +2031,8 @@ class ClaimSupportHook:
         persisted: Dict[str, Any] = {
             'available': True,
             'required_support_kinds': normalized_kinds,
+            'retention_limit': normalized_retention_limit,
+            'pruned_snapshot_count': 0,
             'claims': {},
         }
 
@@ -1739,12 +2078,24 @@ class ClaimSupportHook:
                         ],
                     ).fetchone()
                     conn.close()
+                    prune_result = self._prune_snapshot_history(
+                        user_id=user_id,
+                        claim_type=current_claim,
+                        snapshot_kind=snapshot_kind,
+                        required_support_kinds=normalized_kinds,
+                        keep_latest=normalized_retention_limit,
+                    )
+                    persisted['pruned_snapshot_count'] += int(
+                        prune_result.get('pruned_snapshot_count', 0) or 0
+                    )
                     claim_result['snapshots'][snapshot_kind] = {
                         'snapshot_id': result[0],
                         'timestamp': result[1].isoformat() if hasattr(result[1], 'isoformat') else result[1],
                         'required_support_kinds': normalized_kinds,
                         'metadata': claim_metadata,
                         'is_stale': False,
+                        'retention_limit': normalized_retention_limit,
+                        'pruned_snapshot_count': int(prune_result.get('pruned_snapshot_count', 0) or 0),
                     }
                 except Exception as exc:
                     self.mediator.log(
@@ -1758,11 +2109,101 @@ class ClaimSupportHook:
                         'required_support_kinds': normalized_kinds,
                         'metadata': claim_metadata,
                         'is_stale': True,
+                        'retention_limit': normalized_retention_limit,
+                        'pruned_snapshot_count': 0,
                         'error': str(exc),
                     }
             persisted['claims'][current_claim] = claim_result
 
         return persisted
+
+    def prune_claim_support_diagnostic_snapshots(
+        self,
+        user_id: str,
+        claim_type: Optional[str] = None,
+        *,
+        required_support_kinds: Optional[List[str]] = None,
+        snapshot_kind: Optional[str] = None,
+        keep_latest: Optional[int] = 3,
+    ) -> Dict[str, Any]:
+        normalized_kinds = self._normalize_required_support_kinds(required_support_kinds)
+        normalized_keep_latest = self._normalize_snapshot_retention_limit(keep_latest)
+        if not DUCKDB_AVAILABLE:
+            return {
+                'available': False,
+                'required_support_kinds': normalized_kinds,
+                'retention_limit': normalized_keep_latest,
+                'pruned_snapshot_count': 0,
+                'claims': {},
+            }
+
+        where_clauses = ['user_id = ?']
+        params: List[Any] = [user_id]
+        if claim_type:
+            where_clauses.append('claim_type = ?')
+            params.append(claim_type)
+        if snapshot_kind:
+            where_clauses.append('snapshot_kind = ?')
+            params.append(snapshot_kind)
+        if normalized_kinds:
+            where_clauses.append('required_support_kinds = ?')
+            params.append(json.dumps(normalized_kinds, default=str))
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            rows = conn.execute(
+                f"""
+                SELECT DISTINCT claim_type, snapshot_kind, required_support_kinds
+                FROM claim_support_snapshot
+                WHERE {' AND '.join(where_clauses)}
+                ORDER BY claim_type ASC, snapshot_kind ASC
+                """,
+                params,
+            ).fetchall()
+            conn.close()
+        except Exception as exc:
+            self.mediator.log('claim_support_snapshot_query_error', error=str(exc))
+            return {
+                'available': False,
+                'required_support_kinds': normalized_kinds,
+                'retention_limit': normalized_keep_latest,
+                'pruned_snapshot_count': 0,
+                'claims': {},
+                'error': str(exc),
+            }
+
+        pruned: Dict[str, Any] = {
+            'available': True,
+            'required_support_kinds': normalized_kinds,
+            'retention_limit': normalized_keep_latest,
+            'pruned_snapshot_count': 0,
+            'claims': {},
+        }
+        for current_claim, current_snapshot_kind, stored_required_kinds in rows:
+            stored_kinds = json.loads(stored_required_kinds) if stored_required_kinds else []
+            prune_result = self._prune_snapshot_history(
+                user_id=user_id,
+                claim_type=current_claim,
+                snapshot_kind=current_snapshot_kind,
+                required_support_kinds=stored_kinds,
+                keep_latest=normalized_keep_latest,
+            )
+            pruned['pruned_snapshot_count'] += int(
+                prune_result.get('pruned_snapshot_count', 0) or 0
+            )
+            claim_entry = pruned['claims'].setdefault(current_claim, {'snapshots': {}})
+            claim_entry['snapshots'][current_snapshot_kind] = {
+                'required_support_kinds': stored_kinds,
+                'retention_limit': normalized_keep_latest,
+                'pruned_snapshot_count': int(
+                    prune_result.get('pruned_snapshot_count', 0) or 0
+                ),
+                'deleted_snapshot_ids': prune_result.get('deleted_snapshot_ids', []),
+            }
+            if prune_result.get('error'):
+                claim_entry['snapshots'][current_snapshot_kind]['error'] = prune_result['error']
+
+        return pruned
 
     def get_claim_support_diagnostic_snapshots(
         self,
