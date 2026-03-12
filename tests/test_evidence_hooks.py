@@ -1129,3 +1129,109 @@ class TestMediatorEvidenceIntegration:
         finally:
             if os.path.exists(claim_support_db_path):
                 os.unlink(claim_support_db_path)
+
+    @pytest.mark.integration
+    def test_follow_up_plan_clears_reasoning_gap_markers_after_resolution(self):
+        """Resolved reasoning-gap review work should downgrade to ordinary retrieval with normalized support-gap metadata."""
+        try:
+            from mediator import Mediator
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+        mock_backend = Mock()
+        mock_backend.id = 'test-backend'
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            claim_support_db_path = f.name
+
+        try:
+            mediator = Mediator(
+                backends=[mock_backend],
+                claim_support_db_path=claim_support_db_path,
+            )
+            mediator.state.username = 'testuser'
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'required_support_kinds': ['evidence', 'authority'],
+                        'elements': [
+                            {
+                                'element_id': 'employment:1',
+                                'element_text': 'Protected activity',
+                                'coverage_status': 'partially_supported',
+                                'validation_status': 'incomplete',
+                                'recommended_action': 'collect_missing_support_kind',
+                                'support_by_kind': {'evidence': 1},
+                                'proof_gap_count': 2,
+                                'proof_gaps': [
+                                    {'gap_type': 'logic_unprovable'},
+                                    {'gap_type': 'ontology_validation_failed'},
+                                ],
+                                'proof_decision_trace': {
+                                    'decision_source': 'logic_proof_partial',
+                                    'logic_provable_count': 1,
+                                    'logic_unprovable_count': 1,
+                                    'ontology_validation_signal': 'invalid',
+                                },
+                                'reasoning_diagnostics': {
+                                    'backend_available_count': 2,
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value={
+                'claim_element_id': 'employment:1',
+                'summary': {
+                    'total_fact_count': 0,
+                    'unique_fact_count': 0,
+                    'duplicate_fact_count': 0,
+                    'max_score': 0.0,
+                    'support_by_kind': {'evidence': 1},
+                },
+                'results': [],
+            })
+            mediator.search_legal_authorities = Mock(return_value={'statutes': [], 'cases': []})
+
+            follow_up_plan = mediator.get_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+            )
+            task = follow_up_plan['claims']['employment']['tasks'][0]
+
+            assert task['execution_mode'] == 'review_and_retrieve'
+            assert task['follow_up_focus'] == 'reasoning_gap_closure'
+            assert task['query_strategy'] == 'reasoning_gap_targeted'
+            assert task['proof_gap_types'] == ['logic_unprovable', 'ontology_validation_failed']
+
+            resolution = mediator.resolve_claim_follow_up_manual_review(
+                claim_type='employment',
+                user_id='testuser',
+                claim_element_id='employment:1',
+                claim_element='Protected activity',
+                resolution_status='resolved_supported',
+                resolution_notes='Operator validated the reasoning gap manually.',
+            )
+            assert resolution['recorded'] is True
+
+            follow_up_plan_after_resolution = mediator.get_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+            )
+            resolved_task = follow_up_plan_after_resolution['claims']['employment']['tasks'][0]
+            assert resolved_task['execution_mode'] == 'retrieve_support'
+            assert resolved_task['requires_manual_review'] is False
+            assert resolved_task['manual_review_resolved'] is True
+            assert resolved_task['follow_up_focus'] == 'support_gap_closure'
+            assert resolved_task['query_strategy'] == 'standard_gap_targeted'
+            assert resolved_task['proof_gap_types'] == []
+            assert resolved_task['proof_gap_count'] == 0
+            assert resolved_task['proof_decision_source'] == 'partial_support'
+            assert resolved_task['logic_provable_count'] == 0
+            assert resolved_task['logic_unprovable_count'] == 0
+            assert resolved_task['ontology_validation_signal'] == ''
+            assert resolved_task['queries']['authority'][0] == '"employment" "Protected activity" statute'
+        finally:
+            if os.path.exists(claim_support_db_path):
+                os.unlink(claim_support_db_path)

@@ -700,6 +700,19 @@ class TestMediatorLegalAuthorityIntegration:
                 assert auto_results['claim_overview']['civil rights']['partially_supported_count'] == 1
                 assert auto_results['claim_overview']['civil rights']['missing_count'] == 1
                 assert auto_results['follow_up_plan']['civil rights']['task_count'] == 2
+                assert auto_results['follow_up_plan_summary']['civil rights']['task_count'] == 2
+                assert auto_results['follow_up_plan_summary']['civil rights']['contradiction_task_count'] == 0
+                assert auto_results['follow_up_plan_summary']['civil rights']['reasoning_gap_task_count'] == 0
+                assert auto_results['follow_up_plan_summary']['civil rights']['follow_up_focus_counts'] == {
+                    'support_gap_closure': 2,
+                }
+                assert auto_results['follow_up_plan_summary']['civil rights']['query_strategy_counts'] == {
+                    'standard_gap_targeted': 2,
+                }
+                assert auto_results['follow_up_plan_summary']['civil rights']['proof_decision_source_counts'] == {
+                    'missing_support': 1,
+                    'partial_support': 1,
+                }
 
                 mediator.search_legal_authorities = Mock(return_value={
                     'statutes': [],
@@ -726,6 +739,9 @@ class TestMediatorLegalAuthorityIntegration:
                     execute_follow_up=True,
                 )
                 assert auto_results_with_execution['follow_up_execution']['civil rights']['task_count'] == 0
+                assert auto_results_with_execution['follow_up_execution_summary']['civil rights']['executed_task_count'] == 0
+                assert auto_results_with_execution['follow_up_execution_summary']['civil rights']['contradiction_task_count'] == 0
+                assert auto_results_with_execution['follow_up_execution_summary']['civil rights']['reasoning_gap_task_count'] == 0
                 assert auto_results_with_execution['follow_up_history_summary']['civil rights']['total_entry_count'] == 0
             finally:
                 if os.path.exists(db_path):

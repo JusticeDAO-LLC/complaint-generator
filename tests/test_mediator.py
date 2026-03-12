@@ -77,6 +77,259 @@ class TestMediatorWithMocks:
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
+    def test_follow_up_plan_uses_manual_review_for_reasoning_gaps(self):
+        """Reasoning-only validation gaps should create manual-review tasks instead of suppressed retrieval."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
+                'claims': {'employment': []}
+            })
+            mediator.claim_support.get_follow_up_execution_status = Mock(return_value={
+                'in_cooldown': False,
+            })
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'required_support_kinds': ['evidence'],
+                        'elements': [
+                            {
+                                'element_id': 'employment:1',
+                                'element_text': 'Protected activity',
+                                'coverage_status': 'covered',
+                                'validation_status': 'incomplete',
+                                'recommended_action': 'review_existing_support',
+                                'support_by_kind': {'evidence': 1},
+                                'proof_gap_count': 2,
+                                'proof_gaps': [
+                                    {'gap_type': 'logic_unprovable'},
+                                    {'gap_type': 'ontology_validation_failed'},
+                                ],
+                                'proof_decision_trace': {
+                                    'decision_source': 'logic_unprovable',
+                                    'logic_provable_count': 0,
+                                    'logic_unprovable_count': 1,
+                                    'ontology_validation_signal': 'invalid',
+                                },
+                                'reasoning_diagnostics': {
+                                    'backend_available_count': 2,
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value={
+                'summary': {
+                    'total_fact_count': 6,
+                    'unique_fact_count': 2,
+                    'duplicate_fact_count': 4,
+                    'semantic_cluster_count': 2,
+                    'semantic_duplicate_count': 4,
+                    'max_score': 2.5,
+                },
+                'results': [
+                    {'fact_id': 'fact:1', 'score': 2.5, 'matched_claim_element': True},
+                ],
+            })
+
+            plan = mediator.get_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                required_support_kinds=['evidence'],
+            )
+            task = plan['claims']['employment']['tasks'][0]
+
+            assert task['execution_mode'] == 'manual_review'
+            assert task['follow_up_focus'] == 'reasoning_gap_closure'
+            assert task['query_strategy'] == 'reasoning_gap_targeted'
+            assert task['priority'] == 'high'
+            assert task['should_suppress_retrieval'] is False
+            assert task['recommended_action'] == 'review_existing_support'
+            assert task['missing_support_kinds'] == []
+            assert task['proof_decision_source'] == 'logic_unprovable'
+            assert task['ontology_validation_signal'] == 'invalid'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_follow_up_plan_uses_reasoning_targeted_queries_when_support_missing(self):
+        """Reasoning-backed incomplete elements with missing support should use reasoning-targeted retrieval queries."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
+                'claims': {'employment': []}
+            })
+            mediator.claim_support.get_follow_up_execution_status = Mock(return_value={
+                'in_cooldown': False,
+            })
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'required_support_kinds': ['evidence', 'authority'],
+                        'elements': [
+                            {
+                                'element_id': 'employment:1',
+                                'element_text': 'Protected activity',
+                                'coverage_status': 'partially_supported',
+                                'validation_status': 'incomplete',
+                                'recommended_action': 'collect_missing_support_kind',
+                                'support_by_kind': {'evidence': 1},
+                                'proof_gap_count': 1,
+                                'proof_gaps': [
+                                    {'gap_type': 'logic_unprovable'},
+                                ],
+                                'proof_decision_trace': {
+                                    'decision_source': 'logic_proof_partial',
+                                    'logic_provable_count': 1,
+                                    'logic_unprovable_count': 1,
+                                    'ontology_validation_signal': 'valid',
+                                },
+                                'reasoning_diagnostics': {
+                                    'backend_available_count': 3,
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value={
+                'summary': {
+                    'total_fact_count': 0,
+                    'unique_fact_count': 0,
+                    'duplicate_fact_count': 0,
+                    'semantic_cluster_count': 0,
+                    'semantic_duplicate_count': 0,
+                    'max_score': 0.0,
+                },
+                'results': [],
+            })
+
+            plan = mediator.get_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                required_support_kinds=['evidence', 'authority'],
+            )
+            task = plan['claims']['employment']['tasks'][0]
+
+            assert task['execution_mode'] == 'review_and_retrieve'
+            assert task['follow_up_focus'] == 'reasoning_gap_closure'
+            assert task['query_strategy'] == 'reasoning_gap_targeted'
+            assert task['priority'] == 'high'
+            assert task['missing_support_kinds'] == ['authority']
+            assert task['queries']['authority'][0] == '"employment" "Protected activity" formal proof case law logic unprovable'
+            assert task['recommended_action'] == 'retrieve_more_support'
+            assert task['proof_decision_source'] == 'logic_proof_partial'
+            assert task['logic_provable_count'] == 1
+            assert task['logic_unprovable_count'] == 1
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_follow_up_plan_clears_reasoning_markers_after_manual_review_resolution(self):
+        """Resolved reasoning-gap review work should downgrade to ordinary retrieval with normalized gap metadata."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
+                'claims': {
+                    'employment': [
+                        {
+                            'execution_id': 9,
+                            'claim_type': 'employment',
+                            'claim_element_id': 'employment:1',
+                            'claim_element_text': 'Protected activity',
+                            'support_kind': 'manual_review',
+                            'status': 'resolved_manual_review',
+                            'resolution_status': 'resolved_supported',
+                            'timestamp': '2026-03-12T12:00:00',
+                        }
+                    ]
+                }
+            })
+            mediator.claim_support.get_follow_up_execution_status = Mock(return_value={
+                'in_cooldown': False,
+            })
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'required_support_kinds': ['evidence', 'authority'],
+                        'elements': [
+                            {
+                                'element_id': 'employment:1',
+                                'element_text': 'Protected activity',
+                                'coverage_status': 'partially_supported',
+                                'validation_status': 'incomplete',
+                                'recommended_action': 'collect_missing_support_kind',
+                                'support_by_kind': {'evidence': 1},
+                                'proof_gap_count': 2,
+                                'proof_gaps': [
+                                    {'gap_type': 'logic_unprovable'},
+                                    {'gap_type': 'ontology_validation_failed'},
+                                ],
+                                'proof_decision_trace': {
+                                    'decision_source': 'logic_proof_partial',
+                                    'logic_provable_count': 1,
+                                    'logic_unprovable_count': 1,
+                                    'ontology_validation_signal': 'invalid',
+                                },
+                                'reasoning_diagnostics': {
+                                    'backend_available_count': 2,
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value={
+                'summary': {
+                    'total_fact_count': 0,
+                    'unique_fact_count': 0,
+                    'duplicate_fact_count': 0,
+                    'semantic_cluster_count': 0,
+                    'semantic_duplicate_count': 0,
+                    'max_score': 0.0,
+                },
+                'results': [],
+            })
+
+            plan = mediator.get_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                required_support_kinds=['evidence', 'authority'],
+            )
+            task = plan['claims']['employment']['tasks'][0]
+
+            assert task['execution_mode'] == 'retrieve_support'
+            assert task['requires_manual_review'] is False
+            assert task['manual_review_resolved'] is True
+            assert task['follow_up_focus'] == 'support_gap_closure'
+            assert task['query_strategy'] == 'standard_gap_targeted'
+            assert task['proof_gap_types'] == []
+            assert task['proof_gap_count'] == 0
+            assert task['proof_decision_source'] == 'partial_support'
+            assert task['logic_provable_count'] == 0
+            assert task['logic_unprovable_count'] == 0
+            assert task['ontology_validation_signal'] == ''
+            assert task['resolution_applied'] == 'manual_review_resolved'
+            assert task['queries']['authority'][0] == '"employment" "Protected activity" statute'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
     def test_add_evidence_to_graphs_skips_duplicate_dependency_projection(self):
         """Duplicate evidence should not create duplicate dependency-graph nodes."""
         try:

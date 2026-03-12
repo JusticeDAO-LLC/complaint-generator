@@ -434,7 +434,18 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
     assert payload["follow_up_plan"]["retaliation"]["task_count"] == 2
     assert payload["follow_up_plan_summary"]["retaliation"]["blocked_task_count"] == 1
     assert payload["follow_up_plan_summary"]["retaliation"]["suppressed_task_count"] == 1
+    assert payload["follow_up_plan_summary"]["retaliation"]["contradiction_task_count"] == 0
+    assert payload["follow_up_plan_summary"]["retaliation"]["reasoning_gap_task_count"] == 0
     assert payload["follow_up_plan_summary"]["retaliation"]["semantic_cluster_count"] == 2
+    assert payload["follow_up_plan_summary"]["retaliation"]["follow_up_focus_counts"] == {
+        "unknown": 2,
+    }
+    assert payload["follow_up_plan_summary"]["retaliation"]["query_strategy_counts"] == {
+        "unknown": 2,
+    }
+    assert payload["follow_up_plan_summary"]["retaliation"]["proof_decision_source_counts"] == {
+        "unknown": 2,
+    }
     assert payload["follow_up_plan_summary"]["retaliation"]["recommended_actions"] == {
         "retrieve_more_support": 1,
         "target_missing_support_kind": 1,

@@ -734,6 +734,49 @@ Representative shape:
       "contradiction_related_entry_count": 0,
       "latest_attempted_at": null
     }
+  },
+  "follow_up_plan_summary": {
+    "civil rights": {
+      "task_count": 2,
+      "blocked_task_count": 0,
+      "graph_supported_task_count": 1,
+      "manual_review_task_count": 0,
+      "suppressed_task_count": 0,
+      "contradiction_task_count": 0,
+      "reasoning_gap_task_count": 0,
+      "semantic_cluster_count": 1,
+      "semantic_duplicate_count": 2,
+      "follow_up_focus_counts": {
+        "support_gap_closure": 2
+      },
+      "query_strategy_counts": {
+        "standard_gap_targeted": 2
+      },
+      "proof_decision_source_counts": {
+        "missing_support": 1,
+        "partial_support": 1
+      },
+      "recommended_actions": {
+        "collect_initial_support": 1,
+        "collect_missing_support_kind": 1
+      }
+    }
+  },
+  "follow_up_execution_summary": {
+    "civil rights": {
+      "executed_task_count": 0,
+      "skipped_task_count": 0,
+      "suppressed_task_count": 0,
+      "manual_review_task_count": 0,
+      "cooldown_skipped_task_count": 0,
+      "contradiction_task_count": 0,
+      "reasoning_gap_task_count": 0,
+      "semantic_cluster_count": 0,
+      "semantic_duplicate_count": 0,
+      "follow_up_focus_counts": {},
+      "query_strategy_counts": {},
+      "proof_decision_source_counts": {}
+    }
   }
 }
 ```
@@ -765,6 +808,7 @@ Interpretation notes:
 - `claim_support_snapshot_summary` is the compact lifecycle companion for those persisted diagnostics. It reports how many snapshots are fresh versus stale, which kinds are present, the active retention limits, and how much pruning happened during persistence.
 - `claim_reasoning_review` is the compact operator-facing reasoning review surface. It highlights claim elements that were contradicted, required fallback ontology, or encountered unavailable or degraded adapter states during validation.
 - `follow_up_history` and `follow_up_history_summary` expose the persisted follow-up execution ledger for automatic legal research, so legal-research consumers get the same audit trail already available in the review and web-evidence payloads.
+- `follow_up_plan_summary` and `follow_up_execution_summary` give automatic legal research the same compact planner and execution analytics already exposed in review and web-evidence flows.
 - `status_counts` separates fully covered, partially supported, and still-missing elements.
 - `links_by_kind` groups evidence and authority support without requiring callers to regroup raw links.
 - `record_summary` and `graph_summary` provide lightweight parse and graph context inline with the support record.
@@ -1076,8 +1120,22 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
       "manual_review_task_count": 1,
       "graph_supported_task_count": 1,
       "suppressed_task_count": 1,
+      "contradiction_task_count": 1,
+      "reasoning_gap_task_count": 0,
       "semantic_cluster_count": 1,
       "semantic_duplicate_count": 2,
+      "follow_up_focus_counts": {
+        "contradiction_resolution": 1,
+        "support_gap_closure": 1
+      },
+      "query_strategy_counts": {
+        "contradiction_targeted": 1,
+        "standard_gap_targeted": 1
+      },
+      "proof_decision_source_counts": {
+        "heuristic_contradictions": 1,
+        "missing_support": 1
+      },
       "recommended_actions": {
         "review_existing_support": 1,
         "retrieve_more_support": 1
@@ -1101,8 +1159,10 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
 Interpretation notes:
 
 - `follow_up_plan_summary` is a compact operator-facing view of the full `follow_up_plan` payload.
+- `contradiction_task_count`, `reasoning_gap_task_count`, `follow_up_focus_counts`, `query_strategy_counts`, and `proof_decision_source_counts` show why planned work exists, not just how much work is queued.
 - `semantic_cluster_count` and `semantic_duplicate_count` summarize distinct versus near-duplicate graph-support clusters across planned tasks.
 - `follow_up_execution_summary` separates suppressed tasks from cooldown skips so dashboards can explain why follow-up work did not run.
+- `follow_up_execution_summary` also reports contradiction-versus-reasoning-gap task counts plus focus, query-strategy, and proof-decision-source mixes across executed and skipped work.
 - `follow_up_execution_summary.semantic_cluster_count` and `follow_up_execution_summary.semantic_duplicate_count` aggregate graph-support clusters across executed and skipped tasks, preserving the support context that informed execution decisions.
 - `claim_coverage_matrix[claim_type]` exposes the same grouped claim-element support view used by automatic legal research.
 - `claim_coverage_summary[claim_type]` provides the smaller per-claim status snapshot with counts and missing-element labels.
@@ -1260,8 +1320,19 @@ Representative response shape:
       "task_count": 2,
       "blocked_task_count": 1,
       "suppressed_task_count": 1,
+      "contradiction_task_count": 0,
+      "reasoning_gap_task_count": 0,
       "semantic_cluster_count": 2,
       "semantic_duplicate_count": 3,
+      "follow_up_focus_counts": {
+        "unknown": 2
+      },
+      "query_strategy_counts": {
+        "unknown": 2
+      },
+      "proof_decision_source_counts": {
+        "unknown": 2
+      },
       "recommended_actions": {
         "retrieve_more_support": 1,
         "target_missing_support_kind": 1
@@ -1400,11 +1471,13 @@ Representative response shape:
 Interpretation notes:
 
 - `execution_mode` distinguishes normal retrieval work from contradiction-driven `manual_review` or mixed `review_and_retrieve` tasks.
-- `follow_up_focus` captures whether the task is closing an ordinary support gap or resolving a contradiction-heavy element.
-- `query_strategy` records whether generated search text used the standard support-gap templates or contradiction-targeted retrieval prompts.
+- `follow_up_focus` captures whether the task is closing an ordinary support gap, resolving a contradiction-heavy element, or closing a reasoning-specific gap such as `logic_unprovable` or `ontology_validation_failed`.
+- `query_strategy` records whether generated search text used the standard support-gap templates, contradiction-targeted retrieval prompts, or reasoning-gap-targeted prompts derived from proof diagnostics.
 - `manual_review` skips are also written into the `claim_follow_up_execution` DuckDB ledger with `support_kind="manual_review"`, so contradiction-resolution work has an audit trail even when no retrieval runs.
 - Operator resolutions can be appended to that same ledger as `status="resolved_manual_review"` events, carrying fields such as `resolution_status`, `resolution_notes`, and `related_execution_id`.
 - Once a contradiction has a newer `resolved_manual_review` event, pure `manual_review` tasks stop appearing in `Mediator.get_claim_follow_up_plan(...)`; mixed `review_and_retrieve` tasks downgrade back to ordinary `retrieve_support` planning so only the unresolved support gap remains active.
+- The same downgrade applies to reasoning-gap `manual_review` work: once resolved, mixed reasoning tasks clear their reasoning-specific proof-gap markers and revert to ordinary support-gap queries, so follow-up summaries describe the remaining retrieval work rather than the already-resolved proof issue.
+- Reasoning-gap tasks are not auto-suppressed solely because graph support is already strong; they stay visible when the proof layer still marks the element as unprovable or ontology-invalid.
 - `manual_review_task_count` in both follow-up summaries tracks contradiction-review work that intentionally does not trigger evidence or authority retrieval.
 - `post_execution_review.follow_up_history_summary` reflects the refreshed ledger after execution, so clients can confirm that retrieval and manual-review events were recorded.
 

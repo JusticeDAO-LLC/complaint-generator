@@ -35,6 +35,8 @@ from integrations.ipfs_datasets.graphs import persist_graph_snapshot, query_grap
 from claim_support_review import (
 	ClaimSupportFollowUpExecuteRequest,
 	ClaimSupportReviewRequest,
+	_summarize_follow_up_execution_claim,
+	_summarize_follow_up_plan_claim,
 	build_claim_support_follow_up_execution_payload,
 	build_claim_support_review_payload,
 	summarize_follow_up_history_claim,
@@ -1094,6 +1096,19 @@ class Mediator:
 	def _normalize_follow_up_history_key(self, value: str) -> str:
 		return str(value or '').strip().lower()
 
+	def _resolved_manual_review_gap_types(self, task: Dict[str, Any]) -> set:
+		follow_up_focus = str(task.get('follow_up_focus') or '')
+		if follow_up_focus == 'contradiction_resolution':
+			return {'contradiction_candidates'}
+		if follow_up_focus == 'reasoning_gap_closure':
+			return {'logic_unprovable', 'ontology_validation_failed'}
+		return set()
+
+	def _normalized_support_gap_decision_source(self, task: Dict[str, Any]) -> str:
+		if list(task.get('missing_support_kinds') or []):
+			return 'missing_support' if str(task.get('status') or '') == 'missing' else 'partial_support'
+		return ''
+
 	def _build_manual_review_state_map(self, history_entries: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
 		state_map: Dict[str, Dict[str, Any]] = {}
 		for entry in history_entries or []:
@@ -1146,10 +1161,11 @@ class Mediator:
 			return None
 
 		if task.get('execution_mode') == 'review_and_retrieve':
+			resolved_gap_types = self._resolved_manual_review_gap_types(task)
 			filtered_proof_gaps = [
 				gap
 				for gap in (task.get('proof_gaps') or [])
-				if isinstance(gap, dict) and str(gap.get('gap_type') or '') != 'contradiction_candidates'
+				if isinstance(gap, dict) and str(gap.get('gap_type') or '') not in resolved_gap_types
 			]
 			task['execution_mode'] = 'retrieve_support'
 			task['requires_manual_review'] = False
@@ -1157,6 +1173,11 @@ class Mediator:
 			task['query_strategy'] = 'standard_gap_targeted'
 			task['proof_gaps'] = filtered_proof_gaps
 			task['proof_gap_types'] = self._extract_proof_gap_types(filtered_proof_gaps)
+			task['proof_gap_count'] = len(filtered_proof_gaps)
+			task['proof_decision_source'] = self._normalized_support_gap_decision_source(task)
+			task['logic_provable_count'] = 0
+			task['logic_unprovable_count'] = 0
+			task['ontology_validation_signal'] = ''
 			task['queries'] = self._build_follow_up_queries(
 				claim_type,
 				task.get('claim_element', ''),
@@ -1982,9 +2003,11 @@ class Mediator:
 			'claim_reasoning_review': {},
 			'claim_overview': {},
 			'follow_up_plan': {},
+			'follow_up_plan_summary': {},
 			'follow_up_history': {},
 			'follow_up_history_summary': {},
-			'follow_up_execution': {}
+			'follow_up_execution': {},
+			'follow_up_execution_summary': {},
 		}
 		
 		# Search for authorities for each claim type
@@ -2122,6 +2145,9 @@ class Mediator:
 					'tasks': [],
 				},
 			)
+			results['follow_up_plan_summary'][claim_type] = _summarize_follow_up_plan_claim(
+				results['follow_up_plan'][claim_type]
+			)
 			follow_up_history = self.get_recent_claim_follow_up_execution(
 				claim_type=claim_type,
 				user_id=user_id,
@@ -2140,6 +2166,9 @@ class Mediator:
 				results['follow_up_execution'][claim_type] = execution.get('claims', {}).get(
 					claim_type,
 					{'task_count': 0, 'tasks': []},
+				)
+				results['follow_up_execution_summary'][claim_type] = _summarize_follow_up_execution_claim(
+					results['follow_up_execution'][claim_type]
 				)
 				refreshed_follow_up_history = self.get_recent_claim_follow_up_execution(
 					claim_type=claim_type,

@@ -781,8 +781,19 @@ class TestWebEvidenceIntegrationHook:
             assert result['follow_up_plan_summary']['employment discrimination']['blocked_task_count'] == 1
             assert result['follow_up_plan_summary']['employment discrimination']['graph_supported_task_count'] == 1
             assert result['follow_up_plan_summary']['employment discrimination']['suppressed_task_count'] == 1
+            assert result['follow_up_plan_summary']['employment discrimination']['contradiction_task_count'] == 0
+            assert result['follow_up_plan_summary']['employment discrimination']['reasoning_gap_task_count'] == 0
             assert result['follow_up_plan_summary']['employment discrimination']['semantic_cluster_count'] == 1
             assert result['follow_up_plan_summary']['employment discrimination']['semantic_duplicate_count'] == 2
+            assert result['follow_up_plan_summary']['employment discrimination']['follow_up_focus_counts'] == {
+                'unknown': 2,
+            }
+            assert result['follow_up_plan_summary']['employment discrimination']['query_strategy_counts'] == {
+                'unknown': 2,
+            }
+            assert result['follow_up_plan_summary']['employment discrimination']['proof_decision_source_counts'] == {
+                'unknown': 2,
+            }
             assert result['follow_up_plan_summary']['employment discrimination']['recommended_actions']['review_existing_support'] == 1
             assert result['follow_up_history']['employment discrimination'][0]['support_kind'] == 'manual_review'
             assert result['follow_up_history_summary']['employment discrimination']['manual_review_entry_count'] == 1
@@ -894,6 +905,14 @@ class TestWebEvidenceIntegrationHook:
             assert result['follow_up_execution_summary']['employment discrimination']['suppressed_task_count'] == 1
             assert result['follow_up_execution_summary']['employment discrimination']['semantic_cluster_count'] == 3
             assert result['follow_up_execution_summary']['employment discrimination']['semantic_duplicate_count'] == 4
+            assert result['follow_up_execution_summary']['employment discrimination']['contradiction_task_count'] == 0
+            assert result['follow_up_execution_summary']['employment discrimination']['reasoning_gap_task_count'] == 0
+            assert result['follow_up_execution_summary']['employment discrimination']['follow_up_focus_counts'] == {
+                'unknown': 2,
+            }
+            assert result['follow_up_execution_summary']['employment discrimination']['proof_decision_source_counts'] == {
+                'unknown': 2,
+            }
             assert result['follow_up_history_summary']['employment discrimination']['total_entry_count'] == 2
             assert result['follow_up_history_summary']['employment discrimination']['manual_review_entry_count'] == 1
             assert result['follow_up_history_summary']['employment discrimination']['query_strategy_counts'] == {

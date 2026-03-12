@@ -349,9 +349,18 @@ class WebEvidenceIntegrationHook:
     def _summarize_follow_up_plan_claim(self, claim_plan: Dict[str, Any]) -> Dict[str, Any]:
         tasks = claim_plan.get('tasks', []) if isinstance(claim_plan, dict) else []
         recommended_actions: Dict[str, int] = {}
+        follow_up_focus_counts: Dict[str, int] = {}
+        query_strategy_counts: Dict[str, int] = {}
+        proof_decision_source_counts: Dict[str, int] = {}
         for task in tasks:
             action = str(task.get('recommended_action') or 'unspecified')
             recommended_actions[action] = recommended_actions.get(action, 0) + 1
+            focus = str(task.get('follow_up_focus') or 'unknown')
+            follow_up_focus_counts[focus] = follow_up_focus_counts.get(focus, 0) + 1
+            strategy = str(task.get('query_strategy') or 'unknown')
+            query_strategy_counts[strategy] = query_strategy_counts.get(strategy, 0) + 1
+            decision_source = str(task.get('proof_decision_source') or 'unknown')
+            proof_decision_source_counts[decision_source] = proof_decision_source_counts.get(decision_source, 0) + 1
         graph_support_metrics = self._aggregate_graph_support_metrics(tasks)
         return {
             'task_count': len(tasks),
@@ -359,20 +368,36 @@ class WebEvidenceIntegrationHook:
             'graph_supported_task_count': len([task for task in tasks if task.get('has_graph_support')]),
             'manual_review_task_count': len([task for task in tasks if task.get('execution_mode') == 'manual_review']),
             'suppressed_task_count': len([task for task in tasks if task.get('should_suppress_retrieval')]),
+            'contradiction_task_count': len([task for task in tasks if task.get('follow_up_focus') == 'contradiction_resolution']),
+            'reasoning_gap_task_count': len([task for task in tasks if task.get('follow_up_focus') == 'reasoning_gap_closure']),
             'semantic_cluster_count': graph_support_metrics['semantic_cluster_count'],
             'semantic_duplicate_count': graph_support_metrics['semantic_duplicate_count'],
+            'follow_up_focus_counts': follow_up_focus_counts,
+            'query_strategy_counts': query_strategy_counts,
+            'proof_decision_source_counts': proof_decision_source_counts,
             'recommended_actions': recommended_actions,
         }
 
     def _summarize_follow_up_execution_claim(self, claim_execution: Dict[str, Any]) -> Dict[str, Any]:
         executed_tasks = claim_execution.get('tasks', []) if isinstance(claim_execution, dict) else []
         skipped_tasks = claim_execution.get('skipped_tasks', []) if isinstance(claim_execution, dict) else []
+        all_tasks = [task for task in executed_tasks + skipped_tasks if isinstance(task, dict)]
         suppressed = [task for task in skipped_tasks if 'suppressed' in task.get('skipped', {})]
         manual_review_skips = [task for task in skipped_tasks if 'manual_review' in task.get('skipped', {})]
         cooldown_skips = [
             task for task in skipped_tasks
             if any(value.get('reason') == 'duplicate_within_cooldown' for value in task.get('skipped', {}).values() if isinstance(value, dict))
         ]
+        follow_up_focus_counts: Dict[str, int] = {}
+        query_strategy_counts: Dict[str, int] = {}
+        proof_decision_source_counts: Dict[str, int] = {}
+        for task in all_tasks:
+            focus = str(task.get('follow_up_focus') or 'unknown')
+            follow_up_focus_counts[focus] = follow_up_focus_counts.get(focus, 0) + 1
+            strategy = str(task.get('query_strategy') or 'unknown')
+            query_strategy_counts[strategy] = query_strategy_counts.get(strategy, 0) + 1
+            decision_source = str(task.get('proof_decision_source') or 'unknown')
+            proof_decision_source_counts[decision_source] = proof_decision_source_counts.get(decision_source, 0) + 1
         graph_support_metrics = self._aggregate_graph_support_metrics(executed_tasks + skipped_tasks)
         return {
             'executed_task_count': len(executed_tasks),
@@ -380,8 +405,13 @@ class WebEvidenceIntegrationHook:
             'suppressed_task_count': len(suppressed),
             'manual_review_task_count': len(manual_review_skips),
             'cooldown_skipped_task_count': len(cooldown_skips),
+            'contradiction_task_count': len([task for task in all_tasks if task.get('follow_up_focus') == 'contradiction_resolution']),
+            'reasoning_gap_task_count': len([task for task in all_tasks if task.get('follow_up_focus') == 'reasoning_gap_closure']),
             'semantic_cluster_count': graph_support_metrics['semantic_cluster_count'],
             'semantic_duplicate_count': graph_support_metrics['semantic_duplicate_count'],
+            'follow_up_focus_counts': follow_up_focus_counts,
+            'query_strategy_counts': query_strategy_counts,
+            'proof_decision_source_counts': proof_decision_source_counts,
         }
 
     def _summarize_claim_coverage_claim(
