@@ -281,7 +281,25 @@ class TestWebEvidenceIntegrationHook:
                         'parser_version': 'documents-adapter:1',
                         'input_format': 'text',
                         'paragraph_count': 1,
-                    }
+                        },
+                        'document_parse_contract': {
+                            'status': 'fallback',
+                            'source': 'web_document',
+                            'chunk_count': 1,
+                            'summary': {
+                                'status': 'fallback',
+                                'chunk_count': 1,
+                                'text_length': 42,
+                                'parser_version': 'documents-adapter:1',
+                                'input_format': 'text',
+                                'paragraph_count': 1,
+                            },
+                            'lineage': {
+                                'source': 'web_document',
+                                'parser_version': 'documents-adapter:1',
+                                'input_format': 'text',
+                            },
+                        },
                 },
                 'document_parse': {
                     'status': 'fallback',
@@ -360,6 +378,8 @@ class TestWebEvidenceIntegrationHook:
             assert len(result['parse_details']) == 2
             assert result['parse_details'][0]['parser_version'] == 'documents-adapter:1'
             assert result['parse_details'][0]['input_format'] == 'text'
+            assert result['parse_details'][0]['source'] == 'web_document'
+            assert result['parse_details'][0]['lineage']['source'] == 'web_document'
             assert len(result['graph_projection']) == 2
             assert result['graph_projection'][0]['graph_changed'] is True
             assert result['graph_projection'][0]['artifact_entity_added'] is True

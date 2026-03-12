@@ -751,6 +751,43 @@ class Mediator:
 			required_support_kinds=required_support_kinds,
 		)
 
+	def get_claim_support_gaps(
+		self,
+		claim_type: str = None,
+		user_id: str = None,
+		required_support_kinds: List[str] = None,
+	):
+		"""Return unresolved claim elements with current support, facts, and graph-backed context."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		gap_analysis = self.claim_support.get_claim_support_gaps(
+			user_id,
+			claim_type=claim_type,
+			required_support_kinds=required_support_kinds,
+		)
+		for current_claim, claim_gap in gap_analysis.get('claims', {}).items():
+			for element in claim_gap.get('unresolved_elements', []):
+				element['graph_support'] = self.query_claim_graph_support(
+					claim_type=current_claim,
+					claim_element_id=element.get('element_id'),
+					claim_element=element.get('element_text'),
+					user_id=user_id,
+				)
+		return gap_analysis
+
+	def get_claim_contradiction_candidates(
+		self,
+		claim_type: str = None,
+		user_id: str = None,
+	):
+		"""Return heuristic contradiction candidates across support facts for each claim element."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		return self.claim_support.get_claim_contradiction_candidates(
+			user_id,
+			claim_type=claim_type,
+		)
+
 	def build_claim_support_review_payload(
 		self,
 		claim_type: str = None,
@@ -1190,6 +1227,41 @@ class Mediator:
 			claim_element_id=target_element_id,
 			claim_element_text=target_element_text,
 		)
+		gap_analysis = self.get_claim_support_gaps(
+			claim_type=claim_type,
+			user_id=user_id,
+		)
+		current_gap_summary = {
+			'element_id': target_element_id,
+			'element_text': target_element_text,
+			'status': 'covered',
+			'missing_support_kinds': [],
+			'total_links': element_summary.get('total_links', 0),
+			'fact_count': element_summary.get('fact_count', 0),
+			'graph_trace_summary': {'traced_link_count': 0, 'snapshot_created_count': 0, 'snapshot_reused_count': 0, 'source_table_counts': {}, 'graph_status_counts': {}, 'graph_id_count': 0},
+			'recommended_action': 'review_existing_support',
+			'graph_support': self.query_claim_graph_support(
+				claim_type=claim_type,
+				claim_element_id=target_element_id,
+				claim_element=target_element_text,
+				user_id=user_id,
+			),
+		}
+		for gap_element in gap_analysis.get('claims', {}).get(claim_type, {}).get('unresolved_elements', []):
+			if gap_element.get('element_id') == target_element_id or gap_element.get('element_text') == target_element_text:
+				current_gap_summary = gap_element
+				break
+
+		contradiction_candidates = self.get_claim_contradiction_candidates(
+			claim_type=claim_type,
+			user_id=user_id,
+		).get('claims', {}).get(claim_type, {}).get('candidates', [])
+		contradiction_candidates = [
+			candidate
+			for candidate in contradiction_candidates
+			if candidate.get('claim_element_id') == target_element_id
+			or candidate.get('claim_element_text') == target_element_text
+		]
 
 		return {
 			'claim_type': claim_type,
@@ -1199,6 +1271,8 @@ class Mediator:
 			'is_covered': bool(element_summary.get('total_links', 0)),
 			'missing_support': element_summary.get('total_links', 0) == 0,
 			'support_summary': element_summary,
+			'gap_summary': current_gap_summary,
+			'contradiction_candidates': contradiction_candidates,
 			'support_facts': support_facts,
 			'evidence': evidence_records,
 			'authorities': authority_records,

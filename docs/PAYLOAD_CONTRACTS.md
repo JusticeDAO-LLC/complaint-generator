@@ -43,6 +43,54 @@ Metadata semantics:
 - `implementation_status`: Normalized implementation state for the adapter surface, such as `implemented`, `fallback`, `not_implemented`, `pending`, `noop`, `empty`, `error`, or `unavailable`.
 - `degraded_reason`: Import or availability reason when the adapter is running degraded.
 
+## Shared Parse Contract
+
+Uploaded evidence, stored web evidence, and legal authority text now share one normalized parse bundle.
+
+Representative shape:
+
+```json
+{
+  "document_parse_contract": {
+    "status": "fallback",
+    "source": "web_document",
+    "chunk_count": 2,
+    "text": "Title: Example\n\nContent: ...",
+    "text_preview": "Title: Example\n\nContent: ...",
+    "summary": {
+      "status": "fallback",
+      "chunk_count": 2,
+      "text_length": 900,
+      "parser_version": "documents-adapter:1",
+      "input_format": "text",
+      "paragraph_count": 1,
+      "source": "web_document"
+    },
+    "storage_metadata": {
+      "filename": "example.txt",
+      "parser_version": "documents-adapter:1",
+      "source": "web_document",
+      "transform_lineage": {
+        "source": "web_document",
+        "parser_version": "documents-adapter:1",
+        "input_format": "text"
+      }
+    },
+    "lineage": {
+      "source": "web_document",
+      "parser_version": "documents-adapter:1",
+      "input_format": "text"
+    }
+  }
+}
+```
+
+Compatibility notes:
+
+- `metadata.document_parse_summary` remains present for existing callers.
+- Stored DuckDB parse columns still use `parse_status`, `chunk_count`, `parsed_text_preview`, and `parse_metadata`.
+- `document_parse_contract` is the canonical bundle those compatibility fields are now derived from.
+
 ## Evidence Submission
 
 `Mediator.submit_evidence(...)` and `Mediator.submit_evidence_file(...)` return the stored artifact payload plus deduplication and graph-projection metadata.
@@ -327,6 +375,18 @@ Representative shape:
         "partially_supported": 1,
         "missing": 1
       },
+      "graph_trace_summary": {
+        "traced_link_count": 1,
+        "snapshot_created_count": 1,
+        "snapshot_reused_count": 0,
+        "source_table_counts": {
+          "legal_authorities": 1
+        },
+        "graph_status_counts": {
+          "available": 1
+        },
+        "graph_id_count": 1
+      },
       "missing_elements": ["Adverse action"],
       "partially_supported_elements": ["Protected activity"]
     }
@@ -343,6 +403,7 @@ Interpretation notes:
 
 - `claim_coverage_matrix` is the review-oriented support payload for operator and UI workflows.
 - `claim_coverage_summary` is the compact companion payload for dashboards, logs, and quick status rendering.
+- `graph_trace_summary` is the compact lineage companion for dashboards and audit surfaces; it counts traced links, snapshot creation versus reuse, source-table mix, and distinct graph ids without requiring callers to inspect raw support links.
 - `status_counts` separates fully covered, partially supported, and still-missing elements.
 - `links_by_kind` groups evidence and authority support without requiring callers to regroup raw links.
 - `record_summary` and `graph_summary` provide lightweight parse and graph context inline with the support record.
@@ -439,6 +500,54 @@ Representative shape:
       }
     ]
   },
+  "gap_summary": {
+    "element_id": "employment_discrimination:1",
+    "element_text": "Adverse action",
+    "status": "partially_supported",
+    "missing_support_kinds": ["authority"],
+    "total_links": 1,
+    "fact_count": 2,
+    "graph_trace_summary": {
+      "traced_link_count": 1,
+      "snapshot_created_count": 1,
+      "snapshot_reused_count": 0,
+      "source_table_counts": {"evidence": 1},
+      "graph_status_counts": {"ready": 1},
+      "graph_id_count": 1
+    },
+    "recommended_action": "collect_missing_support_kind",
+    "graph_support": {
+      "status": "ready",
+      "summary": {
+        "total_match_count": 1,
+        "total_fact_count": 2
+      }
+    }
+  },
+  "contradiction_candidates": [
+    {
+      "claim_element_id": "employment_discrimination:1",
+      "claim_element_text": "Adverse action",
+      "fact_ids": ["fact:abc123", "fact:def456"],
+      "texts": [
+        "Employee submitted a discrimination complaint to management.",
+        "Employee did not submit a discrimination complaint to management."
+      ],
+      "support_refs": ["Qm...", "42 U.S.C. § 1983"],
+      "support_kinds": ["evidence", "authority"],
+      "source_tables": ["evidence", "legal_authorities"],
+      "polarity": ["affirmative", "negative"],
+      "overlap_terms": ["complaint", "discrimination", "management", "submit"],
+      "graph_trace_summary": {
+        "traced_link_count": 2,
+        "snapshot_created_count": 1,
+        "snapshot_reused_count": 1,
+        "source_table_counts": {"evidence": 1, "legal_authorities": 1},
+        "graph_status_counts": {"ready": 2},
+        "graph_id_count": 2
+      }
+    }
+  ],
   "support_facts": [
     {
       "fact_id": "fact:abc123",
@@ -475,6 +584,8 @@ Representative shape:
 Interpretation notes:
 
 - `support_summary` is the same enriched element summary used inside `summarize_claim_support(...)`.
+- `gap_summary` surfaces unresolved or partially satisfied support requirements for the same element, plus graph-backed trace counts and graph-support lookup output.
+- `contradiction_candidates` contains heuristic fact-pair conflicts for the element when support facts disagree with opposite polarity over materially overlapping terms.
 - `support_facts` is the flattened fact list collected from the element's enriched evidence and authority support links.
 - `evidence` and `authorities` are the matching stored rows for the resolved claim element.
 

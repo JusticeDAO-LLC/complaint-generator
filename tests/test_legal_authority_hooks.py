@@ -339,6 +339,10 @@ class TestLegalAuthorityStorageHook:
                 assert len(chunks) >= 1
                 assert chunks[0]['chunk_id'] == 'chunk-0'
                 assert chunks[0]['metadata']['source'] == 'legal_authority'
+                facts = hook.get_authority_facts(record_id)
+                assert len(facts) >= 1
+                assert facts[0]['source_authority_id'] == f'authority:{record_id}'
+                assert facts[0]['metadata']['parse_lineage']['source'] == 'legal_authority'
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)

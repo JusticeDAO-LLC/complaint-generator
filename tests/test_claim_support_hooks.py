@@ -441,6 +441,158 @@ class TestClaimSupportHook:
             if os.path.exists(db_path):
                 os.unlink(db_path)
 
+    def test_get_claim_support_gaps_returns_unresolved_elements_with_graph_trace_summary(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.evidence_state = Mock()
+        mock_mediator.evidence_state.get_evidence_by_cid = Mock(return_value={
+            'id': 21,
+            'fact_count': 1,
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:evidence-21',
+                    'created': True,
+                    'reused': False,
+                }
+            },
+        })
+        mock_mediator.evidence_state.get_evidence_facts = Mock(return_value=[
+            {'fact_id': 'fact:1', 'text': 'Employee complained to HR about discrimination.'},
+        ])
+        mock_mediator.evidence_state.get_evidence_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:1'}],
+            'relationships': [{'id': 'rel:1'}],
+        })
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidenceGap',
+                support_label='HR complaint email',
+                source_table='evidence',
+            )
+
+            gaps = hook.get_claim_support_gaps('testuser', 'employment')
+            gap = gaps['claims']['employment']['unresolved_elements'][0]
+
+            assert gaps['claims']['employment']['unresolved_count'] == 1
+            assert gap['status'] == 'partially_supported'
+            assert gap['missing_support_kinds'] == ['authority']
+            assert gap['graph_trace_summary']['traced_link_count'] == 1
+            assert gap['graph_trace_summary']['snapshot_created_count'] == 1
+            assert gap['recommended_action'] == 'collect_missing_support_kind'
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_claim_contradiction_candidates_detects_conflicting_facts(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.evidence_state = Mock()
+        mock_mediator.evidence_state.get_evidence_by_cid = Mock(return_value={
+            'id': 31,
+            'cid': 'QmEvidenceConflict',
+            'fact_count': 1,
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:evidence-31',
+                    'created': True,
+                    'reused': False,
+                }
+            },
+        })
+        mock_mediator.evidence_state.get_evidence_facts = Mock(return_value=[
+            {'fact_id': 'fact:pos', 'text': 'Employee submitted a discrimination complaint to management.'},
+        ])
+        mock_mediator.evidence_state.get_evidence_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:1'}],
+            'relationships': [{'id': 'rel:1'}],
+        })
+        mock_mediator.legal_authority_storage = Mock()
+        mock_mediator.legal_authority_storage.get_authority_by_citation = Mock(return_value={
+            'id': 41,
+            'citation': 'Contrary Source',
+            'fact_count': 1,
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:authority-41',
+                    'created': False,
+                    'reused': True,
+                }
+            },
+        })
+        mock_mediator.legal_authority_storage.get_authority_facts = Mock(return_value=[
+            {'fact_id': 'fact:neg', 'text': 'Employee did not submit a discrimination complaint to management.'},
+        ])
+        mock_mediator.legal_authority_storage.get_authority_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:a'}],
+            'relationships': [{'id': 'rel:a'}],
+        })
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidenceConflict',
+                support_label='HR complaint email',
+                source_table='evidence',
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='authority',
+                support_ref='Contrary Source',
+                support_label='Contrary Source',
+                source_table='legal_authorities',
+            )
+
+            contradictions = hook.get_claim_contradiction_candidates('testuser', 'employment')
+            candidate = contradictions['claims']['employment']['candidates'][0]
+
+            assert contradictions['claims']['employment']['candidate_count'] == 1
+            assert candidate['claim_element_text'] == 'Protected activity'
+            assert sorted(candidate['polarity']) == ['affirmative', 'negative']
+            assert 'complaint' in candidate['overlap_terms']
+            assert candidate['graph_trace_summary']['traced_link_count'] == 2
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
     def test_get_claim_coverage_matrix_groups_links_by_support_kind(self):
         try:
             from mediator.claim_support_hooks import ClaimSupportHook

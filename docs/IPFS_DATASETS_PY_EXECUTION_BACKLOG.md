@@ -387,6 +387,7 @@ Implemented baseline:
 
 - claim-element support views already enumerate artifacts, authorities, and fact rows
 - enriched support links and derived fact rows now expose `graph_trace` packets for evidence and authority sources
+- review payloads now aggregate compact `graph_trace_summary` fields in `claim_coverage_summary` for dashboard and audit surfaces
 
 Acceptance criteria:
 

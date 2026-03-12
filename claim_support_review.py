@@ -68,6 +68,44 @@ def _summarize_claim_coverage_claim(
             if isinstance(element, dict) and element.get("element_text")
         ]
 
+    traced_link_count = 0
+    snapshot_created_count = 0
+    snapshot_reused_count = 0
+    source_table_counts: Dict[str, int] = {}
+    graph_status_counts: Dict[str, int] = {}
+    graph_id_count = 0
+    seen_graph_ids = set()
+
+    for element in coverage_claim.get("elements", []):
+        if not isinstance(element, dict):
+            continue
+        for link in element.get("links", []):
+            if not isinstance(link, dict):
+                continue
+            graph_trace = link.get("graph_trace", {})
+            if not isinstance(graph_trace, dict) or not graph_trace:
+                continue
+            traced_link_count += 1
+
+            source_table = str(graph_trace.get("source_table") or "unknown")
+            source_table_counts[source_table] = source_table_counts.get(source_table, 0) + 1
+
+            summary = graph_trace.get("summary", {})
+            if isinstance(summary, dict):
+                graph_status = str(summary.get("status") or "unknown")
+                graph_status_counts[graph_status] = graph_status_counts.get(graph_status, 0) + 1
+
+            snapshot = graph_trace.get("snapshot", {})
+            if isinstance(snapshot, dict):
+                if bool(snapshot.get("created")):
+                    snapshot_created_count += 1
+                if bool(snapshot.get("reused")):
+                    snapshot_reused_count += 1
+                graph_id = str(snapshot.get("graph_id") or "")
+                if graph_id and graph_id not in seen_graph_ids:
+                    seen_graph_ids.add(graph_id)
+                    graph_id_count += 1
+
     return {
         "claim_type": claim_type,
         "total_elements": coverage_claim.get("total_elements", 0),
@@ -80,6 +118,14 @@ def _summarize_claim_coverage_claim(
         ),
         "missing_elements": missing_elements,
         "partially_supported_elements": partially_supported_elements,
+        "graph_trace_summary": {
+            "traced_link_count": traced_link_count,
+            "snapshot_created_count": snapshot_created_count,
+            "snapshot_reused_count": snapshot_reused_count,
+            "source_table_counts": source_table_counts,
+            "graph_status_counts": graph_status_counts,
+            "graph_id_count": graph_id_count,
+        },
     }
 
 

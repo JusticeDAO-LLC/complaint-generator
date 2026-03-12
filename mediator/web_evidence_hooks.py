@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pathlib import Path
 
+from integrations.ipfs_datasets.provenance import build_document_parse_contract
 from integrations.ipfs_datasets.search import (
     BRAVE_SEARCH_AVAILABLE,
     COMMON_CRAWL_AVAILABLE,
@@ -465,15 +466,23 @@ class WebEvidenceIntegrationHook:
     def _extract_parse_detail(self, storage_result: Dict[str, Any]) -> Dict[str, Any]:
         """Normalize parse metadata from stored web evidence for reporting."""
         metadata = storage_result.get('metadata', {}) if isinstance(storage_result.get('metadata'), dict) else {}
-        parse_summary = metadata.get('document_parse_summary', {}) if isinstance(metadata.get('document_parse_summary'), dict) else {}
+        parse_contract = metadata.get('document_parse_contract') if isinstance(metadata.get('document_parse_contract'), dict) else {}
+        if not parse_contract:
+            parse_contract = build_document_parse_contract(
+                storage_result.get('document_parse') if isinstance(storage_result.get('document_parse'), dict) else {},
+                default_source=str(metadata.get('parse_source') or 'web_document'),
+            )
+        parse_summary = parse_contract.get('summary', {}) if isinstance(parse_contract.get('summary'), dict) else {}
         return {
             'cid': storage_result.get('cid', ''),
-            'status': parse_summary.get('status', ''),
-            'chunk_count': int(parse_summary.get('chunk_count', 0) or 0),
+            'status': parse_contract.get('status', ''),
+            'source': parse_contract.get('source', ''),
+            'chunk_count': int(parse_contract.get('chunk_count', 0) or 0),
             'text_length': int(parse_summary.get('text_length', 0) or 0),
             'parser_version': parse_summary.get('parser_version', ''),
             'input_format': parse_summary.get('input_format', ''),
             'paragraph_count': int(parse_summary.get('paragraph_count', 0) or 0),
+            'lineage': parse_contract.get('lineage', {}) if isinstance(parse_contract.get('lineage'), dict) else {},
         }
 
     def _accumulate_parse_detail(self, aggregate: Dict[str, Any], detail: Dict[str, Any]) -> None:

@@ -310,6 +310,7 @@ Tasks:
 Current state:
 
 - claim-support links and derived fact rows now carry `graph_trace` packets combining source-table identity, record id, graph summary, adapter snapshot semantics, and stored lineage metadata from evidence and authority `graph_metadata`
+- review-facing `claim_coverage_summary` payloads now aggregate those traces into compact `graph_trace_summary` counts for graph ids, source tables, statuses, and snapshot creation-versus-reuse
 
 Done when:
 

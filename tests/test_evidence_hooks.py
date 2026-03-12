@@ -57,6 +57,8 @@ class TestEvidenceStorageHook:
             assert result['metadata']['document_parse_summary']['paragraph_count'] >= 1
             assert result['document_parse']['summary']['chunk_count'] == result['metadata']['document_parse_summary']['chunk_count']
             assert result['document_parse']['metadata']['transform_lineage']['source'] == 'bytes'
+            assert result['metadata']['document_parse_contract']['source'] == 'bytes'
+            assert result['metadata']['document_parse_contract']['lineage']['source'] == 'bytes'
             assert result['document_graph']['status'] in {'unavailable', 'available-fallback'}
             assert result['metadata']['document_graph_summary']['entity_count'] >= 1
         except ImportError as e:
@@ -414,6 +416,7 @@ class TestEvidenceStateHook:
                 assert len(facts) >= 1
                 assert facts[0]['fact_id'].startswith('fact:')
                 assert facts[0]['source_artifact_id']
+                assert facts[0]['metadata']['parse_lineage']['source'] == 'bytes'
                 assert any(entity['type'] == 'fact' for entity in graph['entities'])
                 assert any(rel['relation_type'] == 'has_fact' for rel in graph['relationships'])
             finally:
@@ -669,6 +672,11 @@ class TestMediatorEvidenceIntegration:
                 assert element_view['support_summary']['fact_count'] >= 1
                 assert element_view['support_summary']['links'][0]['fact_count'] >= 1
                 assert len(element_view['support_summary']['links'][0]['facts']) >= 1
+                assert element_view['gap_summary']['status'] == 'partially_supported'
+                assert element_view['gap_summary']['missing_support_kinds'] == ['authority']
+                assert element_view['gap_summary']['graph_trace_summary']['traced_link_count'] >= 1
+                assert element_view['gap_summary']['graph_support']['summary']['total_fact_count'] >= 1
+                assert element_view['contradiction_candidates'] == []
                 assert element_view['total_facts'] >= 1
                 assert len(element_view['support_facts']) >= 1
                 assert element_view['support_facts'][0]['claim_type'] == 'breach of contract'

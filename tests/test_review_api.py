@@ -30,7 +30,38 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                     "partially_supported": 1,
                     "missing": 1,
                 },
-                "elements": [],
+                "elements": [
+                    {
+                        "element_id": "retaliation:1",
+                        "element_text": "Protected activity",
+                        "links": [
+                            {
+                                "support_kind": "evidence",
+                                "graph_trace": {
+                                    "source_table": "evidence",
+                                    "summary": {"status": "available"},
+                                    "snapshot": {
+                                        "graph_id": "graph:evidence-1",
+                                        "created": True,
+                                        "reused": False,
+                                    },
+                                },
+                            },
+                            {
+                                "support_kind": "authority",
+                                "graph_trace": {
+                                    "source_table": "legal_authorities",
+                                    "summary": {"status": "available"},
+                                    "snapshot": {
+                                        "graph_id": "graph:authority-1",
+                                        "created": False,
+                                        "reused": True,
+                                    },
+                                },
+                            },
+                        ],
+                    }
+                ],
             }
         }
     }
@@ -142,6 +173,14 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
     assert payload["claim_coverage_summary"]["retaliation"][
         "partially_supported_elements"
     ] == ["Adverse action"]
+    assert payload["claim_coverage_summary"]["retaliation"]["graph_trace_summary"] == {
+        "traced_link_count": 2,
+        "snapshot_created_count": 1,
+        "snapshot_reused_count": 1,
+        "source_table_counts": {"evidence": 1, "legal_authorities": 1},
+        "graph_status_counts": {"available": 2},
+        "graph_id_count": 2,
+    }
     assert payload["support_summary"]["retaliation"]["total_links"] == 2
     assert payload["claim_overview"]["retaliation"]["missing"][0]["element_text"] == (
         "Causal connection"

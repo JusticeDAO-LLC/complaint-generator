@@ -195,6 +195,87 @@ class ClaimSupportHook:
             'lineage': lineage.get('lineage', {}) if isinstance(lineage.get('lineage'), dict) else {},
         }
 
+    def _summarize_graph_traces(self, items: List[Dict[str, Any]]) -> Dict[str, Any]:
+        traced_link_count = 0
+        snapshot_created_count = 0
+        snapshot_reused_count = 0
+        source_table_counts: Dict[str, int] = {}
+        graph_status_counts: Dict[str, int] = {}
+        seen_graph_ids = set()
+
+        for item in items or []:
+            if not isinstance(item, dict):
+                continue
+            graph_trace = item.get('graph_trace', {})
+            if not isinstance(graph_trace, dict) or not graph_trace:
+                continue
+            traced_link_count += 1
+
+            source_table = str(graph_trace.get('source_table') or 'unknown')
+            source_table_counts[source_table] = source_table_counts.get(source_table, 0) + 1
+
+            summary = graph_trace.get('summary', {})
+            if isinstance(summary, dict):
+                graph_status = str(summary.get('status') or 'unknown')
+                graph_status_counts[graph_status] = graph_status_counts.get(graph_status, 0) + 1
+
+            snapshot = graph_trace.get('snapshot', {})
+            if isinstance(snapshot, dict):
+                if bool(snapshot.get('created')):
+                    snapshot_created_count += 1
+                if bool(snapshot.get('reused')):
+                    snapshot_reused_count += 1
+                graph_id = str(snapshot.get('graph_id') or '')
+                if graph_id:
+                    seen_graph_ids.add(graph_id)
+
+        return {
+            'traced_link_count': traced_link_count,
+            'snapshot_created_count': snapshot_created_count,
+            'snapshot_reused_count': snapshot_reused_count,
+            'source_table_counts': source_table_counts,
+            'graph_status_counts': graph_status_counts,
+            'graph_id_count': len(seen_graph_ids),
+        }
+
+    def _fact_polarity(self, text: Optional[str]) -> str:
+        lowered = str(text or '').lower()
+        negative_markers = (
+            ' did not ',
+            " didn't ",
+            ' was not ',
+            " wasn't ",
+            ' never ',
+            ' denied ',
+            ' deny ',
+            ' refused ',
+            ' refuse ',
+            ' without ',
+            ' no ',
+            ' not ',
+            ' lack ',
+            ' lacked ',
+            ' absent ',
+        )
+        padded = f' {lowered} '
+        if any(marker in padded for marker in negative_markers):
+            return 'negative'
+        return 'affirmative'
+
+    def _fact_overlap_terms(self, left: Optional[str], right: Optional[str]) -> List[str]:
+        excluded = {
+            'employee', 'employees', 'employer', 'employers', 'person', 'people',
+            'claim', 'claims', 'fact', 'facts', 'evidence', 'authority', 'there',
+            'their', 'them', 'they', 'then', 'when', 'with', 'without', 'against',
+            'about', 'from', 'into', 'after', 'before', 'because', 'that', 'this',
+            'was', 'were', 'did', 'does', 'have', 'has', 'had', 'been', 'being',
+            'not', 'never', 'denied', 'deny', 'refused', 'refuse', 'lack', 'lacked',
+            'absent',
+        }
+        left_terms = {term for term in self._tokenize_text(left) if term not in excluded}
+        right_terms = {term for term in self._tokenize_text(right) if term not in excluded}
+        return sorted(left_terms & right_terms)
+
     def _normalize_query_text(self, query_text: str) -> str:
         return ' '.join((query_text or '').strip().lower().split())
 
@@ -978,6 +1059,124 @@ class ClaimSupportHook:
             }
 
         return matrix
+
+    def get_claim_support_gaps(
+        self,
+        user_id: str,
+        claim_type: Optional[str] = None,
+        required_support_kinds: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        required_kinds = required_support_kinds or ['evidence', 'authority']
+        matrix = self.get_claim_coverage_matrix(
+            user_id,
+            claim_type=claim_type,
+            required_support_kinds=required_kinds,
+        )
+
+        gaps: Dict[str, Any] = {
+            'available': matrix.get('available', False),
+            'required_support_kinds': required_kinds,
+            'claims': {},
+        }
+
+        for current_claim, claim_matrix in matrix.get('claims', {}).items():
+            unresolved_elements: List[Dict[str, Any]] = []
+            for element in claim_matrix.get('elements', []):
+                if element.get('status') == 'covered':
+                    continue
+                support_facts = self.get_claim_support_facts(
+                    user_id,
+                    current_claim,
+                    claim_element_id=element.get('element_id'),
+                    claim_element_text=element.get('element_text'),
+                )
+                unresolved_elements.append(
+                    {
+                        'element_id': element.get('element_id'),
+                        'element_text': element.get('element_text'),
+                        'status': element.get('status'),
+                        'missing_support_kinds': element.get('missing_support_kinds', []),
+                        'total_links': element.get('total_links', 0),
+                        'fact_count': element.get('fact_count', 0),
+                        'support_by_kind': element.get('support_by_kind', {}),
+                        'links': element.get('links', []),
+                        'support_facts': support_facts,
+                        'graph_trace_summary': self._summarize_graph_traces(element.get('links', [])),
+                        'recommended_action': (
+                            'collect_missing_support_kind'
+                            if element.get('total_links', 0)
+                            else 'collect_initial_support'
+                        ),
+                    }
+                )
+
+            gaps['claims'][current_claim] = {
+                'claim_type': current_claim,
+                'required_support_kinds': required_kinds,
+                'unresolved_count': len(unresolved_elements),
+                'unresolved_elements': unresolved_elements,
+            }
+
+        return gaps
+
+    def get_claim_contradiction_candidates(
+        self,
+        user_id: str,
+        claim_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        summary = self.summarize_claim_support(user_id, claim_type)
+        contradictions: Dict[str, Any] = {
+            'available': summary.get('available', False),
+            'claims': {},
+        }
+
+        for current_claim, claim_summary in summary.get('claims', {}).items():
+            candidates: List[Dict[str, Any]] = []
+            for element in claim_summary.get('elements', []):
+                support_facts = self.get_claim_support_facts(
+                    user_id,
+                    current_claim,
+                    claim_element_id=element.get('element_id'),
+                    claim_element_text=element.get('element_text'),
+                )
+                for index, left in enumerate(support_facts):
+                    for right in support_facts[index + 1:]:
+                        left_polarity = self._fact_polarity(left.get('text'))
+                        right_polarity = self._fact_polarity(right.get('text'))
+                        if left_polarity == right_polarity:
+                            continue
+                        overlap_terms = self._fact_overlap_terms(left.get('text'), right.get('text'))
+                        if len(overlap_terms) < 2:
+                            continue
+                        candidates.append(
+                            {
+                                'claim_element_id': element.get('element_id'),
+                                'claim_element_text': element.get('element_text'),
+                                'fact_ids': [left.get('fact_id'), right.get('fact_id')],
+                                'texts': [left.get('text'), right.get('text')],
+                                'support_refs': [left.get('support_ref'), right.get('support_ref')],
+                                'support_kinds': [left.get('support_kind'), right.get('support_kind')],
+                                'source_tables': [left.get('source_table'), right.get('source_table')],
+                                'polarity': [left_polarity, right_polarity],
+                                'overlap_terms': overlap_terms,
+                                'graph_trace_summary': self._summarize_graph_traces([left, right]),
+                            }
+                        )
+
+            candidates.sort(
+                key=lambda item: (
+                    len(item.get('overlap_terms', [])),
+                    item.get('graph_trace_summary', {}).get('traced_link_count', 0),
+                ),
+                reverse=True,
+            )
+            contradictions['claims'][current_claim] = {
+                'claim_type': current_claim,
+                'candidate_count': len(candidates),
+                'candidates': candidates,
+            }
+
+        return contradictions
 
     def was_follow_up_executed(
         self,

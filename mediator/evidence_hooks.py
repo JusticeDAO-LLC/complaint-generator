@@ -9,12 +9,14 @@ from datetime import datetime, timedelta, UTC
 from pathlib import Path
 
 from integrations.ipfs_datasets.provenance import (
+    build_document_parse_contract,
+    build_fact_lineage_metadata,
     build_storage_parse_metadata,
     build_provenance,
     merge_metadata_with_provenance,
     stable_content_hash,
 )
-from integrations.ipfs_datasets.documents import parse_document_bytes, summarize_document_parse
+from integrations.ipfs_datasets.documents import parse_document_bytes
 from integrations.ipfs_datasets.graphs import extract_graph_from_text, persist_graph_snapshot
 from integrations.ipfs_datasets.types import CaseArtifact, CaseFact
 from integrations.ipfs_datasets.storage import (
@@ -133,10 +135,15 @@ class EvidenceStorageHook:
                     mime_type=str((metadata or {}).get('mime_type', '')),
                     source=str((metadata or {}).get('parse_source', 'bytes')),
                 )
+                parse_contract = build_document_parse_contract(
+                    document_parse,
+                    default_source=str((metadata or {}).get('parse_source', 'bytes')),
+                )
                 result['document_parse'] = document_parse
-                result['metadata']['document_parse_summary'] = summarize_document_parse(document_parse)
+                result['metadata']['document_parse_summary'] = parse_contract['summary']
+                result['metadata']['document_parse_contract'] = parse_contract
                 graph_payload = extract_graph_from_text(
-                    document_parse.get('text', ''),
+                    parse_contract.get('text', ''),
                     source_id=result.get('artifact_id') or result.get('cid'),
                     metadata={
                         'artifact_id': result.get('artifact_id', ''),
@@ -487,6 +494,10 @@ class EvidenceStateHook:
         chunks = document_parse.get('chunks', []) or []
         if not chunks:
             return
+        parse_contract = build_document_parse_contract(
+            document_parse,
+            default_source=str((document_parse.get('metadata', {}) or {}).get('source', '')),
+        )
         for chunk in chunks:
             conn.execute(
                 """
@@ -502,7 +513,12 @@ class EvidenceStateHook:
                     chunk.get('start'),
                     chunk.get('end'),
                     chunk.get('text'),
-                    json.dumps({}),
+                    json.dumps({
+                        'length': chunk.get('length', 0),
+                        'parser_version': parse_contract.get('summary', {}).get('parser_version', ''),
+                        'source': parse_contract.get('source', ''),
+                        'input_format': parse_contract.get('summary', {}).get('input_format', ''),
+                    }),
                 ],
             )
 
@@ -547,10 +563,14 @@ class EvidenceStateHook:
                 ],
             )
 
-    def _store_document_facts(self, conn, evidence_id: int, evidence_info: Dict[str, Any], document_graph: Dict[str, Any]) -> None:
+    def _store_document_facts(self, conn, evidence_id: int, evidence_info: Dict[str, Any], document_graph: Dict[str, Any], document_parse: Dict[str, Any]) -> None:
         entities = document_graph.get('entities', []) or []
         artifact_id = evidence_info.get('artifact_id') or evidence_info.get('cid') or ''
         provenance_payload = evidence_info.get('metadata', {}).get('provenance', {})
+        parse_contract = build_document_parse_contract(
+            document_parse,
+            default_source=str((document_parse.get('metadata', {}) or {}).get('source', '')),
+        )
 
         for entity in entities:
             if entity.get('type') != 'fact':
@@ -561,7 +581,12 @@ class EvidenceStateHook:
                 text=str(attributes.get('text') or entity.get('name') or ''),
                 source_artifact_id=artifact_id,
                 confidence=float(entity.get('confidence', 0.0) or 0.0),
-                metadata=attributes,
+                metadata=build_fact_lineage_metadata(
+                    attributes,
+                    parse_contract=parse_contract,
+                    record_scope='evidence',
+                    source_ref=artifact_id,
+                ),
                 provenance=build_provenance(
                     source_url=str(provenance_payload.get('source_url', '')),
                     acquisition_method=str(provenance_payload.get('acquisition_method', '')),
@@ -705,7 +730,7 @@ class EvidenceStateHook:
             document_parse = evidence_info.get('document_parse') if isinstance(evidence_info.get('document_parse'), dict) else {}
             document_graph = evidence_info.get('document_graph') if isinstance(evidence_info.get('document_graph'), dict) else {}
             document_graph_summary = evidence_info.get('metadata', {}).get('document_graph_summary', {})
-            parse_metadata = build_storage_parse_metadata(
+            parse_contract = build_document_parse_contract(
                 document_parse,
                 default_source=str(
                     document_parse.get('metadata', {}).get('source')
@@ -713,8 +738,9 @@ class EvidenceStateHook:
                     or ''
                 ),
             )
-            parsed_text = document_parse.get('text', '')
-            parsed_text_preview = parsed_text[:5000] if parsed_text else ''
+            parse_metadata = parse_contract['storage_metadata']
+            parsed_text = parse_contract['text']
+            parsed_text_preview = parse_contract['text_preview']
             if not document_graph and parsed_text:
                 document_graph = extract_graph_from_text(
                     parsed_text,
@@ -800,8 +826,8 @@ class EvidenceStateHook:
                 json.dumps(evidence_info.get('metadata', {}).get('provenance', {})),
                 claim_element_id,
                 claim_element,
-                document_parse.get('status') or parse_metadata.get('status'),
-                len(document_parse.get('chunks', []) or []),
+                parse_contract.get('status') or parse_metadata.get('status'),
+                parse_contract.get('chunk_count', 0),
                 parsed_text_preview,
                 json.dumps(parse_metadata),
                 document_graph.get('status') or document_graph_summary.get('status'),
@@ -813,7 +839,7 @@ class EvidenceStateHook:
             record_id = result[0]
             self._store_document_chunks(conn, record_id, document_parse)
             self._store_document_graph(conn, record_id, document_graph)
-            self._store_document_facts(conn, record_id, evidence_info, document_graph)
+            self._store_document_facts(conn, record_id, evidence_info, document_graph, document_parse)
             conn.close()
             
             self.mediator.log('evidence_record_added', 

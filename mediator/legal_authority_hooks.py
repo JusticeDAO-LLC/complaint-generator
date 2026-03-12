@@ -7,9 +7,9 @@ from datetime import datetime
 from pathlib import Path
 
 from integrations.ipfs_datasets.provenance import (
-    build_document_parse_summary_metadata,
+    build_document_parse_contract,
+    build_fact_lineage_metadata,
     build_provenance,
-    build_storage_parse_metadata,
 )
 from integrations.ipfs_datasets.documents import parse_document_text
 from integrations.ipfs_datasets.graphs import extract_graph_from_text, persist_graph_snapshot
@@ -460,11 +460,10 @@ class LegalAuthorityStorageHook:
             mime_type='text/plain',
             source='legal_authority',
         )
+        parse_contract = build_document_parse_contract(parsed, default_source='legal_authority')
         authority_metadata = authority.get('metadata', {}) if isinstance(authority.get('metadata'), dict) else {}
-        authority_metadata['document_parse_summary'] = build_document_parse_summary_metadata(
-            parsed,
-            default_source='legal_authority',
-        )
+        authority_metadata['document_parse_summary'] = parse_contract['summary']
+        authority_metadata['document_parse_contract'] = parse_contract
         authority['metadata'] = authority_metadata
         return parsed
 
@@ -473,7 +472,7 @@ class LegalAuthorityStorageHook:
         if not chunks:
             return
 
-        parse_metadata = document_parse.get('metadata', {}) if isinstance(document_parse.get('metadata'), dict) else {}
+        parse_contract = build_document_parse_contract(document_parse, default_source='legal_authority')
         for chunk in chunks:
             conn.execute(
                 """
@@ -491,8 +490,9 @@ class LegalAuthorityStorageHook:
                     chunk.get('text'),
                     json.dumps({
                         'length': chunk.get('length', 0),
-                        'parser_version': parse_metadata.get('parser_version', ''),
-                        'source': parse_metadata.get('source', 'legal_authority'),
+                        'parser_version': parse_contract.get('summary', {}).get('parser_version', ''),
+                        'source': parse_contract.get('source', 'legal_authority'),
+                        'input_format': parse_contract.get('summary', {}).get('input_format', ''),
                     }),
                 ],
             )
@@ -503,7 +503,9 @@ class LegalAuthorityStorageHook:
         authority_id: int,
         graph_payload: Dict[str, Any],
         provenance,
+        document_parse: Dict[str, Any],
     ) -> None:
+        parse_contract = build_document_parse_contract(document_parse, default_source='legal_authority')
         for entity in graph_payload.get('entities', []) or []:
             if entity.get('type') != 'fact':
                 continue
@@ -511,9 +513,14 @@ class LegalAuthorityStorageHook:
             fact = CaseFact(
                 fact_id=str(entity.get('id') or ''),
                 text=str(attributes.get('text') or entity.get('name') or ''),
-                source_artifact_id=f'authority:{authority_id}',
+                source_authority_id=f'authority:{authority_id}',
                 confidence=float(entity.get('confidence', 0.0) or 0.0),
-                metadata=attributes,
+                metadata=build_fact_lineage_metadata(
+                    attributes,
+                    parse_contract=parse_contract,
+                    record_scope='legal_authority',
+                    source_ref=f'authority:{authority_id}',
+                ),
                 provenance=build_provenance(
                     source_url=str(provenance.source_url or ''),
                     acquisition_method=str(provenance.acquisition_method or ''),
@@ -535,7 +542,7 @@ class LegalAuthorityStorageHook:
                     authority_id,
                     fact.fact_id,
                     fact.text,
-                    fact.source_artifact_id,
+                    fact.source_authority_id,
                     fact.confidence,
                     json.dumps(fact.metadata),
                     json.dumps(fact.provenance.as_dict()),
@@ -788,8 +795,9 @@ class LegalAuthorityStorageHook:
             conn = duckdb.connect(self.db_path)
             claim_element = self._resolve_claim_element(user_id, claim_type, authority_data)
             document_parse = self._parse_authority_text(authority_data)
-            parsed_text = document_parse.get('text', '') if isinstance(document_parse, dict) else ''
-            parsed_text_preview = parsed_text[:5000] if parsed_text else ''
+            parse_contract = build_document_parse_contract(document_parse, default_source='legal_authority')
+            parsed_text = parse_contract.get('text', '')
+            parsed_text_preview = parse_contract.get('text_preview', '')
             provenance = build_provenance(
                 source_url=str(authority_data.get('url', '')),
                 acquisition_method='legal_search',
@@ -867,12 +875,10 @@ class LegalAuthorityStorageHook:
                 json.dumps(provenance.as_dict()),
                 claim_element.get('claim_element_id'),
                 claim_element.get('claim_element'),
-                document_parse.get('status') if isinstance(document_parse, dict) else None,
-                len(document_parse.get('chunks', []) or []) if isinstance(document_parse, dict) else 0,
+                parse_contract.get('status'),
+                parse_contract.get('chunk_count', 0),
                 parsed_text_preview,
-                json.dumps(
-                    build_storage_parse_metadata(document_parse, default_source='legal_authority')
-                ) if isinstance(document_parse, dict) else json.dumps({}),
+                json.dumps(parse_contract.get('storage_metadata', {})),
                 None,
                 0,
                 0,
@@ -921,6 +927,7 @@ class LegalAuthorityStorageHook:
                 record_id,
                 graph_payload,
                 provenance,
+                document_parse,
             )
             conn.close()
             
