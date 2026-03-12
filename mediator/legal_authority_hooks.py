@@ -12,7 +12,7 @@ from integrations.ipfs_datasets.provenance import (
     build_storage_parse_metadata,
 )
 from integrations.ipfs_datasets.documents import parse_document_text
-from integrations.ipfs_datasets.graphs import extract_graph_from_text
+from integrations.ipfs_datasets.graphs import extract_graph_from_text, persist_graph_snapshot
 from integrations.ipfs_datasets.types import CaseAuthority, CaseFact
 from integrations.ipfs_datasets.legal import (
     LEGAL_SCRAPERS_AVAILABLE,
@@ -899,7 +899,18 @@ class LegalAuthorityStorageHook:
                     graph_payload.get('status'),
                     len(graph_payload.get('entities', []) or []),
                     len(graph_payload.get('relationships', []) or []),
-                    json.dumps(graph_payload.get('metadata', {})),
+                    json.dumps({
+                        **(graph_payload.get('metadata', {}) or {}),
+                        'graph_snapshot': persist_graph_snapshot(
+                            graph_payload,
+                            graph_changed=bool(graph_payload.get('entities') or graph_payload.get('relationships')),
+                            existing_graph=False,
+                            persistence_metadata={
+                                'record_scope': 'legal_authority',
+                                'record_key': str(record_id),
+                            },
+                        ),
+                    }),
                     record_id,
                 ],
             )

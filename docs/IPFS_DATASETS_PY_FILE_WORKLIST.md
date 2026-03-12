@@ -274,7 +274,7 @@ Validation:
 
 Status:
 
-- the adapter now exposes typed graph payload, graph snapshot, and graph-support result contracts; remaining M2 work is persistence semantics and mediator-visible support tracing depth
+- the adapter now exposes typed graph payload, graph snapshot, and graph-support result contracts, and created-versus-reused snapshot semantics now flow through evidence, authority, and mediator graph-projection payloads
 
 ### `integrations/ipfs_datasets/graphs.py`
 
@@ -288,6 +288,7 @@ Current state:
 
 - completed for adapter-visible graph payload, graph snapshot, and graph-support result contracts while preserving the existing dict payload family consumed by mediator callers
 - duplicate and semantic-cluster support summaries remain available and are now part of the typed adapter result contract
+- created-versus-reused snapshot semantics are now emitted by `persist_graph_snapshot(...)` and threaded into storage metadata plus mediator `graph_projection` payloads
 
 Done when:
 

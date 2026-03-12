@@ -28,7 +28,7 @@ from .web_evidence_hooks import (
 )
 from .claim_support_hooks import ClaimSupportHook
 from integrations.ipfs_datasets.capabilities import get_ipfs_datasets_capabilities
-from integrations.ipfs_datasets.graphs import query_graph_support
+from integrations.ipfs_datasets.graphs import persist_graph_snapshot, query_graph_support
 from claim_support_review import (
 	ClaimSupportFollowUpExecuteRequest,
 	ClaimSupportReviewRequest,
@@ -1884,6 +1884,27 @@ class Mediator:
 				kg.add_relationship(rel)
 				projection_summary['relationship_count'] += 1
 		graph_changed = projection_summary['entity_count'] > 0 or projection_summary['relationship_count'] > 0
+		graph_snapshot_payload = evidence_data.get('document_graph') if isinstance(evidence_data.get('document_graph'), dict) else {
+			'status': 'projected-knowledge-graph' if graph_changed or artifact_present_before_projection else 'unavailable',
+			'source_id': artifact_id,
+			'entities': [],
+			'relationships': [],
+			'metadata': {
+				'claim_type': evidence_data.get('claim_type', ''),
+				'claim_element_id': evidence_data.get('claim_element_id', ''),
+				'projection_target': 'complaint_phase_knowledge_graph',
+			},
+		}
+		projection_summary['graph_snapshot'] = persist_graph_snapshot(
+			graph_snapshot_payload,
+			graph_changed=graph_changed,
+			existing_graph=artifact_present_before_projection,
+			persistence_metadata={
+				'projection_target': 'complaint_phase_knowledge_graph',
+				'storage_record_created': bool(evidence_data.get('record_created', False)),
+				'storage_record_reused': bool(evidence_data.get('record_reused', False)),
+			},
+		)
 		
 		# Add to dependency graph
 		should_update_dependency_graph = bool(

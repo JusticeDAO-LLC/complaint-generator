@@ -319,16 +319,22 @@ def test_extract_graph_from_text_returns_normalized_shape():
 def test_persist_graph_snapshot_returns_stable_contract():
     graph_payload = extract_graph_from_text('Example complaint text', source_id='artifact-1')
 
-    result = persist_graph_snapshot(graph_payload)
+    result = persist_graph_snapshot(
+        graph_payload,
+        graph_changed=True,
+        existing_graph=False,
+        persistence_metadata={'projection_target': 'complaint_phase_knowledge_graph'},
+    )
 
     assert result['status'] in {'pending', 'noop'}
     assert result['graph_id'].startswith('graph:')
     assert result['persisted'] is False
-    assert result['created'] is False
+    assert result['created'] is True
     assert result['reused'] is False
     assert result['node_count'] >= 1
     assert result['edge_count'] >= 1
     assert result['metadata']['source_id'] == 'artifact-1'
+    assert result['metadata']['projection_target'] == 'complaint_phase_knowledge_graph'
     assert result['metadata']['lineage']['status'] == graph_payload['status']
 
 

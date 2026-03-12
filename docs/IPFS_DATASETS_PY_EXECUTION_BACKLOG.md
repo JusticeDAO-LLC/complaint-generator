@@ -336,6 +336,7 @@ Implemented baseline:
 - complaint-phase graph projection already exists for evidence-backed support insertion
 - legal-authority ingestion now also stores graph entity and relationship metadata locally for later support tracing
 - adapter-visible graph payload, graph snapshot, and graph-support result contracts are now typed under `integrations/ipfs_datasets/types.py` and emitted by `integrations/ipfs_datasets/graphs.py`
+- graph snapshot payloads now distinguish created versus reused graph content in evidence storage, authority storage, and mediator graph-projection results
 
 Acceptance criteria:
 

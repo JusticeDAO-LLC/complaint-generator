@@ -377,6 +377,9 @@ class TestLegalAuthorityStorageHook:
                 assert authority['graph_status'] in {'unavailable', 'available-fallback'}
                 assert authority['graph_entity_count'] >= 1
                 assert authority['graph_relationship_count'] >= 1
+                assert authority['graph_metadata']['graph_snapshot']['created'] is True
+                assert authority['graph_metadata']['graph_snapshot']['reused'] is False
+                assert authority['graph_metadata']['graph_snapshot']['metadata']['record_scope'] == 'legal_authority'
                 assert graph['status'] == 'available'
                 assert any(entity['type'] == 'fact' for entity in graph['entities'])
                 assert any(rel['relation_type'] == 'has_fact' for rel in graph['relationships'])

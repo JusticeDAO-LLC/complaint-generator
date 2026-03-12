@@ -136,6 +136,8 @@ class TestMediatorWithMocks:
 
                 updated_dg = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'dependency_graph')
                 assert first_result['graph_projection']['graph_changed'] is True
+                assert first_result['graph_projection']['graph_snapshot']['created'] is True
+                assert first_result['graph_projection']['graph_snapshot']['reused'] is False
                 assert len(updated_dg.nodes) == 2
                 assert len(updated_dg.dependencies) == 1
 
@@ -158,6 +160,8 @@ class TestMediatorWithMocks:
                 ]
 
                 assert duplicate_result['graph_projection']['graph_changed'] is False
+                assert duplicate_result['graph_projection']['graph_snapshot']['created'] is False
+                assert duplicate_result['graph_projection']['graph_snapshot']['reused'] is True
                 assert duplicate_result['evidence_count'] == first_result['evidence_count']
                 assert len(duplicate_dg.nodes) == 2
                 assert len(duplicate_dg.dependencies) == 1

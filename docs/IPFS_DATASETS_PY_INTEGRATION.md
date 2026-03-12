@@ -161,7 +161,7 @@ Recommended use inside complaint-generator:
 
 Primary next improvements:
 
-- backing graph-store persistence and created-versus-reused semantics
+- backing graph-store persistence beyond the current local created-versus-reused snapshot semantics
 - deeper graph-backed support tracing by claim element on top of the new typed graph snapshot and support-result contracts
 - a coverage matrix built from facts, support edges, graph output, and validation state
 

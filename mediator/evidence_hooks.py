@@ -15,7 +15,7 @@ from integrations.ipfs_datasets.provenance import (
     stable_content_hash,
 )
 from integrations.ipfs_datasets.documents import parse_document_bytes, summarize_document_parse
-from integrations.ipfs_datasets.graphs import extract_graph_from_text
+from integrations.ipfs_datasets.graphs import extract_graph_from_text, persist_graph_snapshot
 from integrations.ipfs_datasets.types import CaseArtifact, CaseFact
 from integrations.ipfs_datasets.storage import (
     IPFS_AVAILABLE,
@@ -734,6 +734,19 @@ class EvidenceStateHook:
                     'entity_count': len(document_graph.get('entities', []) or []),
                     'relationship_count': len(document_graph.get('relationships', []) or []),
                 }
+            graph_snapshot = persist_graph_snapshot(
+                document_graph,
+                graph_changed=bool(document_graph.get('entities') or document_graph.get('relationships')),
+                existing_graph=False,
+                persistence_metadata={
+                    'record_scope': 'evidence',
+                    'record_key': evidence_info.get('cid', ''),
+                },
+            )
+            graph_metadata = {
+                **(document_graph.get('metadata', {}) or {}),
+                'graph_snapshot': graph_snapshot,
+            }
 
             existing_record_id = self._find_existing_evidence_record(
                 conn,
@@ -794,7 +807,7 @@ class EvidenceStateHook:
                 document_graph.get('status') or document_graph_summary.get('status'),
                 len(document_graph.get('entities', []) or []),
                 len(document_graph.get('relationships', []) or []),
-                json.dumps(document_graph.get('metadata', {})),
+                json.dumps(graph_metadata),
             ]).fetchone()
             
             record_id = result[0]

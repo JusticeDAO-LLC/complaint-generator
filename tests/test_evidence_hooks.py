@@ -404,6 +404,9 @@ class TestEvidenceStateHook:
                 assert record['parse_metadata']['filename'] == 'evidence.txt'
                 assert record['parse_metadata']['parser_version'] == 'documents-adapter:1'
                 assert record['parse_metadata']['transform_lineage']['source'] == 'bytes'
+                assert record['graph_metadata']['graph_snapshot']['created'] is True
+                assert record['graph_metadata']['graph_snapshot']['reused'] is False
+                assert record['graph_metadata']['graph_snapshot']['metadata']['record_scope'] == 'evidence'
                 assert record['graph_entity_count'] >= 1
                 assert record['graph_relationship_count'] >= 1
                 assert len(chunks) == 2
@@ -606,6 +609,8 @@ class TestMediatorEvidenceIntegration:
                 assert result['metadata']['document_graph_summary']['entity_count'] >= 1
                 assert result['graph_projection']['claim_links'] >= 1
                 assert result['graph_projection']['graph_changed'] is True
+                assert result['graph_projection']['graph_snapshot']['created'] is True
+                assert result['graph_projection']['graph_snapshot']['reused'] is False
                 assert result['graph_projection']['artifact_entity_added'] is True
                 assert result['graph_projection']['artifact_entity_already_present'] is False
                 assert result['graph_projection']['storage_record_created'] is True
@@ -646,6 +651,8 @@ class TestMediatorEvidenceIntegration:
                 assert duplicate_result['support_link_created'] is False
                 assert duplicate_result['support_link_reused'] is True
                 assert duplicate_result['graph_projection']['graph_changed'] is False
+                assert duplicate_result['graph_projection']['graph_snapshot']['created'] is False
+                assert duplicate_result['graph_projection']['graph_snapshot']['reused'] is True
                 assert duplicate_result['graph_projection']['artifact_entity_added'] is False
                 assert duplicate_result['graph_projection']['artifact_entity_already_present'] is True
                 assert duplicate_result['graph_projection']['storage_record_created'] is False

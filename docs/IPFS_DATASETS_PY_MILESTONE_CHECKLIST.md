@@ -116,7 +116,7 @@ Goal:
 
 Status:
 
-- typed graph payload, graph snapshot, and graph-support result contracts are now implemented at the adapter boundary and validated against current mediator callers
+- typed graph payload, graph snapshot, and graph-support result contracts are now implemented at the adapter boundary, and created-versus-reused snapshot semantics now flow through storage and mediator projection payloads
 
 Primary files:
 
@@ -132,7 +132,7 @@ Primary files:
 Checklist:
 
 - [x] graph snapshot contracts exist behind the adapter boundary
-- [ ] graph persistence semantics distinguish created versus reused graph content
+- [x] graph persistence semantics distinguish created versus reused graph content
 - [ ] support-query APIs can enumerate artifacts, authorities, and facts supporting a claim element
 - [ ] graph-support outputs preserve lineage back to source artifacts and authority records
 - [ ] coverage-matrix semantics are defined for mediator review and drafting readiness

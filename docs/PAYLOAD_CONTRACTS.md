@@ -34,7 +34,16 @@ Representative fields:
     "storage_record_created": true,
     "storage_record_reused": false,
     "support_link_created": true,
-    "support_link_reused": false
+    "support_link_reused": false,
+    "graph_snapshot": {
+      "status": "noop",
+      "graph_id": "graph:...",
+      "persisted": false,
+      "created": true,
+      "reused": false,
+      "node_count": 4,
+      "edge_count": 3
+    }
   }
 }
 ```
@@ -45,6 +54,7 @@ Field semantics:
 - `record_reused`: The evidence matched an existing row in the same scope.
 - `support_link_created`: A new claim-support link was inserted.
 - `support_link_reused`: The claim-support link already existed.
+- `graph_snapshot`: Adapter-normalized graph snapshot semantics for the current projection. `created` means the current projection introduced new graph structure, while `reused` means the artifact or support structure was already present.
 
 ## Web Evidence Discovery
 
