@@ -28,6 +28,190 @@ class ProvenanceRecord:
 
 
 @dataclass(frozen=True)
+class DocumentChunk:
+    chunk_id: str
+    index: int
+    start: int
+    end: int
+    text: str
+    length: int = 0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class DocumentParseSummary:
+    status: str = ""
+    chunk_count: int = 0
+    text_length: int = 0
+    parser_version: str = ""
+    input_format: str = ""
+    paragraph_count: int = 0
+
+    def as_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class DocumentTransformLineage:
+    source: str = ""
+    parser_version: str = ""
+    input_format: str = ""
+    normalization: str = ""
+    chunking: Dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class DocumentParseResult:
+    status: str
+    text: str
+    chunks: List[DocumentChunk] = field(default_factory=list)
+    summary: DocumentParseSummary = field(default_factory=DocumentParseSummary)
+    lineage: DocumentTransformLineage = field(default_factory=DocumentTransformLineage)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> Dict[str, Any]:
+        payload = asdict(self)
+        payload["chunks"] = [chunk.as_dict() for chunk in self.chunks]
+        payload["summary"] = self.summary.as_dict()
+        payload["lineage"] = self.lineage.as_dict()
+        return payload
+
+
+@dataclass(frozen=True)
+class GraphEntity:
+    entity_id: str
+    entity_type: str
+    name: str = ""
+    confidence: float = 0.0
+    attributes: Dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> Dict[str, Any]:
+        payload = asdict(self)
+        payload["id"] = payload.pop("entity_id")
+        payload["type"] = payload.pop("entity_type")
+        return payload
+
+
+@dataclass(frozen=True)
+class GraphRelationship:
+    relationship_id: str
+    source_id: str
+    target_id: str
+    relation_type: str
+    confidence: float = 0.0
+    attributes: Dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> Dict[str, Any]:
+        payload = asdict(self)
+        payload["id"] = payload.pop("relationship_id")
+        return payload
+
+
+@dataclass(frozen=True)
+class GraphPayload:
+    status: str
+    source_id: str = ""
+    entities: List[GraphEntity] = field(default_factory=list)
+    relationships: List[GraphRelationship] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> Dict[str, Any]:
+        return {
+            "status": self.status,
+            "source_id": self.source_id,
+            "entities": [entity.as_dict() for entity in self.entities],
+            "relationships": [relationship.as_dict() for relationship in self.relationships],
+            "metadata": dict(self.metadata),
+        }
+
+
+@dataclass(frozen=True)
+class GraphSnapshotResult:
+    status: str
+    graph_id: str = ""
+    persisted: bool = False
+    created: bool = False
+    reused: bool = False
+    node_count: int = 0
+    edge_count: int = 0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class GraphSupportMatch:
+    fact_id: str = ""
+    text: str = ""
+    score: float = 0.0
+    confidence: float = 0.0
+    matched_claim_element: bool = False
+    duplicate_count: int = 1
+    cluster_size: int = 1
+    cluster_texts: List[str] = field(default_factory=list)
+    support_kind: str = ""
+    source_table: str = ""
+    support_kind_set: List[str] = field(default_factory=list)
+    source_table_set: List[str] = field(default_factory=list)
+    claim_element_id: str = ""
+    claim_element_text: str = ""
+    support_ref: str = ""
+    support_label: str = ""
+    evidence_record_id: Optional[int] = None
+    authority_record_id: Optional[int] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> Dict[str, Any]:
+        payload = asdict(self)
+        if self.evidence_record_id is None:
+            payload.pop("evidence_record_id", None)
+        if self.authority_record_id is None:
+            payload.pop("authority_record_id", None)
+        return payload
+
+
+@dataclass(frozen=True)
+class GraphSupportSummary:
+    result_count: int = 0
+    total_fact_count: int = 0
+    unique_fact_count: int = 0
+    duplicate_fact_count: int = 0
+    semantic_cluster_count: int = 0
+    semantic_duplicate_count: int = 0
+    support_by_kind: Dict[str, int] = field(default_factory=dict)
+    support_by_source: Dict[str, int] = field(default_factory=dict)
+    max_score: float = 0.0
+
+    def as_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class GraphSupportResult:
+    status: str
+    claim_element_id: str = ""
+    claim_type: str = ""
+    claim_element_text: str = ""
+    graph_id: str = ""
+    results: List[GraphSupportMatch] = field(default_factory=list)
+    summary: GraphSupportSummary = field(default_factory=GraphSupportSummary)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> Dict[str, Any]:
+        payload = asdict(self)
+        payload["results"] = [result.as_dict() for result in self.results]
+        payload["summary"] = self.summary.as_dict()
+        return payload
+
+
+@dataclass(frozen=True)
 class CaseArtifact:
     cid: str
     artifact_type: str
@@ -196,6 +380,17 @@ class ValidationRun:
 
 __all__ = [
     "ProvenanceRecord",
+    "DocumentChunk",
+    "DocumentParseSummary",
+    "DocumentTransformLineage",
+    "DocumentParseResult",
+    "GraphEntity",
+    "GraphRelationship",
+    "GraphPayload",
+    "GraphSnapshotResult",
+    "GraphSupportMatch",
+    "GraphSupportSummary",
+    "GraphSupportResult",
     "CaseArtifact",
     "CaseAuthority",
     "CaseFact",

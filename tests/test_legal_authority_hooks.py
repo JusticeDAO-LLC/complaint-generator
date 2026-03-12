@@ -335,6 +335,7 @@ class TestLegalAuthorityStorageHook:
                 assert authority['parsed_text_preview'].startswith('Employers must preserve records.')
                 assert authority['parse_metadata']['parser_version'] == 'documents-adapter:1'
                 assert authority['parse_metadata']['source'] == 'legal_authority'
+                assert authority['parse_metadata']['transform_lineage']['source'] == 'legal_authority'
                 assert len(chunks) >= 1
                 assert chunks[0]['chunk_id'] == 'chunk-0'
                 assert chunks[0]['metadata']['source'] == 'legal_authority'

@@ -5,6 +5,15 @@ import re
 from typing import Any, Dict, List, Optional
 
 from .loader import import_module_optional
+from .types import (
+    GraphEntity,
+    GraphPayload,
+    GraphRelationship,
+    GraphSnapshotResult,
+    GraphSupportMatch,
+    GraphSupportResult,
+    GraphSupportSummary,
+)
 
 
 _knowledge_graphs_module, _knowledge_graphs_error = import_module_optional(
@@ -196,42 +205,42 @@ def extract_graph_from_text(
     metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     metadata = metadata or {}
-    entities: List[Dict[str, Any]] = []
-    relationships: List[Dict[str, Any]] = []
+    entities: List[GraphEntity] = []
+    relationships: List[GraphRelationship] = []
     artifact_id = source_id or metadata.get("artifact_id") or ""
     claim_element_id = str(metadata.get("claim_element_id") or "").strip()
     claim_element_text = str(metadata.get("claim_element_text") or metadata.get("claim_element") or "").strip()
 
     if artifact_id:
         entities.append(
-            {
-                "id": artifact_id,
-                "type": "artifact",
-                "name": str(metadata.get("title") or metadata.get("filename") or artifact_id),
-                "confidence": 1.0,
-                "attributes": {
+            GraphEntity(
+                entity_id=artifact_id,
+                entity_type="artifact",
+                name=str(metadata.get("title") or metadata.get("filename") or artifact_id),
+                confidence=1.0,
+                attributes={
                     "source_id": artifact_id,
                     "source_url": metadata.get("source_url", ""),
                     "mime_type": metadata.get("mime_type", ""),
                 },
-            }
+            )
         )
 
     claim_node_id = ""
     if claim_element_id or claim_element_text:
         claim_node_id = claim_element_id or _stable_identifier("claim_element", claim_element_text)
         entities.append(
-            {
-                "id": claim_node_id,
-                "type": "claim_element",
-                "name": claim_element_text or claim_element_id,
-                "confidence": 1.0,
-                "attributes": {
+            GraphEntity(
+                entity_id=claim_node_id,
+                entity_type="claim_element",
+                name=claim_element_text or claim_element_id,
+                confidence=1.0,
+                attributes={
                     "claim_element_id": claim_element_id,
                     "claim_element_text": claim_element_text,
                     "claim_type": metadata.get("claim_type", ""),
                 },
-            }
+            )
         )
 
     sentences = _split_sentences(text)
@@ -241,53 +250,53 @@ def extract_graph_from_text(
     for index, sentence in enumerate(sentences[:25]):
         fact_id = _stable_identifier("fact", artifact_id or source_id or "text", str(index), sentence)
         entities.append(
-            {
-                "id": fact_id,
-                "type": "fact",
-                "name": sentence[:120],
-                "confidence": 0.6,
-                "attributes": {
+            GraphEntity(
+                entity_id=fact_id,
+                entity_type="fact",
+                name=sentence[:120],
+                confidence=0.6,
+                attributes={
                     "text": sentence,
                     "sentence_index": index,
                     "source_id": artifact_id,
                 },
-            }
+            )
         )
         if artifact_id:
             relationships.append(
-                {
-                    "id": _stable_identifier("rel", artifact_id, fact_id, "has_fact"),
-                    "source_id": artifact_id,
-                    "target_id": fact_id,
-                    "relation_type": "has_fact",
-                    "confidence": 1.0,
-                    "attributes": {"sentence_index": index},
-                }
+                GraphRelationship(
+                    relationship_id=_stable_identifier("rel", artifact_id, fact_id, "has_fact"),
+                    source_id=artifact_id,
+                    target_id=fact_id,
+                    relation_type="has_fact",
+                    confidence=1.0,
+                    attributes={"sentence_index": index},
+                )
             )
         if claim_node_id:
             relationships.append(
-                {
-                    "id": _stable_identifier("rel", fact_id, claim_node_id, "supports"),
-                    "source_id": fact_id,
-                    "target_id": claim_node_id,
-                    "relation_type": "supports",
-                    "confidence": 0.6,
-                    "attributes": {"sentence_index": index},
-                }
+                GraphRelationship(
+                    relationship_id=_stable_identifier("rel", fact_id, claim_node_id, "supports"),
+                    source_id=fact_id,
+                    target_id=claim_node_id,
+                    relation_type="supports",
+                    confidence=0.6,
+                    attributes={"sentence_index": index},
+                )
             )
 
-    return {
-        "status": "available-fallback" if KNOWLEDGE_GRAPHS_AVAILABLE else "unavailable",
-        "source_id": source_id or "",
-        "entities": entities,
-        "relationships": relationships,
-        "metadata": {
+    return GraphPayload(
+        status="available-fallback" if KNOWLEDGE_GRAPHS_AVAILABLE else "unavailable",
+        source_id=source_id or "",
+        entities=entities,
+        relationships=relationships,
+        metadata={
             **metadata,
             "text_length": len(text),
             "sentence_count": len(sentences),
             "backend_available": KNOWLEDGE_GRAPHS_AVAILABLE,
         },
-    }
+    ).as_dict()
 
 
 def query_graph_support(
@@ -357,25 +366,76 @@ def query_graph_support(
     semantic_cluster_count = len(ranked_results)
     semantic_duplicate_count = max(unique_fact_count - semantic_cluster_count, 0)
 
-    return {
-        "status": "available-fallback" if KNOWLEDGE_GRAPHS_AVAILABLE else "unavailable",
-        "claim_element_id": claim_element_id,
-        "claim_type": claim_type or "",
-        "claim_element_text": claim_element_text or "",
-        "graph_id": graph_id or "",
-        "results": limited_results,
-        "summary": {
-            "result_count": len(limited_results),
-            "total_fact_count": len(facts),
-            "unique_fact_count": unique_fact_count,
-            "duplicate_fact_count": duplicate_fact_count,
-            "semantic_cluster_count": semantic_cluster_count,
-            "semantic_duplicate_count": semantic_duplicate_count,
-            "support_by_kind": support_by_kind,
-            "support_by_source": support_by_source,
-            "max_score": ranked_results[0]["score"] if ranked_results else 0.0,
+    typed_results = [
+        GraphSupportMatch(
+            fact_id=str(item.get("fact_id") or ""),
+            text=str(item.get("text") or ""),
+            score=float(item.get("score", 0.0) or 0.0),
+            confidence=float(item.get("confidence", 0.0) or 0.0),
+            matched_claim_element=bool(item.get("matched_claim_element", False)),
+            duplicate_count=int(item.get("duplicate_count", 1) or 1),
+            cluster_size=int(item.get("cluster_size", item.get("duplicate_count", 1)) or 1),
+            cluster_texts=[str(text) for text in item.get("cluster_texts", []) or []],
+            support_kind=str(item.get("support_kind") or ""),
+            source_table=str(item.get("source_table") or ""),
+            support_kind_set=[str(kind) for kind in item.get("support_kind_set", []) or []],
+            source_table_set=[str(source) for source in item.get("source_table_set", []) or []],
+            claim_element_id=str(item.get("claim_element_id") or ""),
+            claim_element_text=str(item.get("claim_element_text") or ""),
+            support_ref=str(item.get("support_ref") or ""),
+            support_label=str(item.get("support_label") or ""),
+            evidence_record_id=item.get("evidence_record_id"),
+            authority_record_id=item.get("authority_record_id"),
+            metadata={
+                key: value
+                for key, value in item.items()
+                if key not in {
+                    "fact_id",
+                    "text",
+                    "score",
+                    "confidence",
+                    "matched_claim_element",
+                    "duplicate_count",
+                    "cluster_size",
+                    "cluster_texts",
+                    "support_kind",
+                    "source_table",
+                    "support_kind_set",
+                    "source_table_set",
+                    "claim_element_id",
+                    "claim_element_text",
+                    "support_ref",
+                    "support_label",
+                    "evidence_record_id",
+                    "authority_record_id",
+                }
+            },
+        )
+        for item in limited_results
+    ]
+
+    return GraphSupportResult(
+        status="available-fallback" if KNOWLEDGE_GRAPHS_AVAILABLE else "unavailable",
+        claim_element_id=claim_element_id,
+        claim_type=claim_type or "",
+        claim_element_text=claim_element_text or "",
+        graph_id=graph_id or "",
+        results=typed_results,
+        summary=GraphSupportSummary(
+            result_count=len(limited_results),
+            total_fact_count=len(facts),
+            unique_fact_count=unique_fact_count,
+            duplicate_fact_count=duplicate_fact_count,
+            semantic_cluster_count=semantic_cluster_count,
+            semantic_duplicate_count=semantic_duplicate_count,
+            support_by_kind=support_by_kind,
+            support_by_source=support_by_source,
+            max_score=ranked_results[0]["score"] if ranked_results else 0.0,
+        ),
+        metadata={
+            "backend_available": KNOWLEDGE_GRAPHS_AVAILABLE,
         },
-    }
+    ).as_dict()
 
 
 def persist_graph_snapshot(
@@ -383,13 +443,35 @@ def persist_graph_snapshot(
     *,
     graph_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    return {
-        "status": "pending" if _graph_storage_module is not None else "noop",
-        "graph_id": graph_id or "",
-        "persisted": False,
-        "node_count": len(graph_payload.get("entities", []) or []),
-        "edge_count": len(graph_payload.get("relationships", []) or []),
-    }
+    entity_count = len(graph_payload.get("entities", []) or []) if isinstance(graph_payload, dict) else 0
+    relationship_count = len(graph_payload.get("relationships", []) or []) if isinstance(graph_payload, dict) else 0
+    source_id = str(graph_payload.get("source_id") or "") if isinstance(graph_payload, dict) else ""
+    metadata = graph_payload.get("metadata", {}) if isinstance(graph_payload, dict) and isinstance(graph_payload.get("metadata"), dict) else {}
+    stable_graph_id = graph_id or _stable_identifier(
+        "graph",
+        source_id,
+        str(entity_count),
+        str(relationship_count),
+        str(metadata.get("text_length") or ""),
+    )
+    return GraphSnapshotResult(
+        status="pending" if _graph_storage_module is not None else "noop",
+        graph_id=stable_graph_id,
+        persisted=False,
+        created=False,
+        reused=False,
+        node_count=entity_count,
+        edge_count=relationship_count,
+        metadata={
+            "source_id": source_id,
+            "backend_available": _graph_storage_module is not None,
+            "lineage": {
+                "status": str(graph_payload.get("status") or "") if isinstance(graph_payload, dict) else "",
+                "text_length": metadata.get("text_length", 0),
+                "sentence_count": metadata.get("sentence_count", 0),
+            },
+        },
+    ).as_dict()
 
 
 __all__ = [

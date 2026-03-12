@@ -6,7 +6,11 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pathlib import Path
 
-from integrations.ipfs_datasets.provenance import build_provenance
+from integrations.ipfs_datasets.provenance import (
+    build_document_parse_summary_metadata,
+    build_provenance,
+    build_storage_parse_metadata,
+)
 from integrations.ipfs_datasets.documents import parse_document_text
 from integrations.ipfs_datasets.graphs import extract_graph_from_text
 from integrations.ipfs_datasets.types import CaseAuthority, CaseFact
@@ -456,17 +460,11 @@ class LegalAuthorityStorageHook:
             mime_type='text/plain',
             source='legal_authority',
         )
-        parsed_metadata = parsed.get('metadata', {}) if isinstance(parsed.get('metadata'), dict) else {}
         authority_metadata = authority.get('metadata', {}) if isinstance(authority.get('metadata'), dict) else {}
-        authority_metadata['document_parse_summary'] = {
-            'status': parsed.get('status'),
-            'chunk_count': len(parsed.get('chunks', []) or []),
-            'text_length': len(parsed.get('text', '') or ''),
-            'parser_version': parsed_metadata.get('parser_version', ''),
-            'input_format': parsed_metadata.get('input_format', ''),
-            'paragraph_count': parsed_metadata.get('paragraph_count', 0),
-            'source': parsed_metadata.get('source', 'legal_authority'),
-        }
+        authority_metadata['document_parse_summary'] = build_document_parse_summary_metadata(
+            parsed,
+            default_source='legal_authority',
+        )
         authority['metadata'] = authority_metadata
         return parsed
 
@@ -872,7 +870,9 @@ class LegalAuthorityStorageHook:
                 document_parse.get('status') if isinstance(document_parse, dict) else None,
                 len(document_parse.get('chunks', []) or []) if isinstance(document_parse, dict) else 0,
                 parsed_text_preview,
-                json.dumps(document_parse.get('metadata', {})) if isinstance(document_parse, dict) else json.dumps({}),
+                json.dumps(
+                    build_storage_parse_metadata(document_parse, default_source='legal_authority')
+                ) if isinstance(document_parse, dict) else json.dumps({}),
                 None,
                 0,
                 0,

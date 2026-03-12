@@ -81,9 +81,14 @@ python run.py --config config.llm_router.json
 
 # Server mode (edit config to enable server)
 python run.py --config config.llm_router.json
+
+# Dedicated review surface mode
+python run.py --config config.review_surface.json
 ```
 
 Access at: http://localhost:8000
+
+For the focused operator workflow, `config.review_surface.json` starts only the claim-support dashboard and its review/follow-up API routes. The dashboard is available at `http://localhost:8000/claim-support-review`, and the dedicated review app exposes `http://localhost:8000/health` for lightweight health checks.
 
 ## Single Server Deployment
 
@@ -191,6 +196,47 @@ sudo systemctl start complaint-generator
 sudo systemctl status complaint-generator
 ```
 
+#### 5a. Review Surface Service
+
+If you only want the claim-support operator surface, create a dedicated service that uses `config.review_surface.json`:
+
+Create `/etc/systemd/system/complaint-generator-review.service`:
+
+```ini
+[Unit]
+Description=Complaint Generator Review Surface
+After=network.target
+
+[Service]
+Type=simple
+User=complaint-app
+Group=complaint-app
+WorkingDirectory=/home/complaint-app/complaint-generator
+Environment="PATH=/home/complaint-app/complaint-generator/venv/bin"
+EnvironmentFile=/home/complaint-app/.env
+ExecStart=/home/complaint-app/complaint-generator/venv/bin/python run.py --config config.review_surface.json
+Restart=always
+RestartSec=10
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/complaint-app/complaint-generator/statefiles /home/complaint-app/complaint-generator/logs
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start the review surface:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable complaint-generator-review
+sudo systemctl start complaint-generator-review
+sudo systemctl status complaint-generator-review
+```
+
 #### 6. Configure Nginx Reverse Proxy
 
 Create `/etc/nginx/sites-available/complaint-generator`:
@@ -267,6 +313,18 @@ server {
 }
 ```
 
+For the review surface, the same reverse proxy pattern applies. The key operator routes are:
+
+- `/claim-support-review`
+- `/api/claim-support/review`
+- `/api/claim-support/execute-follow-up`
+
+You can verify the service behind Nginx with a simple smoke check:
+
+```bash
+curl -I http://127.0.0.1:8000/claim-support-review
+```
+
 Enable site:
 ```bash
 sudo ln -s /etc/nginx/sites-available/complaint-generator /etc/nginx/sites-enabled/
@@ -309,17 +367,21 @@ sudo tail -f /var/log/nginx/complaint-generator-error.log
 
 #### Health Checks
 
-Create health check endpoint in application:
-```python
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
-```
+The legacy full web server still does not expose a dedicated `/health` endpoint. For basic availability checks use:
+
+- Full web server: `/`
+- Dedicated review surface: `/health`
 
 Setup monitoring with cron:
 ```bash
 # /etc/cron.d/complaint-generator-health
-*/5 * * * * root curl -f http://localhost:8000/health || systemctl restart complaint-generator
+*/5 * * * * root curl -f http://localhost:8000/ || systemctl restart complaint-generator
+```
+
+For the dedicated review surface service, probe `/health` instead:
+
+```bash
+*/5 * * * * root curl -f http://localhost:8000/health || systemctl restart complaint-generator-review
 ```
 
 #### Backups
@@ -394,10 +456,16 @@ EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/health')"
+  CMD python -c "import requests; requests.get('http://localhost:8000/', timeout=5).raise_for_status()"
 
 # Run application
 CMD ["python", "run.py", "--config", "config.llm_router.json"]
+```
+
+To build a review-surface-only image, swap the startup command:
+
+```dockerfile
+CMD ["python", "run.py", "--config", "config.review_surface.json"]
 ```
 
 ### Docker Compose
@@ -428,7 +496,7 @@ services:
     networks:
       - complaint-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -441,6 +509,27 @@ networks:
 volumes:
   statefiles:
   logs:
+```
+
+For the dedicated review surface, mount `config.review_surface.json` instead and start with that config:
+
+```yaml
+    volumes:
+      - ./config.review_surface.json:/app/config.review_surface.json:ro
+```
+
+For a review-surface-only container healthcheck, target the dedicated health route:
+
+```yaml
+    healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+```
+
+```bash
+docker run --rm -p 8000:8000 \
+  -v "$PWD/config.review_surface.json:/app/config.review_surface.json:ro" \
+  complaint-generator:latest \
+  python run.py --config config.review_surface.json
 ```
 
 ### Build and Run
@@ -509,13 +598,13 @@ spec:
             cpu: "1000m"
         livenessProbe:
           httpGet:
-            path: /health
+            path: /
             port: 8000
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
-            path: /health
+            path: /
             port: 8000
           initialDelaySeconds: 20
           periodSeconds: 5

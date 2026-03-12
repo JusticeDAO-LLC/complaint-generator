@@ -11,7 +11,9 @@ Use this with:
 - `docs/IPFS_DATASETS_PY_INTEGRATION.md`
 - `docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md`
 - `docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md`
+- `docs/IPFS_DATASETS_PY_NEXT_BATCH_PLAN.md`
 - `docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md`
+- `docs/IPFS_DATASETS_PY_FILE_WORKLIST.md`
 - `docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md`
 
 ## How To Use This Checklist
@@ -56,11 +58,20 @@ Validation:
 - mediator startup smoke checks
 - targeted search to confirm no direct production imports remain
 
+Suggested focused validation:
+
+- `./.venv/bin/python -m pytest tests/test_ipfs_adapter_layer.py -q`
+- `./.venv/bin/python -m pytest tests/test_ipfs_adapter_types.py -q`
+
 ## M1: Shared Parse and Corpus Contract
 
 Goal:
 
 - make `documents.py` the canonical parse layer for uploaded evidence, archived pages, and legal texts
+
+Status:
+
+- core parse contract and provenance alignment are implemented and runtime-validated in the current checkout
 
 Primary files:
 
@@ -73,13 +84,13 @@ Primary files:
 
 Checklist:
 
-- [ ] `documents.py` accepts raw bytes, file paths, and fetched page payloads through one normalized contract
-- [ ] parse outputs include normalized text, chunk rows, parse summary, and transform lineage fields
-- [ ] evidence ingestion routes through the shared parse contract instead of hook-local parse shapes
-- [ ] web evidence ingestion routes through the shared parse contract instead of hook-local parse shapes
-- [ ] legal authority text uses the same parse family when source text is available
-- [ ] provenance fields align across evidence, archived pages, and authority text
-- [ ] the existing fact registry is extended to archived pages and future predicate-bearing artifacts
+- [x] `documents.py` accepts raw bytes, file paths, and fetched page payloads through one normalized contract
+- [x] parse outputs include normalized text, chunk rows, parse summary, and transform lineage fields
+- [x] evidence ingestion routes through the shared parse contract instead of hook-local parse shapes
+- [x] web evidence ingestion routes through the shared parse contract instead of hook-local parse shapes
+- [x] legal authority text uses the same parse family when source text is available
+- [x] provenance fields align across evidence, archived pages, and authority text
+- [ ] the existing fact registry is extended to future predicate-bearing artifacts; archived pages already flow through the evidence-backed fact path
 
 Acceptance criteria:
 
@@ -91,11 +102,21 @@ Validation:
 - focused mediator tests for evidence, web evidence, and authority parsing payloads
 - payload contract updates in `docs/PAYLOAD_CONTRACTS.md` when externally visible fields change
 
+Suggested focused validation:
+
+- `./.venv/bin/python -m pytest tests/test_evidence_hooks.py -q`
+- `./.venv/bin/python -m pytest tests/test_web_evidence_hooks.py -q`
+- `./.venv/bin/python -m pytest tests/test_legal_authority_hooks.py -q`
+
 ## M2: Persistent Support and Graph Query Plane
 
 Goal:
 
 - move from fallback graph extraction to persisted support traces and reviewable graph-backed support queries
+
+Status:
+
+- typed graph payload, graph snapshot, and graph-support result contracts are now implemented at the adapter boundary and validated against current mediator callers
 
 Primary files:
 
@@ -110,12 +131,12 @@ Primary files:
 
 Checklist:
 
-- [ ] graph snapshot contracts exist behind the adapter boundary
+- [x] graph snapshot contracts exist behind the adapter boundary
 - [ ] graph persistence semantics distinguish created versus reused graph content
 - [ ] support-query APIs can enumerate artifacts, authorities, and facts supporting a claim element
 - [ ] graph-support outputs preserve lineage back to source artifacts and authority records
 - [ ] coverage-matrix semantics are defined for mediator review and drafting readiness
-- [ ] support queries expose duplicate and semantic-cluster context, not just raw counts
+- [x] support queries expose duplicate and semantic-cluster context, not just raw counts
 
 Acceptance criteria:
 
@@ -126,6 +147,12 @@ Validation:
 - focused graph adapter tests
 - claim-support and review payload tests
 - regression tests for graph-projection metadata and support summaries
+
+Suggested focused validation:
+
+- `./.venv/bin/python -m pytest tests/test_claim_support_hooks.py -q`
+- `./.venv/bin/python -m pytest tests/test_review_api.py -q`
+- `./.venv/bin/python -m pytest tests/test_evidence_hooks.py tests/test_claim_support_hooks.py tests/test_legal_authority_hooks.py -q`
 
 ## M3: Support-Quality and Validation Layer
 
@@ -162,6 +189,10 @@ Validation:
 - focused tests for logic adapter degraded mode
 - mediator tests for contradiction and proof-gap payloads
 
+Suggested validation target:
+
+- add dedicated focused tests before implementation lands; do not rely on broad suites alone for first GraphRAG or proof-work slices
+
 ## M4: Operator Productization
 
 Goal:
@@ -194,6 +225,11 @@ Validation:
 - focused review API tests
 - payload contract updates
 - application docs updates
+
+Suggested focused validation:
+
+- `./.venv/bin/python -m pytest tests/test_review_api.py -q`
+- `./.venv/bin/python -m pytest tests/test_web_evidence_hooks.py tests/test_claim_support_hooks.py tests/test_review_api.py -q`
 
 ## Cross-Milestone Guardrails
 

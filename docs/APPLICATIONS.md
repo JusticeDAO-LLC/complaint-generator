@@ -167,6 +167,7 @@ This mode serves:
 - `/claim-support-review` for the operator dashboard
 - `/api/claim-support/review` for read-only review payloads
 - `/api/claim-support/execute-follow-up` for explicit follow-up execution
+- `/health` for lightweight liveness and readiness checks on the dedicated review app
 
 ### API Endpoints
 

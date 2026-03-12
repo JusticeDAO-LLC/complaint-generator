@@ -8,7 +8,7 @@ from integrations.ipfs_datasets.capabilities import (
     summarize_ipfs_datasets_capabilities,
 )
 from integrations.ipfs_datasets.documents import parse_document_bytes, parse_document_file
-from integrations.ipfs_datasets.graphs import extract_graph_from_text, query_graph_support
+from integrations.ipfs_datasets.graphs import extract_graph_from_text, persist_graph_snapshot, query_graph_support
 from integrations.ipfs_datasets.legal import (
     search_federal_register,
     search_recap_documents,
@@ -270,6 +270,9 @@ def test_parse_document_bytes_returns_normalized_shape():
     assert result['text'] == 'Hello world'
     assert result['metadata']['filename'] == 'note.txt'
     assert 'chunks' in result
+    assert result['summary']['chunk_count'] == len(result['chunks'])
+    assert result['summary']['parser_version'] == 'documents-adapter:1'
+    assert result['metadata']['transform_lineage']['source'] == 'bytes'
 
 
 def test_parse_document_bytes_normalizes_html_input():
@@ -282,6 +285,8 @@ def test_parse_document_bytes_normalizes_html_input():
     assert '<h1>' not in result['text']
     assert result['metadata']['input_format'] == 'html'
     assert result['metadata']['chunk_count'] >= 1
+    assert result['summary']['input_format'] == 'html'
+    assert result['lineage']['normalization'] == 'html_to_text'
 
 
 def test_parse_document_file_reads_and_normalizes_file():
@@ -299,6 +304,7 @@ def test_parse_document_file_reads_and_normalizes_file():
     assert result['metadata']['filename'].endswith('.txt')
     assert result['metadata']['mime_type'] == 'text/plain'
     assert result['chunks'][0]['chunk_id'] == 'chunk-0'
+    assert result['metadata']['transform_lineage']['source'] == 'file'
 
 
 def test_extract_graph_from_text_returns_normalized_shape():
@@ -308,6 +314,22 @@ def test_extract_graph_from_text_returns_normalized_shape():
     assert result['entities'][0]['id'] == 'artifact-1'
     assert any(entity['type'] == 'fact' for entity in result['entities'])
     assert any(relationship['relation_type'] == 'has_fact' for relationship in result['relationships'])
+
+
+def test_persist_graph_snapshot_returns_stable_contract():
+    graph_payload = extract_graph_from_text('Example complaint text', source_id='artifact-1')
+
+    result = persist_graph_snapshot(graph_payload)
+
+    assert result['status'] in {'pending', 'noop'}
+    assert result['graph_id'].startswith('graph:')
+    assert result['persisted'] is False
+    assert result['created'] is False
+    assert result['reused'] is False
+    assert result['node_count'] >= 1
+    assert result['edge_count'] >= 1
+    assert result['metadata']['source_id'] == 'artifact-1'
+    assert result['metadata']['lineage']['status'] == graph_payload['status']
 
 
 def test_query_graph_support_ranks_fact_backed_results():
@@ -353,6 +375,7 @@ def test_query_graph_support_ranks_fact_backed_results():
     assert result['summary']['duplicate_fact_count'] == 1
     assert result['summary']['support_by_kind']['evidence'] == 2
     assert result['summary']['support_by_kind']['authority'] == 1
+    assert result['metadata']['backend_available'] in {True, False}
     assert result['results'][0]['fact_id'] == 'fact:1'
     assert result['results'][0]['matched_claim_element'] is True
     assert result['results'][0]['duplicate_count'] == 2

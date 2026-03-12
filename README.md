@@ -230,6 +230,11 @@ User Interface (CLI/Web) → Mediator → LLM Router Backend
 - [LLM Router](docs/LLM_ROUTER.md) - Multi-provider integration
 - [Architecture](docs/ARCHITECTURE.md) - System design
 
+### IPFS Datasets Py Roadmap
+- [Improvement Plan](docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md) - Comprehensive integration plan for legal scrapers, legal dataset search, graph databases, theorem provers, web archiving, search engines, and information organization
+- [Integration Guide](docs/IPFS_DATASETS_PY_INTEGRATION.md) - Current production integration model and adapter boundary
+- [Execution Backlog](docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md) - Workstream-by-workstream implementation backlog and sequencing
+
 ### Features
 - [Complaint Analysis](docs/COMPLAINT_ANALYSIS_INTEGRATION.md) - 14 complaint types
 - [Legal Research](docs/LEGAL_AUTHORITY_RESEARCH.md) - Multi-source research

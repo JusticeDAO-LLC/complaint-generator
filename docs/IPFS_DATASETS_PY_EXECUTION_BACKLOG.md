@@ -6,6 +6,7 @@ Status: Active execution backlog
 Companion docs:
 
 - `docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md`
+- `docs/IPFS_DATASETS_PY_NEXT_BATCH_PLAN.md`
 - `docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md`
 - `docs/PAYLOAD_CONTRACTS.md`
 
@@ -334,6 +335,7 @@ Implemented baseline:
 - evidence ingestion already performs graph extraction and stores entity and relationship metadata in DuckDB
 - complaint-phase graph projection already exists for evidence-backed support insertion
 - legal-authority ingestion now also stores graph entity and relationship metadata locally for later support tracing
+- adapter-visible graph payload, graph snapshot, and graph-support result contracts are now typed under `integrations/ipfs_datasets/types.py` and emitted by `integrations/ipfs_datasets/graphs.py`
 
 Acceptance criteria:
 

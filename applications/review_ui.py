@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Any
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import HTMLResponse
@@ -29,15 +30,36 @@ def attach_claim_support_review_ui_routes(app: FastAPI) -> FastAPI:
     return app
 
 
+def create_review_health_router(surface_name: str) -> APIRouter:
+    router = APIRouter()
+
+    @router.get("/health")
+    async def review_health() -> dict:
+        return {
+            "status": "healthy",
+            "surface": surface_name,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+    return router
+
+
+def attach_review_health_routes(app: FastAPI, surface_name: str) -> FastAPI:
+    app.include_router(create_review_health_router(surface_name))
+    return app
+
+
 def create_review_dashboard_app() -> FastAPI:
     app = FastAPI(title="Complaint Generator Review Dashboard")
     attach_claim_support_review_ui_routes(app)
+    attach_review_health_routes(app, "review-dashboard")
     return app
 
 
 def create_review_surface_app(mediator: Any) -> FastAPI:
     app = FastAPI(title="Complaint Generator Review Surface")
     attach_claim_support_review_ui_routes(app)
+    attach_review_health_routes(app, "review-surface")
     from .review_api import attach_claim_support_review_routes
 
     attach_claim_support_review_routes(app, mediator)

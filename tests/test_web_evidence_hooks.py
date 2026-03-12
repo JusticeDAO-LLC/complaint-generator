@@ -372,6 +372,7 @@ class TestWebEvidenceIntegrationHook:
             store_kwargs = mock_mediator.evidence_storage.store_evidence.call_args.kwargs
             assert store_kwargs['evidence_type'] == 'web_document'
             assert store_kwargs['metadata']['parse_document'] is True
+            assert store_kwargs['metadata']['parse_source'] == 'web_document'
             assert store_kwargs['metadata']['mime_type'] == 'text/plain'
             assert store_kwargs['metadata']['filename'] == 'evidence-2.txt'
             payload_text = store_kwargs['data'].decode('utf-8')

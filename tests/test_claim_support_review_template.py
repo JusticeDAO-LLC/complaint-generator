@@ -30,6 +30,11 @@ def test_review_dashboard_app_registers_claim_support_review_page():
         for route in app.routes
         if hasattr(route, "methods")
     )
+    assert any(
+        route.path == "/health" and "GET" in route.methods
+        for route in app.routes
+        if hasattr(route, "methods")
+    )
 
 
 def test_review_surface_app_registers_dashboard_and_api_routes():
@@ -47,6 +52,11 @@ def test_review_surface_app_registers_dashboard_and_api_routes():
     )
     assert any(
         route.path == "/api/claim-support/execute-follow-up" and "POST" in route.methods
+        for route in app.routes
+        if hasattr(route, "methods")
+    )
+    assert any(
+        route.path == "/health" and "GET" in route.methods
         for route in app.routes
         if hasattr(route, "methods")
     )

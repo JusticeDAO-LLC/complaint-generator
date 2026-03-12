@@ -31,3 +31,8 @@ def test_create_uvicorn_app_for_review_surface_registers_ui_and_api_routes():
         for route in app.routes
         if hasattr(route, "methods")
     )
+    assert any(
+        route.path == "/health" and "GET" in route.methods
+        for route in app.routes
+        if hasattr(route, "methods")
+    )

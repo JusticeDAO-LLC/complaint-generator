@@ -9,11 +9,12 @@ from datetime import datetime, timedelta, UTC
 from pathlib import Path
 
 from integrations.ipfs_datasets.provenance import (
+    build_storage_parse_metadata,
     build_provenance,
     merge_metadata_with_provenance,
     stable_content_hash,
 )
-from integrations.ipfs_datasets.documents import parse_document_bytes
+from integrations.ipfs_datasets.documents import parse_document_bytes, summarize_document_parse
 from integrations.ipfs_datasets.graphs import extract_graph_from_text
 from integrations.ipfs_datasets.types import CaseArtifact, CaseFact
 from integrations.ipfs_datasets.storage import (
@@ -130,17 +131,10 @@ class EvidenceStorageHook:
                     data,
                     filename=str((metadata or {}).get('filename', '')),
                     mime_type=str((metadata or {}).get('mime_type', '')),
+                    source=str((metadata or {}).get('parse_source', 'bytes')),
                 )
                 result['document_parse'] = document_parse
-                parse_metadata = document_parse.get('metadata', {}) or {}
-                result['metadata']['document_parse_summary'] = {
-                    'status': document_parse.get('status'),
-                    'chunk_count': len(document_parse.get('chunks', []) or []),
-                    'text_length': len(document_parse.get('text', '') or ''),
-                    'parser_version': parse_metadata.get('parser_version', ''),
-                    'input_format': parse_metadata.get('input_format', ''),
-                    'paragraph_count': parse_metadata.get('paragraph_count', 0),
-                }
+                result['metadata']['document_parse_summary'] = summarize_document_parse(document_parse)
                 graph_payload = extract_graph_from_text(
                     document_parse.get('text', ''),
                     source_id=result.get('artifact_id') or result.get('cid'),
@@ -191,7 +185,8 @@ class EvidenceStorageHook:
                 file_metadata['mime_type'] = mimetypes.guess_type(file_path)[0] or ''
             file_metadata.update({
                 'filename': os.path.basename(file_path),
-                'original_path': file_path
+                'original_path': file_path,
+                'parse_source': 'file',
             })
             
             return self.store_evidence(data, evidence_type, file_metadata)
@@ -708,13 +703,16 @@ class EvidenceStateHook:
         try:
             conn = duckdb.connect(self.db_path)
             document_parse = evidence_info.get('document_parse') if isinstance(evidence_info.get('document_parse'), dict) else {}
-            document_parse_summary = evidence_info.get('metadata', {}).get('document_parse_summary', {})
             document_graph = evidence_info.get('document_graph') if isinstance(evidence_info.get('document_graph'), dict) else {}
             document_graph_summary = evidence_info.get('metadata', {}).get('document_graph_summary', {})
-            parse_metadata = {
-                **(document_parse.get('metadata', {}) or {}),
-                **{key: value for key, value in (document_parse_summary or {}).items() if value not in (None, '')},
-            }
+            parse_metadata = build_storage_parse_metadata(
+                document_parse,
+                default_source=str(
+                    document_parse.get('metadata', {}).get('source')
+                    or evidence_info.get('metadata', {}).get('parse_source')
+                    or ''
+                ),
+            )
             parsed_text = document_parse.get('text', '')
             parsed_text_preview = parsed_text[:5000] if parsed_text else ''
             if not document_graph and parsed_text:
@@ -789,7 +787,7 @@ class EvidenceStateHook:
                 json.dumps(evidence_info.get('metadata', {}).get('provenance', {})),
                 claim_element_id,
                 claim_element,
-                document_parse.get('status') or document_parse_summary.get('status'),
+                document_parse.get('status') or parse_metadata.get('status'),
                 len(document_parse.get('chunks', []) or []),
                 parsed_text_preview,
                 json.dumps(parse_metadata),

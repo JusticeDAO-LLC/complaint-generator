@@ -55,6 +55,8 @@ class TestEvidenceStorageHook:
             assert result['metadata']['document_parse_summary']['parser_version']
             assert result['metadata']['document_parse_summary']['input_format'] == 'text'
             assert result['metadata']['document_parse_summary']['paragraph_count'] >= 1
+            assert result['document_parse']['summary']['chunk_count'] == result['metadata']['document_parse_summary']['chunk_count']
+            assert result['document_parse']['metadata']['transform_lineage']['source'] == 'bytes'
             assert result['document_graph']['status'] in {'unavailable', 'available-fallback'}
             assert result['metadata']['document_graph_summary']['entity_count'] >= 1
         except ImportError as e:
@@ -83,6 +85,7 @@ class TestEvidenceStorageHook:
                 assert 'filename' in result['metadata']
                 assert result['metadata']['mime_type'] == 'text/plain'
                 assert result['metadata']['document_parse_summary']['input_format'] == 'text'
+                assert result['document_parse']['metadata']['transform_lineage']['source'] == 'file'
             finally:
                 os.unlink(temp_path)
                 
@@ -364,11 +367,26 @@ class TestEvidenceStateHook:
                     'document_parse': {
                         'status': 'fallback',
                         'text': 'alpha beta gamma delta',
+                        'summary': {
+                            'status': 'fallback',
+                            'chunk_count': 2,
+                            'text_length': 22,
+                            'parser_version': 'documents-adapter:1',
+                            'input_format': 'text',
+                            'paragraph_count': 1,
+                        },
                         'chunks': [
                             {'chunk_id': 'chunk-0', 'index': 0, 'start': 0, 'end': 11, 'text': 'alpha beta '},
                             {'chunk_id': 'chunk-1', 'index': 1, 'start': 11, 'end': 22, 'text': 'gamma delta'},
                         ],
-                        'metadata': {'filename': 'evidence.txt'},
+                        'metadata': {
+                            'filename': 'evidence.txt',
+                            'transform_lineage': {
+                                'source': 'bytes',
+                                'parser_version': 'documents-adapter:1',
+                                'input_format': 'text',
+                            },
+                        },
                     },
                 }
 
@@ -385,6 +403,7 @@ class TestEvidenceStateHook:
                 assert record['parsed_text_preview'].startswith('alpha beta')
                 assert record['parse_metadata']['filename'] == 'evidence.txt'
                 assert record['parse_metadata']['parser_version'] == 'documents-adapter:1'
+                assert record['parse_metadata']['transform_lineage']['source'] == 'bytes'
                 assert record['graph_entity_count'] >= 1
                 assert record['graph_relationship_count'] >= 1
                 assert len(chunks) == 2

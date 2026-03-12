@@ -581,6 +581,7 @@ class WebEvidenceIntegrationHook:
                         'source_system': 'ipfs_datasets_py',
                         'filename': self._build_web_evidence_filename(evidence_item),
                         'mime_type': 'text/plain',
+                        'parse_source': 'web_document',
                         'parse_document': True,
                         'auto_discovered': True,
                         'relevance_score': validation['relevance_score'],

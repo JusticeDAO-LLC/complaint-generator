@@ -10,8 +10,10 @@ This document is the practical integration guide that sits between:
 
 - [docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md](docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md)
 - [docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md](docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md)
+- [docs/IPFS_DATASETS_PY_NEXT_BATCH_PLAN.md](docs/IPFS_DATASETS_PY_NEXT_BATCH_PLAN.md)
 - [docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md](docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md)
 - [docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md](docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md)
+- [docs/IPFS_DATASETS_PY_FILE_WORKLIST.md](docs/IPFS_DATASETS_PY_FILE_WORKLIST.md)
 - [docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md](docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md)
 
 The main principle is simple: complaint-generator remains the orchestrator, and `ipfs_datasets_py` provides acquisition, parsing, graph, archival, retrieval, and reasoning capabilities through the adapter layer under `integrations/ipfs_datasets/`.
@@ -159,8 +161,8 @@ Recommended use inside complaint-generator:
 
 Primary next improvements:
 
-- backing graph-store persistence and lineage
-- graph-backed support tracing by claim element
+- backing graph-store persistence and created-versus-reused semantics
+- deeper graph-backed support tracing by claim element on top of the new typed graph snapshot and support-result contracts
 - a coverage matrix built from facts, support edges, graph output, and validation state
 
 ### 5. GraphRAG and information organization
@@ -241,7 +243,7 @@ The highest-value order remains:
 5. Integrate GraphRAG support-path scoring.
 6. Integrate theorem-prover-backed validation.
 
-For milestone-level ownership, file targets, and acceptance tests, use [docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md](docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md) as the execution companion to this guide.
+For milestone-level ownership, file targets, and acceptance tests, use [docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md](docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md) and [docs/IPFS_DATASETS_PY_FILE_WORKLIST.md](docs/IPFS_DATASETS_PY_FILE_WORKLIST.md) as the execution companions to this guide.
 
 This order matters because theorem proving and GraphRAG become much more useful once the system already has stable parse outputs, fact records, support edges, and graph lineage.
 

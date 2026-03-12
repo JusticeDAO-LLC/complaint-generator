@@ -7,6 +7,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .loader import import_attr_optional, import_module_optional
+from .types import (
+    DocumentChunk,
+    DocumentParseResult,
+    DocumentParseSummary,
+    DocumentTransformLineage,
+)
 
 
 InputDetector, _input_detector_error = import_attr_optional(
@@ -39,6 +45,47 @@ DOCUMENTS_ERROR = (
 )
 
 PARSER_VERSION = "documents-adapter:1"
+
+
+def _build_parse_summary(
+    *,
+    status: str,
+    text: str,
+    chunks: List[Dict[str, Any]],
+    parser_version: str,
+    input_format: str,
+    paragraph_count: int,
+) -> DocumentParseSummary:
+    return DocumentParseSummary(
+        status=status,
+        chunk_count=len(chunks),
+        text_length=len(text or ""),
+        parser_version=parser_version,
+        input_format=input_format,
+        paragraph_count=paragraph_count,
+    )
+
+
+def _build_transform_lineage(
+    *,
+    source: str,
+    input_format: str,
+    parser_version: str,
+    chunk_size: int,
+    overlap: int,
+    chunk_count: int,
+) -> DocumentTransformLineage:
+    return DocumentTransformLineage(
+        source=source,
+        parser_version=parser_version,
+        input_format=input_format,
+        normalization="html_to_text" if input_format == "html" else "text_normalization",
+        chunking={
+            "chunk_size": chunk_size,
+            "overlap": overlap,
+            "chunk_count": chunk_count,
+        },
+    )
 
 
 def _decode_text_fallback(data: bytes) -> str:
@@ -150,35 +197,69 @@ def parse_document_text(
 ) -> Dict[str, Any]:
     normalized_mime = _guess_mime_type(filename or "", mime_type or "")
     raw_text = text or ""
-    normalized_text = _strip_html(raw_text) if _looks_like_html(raw_text, normalized_mime, filename or "") else _normalize_whitespace(raw_text)
+    input_format = "html" if _looks_like_html(raw_text, normalized_mime, filename or "") else "text"
+    normalized_text = _strip_html(raw_text) if input_format == "html" else _normalize_whitespace(raw_text)
     paragraphs = _split_into_paragraphs(normalized_text)
     chunks = chunk_text(normalized_text, chunk_size=chunk_size, overlap=overlap) if normalized_text else []
+    typed_chunks = [
+        DocumentChunk(
+            chunk_id=str(chunk.get("chunk_id") or ""),
+            index=int(chunk.get("index", 0) or 0),
+            start=int(chunk.get("start", 0) or 0),
+            end=int(chunk.get("end", 0) or 0),
+            text=str(chunk.get("text") or ""),
+            length=int(chunk.get("length", 0) or 0),
+            metadata=dict(chunk.get("metadata") or {}),
+        )
+        for chunk in chunks
+    ]
     status = "empty"
     if normalized_text:
         status = "available-fallback" if DOCUMENTS_AVAILABLE else "fallback"
-    return {
-        "status": status,
-        "text": normalized_text,
-        "chunks": chunks,
-        "metadata": {
+    summary = _build_parse_summary(
+        status=status,
+        text=normalized_text,
+        chunks=chunks,
+        parser_version=PARSER_VERSION,
+        input_format=input_format,
+        paragraph_count=len(paragraphs),
+    )
+    transform_lineage = _build_transform_lineage(
+        source=source,
+        input_format=input_format,
+        parser_version=PARSER_VERSION,
+        chunk_size=chunk_size,
+        overlap=overlap,
+        chunk_count=len(typed_chunks),
+    )
+    result = DocumentParseResult(
+        status=status,
+        text=normalized_text,
+        chunks=typed_chunks,
+        summary=summary,
+        lineage=transform_lineage,
+        metadata={
             "filename": filename or "",
             "mime_type": normalized_mime,
             "size": len(raw_text.encode("utf-8", errors="ignore")),
             "backend_available": DOCUMENTS_AVAILABLE,
             "parser_version": PARSER_VERSION,
             "source": source,
-            "chunk_count": len(chunks),
+            "chunk_count": len(typed_chunks),
             "paragraph_count": len(paragraphs),
             "text_length": len(normalized_text),
-            "input_format": "html" if _looks_like_html(raw_text, normalized_mime, filename or "") else "text",
+            "input_format": input_format,
+            "transform_lineage": transform_lineage.as_dict(),
         },
-    }
+    )
+    return result.as_dict()
 
 
 def parse_document_bytes(
     data: bytes,
     filename: Optional[str] = None,
     mime_type: Optional[str] = None,
+    source: str = "bytes",
     chunk_size: int = 1000,
     overlap: int = 100,
 ) -> Dict[str, Any]:
@@ -186,7 +267,7 @@ def parse_document_bytes(
         _decode_text_fallback(data),
         filename=filename,
         mime_type=mime_type,
-        source="bytes",
+        source=source,
         chunk_size=chunk_size,
         overlap=overlap,
     )
@@ -207,9 +288,43 @@ def parse_document_file(
         data,
         filename=path.name,
         mime_type=_guess_mime_type(path.name, mime_type or ""),
+        source="file",
         chunk_size=chunk_size,
         overlap=overlap,
     )
+
+
+def summarize_document_parse(document_parse: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(document_parse, dict):
+        return {
+            "status": "",
+            "chunk_count": 0,
+            "text_length": 0,
+            "parser_version": "",
+            "input_format": "",
+            "paragraph_count": 0,
+        }
+
+    summary = document_parse.get("summary")
+    if isinstance(summary, dict):
+        return DocumentParseSummary(
+            status=str(summary.get("status") or ""),
+            chunk_count=int(summary.get("chunk_count", 0) or 0),
+            text_length=int(summary.get("text_length", 0) or 0),
+            parser_version=str(summary.get("parser_version") or ""),
+            input_format=str(summary.get("input_format") or ""),
+            paragraph_count=int(summary.get("paragraph_count", 0) or 0),
+        ).as_dict()
+
+    metadata = document_parse.get("metadata", {}) if isinstance(document_parse.get("metadata"), dict) else {}
+    return _build_parse_summary(
+        status=str(document_parse.get("status") or ""),
+        text=str(document_parse.get("text") or ""),
+        chunks=document_parse.get("chunks", []) or [],
+        parser_version=str(metadata.get("parser_version") or ""),
+        input_format=str(metadata.get("input_format") or ""),
+        paragraph_count=int(metadata.get("paragraph_count", 0) or 0),
+    ).as_dict()
 
 
 __all__ = [
@@ -222,4 +337,5 @@ __all__ = [
     "parse_document_text",
     "parse_document_bytes",
     "parse_document_file",
+    "summarize_document_parse",
 ]
