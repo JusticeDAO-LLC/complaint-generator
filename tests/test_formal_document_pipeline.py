@@ -216,6 +216,16 @@ def test_generate_formal_complaint_builds_court_style_sections():
     assert complaint['affidavit']['jurat'] == 'Subscribed and sworn to before me on March 13, 2026 by Jane Doe.'
     assert complaint['affidavit']['notary_block'][1] == 'Notary Public for the State of New Mexico'
     assert all('What happened?' not in fact for fact in complaint['affidavit']['facts'])
+    assert any(
+        'Plaintiff was fired after reporting sexual harassment to HR.' == allegation
+        or 'I was fired after reporting sexual harassment to HR.' == allegation
+        for allegation in complaint['factual_allegations']
+    )
+    assert all('lost my pay' not in allegation.lower() for allegation in complaint['factual_allegations'])
+    assert all(
+        not allegation.lower().startswith('plaintiff seeks reinstatement')
+        for allegation in complaint['factual_allegations']
+    )
     assert complaint['certificate_of_service']['title'] == 'Certificate of Service'
     assert complaint['signature_block']['signature_line'] == '/s/ Jane Doe, Esq.'
     assert complaint['signature_block']['title'] == 'Counsel for Plaintiff'

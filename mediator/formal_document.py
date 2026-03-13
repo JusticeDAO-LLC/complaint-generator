@@ -63,6 +63,125 @@ def _clean_sentence(value: Any) -> str:
     return text if text.endswith((".", "?", "!", ":")) else f"{text}."
 
 
+def _split_allegation_fragments(value: Any) -> List[str]:
+    text = re.sub(r"\s+", " ", str(value or "")).strip(" -;")
+    if not text:
+        return []
+    if ": " in text:
+        prefix, suffix = text.split(": ", 1)
+        prefix_lower = prefix.strip().lower()
+        if (
+            prefix.strip().endswith("?")
+            or prefix_lower.startswith(("what ", "when ", "where ", "why ", "how ", "who ", "describe ", "explain "))
+            or prefix_lower in {"what happened", "what relief do you want"}
+        ):
+            text = suffix.strip()
+    parts = [
+        part.strip(" -;")
+        for part in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", text)
+        if part.strip(" -;")
+    ]
+    return parts or [text]
+
+
+def _formalize_allegation_fragment(value: Any) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip(" -;")
+    if not text:
+        return ""
+    replacements = (
+        (r"^i was\b", "Plaintiff was"),
+        (r"^i am\b", "Plaintiff is"),
+        (r"^i reported\b", "Plaintiff reported"),
+        (r"^i complained\b", "Plaintiff complained"),
+        (r"^i informed\b", "Plaintiff informed"),
+        (r"^i notified\b", "Plaintiff notified"),
+        (r"^i requested\b", "Plaintiff requested"),
+        (r"^i sought\b", "Plaintiff sought"),
+        (r"^i experienced\b", "Plaintiff experienced"),
+        (r"^i suffered\b", "Plaintiff suffered"),
+        (r"^i told\b", "Plaintiff told"),
+    )
+    for pattern, replacement in replacements:
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    text = re.sub(r"\bmy\b", "Plaintiff's", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bmine\b", "Plaintiff's", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bme\b", "Plaintiff", text, flags=re.IGNORECASE)
+    text = re.sub(r"\blost Plaintiff's pay and benefits\b", "lost pay and benefits", text, flags=re.IGNORECASE)
+    text = re.sub(r"\blost Plaintiff's (pay|wages|salary|income|benefits)\b", r"lost \1", text, flags=re.IGNORECASE)
+    if text and text[0].islower():
+        text = text[0].upper() + text[1:]
+    if len(text) < 12:
+        return ""
+    return text if text.endswith((".", "?", "!")) else f"{text}."
+
+
+def _is_factual_allegation_candidate(value: Any) -> bool:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    if re.match(r"^(as to [^,]+, )?plaintiff (seeks|requests|asks|demands)\b", lowered):
+        return False
+    if lowered.startswith(("requested relief", "relief requested", "element supported:")):
+        return False
+    if lowered.startswith(("evidence shows facts supporting", "the intake record describes facts supporting")):
+        return False
+    if re.match(r"^(as to [^,]+, )?(title\s+[ivxlcdm0-9]+\b|\d+\s+u\.s\.c\.|\d+\s+c\.f\.r\.|[a-z]{2,6}\.\s+gov\.\s+code\b)", lowered):
+        return False
+    if not re.search(
+        r"\b(was|were|is|are|reported|complained|terminated|fired|retaliated|denied|refused|told|informed|notified|requested|sought|experienced|suffered|lost|made|engaged|opposed|filed|sent|emailed|wrote|received|occurred|happened|subjected|demoted|suspended|disciplined|reduced)\b",
+        lowered,
+    ):
+        return False
+    return True
+
+
+def _expand_allegation_sources(value: Any, *, limit: Optional[int] = None) -> List[str]:
+    expanded: List[str] = []
+    for item in _listify(value):
+        for fragment in _split_allegation_fragments(item):
+            sentence = _formalize_allegation_fragment(fragment)
+            if sentence and _is_factual_allegation_candidate(sentence):
+                expanded.append(sentence)
+    unique: List[str] = []
+    seen = set()
+    for item in expanded:
+        marker = item.lower()
+        if marker in seen:
+            continue
+        seen.add(marker)
+        unique.append(item)
+    return unique[:limit] if limit is not None else unique
+
+
+def _synthesize_narrative_allegations(allegations: List[str]) -> List[str]:
+    cleaned = [str(item).strip() for item in allegations if str(item).strip()]
+    if not cleaned:
+        return []
+
+    def _pick(pattern: str, *, require_plaintiff: bool = False) -> str:
+        for item in cleaned:
+            lowered = item.lower()
+            if require_plaintiff and "plaintiff" not in lowered:
+                continue
+            if re.search(pattern, lowered):
+                return item.rstrip(".!?")
+        return ""
+
+    report_clause = _pick(r"\b(reported|complained|opposed|informed|notified|told|requested)\b", require_plaintiff=True)
+    adverse_clause = _pick(r"\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied)\b")
+    harm_clause = _pick(r"\blost (pay|wages|salary|income|benefits)\b|\b(suffered|experienced)\b", require_plaintiff=True)
+
+    synthesized: List[str] = []
+    if report_clause and adverse_clause:
+        synthesized.append(f"After {report_clause}, {adverse_clause}.")
+    if harm_clause:
+        loss_match = re.search(r"\blost ([^.]+)", harm_clause, flags=re.IGNORECASE)
+        if loss_match:
+            synthesized.append(f"As a direct result of Defendant's conduct, Plaintiff lost {loss_match.group(1).strip()}.")
+    return _expand_allegation_sources(_listify(_dedupe(synthesized)), limit=4)
+
+
 def _listify(value: Any) -> List[Any]:
     if value is None:
         return []
@@ -632,23 +751,23 @@ class ComplaintDocumentBuilder:
         }
 
     def _build_factual_allegations(self, base_allegations: Any, knowledge_graph, intake_summary: List[Dict[str, str]]) -> List[str]:
-        allegations = [_clean_sentence(item) for item in _listify(base_allegations) if _clean_text(item)]
-        if allegations:
-            return allegations
+        allegations = _expand_allegation_sources(base_allegations, limit=8)
         if knowledge_graph is not None:
             fact_entities = []
             for entity in knowledge_graph.entities.values():
                 if getattr(entity, "type", "") == "fact":
-                    fact_entities.append(_clean_sentence(entity.name))
-            if fact_entities:
-                return self._dedupe(fact_entities)
+                    fact_entities.extend(_expand_allegation_sources(entity.name, limit=2))
+            allegations.extend(fact_entities)
         fallback = []
         for item in intake_summary:
             question = item.get("question", "")
             answer = item.get("answer", "")
             if answer:
                 fallback.append(f"{question}: {answer}" if question else answer)
-        return self._dedupe([_clean_sentence(item) for item in fallback]) or ["Plaintiff will supplement the factual record with additional detail."]
+        allegations.extend(_expand_allegation_sources(fallback, limit=8))
+        deduped = self._dedupe(allegations)
+        combined = _synthesize_narrative_allegations(deduped)
+        return self._dedupe(combined + deduped)[:18] or ["Plaintiff will supplement the factual record with additional detail."]
 
     def _build_affidavit(
         self,
@@ -769,12 +888,8 @@ class ComplaintDocumentBuilder:
         candidates: List[str] = []
         plaintiffs = [_clean_text(name) for name in _listify(parties.get("plaintiffs")) if _clean_text(name)]
         if plaintiffs:
-            candidates.append(f"I am {plaintiffs[0]}, the plaintiff in this action")
+            candidates.append(f"I am {plaintiffs[0]}, the plaintiff in this action.")
         candidates.extend(_clean_sentence(item) for item in _listify(factual_allegations) if _clean_text(item))
-        for claim in _listify(claims):
-            if not isinstance(claim, dict):
-                continue
-            candidates.extend(_clean_sentence(item) for item in _listify(claim.get("supporting_facts")) if _clean_text(item))
 
         normalized: List[str] = []
         seen = set()
@@ -805,8 +920,13 @@ class ComplaintDocumentBuilder:
                 or prefix_lower in {"what happened", "what relief do you want"}
             ):
                 text = suffix.strip()
-        if text.lower().startswith("plaintiff repeats and realleges"):
+        lowered = text.lower()
+        if lowered.startswith("plaintiff repeats and realleges"):
             return ""
+        if not _is_factual_allegation_candidate(text) and not lowered.startswith("i am "):
+            return ""
+        if text and text[0].islower():
+            text = text[0].upper() + text[1:]
         cleaned = _clean_sentence(text)
         return cleaned if len(cleaned) >= 12 else ""
 

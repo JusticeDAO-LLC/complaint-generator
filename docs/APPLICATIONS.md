@@ -202,7 +202,7 @@ This mode serves:
 |----------|-------------|---------|
 | `/api/claim-support/review` | Claim-element review packet for operator or UI workflows | JSON payload with `claim_coverage_matrix`, `claim_coverage_summary`, `claim_support_gaps`, `claim_contradiction_candidates`, optional `support_summary`, `claim_overview`, `follow_up_plan`, compact `follow_up_plan_summary`, and persisted `follow_up_history` or `follow_up_history_summary`; coverage payloads include compact support-lineage packet summaries for archived captures and authority fallbacks; `follow_up_execution` remains compatibility-only |
 | `/api/claim-support/execute-follow-up` | Explicit side-effecting follow-up execution endpoint | JSON payload with `follow_up_execution`, lineage-aware `follow_up_execution_summary`, optional `execution_quality_summary`, and optional `post_execution_review` with refreshed `follow_up_history_summary` |
-| `/api/documents/formal-complaint` | Formal complaint export endpoint for court-style pleading drafts | JSON payload with the structured draft, generated artifact paths, selected output formats, and generation timestamp |
+| `/api/documents/formal-complaint` | Formal complaint export endpoint for court-style pleading drafts | JSON payload with the structured draft, generated artifact paths, selected output formats, generation timestamp, and claim-level drafting-readiness or support-summary context used by the builder preview |
 | `/api/documents/download` | Download a generated complaint artifact from the managed output directory | Generated DOCX or PDF file response |
 
 ##### `/api/claim-support/review` - Claim Support Review
@@ -278,7 +278,7 @@ Example response fields:
 
 POST to this endpoint to build a filing-style complaint package from the current intake, legal analysis, claim support, and evidence context. The export includes a court caption, parties, nature of the action, summary of facts, fuller factual allegations, claims for relief, legal standards, requested relief, and linked exhibits.
 
-The browser UI for this workflow is available at `/document`, which submits to this endpoint and renders artifact download links, section-level drafting readiness, claim-level filing warnings, and the generated pleading text from the response payload.
+The browser UI for this workflow is available at `/document`, which submits to this endpoint and renders artifact download links, section-level drafting readiness, claim-level filing warnings, compact claim-level source context, and the generated pleading text from the response payload.
 
 Example request:
 
@@ -378,13 +378,15 @@ JSON
 Example response fields:
 
 - `draft`: structured complaint content used for rendering.
-- `draft.factual_allegations`: expanded pleading-body allegations assembled from the summary facts plus claim-specific supporting facts.
+- `draft.factual_allegations`: expanded pleading-body allegations assembled from the summary facts plus claim-specific supporting facts, with intake-style prompt prefixes and generic support boilerplate filtered out before paragraph numbering.
 - `draft.factual_allegation_paragraphs`: numbered allegation entries used by the preview to keep one paragraph numbering scheme across the pleading.
 - `draft.draft_text`: copy-ready pleading text synthesized from the same structured draft used for DOCX and PDF rendering.
 - `draft.claims_for_relief[*].allegation_references`: paragraph numbers each count incorporates by reference from the factual allegations section, surfaced in the preview and rendered pleadings as `¶` / `¶¶` citations.
 - `draft.claims_for_relief[*].supporting_exhibits`: exhibit labels and links used alongside the paragraph citations to build the count-level incorporated-support block in the preview and rendered pleading.
 - `draft.claims_for_relief[*].support_summary`: compact per-claim support counts used by the builder, including lane counts plus source-family or artifact-family context when the persisted claim-support summary already has lineage-rich packet aggregates.
-- `draft.affidavit`: generated affidavit metadata used by the builder preview and affidavit export artifacts, including venue lines, numbered fact statements, supporting exhibits, jurat text, and notary block lines.
+- `draft.verification`: generated verification block rendered into the complaint body and export artifacts; state-oriented drafts use state-style verification language and `Verified on`, while federal-style drafts keep the penalty-of-perjury wording and `Executed on`.
+- `draft.certificate_of_service`: generated service block rendered into the complaint body and export artifacts; the title and body adapt to the resolved forum style, for example `Proof of Service` in state-oriented drafts.
+- `draft.affidavit`: generated affidavit metadata used by the builder preview and affidavit export artifacts, including venue lines, numbered fact statements, supporting exhibits, jurat text, and notary block lines; state-oriented drafts can switch to sworn language and omit the `(or affirmed)` wording in the default jurat.
 - `drafting_readiness`: section-level and claim-level filing-readiness signals surfaced in the builder preview.
 - `drafting_readiness.claims[*].source_family_counts` / `artifact_family_counts` / `content_origin_counts`: compact source-context counts lifted from persisted claim-support summaries so the builder preview can show where claim support currently comes from without sending users back to the review dashboard first.
 - `drafting_readiness.claims[*].review_intent` / `drafting_readiness.sections[*].review_intent`: normalized claim- and section-scoped review focus metadata that browsers or other clients can persist without rebuilding the query string by hand.

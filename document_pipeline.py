@@ -511,6 +511,7 @@ class FormalComplaintDocumentBuilder:
             declarant_name=declarant_name,
             signer_name=signer_name,
             verification_date=verification_date,
+            jurisdiction=classification.get("jurisdiction"),
         )
         certificate_of_service = self._build_certificate_of_service(
             plaintiffs,
@@ -985,6 +986,24 @@ class FormalComplaintDocumentBuilder:
                 lines.append(text)
                 if exhibit.get("summary"):
                     lines.append(f"  {exhibit['summary']}")
+        verification = draft.get("verification", {}) if isinstance(draft.get("verification"), dict) else {}
+        if verification:
+            lines.extend([
+                "",
+                str(verification.get("title") or "Verification").upper(),
+                str(verification.get("text") or ""),
+                str(verification.get("dated") or ""),
+                str(verification.get("signature_line") or ""),
+            ])
+        certificate_of_service = draft.get("certificate_of_service", {}) if isinstance(draft.get("certificate_of_service"), dict) else {}
+        if certificate_of_service:
+            lines.extend([
+                "",
+                str(certificate_of_service.get("title") or "Certificate of Service").upper(),
+                str(certificate_of_service.get("text") or ""),
+                str(certificate_of_service.get("dated") or ""),
+                str(certificate_of_service.get("signature_line") or ""),
+            ])
         affidavit = draft.get("affidavit", {}) if isinstance(draft.get("affidavit"), dict) else {}
         if affidavit:
             lines.extend([
@@ -1032,32 +1051,150 @@ class FormalComplaintDocumentBuilder:
                 normalized.append(text)
         return normalized
 
+    def _split_allegation_fragments(self, value: Any) -> List[str]:
+        text = re.sub(r"\s+", " ", str(value or "")).strip(" -;")
+        if not text:
+            return []
+        if ": " in text:
+            prefix, suffix = text.split(": ", 1)
+            prefix_lower = prefix.strip().lower()
+            if (
+                prefix.strip().endswith("?")
+                or prefix_lower.startswith(("what ", "when ", "where ", "why ", "how ", "who ", "describe ", "explain "))
+                or prefix_lower in {"what happened", "what relief do you want"}
+            ):
+                text = suffix.strip()
+        parts = [
+            part.strip(" -;")
+            for part in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", text)
+            if part.strip(" -;")
+        ]
+        return parts or [text]
+
+    def _formalize_allegation_fragment(self, value: Any) -> str:
+        text = re.sub(r"\s+", " ", str(value or "")).strip(" -;")
+        if not text:
+            return ""
+        replacements = (
+            (r"^i was\b", "Plaintiff was"),
+            (r"^i am\b", "Plaintiff is"),
+            (r"^i reported\b", "Plaintiff reported"),
+            (r"^i complained\b", "Plaintiff complained"),
+            (r"^i informed\b", "Plaintiff informed"),
+            (r"^i notified\b", "Plaintiff notified"),
+            (r"^i requested\b", "Plaintiff requested"),
+            (r"^i sought\b", "Plaintiff sought"),
+            (r"^i experienced\b", "Plaintiff experienced"),
+            (r"^i suffered\b", "Plaintiff suffered"),
+            (r"^i told\b", "Plaintiff told"),
+        )
+        for pattern, replacement in replacements:
+            text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+        text = re.sub(r"\bmy\b", "Plaintiff's", text, flags=re.IGNORECASE)
+        text = re.sub(r"\bmine\b", "Plaintiff's", text, flags=re.IGNORECASE)
+        text = re.sub(r"\bme\b", "Plaintiff", text, flags=re.IGNORECASE)
+        text = re.sub(r"\blost Plaintiff's pay and benefits\b", "lost pay and benefits", text, flags=re.IGNORECASE)
+        text = re.sub(r"\blost Plaintiff's (pay|wages|salary|income|benefits)\b", r"lost \1", text, flags=re.IGNORECASE)
+        if text and text[0].islower():
+            text = text[0].upper() + text[1:]
+        if len(text) < 12:
+            return ""
+        return text if text.endswith((".", "?", "!")) else f"{text}."
+
+    def _is_factual_allegation_candidate(self, value: Any) -> bool:
+        text = re.sub(r"\s+", " ", str(value or "")).strip()
+        if not text:
+            return False
+        lowered = text.lower()
+        if re.match(r"^(as to [^,]+, )?plaintiff (seeks|requests|asks|demands)\b", lowered):
+            return False
+        if lowered.startswith(("requested relief", "relief requested", "element supported:")):
+            return False
+        if lowered.startswith(("evidence shows facts supporting", "the intake record describes facts supporting")):
+            return False
+        if re.match(r"^(as to [^,]+, )?(title\s+[ivxlcdm0-9]+\b|\d+\s+u\.s\.c\.|\d+\s+c\.f\.r\.|[a-z]{2,6}\.\s+gov\.\s+code\b)", lowered):
+            return False
+        if not re.search(
+            r"\b(was|were|is|are|reported|complained|terminated|fired|retaliated|denied|refused|told|informed|notified|requested|sought|experienced|suffered|lost|made|engaged|opposed|filed|sent|emailed|wrote|received|occurred|happened|subjected|demoted|suspended|disciplined|reduced)\b",
+            lowered,
+        ):
+            return False
+        return True
+
+    def _is_generic_claim_support_text(self, value: Any) -> bool:
+        lowered = re.sub(r"\s+", " ", str(value or "")).strip().lower()
+        return lowered.startswith(("evidence shows facts supporting", "the intake record describes facts supporting"))
+
+    def _expand_allegation_sources(self, values: Any, *, limit: Optional[int] = None) -> List[str]:
+        expanded: List[str] = []
+        for value in _extract_text_candidates(values):
+            for fragment in self._split_allegation_fragments(value):
+                sentence = self._formalize_allegation_fragment(fragment)
+                if not sentence or not self._is_factual_allegation_candidate(sentence):
+                    continue
+                expanded.append(sentence)
+        unique = _unique_preserving_order(expanded)
+        return unique[:limit] if limit is not None else unique
+
+    def _synthesize_narrative_allegations(self, allegations: List[str]) -> List[str]:
+        cleaned = [str(item).strip() for item in allegations if str(item).strip()]
+        if not cleaned:
+            return []
+
+        def _pick(pattern: str, *, require_plaintiff: bool = False) -> str:
+            for item in cleaned:
+                lowered = item.lower()
+                if require_plaintiff and "plaintiff" not in lowered:
+                    continue
+                if re.search(pattern, lowered):
+                    return item.rstrip(".!?")
+            return ""
+
+        report_clause = _pick(r"\b(reported|complained|opposed|informed|notified|told|requested)\b", require_plaintiff=True)
+        adverse_clause = _pick(r"\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied)\b")
+        harm_clause = _pick(r"\blost (pay|wages|salary|income|benefits)\b|\b(suffered|experienced)\b", require_plaintiff=True)
+
+        synthesized: List[str] = []
+        if report_clause and adverse_clause:
+            synthesized.append(f"After {report_clause}, {adverse_clause}.")
+        if harm_clause:
+            loss_match = re.search(r"\blost ([^.]+)", harm_clause, flags=re.IGNORECASE)
+            if loss_match:
+                synthesized.append(f"As a direct result of Defendant's conduct, Plaintiff lost {loss_match.group(1).strip()}." )
+        return _unique_preserving_order(synthesized)
+
     def _build_factual_allegations(
         self,
         *,
         summary_of_facts: Any,
         claims_for_relief: List[Dict[str, Any]],
     ) -> List[str]:
-        allegations = list(self._normalize_text_lines(summary_of_facts))
+        base_allegations = list(self._expand_allegation_sources(summary_of_facts, limit=14))
+        allegations = list(self._synthesize_narrative_allegations(base_allegations))
+        for item in base_allegations:
+            if item.lower() not in {entry.lower() for entry in allegations}:
+                allegations.append(item)
         seen = {entry.lower() for entry in allegations}
 
         for claim in _coerce_list(claims_for_relief):
             if not isinstance(claim, dict):
                 continue
             count_title = str(claim.get("count_title") or claim.get("claim_type") or "Claim").strip()
-            for fact in self._normalize_text_lines(claim.get("supporting_facts", [])):
+            for fact in self._expand_allegation_sources(claim.get("supporting_facts", []), limit=10):
                 if not fact:
                     continue
                 prefixed_fact = fact
-                if count_title and fact.lower() not in seen:
-                    lowered = fact[0].lower() + fact[1:] if len(fact) > 1 else fact.lower()
+                if count_title and not fact.lower().startswith("as to ") and fact.lower() not in seen:
+                    lowered = fact[0].lower() + fact[1:] if len(fact) > 1 and fact[0].isalpha() else fact
                     prefixed_fact = f"As to {count_title}, {lowered}"
+                    if not prefixed_fact.endswith((".", "?", "!")):
+                        prefixed_fact = f"{prefixed_fact}."
                 key = prefixed_fact.lower()
                 if key in seen:
                     continue
                 seen.add(key)
                 allegations.append(prefixed_fact)
-                if len(allegations) >= 18:
+                if len(allegations) >= 24:
                     return allegations
 
         return allegations or ["Additional factual development is required before filing."]
@@ -1319,16 +1456,24 @@ class FormalComplaintDocumentBuilder:
         declarant_name: Optional[str] = None,
         signer_name: Optional[str] = None,
         verification_date: Optional[str] = None,
+        jurisdiction: Optional[str] = None,
     ) -> Dict[str, str]:
         plaintiff_name = str(declarant_name or "").strip() or str(signer_name or "").strip() or (plaintiffs or ["Plaintiff"])[0]
+        is_state = str(jurisdiction or "").strip().lower() == "state"
         return {
             "title": "Verification",
             "text": (
-                f"I, {plaintiff_name}, declare under penalty of perjury that I have reviewed this Complaint "
-                "and that the factual allegations stated in it are true and correct to the best of my knowledge, "
-                "information, and belief."
+                f"I, {plaintiff_name}, verify that I have reviewed this Complaint and know its contents. "
+                "The facts stated in this Complaint are true of my own knowledge, except as to those matters "
+                "stated on information and belief, and as to those matters I believe them to be true."
+                if is_state
+                else (
+                    f"I, {plaintiff_name}, declare under penalty of perjury that I have reviewed this Complaint "
+                    "and that the factual allegations stated in it are true and correct to the best of my knowledge, "
+                    "information, and belief."
+                )
             ),
-            "dated": self._format_dated_line("Executed on", verification_date),
+            "dated": self._format_dated_line("Verified on" if is_state else "Executed on", verification_date),
             "signature_line": f"/s/ {plaintiff_name}",
         }
 
@@ -1522,6 +1667,7 @@ class FormalComplaintDocumentBuilder:
         case_caption = draft.get("case_caption", {}) if isinstance(draft.get("case_caption"), dict) else {}
         affidavit_overrides = draft.get("affidavit_overrides", {}) if isinstance(draft.get("affidavit_overrides"), dict) else {}
         declarant_name = self._derive_affidavit_declarant_name(draft)
+        is_state = self._resolve_draft_forum_type(draft) == "state"
         exhibits = []
         for exhibit in _coerce_list(draft.get("exhibits")):
             if not isinstance(exhibit, dict):
@@ -1540,8 +1686,15 @@ class FormalComplaintDocumentBuilder:
             "intro": str(
                 affidavit_overrides.get("intro")
                 or (
-                    f"I, {declarant_name}, declare under penalty of perjury that I am competent to testify to the matters stated below, "
-                    "that these statements are based on my personal knowledge and the complaint intake knowledge graph assembled from the facts, records, and exhibits provided in support of this action, and that the following facts are true and correct."
+                    (
+                        f"I, {declarant_name}, being duly sworn, state that I am competent to testify to the matters stated below, "
+                        "that these statements are based on my personal knowledge and the complaint intake knowledge graph assembled from the facts, records, and exhibits provided in support of this action, and that the following facts are true and correct."
+                    )
+                    if is_state
+                    else (
+                        f"I, {declarant_name}, declare under penalty of perjury that I am competent to testify to the matters stated below, "
+                        "that these statements are based on my personal knowledge and the complaint intake knowledge graph assembled from the facts, records, and exhibits provided in support of this action, and that the following facts are true and correct."
+                    )
                 )
             ),
             "knowledge_graph_note": "This affidavit is generated from the complaint intake knowledge graph and supporting records rather than a turn-by-turn chat transcript.",
@@ -1551,9 +1704,16 @@ class FormalComplaintDocumentBuilder:
                 affidavit_overrides.get("supporting_exhibits")
                 or ([] if affidavit_overrides.get("include_complaint_exhibits") is False else exhibits)
             ),
-            "dated": str(verification.get("dated") or signature_block.get("dated") or self._format_dated_line("Executed on", None)),
+            "dated": str(verification.get("dated") or signature_block.get("dated") or self._format_dated_line("Verified on" if is_state else "Executed on", None)),
             "signature_line": str(verification.get("signature_line") or signature_block.get("signature_line") or f"/s/ {declarant_name}"),
-            "jurat": str(affidavit_overrides.get("jurat") or f"Subscribed and sworn to (or affirmed) before me on __________________ by {declarant_name}."),
+            "jurat": str(
+                affidavit_overrides.get("jurat")
+                or (
+                    f"Subscribed and sworn to before me on __________________ by {declarant_name}."
+                    if is_state
+                    else f"Subscribed and sworn to (or affirmed) before me on __________________ by {declarant_name}."
+                )
+            ),
             "notary_block": list(
                 affidavit_overrides.get("notary_block")
                 or [
@@ -1597,12 +1757,8 @@ class FormalComplaintDocumentBuilder:
         parties = draft.get("parties", {}) if isinstance(draft.get("parties"), dict) else {}
         plaintiffs = [str(name).strip() for name in _coerce_list(parties.get("plaintiffs")) if str(name).strip()]
         if plaintiffs:
-            candidates.append(f"I am {plaintiffs[0]}, the plaintiff in this action")
-        candidates.extend(self._normalize_text_lines(draft.get("summary_of_facts", [])))
+            candidates.append(f"I am {plaintiffs[0]}, the plaintiff in this action.")
         candidates.extend(self._normalize_text_lines(draft.get("factual_allegations", [])))
-        for claim in _coerce_list(draft.get("claims_for_relief")):
-            if isinstance(claim, dict):
-                candidates.extend(self._normalize_text_lines(claim.get("supporting_facts", [])))
 
         facts: List[str] = []
         seen: set[str] = set()
@@ -1633,10 +1789,15 @@ class FormalComplaintDocumentBuilder:
                 or prefix_lower in {"what happened", "what relief do you want"}
             ):
                 text = suffix.strip()
-        if text.lower().startswith("plaintiff repeats and realleges"):
+        lowered = text.lower()
+        if lowered.startswith("plaintiff repeats and realleges"):
+            return ""
+        if not self._is_factual_allegation_candidate(text) and not lowered.startswith("i am "):
             return ""
         if len(text) < 12:
             return ""
+        if text and text[0].islower():
+            text = text[0].upper() + text[1:]
         if text[-1] not in ".!?":
             text = f"{text}."
         return text
@@ -2055,7 +2216,7 @@ class FormalComplaintDocumentBuilder:
         normalized = []
         for item in _unique_preserving_order(facts):
             text = re.sub(r"\s+", " ", item).strip()
-            if len(text) < 10:
+            if len(text) < 10 or self._is_generic_claim_support_text(text):
                 continue
             normalized.append(text)
             if len(normalized) >= 8:

@@ -2301,9 +2301,78 @@ Representative shape:
       "case_number": "25-cv-00001",
       "document_title": "COMPLAINT"
     },
-    "claims_for_relief": [],
+    "claims_for_relief": [
+      {
+        "claim_type": "retaliation",
+        "count_title": "Retaliation",
+        "legal_standards": [
+          "Protected activity.",
+          "Materially adverse action.",
+          "Causal connection between the activity and the adverse action."
+        ],
+        "supporting_facts": [
+          "Plaintiff complained to human resources about race discrimination.",
+          "Defendant terminated Plaintiff shortly after the complaint."
+        ],
+        "missing_elements": ["Causal connection"],
+        "partially_supported_elements": [],
+        "support_summary": {
+          "total_elements": 3,
+          "covered_elements": 2,
+          "uncovered_elements": 1,
+          "support_by_kind": {
+            "evidence": 1,
+            "authority": 1
+          },
+          "source_family_counts": {
+            "evidence": 1,
+            "legal_authority": 1
+          },
+          "artifact_family_counts": {
+            "archived_web_page": 1,
+            "legal_authority_reference": 1
+          },
+          "content_origin_counts": {
+            "historical_archive_capture": 1,
+            "authority_reference_fallback": 1
+          }
+        },
+        "supporting_exhibits": [
+          {
+            "label": "Exhibit A",
+            "title": "Termination email from Defendant",
+            "link": "https://ipfs.io/ipfs/QmTerminationEmail"
+          }
+        ]
+      }
+    ],
     "requested_relief": [],
     "exhibits": [],
+    "verification": {
+      "title": "Verification",
+      "text": "I, Jane Doe, declare under penalty of perjury that I have reviewed this Complaint and that the factual allegations stated in it are true and correct to the best of my knowledge, information, and belief.",
+      "dated": "Executed on: __________________",
+      "signature_line": "/s/ Jane Doe"
+    },
+    "certificate_of_service": {
+      "title": "Certificate of Service",
+      "text": "I certify that on __________________ I served a true and correct copy of this Complaint on the following recipients.",
+      "recipients": [
+        "Registered Agent for Acme Corporation"
+      ],
+      "recipient_details": [
+        {
+          "recipient": "Registered Agent for Acme Corporation",
+          "method": "Certified Mail",
+          "address": "123 Market Street, San Francisco, CA 94105"
+        }
+      ],
+      "detail_lines": [
+        "Registered Agent for Acme Corporation | Method: Certified Mail | Address: 123 Market Street, San Francisco, CA 94105"
+      ],
+      "dated": "Service date: __________________",
+      "signature_line": "/s/ Jane Doe"
+    },
     "affidavit": {
       "title": "AFFIDAVIT OF JANE DOE IN SUPPORT OF COMPLAINT",
       "venue_lines": [
@@ -2346,6 +2415,18 @@ Representative shape:
             "evidence": 1,
             "authority": 1
           },
+          "source_family_counts": {
+            "evidence": 1,
+            "legal_authority": 1
+          },
+          "artifact_family_counts": {
+            "archived_web_page": 1,
+            "legal_authority_reference": 1
+          },
+          "content_origin_counts": {
+            "historical_archive_capture": 1,
+            "authority_reference_fallback": 1
+          },
           "authority_treatment_summary": {},
           "authority_rule_candidate_summary": {},
           "warnings": [
@@ -2384,7 +2465,43 @@ Representative shape:
     "status": "warning",
     "claim_types": ["retaliation"],
     "warning_count": 2,
-    "claims": [],
+    "claims": [
+      {
+        "claim_type": "retaliation",
+        "status": "warning",
+        "validation_status": "incomplete",
+        "covered_elements": 2,
+        "total_elements": 3,
+        "unresolved_element_count": 1,
+        "proof_gap_count": 1,
+        "contradiction_candidate_count": 0,
+        "support_by_kind": {
+          "evidence": 1,
+          "authority": 1
+        },
+        "source_family_counts": {
+          "evidence": 1,
+          "legal_authority": 1
+        },
+        "artifact_family_counts": {
+          "archived_web_page": 1,
+          "legal_authority_reference": 1
+        },
+        "content_origin_counts": {
+          "historical_archive_capture": 1,
+          "authority_reference_fallback": 1
+        },
+        "authority_treatment_summary": {},
+        "authority_rule_candidate_summary": {},
+        "warnings": [
+          {
+            "code": "unresolved_elements",
+            "severity": "warning",
+            "message": "Retaliation still has 1 unresolved claim element(s)."
+          }
+        ]
+      }
+    ],
     "sections": {}
   },
   "review_links": {
@@ -2508,7 +2625,10 @@ Interpretation notes:
 - `drafting_readiness.status` is one of `ready`, `warning`, or `blocked` and summarizes filing readiness across all draft sections and claim-level validation signals.
 - `drafting_readiness.claims[*]` lifts claim-support and validation state into drafting-oriented claim summaries, including unresolved elements, proof-gap counts, contradiction counts, compact authority-treatment or rule-candidate signals, and compact source-context counts such as `source_family_counts`, `artifact_family_counts`, or `content_origin_counts` when the persisted support summary already exposes them.
 - `draft.claims_for_relief[*].support_summary` mirrors the same claim-level support totals used to build the pleading text and can now include compact source-context maps such as `source_family_counts`, `artifact_family_counts`, and `content_origin_counts` for builder-side provenance drilldown.
-- `draft.affidavit` is the companion affidavit payload generated from the same intake knowledge graph, with venue lines, numbered fact statements, supporting exhibits, jurat text, and notary block lines used by the preview and affidavit export artifacts.
+- `draft.factual_allegations` is normalized into pleading-ready sentences before numbering, so intake prompt prefixes, generic support boilerplate, and clearly non-factual relief text are filtered out before the draft text and affidavit reuse those facts.
+- `draft.verification` is emitted alongside the draft body and export artifacts; state-oriented drafts switch to state-style verification text and `Verified on`, while federal-oriented drafts keep the penalty-of-perjury text and `Executed on`.
+- `draft.certificate_of_service` is emitted alongside the draft body and export artifacts; the title and service text can vary by forum style, including `Proof of Service` for state-oriented drafts.
+- `draft.affidavit` is the companion affidavit payload generated from the same intake knowledge graph, with venue lines, numbered fact statements, supporting exhibits, jurat text, and notary block lines used by the preview and affidavit export artifacts. Default affidavit intro, date labels, and jurat phrasing can also vary between federal-style and state-style drafts.
 - `drafting_readiness.claims[*].review_url`, `drafting_readiness.claims[*].review_context`, and `drafting_readiness.claims[*].review_intent` are added by the document API layer so clients can deep-link into the claim-support review surface without reconstructing query parameters themselves.
 - `drafting_readiness.sections` groups filing-readiness by major complaint section such as `summary_of_facts`, `jurisdiction_and_venue`, `claims_for_relief`, `requested_relief`, and `exhibits`.
 - `drafting_readiness.sections[*].review_url`, `drafting_readiness.sections[*].review_context`, and `drafting_readiness.sections[*].review_intent` are added by the document API layer so clients can link section warnings back to the review dashboard with stable query context.

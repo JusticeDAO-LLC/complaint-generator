@@ -133,6 +133,8 @@ python run.py --config config.review_surface.json
 
 The formal complaint builder and `/api/documents/formal-complaint` endpoint also support affidavit-specific exhibit controls. Use `affidavit_supporting_exhibits` to provide a curated affidavit exhibit list, or set `affidavit_include_complaint_exhibits=false` when the affidavit should not inherit the complaint's exhibit list by default.
 
+The same formal complaint payload now carries claim-level support summaries and drafting-readiness source-context counts, so the builder can show whether each count is currently grounded in evidence, authority, archived captures, or fallback-only authority references without requiring a separate dashboard round-trip.
+
 **Agentic Scraper CLI:**
 ```bash
 python scripts/agentic_scraper_cli.py enqueue \
