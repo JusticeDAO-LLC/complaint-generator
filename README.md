@@ -131,6 +131,8 @@ python run.py --config config.review_surface.json
 # Access the formal complaint builder at http://localhost:8000/document
 ```
 
+The formal complaint builder and `/api/documents/formal-complaint` endpoint also support affidavit-specific exhibit controls. Use `affidavit_supporting_exhibits` to provide a curated affidavit exhibit list, or set `affidavit_include_complaint_exhibits=false` when the affidavit should not inherit the complaint's exhibit list by default.
+
 **Agentic Scraper CLI:**
 ```bash
 python scripts/agentic_scraper_cli.py enqueue \

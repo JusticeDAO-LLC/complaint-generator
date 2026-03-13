@@ -145,6 +145,7 @@ Status: Complete
 - archived-page provenance metadata already preserves capture source, archive URL, version relationship, capture time, and observed time through the durable provenance path.
 - legal-authority provenance metadata now persists explicit artifact identity for full-text versus citation-fallback authority records, which keeps support summaries aligned across source families.
 - claim-support packet and trace summaries now expose `artifact_family_counts`, so review flows can distinguish archived web pages from live web pages and authority-backed artifacts without inferring from `content_origin`.
+- compact follow-up history, plan, and execution summaries now preserve the same graph-backed source context in persisted count form, so operator surfaces can see source family and artifact family mixes without reopening nested graph-support payloads.
 - support-summary normalization backfills artifact identity from existing `content_origin` values for older stored records that predate the explicit fields.
 
 ### Audit conclusion

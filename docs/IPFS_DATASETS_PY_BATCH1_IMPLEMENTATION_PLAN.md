@@ -162,6 +162,7 @@ Current status:
 - web evidence lineage now persists explicit `corpus_family='web_page'` plus stable `artifact_family` identity for live versus archived captures
 - legal-authority provenance metadata now persists explicit artifact identity for full-text versus citation-fallback authority records
 - claim-support packet and trace summaries now expose `artifact_family_counts`, with compatibility fallback for older records that only persisted `content_origin`
+- compact follow-up history, plan, and execution summaries now also carry persisted graph-source context such as support lane, source family, artifact family, and content-origin counts
 
 ## Slice 4: Legal authority text as corpus asset
 

@@ -20,6 +20,6 @@ env/
 ENV/
 env.bak/
 venv.bak/
-
+tmp/
 # Local stray artifact seen during config debugging
 test_extended_config.log

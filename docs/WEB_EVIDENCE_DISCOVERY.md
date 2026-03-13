@@ -373,8 +373,10 @@ Per-claim results now include both the legacy count in `evidence_stored[claim_ty
 
 Automatic discovery results also include compact follow-up summaries:
 
-- `follow_up_plan_summary[claim_type]`: task, blocked, graph-supported, and suppressed counts plus semantic-cluster totals and recommended-action totals.
-- `follow_up_execution_summary[claim_type]`: executed, skipped, suppressed, and cooldown-skipped task counts plus semantic-cluster totals when `execute_follow_up=True`.
+- `follow_up_plan_summary[claim_type]`: task, blocked, graph-supported, and suppressed counts plus semantic-cluster totals, recommended-action totals, and compact graph-source context such as `support_by_kind`, `source_family_counts`, `artifact_family_counts`, and `content_origin_counts` when queued work already carries graph-backed lineage.
+- `follow_up_execution_summary[claim_type]`: executed, skipped, suppressed, and cooldown-skipped task counts plus semantic-cluster totals and the same compact graph-source context when `execute_follow_up=True`.
+- `follow_up_history_summary[claim_type]`: recent persisted follow-up ledger counts, including status, authority search-program selection, adaptive retry markers, and compact graph-source lineage such as `source_family_counts`, `artifact_family_counts`, and `content_origin_counts` when the execution ledger stored graph-backed context.
+- `follow_up_history[claim_type][*]`: recent persisted follow-up rows; graph-backed tasks can flatten dominant `source_family`, `record_scope`, `artifact_family`, `corpus_family`, and `content_origin` values onto each row so dashboards and CLI summaries do not need to reopen nested graph-support payloads.
 - `claim_coverage_matrix[claim_type]`: claim-element support status with grouped evidence or authority links, lightweight record or graph summaries, and per-element support-packet lineage rollups.
 - `claim_coverage_summary[claim_type]`: compact coverage counts plus missing, unresolved, contradiction, and support-packet lineage summary labels.
 - `claim_support_gaps[claim_type]`: unresolved-element diagnostics with recommended actions.

@@ -872,6 +872,11 @@
                             <span class="signal-number" id="signal-history-normalized">0</span>
                             <div class="chip-row" id="signal-history-normalized-chips"></div>
                         </div>
+                        <div class="signal-card">
+                            <span class="signal-label">Graph-backed source context</span>
+                            <span class="signal-number" id="signal-follow-up-source-context">0</span>
+                            <div class="chip-row" id="signal-follow-up-source-context-chips"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -1324,6 +1329,67 @@
                 : `<span class="chip">${emptyLabel}</span>`;
         }
 
+        function buildFollowUpSourceSignalCounts(planSummary) {
+            const supportByKind = (planSummary && planSummary.support_by_kind) || {};
+            const sourceFamilyCounts = (planSummary && planSummary.source_family_counts) || {};
+            const artifactFamilyCounts = (planSummary && planSummary.artifact_family_counts) || {};
+            const contentOriginCounts = (planSummary && planSummary.content_origin_counts) || {};
+            const labeledCounts = {};
+
+            Object.entries(supportByKind).forEach(([label, count]) => {
+                labeledCounts[`Lane ${humanizeQueryValue(label)}`] = count;
+            });
+            Object.entries(sourceFamilyCounts).forEach(([label, count]) => {
+                labeledCounts[`Family ${humanizeQueryValue(label)}`] = count;
+            });
+            Object.entries(artifactFamilyCounts).forEach(([label, count]) => {
+                labeledCounts[`Artifact ${humanizeQueryValue(label)}`] = count;
+            });
+            if (!Object.keys(artifactFamilyCounts).length) {
+                Object.entries(contentOriginCounts).forEach(([label, count]) => {
+                    labeledCounts[`Origin ${humanizeQueryValue(label)}`] = count;
+                });
+            }
+            return labeledCounts;
+        }
+
+        function summarizeGraphSupportSourceContext(graphSupport) {
+            const summary = (graphSupport && graphSupport.summary) || {};
+            const results = Array.isArray(graphSupport && graphSupport.results) ? graphSupport.results : [];
+            const sourceFamilyCounts = {};
+            const artifactFamilyCounts = {};
+            const contentOriginCounts = {};
+            const recordScopeCounts = {};
+            results.forEach((result) => {
+                if (!result || typeof result !== 'object') {
+                    return;
+                }
+                const sourceFamily = String(result.source_family || '').trim();
+                const recordScope = String(result.record_scope || '').trim();
+                const artifactFamily = String(result.artifact_family || '').trim();
+                const contentOrigin = String(result.content_origin || '').trim();
+                if (sourceFamily) sourceFamilyCounts[sourceFamily] = (sourceFamilyCounts[sourceFamily] || 0) + 1;
+                if (recordScope) recordScopeCounts[recordScope] = (recordScopeCounts[recordScope] || 0) + 1;
+                if (artifactFamily) artifactFamilyCounts[artifactFamily] = (artifactFamilyCounts[artifactFamily] || 0) + 1;
+                if (contentOrigin) contentOriginCounts[contentOrigin] = (contentOriginCounts[contentOrigin] || 0) + 1;
+            });
+            return {
+                support_by_kind: (summary && summary.support_by_kind) || {},
+                source_family_counts: sourceFamilyCounts,
+                record_scope_counts: recordScopeCounts,
+                artifact_family_counts: artifactFamilyCounts,
+                content_origin_counts: contentOriginCounts,
+            };
+        }
+
+        function renderSourceContextChips(summaryLike, emptyLabel) {
+            const chips = buildFollowUpSourceSignalCounts(summaryLike);
+            const entries = Object.entries(chips || {});
+            return entries.length
+                ? entries.map(([label, count]) => `<span class="chip">${label}: ${count}</span>`).join('')
+                : `<span class="chip">${emptyLabel}</span>`;
+        }
+
         async function copyPacketUrl(url, label) {
             if (!url) {
                 throw new Error('No packet URL available to copy.');
@@ -1571,6 +1637,7 @@
             if (parseQualityTaskCount) chips.push(`<span class="chip">parse tasks ${parseQualityTaskCount}</span>`);
             chips.push(`<span class="chip">low-quality ${preLowQualityCount} → ${postLowQualityCount}</span>`);
             if (recommendedNextAction) chips.push(`<span class="chip">recommendation ${recommendedNextAction}</span>`);
+            chips.push(renderSourceContextChips(executionSummary, 'No graph source context'));
             resolvedElements.forEach((element) => chips.push(`<span class="chip">resolved ${element}</span>`));
             if (!resolvedElements.length && remainingElements.length) {
                 remainingElements.forEach((element) => chips.push(`<span class="chip">remaining ${element}</span>`));
@@ -1602,8 +1669,11 @@
         function setFollowUpSignals(planSummary, historySummary) {
             const planResolutionCounts = (planSummary && planSummary.resolution_applied_counts) || {};
             const historyResolutionCounts = (historySummary && historySummary.resolution_applied_counts) || {};
+            const sourceFamilyCounts = (planSummary && planSummary.source_family_counts) || {};
             const planNormalized = Object.values(planResolutionCounts).reduce((total, value) => total + Number(value || 0), 0);
             const historyNormalized = Object.values(historyResolutionCounts).reduce((total, value) => total + Number(value || 0), 0);
+            const sourceContextCount = Object.values(sourceFamilyCounts).reduce((total, value) => total + Number(value || 0), 0);
+            const sourceContextSignals = buildFollowUpSourceSignalCounts(planSummary);
             const parseQualityTaskCount = Number((planSummary && planSummary.parse_quality_task_count) || 0);
             const parseQualityTaskSignals = {};
             if (parseQualityTaskCount) {
@@ -1616,9 +1686,11 @@
             document.getElementById('signal-plan-normalized').textContent = planNormalized;
             document.getElementById('signal-history-normalized').textContent = historyNormalized;
             document.getElementById('signal-parse-quality-tasks').textContent = parseQualityTaskCount;
+            document.getElementById('signal-follow-up-source-context').textContent = sourceContextCount;
             renderSignalChips('signal-plan-normalized-chips', planResolutionCounts, 'No normalized plan tasks');
             renderSignalChips('signal-history-normalized-chips', historyResolutionCounts, 'No normalized history events');
             renderSignalChips('signal-parse-quality-task-chips', parseQualityTaskSignals, 'No parse remediation tasks');
+            renderSignalChips('signal-follow-up-source-context-chips', sourceContextSignals, 'No graph-backed source context');
         }
 
         function renderElements(elements) {
@@ -1773,6 +1845,7 @@
             );
             container.innerHTML = orderedTasks.map((task) => {
                 const focusScore = scoreTaskForSectionFocus(task);
+                const graphSourceContext = summarizeGraphSupportSourceContext(task.graph_support || {});
                 return `
                 <article class="task-card">
                     <div class="row-head">
@@ -1795,6 +1868,7 @@
                         ${task.blocked_by_cooldown ? '<span class="chip">Blocked by cooldown</span>' : ''}
                         ${task.should_suppress_retrieval ? '<span class="chip">Suppressed</span>' : ''}
                         ${task.resolution_applied ? `<span class="chip">normalized: ${task.resolution_applied}</span>` : ''}
+                        ${renderSourceContextChips(graphSourceContext, 'No graph source context')}
                     </div>
                     <div class="button-row" style="margin-top: 12px;">
                         <button
@@ -1831,6 +1905,16 @@
                 if (selectedProgramRuleBiases.length) {
                     summaryLabels.push(`History rule biases: ${selectedProgramRuleBiases.map(([label, count]) => `${label}=${count}`).join(', ')}`);
                 }
+                const historySourceContext = buildFollowUpSourceSignalCounts({
+                    support_by_kind: historySummary.support_kind_counts || {},
+                    source_family_counts: historySummary.source_family_counts || {},
+                    artifact_family_counts: historySummary.artifact_family_counts || {},
+                    content_origin_counts: historySummary.content_origin_counts || {},
+                });
+                const historySourceEntries = Object.entries(historySourceContext);
+                if (historySourceEntries.length) {
+                    summaryLabels.push(`History source context: ${historySourceEntries.map(([label, count]) => `${label}=${count}`).join(', ')}`);
+                }
             }
             summaryChips.innerHTML = summaryLabels.length
                 ? summaryLabels.map((label) => `<span class="chip">${label}</span>`).join('')
@@ -1856,6 +1940,9 @@
                 if (entry.selected_search_program_type) chips.push(`<span class="chip">program: ${entry.selected_search_program_type}</span>`);
                 if (entry.selected_search_program_bias) chips.push(`<span class="chip">bias: ${entry.selected_search_program_bias}</span>`);
                 if (entry.selected_search_program_rule_bias) chips.push(`<span class="chip">rule bias: ${entry.selected_search_program_rule_bias}</span>`);
+                if (entry.source_family) chips.push(`<span class="chip">family: ${entry.source_family}</span>`);
+                if (entry.artifact_family) chips.push(`<span class="chip">artifact: ${entry.artifact_family}</span>`);
+                if (entry.content_origin) chips.push(`<span class="chip">origin: ${entry.content_origin}</span>`);
                 if (entry.resolution_applied) chips.push(`<span class="chip">normalized: ${entry.resolution_applied}</span>`);
                 if (entry.resolution_status) chips.push(`<span class="chip">resolution: ${entry.resolution_status}</span>`);
                 return `

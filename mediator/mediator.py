@@ -1201,8 +1201,31 @@ class Mediator:
 
 	def _build_follow_up_record_metadata(self, task: Dict[str, Any], **extra: Any) -> Dict[str, Any]:
 		graph_summary = ((task.get('graph_support') or {}).get('summary', {})) if isinstance(task.get('graph_support'), dict) else {}
+		graph_results = ((task.get('graph_support') or {}).get('results', [])) if isinstance(task.get('graph_support'), dict) else []
 		adaptive_retry_state = task.get('adaptive_retry_state', {}) if isinstance(task.get('adaptive_retry_state'), dict) else {}
 		rule_candidate_context = task.get('rule_candidate_context', {}) if isinstance(task.get('rule_candidate_context'), dict) else {}
+
+		def _count_result_field(field_name: str) -> Dict[str, int]:
+			counts: Dict[str, int] = {}
+			for result in graph_results if isinstance(graph_results, list) else []:
+				if not isinstance(result, dict):
+					continue
+				value = str(result.get(field_name) or '').strip()
+				if not value:
+					continue
+				counts[value] = counts.get(value, 0) + 1
+			return counts
+
+		def _primary_count_key(counts: Dict[str, int]) -> str:
+			if not counts:
+				return ''
+			return sorted(counts.items(), key=lambda item: (-int(item[1] or 0), str(item[0])))[0][0]
+
+		source_family_counts = _count_result_field('source_family')
+		record_scope_counts = _count_result_field('record_scope')
+		artifact_family_counts = _count_result_field('artifact_family')
+		corpus_family_counts = _count_result_field('corpus_family')
+		content_origin_counts = _count_result_field('content_origin')
 		metadata = {
 			'execution_mode': task.get('execution_mode', 'retrieve_support'),
 			'validation_status': task.get('validation_status', ''),
@@ -1232,7 +1255,19 @@ class Mediator:
 				'duplicate_fact_count': int(graph_summary.get('duplicate_fact_count', 0) or 0),
 				'semantic_cluster_count': int(graph_summary.get('semantic_cluster_count', 0) or 0),
 				'semantic_duplicate_count': int(graph_summary.get('semantic_duplicate_count', 0) or 0),
+				'support_by_kind': dict(graph_summary.get('support_by_kind') or {}),
+				'support_by_source': dict(graph_summary.get('support_by_source') or {}),
+				'source_family_counts': source_family_counts,
+				'record_scope_counts': record_scope_counts,
+				'artifact_family_counts': artifact_family_counts,
+				'corpus_family_counts': corpus_family_counts,
+				'content_origin_counts': content_origin_counts,
 			},
+			'source_family': _primary_count_key(source_family_counts),
+			'record_scope': _primary_count_key(record_scope_counts),
+			'artifact_family': _primary_count_key(artifact_family_counts),
+			'corpus_family': _primary_count_key(corpus_family_counts),
+			'content_origin': _primary_count_key(content_origin_counts),
 			'authority_treatment_summary': task.get('authority_treatment_summary', {}),
 			'authority_rule_candidate_summary': task.get('authority_rule_candidate_summary', {}),
 			'rule_candidate_focus': {
@@ -3475,6 +3510,13 @@ class Mediator:
 						 service_recipients: List[str] = None,
 						 service_recipient_details: List[Dict[str, str]] = None,
 						 verification_date: str = None, service_date: str = None,
+						 affidavit_title: str = None, affidavit_intro: str = None,
+						 affidavit_facts: List[str] = None,
+						 affidavit_supporting_exhibits: List[Dict[str, str]] = None,
+						 affidavit_include_complaint_exhibits: bool = None,
+						 affidavit_venue_lines: List[str] = None,
+						 affidavit_jurat: str = None,
+						 affidavit_notary_block: List[str] = None,
 						 user_id: str = None) -> Dict[str, Any]:
 		"""
 		Generate formal complaint document from graphs.
@@ -3530,6 +3572,14 @@ class Mediator:
 			signature_date=signature_date,
 			verification_date=verification_date,
 			service_date=service_date,
+			affidavit_title=affidavit_title,
+			affidavit_intro=affidavit_intro,
+			affidavit_facts=affidavit_facts,
+			affidavit_supporting_exhibits=affidavit_supporting_exhibits,
+				affidavit_include_complaint_exhibits=affidavit_include_complaint_exhibits,
+			affidavit_venue_lines=affidavit_venue_lines,
+			affidavit_jurat=affidavit_jurat,
+			affidavit_notary_block=affidavit_notary_block,
 			user_id=user_id,
 			base_formal_complaint=formal_complaint,
 		)
@@ -3840,6 +3890,14 @@ class Mediator:
 		signature_date: str = None,
 		verification_date: str = None,
 		service_date: str = None,
+		affidavit_title: str = None,
+		affidavit_intro: str = None,
+		affidavit_facts: List[str] = None,
+		affidavit_supporting_exhibits: List[Dict[str, str]] = None,
+		affidavit_include_complaint_exhibits: bool = None,
+		affidavit_venue_lines: List[str] = None,
+		affidavit_jurat: str = None,
+		affidavit_notary_block: List[str] = None,
 		output_dir: str = None,
 		output_formats: List[str] = None,
 	):
@@ -3876,6 +3934,14 @@ class Mediator:
 			signature_date=signature_date,
 			verification_date=verification_date,
 			service_date=service_date,
+			affidavit_title=affidavit_title,
+			affidavit_intro=affidavit_intro,
+			affidavit_facts=affidavit_facts,
+			affidavit_supporting_exhibits=affidavit_supporting_exhibits,
+			affidavit_include_complaint_exhibits=affidavit_include_complaint_exhibits,
+			affidavit_venue_lines=affidavit_venue_lines,
+			affidavit_jurat=affidavit_jurat,
+			affidavit_notary_block=affidavit_notary_block,
 			output_dir=output_dir,
 			output_formats=output_formats,
 		)

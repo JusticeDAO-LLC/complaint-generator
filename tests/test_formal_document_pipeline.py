@@ -146,6 +146,28 @@ def test_generate_formal_complaint_builds_court_style_sections():
             }
         ],
         declarant_name='Jane Doe',
+        affidavit_title='Affidavit of Jane Doe Regarding Retaliation',
+        affidavit_intro="I, Jane Doe, make this affidavit from personal knowledge regarding Defendant's retaliation.",
+        affidavit_facts=[
+            'I reported discrimination to human resources on March 3, 2026.',
+            'Defendant terminated my employment two days later.',
+        ],
+        affidavit_supporting_exhibits=[
+            {
+                'label': 'Affidavit Ex. 1',
+                'title': 'HR Complaint Email',
+                'link': 'https://example.org/hr-email.pdf',
+                'summary': 'Email reporting discrimination to HR.',
+            }
+        ],
+        affidavit_include_complaint_exhibits=False,
+        affidavit_venue_lines=['State of New Mexico', 'County: SANTA FE COUNTY'],
+        affidavit_jurat='Subscribed and sworn to before me on March 13, 2026 by Jane Doe.',
+        affidavit_notary_block=[
+            '__________________________________',
+            'Notary Public for the State of New Mexico',
+            'My commission expires: March 13, 2029',
+        ],
         service_method='CM/ECF',
         service_recipients=['Registered Agent for Acme Corporation', 'Defense Counsel'],
         service_recipient_details=[
@@ -175,6 +197,25 @@ def test_generate_formal_complaint_builds_court_style_sections():
     assert complaint['exhibits'][0]['reference'] == 'https://example.org/termination-letter.pdf'
     assert complaint['verification']['title'] == 'Verification'
     assert 'under penalty of perjury' in complaint['verification']['text']
+    assert complaint['affidavit']['title'] == 'Affidavit of Jane Doe Regarding Retaliation'
+    assert complaint['affidavit']['knowledge_graph_note'].startswith('This affidavit is generated from the complaint intake knowledge graph')
+    assert complaint['affidavit']['intro'] == "I, Jane Doe, make this affidavit from personal knowledge regarding Defendant's retaliation."
+    assert complaint['affidavit']['venue_lines'] == ['State of New Mexico', 'County: SANTA FE COUNTY']
+    assert complaint['affidavit']['facts'] == [
+        'I reported discrimination to human resources on March 3, 2026.',
+        'Defendant terminated my employment two days later.',
+    ]
+    assert complaint['affidavit']['supporting_exhibits'] == [
+        {
+            'label': 'Affidavit Ex. 1',
+            'title': 'HR Complaint Email',
+            'link': 'https://example.org/hr-email.pdf',
+            'summary': 'Email reporting discrimination to HR.',
+        }
+    ]
+    assert complaint['affidavit']['jurat'] == 'Subscribed and sworn to before me on March 13, 2026 by Jane Doe.'
+    assert complaint['affidavit']['notary_block'][1] == 'Notary Public for the State of New Mexico'
+    assert all('What happened?' not in fact for fact in complaint['affidavit']['facts'])
     assert complaint['certificate_of_service']['title'] == 'Certificate of Service'
     assert complaint['signature_block']['signature_line'] == '/s/ Jane Doe, Esq.'
     assert complaint['signature_block']['title'] == 'Counsel for Plaintiff'
@@ -201,6 +242,9 @@ def test_generate_formal_complaint_builds_court_style_sections():
     assert 'Related Case No.: 1:25-cv-00091' in result['draft_text']
     assert 'Courtroom: Courtroom 4A' in result['draft_text']
     assert 'JURY TRIAL DEMANDED' in result['draft_text']
+    assert 'AFFIDAVIT OF JANE DOE REGARDING RETALIATION' in result['draft_text']
+    assert 'complaint intake knowledge graph' in result['draft_text']
+    assert 'Subscribed and sworn to before me on March 13, 2026 by Jane Doe.' in result['draft_text']
     assert 'VERIFICATION' in result['draft_text']
     assert 'CERTIFICATE OF SERVICE' in result['draft_text']
     assert '/s/ Jane Doe, Esq.' in result['draft_text']
@@ -217,6 +261,22 @@ def test_generate_formal_complaint_builds_court_style_sections():
     assert 'Defense Counsel' in result['draft_text']
     assert 'Service date: 2026-03-13' in result['draft_text']
     assert result['ready_to_file'] is True
+
+
+def test_generate_formal_complaint_can_suppress_mirrored_affidavit_exhibits():
+    mediator = _build_seeded_mediator()
+
+    result = mediator.generate_formal_complaint(
+        district='New Mexico',
+        county='Santa Fe County',
+        plaintiff_names=['Jane Doe'],
+        defendant_names=['Acme Corporation'],
+        affidavit_include_complaint_exhibits=False,
+    )
+
+    complaint = result['formal_complaint']
+    assert complaint['exhibits']
+    assert complaint['affidavit']['supporting_exhibits'] == []
 
 
 def test_export_formal_complaint_pdf_writes_file(tmp_path):

@@ -1180,6 +1180,11 @@ class TestWebEvidenceIntegrationHook:
                         'adaptive_query_strategy': 'standard_gap_targeted',
                         'adaptive_priority_penalty': 1,
                         'zero_result': True,
+                        'source_family': 'legal_authority',
+                        'record_scope': 'legal_authority',
+                        'artifact_family': 'legal_authority_reference',
+                        'corpus_family': 'legal_authority',
+                        'content_origin': 'authority_reference_fallback',
                         'timestamp': '2026-03-12T11:05:00',
                     },
                     {
@@ -1212,7 +1217,19 @@ class TestWebEvidenceIntegrationHook:
                                     'summary': {
                                         'semantic_cluster_count': 1,
                                         'semantic_duplicate_count': 1,
-                                    }
+                                        'support_by_kind': {
+                                            'authority': 1,
+                                        },
+                                    },
+                                    'results': [
+                                        {
+                                            'source_family': 'legal_authority',
+                                            'record_scope': 'legal_authority',
+                                            'artifact_family': 'legal_authority_reference',
+                                            'corpus_family': 'legal_authority',
+                                            'content_origin': 'authority_reference_fallback',
+                                        }
+                                    ],
                                 },
                             }
                         ],
@@ -1265,6 +1282,15 @@ class TestWebEvidenceIntegrationHook:
             assert result['follow_up_execution_summary']['employment discrimination']['suppressed_task_count'] == 1
             assert result['follow_up_execution_summary']['employment discrimination']['semantic_cluster_count'] == 3
             assert result['follow_up_execution_summary']['employment discrimination']['semantic_duplicate_count'] == 4
+            assert result['follow_up_execution_summary']['employment discrimination']['support_by_kind'] == {
+                'authority': 1,
+            }
+            assert result['follow_up_execution_summary']['employment discrimination']['source_family_counts'] == {
+                'legal_authority': 1,
+            }
+            assert result['follow_up_execution_summary']['employment discrimination']['artifact_family_counts'] == {
+                'legal_authority_reference': 1,
+            }
             assert result['follow_up_execution_summary']['employment discrimination']['contradiction_task_count'] == 0
             assert result['follow_up_execution_summary']['employment discrimination']['reasoning_gap_task_count'] == 0
             assert result['follow_up_execution_summary']['employment discrimination']['follow_up_focus_counts'] == {
@@ -1317,6 +1343,13 @@ class TestWebEvidenceIntegrationHook:
                 'contradiction_targeted': 1,
                 'standard_gap_targeted': 1,
             }
+            assert result['follow_up_history_summary']['employment discrimination']['source_family_counts'] == {
+                'legal_authority': 1,
+            }
+            assert result['follow_up_history_summary']['employment discrimination']['artifact_family_counts'] == {
+                'legal_authority_reference': 1,
+            }
+            assert result['follow_up_history']['employment discrimination'][0]['source_family'] == 'legal_authority'
             mock_mediator.execute_claim_follow_up_plan.assert_called_once()
             assert mock_mediator.execute_claim_follow_up_plan.call_args.kwargs['support_kind'] == 'evidence'
         except ImportError as e:

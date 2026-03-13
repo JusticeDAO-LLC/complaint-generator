@@ -102,6 +102,15 @@ class CLI:
 			lowered = value.lower()
 			if lowered in ('true', 'false'):
 				parsed_value = lowered == 'true'
+			elif key.replace('-', '_') in {'affidavit_venue_lines', 'affidavit_notary_block', 'affidavit_facts'}:
+				if value.startswith('['):
+					try:
+						loaded = json.loads(value)
+					except ValueError as error:
+						raise UserPresentableException(f'{key} must be valid JSON or a comma-delimited list') from error
+					parsed_value = [str(item).strip() for item in loaded if str(item).strip()] if isinstance(loaded, list) else []
+				else:
+					parsed_value = [item.strip() for item in value.split(',') if item.strip()]
 			elif key.replace('-', '_') in {
 				'required_support_kinds',
 				'output_formats',
@@ -244,6 +253,9 @@ class CLI:
 					f"{bias}={count}" for bias, count in sorted(primary_program_rule_bias_counts.items())
 				)
 				lines.append(f'  primary_rule_biases: {rule_bias_labels}')
+			source_context_summary = self._format_follow_up_source_context_summary(summary)
+			if source_context_summary:
+				lines.append(f'  source_context: {source_context_summary}')
 		return '' if len(lines) == 1 else '\n'.join(lines)
 
 	def _format_authority_search_history_summary(self, title, follow_up_history_summary):
@@ -280,7 +292,36 @@ class CLI:
 					f"{bias}={count}" for bias, count in sorted(selected_program_rule_bias_counts.items())
 				)
 				lines.append(f'  selected_rule_biases: {rule_bias_labels}')
+			source_context_summary = self._format_follow_up_source_context_summary(summary)
+			if source_context_summary:
+				lines.append(f'  source_context: {source_context_summary}')
 		return '' if len(lines) == 1 else '\n'.join(lines)
+
+	def _format_follow_up_source_context_summary(self, summary):
+		if not isinstance(summary, dict):
+			return ''
+		segments = []
+		support_by_kind = summary.get('support_by_kind', {}) if isinstance(summary.get('support_by_kind'), dict) else {}
+		source_family_counts = summary.get('source_family_counts', {}) if isinstance(summary.get('source_family_counts'), dict) else {}
+		artifact_family_counts = summary.get('artifact_family_counts', {}) if isinstance(summary.get('artifact_family_counts'), dict) else {}
+		content_origin_counts = summary.get('content_origin_counts', {}) if isinstance(summary.get('content_origin_counts'), dict) else {}
+		if support_by_kind:
+			segments.append(
+				'lane ' + ', '.join(f"{label}={count}" for label, count in sorted(support_by_kind.items()))
+			)
+		if source_family_counts:
+			segments.append(
+				'family ' + ', '.join(f"{label}={count}" for label, count in sorted(source_family_counts.items()))
+			)
+		if artifact_family_counts:
+			segments.append(
+				'artifact ' + ', '.join(f"{label}={count}" for label, count in sorted(artifact_family_counts.items()))
+			)
+		elif content_origin_counts:
+			segments.append(
+				'origin ' + ', '.join(f"{label}={count}" for label, count in sorted(content_origin_counts.items()))
+			)
+		return '; '.join(segments)
 
 	def execute_follow_up(self, args):
 		positionals, options = self._parse_command_options(args)
@@ -366,6 +407,12 @@ class CLI:
 				additional_signers = json.loads(additional_signers)
 			except ValueError as error:
 				raise UserPresentableException('additional_signers must be valid JSON') from error
+		affidavit_supporting_exhibits = options.get('affidavit_supporting_exhibits')
+		if isinstance(affidavit_supporting_exhibits, str):
+			try:
+				affidavit_supporting_exhibits = json.loads(affidavit_supporting_exhibits)
+			except ValueError as error:
+				raise UserPresentableException('affidavit_supporting_exhibits must be valid JSON') from error
 		payload = self.mediator.build_formal_complaint_document_package(
 			user_id=options.get('user_id'),
 			court_name=options.get('court_name', 'United States District Court'),
@@ -397,6 +444,14 @@ class CLI:
 			signature_date=options.get('signature_date'),
 			verification_date=options.get('verification_date'),
 			service_date=options.get('service_date'),
+			affidavit_title=options.get('affidavit_title'),
+			affidavit_intro=options.get('affidavit_intro'),
+			affidavit_facts=options.get('affidavit_facts'),
+			affidavit_supporting_exhibits=affidavit_supporting_exhibits,
+			affidavit_include_complaint_exhibits=options.get('affidavit_include_complaint_exhibits'),
+			affidavit_venue_lines=options.get('affidavit_venue_lines'),
+			affidavit_jurat=options.get('affidavit_jurat'),
+			affidavit_notary_block=options.get('affidavit_notary_block'),
 			output_dir=output_dir,
 			output_formats=options.get('output_formats'),
 		)

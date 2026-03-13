@@ -17,7 +17,7 @@ The goal is to show two things clearly:
 1. how runtime information should flow through complaint-generator
 2. what implementation order produces the fewest blockers and the highest-value early wins
 
-This map should be read against the current repo state, not an earlier greenfield baseline. Complaint-generator already has persisted evidence and authority facts, queue-backed scraper execution, graph-support fallback summaries, and review payloads that expose coverage and follow-up summaries. The dependency question is therefore how to deepen those existing slices into a complete graph, retrieval, and reasoning system.
+This map should be read against the current repo state, not an earlier greenfield baseline. Complaint-generator already has persisted evidence and authority facts, queue-backed scraper execution, graph-support fallback summaries, and review payloads that expose coverage plus lineage-aware follow-up plan, execution, and history summaries. The dependency question is therefore how to deepen those existing slices into a complete graph, retrieval, and reasoning system.
 
 ## Runtime Integration Map
 

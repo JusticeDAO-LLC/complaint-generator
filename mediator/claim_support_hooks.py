@@ -446,10 +446,21 @@ class ClaimSupportHook:
         graph_trace = link.get('graph_trace', {}) if isinstance(link.get('graph_trace'), dict) else {}
         graph_summary = link.get('graph_summary', {}) if isinstance(link.get('graph_summary'), dict) else {}
         record_summary = link.get('record_summary', {}) if isinstance(link.get('record_summary'), dict) else {}
+        record_parse_summary = record_summary.get('parse_summary', {}) if isinstance(record_summary.get('parse_summary'), dict) else {}
         fact_metadata = fact.get('metadata', {}) if isinstance(fact.get('metadata'), dict) else {}
         parse_lineage = fact_metadata.get('parse_lineage', {}) if isinstance(fact_metadata.get('parse_lineage'), dict) else {}
         snapshot = graph_trace.get('snapshot', {}) if isinstance(graph_trace.get('snapshot'), dict) else {}
         source_ref = link.get('support_ref') or parse_lineage.get('source_ref') or ''
+        source_table = str(link.get('source_table') or '')
+        source_family = str(fact.get('source_family') or parse_lineage.get('record_scope') or '')
+        if not source_family:
+            source_family = 'legal_authority' if source_table == 'legal_authorities' else source_table or str(link.get('support_kind') or '')
+        source_record_id = fact.get('source_record_id')
+        if source_record_id is None:
+            source_record_id = link.get('authority_record_id') if source_family == 'legal_authority' else link.get('evidence_record_id')
+        artifact_family = str(fact.get('artifact_family') or parse_lineage.get('artifact_family') or record_parse_summary.get('artifact_family') or '')
+        corpus_family = str(fact.get('corpus_family') or parse_lineage.get('corpus_family') or record_parse_summary.get('corpus_family') or '')
+        content_origin = str(fact.get('content_origin') or parse_lineage.get('content_origin') or record_parse_summary.get('content_origin') or '')
 
         return {
             'claim_type': link.get('claim_type'),
@@ -459,6 +470,13 @@ class ClaimSupportHook:
             'support_ref': link.get('support_ref'),
             'support_label': link.get('support_label'),
             'source_table': link.get('source_table'),
+            'source_family': source_family,
+            'source_record_id': source_record_id,
+            'source_ref': str(fact.get('source_ref') or parse_lineage.get('source_ref') or source_ref),
+            'record_scope': str(fact.get('record_scope') or parse_lineage.get('record_scope') or source_family),
+            'artifact_family': artifact_family,
+            'corpus_family': corpus_family,
+            'content_origin': content_origin,
             'support_strength': link.get('support_strength', 0.0),
             'record_id': graph_trace.get('record_id') or link.get('evidence_record_id') or link.get('authority_record_id'),
             'fact_id': fact.get('fact_id', ''),
@@ -649,7 +667,14 @@ class ClaimSupportHook:
             'support_ref': trace.get('support_ref'),
             'support_label': trace.get('support_label'),
             'source_table': trace.get('source_table'),
+            'source_family': trace.get('source_family', ''),
+            'source_record_id': trace.get('source_record_id'),
+            'source_ref': trace.get('source_ref', ''),
+            'record_scope': trace.get('record_scope', ''),
             'record_id': trace.get('record_id'),
+            'artifact_family': trace.get('artifact_family', ''),
+            'corpus_family': trace.get('corpus_family', ''),
+            'content_origin': trace.get('content_origin', ''),
             'fact': {
                 'fact_id': trace.get('fact_id', ''),
                 'text': trace.get('fact_text', ''),
@@ -3440,6 +3465,12 @@ class ClaimSupportHook:
                 'selected_search_program_bias': metadata.get('selected_search_program_bias', ''),
                 'selected_search_program_rule_bias': metadata.get('selected_search_program_rule_bias', ''),
                 'selected_search_program_families': list(metadata.get('selected_search_program_families', []) or []),
+                'source_family': metadata.get('source_family', ''),
+                'record_scope': metadata.get('record_scope', ''),
+                'artifact_family': metadata.get('artifact_family', ''),
+                'corpus_family': metadata.get('corpus_family', ''),
+                'content_origin': metadata.get('content_origin', ''),
+                'graph_support_summary': dict(metadata.get('graph_support_summary', {}) or {}),
             }
             current_claim = str(row[1] or '')
             claim_entries.setdefault(current_claim, []).append(entry)

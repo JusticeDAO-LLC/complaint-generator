@@ -574,7 +574,7 @@ Implemented baseline:
 - claim-support validation already emits contradiction-aware and proof-aware statuses
 - review and dashboard surfaces already expose proof-gap, reasoning, and contradiction summaries
 - follow-up planning already consumes proof-decision traces, logic-unprovable outcomes, ontology-invalid signals, and reasoning-gap states
-- follow-up history, plan, and execution summaries already carry proof-aware retry and review context for operator inspection
+- follow-up history, plan, and execution summaries already carry proof-aware retry and review context plus compact graph-source lineage such as support lane, source family, artifact family, and content-origin counts for operator inspection
 
 Acceptance criteria:
 

@@ -23,7 +23,7 @@ These batches assume the repository already has:
 - a stable adapter boundary under `integrations/ipfs_datasets/`
 - typed parse and graph contracts through `DocumentParseResult`, `GraphSnapshotResult`, and `GraphSupportResult`
 - evidence, web evidence, and legal-authority ingestion using adapter-backed flows
-- persisted claim-support links, follow-up history, and compact review payloads
+- persisted claim-support links, follow-up history, and compact review payloads, including follow-up source-lineage summaries
 - graph-trace summaries, contradiction diagnostics, reasoning diagnostics, and proof-aware follow-up planning
 - review API and dashboard surfaces already in place for operator inspection
 

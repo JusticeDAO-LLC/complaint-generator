@@ -24,6 +24,13 @@ class AdditionalSignerDetail(BaseModel):
     contact: Optional[str] = None
 
 
+class AffidavitExhibitDetail(BaseModel):
+    label: Optional[str] = None
+    title: Optional[str] = None
+    link: Optional[str] = None
+    summary: Optional[str] = None
+
+
 class FormalComplaintDocumentRequest(BaseModel):
     user_id: Optional[str] = None
     court_name: str = "United States District Court"
@@ -55,6 +62,14 @@ class FormalComplaintDocumentRequest(BaseModel):
     signature_date: Optional[str] = None
     verification_date: Optional[str] = None
     service_date: Optional[str] = None
+    affidavit_title: Optional[str] = None
+    affidavit_intro: Optional[str] = None
+    affidavit_facts: List[str] = Field(default_factory=list)
+    affidavit_supporting_exhibits: List[AffidavitExhibitDetail] = Field(default_factory=list)
+    affidavit_include_complaint_exhibits: Optional[bool] = None
+    affidavit_venue_lines: List[str] = Field(default_factory=list)
+    affidavit_jurat: Optional[str] = None
+    affidavit_notary_block: List[str] = Field(default_factory=list)
     output_dir: Optional[str] = None
     output_formats: List[str] = Field(default_factory=lambda: ["docx", "pdf"])
 
@@ -95,6 +110,33 @@ def _build_review_url(
     return f"/claim-support-review?{query}" if query else "/claim-support-review"
 
 
+def _default_support_kind_for_section(section_key: Optional[str]) -> Optional[str]:
+    mapping = {
+        "summary_of_facts": "evidence",
+        "exhibits": "evidence",
+        "jurisdiction_and_venue": "authority",
+        "claims_for_relief": "authority",
+    }
+    normalized = str(section_key or "").strip().lower()
+    return mapping.get(normalized)
+
+
+def _build_review_intent(
+    *,
+    user_id: Optional[str] = None,
+    claim_type: Optional[str] = None,
+    section: Optional[str] = None,
+    follow_up_support_kind: Optional[str] = None,
+) -> Dict[str, Any]:
+    return {
+        "user_id": user_id,
+        "claim_type": claim_type,
+        "section": section,
+        "follow_up_support_kind": follow_up_support_kind,
+        "review_url": _build_review_url(user_id=user_id, claim_type=claim_type, section=section),
+    }
+
+
 def _annotate_artifacts_with_download_urls(payload: Dict[str, Any]) -> Dict[str, Any]:
     artifacts = payload.get("artifacts") if isinstance(payload, dict) else None
     if not isinstance(artifacts, dict):
@@ -126,6 +168,7 @@ def _annotate_checklist_review_links(
     dashboard_url: str,
     claim_review_map: Dict[str, Dict[str, Any]],
     section_review_map: Dict[str, Dict[str, Any]],
+    default_review_intent: Dict[str, Any],
 ) -> Dict[str, Any]:
     checklist_targets = []
     top_level = payload.get("filing_checklist") if isinstance(payload.get("filing_checklist"), list) else []
@@ -150,9 +193,11 @@ def _annotate_checklist_review_links(
             if target:
                 item["review_url"] = target.get("review_url")
                 item["review_context"] = target.get("review_context")
+                item["review_intent"] = target.get("review_intent")
             else:
                 item["review_url"] = dashboard_url
-                item["review_context"] = {"user_id": None}
+                item["review_context"] = {"user_id": default_review_intent.get("user_id")}
+                item["review_intent"] = dict(default_review_intent)
     return payload
 
 
@@ -167,6 +212,7 @@ def _annotate_review_links(payload: Dict[str, Any], *, user_id: Optional[str]) -
     claim_entries = drafting_readiness.get("claims") if isinstance(drafting_readiness.get("claims"), list) else []
     section_entries = drafting_readiness.get("sections") if isinstance(drafting_readiness.get("sections"), dict) else {}
     dashboard_url = _build_review_url(user_id=resolved_user_id)
+    default_review_intent = _build_review_intent(user_id=resolved_user_id)
 
     claim_links = []
     claim_types = []
@@ -179,19 +225,26 @@ def _annotate_review_links(payload: Dict[str, Any], *, user_id: Optional[str]) -
             continue
         claim_types.append(claim_type)
         claim_review_url = _build_review_url(user_id=resolved_user_id, claim_type=claim_type)
+        claim_review_intent = _build_review_intent(
+            user_id=resolved_user_id,
+            claim_type=claim_type,
+        )
         claim["review_url"] = claim_review_url
         claim["review_context"] = {
             "user_id": resolved_user_id,
             "claim_type": claim_type,
         }
+        claim["review_intent"] = claim_review_intent
         claim_review_map[claim_type] = {
             "review_url": claim_review_url,
             "review_context": claim["review_context"],
+            "review_intent": claim_review_intent,
         }
         claim_links.append(
             {
                 "claim_type": claim_type,
                 "review_url": claim_review_url,
+                "review_intent": claim_review_intent,
             }
         )
 
@@ -210,6 +263,12 @@ def _annotate_review_links(payload: Dict[str, Any], *, user_id: Optional[str]) -
             claim_type=primary_claim_type,
             section=resolved_section_key,
         )
+        section_review_intent = _build_review_intent(
+            user_id=resolved_user_id,
+            claim_type=primary_claim_type,
+            section=resolved_section_key,
+            follow_up_support_kind=_default_support_kind_for_section(resolved_section_key),
+        )
         section_claim_links = [
             {
                 "claim_type": claim_type,
@@ -217,6 +276,12 @@ def _annotate_review_links(payload: Dict[str, Any], *, user_id: Optional[str]) -
                     user_id=resolved_user_id,
                     claim_type=claim_type,
                     section=resolved_section_key,
+                ),
+                "review_intent": _build_review_intent(
+                    user_id=resolved_user_id,
+                    claim_type=claim_type,
+                    section=resolved_section_key,
+                    follow_up_support_kind=_default_support_kind_for_section(resolved_section_key),
                 ),
             }
             for claim_type in related_claim_types
@@ -228,11 +293,13 @@ def _annotate_review_links(payload: Dict[str, Any], *, user_id: Optional[str]) -
         }
         section["review_url"] = section_review_url
         section["review_context"] = review_context
+        section["review_intent"] = section_review_intent
         if section_claim_links:
             section["claim_links"] = section_claim_links
         section_review_map[resolved_section_key] = {
             "review_url": section_review_url,
             "review_context": review_context,
+            "review_intent": section_review_intent,
         }
         section_links.append(
             {
@@ -240,20 +307,44 @@ def _annotate_review_links(payload: Dict[str, Any], *, user_id: Optional[str]) -
                 "title": section.get("title") or resolved_section_key,
                 "review_url": section_review_url,
                 "review_context": review_context,
+                "review_intent": section_review_intent,
                 "claim_links": section_claim_links,
             }
         )
+
+    preferred_section = None
+    for section_key, section in section_entries.items():
+        if not isinstance(section, dict):
+            continue
+        if str(section.get("status") or "").lower() in {"warning", "blocked"}:
+            preferred_section = str(section_key or "").strip() or None
+            break
+
+    preferred_claim_type = None
+    for claim in claim_entries:
+        if not isinstance(claim, dict):
+            continue
+        if str(claim.get("status") or "").lower() in {"warning", "blocked"}:
+            preferred_claim_type = str(claim.get("claim_type") or "").strip() or None
+            break
 
     payload["review_links"] = {
         "dashboard_url": dashboard_url,
         "claims": claim_links,
         "sections": section_links,
     }
+    payload["review_intent"] = _build_review_intent(
+        user_id=resolved_user_id,
+        claim_type=preferred_claim_type,
+        section=preferred_section,
+        follow_up_support_kind=_default_support_kind_for_section(preferred_section),
+    )
     return _annotate_checklist_review_links(
         payload,
         dashboard_url=dashboard_url,
         claim_review_map=claim_review_map,
         section_review_map=section_review_map,
+        default_review_intent=payload["review_intent"],
     )
 
 
@@ -297,6 +388,14 @@ def create_document_router(mediator: Any) -> APIRouter:
             signature_date=request.signature_date,
             verification_date=request.verification_date,
             service_date=request.service_date,
+            affidavit_title=request.affidavit_title,
+            affidavit_intro=request.affidavit_intro,
+            affidavit_facts=request.affidavit_facts,
+            affidavit_supporting_exhibits=[detail.model_dump(exclude_none=True) for detail in request.affidavit_supporting_exhibits],
+            affidavit_include_complaint_exhibits=request.affidavit_include_complaint_exhibits,
+            affidavit_venue_lines=request.affidavit_venue_lines,
+            affidavit_jurat=request.affidavit_jurat,
+            affidavit_notary_block=request.affidavit_notary_block,
             output_dir=request.output_dir,
             output_formats=request.output_formats,
         )

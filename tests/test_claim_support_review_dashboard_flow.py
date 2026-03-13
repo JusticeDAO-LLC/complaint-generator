@@ -200,6 +200,11 @@ def _build_dashboard_mediator() -> Mock:
                     "follow_up_focus": "parse_quality_improvement",
                     "query_strategy": "quality_gap_targeted",
                     "resolution_applied": "manual_review_resolved",
+                    "source_family": "legal_authority",
+                    "record_scope": "legal_authority",
+                    "artifact_family": "legal_authority_reference",
+                    "corpus_family": "legal_authority",
+                    "content_origin": "authority_reference_fallback",
                     "selected_search_program_type": "element_definition_search",
                     "selected_search_program_bias": "uncertain",
                     "selected_search_program_rule_bias": "procedural_prerequisite",
@@ -223,6 +228,24 @@ def _build_dashboard_mediator() -> Mock:
                         "status": "missing",
                         "priority": "high",
                         "recommended_action": "improve_parse_quality",
+                        "graph_support": {
+                            "summary": {
+                                "semantic_cluster_count": 1,
+                                "semantic_duplicate_count": 0,
+                                "support_by_kind": {
+                                    "authority": 1,
+                                },
+                            },
+                            "results": [
+                                {
+                                    "source_family": "legal_authority",
+                                    "record_scope": "legal_authority",
+                                    "artifact_family": "legal_authority_reference",
+                                    "corpus_family": "legal_authority",
+                                    "content_origin": "authority_reference_fallback",
+                                }
+                            ],
+                        },
                         "authority_search_program_summary": {
                             "program_count": 1,
                             "program_type_counts": {
@@ -264,6 +287,24 @@ def _build_dashboard_mediator() -> Mock:
                         "claim_element": "Causal connection",
                         "follow_up_focus": "parse_quality_improvement",
                         "query_strategy": "quality_gap_targeted",
+                        "graph_support": {
+                            "summary": {
+                                "semantic_cluster_count": 1,
+                                "semantic_duplicate_count": 0,
+                                "support_by_kind": {
+                                    "authority": 1,
+                                },
+                            },
+                            "results": [
+                                {
+                                    "source_family": "legal_authority",
+                                    "record_scope": "legal_authority",
+                                    "artifact_family": "legal_authority_reference",
+                                    "corpus_family": "legal_authority",
+                                    "content_origin": "authority_reference_fallback",
+                                }
+                            ],
+                        },
                     }
                 ],
                 "skipped_tasks": [],
@@ -311,6 +352,7 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert soup.find(id="execution-result-status") is not None
     assert soup.find(id="signal-plan-normalized") is not None
     assert soup.find(id="signal-history-normalized") is not None
+    assert soup.find(id="signal-follow-up-source-context") is not None
     assert soup.find(id="signal-archive-captures") is not None
     assert soup.find(id="signal-fallback-authorities") is not None
     assert soup.find(id="signal-low-quality-records") is not None
@@ -320,11 +362,16 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert "authority program ${task.authority_search_program_summary.primary_program_type}" in page_html
     assert "authority bias ${task.authority_search_program_summary.primary_program_bias}" in page_html
     assert "rule bias ${task.authority_search_program_summary.primary_program_rule_bias}" in page_html
+    assert "No graph source context" in page_html
     assert "History programs: ${selectedProgramTypes.map(([label, count]) => `${label}=${count}`).join(', ')}" in page_html
     assert "History biases: ${selectedProgramBiases.map(([label, count]) => `${label}=${count}`).join(', ')}" in page_html
     assert "History rule biases: ${selectedProgramRuleBiases.map(([label, count]) => `${label}=${count}`).join(', ')}" in page_html
+    assert "History source context:" in page_html
     assert "program: ${entry.selected_search_program_type}" in page_html
     assert "rule bias: ${entry.selected_search_program_rule_bias}" in page_html
+    assert "family: ${entry.source_family}" in page_html
+    assert "artifact: ${entry.artifact_family}" in page_html
+    assert "origin: ${entry.content_origin}" in page_html
     assert "View lineage packets" in page_html
     assert "packet-details" in page_html
     assert "All packets" in page_html
@@ -418,6 +465,15 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert review_payload["follow_up_plan_summary"]["retaliation"]["primary_authority_program_rule_bias_counts"] == {
         "procedural_prerequisite": 1,
     }
+    assert review_payload["follow_up_plan_summary"]["retaliation"]["support_by_kind"] == {
+        "authority": 1,
+    }
+    assert review_payload["follow_up_plan_summary"]["retaliation"]["source_family_counts"] == {
+        "legal_authority": 1,
+    }
+    assert review_payload["follow_up_plan_summary"]["retaliation"]["artifact_family_counts"] == {
+        "legal_authority_reference": 1,
+    }
     assert review_payload["follow_up_plan_summary"]["retaliation"]["resolution_applied_counts"] == {
         "manual_review_resolved": 1,
     }
@@ -431,6 +487,13 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert review_payload["follow_up_history_summary"]["retaliation"]["selected_authority_program_rule_bias_counts"] == {
         "procedural_prerequisite": 1,
     }
+    assert review_payload["follow_up_history_summary"]["retaliation"]["source_family_counts"] == {
+        "legal_authority": 1,
+    }
+    assert review_payload["follow_up_history_summary"]["retaliation"]["artifact_family_counts"] == {
+        "legal_authority_reference": 1,
+    }
+    assert review_payload["follow_up_history"]["retaliation"][1]["source_family"] == "legal_authority"
     assert any(
         entry.get("resolution_applied") == "manual_review_resolved"
         for entry in review_payload["follow_up_history"]["retaliation"]
@@ -468,6 +531,15 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
         ),
     )
     assert execute_payload["follow_up_execution"]["retaliation"]["task_count"] == 1
+    assert execute_payload["follow_up_execution_summary"]["retaliation"]["support_by_kind"] == {
+        "authority": 1,
+    }
+    assert execute_payload["follow_up_execution_summary"]["retaliation"]["source_family_counts"] == {
+        "legal_authority": 1,
+    }
+    assert execute_payload["follow_up_execution_summary"]["retaliation"]["artifact_family_counts"] == {
+        "legal_authority_reference": 1,
+    }
     assert execute_payload["execution_quality_summary"]["retaliation"]["quality_improvement_status"] == "unchanged"
     assert execute_payload["execution_quality_summary"]["retaliation"]["parse_quality_task_count"] == 1
     assert execute_payload["execution_quality_summary"]["retaliation"]["recommended_next_action"] == ""

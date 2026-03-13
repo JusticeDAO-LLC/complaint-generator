@@ -94,7 +94,7 @@ This plan assumes the following current-state facts are true in this checkout:
 - `complaint_phases/` remains the canonical in-memory workflow graph model
 - all production `ipfs_datasets_py` usage should stay behind `integrations/ipfs_datasets/`
 - the repo must support degraded mode when the submodule or optional upstream dependencies are unavailable
-- evidence, legal authority, web evidence, graph support, review payloads, and follow-up history are already partly integrated and persisted
+- evidence, legal authority, web evidence, graph support, review payloads, and follow-up history are already partly integrated and persisted, including compact graph-source lineage on persisted follow-up summaries
 
 ## Current Integration Surface
 
@@ -229,7 +229,7 @@ The integration is successful when complaint-generator can do the following reli
 ### Operator workflows
 
 - show compact review summaries without losing drilldown access
-- surface provenance bundles, support traces, contradiction packets, and follow-up history
+- surface provenance bundles, support traces, contradiction packets, and follow-up history with persisted source-lineage context
 - let operators see which tasks were broadened, retried, suppressed, or downgraded
 - keep all of this available in both rich mode and degraded mode
 

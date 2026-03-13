@@ -283,6 +283,11 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                         "selected_search_program_type": "adverse_authority_search",
                         "selected_search_program_bias": "adverse",
                         "selected_search_program_rule_bias": "exception",
+                        "source_family": "legal_authority",
+                        "record_scope": "legal_authority",
+                        "artifact_family": "legal_authority_reference",
+                        "corpus_family": "legal_authority",
+                        "content_origin": "authority_reference_fallback",
                     },
                 ]
             }
@@ -546,6 +551,21 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             },
             "selected_authority_program_rule_bias_counts": {
                 "exception": 1,
+            },
+            "source_family_counts": {
+                "legal_authority": 1,
+            },
+            "record_scope_counts": {
+                "legal_authority": 1,
+            },
+            "artifact_family_counts": {
+                "legal_authority_reference": 1,
+            },
+            "corpus_family_counts": {
+                "legal_authority": 1,
+            },
+            "content_origin_counts": {
+                "authority_reference_fallback": 1,
             },
             "last_adaptive_retry": {
                 "claim_element_id": "retaliation:3",
@@ -1300,6 +1320,13 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
         "quality_gap_targeted_task_count": 1,
         "semantic_cluster_count": 1,
         "semantic_duplicate_count": 0,
+        "support_by_kind": {},
+        "support_by_source": {},
+        "source_family_counts": {},
+        "record_scope_counts": {},
+        "artifact_family_counts": {},
+        "corpus_family_counts": {},
+        "content_origin_counts": {},
         "follow_up_focus_counts": {
             "parse_quality_improvement": 1,
             "contradiction_resolution": 1,
@@ -1424,6 +1451,11 @@ def test_claim_support_manual_review_resolution_payload_returns_post_resolution_
                     "selected_search_program_type": "adverse_authority_search",
                     "selected_search_program_bias": "adverse",
                     "selected_search_program_rule_bias": "exception",
+                    "source_family": "legal_authority",
+                    "record_scope": "legal_authority",
+                    "artifact_family": "legal_authority_reference",
+                    "corpus_family": "legal_authority",
+                    "content_origin": "authority_reference_fallback",
                 }
             ]
         }
@@ -1622,7 +1654,23 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
                     "proof_decision_source": "partial_support",
                     "has_graph_support": True,
                     "should_suppress_retrieval": False,
-                    "graph_support": {"summary": {"semantic_cluster_count": 1, "semantic_duplicate_count": 0}},
+                    "graph_support": {
+                        "summary": {
+                            "semantic_cluster_count": 1,
+                            "semantic_duplicate_count": 0,
+                            "support_by_kind": {"evidence": 1},
+                            "support_by_source": {"evidence": 1},
+                        },
+                        "results": [
+                            {
+                                "source_family": "evidence",
+                                "record_scope": "evidence",
+                                "artifact_family": "archived_web_page",
+                                "corpus_family": "web_page",
+                                "content_origin": "historical_archive_capture",
+                            }
+                        ],
+                    },
                     "authority_rule_candidate_summary": {
                         "total_rule_candidate_count": 2,
                         "matched_claim_element_rule_count": 2,
@@ -1651,7 +1699,23 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
                     "proof_decision_source": "partial_support",
                     "has_graph_support": True,
                     "should_suppress_retrieval": False,
-                    "graph_support": {"summary": {"semantic_cluster_count": 2, "semantic_duplicate_count": 1}},
+                    "graph_support": {
+                        "summary": {
+                            "semantic_cluster_count": 2,
+                            "semantic_duplicate_count": 1,
+                            "support_by_kind": {"authority": 1},
+                            "support_by_source": {"legal_authorities": 1},
+                        },
+                        "results": [
+                            {
+                                "source_family": "legal_authority",
+                                "record_scope": "legal_authority",
+                                "artifact_family": "legal_authority_reference",
+                                "corpus_family": "legal_authority",
+                                "content_origin": "authority_reference_fallback",
+                            }
+                        ],
+                    },
                     "authority_rule_candidate_summary": {
                         "total_rule_candidate_count": 1,
                         "matched_claim_element_rule_count": 1,
@@ -1684,7 +1748,23 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
                         "primary_program_rule_bias": "exception",
                     },
                     "proof_decision_source": "partial_support",
-                    "graph_support": {"summary": {"semantic_cluster_count": 1, "semantic_duplicate_count": 0}},
+                    "graph_support": {
+                        "summary": {
+                            "semantic_cluster_count": 1,
+                            "semantic_duplicate_count": 0,
+                            "support_by_kind": {"evidence": 1},
+                            "support_by_source": {"evidence": 1},
+                        },
+                        "results": [
+                            {
+                                "source_family": "evidence",
+                                "record_scope": "evidence",
+                                "artifact_family": "archived_web_page",
+                                "corpus_family": "web_page",
+                                "content_origin": "historical_archive_capture",
+                            }
+                        ],
+                    },
                     "authority_rule_candidate_summary": {
                         "total_rule_candidate_count": 2,
                         "matched_claim_element_rule_count": 2,
@@ -1713,7 +1793,23 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
                     },
                     "proof_decision_source": "partial_support",
                     "skipped": {"manual_review": {"reason": "adverse_authority_requires_review"}},
-                    "graph_support": {"summary": {"semantic_cluster_count": 2, "semantic_duplicate_count": 1}},
+                    "graph_support": {
+                        "summary": {
+                            "semantic_cluster_count": 2,
+                            "semantic_duplicate_count": 1,
+                            "support_by_kind": {"authority": 1},
+                            "support_by_source": {"legal_authorities": 1},
+                        },
+                        "results": [
+                            {
+                                "source_family": "legal_authority",
+                                "record_scope": "legal_authority",
+                                "artifact_family": "legal_authority_reference",
+                                "corpus_family": "legal_authority",
+                                "content_origin": "authority_reference_fallback",
+                            }
+                        ],
+                    },
                     "authority_rule_candidate_summary": {
                         "total_rule_candidate_count": 1,
                         "matched_claim_element_rule_count": 1,
@@ -1732,6 +1828,19 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
     assert plan_summary["rule_candidate_type_counts"] == {"element": 2, "exception": 1}
     assert plan_summary["primary_authority_program_bias_counts"] == {"adverse": 1}
     assert plan_summary["primary_authority_program_rule_bias_counts"] == {"exception": 1}
+    assert plan_summary["support_by_kind"] == {"evidence": 1, "authority": 1}
+    assert plan_summary["support_by_source"] == {"evidence": 1, "legal_authorities": 1}
+    assert plan_summary["source_family_counts"] == {"evidence": 1, "legal_authority": 1}
+    assert plan_summary["record_scope_counts"] == {"evidence": 1, "legal_authority": 1}
+    assert plan_summary["artifact_family_counts"] == {
+        "archived_web_page": 1,
+        "legal_authority_reference": 1,
+    }
+    assert plan_summary["corpus_family_counts"] == {"web_page": 1, "legal_authority": 1}
+    assert plan_summary["content_origin_counts"] == {
+        "historical_archive_capture": 1,
+        "authority_reference_fallback": 1,
+    }
     assert plan_summary["follow_up_focus_counts"] == {
         "fact_gap_closure": 1,
         "adverse_authority_review": 1,
@@ -1754,6 +1863,19 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
     assert execution_summary["rule_candidate_type_counts"] == {"element": 2, "exception": 1}
     assert execution_summary["primary_authority_program_bias_counts"] == {"adverse": 1}
     assert execution_summary["primary_authority_program_rule_bias_counts"] == {"exception": 1}
+    assert execution_summary["support_by_kind"] == {"evidence": 1, "authority": 1}
+    assert execution_summary["support_by_source"] == {"evidence": 1, "legal_authorities": 1}
+    assert execution_summary["source_family_counts"] == {"evidence": 1, "legal_authority": 1}
+    assert execution_summary["record_scope_counts"] == {"evidence": 1, "legal_authority": 1}
+    assert execution_summary["artifact_family_counts"] == {
+        "archived_web_page": 1,
+        "legal_authority_reference": 1,
+    }
+    assert execution_summary["corpus_family_counts"] == {"web_page": 1, "legal_authority": 1}
+    assert execution_summary["content_origin_counts"] == {
+        "historical_archive_capture": 1,
+        "authority_reference_fallback": 1,
+    }
     assert execution_summary["follow_up_focus_counts"] == {
         "fact_gap_closure": 1,
         "adverse_authority_review": 1,

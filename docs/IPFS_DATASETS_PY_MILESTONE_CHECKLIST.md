@@ -209,7 +209,7 @@ Goal:
 
 Status:
 
-- the repo already has review payloads, compact coverage summaries, follow-up history summaries, and a dashboard round-trip flow; the remaining work is richer drilldown and support-packet productization
+- the repo already has review payloads, compact coverage summaries, lineage-aware follow-up history/plan/execution summaries, and a dashboard round-trip flow; the remaining work is richer drilldown and support-packet productization
 
 Primary files:
 

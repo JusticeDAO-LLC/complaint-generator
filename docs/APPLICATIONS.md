@@ -88,8 +88,8 @@ After authentication, the system enters interactive mode where:
 | `!reset` | Wipe current state and start over with a new complaint |
 | `!save` | Save current conversation state to disk |
 | `!resume` | Load a previously saved state from disk |
-| `!claim-review` | Print a compact parse-quality review summary, plus follow-up authority search-program counts, primary treatment-versus-rule bias mixes, and recent selected-program history mixes when present, and then the claim-support review payload in JSON for a claim type |
-| `!execute-follow-up` | Execute follow-up retrieval tasks, print a compact execution-quality summary with the canonical `recommended_next_action` when parse-quality remediation is still needed, include authority search-program counts and post-execution selected-program history mixes when present, and then print the execution payload in JSON |
+| `!claim-review` | Print a compact parse-quality review summary, plus follow-up authority search-program counts, graph-source-context mixes, and recent selected-program or source-lineage history mixes when present, and then the claim-support review payload in JSON for a claim type |
+| `!execute-follow-up` | Execute follow-up retrieval tasks, print a compact execution-quality summary with the canonical `recommended_next_action` when parse-quality remediation is still needed, include authority search-program counts plus graph-source-context and post-execution selected-program history mixes when present, and then print the execution payload in JSON |
 | `!export-complaint` | Build a court-style complaint draft and render document artifacts such as DOCX and PDF, then print a compact summary and the full package JSON |
 
 Review command examples:
@@ -100,6 +100,7 @@ Review command examples:
 !execute-follow-up "civil rights" follow_up_support_kind=authority follow_up_max_tasks_per_claim=1
 !execute-follow-up claim_type=retaliation follow_up_force=true include_post_execution_review=false
 !export-complaint statefiles district="Northern District of California" plaintiff_names="Jane Doe" defendant_names="Acme Corporation" case_number=25-cv-00001 output_formats=docx,pdf
+!export-complaint statefiles district="Northern District of California" plaintiff_names="Jane Doe" defendant_names="Acme Corporation" affidavit_supporting_exhibits='[{"label":"Affidavit Ex. 1","title":"HR Complaint Email","link":"https://example.org/hr-email.pdf","summary":"Email reporting discrimination to HR."}]' affidavit_include_complaint_exhibits=false output_formats=docx,pdf,txt
 ```
 
 Supported `key=value` options:
@@ -118,6 +119,8 @@ Supported `key=value` options:
 - `follow_up_force` on `!execute-follow-up`
 - `court_name`, `district`, `division`, `case_number`, `court_header_override`, `title_override`, `output_dir`
 - `plaintiff_names`, `defendant_names`, `requested_relief`, and `output_formats` as comma-separated lists when used with `!export-complaint`
+- `affidavit_supporting_exhibits` as a JSON array when used with `!export-complaint`; when supplied, the affidavit uses this curated exhibit list instead of inheriting the complaint exhibits
+- `affidavit_include_complaint_exhibits=false` on `!export-complaint` to suppress mirrored complaint exhibits from the affidavit when no affidavit-specific exhibit list is provided
 
 ### Profile Storage
 
@@ -197,8 +200,8 @@ This mode serves:
 
 | Endpoint | Description | Returns |
 |----------|-------------|---------|
-| `/api/claim-support/review` | Claim-element review packet for operator or UI workflows | JSON payload with `claim_coverage_matrix`, `claim_coverage_summary`, `claim_support_gaps`, `claim_contradiction_candidates`, and optional `support_summary`, `claim_overview`, or `follow_up_plan`; coverage payloads include compact support-lineage packet summaries for archived captures and authority fallbacks; `follow_up_execution` remains compatibility-only |
-| `/api/claim-support/execute-follow-up` | Explicit side-effecting follow-up execution endpoint | JSON payload with `follow_up_execution`, `follow_up_execution_summary`, optional `execution_quality_summary`, and optional `post_execution_review` |
+| `/api/claim-support/review` | Claim-element review packet for operator or UI workflows | JSON payload with `claim_coverage_matrix`, `claim_coverage_summary`, `claim_support_gaps`, `claim_contradiction_candidates`, optional `support_summary`, `claim_overview`, `follow_up_plan`, compact `follow_up_plan_summary`, and persisted `follow_up_history` or `follow_up_history_summary`; coverage payloads include compact support-lineage packet summaries for archived captures and authority fallbacks; `follow_up_execution` remains compatibility-only |
+| `/api/claim-support/execute-follow-up` | Explicit side-effecting follow-up execution endpoint | JSON payload with `follow_up_execution`, lineage-aware `follow_up_execution_summary`, optional `execution_quality_summary`, and optional `post_execution_review` with refreshed `follow_up_history_summary` |
 | `/api/documents/formal-complaint` | Formal complaint export endpoint for court-style pleading drafts | JSON payload with the structured draft, generated artifact paths, selected output formats, and generation timestamp |
 | `/api/documents/download` | Download a generated complaint artifact from the managed output directory | Generated DOCX or PDF file response |
 
@@ -234,9 +237,11 @@ Example response fields:
 - `support_summary`: persisted support-link summary keyed by claim type.
 - `claim_overview`: covered, partially supported, and missing element buckets keyed by claim type.
 - `follow_up_plan`: actionable retrieval tasks keyed by claim type; authority-targeted tasks now include claim-aware `authority_search_programs` bundles and a compact `authority_search_program_summary`.
-- `follow_up_plan_summary`: compact task, suppression, graph-support, and parse-remediation counts keyed by claim type.
+- `follow_up_plan_summary`: compact task, suppression, graph-support, parse-remediation, and graph-source-context counts keyed by claim type.
+- `follow_up_history`: recent persisted follow-up execution and manual-review rows keyed by claim type; graph-backed executions can flatten dominant source-lineage fields such as `source_family`, `artifact_family`, and `content_origin` onto each row for compact operator and CLI review.
+- `follow_up_history_summary`: compact history ledger counts keyed by claim type, including selected authority-program mixes, adaptive retry counts, and persisted graph-source-context families when the follow-up ledger stored graph-backed lineage.
 - `follow_up_execution`: compatibility-only opt-in execution results keyed by claim type when `execute_follow_up=true`.
-- `follow_up_execution_summary`: compatibility-only compact execution, suppression, cooldown-skip, and graph-support counts keyed by claim type.
+- `follow_up_execution_summary`: compatibility-only compact execution, suppression, cooldown-skip, graph-support, and graph-source-context counts keyed by claim type.
 - `compatibility_notice`: route-level deprecation metadata returned only when `execute_follow_up=true`.
 
 If `user_id` is omitted, the endpoint resolves it from the mediator state and falls back to `anonymous`.
@@ -283,8 +288,91 @@ Example request:
   "case_number": "25-cv-00001",
   "plaintiff_names": ["Jane Doe"],
   "defendant_names": ["Acme Corporation"],
+  "affidavit_include_complaint_exhibits": false,
   "output_formats": ["docx", "pdf", "txt", "checklist"]
 }
+```
+
+Affidavit exhibit behavior:
+
+- Leave `affidavit_include_complaint_exhibits` unset or set it to `true` to keep the default behavior of mirroring complaint exhibits into the affidavit when no affidavit-specific exhibit list is supplied.
+- Set `affidavit_include_complaint_exhibits` to `false` when the affidavit should omit mirrored complaint exhibits unless `affidavit_supporting_exhibits` is explicitly provided.
+
+Expanded affidavit override example:
+
+```json
+{
+  "district": "Northern District of California",
+  "county": "San Francisco County",
+  "case_number": "25-cv-00001",
+  "plaintiff_names": ["Jane Doe"],
+  "defendant_names": ["Acme Corporation"],
+  "affidavit_title": "AFFIDAVIT OF JANE DOE REGARDING RETALIATION",
+  "affidavit_intro": "I, Jane Doe, make this affidavit from personal knowledge regarding Defendant's retaliation.",
+  "affidavit_facts": [
+    "I reported discrimination to human resources on March 3, 2026.",
+    "Defendant terminated my employment two days later."
+  ],
+  "affidavit_supporting_exhibits": [
+    {
+      "label": "Affidavit Ex. 1",
+      "title": "HR Complaint Email",
+      "link": "https://example.org/hr-email.pdf",
+      "summary": "Email reporting discrimination to human resources."
+    }
+  ],
+  "affidavit_include_complaint_exhibits": false,
+  "affidavit_venue_lines": [
+    "State of California",
+    "County of San Francisco"
+  ],
+  "affidavit_jurat": "Subscribed and sworn to before me on March 13, 2026 by Jane Doe.",
+  "affidavit_notary_block": [
+    "__________________________________",
+    "Notary Public for the State of California",
+    "My commission expires: March 13, 2029"
+  ],
+  "output_formats": ["docx", "pdf", "txt"]
+}
+```
+
+Runnable `curl` example:
+
+```bash
+curl -X POST http://localhost:8000/api/documents/formal-complaint \
+  -H "Content-Type: application/json" \
+  --data @- <<'JSON'
+{
+  "district": "Northern District of California",
+  "county": "San Francisco County",
+  "case_number": "25-cv-00001",
+  "plaintiff_names": ["Jane Doe"],
+  "defendant_names": ["Acme Corporation"],
+  "affidavit_title": "AFFIDAVIT OF JANE DOE REGARDING RETALIATION",
+  "affidavit_intro": "I, Jane Doe, make this affidavit from personal knowledge regarding Defendant's retaliation.",
+  "affidavit_facts": [
+    "I reported discrimination to human resources on March 3, 2026.",
+    "Defendant terminated my employment two days later."
+  ],
+  "affidavit_supporting_exhibits": [
+    {
+      "label": "Affidavit Ex. 1",
+      "title": "HR Complaint Email",
+      "link": "https://example.org/hr-email.pdf",
+      "summary": "Email reporting discrimination to human resources."
+    }
+  ],
+  "affidavit_include_complaint_exhibits": false,
+  "affidavit_venue_lines": ["State of California", "County of San Francisco"],
+  "affidavit_jurat": "Subscribed and sworn to before me on March 13, 2026 by Jane Doe.",
+  "affidavit_notary_block": [
+    "__________________________________",
+    "Notary Public for the State of California",
+    "My commission expires: March 13, 2029"
+  ],
+  "output_formats": ["docx", "pdf", "txt"]
+}
+JSON
 ```
 
 Example response fields:
@@ -295,12 +383,18 @@ Example response fields:
 - `draft.draft_text`: copy-ready pleading text synthesized from the same structured draft used for DOCX and PDF rendering.
 - `draft.claims_for_relief[*].allegation_references`: paragraph numbers each count incorporates by reference from the factual allegations section, surfaced in the preview and rendered pleadings as `¶` / `¶¶` citations.
 - `draft.claims_for_relief[*].supporting_exhibits`: exhibit labels and links used alongside the paragraph citations to build the count-level incorporated-support block in the preview and rendered pleading.
+- `draft.claims_for_relief[*].support_summary`: compact per-claim support counts used by the builder, including lane counts plus source-family or artifact-family context when the persisted claim-support summary already has lineage-rich packet aggregates.
+- `draft.affidavit`: generated affidavit metadata used by the builder preview and affidavit export artifacts, including venue lines, numbered fact statements, supporting exhibits, jurat text, and notary block lines.
 - `drafting_readiness`: section-level and claim-level filing-readiness signals surfaced in the builder preview.
-- `filing_checklist`: operator-facing pre-filing checklist items derived from the readiness payload, including direct review links for claim- and section-specific remediation in the builder preview.
-- `review_links`: API-layer navigation metadata pointing back to `/claim-support-review` for the current user context, specific claim types, and section-specific drafting review links, including per-claim section links for multi-claim drafts.
+- `drafting_readiness.claims[*].source_family_counts` / `artifact_family_counts` / `content_origin_counts`: compact source-context counts lifted from persisted claim-support summaries so the builder preview can show where claim support currently comes from without sending users back to the review dashboard first.
+- `drafting_readiness.claims[*].review_intent` / `drafting_readiness.sections[*].review_intent`: normalized claim- and section-scoped review focus metadata that browsers or other clients can persist without rebuilding the query string by hand.
+- `filing_checklist`: operator-facing pre-filing checklist items derived from the readiness payload, including direct review links and `review_intent` metadata for claim- and section-specific remediation in the builder preview.
+- `review_links`: API-layer navigation metadata pointing back to `/claim-support-review` for the current user context, specific claim types, and section-specific drafting review links, including per-claim section links for multi-claim drafts and matching `review_intent` objects.
+- `review_intent`: top-level server-rendered review focus chosen from the current readiness warnings so the document builder can restore the most relevant dashboard context without relying only on browser-local history.
 - `artifacts.docx.path`: filesystem path to the generated DOCX document when requested.
 - `artifacts.pdf.path`: filesystem path to the generated PDF document when requested.
 - `artifacts.txt.path`: filesystem path to the generated plain-text pleading when requested.
+- `artifacts.affidavit_docx.path`, `artifacts.affidavit_pdf.path`, `artifacts.affidavit_txt.path`: filesystem paths to the generated affidavit companion documents when the matching output formats are requested.
 - `artifacts.checklist.path`: filesystem path to the generated plain-text pre-filing checklist artifact when requested, including embedded review URLs for direct remediation follow-up.
 - `artifacts.*.download_url`: application route for downloading generated artifacts when they were written under the managed output directory.
 - `output_formats`: formats rendered for the request.

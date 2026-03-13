@@ -2147,8 +2147,19 @@ class TestClaimSupportHook:
                 packet for packet in protected_activity['support_packets']
                 if packet['lineage_summary']['fallback_mode'] == 'citation_title_only'
             )
+            assert historical_packet['source_family'] == 'evidence'
+            assert historical_packet['source_record_id'] == 18
+            assert historical_packet['record_scope'] == 'evidence'
+            assert historical_packet['artifact_family'] == 'archived_web_page'
+            assert historical_packet['corpus_family'] == 'web_page'
+            assert historical_packet['content_origin'] == 'historical_archive_capture'
+            assert historical_packet['source_ref'] == historical_packet['source_lineage_ref']
             assert historical_packet['lineage_summary']['archive_url'] == 'https://web.archive.org/web/20240101120000/https://example.com/evidence'
             assert historical_packet['lineage_summary']['artifact_family'] == 'archived_web_page'
+            assert fallback_packet['source_family'] == 'legal_authority'
+            assert fallback_packet['record_scope'] == 'legal_authority'
+            assert fallback_packet['artifact_family'] == 'legal_authority_reference'
+            assert fallback_packet['corpus_family'] == 'legal_authority'
             assert fallback_packet['lineage_summary']['fallback_mode'] == 'citation_title_only'
             assert fallback_packet['lineage_summary']['artifact_family'] == 'legal_authority_reference'
             assert protected_activity['support_packet_summary']['historical_capture_count'] == 2
@@ -2579,6 +2590,10 @@ class TestClaimSupportHook:
             assert len(traces) == 1
             assert traces[0]['fact_id'] == 'fact:trace-1'
             assert traces[0]['trace_kind'] == 'fact'
+            assert traces[0]['source_family'] == 'evidence'
+            assert traces[0]['source_record_id'] == 52
+            assert traces[0]['source_ref'] == 'QmTrace1'
+            assert traces[0]['record_scope'] == 'evidence'
             assert traces[0]['parse_lineage']['source'] == 'bytes'
             assert traces[0]['graph_id'] == 'graph:evidence-52'
             assert traces[0]['record_id'] == 52

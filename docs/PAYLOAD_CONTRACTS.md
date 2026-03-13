@@ -838,6 +838,11 @@ Representative shape:
       "priority_penalized_entry_count": 0,
       "adaptive_query_strategy_counts": {},
       "adaptive_retry_reason_counts": {},
+      "source_family_counts": {},
+      "record_scope_counts": {},
+      "artifact_family_counts": {},
+      "corpus_family_counts": {},
+      "content_origin_counts": {},
       "zero_result_entry_count": 0,
       "last_adaptive_retry": null,
       "manual_review_entry_count": 0,
@@ -1125,6 +1130,13 @@ Representative shape:
       "support_kind": "evidence",
       "support_ref": "Qm...",
       "support_label": "Archived timeline email",
+      "source_family": "evidence",
+      "source_record_id": 14,
+      "source_ref": "artifact:14",
+      "record_scope": "evidence",
+      "artifact_family": "archived_web_page",
+      "corpus_family": "web_page",
+      "content_origin": "historical_archive_capture",
       "lineage_summary": {
         "content_origin": "historical_archive_capture",
         "historical_capture": true,
@@ -1137,6 +1149,13 @@ Representative shape:
       "support_kind": "authority",
       "support_ref": "42 U.S.C. § 1983",
       "support_label": "Citation fallback",
+      "source_family": "legal_authority",
+      "source_record_id": 12,
+      "source_ref": "authority:12",
+      "record_scope": "legal_authority",
+      "artifact_family": "legal_authority_reference",
+      "corpus_family": "legal_authority",
+      "content_origin": "authority_reference_fallback",
       "lineage_summary": {
         "content_origin": "authority_reference_fallback",
         "historical_capture": false,
@@ -1173,6 +1192,7 @@ Interpretation notes:
 - `support_facts` is the flattened fact list collected from the element's enriched evidence and authority support links.
 - `gap_summary.graph_support.results[*]` preserves the same explicit source-family, artifact-identity, and parse-lineage fields exposed by `support_facts`, but ranked for graph-backed support review.
 - `support_packets` is the review-friendly lineage packet view over that same element-level support.
+- `support_packets[*]` now preserves the same core source identity fields as `support_facts` where available: `source_family`, `source_record_id`, `source_ref`, `record_scope`, and flattened artifact identity such as `artifact_family`, `corpus_family`, and `content_origin`.
 - `support_packets[*].lineage_summary` carries archive-history fields such as `archive_url` and `capture_source`, plus fallback markers such as `fallback_mode` and `content_source_field`.
 - The raw API preserves support-packet data without imposing a display order; the review dashboard currently renders archive captures first, fallback-only authority packets next, and remaining packets after that for faster operator scanning.
 - `evidence` and `authorities` are the matching stored rows for the resolved claim element.
@@ -1340,6 +1360,34 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
       "adverse_authority_task_count": 0,
       "semantic_cluster_count": 1,
       "semantic_duplicate_count": 2,
+      "support_by_kind": {
+        "evidence": 1,
+        "authority": 1
+      },
+      "support_by_source": {
+        "evidence": 1,
+        "legal_authorities": 1
+      },
+      "source_family_counts": {
+        "evidence": 1,
+        "legal_authority": 1
+      },
+      "record_scope_counts": {
+        "evidence": 1,
+        "legal_authority": 1
+      },
+      "artifact_family_counts": {
+        "archived_web_page": 1,
+        "legal_authority_reference": 1
+      },
+      "corpus_family_counts": {
+        "web_page": 1,
+        "legal_authority": 1
+      },
+      "content_origin_counts": {
+        "historical_archive_capture": 1,
+        "authority_reference_fallback": 1
+      },
       "follow_up_focus_counts": {
         "contradiction_resolution": 1,
         "support_gap_closure": 1
@@ -1393,6 +1441,34 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
       "adverse_authority_task_count": 0,
       "semantic_cluster_count": 3,
       "semantic_duplicate_count": 4,
+      "support_by_kind": {
+        "evidence": 1,
+        "authority": 1
+      },
+      "support_by_source": {
+        "evidence": 1,
+        "legal_authorities": 1
+      },
+      "source_family_counts": {
+        "evidence": 1,
+        "legal_authority": 1
+      },
+      "record_scope_counts": {
+        "evidence": 1,
+        "legal_authority": 1
+      },
+      "artifact_family_counts": {
+        "archived_web_page": 1,
+        "legal_authority_reference": 1
+      },
+      "corpus_family_counts": {
+        "web_page": 1,
+        "legal_authority": 1
+      },
+      "content_origin_counts": {
+        "historical_archive_capture": 1,
+        "authority_reference_fallback": 1
+      },
       "adaptive_retry_task_count": 1,
       "priority_penalized_task_count": 1,
       "adaptive_query_strategy_counts": {
@@ -1427,6 +1503,7 @@ Interpretation notes:
 - `adaptive_retry_task_count`, `priority_penalized_task_count`, `adaptive_query_strategy_counts`, and `adaptive_retry_reason_counts` surface when repeated zero-result reasoning-gap retrievals have already caused the planner to broaden queries or lower urgency.
 - `last_adaptive_retry` gives the most recent broadened retry’s claim element label and timestamp plus `recency_bucket`/`is_stale` classification so dashboards can show freshness without scanning raw task lists.
 - `semantic_cluster_count` and `semantic_duplicate_count` summarize distinct versus near-duplicate graph-support clusters across planned tasks.
+- `support_by_kind`, `support_by_source`, `source_family_counts`, `record_scope_counts`, `artifact_family_counts`, `corpus_family_counts`, and `content_origin_counts` lift graph-support source identity into the compact follow-up summaries so dashboards can see whether queued or executed work is anchored in evidence, authority, archived pages, or fallback-only authority references without reopening each nested task payload.
 - `rule_candidate_backed_task_count`, `total_rule_candidate_count`, `matched_claim_element_rule_count`, and `rule_candidate_type_counts` summarize how much of the queued or executed work is backed by structured rule extraction from current authority support.
 - `follow_up_execution_summary` separates suppressed tasks from cooldown skips so dashboards can explain why follow-up work did not run.
 - `follow_up_execution_summary` also reports contradiction-versus-reasoning-gap task counts, fact-gap and adverse-authority task counts, plus focus, query-strategy, proof-decision-source, and resolution-normalization mixes across executed and skipped work.
@@ -1634,6 +1711,21 @@ Representative response shape:
       "adaptive_retry_reason_counts": {
         "repeated_zero_result_reasoning_gap": 1
       },
+      "source_family_counts": {
+        "legal_authority": 1
+      },
+      "record_scope_counts": {
+        "legal_authority": 1
+      },
+      "artifact_family_counts": {
+        "legal_authority_reference": 1
+      },
+      "corpus_family_counts": {
+        "legal_authority": 1
+      },
+      "content_origin_counts": {
+        "authority_reference_fallback": 1
+      },
       "zero_result_entry_count": 1,
       "last_adaptive_retry": {
         "claim_element_id": "retaliation:3",
@@ -1713,8 +1805,8 @@ Interpretation notes:
 - `claim_support_snapshots` exposes any persisted diagnostic snapshot ids reused by the review payload; when a stored snapshot no longer matches current support state it is marked with `is_stale=true` and the payload falls back to recomputation for that claim.
 - `claim_support_snapshot_summary` is the compact review-facing lifecycle view for those persisted diagnostics, so dashboard consumers can see freshness and pruning at a glance without iterating the raw snapshot entries.
 - `claim_reasoning_review` is the compact review-facing reasoning surface for flagged claim elements, capturing fallback ontology use plus unavailable or degraded adapter states without forcing clients to inspect every `reasoning_diagnostics` packet.
-- `follow_up_history` exposes recent rows from the persisted `claim_follow_up_execution` ledger, including contradiction-targeted retrieval attempts and manual-review audit events.
-- `follow_up_history_summary` compresses that ledger into counts by status, support kind, execution mode, query strategy, contradiction focus, resolution normalization, adaptive retry markers, selected authority-program type, and selected treatment-versus-rule bias when authority execution persisted a primary search-program choice. `last_adaptive_retry` highlights the most recent broadened retry with its claim element label, timestamp, and freshness classification.
+- `follow_up_history` exposes recent rows from the persisted `claim_follow_up_execution` ledger, including contradiction-targeted retrieval attempts and manual-review audit events. When graph-backed follow-up tasks persisted source lineage, each history row can also flatten the dominant `source_family`, `record_scope`, `artifact_family`, `corpus_family`, and `content_origin` so history cards do not need to reopen nested graph-support payloads.
+- `follow_up_history_summary` compresses that ledger into counts by status, support kind, execution mode, query strategy, contradiction focus, resolution normalization, adaptive retry markers, selected authority-program type, selected treatment-versus-rule bias, and persisted source-lineage families when authority or evidence execution stored graph-backed context. `last_adaptive_retry` highlights the most recent broadened retry with its claim element label, timestamp, and freshness classification.
 - `claim_coverage_summary` now carries compact parse-quality review signals such as `low_quality_parsed_record_count`, `parse_quality_issue_element_count`, and `parse_quality_issue_elements`, so dashboard clients can spot extraction-quality problems without traversing raw validation elements.
 - `claim_coverage_summary[claim_type].parse_quality_recommendation` is the canonical compact recommendation field for operator surfaces; it is set to `improve_parse_quality` when the review summary still has parse-quality issue elements.
 - `claim_coverage_summary[claim_type].authority_treatment_summary` is the canonical compact authority-reliability field for operator surfaces; it summarizes supportive, adverse, and uncertain authority links plus treatment-type counts such as `questioned`, `limits`, `superseded`, or `good_law_unconfirmed`.
@@ -1883,10 +1975,10 @@ Interpretation notes:
 - When those broadened retries are executed, the ledger stores `adaptive_retry_applied`, `adaptive_retry_reason`, `adaptive_query_strategy`, and zero-result markers, and `follow_up_history_summary` aggregates them so operators can distinguish broadened retry history from ordinary retrieval attempts.
 - `last_adaptive_retry` is shared across follow-up history, plan, and execution summaries so dashboards can align the most recent broadened retry event with the currently queued or already executed work, including whether that retry is still fresh or already stale.
 - `manual_review_task_count` in both follow-up summaries tracks contradiction-review work that intentionally does not trigger evidence or authority retrieval.
-- `follow_up_execution_summary` rolls executed and skipped work into shared `follow_up_focus_counts`, `query_strategy_counts`, `proof_decision_source_counts`, and `resolution_applied_counts`, so the standalone execution API exposes the same planner/execution mix analytics as review, web-evidence, and automatic legal research.
+- `follow_up_execution_summary` rolls executed and skipped work into shared `follow_up_focus_counts`, `query_strategy_counts`, `proof_decision_source_counts`, `resolution_applied_counts`, and compact graph-source-context fields such as `support_by_kind`, `source_family_counts`, `artifact_family_counts`, and `content_origin_counts`, so the standalone execution API exposes the same planner/execution mix analytics and lineage context as review, web-evidence, and automatic legal research.
 - `execution_quality_summary` compares the compact pre-execution and post-execution parse-quality signals, so operator dashboards can tell whether parse-remediation retrieval actually reduced low-quality parsed records or cleared flagged elements.
 - `execution_quality_summary[claim_type].recommended_next_action` is the canonical next-step field for operator surfaces; it is set to `improve_parse_quality` when post-execution review still shows unresolved parse-quality gaps.
-- `post_execution_review.follow_up_history_summary` reflects the refreshed ledger after execution, so clients can confirm that retrieval and manual-review events were recorded.
+- `post_execution_review.follow_up_history_summary` reflects the refreshed ledger after execution, so clients can confirm that retrieval and manual-review events were recorded and can inspect persisted source-lineage families from the refreshed history summary without reopening nested graph-support payloads.
 
 - `follow_up_force=true` bypasses duplicate-within-cooldown suppression inside `Mediator.execute_claim_follow_up_plan(...)`.
 - `include_post_execution_review=false` returns only execution results and skips the extra post-run coverage refresh.
@@ -2158,6 +2250,45 @@ Authority task result:
 
 `Mediator.build_formal_complaint_document_package(...)` returns a document-oriented package used by `/api/documents/formal-complaint` and the `/document` browser workflow.
 
+Relevant affidavit request controls:
+
+- `affidavit_supporting_exhibits`: optional affidavit-specific exhibit rows. When supplied, these replace the default mirrored complaint exhibit list for the affidavit.
+- `affidavit_include_complaint_exhibits`: optional boolean. Defaults to inherited complaint exhibits when omitted or `true`; set to `false` to suppress mirrored complaint exhibits when no affidavit-specific exhibit rows are provided.
+
+Representative request parameters:
+
+```json
+{
+  "district": "Northern District of California",
+  "county": "San Francisco County",
+  "plaintiff_names": ["Jane Doe"],
+  "defendant_names": ["Acme Corporation"],
+  "affidavit_title": "AFFIDAVIT OF JANE DOE REGARDING RETALIATION",
+  "affidavit_intro": "I, Jane Doe, make this affidavit from personal knowledge regarding Defendant's retaliation.",
+  "affidavit_facts": [
+    "I reported discrimination to human resources on March 3, 2026.",
+    "Defendant terminated my employment two days later."
+  ],
+  "affidavit_supporting_exhibits": [
+    {
+      "label": "Affidavit Ex. 1",
+      "title": "HR Complaint Email",
+      "link": "https://example.org/hr-email.pdf",
+      "summary": "Email reporting discrimination to human resources."
+    }
+  ],
+  "affidavit_include_complaint_exhibits": false,
+  "affidavit_venue_lines": ["State of California", "County of San Francisco"],
+  "affidavit_jurat": "Subscribed and sworn to before me on March 13, 2026 by Jane Doe.",
+  "affidavit_notary_block": [
+    "__________________________________",
+    "Notary Public for the State of California",
+    "My commission expires: March 13, 2029"
+  ],
+  "output_formats": ["docx", "pdf", "txt"]
+}
+```
+
 Representative shape:
 
 ```json
@@ -2173,6 +2304,30 @@ Representative shape:
     "claims_for_relief": [],
     "requested_relief": [],
     "exhibits": [],
+    "affidavit": {
+      "title": "AFFIDAVIT OF JANE DOE IN SUPPORT OF COMPLAINT",
+      "venue_lines": [
+        "State/District: Northern District of California",
+        "County: San Francisco County"
+      ],
+      "facts": [
+        "I am Jane Doe, the plaintiff in this action.",
+        "Plaintiff complained to human resources about race discrimination."
+      ],
+      "supporting_exhibits": [
+        {
+          "label": "Exhibit A",
+          "title": "Termination email from Defendant",
+          "link": "https://ipfs.io/ipfs/QmTerminationEmail"
+        }
+      ],
+      "jurat": "Subscribed and sworn to (or affirmed) before me on __________________ by Jane Doe.",
+      "notary_block": [
+        "__________________________________",
+        "Notary Public",
+        "My commission expires: __________________"
+      ]
+    },
     "drafting_readiness": {
       "status": "warning",
       "claim_types": ["retaliation"],
@@ -2237,7 +2392,14 @@ Representative shape:
     "claims": [
       {
         "claim_type": "retaliation",
-        "review_url": "/claim-support-review?user_id=abc123&claim_type=retaliation"
+        "review_url": "/claim-support-review?user_id=abc123&claim_type=retaliation",
+        "review_intent": {
+          "user_id": "abc123",
+          "claim_type": "retaliation",
+          "section": null,
+          "follow_up_support_kind": null,
+          "review_url": "/claim-support-review?user_id=abc123&claim_type=retaliation"
+        }
       }
     ],
     "sections": [
@@ -2250,10 +2412,24 @@ Representative shape:
           "section": "claims_for_relief",
           "claim_type": "retaliation"
         },
+        "review_intent": {
+          "user_id": "abc123",
+          "claim_type": "retaliation",
+          "section": "claims_for_relief",
+          "follow_up_support_kind": "authority",
+          "review_url": "/claim-support-review?user_id=abc123&claim_type=retaliation&section=claims_for_relief"
+        },
         "claim_links": [
           {
             "claim_type": "retaliation",
-            "review_url": "/claim-support-review?user_id=abc123&claim_type=retaliation&section=claims_for_relief"
+            "review_url": "/claim-support-review?user_id=abc123&claim_type=retaliation&section=claims_for_relief",
+            "review_intent": {
+              "user_id": "abc123",
+              "claim_type": "retaliation",
+              "section": "claims_for_relief",
+              "follow_up_support_kind": "authority",
+              "review_url": "/claim-support-review?user_id=abc123&claim_type=retaliation&section=claims_for_relief"
+            }
           }
         ]
       },
@@ -2266,19 +2442,46 @@ Representative shape:
           "section": "summary_of_facts",
           "claim_type": null
         },
+        "review_intent": {
+          "user_id": "abc123",
+          "claim_type": null,
+          "section": "summary_of_facts",
+          "follow_up_support_kind": "evidence",
+          "review_url": "/claim-support-review?user_id=abc123&section=summary_of_facts"
+        },
         "claim_links": [
           {
             "claim_type": "employment discrimination",
-            "review_url": "/claim-support-review?user_id=abc123&claim_type=employment+discrimination&section=summary_of_facts"
+            "review_url": "/claim-support-review?user_id=abc123&claim_type=employment+discrimination&section=summary_of_facts",
+            "review_intent": {
+              "user_id": "abc123",
+              "claim_type": "employment discrimination",
+              "section": "summary_of_facts",
+              "follow_up_support_kind": "evidence",
+              "review_url": "/claim-support-review?user_id=abc123&claim_type=employment+discrimination&section=summary_of_facts"
+            }
           },
           {
             "claim_type": "retaliation",
-            "review_url": "/claim-support-review?user_id=abc123&claim_type=retaliation&section=summary_of_facts"
+            "review_url": "/claim-support-review?user_id=abc123&claim_type=retaliation&section=summary_of_facts",
+            "review_intent": {
+              "user_id": "abc123",
+              "claim_type": "retaliation",
+              "section": "summary_of_facts",
+              "follow_up_support_kind": "evidence",
+              "review_url": "/claim-support-review?user_id=abc123&claim_type=retaliation&section=summary_of_facts"
+            }
           }
         ]
       }
-      }
     ]
+  },
+  "review_intent": {
+    "user_id": "abc123",
+    "claim_type": "retaliation",
+    "section": "claims_for_relief",
+    "follow_up_support_kind": "authority",
+    "review_url": "/claim-support-review?user_id=abc123&claim_type=retaliation&section=claims_for_relief"
   },
   "artifacts": {
     "docx": {
@@ -2286,6 +2489,12 @@ Representative shape:
       "filename": "example.docx",
       "size_bytes": 12345,
       "download_url": "/api/documents/download?path=/workspace/tmp/generated_documents/example.docx"
+    },
+    "affidavit_docx": {
+      "path": "/workspace/tmp/generated_documents/example-affidavit.docx",
+      "filename": "example-affidavit.docx",
+      "size_bytes": 6789,
+      "download_url": "/api/documents/download?path=/workspace/tmp/generated_documents/example-affidavit.docx"
     }
   },
   "output_formats": ["docx"],
@@ -2297,11 +2506,15 @@ Interpretation notes:
 
 - `drafting_readiness` is duplicated at the package top level and under `draft` for convenience; both carry the same payload family.
 - `drafting_readiness.status` is one of `ready`, `warning`, or `blocked` and summarizes filing readiness across all draft sections and claim-level validation signals.
-- `drafting_readiness.claims[*]` lifts claim-support and validation state into drafting-oriented claim summaries, including unresolved elements, proof-gap counts, contradiction counts, and compact authority-treatment or rule-candidate signals when available.
-- `drafting_readiness.claims[*].review_url` and `drafting_readiness.claims[*].review_context` are added by the document API layer so clients can deep-link into the claim-support review surface without reconstructing query parameters themselves.
+- `drafting_readiness.claims[*]` lifts claim-support and validation state into drafting-oriented claim summaries, including unresolved elements, proof-gap counts, contradiction counts, compact authority-treatment or rule-candidate signals, and compact source-context counts such as `source_family_counts`, `artifact_family_counts`, or `content_origin_counts` when the persisted support summary already exposes them.
+- `draft.claims_for_relief[*].support_summary` mirrors the same claim-level support totals used to build the pleading text and can now include compact source-context maps such as `source_family_counts`, `artifact_family_counts`, and `content_origin_counts` for builder-side provenance drilldown.
+- `draft.affidavit` is the companion affidavit payload generated from the same intake knowledge graph, with venue lines, numbered fact statements, supporting exhibits, jurat text, and notary block lines used by the preview and affidavit export artifacts.
+- `drafting_readiness.claims[*].review_url`, `drafting_readiness.claims[*].review_context`, and `drafting_readiness.claims[*].review_intent` are added by the document API layer so clients can deep-link into the claim-support review surface without reconstructing query parameters themselves.
 - `drafting_readiness.sections` groups filing-readiness by major complaint section such as `summary_of_facts`, `jurisdiction_and_venue`, `claims_for_relief`, `requested_relief`, and `exhibits`.
-- `drafting_readiness.sections[*].review_url` and `drafting_readiness.sections[*].review_context` are added by the document API layer so clients can link section warnings back to the review dashboard with stable query context.
-- `drafting_readiness.sections[*].claim_links` is present when a section maps to one or more claim types; multi-claim drafts can use those targeted links instead of relying on a single generic section URL.
+- `drafting_readiness.sections[*].review_url`, `drafting_readiness.sections[*].review_context`, and `drafting_readiness.sections[*].review_intent` are added by the document API layer so clients can link section warnings back to the review dashboard with stable query context.
+- `drafting_readiness.sections[*].claim_links` is present when a section maps to one or more claim types; multi-claim drafts can use those targeted links instead of relying on a single generic section URL, and each claim link carries its own `review_intent`.
 - `drafting_readiness.sections[*].warnings[*].severity` distinguishes soft filing warnings from harder blockers so degraded-mode drafting can remain usable.
-- `review_links.dashboard_url` points to the review dashboard for the current user context, while `review_links.claims[*]` and `review_links.sections[*]` provide claim-specific and section-specific review URLs for non-browser consumers.
+- `review_links.dashboard_url` points to the review dashboard for the current user context, while `review_links.claims[*]` and `review_links.sections[*]` provide claim-specific and section-specific review URLs for non-browser consumers, each paired with normalized `review_intent` metadata.
+- `review_intent` is a top-level server-rendered review focus chosen from the current readiness warnings so the browser can restore the most relevant review destination before the operator clicks a follow-up link.
+- `artifacts.affidavit_docx`, `artifacts.affidavit_pdf`, and `artifacts.affidavit_txt` are companion affidavit exports emitted when the matching complaint formats are requested; they follow the same artifact schema and download URL rules as the primary complaint files.
 - `artifacts[*].download_url` is added by the document API layer only when the generated file path is inside the managed generated-documents directory.

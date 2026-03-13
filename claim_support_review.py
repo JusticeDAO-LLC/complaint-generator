@@ -245,6 +245,11 @@ def summarize_follow_up_history_claim(
     selected_authority_program_type_counts: Dict[str, int] = {}
     selected_authority_program_bias_counts: Dict[str, int] = {}
     selected_authority_program_rule_bias_counts: Dict[str, int] = {}
+    source_family_counts: Dict[str, int] = {}
+    record_scope_counts: Dict[str, int] = {}
+    artifact_family_counts: Dict[str, int] = {}
+    corpus_family_counts: Dict[str, int] = {}
+    content_origin_counts: Dict[str, int] = {}
     adaptive_retry_entry_count = 0
     priority_penalized_entry_count = 0
     zero_result_entry_count = 0
@@ -268,6 +273,11 @@ def summarize_follow_up_history_claim(
         selected_search_program_type = str(entry.get("selected_search_program_type") or "")
         selected_search_program_bias = str(entry.get("selected_search_program_bias") or "")
         selected_search_program_rule_bias = str(entry.get("selected_search_program_rule_bias") or "")
+        source_family = str(entry.get("source_family") or "")
+        record_scope = str(entry.get("record_scope") or "")
+        artifact_family = str(entry.get("artifact_family") or "")
+        corpus_family = str(entry.get("corpus_family") or "")
+        content_origin = str(entry.get("content_origin") or "")
 
         status_counts[status] = status_counts.get(status, 0) + 1
         support_kind_counts[support_kind] = support_kind_counts.get(support_kind, 0) + 1
@@ -304,6 +314,16 @@ def summarize_follow_up_history_claim(
             selected_authority_program_rule_bias_counts[selected_search_program_rule_bias] = (
                 selected_authority_program_rule_bias_counts.get(selected_search_program_rule_bias, 0) + 1
             )
+        if source_family:
+            source_family_counts[source_family] = source_family_counts.get(source_family, 0) + 1
+        if record_scope:
+            record_scope_counts[record_scope] = record_scope_counts.get(record_scope, 0) + 1
+        if artifact_family:
+            artifact_family_counts[artifact_family] = artifact_family_counts.get(artifact_family, 0) + 1
+        if corpus_family:
+            corpus_family_counts[corpus_family] = corpus_family_counts.get(corpus_family, 0) + 1
+        if content_origin:
+            content_origin_counts[content_origin] = content_origin_counts.get(content_origin, 0) + 1
         if zero_result:
             zero_result_entry_count += 1
         if adaptive_retry_applied:
@@ -332,6 +352,11 @@ def summarize_follow_up_history_claim(
         "selected_authority_program_type_counts": selected_authority_program_type_counts,
         "selected_authority_program_bias_counts": selected_authority_program_bias_counts,
         "selected_authority_program_rule_bias_counts": selected_authority_program_rule_bias_counts,
+        "source_family_counts": source_family_counts,
+        "record_scope_counts": record_scope_counts,
+        "artifact_family_counts": artifact_family_counts,
+        "corpus_family_counts": corpus_family_counts,
+        "content_origin_counts": content_origin_counts,
         "zero_result_entry_count": zero_result_entry_count,
         "last_adaptive_retry": last_adaptive_retry,
         "manual_review_entry_count": len(
@@ -593,18 +618,64 @@ def _summarize_claim_coverage_claim(
     }
 
 
-def _aggregate_graph_support_metrics(tasks: List[Dict[str, Any]]) -> Dict[str, int]:
+def _aggregate_graph_support_metrics(tasks: List[Dict[str, Any]]) -> Dict[str, Any]:
     semantic_cluster_count = 0
     semantic_duplicate_count = 0
+    support_by_kind: Dict[str, int] = {}
+    support_by_source: Dict[str, int] = {}
+    source_family_counts: Dict[str, int] = {}
+    record_scope_counts: Dict[str, int] = {}
+    artifact_family_counts: Dict[str, int] = {}
+    corpus_family_counts: Dict[str, int] = {}
+    content_origin_counts: Dict[str, int] = {}
+
+    def _merge_counts(target: Dict[str, int], counts: Any) -> None:
+        if not isinstance(counts, dict):
+            return
+        for key, value in counts.items():
+            normalized_key = str(key or "").strip()
+            if not normalized_key:
+                continue
+            target[normalized_key] = target.get(normalized_key, 0) + int(value or 0)
+
+    def _increment_count(target: Dict[str, int], value: Any) -> None:
+        normalized_value = str(value or "").strip()
+        if not normalized_value:
+            return
+        target[normalized_value] = target.get(normalized_value, 0) + 1
+
     for task in tasks:
-        graph_summary = (task.get("graph_support") or {}).get("summary", {})
+        graph_support = task.get("graph_support") or {}
+        graph_summary = graph_support.get("summary", {}) if isinstance(graph_support, dict) else {}
         semantic_cluster_count += int(graph_summary.get("semantic_cluster_count", 0) or 0)
         semantic_duplicate_count += int(
             graph_summary.get("semantic_duplicate_count", 0) or 0
         )
+        _merge_counts(support_by_kind, graph_summary.get("support_by_kind"))
+        _merge_counts(support_by_source, graph_summary.get("support_by_source"))
+
+        graph_results = graph_support.get("results", []) if isinstance(graph_support, dict) else []
+        if not isinstance(graph_results, list):
+            continue
+        for result in graph_results:
+            if not isinstance(result, dict):
+                continue
+            _increment_count(source_family_counts, result.get("source_family"))
+            _increment_count(record_scope_counts, result.get("record_scope"))
+            _increment_count(artifact_family_counts, result.get("artifact_family"))
+            _increment_count(corpus_family_counts, result.get("corpus_family"))
+            _increment_count(content_origin_counts, result.get("content_origin"))
+
     return {
         "semantic_cluster_count": semantic_cluster_count,
         "semantic_duplicate_count": semantic_duplicate_count,
+        "support_by_kind": support_by_kind,
+        "support_by_source": support_by_source,
+        "source_family_counts": source_family_counts,
+        "record_scope_counts": record_scope_counts,
+        "artifact_family_counts": artifact_family_counts,
+        "corpus_family_counts": corpus_family_counts,
+        "content_origin_counts": content_origin_counts,
     }
 
 
@@ -864,6 +935,13 @@ def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any
         ),
         "semantic_cluster_count": graph_support_metrics["semantic_cluster_count"],
         "semantic_duplicate_count": graph_support_metrics["semantic_duplicate_count"],
+        "support_by_kind": graph_support_metrics["support_by_kind"],
+        "support_by_source": graph_support_metrics["support_by_source"],
+        "source_family_counts": graph_support_metrics["source_family_counts"],
+        "record_scope_counts": graph_support_metrics["record_scope_counts"],
+        "artifact_family_counts": graph_support_metrics["artifact_family_counts"],
+        "corpus_family_counts": graph_support_metrics["corpus_family_counts"],
+        "content_origin_counts": graph_support_metrics["content_origin_counts"],
         "follow_up_focus_counts": follow_up_focus_counts,
         "query_strategy_counts": query_strategy_counts,
         "proof_decision_source_counts": proof_decision_source_counts,
@@ -987,6 +1065,13 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
         ),
         "semantic_cluster_count": graph_support_metrics["semantic_cluster_count"],
         "semantic_duplicate_count": graph_support_metrics["semantic_duplicate_count"],
+        "support_by_kind": graph_support_metrics["support_by_kind"],
+        "support_by_source": graph_support_metrics["support_by_source"],
+        "source_family_counts": graph_support_metrics["source_family_counts"],
+        "record_scope_counts": graph_support_metrics["record_scope_counts"],
+        "artifact_family_counts": graph_support_metrics["artifact_family_counts"],
+        "corpus_family_counts": graph_support_metrics["corpus_family_counts"],
+        "content_origin_counts": graph_support_metrics["content_origin_counts"],
         "follow_up_focus_counts": follow_up_focus_counts,
         "query_strategy_counts": query_strategy_counts,
         "proof_decision_source_counts": proof_decision_source_counts,

@@ -719,6 +719,11 @@ class TestMediatorEvidenceIntegration:
                 assert len(element_view['support_facts']) >= 1
                 assert element_view['support_facts'][0]['claim_type'] == 'breach of contract'
                 assert element_view['support_facts'][0]['support_kind'] == 'evidence'
+                assert len(element_view['support_packets']) >= 1
+                assert element_view['support_packets'][0]['source_family'] == 'evidence'
+                assert element_view['support_packets'][0]['source_record_id'] == result['record_id']
+                assert element_view['support_packets'][0]['source_ref']
+                assert element_view['support_packets'][0]['record_scope'] == 'evidence'
 
                 graph_support = mediator.query_claim_graph_support(
                     claim_type='breach of contract',

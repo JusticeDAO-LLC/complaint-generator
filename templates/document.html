@@ -233,6 +233,13 @@
             margin: 0;
         }
 
+        .input-hint {
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 0.84rem;
+            line-height: 1.5;
+        }
+
         .button-row {
             display: flex;
             gap: 12px;
@@ -894,6 +901,49 @@
                     </div>
 
                     <div>
+                        <label for="affidavitTitle">Affidavit Title Override</label>
+                        <input id="affidavitTitle" name="affidavitTitle" type="text" placeholder="AFFIDAVIT OF JANE DOE IN SUPPORT OF COMPLAINT">
+                    </div>
+
+                    <div>
+                        <label for="affidavitIntro">Affidavit Intro Override</label>
+                        <textarea id="affidavitIntro" name="affidavitIntro" placeholder="I, Jane Doe, declare under penalty of perjury that I am competent to testify to the matters stated below and that the following facts are true and correct."></textarea>
+                    </div>
+
+                    <div>
+                        <label for="affidavitFacts">Affidavit Fact Overrides</label>
+                        <textarea id="affidavitFacts" name="affidavitFacts" placeholder="One fact per line&#10;I reported discrimination to human resources on March 3, 2026.&#10;Defendant terminated my employment two days later."></textarea>
+                    </div>
+
+                    <div>
+                        <label for="affidavitSupportingExhibits">Affidavit Supporting Exhibits</label>
+                        <textarea id="affidavitSupportingExhibits" name="affidavitSupportingExhibits" placeholder="Label | Title | Link | Summary&#10;Affidavit Ex. 1 | HR Complaint Email | https://example.org/hr-email.pdf | Email reporting discrimination to HR."></textarea>
+                    </div>
+
+                    <div>
+                        <label for="affidavitIncludeComplaintExhibits">
+                            <input id="affidavitIncludeComplaintExhibits" name="affidavitIncludeComplaintExhibits" type="checkbox" checked>
+                            Mirror complaint exhibits into affidavit when no affidavit-specific exhibit list is provided
+                        </label>
+                        <div class="input-hint">Leave this enabled to let the affidavit inherit the complaint exhibit list when the affidavit exhibit textarea is blank. Turn it off when the affiant should rely only on affidavit-specific exhibits or no exhibits at all.</div>
+                    </div>
+
+                    <div>
+                        <label for="affidavitVenueLines">Affidavit Venue Lines</label>
+                        <textarea id="affidavitVenueLines" name="affidavitVenueLines" placeholder="One line per entry&#10;State/District: Northern District of California&#10;County: San Francisco County"></textarea>
+                    </div>
+
+                    <div>
+                        <label for="affidavitJurat">Affidavit Jurat</label>
+                        <textarea id="affidavitJurat" name="affidavitJurat" placeholder="Subscribed and sworn to (or affirmed) before me on March 13, 2026 by Jane Doe."></textarea>
+                    </div>
+
+                    <div>
+                        <label for="affidavitNotaryBlock">Affidavit Notary Block</label>
+                        <textarea id="affidavitNotaryBlock" name="affidavitNotaryBlock" placeholder="One line per entry&#10;__________________________________&#10;Notary Public for the State of California&#10;My commission expires: March 13, 2029"></textarea>
+                    </div>
+
+                    <div>
                         <label for="serviceMethod">Service Method</label>
                         <input id="serviceMethod" name="serviceMethod" type="text" placeholder="CM/ECF and first-class mail">
                     </div>
@@ -1043,6 +1093,46 @@
             }).filter(Boolean);
         }
 
+        function parseAffidavitSupportingExhibits(value) {
+            return splitLines(value).map((line) => {
+                const parts = line.split('|').map((part) => part.trim());
+                if (!parts.some(Boolean)) {
+                    return null;
+                }
+                const [label, title, link, ...summaryParts] = parts;
+                const detail = {
+                    label: label || null,
+                    title: title || null,
+                    link: link || null,
+                    summary: summaryParts.length ? summaryParts.join(' | ') : null,
+                };
+                return Object.values(detail).some(Boolean) ? detail : null;
+            }).filter(Boolean);
+        }
+
+        function describeAffidavitExhibitSource(draft) {
+            const affidavit = draft && typeof draft.affidavit === 'object' ? draft.affidavit : {};
+            const affidavitExhibits = Array.isArray(affidavit.supporting_exhibits)
+                ? affidavit.supporting_exhibits.filter((item) => item && typeof item === 'object')
+                : [];
+            const requestedAffidavitExhibits = parseAffidavitSupportingExhibits(document.getElementById('affidavitSupportingExhibits').value);
+            const includeComplaintExhibits = document.getElementById('affidavitIncludeComplaintExhibits').checked;
+            const complaintExhibits = Array.isArray(draft && draft.exhibits)
+                ? draft.exhibits.filter((item) => item && typeof item === 'object')
+                : [];
+
+            if (requestedAffidavitExhibits.length) {
+                return `Affidavit exhibit source: curated affidavit list (${requestedAffidavitExhibits.length} item${requestedAffidavitExhibits.length === 1 ? '' : 's'}).`;
+            }
+            if (!includeComplaintExhibits) {
+                return 'Affidavit exhibit source: complaint exhibit inheritance disabled.';
+            }
+            if (affidavitExhibits.length && complaintExhibits.length) {
+                return `Affidavit exhibit source: mirrored complaint exhibits (${affidavitExhibits.length} item${affidavitExhibits.length === 1 ? '' : 's'}).`;
+            }
+            return 'Affidavit exhibit source: no supporting exhibits currently listed.';
+        }
+
         function formatAdditionalSignerLines(signers) {
             const values = Array.isArray(signers) ? signers.filter((signer) => signer && typeof signer === 'object') : [];
             return values.flatMap((signer) => {
@@ -1101,11 +1191,13 @@
             const claimType = String(value.claim_type || value.claimType || parsedUrl.searchParams.get('claim_type') || '').trim() || null;
             const sectionKey = String(value.section || value.section_key || value.sectionKey || parsedUrl.searchParams.get('section') || '').trim() || null;
             const userId = String(value.user_id || value.userId || parsedUrl.searchParams.get('user_id') || '').trim() || null;
+            const followUpSupportKind = String(value.follow_up_support_kind || value.followUpSupportKind || '').trim() || null;
             return {
                 review_url: `${parsedUrl.pathname}${parsedUrl.search}`,
                 claim_type: claimType,
                 section: sectionKey,
                 user_id: userId,
+                follow_up_support_kind: followUpSupportKind,
             };
         }
 
@@ -1217,6 +1309,14 @@
                 signerContact: document.getElementById('signerContact').value,
                 additionalSigners: document.getElementById('additionalSigners').value,
                 declarantName: document.getElementById('declarantName').value,
+                affidavitTitle: document.getElementById('affidavitTitle').value,
+                affidavitIntro: document.getElementById('affidavitIntro').value,
+                affidavitFacts: document.getElementById('affidavitFacts').value,
+                affidavitSupportingExhibits: document.getElementById('affidavitSupportingExhibits').value,
+                affidavitIncludeComplaintExhibits: document.getElementById('affidavitIncludeComplaintExhibits').checked,
+                affidavitVenueLines: document.getElementById('affidavitVenueLines').value,
+                affidavitJurat: document.getElementById('affidavitJurat').value,
+                affidavitNotaryBlock: document.getElementById('affidavitNotaryBlock').value,
                 serviceMethod: document.getElementById('serviceMethod').value,
                 serviceRecipients: document.getElementById('serviceRecipients').value,
                 serviceRecipientDetails: document.getElementById('serviceRecipientDetails').value,
@@ -1271,6 +1371,17 @@
             setFieldValue('signerContact', saved.signerContact, true);
             setFieldValue('additionalSigners', saved.additionalSigners, true);
             setFieldValue('declarantName', saved.declarantName, true);
+            setFieldValue('affidavitTitle', saved.affidavitTitle, true);
+            setFieldValue('affidavitIntro', saved.affidavitIntro, true);
+            setFieldValue('affidavitFacts', saved.affidavitFacts, true);
+            setFieldValue('affidavitSupportingExhibits', saved.affidavitSupportingExhibits, true);
+            const affidavitIncludeComplaintExhibitsElement = document.getElementById('affidavitIncludeComplaintExhibits');
+            if (affidavitIncludeComplaintExhibitsElement && typeof saved.affidavitIncludeComplaintExhibits === 'boolean') {
+                affidavitIncludeComplaintExhibitsElement.checked = saved.affidavitIncludeComplaintExhibits;
+            }
+            setFieldValue('affidavitVenueLines', saved.affidavitVenueLines, true);
+            setFieldValue('affidavitJurat', saved.affidavitJurat, true);
+            setFieldValue('affidavitNotaryBlock', saved.affidavitNotaryBlock, true);
             setFieldValue('serviceMethod', saved.serviceMethod, true);
             setFieldValue('serviceRecipients', saved.serviceRecipients, true);
             setFieldValue('serviceRecipientDetails', saved.serviceRecipientDetails, true);
@@ -1726,6 +1837,31 @@
                 : {};
             const items = [];
 
+            const supportBySource = Object.entries(claim && typeof claim.support_by_source === 'object' ? claim.support_by_source : {})
+                .filter(([, count]) => Number(count || 0) > 0)
+                .map(([label, count]) => `${humanizeKey(label)}=${count}`);
+            const sourceFamilyCounts = Object.entries(claim && typeof claim.source_family_counts === 'object' ? claim.source_family_counts : {})
+                .filter(([, count]) => Number(count || 0) > 0)
+                .map(([label, count]) => `${humanizeKey(label)}=${count}`);
+            const artifactFamilyCounts = Object.entries(claim && typeof claim.artifact_family_counts === 'object' ? claim.artifact_family_counts : {})
+                .filter(([, count]) => Number(count || 0) > 0)
+                .map(([label, count]) => `${humanizeKey(label)}=${count}`);
+            const contentOriginCounts = Object.entries(claim && typeof claim.content_origin_counts === 'object' ? claim.content_origin_counts : {})
+                .filter(([, count]) => Number(count || 0) > 0)
+                .map(([label, count]) => `${humanizeKey(label)}=${count}`);
+
+            if (supportBySource.length) {
+                items.push(`Source lanes: ${supportBySource.join(', ')}`);
+            }
+            if (sourceFamilyCounts.length) {
+                items.push(`Source families: ${sourceFamilyCounts.join(', ')}`);
+            }
+            if (artifactFamilyCounts.length) {
+                items.push(`Artifact families: ${artifactFamilyCounts.join(', ')}`);
+            } else if (contentOriginCounts.length) {
+                items.push(`Content origins: ${contentOriginCounts.join(', ')}`);
+            }
+
             supportingExhibits.forEach((exhibit) => {
                 const label = exhibit.label || 'Exhibit';
                 const title = exhibit.title || exhibit.summary || 'Supporting exhibit';
@@ -1798,6 +1934,16 @@
                 const supportSummary = supportByKind.length
                     ? supportByKind.map(([key, value]) => `${humanizeKey(key)}=${value}`).join(', ')
                     : 'No support-by-kind counts reported.';
+                const sourceFamilyCounts = Object.entries(claim.source_family_counts || {}).filter(([, value]) => value !== null && value !== undefined && value !== '');
+                const artifactFamilyCounts = Object.entries(claim.artifact_family_counts || {}).filter(([, value]) => value !== null && value !== undefined && value !== '');
+                const contentOriginCounts = Object.entries(claim.content_origin_counts || {}).filter(([, value]) => value !== null && value !== undefined && value !== '');
+                const sourceContextSummary = sourceFamilyCounts.length
+                    ? sourceFamilyCounts.map(([key, value]) => `${humanizeKey(key)}=${value}`).join(', ')
+                    : artifactFamilyCounts.length
+                        ? artifactFamilyCounts.map(([key, value]) => `${humanizeKey(key)}=${value}`).join(', ')
+                        : contentOriginCounts.length
+                            ? contentOriginCounts.map(([key, value]) => `${humanizeKey(key)}=${value}`).join(', ')
+                            : '';
                 return `
                     <article class="readiness-claim-card">
                         <div class="readiness-card-header">
@@ -1808,6 +1954,7 @@
                             <span><strong>Validation:</strong> ${escapeHtml(claim.validation_status || 'unknown')}</span>
                             <span><strong>Covered:</strong> ${escapeHtml(String(claim.covered_elements || 0))}/${escapeHtml(String(claim.total_elements || 0))}</span>
                             <span><strong>Support Mix:</strong> ${escapeHtml(supportSummary)}</span>
+                            ${sourceContextSummary ? `<span><strong>Source Context:</strong> ${escapeHtml(sourceContextSummary)}</span>` : ''}
                         </div>
                         <div class="readiness-subtitle">Claim Metrics</div>
                         ${renderMetricList({
@@ -1889,9 +2036,20 @@
             const readiness = payload.drafting_readiness || draft.drafting_readiness || {};
             const filingChecklist = payload.filing_checklist || draft.filing_checklist || [];
             const reviewLinks = payload.review_links || {};
+            const payloadReviewIntent = normalizeReviewIntent(payload.review_intent);
+            if (payloadReviewIntent) {
+                persistReviewIntent(payloadReviewIntent);
+            }
             const caption = draft.case_caption || {};
             const plaintiffs = (caption.plaintiffs || []).join('\n');
             const defendants = (caption.defendants || []).join('\n');
+            const captionPartyLines = Array.isArray(caption.caption_party_lines) && caption.caption_party_lines.length
+                ? caption.caption_party_lines
+                : [
+                    `${plaintiffs || 'Plaintiff'}, ${caption.plaintiff_caption_label || 'Plaintiff'},`,
+                    'v.',
+                    `${defendants || 'Defendant'}, ${caption.defendant_caption_label || 'Defendant'}.`,
+                ];
             const signatureBlock = draft.signature_block || {};
             const verification = draft.verification || {};
             const certificateOfService = draft.certificate_of_service || {};
@@ -1909,14 +2067,14 @@
                     ${renderReadiness(readiness, draft.exhibits || [], reviewLinks)}
                     <div class="court-header">${escapeHtml(draft.court_header || '')}</div>
                     <div class="caption-block">
-                        <div class="caption-parties">${escapeHtml(plaintiffs)}\n\nPlaintiff,\n\nv.\n\n${escapeHtml(defendants)}\n\nDefendant.</div>
+                        <div class="caption-parties">${escapeHtml(captionPartyLines.join('\n\n'))}</div>
                         <div class="caption-side">
-                            <div><strong>Civil Action No.</strong></div>
+                            <div><strong>${escapeHtml(caption.case_number_label || 'Civil Action No.')}</strong></div>
                             <div>${escapeHtml(caption.case_number || '________________')}</div>
-                            ${caption.lead_case_number ? `<div style="margin-top: 12px;"><strong>Lead Case No.</strong></div><div>${escapeHtml(caption.lead_case_number)}</div>` : ''}
-                            ${caption.related_case_number ? `<div style="margin-top: 12px;"><strong>Related Case No.</strong></div><div>${escapeHtml(caption.related_case_number)}</div>` : ''}
-                            ${caption.assigned_judge ? `<div style="margin-top: 16px;"><strong>Assigned Judge</strong></div><div>${escapeHtml(caption.assigned_judge)}</div>` : ''}
-                            ${caption.courtroom ? `<div style="margin-top: 12px;"><strong>Courtroom</strong></div><div>${escapeHtml(caption.courtroom)}</div>` : ''}
+                            ${caption.lead_case_number ? `<div style="margin-top: 12px;"><strong>${escapeHtml(caption.lead_case_number_label || 'Lead Case No.')}</strong></div><div>${escapeHtml(caption.lead_case_number)}</div>` : ''}
+                            ${caption.related_case_number ? `<div style="margin-top: 12px;"><strong>${escapeHtml(caption.related_case_number_label || 'Related Case No.')}</strong></div><div>${escapeHtml(caption.related_case_number)}</div>` : ''}
+                            ${caption.assigned_judge ? `<div style="margin-top: 16px;"><strong>${escapeHtml(caption.assigned_judge_label || 'Assigned Judge')}</strong></div><div>${escapeHtml(caption.assigned_judge)}</div>` : ''}
+                            ${caption.courtroom ? `<div style="margin-top: 12px;"><strong>${escapeHtml(caption.courtroom_label || 'Courtroom')}</strong></div><div>${escapeHtml(caption.courtroom)}</div>` : ''}
                             ${caption.county ? `<div style="margin-top: 12px;"><strong>County</strong></div><div>${escapeHtml(caption.county)}</div>` : ''}
                             <div style="margin-top: 16px;"><strong>${escapeHtml(caption.document_title || 'COMPLAINT')}</strong></div>
                             ${caption.jury_demand_notice ? `<div style="margin-top: 8px;"><strong>${escapeHtml(caption.jury_demand_notice)}</strong></div>` : ''}
@@ -1964,6 +2122,32 @@
                         <article class="section-card">
                             ${renderLines([draft.jury_demand.text])}
                         </article>
+                    </section>` : ''}
+
+                    ${draft.affidavit ? `
+                    <section>
+                        <h2>${escapeHtml(draft.affidavit.title || 'Affidavit in Support of Complaint')}</h2>
+                        <div class="section-stack">
+                            <article class="section-card">
+                                ${renderLines((draft.affidavit.venue_lines || []).concat([draft.affidavit.intro, draft.affidavit.knowledge_graph_note]).filter(Boolean))}
+                                <div class="preview-meta"><strong>Affidavit Exhibit Source:</strong> ${escapeHtml(describeAffidavitExhibitSource(draft).replace(/^Affidavit exhibit source:\s*/i, ''))}</div>
+                            </article>
+                            <article class="section-card">
+                                <h3>Affiant Statements</h3>
+                                ${renderLines(draft.affidavit.facts || [], true)}
+                            </article>
+                            ${Array.isArray(draft.affidavit.supporting_exhibits) && draft.affidavit.supporting_exhibits.length ? `
+                            <article class="section-card">
+                                <h3>Affidavit Supporting Exhibits</h3>
+                                ${renderLines(draft.affidavit.supporting_exhibits.map((item) => {
+                                    const label = item && item.label ? item.label : 'Exhibit';
+                                    const title = item && item.title ? item.title : 'Supporting exhibit';
+                                    const link = item && item.link ? ` (${item.link})` : '';
+                                    return `${label} - ${title}${link}`;
+                                }))}
+                            </article>` : ''}
+                            ${renderStructuredBlock('Affidavit Execution', [draft.affidavit.dated, draft.affidavit.signature_line, draft.affidavit.jurat].concat(draft.affidavit.notary_block || []))}
+                        </div>
                     </section>` : ''}
 
                     <section>
@@ -2019,6 +2203,14 @@
                 signer_contact: document.getElementById('signerContact').value.trim() || null,
                 additional_signers: parseAdditionalSigners(document.getElementById('additionalSigners').value),
                 declarant_name: document.getElementById('declarantName').value.trim() || null,
+                affidavit_title: document.getElementById('affidavitTitle').value.trim() || null,
+                affidavit_intro: document.getElementById('affidavitIntro').value.trim() || null,
+                affidavit_facts: splitLines(document.getElementById('affidavitFacts').value),
+                affidavit_supporting_exhibits: parseAffidavitSupportingExhibits(document.getElementById('affidavitSupportingExhibits').value),
+                affidavit_include_complaint_exhibits: document.getElementById('affidavitIncludeComplaintExhibits').checked,
+                affidavit_venue_lines: splitLines(document.getElementById('affidavitVenueLines').value),
+                affidavit_jurat: document.getElementById('affidavitJurat').value.trim() || null,
+                affidavit_notary_block: splitLines(document.getElementById('affidavitNotaryBlock').value),
                 service_method: document.getElementById('serviceMethod').value.trim() || null,
                 service_recipients: splitLines(document.getElementById('serviceRecipients').value),
                 service_recipient_details: parseServiceRecipientDetails(document.getElementById('serviceRecipientDetails').value),

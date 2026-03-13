@@ -71,6 +71,11 @@ def _build_mediator() -> Mock:
                 "covered_elements": 2,
                 "uncovered_elements": 1,
                 "support_by_kind": {"evidence": 2, "authority": 1},
+                "support_packet_summary": {
+                    "source_family_counts": {"evidence": 2, "legal_authority": 1},
+                    "artifact_family_counts": {"archived_web_page": 2, "legal_authority_reference": 1},
+                    "content_origin_counts": {"historical_archive_capture": 2, "authority_reference_fallback": 1},
+                },
                 "elements": [
                     {
                         "element_text": "Adverse employment action",
@@ -90,6 +95,11 @@ def _build_mediator() -> Mock:
                 "covered_elements": 2,
                 "uncovered_elements": 1,
                 "support_by_kind": {"evidence": 1, "authority": 1},
+                "support_packet_summary": {
+                    "source_family_counts": {"evidence": 1, "legal_authority": 1},
+                    "artifact_family_counts": {"document": 1, "legal_authority_reference": 1},
+                    "content_origin_counts": {"user_uploaded_document": 1, "authority_reference_fallback": 1},
+                },
                 "elements": [],
             },
         }
@@ -159,6 +169,28 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
             }
         ],
         declarant_name="Jane Doe",
+        affidavit_title="AFFIDAVIT OF JANE DOE REGARDING RETALIATION",
+        affidavit_intro="I, Jane Doe, make this affidavit from personal knowledge regarding Defendant's retaliation.",
+        affidavit_facts=[
+            "I reported discrimination to human resources on March 3, 2026.",
+            "Defendant terminated my employment two days later.",
+        ],
+        affidavit_supporting_exhibits=[
+            {
+                "label": "Affidavit Ex. 1",
+                "title": "HR Complaint Email",
+                "link": "https://example.org/hr-email.pdf",
+                "summary": "Email reporting discrimination to HR.",
+            }
+        ],
+        affidavit_include_complaint_exhibits=False,
+        affidavit_venue_lines=["State of California", "County of San Francisco"],
+        affidavit_jurat="Subscribed and sworn to before me on March 13, 2026 by Jane Doe.",
+        affidavit_notary_block=[
+            "__________________________________",
+            "Notary Public for the State of California",
+            "My commission expires: March 13, 2029",
+        ],
         service_method="CM/ECF",
         service_recipients=["Registered Agent for Acme Corporation", "Defense Counsel"],
         service_recipient_details=[
@@ -185,6 +217,7 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
     assert result["draft"]["case_caption"]["assigned_judge"] == "Hon. Maria Valdez"
     assert result["draft"]["case_caption"]["courtroom"] == "Courtroom 4A"
     assert result["draft"]["case_caption"]["jury_demand_notice"] == "JURY TRIAL DEMANDED"
+    assert result["draft"]["case_caption"]["case_number_label"] == "Civil Action No."
     assert "subject-matter jurisdiction" in result["draft"]["jurisdiction_statement"].lower()
     assert "venue is proper" in result["draft"]["venue_statement"].lower()
     assert len(result["draft"]["claims_for_relief"]) == 2
@@ -220,6 +253,31 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
     assert result["draft"]["verification"]["signature_line"] == "/s/ Jane Doe"
     assert result["draft"]["verification"]["text"].startswith("I, Jane Doe, declare under penalty of perjury")
     assert result["draft"]["verification"]["dated"] == "Executed on: 2026-03-12"
+    employment_claim = next(
+        claim for claim in result["draft"]["claims_for_relief"] if claim["claim_type"] == "employment discrimination"
+    )
+    assert employment_claim["support_summary"]["source_family_counts"] == {"evidence": 2, "legal_authority": 1}
+    assert employment_claim["support_summary"]["artifact_family_counts"] == {
+        "archived_web_page": 2,
+        "legal_authority_reference": 1,
+    }
+    assert result["draft"]["affidavit"]["title"] == "AFFIDAVIT OF JANE DOE REGARDING RETALIATION"
+    assert result["draft"]["affidavit"]["intro"] == "I, Jane Doe, make this affidavit from personal knowledge regarding Defendant's retaliation."
+    assert result["draft"]["affidavit"]["venue_lines"] == ["State of California", "County of San Francisco"]
+    assert result["draft"]["affidavit"]["facts"] == [
+        "I reported discrimination to human resources on March 3, 2026.",
+        "Defendant terminated my employment two days later.",
+    ]
+    assert result["draft"]["affidavit"]["supporting_exhibits"] == [
+        {
+            "label": "Affidavit Ex. 1",
+            "title": "HR Complaint Email",
+            "link": "https://example.org/hr-email.pdf",
+            "summary": "Email reporting discrimination to HR.",
+        }
+    ]
+    assert result["draft"]["affidavit"]["jurat"] == "Subscribed and sworn to before me on March 13, 2026 by Jane Doe."
+    assert result["draft"]["affidavit"]["notary_block"][1] == "Notary Public for the State of California"
     assert result["draft"]["certificate_of_service"]["recipients"] == ["Registered Agent for Acme Corporation", "Defense Counsel"]
     assert result["draft"]["certificate_of_service"]["recipient_details"][0]["recipient"] == "Defense Counsel"
     assert "Defense Counsel | Method: Email | Address: counsel@example.com" in result["draft"]["certificate_of_service"]["detail_lines"]
@@ -228,6 +286,8 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
     assert result["draft"]["jury_demand"]["title"] == "Jury Demand"
     assert result["draft"]["jury_demand"]["text"] == "Plaintiff demands a trial by jury on all issues so triable."
     assert "JURY DEMAND" in result["draft"]["draft_text"]
+    assert "AFFIDAVIT OF JANE DOE REGARDING RETALIATION" in result["draft"]["draft_text"]
+    assert "Subscribed and sworn to before me on March 13, 2026 by Jane Doe." in result["draft"]["draft_text"]
     assert "/s/ John Roe, Esq." in result["draft"]["draft_text"]
     assert "Roe Civil Rights Group" in result["draft"]["draft_text"]
     assert result["drafting_readiness"]["status"] == "warning"
@@ -241,6 +301,14 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
         entry["claim_type"] == "employment discrimination" and entry["status"] == "warning"
         for entry in result["drafting_readiness"]["claims"]
     )
+    employment_readiness = next(
+        entry for entry in result["drafting_readiness"]["claims"] if entry["claim_type"] == "employment discrimination"
+    )
+    assert employment_readiness["source_family_counts"] == {"evidence": 2, "legal_authority": 1}
+    assert employment_readiness["artifact_family_counts"] == {
+        "archived_web_page": 2,
+        "legal_authority_reference": 1,
+    }
     assert any(
         warning["code"] == "unresolved_elements"
         for entry in result["drafting_readiness"]["claims"]
@@ -251,13 +319,25 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
     pdf_path = Path(result["artifacts"]["pdf"]["path"])
     txt_path = Path(result["artifacts"]["txt"]["path"])
     checklist_path = Path(result["artifacts"]["checklist"]["path"])
+    affidavit_docx_path = Path(result["artifacts"]["affidavit_docx"]["path"])
+    affidavit_pdf_path = Path(result["artifacts"]["affidavit_pdf"]["path"])
+    affidavit_txt_path = Path(result["artifacts"]["affidavit_txt"]["path"])
     assert docx_path.exists()
     assert pdf_path.exists()
     assert txt_path.exists()
     assert checklist_path.exists()
+    assert affidavit_docx_path.exists()
+    assert affidavit_pdf_path.exists()
+    assert affidavit_txt_path.exists()
     assert docx_path.read_bytes()[:2] == b"PK"
     assert pdf_path.read_bytes()[:4] == b"%PDF"
+    assert affidavit_docx_path.read_bytes()[:2] == b"PK"
+    assert affidavit_pdf_path.read_bytes()[:4] == b"%PDF"
     assert "JURISDICTION AND VENUE" in txt_path.read_text(encoding="utf-8")
+    affidavit_text = affidavit_txt_path.read_text(encoding="utf-8")
+    assert "AFFIDAVIT OF JANE DOE REGARDING RETALIATION" in affidavit_text
+    assert "Affidavit Ex. 1 - HR Complaint Email (https://example.org/hr-email.pdf)" in affidavit_text
+    assert "Notary Public for the State of California" in affidavit_text
     checklist_text = checklist_path.read_text(encoding="utf-8")
     assert "PRE-FILING CHECKLIST" in checklist_text
     assert "[WARNING] CLAIM:" in checklist_text or "[WARNING] SECTION:" in checklist_text
@@ -281,6 +361,10 @@ def test_formal_complaint_document_builder_uses_state_court_opening_language(tmp
         court_name="Superior Court of California",
         district="County of Los Angeles",
         county="Los Angeles County",
+        lead_case_number="JCCP-5123",
+        related_case_number="24STCV10001",
+        assigned_judge="Hon. Elena Park",
+        courtroom="Dept. 12",
         plaintiff_names=["Jane Doe"],
         defendant_names=["Acme Corporation"],
         output_dir=str(tmp_path),
@@ -291,13 +375,167 @@ def test_formal_complaint_document_builder_uses_state_court_opening_language(tmp
     assert "governing state law" in result["draft"]["nature_of_action"][0].lower()
     assert "governing state law" in result["draft"]["jurisdiction_statement"].lower()
     assert "within this court's authority" in result["draft"]["jurisdiction_statement"].lower()
-    assert result["draft"]["court_header"] == "IN THE SUPERIOR COURT OF CALIFORNIA FOR THE COUNTY OF LOS ANGELES COUNTY"
+    assert result["draft"]["court_header"] == "IN THE SUPERIOR COURT OF CALIFORNIA FOR THE COUNTY OF LOS ANGELES"
+    assert result["draft"]["case_caption"]["case_number_label"] == "Case No."
+    assert result["draft"]["case_caption"]["lead_case_number_label"] == "Related Proceeding No."
+    assert result["draft"]["case_caption"]["related_case_number_label"] == "Coordination No."
+    assert result["draft"]["case_caption"]["assigned_judge_label"] == "Judicial Officer"
+    assert result["draft"]["case_caption"]["courtroom_label"] == "Department"
+    assert result["draft"]["verification"]["text"].startswith(
+        "I, Jane Doe, declare under penalty of perjury that I have reviewed this Complaint"
+    )
+    assert result["draft"]["verification"]["dated"] == "Executed on: __________________"
+    assert result["draft"]["certificate_of_service"]["title"] == "Proof of Service"
+    assert "I declare that a true and correct copy" in result["draft"]["certificate_of_service"]["text"]
+    assert result["draft"]["affidavit"]["intro"].startswith(
+        "I, Jane Doe, declare under penalty of perjury that I am competent to testify"
+    )
+    assert result["draft"]["affidavit"]["jurat"] == "Subscribed and sworn to (or affirmed) before me on __________________ by Jane Doe."
     assert result["draft"]["venue_statement"] == (
         "Venue is proper in this Court because a substantial part of the events or omissions giving rise "
         "to these claims occurred in Los Angeles County."
     )
     assert "NATURE OF THE ACTION" in result["draft"]["draft_text"]
     assert "JURISDICTION AND VENUE" in result["draft"]["draft_text"]
+    assert "Case No. ________________" in result["draft"]["draft_text"]
+    assert "Plaintiff Jane Doe is a party bringing this civil action in this Court." in result["draft"]["draft_text"]
+    assert "Defendant Acme Corporation is named as the party from whom relief is sought." in result["draft"]["draft_text"]
+    assert "declare under penalty of perjury that I am competent to testify" in result["draft"]["draft_text"]
+    assert "Subscribed and sworn to (or affirmed) before me on __________________ by Jane Doe." in result["draft"]["draft_text"]
+    assert "Related Proceeding No. JCCP-5123" in result["draft"]["draft_text"]
+    assert "Coordination No. 24STCV10001" in result["draft"]["draft_text"]
+    assert "Judicial Officer: Hon. Elena Park" in result["draft"]["draft_text"]
+    assert "Department: Dept. 12" in result["draft"]["draft_text"]
+
+
+def test_formal_complaint_document_builder_pluralizes_caption_party_labels(tmp_path: Path):
+    mediator = _build_mediator()
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    result = builder.build_package(
+        district="Northern District of California",
+        plaintiff_names=["Jane Doe", "John Roe"],
+        defendant_names=["Acme Corporation", "Beta LLC"],
+        output_dir=str(tmp_path),
+        output_formats=["txt"],
+    )
+
+    assert result["draft"]["case_caption"]["plaintiff_caption_label"] == "Plaintiffs"
+    assert result["draft"]["case_caption"]["defendant_caption_label"] == "Defendants"
+    assert result["draft"]["case_caption"]["caption_party_lines"] == [
+        "Jane Doe\nJohn Roe, Plaintiffs,",
+        "v.",
+        "Acme Corporation\nBeta LLC, Defendants.",
+    ]
+    assert "Jane Doe\nJohn Roe, Plaintiffs," in result["draft"]["draft_text"]
+    assert "Acme Corporation\nBeta LLC, Defendants." in result["draft"]["draft_text"]
+
+
+def test_formal_complaint_document_builder_applies_affidavit_overrides_to_canonical_output(tmp_path: Path):
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="test-user", hashed_username=None)
+    mediator.generate_formal_complaint.return_value = {
+        "formal_complaint": {
+            "court_header": "IN THE UNITED STATES DISTRICT COURT FOR THE NORTHERN DISTRICT OF CALIFORNIA",
+            "caption": {
+                "case_number": "25-cv-00001",
+                "county_line": "SAN FRANCISCO COUNTY",
+                "document_title": "COMPLAINT",
+            },
+            "title": "Jane Doe v. Acme Corporation",
+            "nature_of_action": ["This action seeks relief for retaliation."],
+            "parties": {
+                "plaintiffs": ["Jane Doe"],
+                "defendants": ["Acme Corporation"],
+            },
+            "jurisdiction_statement": "This Court has jurisdiction.",
+            "venue_statement": "Venue is proper in this district.",
+            "factual_allegations": ["Plaintiff reported discrimination and was terminated two days later."],
+            "summary_of_facts": ["Plaintiff reported discrimination and was terminated two days later."],
+            "legal_claims": [],
+            "legal_standards": [],
+            "requested_relief": ["Back pay."],
+            "exhibits": [],
+            "signature_block": {
+                "name": "Jane Doe, Esq.",
+                "signature_line": "/s/ Jane Doe, Esq.",
+                "dated": "Dated: 2026-03-12",
+            },
+            "verification": {
+                "signature_line": "/s/ Jane Doe",
+                "dated": "Executed on: 2026-03-12",
+            },
+            "certificate_of_service": {},
+        }
+    }
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    result = builder.build_package(
+        district="Northern District of California",
+        county="San Francisco County",
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Acme Corporation"],
+        affidavit_title="AFFIDAVIT OF JANE DOE REGARDING RETALIATION",
+        affidavit_intro="I, Jane Doe, make this affidavit from personal knowledge regarding Defendant's retaliation.",
+        affidavit_facts=[
+            "I reported discrimination to human resources on March 3, 2026.",
+            "Defendant terminated my employment two days later.",
+        ],
+        affidavit_supporting_exhibits=[
+            {
+                "label": "Affidavit Ex. 1",
+                "title": "HR Complaint Email",
+                "link": "https://example.org/hr-email.pdf",
+                "summary": "Email reporting discrimination to HR.",
+            }
+        ],
+        affidavit_venue_lines=["State of California", "County of San Francisco"],
+        affidavit_jurat="Subscribed and sworn to before me on March 13, 2026 by Jane Doe.",
+        affidavit_notary_block=[
+            "__________________________________",
+            "Notary Public for the State of California",
+            "My commission expires: March 13, 2029",
+        ],
+        output_dir=str(tmp_path),
+        output_formats=["txt"],
+    )
+
+    assert result["draft"]["affidavit"]["title"] == "AFFIDAVIT OF JANE DOE REGARDING RETALIATION"
+    assert result["draft"]["affidavit"]["intro"] == "I, Jane Doe, make this affidavit from personal knowledge regarding Defendant's retaliation."
+    assert result["draft"]["affidavit"]["facts"] == [
+        "I reported discrimination to human resources on March 3, 2026.",
+        "Defendant terminated my employment two days later.",
+    ]
+    assert result["draft"]["affidavit"]["supporting_exhibits"] == [
+        {
+            "label": "Affidavit Ex. 1",
+            "title": "HR Complaint Email",
+            "link": "https://example.org/hr-email.pdf",
+            "summary": "Email reporting discrimination to HR.",
+        }
+    ]
+    assert result["draft"]["affidavit"]["venue_lines"] == ["State of California", "County of San Francisco"]
+    assert result["draft"]["affidavit"]["jurat"] == "Subscribed and sworn to before me on March 13, 2026 by Jane Doe."
+    assert result["draft"]["affidavit"]["notary_block"][1] == "Notary Public for the State of California"
+    assert "AFFIDAVIT OF JANE DOE REGARDING RETALIATION" in result["draft"]["draft_text"]
+
+
+def test_formal_complaint_document_builder_can_suppress_mirrored_affidavit_exhibits(tmp_path):
+    mediator = _build_mediator()
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    result = builder.build_package(
+        district="Northern District of California",
+        county="San Francisco County",
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Acme Corporation"],
+        affidavit_include_complaint_exhibits=False,
+        output_dir=str(tmp_path),
+        output_formats=["txt"],
+    )
+
+    assert result["draft"]["exhibits"]
+    assert result["draft"]["affidavit"]["supporting_exhibits"] == []
 
 
 def test_review_api_registers_formal_complaint_document_route():
@@ -351,6 +589,28 @@ def test_review_api_registers_formal_complaint_document_route():
                     }
                 ],
                 "declarant_name": "Jane Doe",
+                "affidavit_title": "AFFIDAVIT OF JANE DOE REGARDING RETALIATION",
+                "affidavit_intro": "I, Jane Doe, make this affidavit from personal knowledge regarding Defendant's retaliation.",
+                "affidavit_facts": [
+                    "I reported discrimination to human resources on March 3, 2026.",
+                    "Defendant terminated my employment two days later.",
+                ],
+                "affidavit_supporting_exhibits": [
+                    {
+                        "label": "Affidavit Ex. 1",
+                        "title": "HR Complaint Email",
+                        "link": "https://example.org/hr-email.pdf",
+                        "summary": "Email reporting discrimination to HR.",
+                    }
+                ],
+                "affidavit_include_complaint_exhibits": False,
+                "affidavit_venue_lines": ["State of California", "County of San Francisco"],
+                "affidavit_jurat": "Subscribed and sworn to before me on March 13, 2026 by Jane Doe.",
+                "affidavit_notary_block": [
+                    "__________________________________",
+                    "Notary Public for the State of California",
+                    "My commission expires: March 13, 2029",
+                ],
                 "service_method": "CM/ECF",
                 "service_recipients": ["Registered Agent for Acme Corporation", "Defense Counsel"],
                 "service_recipient_details": [
@@ -372,15 +632,43 @@ def test_review_api_registers_formal_complaint_document_route():
         assert response.json()["artifacts"]["docx"]["download_url"].startswith('/api/documents/download?path=')
         assert response.json()["review_links"]["dashboard_url"] == "/claim-support-review"
         assert response.json()["review_links"]["claims"][0]["review_url"] == "/claim-support-review?claim_type=retaliation"
+        assert response.json()["review_links"]["claims"][0]["review_intent"] == {
+            "user_id": None,
+            "claim_type": "retaliation",
+            "section": None,
+            "follow_up_support_kind": None,
+            "review_url": "/claim-support-review?claim_type=retaliation",
+        }
         assert response.json()["review_links"]["sections"] == []
         assert response.json()["filing_checklist"][0]["review_url"] == "/claim-support-review?claim_type=retaliation"
         assert response.json()["filing_checklist"][0]["review_context"] == {
             "user_id": None,
             "claim_type": "retaliation",
         }
+        assert response.json()["filing_checklist"][0]["review_intent"] == {
+            "user_id": None,
+            "claim_type": "retaliation",
+            "section": None,
+            "follow_up_support_kind": None,
+            "review_url": "/claim-support-review?claim_type=retaliation",
+        }
         assert response.json()["drafting_readiness"]["claims"][0]["review_context"] == {
             "user_id": None,
             "claim_type": "retaliation",
+        }
+        assert response.json()["drafting_readiness"]["claims"][0]["review_intent"] == {
+            "user_id": None,
+            "claim_type": "retaliation",
+            "section": None,
+            "follow_up_support_kind": None,
+            "review_url": "/claim-support-review?claim_type=retaliation",
+        }
+        assert response.json()["review_intent"] == {
+            "user_id": None,
+            "claim_type": None,
+            "section": None,
+            "follow_up_support_kind": None,
+            "review_url": "/claim-support-review",
         }
         mediator.build_formal_complaint_document_package.assert_called_once_with(
             user_id=None,
@@ -415,6 +703,28 @@ def test_review_api_registers_formal_complaint_document_route():
                 }
             ],
             declarant_name="Jane Doe",
+            affidavit_title="AFFIDAVIT OF JANE DOE REGARDING RETALIATION",
+            affidavit_intro="I, Jane Doe, make this affidavit from personal knowledge regarding Defendant's retaliation.",
+            affidavit_facts=[
+                "I reported discrimination to human resources on March 3, 2026.",
+                "Defendant terminated my employment two days later.",
+            ],
+            affidavit_supporting_exhibits=[
+                {
+                    "label": "Affidavit Ex. 1",
+                    "title": "HR Complaint Email",
+                    "link": "https://example.org/hr-email.pdf",
+                    "summary": "Email reporting discrimination to HR.",
+                }
+            ],
+            affidavit_include_complaint_exhibits=False,
+            affidavit_venue_lines=["State of California", "County of San Francisco"],
+            affidavit_jurat="Subscribed and sworn to before me on March 13, 2026 by Jane Doe.",
+            affidavit_notary_block=[
+                "__________________________________",
+                "Notary Public for the State of California",
+                "My commission expires: March 13, 2029",
+            ],
             service_method="CM/ECF",
             service_recipients=["Registered Agent for Acme Corporation", "Defense Counsel"],
             service_recipient_details=[
@@ -429,6 +739,112 @@ def test_review_api_registers_formal_complaint_document_route():
         )
     finally:
         artifact_path.unlink(missing_ok=True)
+
+
+def test_review_api_applies_full_affidavit_override_payload_end_to_end(tmp_path):
+    mediator = _build_mediator()
+    mediator.build_formal_complaint_document_package.side_effect = (
+        lambda **kwargs: FormalComplaintDocumentBuilder(mediator).build_package(**kwargs)
+    )
+
+    app = create_review_api_app(mediator)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/documents/formal-complaint",
+        json={
+            "district": "Northern District of California",
+            "county": "San Francisco County",
+            "plaintiff_names": ["Jane Doe"],
+            "defendant_names": ["Acme Corporation"],
+            "declarant_name": "Jane Doe",
+            "affidavit_title": "AFFIDAVIT OF JANE DOE REGARDING RETALIATION",
+            "affidavit_intro": "I, Jane Doe, make this affidavit from personal knowledge regarding Defendant's retaliation.",
+            "affidavit_facts": [
+                "I reported discrimination to human resources on March 3, 2026.",
+                "Defendant terminated my employment two days later.",
+            ],
+            "affidavit_supporting_exhibits": [
+                {
+                    "label": "Affidavit Ex. 1",
+                    "title": "HR Complaint Email",
+                    "link": "https://example.org/hr-email.pdf",
+                    "summary": "Email reporting discrimination to HR.",
+                }
+            ],
+            "affidavit_include_complaint_exhibits": False,
+            "affidavit_venue_lines": ["State of California", "County of San Francisco"],
+            "affidavit_jurat": "Subscribed and sworn to before me on March 13, 2026 by Jane Doe.",
+            "affidavit_notary_block": [
+                "__________________________________",
+                "Notary Public for the State of California",
+                "My commission expires: March 13, 2029",
+            ],
+            "output_formats": ["txt"],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    affidavit = payload["draft"]["affidavit"]
+
+    assert affidavit["title"] == "AFFIDAVIT OF JANE DOE REGARDING RETALIATION"
+    assert affidavit["intro"] == "I, Jane Doe, make this affidavit from personal knowledge regarding Defendant's retaliation."
+    assert affidavit["facts"] == [
+        "I reported discrimination to human resources on March 3, 2026.",
+        "Defendant terminated my employment two days later.",
+    ]
+    assert affidavit["supporting_exhibits"] == [
+        {
+            "label": "Affidavit Ex. 1",
+            "title": "HR Complaint Email",
+            "link": "https://example.org/hr-email.pdf",
+            "summary": "Email reporting discrimination to HR.",
+        }
+    ]
+    assert affidavit["venue_lines"] == ["State of California", "County of San Francisco"]
+    assert affidavit["jurat"] == "Subscribed and sworn to before me on March 13, 2026 by Jane Doe."
+    assert affidavit["notary_block"] == [
+        "__________________________________",
+        "Notary Public for the State of California",
+        "My commission expires: March 13, 2029",
+    ]
+    assert payload["draft"]["exhibits"]
+    assert affidavit["supporting_exhibits"][0]["label"] == "Affidavit Ex. 1"
+    assert payload["artifacts"]["txt"]["path"]
+
+    Path(payload["artifacts"]["txt"]["path"]).unlink(missing_ok=True)
+
+
+def test_review_api_can_suppress_mirrored_affidavit_exhibits_end_to_end(tmp_path):
+    mediator = _build_mediator()
+    mediator.build_formal_complaint_document_package.side_effect = (
+        lambda **kwargs: FormalComplaintDocumentBuilder(mediator).build_package(**kwargs)
+    )
+
+    app = create_review_api_app(mediator)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/documents/formal-complaint",
+        json={
+            "district": "Northern District of California",
+            "county": "San Francisco County",
+            "plaintiff_names": ["Jane Doe"],
+            "defendant_names": ["Acme Corporation"],
+            "declarant_name": "Jane Doe",
+            "affidavit_include_complaint_exhibits": False,
+            "output_formats": ["txt"],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["draft"]["exhibits"]
+    assert payload["draft"]["affidavit"]["supporting_exhibits"] == []
+    assert payload["artifacts"]["txt"]["path"]
+
+    Path(payload["artifacts"]["txt"]["path"]).unlink(missing_ok=True)
 
 
 def test_review_api_multiclaim_section_links_include_targeted_claim_urls():
@@ -476,14 +892,35 @@ def test_review_api_multiclaim_section_links_include_targeted_claim_urls():
         payload = response.json()
         assert payload["review_links"]["sections"][0]["section_key"] == "claims_for_relief"
         assert payload["review_links"]["sections"][0]["review_url"] == "/claim-support-review?section=claims_for_relief"
+        assert payload["review_links"]["sections"][0]["review_intent"] == {
+            "user_id": None,
+            "claim_type": None,
+            "section": "claims_for_relief",
+            "follow_up_support_kind": "authority",
+            "review_url": "/claim-support-review?section=claims_for_relief",
+        }
         assert payload["review_links"]["sections"][0]["claim_links"] == [
             {
                 "claim_type": "employment discrimination",
                 "review_url": "/claim-support-review?claim_type=employment+discrimination&section=claims_for_relief",
+                "review_intent": {
+                    "user_id": None,
+                    "claim_type": "employment discrimination",
+                    "section": "claims_for_relief",
+                    "follow_up_support_kind": "authority",
+                    "review_url": "/claim-support-review?claim_type=employment+discrimination&section=claims_for_relief",
+                },
             },
             {
                 "claim_type": "retaliation",
                 "review_url": "/claim-support-review?claim_type=retaliation&section=claims_for_relief",
+                "review_intent": {
+                    "user_id": None,
+                    "claim_type": "retaliation",
+                    "section": "claims_for_relief",
+                    "follow_up_support_kind": "authority",
+                    "review_url": "/claim-support-review?claim_type=retaliation&section=claims_for_relief",
+                },
             },
         ]
         assert payload["drafting_readiness"]["sections"]["claims_for_relief"]["review_context"] == {
@@ -491,18 +928,60 @@ def test_review_api_multiclaim_section_links_include_targeted_claim_urls():
             "section": "claims_for_relief",
             "claim_type": None,
         }
+        assert payload["drafting_readiness"]["sections"]["claims_for_relief"]["review_intent"] == {
+            "user_id": None,
+            "claim_type": None,
+            "section": "claims_for_relief",
+            "follow_up_support_kind": "authority",
+            "review_url": "/claim-support-review?section=claims_for_relief",
+        }
         assert payload["filing_checklist"][0]["review_url"] == "/claim-support-review?section=claims_for_relief"
+        assert payload["filing_checklist"][0]["review_intent"] == {
+            "user_id": None,
+            "claim_type": None,
+            "section": "claims_for_relief",
+            "follow_up_support_kind": "authority",
+            "review_url": "/claim-support-review?section=claims_for_relief",
+        }
         assert payload["filing_checklist"][1]["review_url"] == "/claim-support-review?claim_type=retaliation"
+        assert payload["filing_checklist"][1]["review_intent"] == {
+            "user_id": None,
+            "claim_type": "retaliation",
+            "section": None,
+            "follow_up_support_kind": None,
+            "review_url": "/claim-support-review?claim_type=retaliation",
+        }
         assert payload["drafting_readiness"]["sections"]["claims_for_relief"]["claim_links"] == [
             {
                 "claim_type": "employment discrimination",
                 "review_url": "/claim-support-review?claim_type=employment+discrimination&section=claims_for_relief",
+                "review_intent": {
+                    "user_id": None,
+                    "claim_type": "employment discrimination",
+                    "section": "claims_for_relief",
+                    "follow_up_support_kind": "authority",
+                    "review_url": "/claim-support-review?claim_type=employment+discrimination&section=claims_for_relief",
+                },
             },
             {
                 "claim_type": "retaliation",
                 "review_url": "/claim-support-review?claim_type=retaliation&section=claims_for_relief",
+                "review_intent": {
+                    "user_id": None,
+                    "claim_type": "retaliation",
+                    "section": "claims_for_relief",
+                    "follow_up_support_kind": "authority",
+                    "review_url": "/claim-support-review?claim_type=retaliation&section=claims_for_relief",
+                },
             },
         ]
+        assert payload["review_intent"] == {
+            "user_id": None,
+            "claim_type": "employment discrimination",
+            "section": "claims_for_relief",
+            "follow_up_support_kind": "authority",
+            "review_url": "/claim-support-review?claim_type=employment+discrimination&section=claims_for_relief",
+        }
     finally:
         artifact_path.unlink(missing_ok=True)
 
@@ -617,6 +1096,8 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert 'Section Readiness' in page_html
         assert 'Claim Readiness' in page_html
         assert 'Source Drilldown' in page_html
+        assert 'Source Context:' in page_html
+        assert 'Source families:' in page_html
         assert 'Factual Allegations' in page_html
         assert 'Incorporated Support' in page_html
         assert 'Supporting Exhibit Details' in page_html
@@ -670,3 +1151,99 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert download_response.content.startswith(b'PK\x03\x04')
     finally:
         artifact_path.unlink(missing_ok=True)
+
+
+def test_review_surface_document_builder_supports_affidavit_exhibit_controls_end_to_end(tmp_path):
+    mediator = _build_mediator()
+    mediator.build_formal_complaint_document_package.side_effect = (
+        lambda **kwargs: FormalComplaintDocumentBuilder(mediator).build_package(**kwargs)
+    )
+    app = create_review_surface_app(mediator)
+    client = TestClient(app)
+
+    page_response = client.get('/document')
+
+    assert page_response.status_code == 200
+    page_html = page_response.text
+    assert 'Mirror complaint exhibits into affidavit when no affidavit-specific exhibit list is provided' in page_html
+    assert 'Affidavit Exhibit Source:' in page_html
+
+    api_response = client.post(
+        '/api/documents/formal-complaint',
+        json={
+            'district': 'Northern District of California',
+            'county': 'San Francisco County',
+            'plaintiff_names': ['Jane Doe'],
+            'defendant_names': ['Acme Corporation'],
+            'declarant_name': 'Jane Doe',
+            'affidavit_title': 'AFFIDAVIT OF JANE DOE REGARDING RETALIATION',
+            'affidavit_intro': "I, Jane Doe, make this affidavit from personal knowledge regarding Defendant's retaliation.",
+            'affidavit_facts': [
+                'I reported discrimination to human resources on March 3, 2026.',
+                'Defendant terminated my employment two days later.',
+            ],
+            'affidavit_supporting_exhibits': [
+                {
+                    'label': 'Affidavit Ex. 1',
+                    'title': 'HR Complaint Email',
+                    'link': 'https://example.org/hr-email.pdf',
+                    'summary': 'Email reporting discrimination to HR.',
+                }
+            ],
+            'affidavit_include_complaint_exhibits': False,
+            'affidavit_venue_lines': ['State of California', 'County of San Francisco'],
+            'affidavit_jurat': 'Subscribed and sworn to before me on March 13, 2026 by Jane Doe.',
+            'affidavit_notary_block': [
+                '__________________________________',
+                'Notary Public for the State of California',
+                'My commission expires: March 13, 2029',
+            ],
+            'output_formats': ['txt'],
+        },
+    )
+
+    assert api_response.status_code == 200
+    payload = api_response.json()
+    assert payload['draft']['affidavit']['title'] == 'AFFIDAVIT OF JANE DOE REGARDING RETALIATION'
+    assert payload['draft']['affidavit']['supporting_exhibits'] == [
+        {
+            'label': 'Affidavit Ex. 1',
+            'title': 'HR Complaint Email',
+            'link': 'https://example.org/hr-email.pdf',
+            'summary': 'Email reporting discrimination to HR.',
+        }
+    ]
+    assert payload['draft']['exhibits']
+    assert payload['artifacts']['txt']['download_url'].startswith('/api/documents/download?path=')
+
+    Path(payload['artifacts']['txt']['path']).unlink(missing_ok=True)
+
+
+def test_review_surface_document_builder_can_suppress_mirrored_affidavit_exhibits_end_to_end(tmp_path):
+    mediator = _build_mediator()
+    mediator.build_formal_complaint_document_package.side_effect = (
+        lambda **kwargs: FormalComplaintDocumentBuilder(mediator).build_package(**kwargs)
+    )
+    app = create_review_surface_app(mediator)
+    client = TestClient(app)
+
+    api_response = client.post(
+        '/api/documents/formal-complaint',
+        json={
+            'district': 'Northern District of California',
+            'county': 'San Francisco County',
+            'plaintiff_names': ['Jane Doe'],
+            'defendant_names': ['Acme Corporation'],
+            'declarant_name': 'Jane Doe',
+            'affidavit_include_complaint_exhibits': False,
+            'output_formats': ['txt'],
+        },
+    )
+
+    assert api_response.status_code == 200
+    payload = api_response.json()
+    assert payload['draft']['exhibits']
+    assert payload['draft']['affidavit']['supporting_exhibits'] == []
+    assert payload['artifacts']['txt']['download_url'].startswith('/api/documents/download?path=')
+
+    Path(payload['artifacts']['txt']['path']).unlink(missing_ok=True)

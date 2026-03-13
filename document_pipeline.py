@@ -167,6 +167,14 @@ class FormalComplaintDocumentBuilder:
         signature_date: Optional[str] = None,
         verification_date: Optional[str] = None,
         service_date: Optional[str] = None,
+        affidavit_title: Optional[str] = None,
+        affidavit_intro: Optional[str] = None,
+        affidavit_facts: Optional[List[str]] = None,
+        affidavit_supporting_exhibits: Optional[List[Dict[str, str]]] = None,
+        affidavit_include_complaint_exhibits: Optional[bool] = None,
+        affidavit_venue_lines: Optional[List[str]] = None,
+        affidavit_jurat: Optional[str] = None,
+        affidavit_notary_block: Optional[List[str]] = None,
         output_dir: Optional[str] = None,
         output_formats: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
@@ -203,6 +211,14 @@ class FormalComplaintDocumentBuilder:
             signature_date=signature_date,
             verification_date=verification_date,
             service_date=service_date,
+            affidavit_title=affidavit_title,
+            affidavit_intro=affidavit_intro,
+            affidavit_facts=affidavit_facts,
+            affidavit_supporting_exhibits=affidavit_supporting_exhibits,
+            affidavit_include_complaint_exhibits=affidavit_include_complaint_exhibits,
+            affidavit_venue_lines=affidavit_venue_lines,
+            affidavit_jurat=affidavit_jurat,
+            affidavit_notary_block=affidavit_notary_block,
         )
         drafting_readiness = self._build_drafting_readiness(
             user_id=resolved_user_id,
@@ -216,6 +232,7 @@ class FormalComplaintDocumentBuilder:
         )
         draft["drafting_readiness"] = drafting_readiness
         draft["filing_checklist"] = filing_checklist
+        draft["affidavit"] = self._build_affidavit(draft)
         artifacts = self.render_artifacts(
             draft,
             output_dir=output_dir,
@@ -263,7 +280,25 @@ class FormalComplaintDocumentBuilder:
         signature_date: Optional[str],
         verification_date: Optional[str],
         service_date: Optional[str],
+        affidavit_title: Optional[str],
+        affidavit_intro: Optional[str],
+        affidavit_facts: Optional[List[str]],
+        affidavit_supporting_exhibits: Optional[List[Dict[str, str]]],
+        affidavit_include_complaint_exhibits: Optional[bool],
+        affidavit_venue_lines: Optional[List[str]],
+        affidavit_jurat: Optional[str],
+        affidavit_notary_block: Optional[List[str]],
     ) -> Dict[str, Any]:
+        affidavit_overrides = self._build_affidavit_overrides(
+            affidavit_title=affidavit_title,
+            affidavit_intro=affidavit_intro,
+            affidavit_facts=affidavit_facts,
+            affidavit_supporting_exhibits=affidavit_supporting_exhibits,
+            affidavit_include_complaint_exhibits=affidavit_include_complaint_exhibits,
+            affidavit_venue_lines=affidavit_venue_lines,
+            affidavit_jurat=affidavit_jurat,
+            affidavit_notary_block=affidavit_notary_block,
+        )
         canonical_generate = getattr(self.mediator, "generate_formal_complaint", None)
         if callable(canonical_generate):
             try:
@@ -298,11 +333,23 @@ class FormalComplaintDocumentBuilder:
                     signature_date=signature_date,
                     verification_date=verification_date,
                     service_date=service_date,
+                    affidavit_title=affidavit_title,
+                    affidavit_intro=affidavit_intro,
+                    affidavit_facts=affidavit_facts,
+                    affidavit_supporting_exhibits=affidavit_supporting_exhibits,
+                    affidavit_include_complaint_exhibits=affidavit_include_complaint_exhibits,
+                    affidavit_venue_lines=affidavit_venue_lines,
+                    affidavit_jurat=affidavit_jurat,
+                    affidavit_notary_block=affidavit_notary_block,
                 )
             except TypeError:
                 result = None
             if isinstance(result, dict) and isinstance(result.get("formal_complaint"), dict):
-                return self._adapt_formal_complaint_to_package_draft(result["formal_complaint"])
+                draft = self._adapt_formal_complaint_to_package_draft(result["formal_complaint"])
+                draft["affidavit_overrides"] = affidavit_overrides
+                draft["affidavit"] = self._build_affidavit(draft)
+                draft["draft_text"] = self._render_draft_text(draft)
+                return draft
 
         return self._build_legacy_draft(
             user_id=user_id,
@@ -335,6 +382,14 @@ class FormalComplaintDocumentBuilder:
             signature_date=signature_date,
             verification_date=verification_date,
             service_date=service_date,
+            affidavit_title=affidavit_title,
+            affidavit_intro=affidavit_intro,
+            affidavit_facts=affidavit_facts,
+            affidavit_supporting_exhibits=affidavit_supporting_exhibits,
+            affidavit_include_complaint_exhibits=affidavit_include_complaint_exhibits,
+            affidavit_venue_lines=affidavit_venue_lines,
+            affidavit_jurat=affidavit_jurat,
+            affidavit_notary_block=affidavit_notary_block,
         )
 
     def _build_legacy_draft(
@@ -370,6 +425,14 @@ class FormalComplaintDocumentBuilder:
         signature_date: Optional[str],
         verification_date: Optional[str],
         service_date: Optional[str],
+        affidavit_title: Optional[str],
+        affidavit_intro: Optional[str],
+        affidavit_facts: Optional[List[str]],
+        affidavit_supporting_exhibits: Optional[List[Dict[str, str]]],
+        affidavit_include_complaint_exhibits: Optional[bool],
+        affidavit_venue_lines: Optional[List[str]],
+        affidavit_jurat: Optional[str],
+        affidavit_notary_block: Optional[List[str]],
     ) -> Dict[str, Any]:
         state = getattr(self.mediator, "state", None)
         generated_complaint = self._get_existing_formal_complaint()
@@ -457,6 +520,7 @@ class FormalComplaintDocumentBuilder:
             service_recipients=service_recipients,
             service_recipient_details=service_recipient_details,
             service_date=service_date,
+            jurisdiction=classification.get("jurisdiction"),
         )
 
         draft = {
@@ -494,11 +558,24 @@ class FormalComplaintDocumentBuilder:
             "source_context": {
                 "user_id": user_id,
                 "claim_types": claim_types,
+                "district": district,
                 "jurisdiction": classification.get("jurisdiction", "unknown"),
                 "generated_at": _utcnow().isoformat(),
             },
+            "affidavit_overrides": self._build_affidavit_overrides(
+                affidavit_title=affidavit_title,
+                affidavit_intro=affidavit_intro,
+                affidavit_facts=affidavit_facts,
+                affidavit_supporting_exhibits=affidavit_supporting_exhibits,
+                affidavit_include_complaint_exhibits=affidavit_include_complaint_exhibits,
+                affidavit_venue_lines=affidavit_venue_lines,
+                affidavit_jurat=affidavit_jurat,
+                affidavit_notary_block=affidavit_notary_block,
+            ),
         }
         self._attach_allegation_references(draft)
+        self._annotate_case_caption_display(draft)
+        draft["affidavit"] = self._build_affidavit(draft)
         draft["draft_text"] = self._render_draft_text(draft)
         return draft
 
@@ -620,12 +697,128 @@ class FormalComplaintDocumentBuilder:
             "certificate_of_service": formal_complaint.get("certificate_of_service", {}),
             "source_context": {
                 "generated_at": formal_complaint.get("generated_at") or _utcnow().isoformat(),
+                "district": formal_complaint.get("district") or caption.get("district") or "",
                 "jurisdiction": formal_complaint.get("jurisdiction", "unknown"),
             },
         }
         self._attach_allegation_references(draft)
-        draft["draft_text"] = str(formal_complaint.get("draft_text") or "").strip() or self._render_draft_text(draft)
+        self._annotate_case_caption_display(draft)
+        built_affidavit = self._build_affidavit(draft)
+        existing_affidavit = formal_complaint.get("affidavit", {}) if isinstance(formal_complaint.get("affidavit"), dict) else {}
+        draft["affidavit"] = {**built_affidavit, **existing_affidavit}
+        rendered_draft_text = self._render_draft_text(draft)
+        supplied_draft_text = str(formal_complaint.get("draft_text") or "").strip()
+        expected_case_line = (
+            f"{draft['case_caption'].get('case_number_label', 'Civil Action No.')} "
+            f"{draft['case_caption'].get('case_number', '________________')}"
+        )
+        draft["draft_text"] = (
+            supplied_draft_text
+            if supplied_draft_text and expected_case_line in supplied_draft_text
+            else rendered_draft_text
+        )
         return draft
+
+    def _format_county_for_header(self, county: Optional[str]) -> str:
+        county_text = str(county or "").strip().upper()
+        if not county_text:
+            return ""
+        if county_text.startswith("COUNTY OF "):
+            return county_text
+        if county_text.endswith(" COUNTY"):
+            return f"COUNTY OF {county_text[:-7].strip()}"
+        return f"COUNTY OF {county_text}"
+
+    def _annotate_case_caption_display(self, draft: Dict[str, Any]) -> None:
+        caption = draft.get("case_caption")
+        if not isinstance(caption, dict):
+            return
+        source_context = draft.get("source_context", {}) if isinstance(draft.get("source_context"), dict) else {}
+        jurisdiction = str(source_context.get("jurisdiction") or "").strip()
+        forum_type = self._infer_forum_type(
+            classification={"jurisdiction": jurisdiction},
+            court_name=str(draft.get("court_header") or ""),
+        )
+        caption["forum_type"] = forum_type
+        caption["case_number_label"] = caption.get("case_number_label") or (
+            "Case No." if forum_type == "state" else "Civil Action No."
+        )
+        caption["lead_case_number_label"] = caption.get("lead_case_number_label") or (
+            "Related Proceeding No." if forum_type == "state" else "Lead Case No."
+        )
+        caption["related_case_number_label"] = caption.get("related_case_number_label") or (
+            "Coordination No." if forum_type == "state" else "Related Case No."
+        )
+        caption["assigned_judge_label"] = caption.get("assigned_judge_label") or (
+            "Judicial Officer" if forum_type == "state" else "Assigned Judge"
+        )
+        caption["courtroom_label"] = caption.get("courtroom_label") or (
+            "Department" if forum_type == "state" else "Courtroom"
+        )
+        plaintiff_names = caption.get("plaintiffs") if isinstance(caption.get("plaintiffs"), list) else []
+        defendant_names = caption.get("defendants") if isinstance(caption.get("defendants"), list) else []
+        caption["plaintiff_caption_label"] = caption.get("plaintiff_caption_label") or (
+            "Plaintiff" if len(plaintiff_names) == 1 else "Plaintiffs"
+        )
+        caption["defendant_caption_label"] = caption.get("defendant_caption_label") or (
+            "Defendant" if len(defendant_names) == 1 else "Defendants"
+        )
+        caption["caption_party_lines"] = caption.get("caption_party_lines") or self._build_caption_party_lines(caption)
+
+    def _build_caption_party_lines(self, caption: Dict[str, Any]) -> List[str]:
+        plaintiffs = caption.get("plaintiffs") if isinstance(caption.get("plaintiffs"), list) else []
+        defendants = caption.get("defendants") if isinstance(caption.get("defendants"), list) else []
+        plaintiff_names = [str(name).strip() for name in plaintiffs if str(name).strip()] or ["Plaintiff"]
+        defendant_names = [str(name).strip() for name in defendants if str(name).strip()] or ["Defendant"]
+        plaintiff_label = str(
+            caption.get("plaintiff_caption_label")
+            or ("Plaintiff" if len(plaintiff_names) == 1 else "Plaintiffs")
+        ).strip()
+        defendant_label = str(
+            caption.get("defendant_caption_label")
+            or ("Defendant" if len(defendant_names) == 1 else "Defendants")
+        ).strip()
+        return [
+            f"{'\n'.join(plaintiff_names)}, {plaintiff_label},",
+            "v.",
+            f"{'\n'.join(defendant_names)}, {defendant_label}.",
+        ]
+
+    def _resolve_draft_forum_type(self, draft: Dict[str, Any]) -> str:
+        caption = draft.get("case_caption", {}) if isinstance(draft.get("case_caption"), dict) else {}
+        forum_type = str(caption.get("forum_type") or "").strip().lower()
+        if forum_type:
+            return forum_type
+        source_context = draft.get("source_context", {}) if isinstance(draft.get("source_context"), dict) else {}
+        return self._infer_forum_type(
+            classification={"jurisdiction": source_context.get("jurisdiction")},
+            court_name=str(draft.get("court_header") or ""),
+        )
+
+    def _build_party_section_lines(
+        self,
+        *,
+        plaintiffs: List[str],
+        defendants: List[str],
+        forum_type: str,
+    ) -> List[str]:
+        plaintiff_names = [str(name).strip() for name in _coerce_list(plaintiffs) if str(name).strip()] or ["Plaintiff"]
+        defendant_names = [str(name).strip() for name in _coerce_list(defendants) if str(name).strip()] or ["Defendant"]
+        plaintiff_label = "Plaintiff" if len(plaintiff_names) == 1 else "Plaintiffs"
+        defendant_label = "Defendant" if len(defendant_names) == 1 else "Defendants"
+        plaintiff_names_text = ", ".join(plaintiff_names)
+        defendant_names_text = ", ".join(defendant_names)
+        if forum_type == "state":
+            plaintiff_verb = "is" if len(plaintiff_names) == 1 else "are"
+            defendant_verb = "is" if len(defendant_names) == 1 else "are"
+            return [
+                f"{plaintiff_label} {plaintiff_names_text} {plaintiff_verb} a party bringing this civil action in this Court.",
+                f"{defendant_label} {defendant_names_text} {defendant_verb} named as the party from whom relief is sought.",
+            ]
+        return [
+            f"{plaintiff_label}: {plaintiff_names_text}.",
+            f"{defendant_label}: {defendant_names_text}.",
+        ]
 
     def _build_jurisdiction_statement(
         self,
@@ -704,20 +897,32 @@ class FormalComplaintDocumentBuilder:
         caption = draft.get("case_caption", {}) if isinstance(draft.get("case_caption"), dict) else {}
         parties = draft.get("parties", {}) if isinstance(draft.get("parties"), dict) else {}
         signature_block = draft.get("signature_block", {}) if isinstance(draft.get("signature_block"), dict) else {}
-        plaintiffs = ", ".join(parties.get("plaintiffs", []) or caption.get("plaintiffs", []) or ["Plaintiff"])
-        defendants = ", ".join(parties.get("defendants", []) or caption.get("defendants", []) or ["Defendant"])
+        plaintiff_list = parties.get("plaintiffs", []) or caption.get("plaintiffs", []) or ["Plaintiff"]
+        defendant_list = parties.get("defendants", []) or caption.get("defendants", []) or ["Defendant"]
+        plaintiffs = ", ".join(plaintiff_list)
+        defendants = ", ".join(defendant_list)
+        forum_type = self._resolve_draft_forum_type(draft)
+        caption_party_lines = caption.get("caption_party_lines") if isinstance(caption.get("caption_party_lines"), list) else self._build_caption_party_lines(caption)
+        party_section_lines = self._build_party_section_lines(
+            plaintiffs=plaintiff_list,
+            defendants=defendant_list,
+            forum_type=forum_type,
+        )
+        case_number_label = str(caption.get("case_number_label") or "Civil Action No.")
+        lead_case_number_label = str(caption.get("lead_case_number_label") or "Lead Case No.")
+        related_case_number_label = str(caption.get("related_case_number_label") or "Related Case No.")
+        assigned_judge_label = str(caption.get("assigned_judge_label") or "Assigned Judge")
+        courtroom_label = str(caption.get("courtroom_label") or "Courtroom")
         lines = [
             str(draft.get("court_header") or "IN THE COURT OF COMPETENT JURISDICTION"),
             *([str(caption.get("county"))] if caption.get("county") else []),
             "",
-            f"{plaintiffs}, Plaintiff,",
-            "v.",
-            f"{defendants}, Defendant.",
-            f"Civil Action No. {caption.get('case_number', '________________')}",
-            *([f"Lead Case No.: {caption.get('lead_case_number')}"] if caption.get('lead_case_number') else []),
-            *([f"Related Case No.: {caption.get('related_case_number')}"] if caption.get('related_case_number') else []),
-            *([f"Assigned to: {caption.get('assigned_judge')}"] if caption.get('assigned_judge') else []),
-            *([f"Courtroom: {caption.get('courtroom')}"] if caption.get('courtroom') else []),
+            *caption_party_lines,
+            f"{case_number_label} {caption.get('case_number', '________________')}",
+            *([f"{lead_case_number_label} {caption.get('lead_case_number')}"] if caption.get('lead_case_number') else []),
+            *([f"{related_case_number_label} {caption.get('related_case_number')}"] if caption.get('related_case_number') else []),
+            *([f"{assigned_judge_label}: {caption.get('assigned_judge')}"] if caption.get('assigned_judge') else []),
+            *([f"{courtroom_label}: {caption.get('courtroom')}"] if caption.get('courtroom') else []),
             "",
             str(caption.get("document_title") or "COMPLAINT"),
             *([str(caption.get("jury_demand_notice"))] if caption.get("jury_demand_notice") else []),
@@ -728,8 +933,7 @@ class FormalComplaintDocumentBuilder:
         lines.extend([
             "",
             "PARTIES",
-            f"Plaintiff: {plaintiffs}.",
-            f"Defendant: {defendants}.",
+            *party_section_lines,
             "",
             "JURISDICTION AND VENUE",
         ])
@@ -781,6 +985,38 @@ class FormalComplaintDocumentBuilder:
                 lines.append(text)
                 if exhibit.get("summary"):
                     lines.append(f"  {exhibit['summary']}")
+        affidavit = draft.get("affidavit", {}) if isinstance(draft.get("affidavit"), dict) else {}
+        if affidavit:
+            lines.extend([
+                "",
+                str(affidavit.get("title") or "AFFIDAVIT IN SUPPORT OF COMPLAINT"),
+            ])
+            lines.extend(str(line) for line in _coerce_list(affidavit.get("venue_lines")) if str(line or "").strip())
+            lines.extend([
+                "",
+                str(affidavit.get("intro") or ""),
+                str(affidavit.get("knowledge_graph_note") or ""),
+                "",
+                "Affiant states as follows:",
+            ])
+            lines.extend(self._numbered_lines(affidavit.get("facts", [])))
+            supporting_exhibits = affidavit.get("supporting_exhibits") if isinstance(affidavit.get("supporting_exhibits"), list) else []
+            if supporting_exhibits:
+                lines.extend(["", "AFFIDAVIT SUPPORTING EXHIBITS"])
+                for exhibit in supporting_exhibits:
+                    if not isinstance(exhibit, dict):
+                        continue
+                    exhibit_text = f"{exhibit.get('label', 'Exhibit')} - {exhibit.get('title', 'Supporting exhibit')}"
+                    if exhibit.get("link"):
+                        exhibit_text = f"{exhibit_text} ({exhibit['link']})"
+                    lines.append(exhibit_text)
+            lines.extend([
+                "",
+                str(affidavit.get("dated") or ""),
+                str(affidavit.get("signature_line") or ""),
+                str(affidavit.get("jurat") or ""),
+            ])
+            lines.extend(str(line) for line in _coerce_list(affidavit.get("notary_block")) if str(line or "").strip())
         lines.extend([
             "",
             "Respectfully submitted,",
@@ -1106,6 +1342,7 @@ class FormalComplaintDocumentBuilder:
         service_recipients: Optional[List[str]] = None,
         service_recipient_details: Optional[List[Dict[str, str]]] = None,
         service_date: Optional[str] = None,
+        jurisdiction: Optional[str] = None,
     ) -> Dict[str, Any]:
         plaintiff_name = str(signer_name or "").strip() or (plaintiffs or ["Plaintiff"])[0]
         recipient_details = self._normalize_service_recipient_details(service_recipient_details)
@@ -1114,13 +1351,17 @@ class FormalComplaintDocumentBuilder:
         recipients = ", ".join(recipients_list)
         method_text = str(service_method or "").strip() or "a method authorized by the applicable rules of civil procedure"
         detail_lines = [self._format_service_recipient_detail(detail) for detail in recipient_details]
+        is_state = str(jurisdiction or "").strip().lower() == "state"
         return {
-            "title": "Certificate of Service",
+            "title": "Proof of Service" if is_state else "Certificate of Service",
             "text": (
-                "I certify that a true and correct copy of this Complaint will be served promptly after filing on the following recipients."
+                ("I declare that a true and correct copy of this Complaint will be served promptly after filing on the following recipients."
+                if is_state
+                else "I certify that a true and correct copy of this Complaint will be served promptly after filing on the following recipients.")
                 if detail_lines
-                else "I certify that a true and correct copy of this Complaint will be served on "
-                f"{recipients} using {method_text} promptly after filing."
+                else (("I declare that a true and correct copy of this Complaint will be served on "
+                if is_state else "I certify that a true and correct copy of this Complaint will be served on ")
+                + f"{recipients} using {method_text} promptly after filing.")
             ),
             "recipients": recipients_list,
             "recipient_details": recipient_details,
@@ -1181,10 +1422,31 @@ class FormalComplaintDocumentBuilder:
             path = self._artifact_path(output_root, file_stem, output_format)
             if output_format == "docx":
                 self._render_docx(draft, path)
+                affidavit_path = self._artifact_path(output_root, file_stem, output_format, document_kind="affidavit")
+                self._render_affidavit_docx(draft, affidavit_path)
+                artifacts["affidavit_docx"] = {
+                    "path": str(affidavit_path),
+                    "filename": affidavit_path.name,
+                    "size_bytes": affidavit_path.stat().st_size,
+                }
             elif output_format == "pdf":
                 self._render_pdf(draft, path)
+                affidavit_path = self._artifact_path(output_root, file_stem, output_format, document_kind="affidavit")
+                self._render_affidavit_pdf(draft, affidavit_path)
+                artifacts["affidavit_pdf"] = {
+                    "path": str(affidavit_path),
+                    "filename": affidavit_path.name,
+                    "size_bytes": affidavit_path.stat().st_size,
+                }
             elif output_format == "txt":
                 self._render_txt(draft, path)
+                affidavit_path = self._artifact_path(output_root, file_stem, output_format, document_kind="affidavit")
+                self._render_affidavit_txt(draft, affidavit_path)
+                artifacts["affidavit_txt"] = {
+                    "path": str(affidavit_path),
+                    "filename": affidavit_path.name,
+                    "size_bytes": affidavit_path.stat().st_size,
+                }
             elif output_format == "checklist":
                 self._render_checklist_txt(draft, path)
             artifacts[output_format] = {
@@ -1214,8 +1476,177 @@ class FormalComplaintDocumentBuilder:
                 normalized.append(current)
         return normalized or ["docx", "pdf"]
 
+    def _build_affidavit_overrides(
+        self,
+        *,
+        affidavit_title: Optional[str],
+        affidavit_intro: Optional[str],
+        affidavit_facts: Optional[List[str]],
+        affidavit_supporting_exhibits: Optional[List[Dict[str, str]]],
+        affidavit_include_complaint_exhibits: Optional[bool],
+        affidavit_venue_lines: Optional[List[str]],
+        affidavit_jurat: Optional[str],
+        affidavit_notary_block: Optional[List[str]],
+    ) -> Dict[str, Any]:
+        normalized_override_facts = []
+        for value in affidavit_facts or []:
+            cleaned = self._sanitize_affidavit_fact(value)
+            if cleaned:
+                normalized_override_facts.append(cleaned)
+        normalized_supporting_exhibits = []
+        for exhibit in _coerce_list(affidavit_supporting_exhibits):
+            if not isinstance(exhibit, dict):
+                continue
+            normalized = {
+                "label": str(exhibit.get("label") or "Exhibit").strip(),
+                "title": str(exhibit.get("title") or exhibit.get("summary") or "Supporting exhibit").strip(),
+                "link": str(exhibit.get("link") or exhibit.get("reference") or "").strip(),
+                "summary": str(exhibit.get("summary") or "").strip(),
+            }
+            if any(normalized.values()):
+                normalized_supporting_exhibits.append(normalized)
+        return {
+            "title": str(affidavit_title or "").strip() or None,
+            "intro": str(affidavit_intro or "").strip() or None,
+            "facts": normalized_override_facts,
+            "supporting_exhibits": normalized_supporting_exhibits,
+            "include_complaint_exhibits": affidavit_include_complaint_exhibits,
+            "venue_lines": self._normalize_text_lines(affidavit_venue_lines or []),
+            "jurat": str(affidavit_jurat or "").strip() or None,
+            "notary_block": self._normalize_text_lines(affidavit_notary_block or []),
+        }
+
+    def _build_affidavit(self, draft: Dict[str, Any]) -> Dict[str, Any]:
+        verification = draft.get("verification", {}) if isinstance(draft.get("verification"), dict) else {}
+        signature_block = draft.get("signature_block", {}) if isinstance(draft.get("signature_block"), dict) else {}
+        case_caption = draft.get("case_caption", {}) if isinstance(draft.get("case_caption"), dict) else {}
+        affidavit_overrides = draft.get("affidavit_overrides", {}) if isinstance(draft.get("affidavit_overrides"), dict) else {}
+        declarant_name = self._derive_affidavit_declarant_name(draft)
+        exhibits = []
+        for exhibit in _coerce_list(draft.get("exhibits")):
+            if not isinstance(exhibit, dict):
+                continue
+            exhibits.append(
+                {
+                    "label": str(exhibit.get("label") or "Exhibit").strip(),
+                    "title": str(exhibit.get("title") or exhibit.get("summary") or "Supporting exhibit").strip(),
+                    "link": str(exhibit.get("link") or exhibit.get("reference") or "").strip(),
+                    "summary": str(exhibit.get("summary") or "").strip(),
+                }
+            )
+        return {
+            "title": str(affidavit_overrides.get("title") or f"AFFIDAVIT OF {declarant_name.upper()} IN SUPPORT OF COMPLAINT"),
+            "declarant_name": declarant_name,
+            "intro": str(
+                affidavit_overrides.get("intro")
+                or (
+                    f"I, {declarant_name}, declare under penalty of perjury that I am competent to testify to the matters stated below, "
+                    "that these statements are based on my personal knowledge and the complaint intake knowledge graph assembled from the facts, records, and exhibits provided in support of this action, and that the following facts are true and correct."
+                )
+            ),
+            "knowledge_graph_note": "This affidavit is generated from the complaint intake knowledge graph and supporting records rather than a turn-by-turn chat transcript.",
+            "venue_lines": list(affidavit_overrides.get("venue_lines") or self._build_affidavit_venue_lines(draft)),
+            "facts": list(affidavit_overrides.get("facts") or self._collect_affidavit_facts(draft)),
+            "supporting_exhibits": list(
+                affidavit_overrides.get("supporting_exhibits")
+                or ([] if affidavit_overrides.get("include_complaint_exhibits") is False else exhibits)
+            ),
+            "dated": str(verification.get("dated") or signature_block.get("dated") or self._format_dated_line("Executed on", None)),
+            "signature_line": str(verification.get("signature_line") or signature_block.get("signature_line") or f"/s/ {declarant_name}"),
+            "jurat": str(affidavit_overrides.get("jurat") or f"Subscribed and sworn to (or affirmed) before me on __________________ by {declarant_name}."),
+            "notary_block": list(
+                affidavit_overrides.get("notary_block")
+                or [
+                    "__________________________________",
+                    "Notary Public",
+                    "My commission expires: __________________",
+                ]
+            ),
+            "case_number": str(case_caption.get("case_number") or "________________"),
+        }
+
+    def _derive_affidavit_declarant_name(self, draft: Dict[str, Any]) -> str:
+        verification = draft.get("verification", {}) if isinstance(draft.get("verification"), dict) else {}
+        signature_block = draft.get("signature_block", {}) if isinstance(draft.get("signature_block"), dict) else {}
+        parties = draft.get("parties", {}) if isinstance(draft.get("parties"), dict) else {}
+        signature_line = str(verification.get("signature_line") or signature_block.get("signature_line") or "").strip()
+        if signature_line.startswith("/s/ "):
+            return signature_line[4:].strip() or str(signature_block.get("name") or "Plaintiff")
+        plaintiffs = [str(name).strip() for name in _coerce_list(parties.get("plaintiffs")) if str(name).strip()]
+        return str(signature_block.get("name") or (plaintiffs[0] if plaintiffs else "Plaintiff")).strip() or "Plaintiff"
+
+    def _build_affidavit_venue_lines(self, draft: Dict[str, Any]) -> List[str]:
+        caption = draft.get("case_caption", {}) if isinstance(draft.get("case_caption"), dict) else {}
+        source_context = draft.get("source_context", {}) if isinstance(draft.get("source_context"), dict) else {}
+        county = str(caption.get("county") or "").strip()
+        district = str(source_context.get("district") or "").strip()
+        jurisdiction = str(source_context.get("jurisdiction") or caption.get("forum_type") or "").strip().lower()
+        lines: List[str] = []
+        if district:
+            lines.append(f"State/District: {district}")
+        elif jurisdiction == "federal":
+            lines.append("State/District: __________________")
+        if county:
+            lines.append(f"County: {county.title()}")
+        elif jurisdiction == "state":
+            lines.append("County: __________________")
+        return lines or ["Venue: __________________"]
+
+    def _collect_affidavit_facts(self, draft: Dict[str, Any]) -> List[str]:
+        candidates: List[str] = []
+        parties = draft.get("parties", {}) if isinstance(draft.get("parties"), dict) else {}
+        plaintiffs = [str(name).strip() for name in _coerce_list(parties.get("plaintiffs")) if str(name).strip()]
+        if plaintiffs:
+            candidates.append(f"I am {plaintiffs[0]}, the plaintiff in this action")
+        candidates.extend(self._normalize_text_lines(draft.get("summary_of_facts", [])))
+        candidates.extend(self._normalize_text_lines(draft.get("factual_allegations", [])))
+        for claim in _coerce_list(draft.get("claims_for_relief")):
+            if isinstance(claim, dict):
+                candidates.extend(self._normalize_text_lines(claim.get("supporting_facts", [])))
+
+        facts: List[str] = []
+        seen: set[str] = set()
+        for candidate in candidates:
+            cleaned = self._sanitize_affidavit_fact(candidate)
+            if not cleaned:
+                continue
+            key = cleaned.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            facts.append(cleaned)
+            if len(facts) >= 12:
+                break
+        return facts or ["Additional fact development is required before the affidavit can be finalized."]
+
+    def _sanitize_affidavit_fact(self, value: str) -> str:
+        text = re.sub(r"\s+", " ", str(value or "")).strip()
+        if not text:
+            return ""
+        text = re.sub(r"^As to [^,]+,\s*", "", text, flags=re.IGNORECASE)
+        if ": " in text:
+            prefix, suffix = text.split(": ", 1)
+            prefix_lower = prefix.strip().lower()
+            if (
+                prefix.strip().endswith("?")
+                or prefix_lower.startswith(("what ", "when ", "where ", "why ", "how ", "who ", "describe ", "explain "))
+                or prefix_lower in {"what happened", "what relief do you want"}
+            ):
+                text = suffix.strip()
+        if text.lower().startswith("plaintiff repeats and realleges"):
+            return ""
+        if len(text) < 12:
+            return ""
+        if text[-1] not in ".!?":
+            text = f"{text}."
+        return text
+
     def _render_txt(self, draft: Dict[str, Any], path: Path) -> None:
         path.write_text(str(draft.get("draft_text") or self._render_draft_text(draft)), encoding="utf-8")
+
+    def _render_affidavit_txt(self, draft: Dict[str, Any], path: Path) -> None:
+        affidavit = draft.get("affidavit", {}) if isinstance(draft.get("affidavit"), dict) else self._build_affidavit(draft)
+        path.write_text(self._render_affidavit_text(draft, affidavit), encoding="utf-8")
 
     def _render_checklist_txt(self, draft: Dict[str, Any], path: Path) -> None:
         checklist = draft.get("filing_checklist") if isinstance(draft.get("filing_checklist"), list) else []
@@ -1246,10 +1677,79 @@ class FormalComplaintDocumentBuilder:
                 lines.append("")
         path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
-    def _artifact_path(self, output_root: Path, file_stem: str, output_format: str) -> Path:
+    def _artifact_path(self, output_root: Path, file_stem: str, output_format: str, document_kind: str = "complaint") -> Path:
+        suffix = "-affidavit" if document_kind == "affidavit" else ""
         if output_format == "checklist":
-            return output_root / f"{file_stem}-checklist.txt"
-        return output_root / f"{file_stem}.{output_format}"
+            return output_root / f"{file_stem}{suffix}-checklist.txt"
+        return output_root / f"{file_stem}{suffix}.{output_format}"
+
+    def _render_affidavit_text(self, draft: Dict[str, Any], affidavit: Dict[str, Any]) -> str:
+        caption = draft.get("case_caption", {}) if isinstance(draft.get("case_caption"), dict) else {}
+        caption_party_lines = caption.get("caption_party_lines") if isinstance(caption.get("caption_party_lines"), list) else self._build_caption_party_lines(caption)
+        lines = [
+            str(draft.get("court_header") or "IN THE COURT OF COMPETENT JURISDICTION"),
+            *([str(caption.get("county"))] if caption.get("county") else []),
+            "",
+            *caption_party_lines,
+            f"{caption.get('case_number_label', 'Civil Action No.')} {caption.get('case_number', '________________')}",
+            "",
+            str(affidavit.get("title") or "AFFIDAVIT IN SUPPORT OF COMPLAINT"),
+            *[str(line) for line in _coerce_list(affidavit.get("venue_lines")) if str(line or "").strip()],
+            "",
+            str(affidavit.get("intro") or ""),
+            str(affidavit.get("knowledge_graph_note") or ""),
+            "",
+            "Affiant states as follows:",
+            *self._numbered_lines(affidavit.get("facts", [])),
+        ]
+        exhibits = affidavit.get("supporting_exhibits") if isinstance(affidavit.get("supporting_exhibits"), list) else []
+        if exhibits:
+            lines.extend(["", "SUPPORTING EXHIBITS"])
+            for exhibit in exhibits:
+                if not isinstance(exhibit, dict):
+                    continue
+                exhibit_text = f"{exhibit.get('label', 'Exhibit')} - {exhibit.get('title', 'Supporting exhibit')}"
+                if exhibit.get("link"):
+                    exhibit_text = f"{exhibit_text} ({exhibit['link']})"
+                lines.append(exhibit_text)
+        lines.extend(["", str(affidavit.get("dated") or ""), str(affidavit.get("signature_line") or ""), str(affidavit.get("jurat") or "")])
+        lines.extend(str(line) for line in _coerce_list(affidavit.get("notary_block")) if str(line or "").strip())
+        return "\n".join(line for line in lines if line is not None)
+
+    def _render_affidavit_docx(self, draft: Dict[str, Any], path: Path) -> None:
+        from docx import Document
+
+        document = Document()
+        for line in self._render_affidavit_text(
+            draft,
+            draft.get("affidavit", {}) if isinstance(draft.get("affidavit"), dict) else self._build_affidavit(draft),
+        ).split("\n"):
+            document.add_paragraph(line)
+        document.save(path)
+
+    def _render_affidavit_pdf(self, draft: Dict[str, Any], path: Path) -> None:
+        from reportlab.lib.pagesizes import LETTER
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.units import inch
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+
+        styles = getSampleStyleSheet()
+        story = []
+        for line in self._render_affidavit_text(
+            draft,
+            draft.get("affidavit", {}) if isinstance(draft.get("affidavit"), dict) else self._build_affidavit(draft),
+        ).split("\n"):
+            story.append(Paragraph(escape(line or "&nbsp;"), styles["Normal"]))
+            story.append(Spacer(1, 4))
+        doc = SimpleDocTemplate(
+            str(path),
+            pagesize=LETTER,
+            topMargin=inch,
+            bottomMargin=inch,
+            leftMargin=inch,
+            rightMargin=inch,
+        )
+        doc.build(story)
 
     def _get_existing_formal_complaint(self) -> Dict[str, Any]:
         phase_manager = getattr(self.mediator, "phase_manager", None)
@@ -1314,10 +1814,9 @@ class FormalComplaintDocumentBuilder:
         court = str(court_name or "United States District Court").strip().upper()
         parts = [f"IN THE {court}"]
         forum_type = self._infer_forum_type(classification={}, court_name=court_name)
-        county_text = str(county or "").strip().upper()
+        county_text = self._format_county_for_header(county)
         if county_text and forum_type == "state":
-            county_suffix = county_text if county_text.startswith("COUNTY OF ") else f"COUNTY OF {county_text}"
-            parts.append(f"FOR THE {county_suffix}")
+            parts.append(f"FOR THE {county_text}")
         elif district:
             parts.append(f"FOR THE {str(district).strip().upper()}")
         if division:
@@ -1455,6 +1954,7 @@ class FormalComplaintDocumentBuilder:
             ]
             claim_facts = self._collect_claim_facts(claim_type, user_id, support_claim)
             claim_facts = self._annotate_lines_with_exhibits(claim_facts, related_exhibits)
+            source_context = self._extract_support_source_context_counts(support_claim)
             claims.append(
                 {
                     "claim_type": claim_type,
@@ -1474,6 +1974,12 @@ class FormalComplaintDocumentBuilder:
                         "covered_elements": support_claim.get("covered_elements", 0),
                         "uncovered_elements": support_claim.get("uncovered_elements", 0),
                         "support_by_kind": support_claim.get("support_by_kind", {}),
+                        "support_by_source": source_context["support_by_source"],
+                        "source_family_counts": source_context["source_family_counts"],
+                        "record_scope_counts": source_context["record_scope_counts"],
+                        "artifact_family_counts": source_context["artifact_family_counts"],
+                        "corpus_family_counts": source_context["corpus_family_counts"],
+                        "content_origin_counts": source_context["content_origin_counts"],
                     },
                     "supporting_exhibits": [
                         {
@@ -1486,6 +1992,39 @@ class FormalComplaintDocumentBuilder:
                 }
             )
         return claims
+
+    def _extract_support_source_context_counts(self, support_claim: Dict[str, Any]) -> Dict[str, Dict[str, int]]:
+        packet_summary = (
+            support_claim.get("support_packet_summary", {})
+            if isinstance(support_claim, dict) and isinstance(support_claim.get("support_packet_summary"), dict)
+            else {}
+        )
+
+        def _normalized_counts(key: str) -> Dict[str, int]:
+            primary = support_claim.get(key, {}) if isinstance(support_claim, dict) else {}
+            fallback = packet_summary.get(key, {})
+            source = primary if isinstance(primary, dict) and primary else fallback
+            if not isinstance(source, dict):
+                return {}
+            counts: Dict[str, int] = {}
+            for label, value in source.items():
+                normalized_label = str(label or "").strip()
+                if not normalized_label:
+                    continue
+                count = int(value or 0)
+                if count <= 0:
+                    continue
+                counts[normalized_label] = count
+            return counts
+
+        return {
+            "support_by_source": _normalized_counts("support_by_source"),
+            "source_family_counts": _normalized_counts("source_family_counts"),
+            "record_scope_counts": _normalized_counts("record_scope_counts"),
+            "artifact_family_counts": _normalized_counts("artifact_family_counts"),
+            "corpus_family_counts": _normalized_counts("corpus_family_counts"),
+            "content_origin_counts": _normalized_counts("content_origin_counts"),
+        }
 
     def _collect_claim_facts(
         self,
@@ -1612,6 +2151,7 @@ class FormalComplaintDocumentBuilder:
             overview_claim = overview_payload.get("claims", {}).get(claim_type, {}) if isinstance(overview_payload.get("claims"), dict) else {}
             treatment_summary = support_claim.get("authority_treatment_summary", {}) if isinstance(support_claim.get("authority_treatment_summary"), dict) else {}
             rule_summary = support_claim.get("authority_rule_candidate_summary", {}) if isinstance(support_claim.get("authority_rule_candidate_summary"), dict) else {}
+            source_context = self._extract_support_source_context_counts(support_claim)
 
             claim_status = "ready"
             warnings: List[Dict[str, Any]] = []
@@ -1688,6 +2228,12 @@ class FormalComplaintDocumentBuilder:
                 "proof_gap_count": int(validation_claim.get("proof_gap_count", 0) or 0),
                 "contradiction_candidate_count": int(validation_claim.get("contradiction_candidate_count", 0) or 0),
                 "support_by_kind": support_claim.get("support_by_kind", {}),
+                "support_by_source": source_context["support_by_source"],
+                "source_family_counts": source_context["source_family_counts"],
+                "record_scope_counts": source_context["record_scope_counts"],
+                "artifact_family_counts": source_context["artifact_family_counts"],
+                "corpus_family_counts": source_context["corpus_family_counts"],
+                "content_origin_counts": source_context["content_origin_counts"],
                 "authority_treatment_summary": treatment_summary,
                 "authority_rule_candidate_summary": rule_summary,
                 "warnings": warnings,
@@ -2206,34 +2752,41 @@ class FormalComplaintDocumentBuilder:
         run.bold = True
         run.font.size = Pt(12)
 
+        case_caption = draft.get("case_caption", {}) if isinstance(draft.get("case_caption"), dict) else {}
+        caption_party_lines = case_caption.get("caption_party_lines") if isinstance(case_caption.get("caption_party_lines"), list) else self._build_caption_party_lines(case_caption)
         caption = document.add_paragraph()
         caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        caption.add_run("\n".join(draft.get("case_caption", {}).get("plaintiffs", ["Plaintiff"])))
-        caption.add_run("\nPlaintiff,\n\nv.\n\n")
-        caption.add_run("\n".join(draft.get("case_caption", {}).get("defendants", ["Defendant"])))
-        caption.add_run("\nDefendant.\n")
+        caption.add_run("\n\n".join(caption_party_lines) + "\n")
 
         case_no = document.add_paragraph()
         case_no.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         case_no.add_run(
-            f"Civil Action No. {draft.get('case_caption', {}).get('case_number', '________________')}"
+            f"{case_caption.get('case_number_label', 'Civil Action No.')} {case_caption.get('case_number', '________________')}"
         ).bold = True
-        if draft.get("case_caption", {}).get("lead_case_number"):
+        if case_caption.get("lead_case_number"):
             lead_case = document.add_paragraph()
             lead_case.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            lead_case.add_run(f"Lead Case No.: {draft['case_caption']['lead_case_number']}").bold = True
-        if draft.get("case_caption", {}).get("related_case_number"):
+            lead_case.add_run(
+                f"{case_caption.get('lead_case_number_label', 'Lead Case No.')} {case_caption['lead_case_number']}"
+            ).bold = True
+        if case_caption.get("related_case_number"):
             related_case = document.add_paragraph()
             related_case.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            related_case.add_run(f"Related Case No.: {draft['case_caption']['related_case_number']}").bold = True
-        if draft.get("case_caption", {}).get("assigned_judge"):
+            related_case.add_run(
+                f"{case_caption.get('related_case_number_label', 'Related Case No.')} {case_caption['related_case_number']}"
+            ).bold = True
+        if case_caption.get("assigned_judge"):
             judge = document.add_paragraph()
             judge.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            judge.add_run(f"Assigned Judge: {draft['case_caption']['assigned_judge']}").bold = True
-        if draft.get("case_caption", {}).get("courtroom"):
+            judge.add_run(
+                f"{case_caption.get('assigned_judge_label', 'Assigned Judge')}: {case_caption['assigned_judge']}"
+            ).bold = True
+        if case_caption.get("courtroom"):
             courtroom = document.add_paragraph()
             courtroom.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            courtroom.add_run(f"Courtroom: {draft['case_caption']['courtroom']}").bold = True
+            courtroom.add_run(
+                f"{case_caption.get('courtroom_label', 'Courtroom')}: {case_caption['courtroom']}"
+            ).bold = True
 
         title = document.add_paragraph()
         title.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -2326,6 +2879,31 @@ class FormalComplaintDocumentBuilder:
                     qn,
                     RGBColor,
                 )
+
+        affidavit = draft.get("affidavit", {}) if isinstance(draft.get("affidavit"), dict) else {}
+        if affidavit:
+            self._add_docx_section(
+                document,
+                affidavit.get("title") or "Affidavit in Support of Complaint",
+                list(_coerce_list(affidavit.get("venue_lines")))
+                + [affidavit.get("intro"), affidavit.get("knowledge_graph_note")],
+            )
+            self._add_docx_numbered_facts(document, "Affiant States as Follows", affidavit.get("facts", []))
+            supporting_exhibits = affidavit.get("supporting_exhibits") if isinstance(affidavit.get("supporting_exhibits"), list) else []
+            if supporting_exhibits:
+                document.add_heading("Affidavit Supporting Exhibits", level=2)
+                for exhibit in supporting_exhibits:
+                    if not isinstance(exhibit, dict):
+                        continue
+                    paragraph = document.add_paragraph(style="List Bullet")
+                    paragraph.add_run(f"{exhibit.get('label')}. {exhibit.get('title')}")
+                    if exhibit.get("link"):
+                        paragraph.add_run(f" ({exhibit['link']})")
+            self._add_docx_section(
+                document,
+                "Affidavit Execution",
+                [affidavit.get("dated"), affidavit.get("signature_line"), affidavit.get("jurat"), *_coerce_list(affidavit.get("notary_block"))],
+            )
 
         verification = draft.get("verification", {}) if isinstance(draft.get("verification"), dict) else {}
         if verification:
@@ -2468,36 +3046,35 @@ class FormalComplaintDocumentBuilder:
             leftMargin=inch,
             rightMargin=inch,
         )
+        case_caption = draft.get("case_caption", {}) if isinstance(draft.get("case_caption"), dict) else {}
+        caption_party_lines = case_caption.get("caption_party_lines") if isinstance(case_caption.get("caption_party_lines"), list) else self._build_caption_party_lines(case_caption)
         story = [
             Paragraph(escape(draft.get("court_header", "")), styles["CourtHeader"]),
             Paragraph(
-                escape("\n".join(draft.get("case_caption", {}).get("plaintiffs", ["Plaintiff"])))
-                + "<br/>Plaintiff,<br/><br/>v.<br/><br/>"
-                + escape("\n".join(draft.get("case_caption", {}).get("defendants", ["Defendant"])))
-                + "<br/>Defendant.",
+                "<br/><br/>".join(escape(line).replace("\n", "<br/>") for line in caption_party_lines),
                 styles["Caption"],
             ),
             Paragraph(
                 escape(
-                    f"Civil Action No. {draft.get('case_caption', {}).get('case_number', '________________')}"
+                    f"{case_caption.get('case_number_label', 'Civil Action No.')} {case_caption.get('case_number', '________________')}"
                     + (
-                        f"\nLead Case No.: {draft.get('case_caption', {}).get('lead_case_number')}"
-                        if draft.get('case_caption', {}).get('lead_case_number')
+                        f"\n{case_caption.get('lead_case_number_label', 'Lead Case No.')} {case_caption.get('lead_case_number')}"
+                        if case_caption.get('lead_case_number')
                         else ""
                     )
                     + (
-                        f"\nRelated Case No.: {draft.get('case_caption', {}).get('related_case_number')}"
-                        if draft.get('case_caption', {}).get('related_case_number')
+                        f"\n{case_caption.get('related_case_number_label', 'Related Case No.')} {case_caption.get('related_case_number')}"
+                        if case_caption.get('related_case_number')
                         else ""
                     )
                     + (
-                        f"\nAssigned Judge: {draft.get('case_caption', {}).get('assigned_judge')}"
-                        if draft.get('case_caption', {}).get('assigned_judge')
+                        f"\n{case_caption.get('assigned_judge_label', 'Assigned Judge')}: {case_caption.get('assigned_judge')}"
+                        if case_caption.get('assigned_judge')
                         else ""
                     )
                     + (
-                        f"\nCourtroom: {draft.get('case_caption', {}).get('courtroom')}"
-                        if draft.get('case_caption', {}).get('courtroom')
+                        f"\n{case_caption.get('courtroom_label', 'Courtroom')}: {case_caption.get('courtroom')}"
+                        if case_caption.get('courtroom')
                         else ""
                     )
                 ),
@@ -2585,6 +3162,29 @@ class FormalComplaintDocumentBuilder:
         story.append(Paragraph("Supporting Exhibits", styles["SectionHeading"]))
         for exhibit in draft.get("exhibits", []):
             story.append(Paragraph(self._pdf_exhibit_markup(exhibit), styles["Normal"]))
+
+        affidavit = draft.get("affidavit", {}) if isinstance(draft.get("affidavit"), dict) else {}
+        if affidavit:
+            self._append_pdf_section(
+                story,
+                styles,
+                affidavit.get("title") or "Affidavit in Support of Complaint",
+                list(_coerce_list(affidavit.get("venue_lines"))) + [affidavit.get("intro"), affidavit.get("knowledge_graph_note")],
+            )
+            self._append_pdf_numbered_section(story, styles, "Affiant States as Follows", affidavit.get("facts", []))
+            supporting_exhibits = affidavit.get("supporting_exhibits") if isinstance(affidavit.get("supporting_exhibits"), list) else []
+            if supporting_exhibits:
+                story.append(Paragraph("Affidavit Supporting Exhibits", styles["Heading3"]))
+                for exhibit in supporting_exhibits:
+                    if not isinstance(exhibit, dict):
+                        continue
+                    story.append(Paragraph(self._pdf_exhibit_markup(exhibit), styles["Normal"]))
+            self._append_pdf_section(
+                story,
+                styles,
+                "Affidavit Execution",
+                [affidavit.get("dated"), affidavit.get("signature_line"), affidavit.get("jurat"), *_coerce_list(affidavit.get("notary_block"))],
+            )
 
         verification = draft.get("verification", {}) if isinstance(draft.get("verification"), dict) else {}
         if verification:

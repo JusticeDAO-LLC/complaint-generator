@@ -117,6 +117,15 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
                 'selected_authority_program_rule_bias_counts': {
                     'exception': 1,
                 },
+                'source_family_counts': {
+                    'legal_authority': 1,
+                },
+                'artifact_family_counts': {
+                    'legal_authority_reference': 1,
+                },
+                'content_origin_counts': {
+                    'authority_reference_fallback': 1,
+                },
             }
         },
         'follow_up_plan_summary': {
@@ -140,6 +149,15 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
                 'primary_authority_program_rule_bias_counts': {
                     'exception': 1,
                 },
+                'support_by_kind': {
+                    'authority': 1,
+                },
+                'source_family_counts': {
+                    'legal_authority': 1,
+                },
+                'artifact_family_counts': {
+                    'legal_authority_reference': 1,
+                },
             }
         }
     }
@@ -160,11 +178,13 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
     assert 'primary_programs: fact_pattern_search=1' in rendered
     assert 'primary_biases: uncertain=1' in rendered
     assert 'primary_rule_biases: exception=1' in rendered
+    assert 'source_context: lane authority=1; family legal_authority=1; artifact legal_authority_reference=1' in rendered
     assert 'follow-up history authority search summary:' in rendered
     assert '- retaliation: history_program_entries=1' in rendered
     assert 'selected_programs: adverse_authority_search=1' in rendered
     assert 'selected_biases: adverse=1' in rendered
     assert 'selected_rule_biases: exception=1' in rendered
+    assert 'source_context: family legal_authority=1; artifact legal_authority_reference=1' in rendered
     assert '"claim_coverage_summary"' in rendered
 
 
@@ -223,6 +243,15 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
                 'primary_authority_program_rule_bias_counts': {
                     'procedural_prerequisite': 1,
                 },
+                'support_by_kind': {
+                    'authority': 1,
+                },
+                'source_family_counts': {
+                    'legal_authority': 1,
+                },
+                'artifact_family_counts': {
+                    'legal_authority_reference': 1,
+                },
             }
         },
         'post_execution_review': {
@@ -236,6 +265,15 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
                     },
                     'selected_authority_program_rule_bias_counts': {
                         'procedural_prerequisite': 1,
+                    },
+                    'source_family_counts': {
+                        'legal_authority': 1,
+                    },
+                    'artifact_family_counts': {
+                        'legal_authority_reference': 1,
+                    },
+                    'content_origin_counts': {
+                        'authority_reference_fallback': 1,
                     },
                 }
             }
@@ -266,11 +304,13 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
     assert 'primary_programs: adverse_authority_search=1' in rendered
     assert 'primary_biases: adverse=1' in rendered
     assert 'primary_rule_biases: procedural_prerequisite=1' in rendered
+    assert 'source_context: lane authority=1; family legal_authority=1; artifact legal_authority_reference=1' in rendered
     assert 'follow-up history authority search summary:' in rendered
     assert '- retaliation: history_program_entries=1' in rendered
     assert 'selected_programs: element_definition_search=1' in rendered
     assert 'selected_biases: uncertain=1' in rendered
     assert 'selected_rule_biases: procedural_prerequisite=1' in rendered
+    assert 'source_context: family legal_authority=1; artifact legal_authority_reference=1' in rendered
     assert '"execution_quality_summary"' in rendered
 
 
@@ -326,6 +366,14 @@ def test_export_complaint_command_calls_document_package_builder():
         'signer_contact=123 Main Street',
         'additional_signers=[{"name":"John Roe, Esq.","title":"Co-Counsel for Plaintiff","firm":"Roe Civil Rights Group","bar_number":"DC-20202","contact":"456 Side Street"}]',
         'declarant_name=Jane Doe',
+        'affidavit_title=AFFIDAVIT OF JANE DOE REGARDING RETALIATION',
+        "affidavit_intro=I, Jane Doe, make this affidavit from personal knowledge regarding Defendant's retaliation.",
+        'affidavit_facts=["I reported discrimination to human resources on March 3, 2026.", "Defendant terminated my employment two days later."]',
+        'affidavit_supporting_exhibits=[{"label":"Affidavit Ex. 1","title":"HR Complaint Email","link":"https://example.org/hr-email.pdf","summary":"Email reporting discrimination to HR."}]',
+        'affidavit_include_complaint_exhibits=false',
+        'affidavit_venue_lines=["State of California", "County of San Francisco"]',
+        'affidavit_jurat=Subscribed and sworn to before me on March 13, 2026 by Jane Doe.',
+        'affidavit_notary_block=["__________________________________", "Notary Public for the State of California", "My commission expires: March 13, 2029"]',
         'service_method=CM/ECF',
         'service_recipients=Registered Agent for Acme Corporation,Defense Counsel',
         'service_recipient_details=[{"recipient":"Defense Counsel","method":"Email","address":"counsel@example.com"}]',
@@ -360,6 +408,14 @@ def test_export_complaint_command_calls_document_package_builder():
         signer_contact='123 Main Street',
         additional_signers=[{'name': 'John Roe, Esq.', 'title': 'Co-Counsel for Plaintiff', 'firm': 'Roe Civil Rights Group', 'bar_number': 'DC-20202', 'contact': '456 Side Street'}],
         declarant_name='Jane Doe',
+        affidavit_title='AFFIDAVIT OF JANE DOE REGARDING RETALIATION',
+        affidavit_intro="I, Jane Doe, make this affidavit from personal knowledge regarding Defendant's retaliation.",
+        affidavit_facts=['I reported discrimination to human resources on March 3, 2026.', 'Defendant terminated my employment two days later.'],
+        affidavit_supporting_exhibits=[{'label': 'Affidavit Ex. 1', 'title': 'HR Complaint Email', 'link': 'https://example.org/hr-email.pdf', 'summary': 'Email reporting discrimination to HR.'}],
+        affidavit_include_complaint_exhibits=False,
+        affidavit_venue_lines=['State of California', 'County of San Francisco'],
+        affidavit_jurat='Subscribed and sworn to before me on March 13, 2026 by Jane Doe.',
+        affidavit_notary_block=['__________________________________', 'Notary Public for the State of California', 'My commission expires: March 13, 2029'],
         service_method='CM/ECF',
         service_recipients=['Registered Agent for Acme Corporation', 'Defense Counsel'],
         service_recipient_details=[{'recipient': 'Defense Counsel', 'method': 'Email', 'address': 'counsel@example.com'}],

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+import re
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from complaint_phases import ComplaintPhase, NodeType
@@ -145,6 +146,14 @@ class ComplaintDocumentBuilder:
         signature_date: Optional[str] = None,
         verification_date: Optional[str] = None,
         service_date: Optional[str] = None,
+        affidavit_title: Optional[str] = None,
+        affidavit_intro: Optional[str] = None,
+        affidavit_facts: Optional[List[str]] = None,
+        affidavit_supporting_exhibits: Optional[List[Dict[str, str]]] = None,
+        affidavit_include_complaint_exhibits: Optional[bool] = None,
+        affidavit_venue_lines: Optional[List[str]] = None,
+        affidavit_jurat: Optional[str] = None,
+        affidavit_notary_block: Optional[List[str]] = None,
         user_id: Optional[str] = None,
         base_formal_complaint: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
@@ -226,6 +235,26 @@ class ComplaintDocumentBuilder:
             service_recipients=service_recipients,
             service_recipient_details=service_recipient_details,
             service_date=service_date,
+            jurisdiction=jurisdiction,
+        )
+        affidavit = self._build_affidavit(
+            parties=parties,
+            caption=caption,
+            factual_allegations=factual_allegations,
+            claims=claims,
+            exhibits=exhibits,
+            verification=verification,
+            signature_block=signature_block,
+            affidavit_overrides=self._build_affidavit_overrides(
+                affidavit_title=affidavit_title,
+                affidavit_intro=affidavit_intro,
+                affidavit_facts=affidavit_facts,
+                affidavit_supporting_exhibits=affidavit_supporting_exhibits,
+                affidavit_include_complaint_exhibits=affidavit_include_complaint_exhibits,
+                affidavit_venue_lines=affidavit_venue_lines,
+                affidavit_jurat=affidavit_jurat,
+                affidavit_notary_block=affidavit_notary_block,
+            ),
         )
         legal_standards = [
             {
@@ -269,6 +298,7 @@ class ComplaintDocumentBuilder:
             "signature_block": signature_block,
             "verification": verification,
             "certificate_of_service": certificate_of_service,
+            "affidavit": affidavit,
         }
         draft["draft_text"] = self.render_text(draft)
         return draft
@@ -401,6 +431,42 @@ class ComplaintDocumentBuilder:
                 lines.append(exhibit_line)
                 if summary:
                     lines.append(f"  {_clean_sentence(summary)}")
+
+        affidavit = draft.get("affidavit", {}) if isinstance(draft.get("affidavit"), dict) else {}
+        if affidavit:
+            lines.append("")
+            lines.append(str(affidavit.get("title") or "AFFIDAVIT IN SUPPORT OF COMPLAINT").upper())
+            for venue_line in _listify(affidavit.get("venue_lines")):
+                cleaned_venue_line = _clean_text(venue_line)
+                if cleaned_venue_line:
+                    lines.append(cleaned_venue_line)
+            if affidavit.get("intro"):
+                lines.append(_clean_sentence(affidavit.get("intro")))
+            if affidavit.get("knowledge_graph_note"):
+                lines.append(_clean_sentence(affidavit.get("knowledge_graph_note")))
+            if affidavit.get("facts"):
+                lines.append("Affiant states as follows:")
+                for index, fact in enumerate(_listify(affidavit.get("facts")), 1):
+                    cleaned_fact = _clean_sentence(fact)
+                    if cleaned_fact:
+                        lines.append(f"{index}. {cleaned_fact}")
+            for exhibit in _listify(affidavit.get("supporting_exhibits")):
+                if not isinstance(exhibit, dict):
+                    continue
+                exhibit_line = f"{exhibit.get('label', 'Exhibit')} - {_clean_text(exhibit.get('title') or 'Supporting exhibit')}"
+                if exhibit.get("link"):
+                    exhibit_line = f"{exhibit_line} ({exhibit['link']})"
+                lines.append(exhibit_line)
+            if affidavit.get("dated"):
+                lines.append(str(affidavit["dated"]))
+            if affidavit.get("signature_line"):
+                lines.append(str(affidavit["signature_line"]))
+            if affidavit.get("jurat"):
+                lines.append(str(affidavit["jurat"]))
+            for notary_line in _listify(affidavit.get("notary_block")):
+                cleaned_notary_line = _clean_text(notary_line)
+                if cleaned_notary_line:
+                    lines.append(cleaned_notary_line)
 
         verification = draft.get("verification", {}) if isinstance(draft.get("verification"), dict) else {}
         if verification:
@@ -583,6 +649,166 @@ class ComplaintDocumentBuilder:
             if answer:
                 fallback.append(f"{question}: {answer}" if question else answer)
         return self._dedupe([_clean_sentence(item) for item in fallback]) or ["Plaintiff will supplement the factual record with additional detail."]
+
+    def _build_affidavit(
+        self,
+        *,
+        parties: Dict[str, List[str]],
+        caption: Dict[str, str],
+        factual_allegations: List[str],
+        claims: List[Dict[str, Any]],
+        exhibits: List[Dict[str, Any]],
+        verification: Dict[str, Any],
+        signature_block: Dict[str, Any],
+        affidavit_overrides: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        overrides = affidavit_overrides if isinstance(affidavit_overrides, dict) else {}
+        declarant_name = self._derive_affidavit_declarant_name(parties, verification, signature_block)
+        facts = list(overrides.get("facts") or self._collect_affidavit_facts(parties, factual_allegations, claims))
+        supporting_exhibits = []
+        for exhibit in _listify(exhibits):
+            if not isinstance(exhibit, dict):
+                continue
+            supporting_exhibits.append(
+                {
+                    "label": str(exhibit.get("label") or "Exhibit").strip(),
+                    "title": _clean_text(exhibit.get("title") or exhibit.get("description") or "Supporting exhibit"),
+                    "link": _clean_text(exhibit.get("reference") or exhibit.get("source_url") or ""),
+                }
+            )
+        return {
+            "title": str(overrides.get("title") or f"Affidavit of {declarant_name.upper()} in Support of Complaint"),
+            "declarant_name": declarant_name,
+            "intro": str(
+                overrides.get("intro")
+                or (
+                    f"I, {declarant_name}, declare under penalty of perjury that I am competent to testify to the matters stated below, "
+                    "that these statements are based on my personal knowledge and the complaint intake knowledge graph assembled from the facts, records, and exhibits provided in support of this action, and that the following facts are true and correct."
+                )
+            ),
+            "knowledge_graph_note": "This affidavit is generated from the complaint intake knowledge graph and supporting records rather than a turn-by-turn chat transcript.",
+            "venue_lines": list(overrides.get("venue_lines") or self._build_affidavit_venue_lines(caption)),
+            "facts": facts,
+            "supporting_exhibits": list(
+                overrides.get("supporting_exhibits")
+                or ([] if overrides.get("include_complaint_exhibits") is False else supporting_exhibits)
+            ),
+            "dated": verification.get("dated") or signature_block.get("dated") or self._format_dated_line("Executed on", None),
+            "signature_line": verification.get("signature_line") or signature_block.get("signature_line") or f"/s/ {declarant_name}",
+            "jurat": str(overrides.get("jurat") or f"Subscribed and sworn to (or affirmed) before me on __________________ by {declarant_name}."),
+            "notary_block": list(
+                overrides.get("notary_block")
+                or [
+                    "__________________________________",
+                    "Notary Public",
+                    "My commission expires: __________________",
+                ]
+            ),
+            "case_number": caption.get("case_number") or "________________",
+        }
+
+    def _build_affidavit_overrides(
+        self,
+        *,
+        affidavit_title: Optional[str],
+        affidavit_intro: Optional[str],
+        affidavit_facts: Optional[List[str]],
+        affidavit_supporting_exhibits: Optional[List[Dict[str, str]]],
+        affidavit_include_complaint_exhibits: Optional[bool],
+        affidavit_venue_lines: Optional[List[str]],
+        affidavit_jurat: Optional[str],
+        affidavit_notary_block: Optional[List[str]],
+    ) -> Dict[str, Any]:
+        normalized_facts: List[str] = []
+        for value in _listify(affidavit_facts):
+            cleaned = self._sanitize_affidavit_fact(value)
+            if cleaned:
+                normalized_facts.append(cleaned)
+        normalized_supporting_exhibits: List[Dict[str, str]] = []
+        for exhibit in _listify(affidavit_supporting_exhibits):
+            if not isinstance(exhibit, dict):
+                continue
+            normalized = {
+                "label": _clean_text(exhibit.get("label") or "Exhibit"),
+                "title": _clean_text(exhibit.get("title") or exhibit.get("summary") or "Supporting exhibit"),
+                "link": _clean_text(exhibit.get("link") or exhibit.get("reference") or ""),
+                "summary": _clean_text(exhibit.get("summary") or ""),
+            }
+            if any(normalized.values()):
+                normalized_supporting_exhibits.append(normalized)
+        return {
+            "title": _clean_text(affidavit_title) or None,
+            "intro": _clean_text(affidavit_intro) or None,
+            "facts": normalized_facts,
+            "supporting_exhibits": normalized_supporting_exhibits,
+            "include_complaint_exhibits": affidavit_include_complaint_exhibits,
+            "venue_lines": [_clean_text(item) for item in _listify(affidavit_venue_lines) if _clean_text(item)],
+            "jurat": _clean_text(affidavit_jurat) or None,
+            "notary_block": [_clean_text(item) for item in _listify(affidavit_notary_block) if _clean_text(item)],
+        }
+
+    def _build_affidavit_venue_lines(self, caption: Dict[str, str]) -> List[str]:
+        county = _clean_text(caption.get("county_line") or caption.get("county") or "")
+        forum_type = _clean_text(caption.get("forum_type") or "").lower()
+        lines: List[str] = []
+        if county:
+            lines.append(f"County: {county}")
+        elif forum_type == "state":
+            lines.append("County: __________________")
+        elif forum_type == "federal":
+            lines.append("State/District: __________________")
+        return lines or ["Venue: __________________"]
+
+    def _derive_affidavit_declarant_name(self, parties: Dict[str, List[str]], verification: Dict[str, Any], signature_block: Dict[str, Any]) -> str:
+        signature_line = str(verification.get("signature_line") or "").strip()
+        if signature_line.startswith("/s/ "):
+            return signature_line[4:].strip() or str(signature_block.get("name") or "Plaintiff")
+        return _clean_text(signature_block.get("name") or (parties.get("plaintiffs") or ["Plaintiff"])[0]) or "Plaintiff"
+
+    def _collect_affidavit_facts(self, parties: Dict[str, List[str]], factual_allegations: List[str], claims: List[Dict[str, Any]]) -> List[str]:
+        candidates: List[str] = []
+        plaintiffs = [_clean_text(name) for name in _listify(parties.get("plaintiffs")) if _clean_text(name)]
+        if plaintiffs:
+            candidates.append(f"I am {plaintiffs[0]}, the plaintiff in this action")
+        candidates.extend(_clean_sentence(item) for item in _listify(factual_allegations) if _clean_text(item))
+        for claim in _listify(claims):
+            if not isinstance(claim, dict):
+                continue
+            candidates.extend(_clean_sentence(item) for item in _listify(claim.get("supporting_facts")) if _clean_text(item))
+
+        normalized: List[str] = []
+        seen = set()
+        for item in candidates:
+            fact = self._sanitize_affidavit_fact(item)
+            if not fact:
+                continue
+            marker = fact.lower()
+            if marker in seen:
+                continue
+            seen.add(marker)
+            normalized.append(fact)
+            if len(normalized) >= 12:
+                break
+        return normalized or ["Additional fact development is required before the affidavit can be finalized."]
+
+    def _sanitize_affidavit_fact(self, value: Any) -> str:
+        text = re.sub(r"\s+", " ", str(value or "")).strip()
+        if not text:
+            return ""
+        text = re.sub(r"^As to [^,]+,\s*", "", text, flags=re.IGNORECASE)
+        if ": " in text:
+            prefix, suffix = text.split(": ", 1)
+            prefix_lower = prefix.strip().lower()
+            if (
+                prefix.strip().endswith("?")
+                or prefix_lower.startswith(("what ", "when ", "where ", "why ", "how ", "who ", "describe ", "explain "))
+                or prefix_lower in {"what happened", "what relief do you want"}
+            ):
+                text = suffix.strip()
+        if text.lower().startswith("plaintiff repeats and realleges"):
+            return ""
+        cleaned = _clean_sentence(text)
+        return cleaned if len(cleaned) >= 12 else ""
 
     def _build_exhibits(self, evidence_records: Any, support_links: Any) -> List[Dict[str, Any]]:
         support_by_ref: Dict[str, Dict[str, Any]] = {}
@@ -929,6 +1155,7 @@ class ComplaintDocumentBuilder:
         service_recipients: Optional[List[str]] = None,
         service_recipient_details: Optional[List[Dict[str, str]]] = None,
         service_date: Optional[str] = None,
+        jurisdiction: Optional[str] = None,
     ) -> Dict[str, Any]:
         plaintiff_name = _clean_text(signer_name) or parties.get("plaintiffs", ["Plaintiff"])[0]
         recipient_details = self._normalize_service_recipient_details(service_recipient_details)
@@ -941,16 +1168,19 @@ class ComplaintDocumentBuilder:
         detail_lines = [self._format_service_recipient_detail(detail) for detail in recipient_details]
         if detail_lines:
             text = (
-                "I certify that a true and correct copy of this Complaint will be served promptly after filing "
-                "on the following recipients:"
+                ("I declare that a true and correct copy of this Complaint will be served promptly after filing on the following recipients:"
+                if str(jurisdiction or "").strip().lower() == "state"
+                else "I certify that a true and correct copy of this Complaint will be served promptly after filing on the following recipients:")
             )
         else:
             text = (
-                "I certify that a true and correct copy of this Complaint will be served on "
-                f"{recipients} using {method_text} promptly after filing."
+                (("I declare that a true and correct copy of this Complaint will be served on "
+                if str(jurisdiction or "").strip().lower() == "state"
+                else "I certify that a true and correct copy of this Complaint will be served on ")
+                + f"{recipients} using {method_text} promptly after filing.")
             )
         return {
-            "title": "Certificate of Service",
+            "title": "Proof of Service" if str(jurisdiction or "").strip().lower() == "state" else "Certificate of Service",
             "text": text,
             "recipients": recipients_list,
             "recipient_details": recipient_details,
@@ -1123,6 +1353,23 @@ class ComplaintDocumentBuilder:
                 line = f"{line} ({exhibit['reference']})"
             exhibit_lines.append(line)
         self._docx_section(document, "Exhibits", exhibit_lines)
+        affidavit = draft.get("affidavit", {}) if isinstance(draft.get("affidavit"), dict) else {}
+        if affidavit:
+            affidavit_lines = list(_listify(affidavit.get("venue_lines"))) + [affidavit.get("intro"), affidavit.get("knowledge_graph_note")]
+            affidavit_lines.extend(
+                f"{index}. {_clean_sentence(fact)}"
+                for index, fact in enumerate(_listify(affidavit.get("facts")), 1)
+                if _clean_text(fact)
+            )
+            affidavit_lines.extend(
+                f"{exhibit.get('label', 'Exhibit')} - {_clean_text(exhibit.get('title') or 'Supporting exhibit')}"
+                + (f" ({exhibit['link']})" if exhibit.get("link") else "")
+                for exhibit in _listify(affidavit.get("supporting_exhibits"))
+                if isinstance(exhibit, dict)
+            )
+            affidavit_lines.extend([affidavit.get("dated"), affidavit.get("signature_line"), affidavit.get("jurat")])
+            affidavit_lines.extend(_listify(affidavit.get("notary_block")))
+            self._docx_section(document, affidavit.get("title") or "Affidavit in Support of Complaint", affidavit_lines)
         verification = draft.get("verification", {}) if isinstance(draft.get("verification"), dict) else {}
         if verification:
             self._docx_section(
@@ -1241,6 +1488,23 @@ class ComplaintDocumentBuilder:
                 line = f"{line} ({exhibit['reference']})"
             exhibit_lines.append(line)
         self._pdf_section(story, section, body, "Exhibits", exhibit_lines)
+        affidavit = draft.get("affidavit", {}) if isinstance(draft.get("affidavit"), dict) else {}
+        if affidavit:
+            affidavit_lines = list(_listify(affidavit.get("venue_lines"))) + [affidavit.get("intro"), affidavit.get("knowledge_graph_note")]
+            affidavit_lines.extend(
+                f"{index}. {_clean_sentence(fact)}"
+                for index, fact in enumerate(_listify(affidavit.get("facts")), 1)
+                if _clean_text(fact)
+            )
+            affidavit_lines.extend(
+                f"{exhibit.get('label', 'Exhibit')} - {_clean_text(exhibit.get('title') or 'Supporting exhibit')}"
+                + (f" ({exhibit['link']})" if exhibit.get("link") else "")
+                for exhibit in _listify(affidavit.get("supporting_exhibits"))
+                if isinstance(exhibit, dict)
+            )
+            affidavit_lines.extend([affidavit.get("dated"), affidavit.get("signature_line"), affidavit.get("jurat")])
+            affidavit_lines.extend(_listify(affidavit.get("notary_block")))
+            self._pdf_section(story, section, body, affidavit.get("title") or "Affidavit in Support of Complaint", affidavit_lines)
         verification = draft.get("verification", {}) if isinstance(draft.get("verification"), dict) else {}
         if verification:
             self._pdf_section(

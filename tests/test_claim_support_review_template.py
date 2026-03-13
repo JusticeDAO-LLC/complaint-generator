@@ -23,6 +23,7 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "signal-parse-quality-tasks" in content
     assert "signal-supportive-authorities" in content
     assert "signal-adverse-authorities" in content
+    assert "signal-follow-up-source-context" in content
     assert "execution-result-card" in content
     assert "parse_quality_recommendation" in content
     assert "authority_treatment_summary" in content
@@ -34,6 +35,10 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "History biases: ${selectedProgramBiases.map(([label, count]) => `${label}=${count}`).join(', ')}" in content
     assert "History rule biases: ${selectedProgramRuleBiases.map(([label, count]) => `${label}=${count}`).join(', ')}" in content
     assert "program: ${entry.selected_search_program_type}" in content
+    assert "History source context:" in content
+    assert "family: ${entry.source_family}" in content
+    assert "artifact: ${entry.artifact_family}" in content
+    assert "origin: ${entry.content_origin}" in content
     assert "recommended_next_action" in content
     assert "URLSearchParams(window.location.search" in content
     assert "REVIEW_INTENT_STORAGE_KEY" in content
@@ -87,6 +92,11 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "setPacketActionFeedback" in content
     assert "packetSortRank" in content
     assert "sortSupportPackets" in content
+    assert "buildFollowUpSourceSignalCounts" in content
+    assert "summarizeGraphSupportSourceContext" in content
+    assert "renderSourceContextChips" in content
+    assert "No graph-backed source context" in content
+    assert "No graph source context" in content
 
 
 def test_landing_pages_link_to_claim_support_review_dashboard():
@@ -114,6 +124,8 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "County" in content
     assert "Lead Case Number" in content
     assert "Related Case Number" in content
+    assert "caption.case_number_label || 'Civil Action No.'" in content
+    assert "caption.caption_party_lines" in content
     assert "Requested Relief Overrides" in content
     assert "Demand Jury Trial" in content
     assert "Jury Demand Text" in content
@@ -123,6 +135,12 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Signer Contact Block" in content
     assert "Additional Signature Entries" in content
     assert "Verification Declarant" in content
+    assert "Affidavit Title Override" in content
+    assert "Affidavit Intro Override" in content
+    assert "Affidavit Fact Overrides" in content
+    assert "Affidavit Venue Lines" in content
+    assert "Affidavit Jurat" in content
+    assert "Affidavit Notary Block" in content
     assert "Service Method" in content
     assert "Service Recipients" in content
     assert "Detailed Service Entries" in content
@@ -136,6 +154,12 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Section Readiness" in content
     assert "Claim Readiness" in content
     assert "Factual Allegations" in content
+    assert "Affidavit in Support of Complaint" in content
+    assert "Affidavit Supporting Exhibits" in content
+    assert "Mirror complaint exhibits into affidavit" in content
+    assert "Leave this enabled to let the affidavit inherit the complaint exhibit list" in content
+    assert "Affidavit Execution" in content
+    assert "Affidavit Exhibit Source:" in content
     assert "Incorporated Support" in content
     assert "Supporting Exhibit Details" in content
     assert "Open filing warnings" in content
@@ -147,12 +171,26 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "formalComplaintBuilderState" in content
     assert "formalComplaintBuilderPreview" in content
     assert "parseAdditionalSigners" in content
+    assert "parseAffidavitSupportingExhibits" in content
+    assert "describeAffidavitExhibitSource" in content
     assert "formatAdditionalSignerLines" in content
+    assert "affidavit_title" in content
+    assert "affidavit_intro" in content
+    assert "affidavit_facts" in content
+    assert "affidavit_supporting_exhibits" in content
+    assert "affidavit_include_complaint_exhibits" in content
+    assert "affidavit_venue_lines" in content
+    assert "affidavit_jurat" in content
+    assert "affidavit_notary_block" in content
     assert "localStorage" in content
     assert "REVIEW_INTENT_STORAGE_KEY" in content
     assert "Resume Review Focus" in content
     assert "data-review-intent-link=\"true\"" in content
     assert "persistReviewIntent({ review_url: node.getAttribute('href') || '' })" in content
+    assert "payload.review_intent" in content
+    assert "Source Context:" in content
+    assert "Source families:" in content
+    assert "follow_up_support_kind" in content
     assert "renderSectionReadiness" in content
     assert "renderClaimReadiness" in content
     assert "Open Section Review" in content
