@@ -689,10 +689,27 @@ class WebEvidenceIntegrationHook:
         parse_contract = build_document_parse_contract(enriched_parse, default_source='web_document')
 
         metadata.update(lineage_context.get('metadata', {}))
+        provenance_payload = metadata.get('provenance') if isinstance(metadata.get('provenance'), dict) else {}
+        provenance_metadata = provenance_payload.get('metadata') if isinstance(provenance_payload.get('metadata'), dict) else {}
+        metadata['provenance'] = {
+            **provenance_payload,
+            'metadata': {
+                **provenance_metadata,
+                **lineage_context.get('metadata', {}),
+            },
+        }
         metadata['document_parse_summary'] = parse_contract['summary']
         metadata['document_parse_contract'] = parse_contract
         storage_result['document_parse'] = enriched_parse
         storage_result['metadata'] = metadata
+        if isinstance(storage_result.get('provenance'), dict):
+            top_level_provenance = dict(storage_result['provenance'])
+            top_level_metadata = top_level_provenance.get('metadata') if isinstance(top_level_provenance.get('metadata'), dict) else {}
+            top_level_provenance['metadata'] = {
+                **top_level_metadata,
+                **lineage_context.get('metadata', {}),
+            }
+            storage_result['provenance'] = top_level_provenance
         return storage_result
 
     def _extract_parse_detail(self, storage_result: Dict[str, Any]) -> Dict[str, Any]:

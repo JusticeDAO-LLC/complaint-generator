@@ -50,6 +50,7 @@ def test_parse_command_options_splits_export_lists():
         'plaintiff_names=Jane Doe,John Doe',
         'defendant_names=Acme Corp',
         'requested_relief=Back pay,Injunctive relief',
+        'service_recipients=Registered Agent,Defense Counsel',
     ])
 
     assert positionals == []
@@ -57,6 +58,7 @@ def test_parse_command_options_splits_export_lists():
     assert options['plaintiff_names'] == ['Jane Doe', 'John Doe']
     assert options['defendant_names'] == ['Acme Corp']
     assert options['requested_relief'] == ['Back pay', 'Injunctive relief']
+    assert options['service_recipients'] == ['Registered Agent', 'Defense Counsel']
 
 
 def test_claim_review_command_calls_mediator_builder():
@@ -104,6 +106,19 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
                 },
             }
         },
+        'follow_up_history_summary': {
+            'retaliation': {
+                'selected_authority_program_type_counts': {
+                    'adverse_authority_search': 1,
+                },
+                'selected_authority_program_bias_counts': {
+                    'adverse': 1,
+                },
+                'selected_authority_program_rule_bias_counts': {
+                    'exception': 1,
+                },
+            }
+        },
         'follow_up_plan_summary': {
             'retaliation': {
                 'authority_search_program_task_count': 1,
@@ -145,6 +160,11 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
     assert 'primary_programs: fact_pattern_search=1' in rendered
     assert 'primary_biases: uncertain=1' in rendered
     assert 'primary_rule_biases: exception=1' in rendered
+    assert 'follow-up history authority search summary:' in rendered
+    assert '- retaliation: history_program_entries=1' in rendered
+    assert 'selected_programs: adverse_authority_search=1' in rendered
+    assert 'selected_biases: adverse=1' in rendered
+    assert 'selected_rule_biases: exception=1' in rendered
     assert '"claim_coverage_summary"' in rendered
 
 
@@ -205,6 +225,21 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
                 },
             }
         },
+        'post_execution_review': {
+            'follow_up_history_summary': {
+                'retaliation': {
+                    'selected_authority_program_type_counts': {
+                        'element_definition_search': 1,
+                    },
+                    'selected_authority_program_bias_counts': {
+                        'uncertain': 1,
+                    },
+                    'selected_authority_program_rule_bias_counts': {
+                        'procedural_prerequisite': 1,
+                    },
+                }
+            }
+        },
         'execution_quality_summary': {
             'retaliation': {
                 'quality_improvement_status': 'improved',
@@ -231,6 +266,11 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
     assert 'primary_programs: adverse_authority_search=1' in rendered
     assert 'primary_biases: adverse=1' in rendered
     assert 'primary_rule_biases: procedural_prerequisite=1' in rendered
+    assert 'follow-up history authority search summary:' in rendered
+    assert '- retaliation: history_program_entries=1' in rendered
+    assert 'selected_programs: element_definition_search=1' in rendered
+    assert 'selected_biases: uncertain=1' in rendered
+    assert 'selected_rule_biases: procedural_prerequisite=1' in rendered
     assert '"execution_quality_summary"' in rendered
 
 
@@ -272,6 +312,17 @@ def test_export_complaint_command_calls_document_package_builder():
         'case_number=25-cv-00001',
         'plaintiff_names=Jane Doe',
         'defendant_names=Acme Corporation',
+        'signer_name=Jane Doe',
+        'signer_title=Counsel for Plaintiff',
+        'signer_firm=Doe Legal Advocacy PLLC',
+        'signer_bar_number=DC-10101',
+        'signer_contact=123 Main Street',
+        'declarant_name=Jane Doe',
+        'service_method=CM/ECF',
+        'service_recipients=Registered Agent for Acme Corporation,Defense Counsel',
+        'signature_date=2026-03-12',
+        'verification_date=2026-03-12',
+        'service_date=2026-03-13',
         'output_formats=docx,pdf',
     ])
 
@@ -286,6 +337,17 @@ def test_export_complaint_command_calls_document_package_builder():
         plaintiff_names=['Jane Doe'],
         defendant_names=['Acme Corporation'],
         requested_relief=None,
+        signer_name='Jane Doe',
+        signer_title='Counsel for Plaintiff',
+        signer_firm='Doe Legal Advocacy PLLC',
+        signer_bar_number='DC-10101',
+        signer_contact='123 Main Street',
+        declarant_name='Jane Doe',
+        service_method='CM/ECF',
+        service_recipients=['Registered Agent for Acme Corporation', 'Defense Counsel'],
+        signature_date='2026-03-12',
+        verification_date='2026-03-12',
+        service_date='2026-03-13',
         output_dir='/tmp/out',
         output_formats=['docx', 'pdf'],
     )

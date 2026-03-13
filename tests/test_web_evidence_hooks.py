@@ -6,6 +6,7 @@ Tests for web evidence discovery, validation, and integration functionality.
 import pytest
 import tempfile
 import os
+from datetime import datetime, timezone
 from unittest.mock import Mock, MagicMock, patch
 from pathlib import Path
 
@@ -624,6 +625,10 @@ class TestWebEvidenceIntegrationHook:
             assert persisted_lineage['content_origin'] == 'historical_archive_capture'
             assert persisted_lineage['captured_at'] == '2024-01-01T12:00:00Z'
             assert persisted_lineage['observed_at'] == '2024-01-02T00:00:00Z'
+            persisted_provenance = persisted_info['metadata']['provenance']
+            assert persisted_provenance['metadata']['content_origin'] == 'historical_archive_capture'
+            assert persisted_provenance['metadata']['archive_url'] == 'https://web.archive.org/web/20240101120000/https://example.com/policy'
+            assert persisted_provenance['metadata']['version_of'] == 'https://example.com/policy'
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
@@ -959,23 +964,27 @@ class TestWebEvidenceIntegrationHook:
                 }
             })
 
-            hook = WebEvidenceIntegrationHook(mock_mediator)
-            hook._generate_search_keywords = Mock(return_value=['employment discrimination'])
-            hook.discover_and_store_evidence = Mock(return_value={
-                'discovered': 3,
-                'stored': 2,
-                'stored_new': 1,
-                'reused': 1,
-                'support_links_added': 2,
-                'support_links_reused': 0,
-                'total_records': 2,
-                'total_new': 1,
-                'total_reused': 1,
-                'total_support_links_added': 2,
-                'total_support_links_reused': 0,
-            })
+            with patch(
+                'claim_support_review._utcnow',
+                return_value=datetime(2026, 3, 12, 12, 0, 0, tzinfo=timezone.utc),
+            ):
+                hook = WebEvidenceIntegrationHook(mock_mediator)
+                hook._generate_search_keywords = Mock(return_value=['employment discrimination'])
+                hook.discover_and_store_evidence = Mock(return_value={
+                    'discovered': 3,
+                    'stored': 2,
+                    'stored_new': 1,
+                    'reused': 1,
+                    'support_links_added': 2,
+                    'support_links_reused': 0,
+                    'total_records': 2,
+                    'total_new': 1,
+                    'total_reused': 1,
+                    'total_support_links_added': 2,
+                    'total_support_links_reused': 0,
+                })
 
-            result = hook.discover_evidence_for_case(user_id='testuser')
+                result = hook.discover_evidence_for_case(user_id='testuser')
 
             assert result['evidence_storage_summary']['employment discrimination']['total_records'] == 2
             assert result['evidence_storage_summary']['employment discrimination']['total_new'] == 1
@@ -1144,23 +1153,27 @@ class TestWebEvidenceIntegrationHook:
                 }
             })
 
-            hook = WebEvidenceIntegrationHook(mock_mediator)
-            hook._generate_search_keywords = Mock(return_value=['employment discrimination'])
-            hook.discover_and_store_evidence = Mock(return_value={
-                'discovered': 1,
-                'stored': 1,
-                'stored_new': 1,
-                'reused': 0,
-                'support_links_added': 1,
-                'support_links_reused': 0,
-                'total_records': 1,
-                'total_new': 1,
-                'total_reused': 0,
-                'total_support_links_added': 1,
-                'total_support_links_reused': 0,
-            })
+            with patch(
+                'claim_support_review._utcnow',
+                return_value=datetime(2026, 3, 12, 12, 0, 0, tzinfo=timezone.utc),
+            ):
+                hook = WebEvidenceIntegrationHook(mock_mediator)
+                hook._generate_search_keywords = Mock(return_value=['employment discrimination'])
+                hook.discover_and_store_evidence = Mock(return_value={
+                    'discovered': 1,
+                    'stored': 1,
+                    'stored_new': 1,
+                    'reused': 0,
+                    'support_links_added': 1,
+                    'support_links_reused': 0,
+                    'total_records': 1,
+                    'total_new': 1,
+                    'total_reused': 0,
+                    'total_support_links_added': 1,
+                    'total_support_links_reused': 0,
+                })
 
-            result = hook.discover_evidence_for_case(user_id='testuser', execute_follow_up=True)
+                result = hook.discover_evidence_for_case(user_id='testuser', execute_follow_up=True)
 
             assert result['evidence_storage_summary']['employment discrimination']['total_records'] == 1
             assert result['follow_up_execution']['employment discrimination']['task_count'] == 1

@@ -118,6 +118,17 @@ def _safe_call(target: Any, method_name: str, *args: Any, **kwargs: Any) -> Any:
         return None
 
 
+def _merge_status(current: str, candidate: str) -> str:
+    order = {
+        "ready": 0,
+        "warning": 1,
+        "blocked": 2,
+    }
+    current_status = str(current or "ready")
+    candidate_status = str(candidate or "ready")
+    return candidate_status if order.get(candidate_status, 0) > order.get(current_status, 0) else current_status
+
+
 class FormalComplaintDocumentBuilder:
     def __init__(self, mediator: Any):
         self.mediator = mediator
@@ -135,6 +146,17 @@ class FormalComplaintDocumentBuilder:
         plaintiff_names: Optional[List[str]] = None,
         defendant_names: Optional[List[str]] = None,
         requested_relief: Optional[List[str]] = None,
+        signer_name: Optional[str] = None,
+        signer_title: Optional[str] = None,
+        signer_firm: Optional[str] = None,
+        signer_bar_number: Optional[str] = None,
+        signer_contact: Optional[str] = None,
+        declarant_name: Optional[str] = None,
+        service_method: Optional[str] = None,
+        service_recipients: Optional[List[str]] = None,
+        signature_date: Optional[str] = None,
+        verification_date: Optional[str] = None,
+        service_date: Optional[str] = None,
         output_dir: Optional[str] = None,
         output_formats: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
@@ -151,7 +173,23 @@ class FormalComplaintDocumentBuilder:
             plaintiff_names=plaintiff_names,
             defendant_names=defendant_names,
             requested_relief=requested_relief,
+            signer_name=signer_name,
+            signer_title=signer_title,
+            signer_firm=signer_firm,
+            signer_bar_number=signer_bar_number,
+            signer_contact=signer_contact,
+            declarant_name=declarant_name,
+            service_method=service_method,
+            service_recipients=service_recipients,
+            signature_date=signature_date,
+            verification_date=verification_date,
+            service_date=service_date,
         )
+        drafting_readiness = self._build_drafting_readiness(
+            user_id=resolved_user_id,
+            draft=draft,
+        )
+        draft["drafting_readiness"] = drafting_readiness
         artifacts = self.render_artifacts(
             draft,
             output_dir=output_dir,
@@ -159,6 +197,7 @@ class FormalComplaintDocumentBuilder:
         )
         return {
             "draft": draft,
+            "drafting_readiness": drafting_readiness,
             "artifacts": artifacts,
             "output_formats": formats,
             "generated_at": _utcnow().isoformat(),
@@ -177,6 +216,17 @@ class FormalComplaintDocumentBuilder:
         plaintiff_names: Optional[List[str]],
         defendant_names: Optional[List[str]],
         requested_relief: Optional[List[str]],
+        signer_name: Optional[str],
+        signer_title: Optional[str],
+        signer_firm: Optional[str],
+        signer_bar_number: Optional[str],
+        signer_contact: Optional[str],
+        declarant_name: Optional[str],
+        service_method: Optional[str],
+        service_recipients: Optional[List[str]],
+        signature_date: Optional[str],
+        verification_date: Optional[str],
+        service_date: Optional[str],
     ) -> Dict[str, Any]:
         canonical_generate = getattr(self.mediator, "generate_formal_complaint", None)
         if callable(canonical_generate):
@@ -192,6 +242,17 @@ class FormalComplaintDocumentBuilder:
                     plaintiff_names=plaintiff_names,
                     defendant_names=defendant_names,
                     requested_relief=requested_relief,
+                    signer_name=signer_name,
+                    signer_title=signer_title,
+                    signer_firm=signer_firm,
+                    signer_bar_number=signer_bar_number,
+                    signer_contact=signer_contact,
+                    declarant_name=declarant_name,
+                    service_method=service_method,
+                    service_recipients=service_recipients,
+                    signature_date=signature_date,
+                    verification_date=verification_date,
+                    service_date=service_date,
                 )
             except TypeError:
                 result = None
@@ -209,6 +270,17 @@ class FormalComplaintDocumentBuilder:
             plaintiff_names=plaintiff_names,
             defendant_names=defendant_names,
             requested_relief=requested_relief,
+            signer_name=signer_name,
+            signer_title=signer_title,
+            signer_firm=signer_firm,
+            signer_bar_number=signer_bar_number,
+            signer_contact=signer_contact,
+            declarant_name=declarant_name,
+            service_method=service_method,
+            service_recipients=service_recipients,
+            signature_date=signature_date,
+            verification_date=verification_date,
+            service_date=service_date,
         )
 
     def _build_legacy_draft(
@@ -224,6 +296,17 @@ class FormalComplaintDocumentBuilder:
         plaintiff_names: Optional[List[str]],
         defendant_names: Optional[List[str]],
         requested_relief: Optional[List[str]],
+        signer_name: Optional[str],
+        signer_title: Optional[str],
+        signer_firm: Optional[str],
+        signer_bar_number: Optional[str],
+        signer_contact: Optional[str],
+        declarant_name: Optional[str],
+        service_method: Optional[str],
+        service_recipients: Optional[List[str]],
+        signature_date: Optional[str],
+        verification_date: Optional[str],
+        service_date: Optional[str],
     ) -> Dict[str, Any]:
         state = getattr(self.mediator, "state", None)
         generated_complaint = self._get_existing_formal_complaint()
@@ -241,6 +324,7 @@ class FormalComplaintDocumentBuilder:
         title = title_override or generated_complaint.get("title") or self._derive_title(plaintiffs, defendants)
         exhibits = self._collect_exhibits(user_id=user_id, claim_types=claim_types, support_claims=support_claims)
         facts = self._collect_general_facts(generated_complaint, classification, state)
+        facts = self._annotate_lines_with_exhibits(facts, exhibits)
         claims_for_relief = self._build_claims_for_relief(
             user_id=user_id,
             claim_types=claim_types,
@@ -248,6 +332,10 @@ class FormalComplaintDocumentBuilder:
             statutes=statutes,
             support_claims=support_claims,
             exhibits=exhibits,
+        )
+        factual_allegations = self._build_factual_allegations(
+            summary_of_facts=facts,
+            claims_for_relief=claims_for_relief,
         )
         relief_items = _unique_preserving_order(
             list(requested_relief or [])
@@ -261,14 +349,45 @@ class FormalComplaintDocumentBuilder:
             division=division,
             override=court_header_override,
         )
+        jurisdiction_statement = self._build_jurisdiction_statement(
+            classification=classification,
+            statutes=statutes,
+        )
+        venue_statement = self._build_venue_statement(
+            district=district,
+            division=division,
+        )
         nature_of_action = self._build_nature_of_action(
             claim_types=claim_types,
             classification=classification,
             statutes=statutes,
         )
         legal_standards = self._build_legal_standards_summary(statutes=statutes, requirements=requirements)
+        signature_block = self._build_signature_block(
+            plaintiffs,
+            signer_name=signer_name,
+            signer_title=signer_title,
+            signer_firm=signer_firm,
+            signer_bar_number=signer_bar_number,
+            signer_contact=signer_contact,
+            signature_date=signature_date,
+        )
+        verification = self._build_verification(
+            plaintiffs,
+            declarant_name=declarant_name,
+            signer_name=signer_name,
+            verification_date=verification_date,
+        )
+        certificate_of_service = self._build_certificate_of_service(
+            plaintiffs,
+            defendants,
+            signer_name=signer_name,
+            service_method=service_method,
+            service_recipients=service_recipients,
+            service_date=service_date,
+        )
 
-        return {
+        draft = {
             "court_header": court_header,
             "case_caption": {
                 "plaintiffs": plaintiffs,
@@ -282,11 +401,17 @@ class FormalComplaintDocumentBuilder:
                 "plaintiffs": plaintiffs,
                 "defendants": defendants,
             },
+            "jurisdiction_statement": jurisdiction_statement,
+            "venue_statement": venue_statement,
+            "factual_allegations": factual_allegations,
             "summary_of_facts": facts,
             "claims_for_relief": claims_for_relief,
             "legal_standards": legal_standards,
             "requested_relief": relief_items,
             "exhibits": exhibits,
+            "signature_block": signature_block,
+            "verification": verification,
+            "certificate_of_service": certificate_of_service,
             "source_context": {
                 "user_id": user_id,
                 "claim_types": claim_types,
@@ -294,6 +419,9 @@ class FormalComplaintDocumentBuilder:
                 "generated_at": _utcnow().isoformat(),
             },
         }
+        self._attach_allegation_references(draft)
+        draft["draft_text"] = self._render_draft_text(draft)
+        return draft
 
     def _adapt_formal_complaint_to_package_draft(self, formal_complaint: Dict[str, Any]) -> Dict[str, Any]:
         caption = formal_complaint.get("caption", {}) if isinstance(formal_complaint.get("caption"), dict) else {}
@@ -373,7 +501,16 @@ class FormalComplaintDocumentBuilder:
         if isinstance(nature_of_action, str):
             nature_of_action = [nature_of_action]
 
-        return {
+        factual_allegations = _unique_preserving_order(
+            _extract_text_candidates(formal_complaint.get("factual_allegations") or formal_complaint.get("summary_of_facts"))
+        )
+        if not factual_allegations:
+            factual_allegations = self._build_factual_allegations(
+                summary_of_facts=_extract_text_candidates(formal_complaint.get("summary_of_facts")),
+                claims_for_relief=claims_for_relief,
+            )
+
+        draft = {
             "court_header": formal_complaint.get("court_header", ""),
             "case_caption": {
                 "plaintiffs": _coerce_list(formal_complaint.get("parties", {}).get("plaintiffs", [])) if isinstance(formal_complaint.get("parties"), dict) else [],
@@ -384,16 +521,410 @@ class FormalComplaintDocumentBuilder:
             "title": formal_complaint.get("title") or caption.get("case_title") or "Complaint",
             "nature_of_action": _unique_preserving_order(_extract_text_candidates(nature_of_action)),
             "parties": formal_complaint.get("parties", {}),
+            "jurisdiction_statement": formal_complaint.get("jurisdiction_statement", ""),
+            "venue_statement": formal_complaint.get("venue_statement", ""),
+            "factual_allegations": factual_allegations,
             "summary_of_facts": _unique_preserving_order(_extract_text_candidates(formal_complaint.get("summary_of_facts") or formal_complaint.get("factual_allegations"))),
             "claims_for_relief": claims_for_relief,
             "legal_standards": _unique_preserving_order(legal_standards),
             "requested_relief": _unique_preserving_order(_extract_text_candidates(formal_complaint.get("requested_relief") or formal_complaint.get("prayer_for_relief"))),
             "exhibits": exhibits,
+            "signature_block": formal_complaint.get("signature_block", {}),
+            "verification": formal_complaint.get("verification", {}),
+            "certificate_of_service": formal_complaint.get("certificate_of_service", {}),
             "source_context": {
                 "generated_at": formal_complaint.get("generated_at") or _utcnow().isoformat(),
                 "jurisdiction": formal_complaint.get("jurisdiction", "unknown"),
             },
         }
+        self._attach_allegation_references(draft)
+        draft["draft_text"] = str(formal_complaint.get("draft_text") or "").strip() or self._render_draft_text(draft)
+        return draft
+
+    def _build_jurisdiction_statement(
+        self,
+        *,
+        classification: Dict[str, Any],
+        statutes: List[Dict[str, Any]],
+    ) -> str:
+        jurisdiction = str(classification.get("jurisdiction") or "").strip().lower()
+        first_citation = next(
+            (
+                str(statute.get("citation") or "").strip()
+                for statute in statutes
+                if isinstance(statute, dict) and statute.get("citation")
+            ),
+            "",
+        )
+        if jurisdiction in {"federal", "us", "united states"}:
+            if first_citation:
+                return (
+                    "This Court has subject-matter jurisdiction under federal law, including "
+                    f"{first_citation}, because Plaintiff alleges violations arising under the laws of the United States."
+                )
+            return "This Court has subject-matter jurisdiction under 28 U.S.C. § 1331 because Plaintiff alleges claims arising under federal law."
+        return "This Court has subject-matter jurisdiction because the claims arise under the governing law identified in this pleading."
+
+    def _build_venue_statement(
+        self,
+        *,
+        district: str,
+        division: Optional[str],
+    ) -> str:
+        district_text = str(district or "").strip()
+        division_text = str(division or "").strip()
+        if district_text and division_text:
+            return (
+                f"Venue is proper in the {division_text} Division of the {district_text} because a substantial part of the events or omissions giving rise to these claims occurred there."
+            )
+        if district_text:
+            return (
+                f"Venue is proper in the {district_text} because a substantial part of the events or omissions giving rise to these claims occurred there."
+            )
+        return "Venue is proper in this Court because a substantial part of the events or omissions giving rise to these claims occurred in this judicial district."
+
+    def _render_draft_text(self, draft: Dict[str, Any]) -> str:
+        caption = draft.get("case_caption", {}) if isinstance(draft.get("case_caption"), dict) else {}
+        parties = draft.get("parties", {}) if isinstance(draft.get("parties"), dict) else {}
+        signature_block = draft.get("signature_block", {}) if isinstance(draft.get("signature_block"), dict) else {}
+        plaintiffs = ", ".join(parties.get("plaintiffs", []) or caption.get("plaintiffs", []) or ["Plaintiff"])
+        defendants = ", ".join(parties.get("defendants", []) or caption.get("defendants", []) or ["Defendant"])
+        lines = [
+            str(draft.get("court_header") or "IN THE COURT OF COMPETENT JURISDICTION"),
+            "",
+            f"{plaintiffs}, Plaintiff,",
+            "v.",
+            f"{defendants}, Defendant.",
+            f"Civil Action No. {caption.get('case_number', '________________')}",
+            "",
+            str(caption.get("document_title") or "COMPLAINT"),
+            "",
+            "NATURE OF THE ACTION",
+        ]
+        lines.extend(self._normalize_text_lines(draft.get("nature_of_action", [])))
+        lines.extend([
+            "",
+            "PARTIES",
+            f"Plaintiff: {plaintiffs}.",
+            f"Defendant: {defendants}.",
+            "",
+            "JURISDICTION AND VENUE",
+        ])
+        if draft.get("jurisdiction_statement"):
+            lines.append(str(draft["jurisdiction_statement"]))
+        if draft.get("venue_statement"):
+            lines.append(str(draft["venue_statement"]))
+        lines.extend(["", "FACTUAL ALLEGATIONS"])
+        factual_allegations = draft.get("factual_allegations") or draft.get("summary_of_facts", [])
+        lines.extend(self._numbered_lines(factual_allegations))
+        claims = draft.get("claims_for_relief", []) if isinstance(draft.get("claims_for_relief"), list) else []
+        if claims:
+            lines.extend(["", "CLAIMS FOR RELIEF"])
+        for index, claim in enumerate(claims, start=1):
+            lines.extend([
+                "",
+                f"COUNT {_roman(index)} - {claim.get('count_title', claim.get('claim_type', 'Claim'))}",
+                "Legal Standard:",
+            ])
+            lines.extend(self._bulletize_lines(claim.get("legal_standards", [])))
+            incorporated_clause = self._format_incorporated_reference_clause(
+                claim.get("allegation_references", []),
+                claim.get("supporting_exhibits", []),
+            )
+            if incorporated_clause:
+                lines.append(incorporated_clause)
+            lines.append("Claim-Specific Support:")
+            lines.extend(self._bulletize_lines(claim.get("supporting_facts", [])))
+            missing = self._normalize_text_lines(claim.get("missing_elements", []))
+            if missing:
+                lines.append("Open Support Gaps:")
+                lines.extend([f"- {line}" for line in missing])
+        lines.extend(["", "REQUESTED RELIEF"])
+        lines.extend(self._numbered_lines(draft.get("requested_relief", [])))
+        exhibits = draft.get("exhibits", []) if isinstance(draft.get("exhibits"), list) else []
+        if exhibits:
+            lines.extend(["", "EXHIBITS"])
+            for exhibit in exhibits:
+                if not isinstance(exhibit, dict):
+                    continue
+                text = f"{exhibit.get('label', 'Exhibit')} - {exhibit.get('title', 'Supporting exhibit')}"
+                if exhibit.get("link"):
+                    text = f"{text} ({exhibit['link']})"
+                lines.append(text)
+                if exhibit.get("summary"):
+                    lines.append(f"  {exhibit['summary']}")
+        lines.extend([
+            "",
+            "Respectfully submitted,",
+            str(signature_block.get("signature_line") or "/s/ Plaintiff"),
+            str(signature_block.get("name") or "Plaintiff"),
+        ])
+        for key in ("title", "firm"):
+            if signature_block.get(key):
+                lines.append(str(signature_block[key]))
+        if signature_block.get("bar_number"):
+            lines.append(f"Bar No. {signature_block['bar_number']}")
+        for key in ("contact", "dated"):
+            if signature_block.get(key):
+                lines.append(str(signature_block[key]))
+        return "\n".join(line for line in lines if line is not None)
+
+    def _normalize_text_lines(self, values: Any) -> List[str]:
+        normalized = []
+        for value in _unique_preserving_order(_extract_text_candidates(values)):
+            text = re.sub(r"\s+", " ", value).strip()
+            if text:
+                normalized.append(text)
+        return normalized
+
+    def _build_factual_allegations(
+        self,
+        *,
+        summary_of_facts: Any,
+        claims_for_relief: List[Dict[str, Any]],
+    ) -> List[str]:
+        allegations = list(self._normalize_text_lines(summary_of_facts))
+        seen = {entry.lower() for entry in allegations}
+
+        for claim in _coerce_list(claims_for_relief):
+            if not isinstance(claim, dict):
+                continue
+            count_title = str(claim.get("count_title") or claim.get("claim_type") or "Claim").strip()
+            for fact in self._normalize_text_lines(claim.get("supporting_facts", [])):
+                if not fact:
+                    continue
+                prefixed_fact = fact
+                if count_title and fact.lower() not in seen:
+                    lowered = fact[0].lower() + fact[1:] if len(fact) > 1 else fact.lower()
+                    prefixed_fact = f"As to {count_title}, {lowered}"
+                key = prefixed_fact.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                allegations.append(prefixed_fact)
+                if len(allegations) >= 18:
+                    return allegations
+
+        return allegations or ["Additional factual development is required before filing."]
+
+    def _attach_allegation_references(self, draft: Dict[str, Any]) -> None:
+        allegation_lines = self._normalize_text_lines(
+            draft.get("factual_allegations") or draft.get("summary_of_facts", [])
+        )
+        paragraph_entries = [
+            {
+                "number": index,
+                "text": text,
+            }
+            for index, text in enumerate(allegation_lines, start=1)
+        ]
+        draft["factual_allegations"] = allegation_lines
+        draft["factual_allegation_paragraphs"] = paragraph_entries
+
+        claims = draft.get("claims_for_relief") if isinstance(draft.get("claims_for_relief"), list) else []
+        for claim in claims:
+            if not isinstance(claim, dict):
+                continue
+            claim["allegation_references"] = self._select_allegation_references_for_claim(
+                claim=claim,
+                allegation_paragraphs=paragraph_entries,
+            )
+
+    def _select_allegation_references_for_claim(
+        self,
+        *,
+        claim: Dict[str, Any],
+        allegation_paragraphs: List[Dict[str, Any]],
+    ) -> List[int]:
+        references: List[int] = []
+        supporting_facts = self._normalize_text_lines(claim.get("supporting_facts", []))
+        count_title = str(claim.get("count_title") or claim.get("claim_type") or "").strip().lower()
+
+        for fact in supporting_facts:
+            fact_tokens = self._text_tokens(fact)
+            if not fact_tokens:
+                continue
+            best_number: Optional[int] = None
+            best_score = 0
+            fact_lower = fact.lower()
+            for paragraph in allegation_paragraphs:
+                if not isinstance(paragraph, dict):
+                    continue
+                paragraph_text = str(paragraph.get("text") or "").strip()
+                paragraph_lower = paragraph_text.lower()
+                paragraph_tokens = self._text_tokens(paragraph_text)
+                score = len(fact_tokens & paragraph_tokens)
+                if fact_lower in paragraph_lower:
+                    score += 100
+                if count_title and count_title in paragraph_lower:
+                    score += 5
+                if score > best_score:
+                    best_score = score
+                    best_number = int(paragraph.get("number", 0) or 0)
+            if best_number and best_number not in references:
+                references.append(best_number)
+                if len(references) >= 6:
+                    break
+
+        if references:
+            return references
+
+        fallback = []
+        for paragraph in allegation_paragraphs:
+            paragraph_text = str(paragraph.get("text") or "").lower()
+            if count_title and count_title in paragraph_text:
+                fallback.append(int(paragraph.get("number", 0) or 0))
+        return fallback[:4]
+
+    def _format_paragraph_reference_clause(self, references: Any) -> str:
+        values = []
+        for value in _coerce_list(references):
+            try:
+                number = int(value)
+            except (TypeError, ValueError):
+                continue
+            if number > 0 and number not in values:
+                values.append(number)
+        if not values:
+            return ""
+        citation = self._format_paragraph_citation(values)
+        return f"Plaintiff repeats and realleges {citation} as if fully set forth herein."
+
+    def _format_incorporated_reference_clause(self, references: Any, exhibits: Any) -> str:
+        paragraph_citation = self._format_paragraph_citation(references)
+        exhibit_phrase = self._format_exhibit_reference_phrase(exhibits)
+        if paragraph_citation and exhibit_phrase:
+            return (
+                f"Plaintiff repeats and realleges {paragraph_citation} and incorporates {exhibit_phrase} "
+                "as if fully set forth herein."
+            )
+        if paragraph_citation:
+            return f"Plaintiff repeats and realleges {paragraph_citation} as if fully set forth herein."
+        if exhibit_phrase:
+            return f"Plaintiff incorporates {exhibit_phrase} as if fully set forth herein."
+        return ""
+
+    def _format_paragraph_citation(self, references: Any) -> str:
+        values = []
+        for value in _coerce_list(references):
+            try:
+                number = int(value)
+            except (TypeError, ValueError):
+                continue
+            if number > 0 and number not in values:
+                values.append(number)
+        if not values:
+            return ""
+        values.sort()
+        ranges: List[str] = []
+        range_start = values[0]
+        range_end = values[0]
+        for number in values[1:]:
+            if number == range_end + 1:
+                range_end = number
+                continue
+            ranges.append(self._format_paragraph_range(range_start, range_end))
+            range_start = number
+            range_end = number
+        ranges.append(self._format_paragraph_range(range_start, range_end))
+        marker = "¶" if len(values) == 1 else "¶¶"
+        return f"{marker} {', '.join(ranges)}"
+
+    def _format_exhibit_reference_phrase(self, exhibits: Any) -> str:
+        labels = []
+        for exhibit in _coerce_list(exhibits):
+            if not isinstance(exhibit, dict):
+                continue
+            label = str(exhibit.get("label") or "").strip()
+            if label and label not in labels:
+                labels.append(label)
+        if not labels:
+            return ""
+        if len(labels) == 1:
+            return labels[0]
+        if len(labels) == 2:
+            return f"{labels[0]} and {labels[1]}"
+        return f"{', '.join(labels[:-1])}, and {labels[-1]}"
+
+    def _format_paragraph_range(self, start: int, end: int) -> str:
+        return str(start) if start == end else f"{start}-{end}"
+
+    def _numbered_lines(self, values: Any) -> List[str]:
+        return [f"{index}. {line}" for index, line in enumerate(self._normalize_text_lines(values), start=1)]
+
+    def _bulletize_lines(self, values: Any) -> List[str]:
+        return [f"- {line}" for line in self._normalize_text_lines(values)]
+
+    def _build_signature_block(
+        self,
+        plaintiffs: List[str],
+        *,
+        signer_name: Optional[str] = None,
+        signer_title: Optional[str] = None,
+        signer_firm: Optional[str] = None,
+        signer_bar_number: Optional[str] = None,
+        signer_contact: Optional[str] = None,
+        signature_date: Optional[str] = None,
+    ) -> Dict[str, str]:
+        plaintiff_name = str(signer_name or "").strip() or (plaintiffs or ["Plaintiff"])[0]
+        return {
+            "name": plaintiff_name,
+            "signature_line": f"/s/ {plaintiff_name}",
+            "title": str(signer_title or "").strip() or "Plaintiff, Pro Se",
+            "firm": str(signer_firm or "").strip() or "",
+            "bar_number": str(signer_bar_number or "").strip(),
+            "contact": str(signer_contact or "").strip() or "Mailing address, telephone number, and email address to be completed before filing.",
+            "dated": self._format_dated_line("Dated", signature_date),
+        }
+
+    def _build_verification(
+        self,
+        plaintiffs: List[str],
+        *,
+        declarant_name: Optional[str] = None,
+        signer_name: Optional[str] = None,
+        verification_date: Optional[str] = None,
+    ) -> Dict[str, str]:
+        plaintiff_name = str(declarant_name or "").strip() or str(signer_name or "").strip() or (plaintiffs or ["Plaintiff"])[0]
+        return {
+            "title": "Verification",
+            "text": (
+                f"I, {plaintiff_name}, declare under penalty of perjury that I have reviewed this Complaint "
+                "and that the factual allegations stated in it are true and correct to the best of my knowledge, "
+                "information, and belief."
+            ),
+            "dated": self._format_dated_line("Executed on", verification_date),
+            "signature_line": f"/s/ {plaintiff_name}",
+        }
+
+    def _build_certificate_of_service(
+        self,
+        plaintiffs: List[str],
+        defendants: List[str],
+        *,
+        signer_name: Optional[str] = None,
+        service_method: Optional[str] = None,
+        service_recipients: Optional[List[str]] = None,
+        service_date: Optional[str] = None,
+    ) -> Dict[str, str]:
+        plaintiff_name = str(signer_name or "").strip() or (plaintiffs or ["Plaintiff"])[0]
+        recipients_list = _unique_preserving_order([str(item or "").strip() for item in _coerce_list(service_recipients)]) or defendants or ["all defendants"]
+        recipients = ", ".join(recipients_list)
+        method_text = str(service_method or "").strip() or "a method authorized by the applicable rules of civil procedure"
+        return {
+            "title": "Certificate of Service",
+            "text": (
+                "I certify that a true and correct copy of this Complaint will be served on "
+                f"{recipients} using {method_text} promptly after filing."
+            ),
+            "recipients": recipients_list,
+            "dated": self._format_dated_line("Service date", service_date),
+            "signature_line": f"/s/ {plaintiff_name}",
+        }
+
+    def _format_dated_line(self, label: str, value: Optional[str]) -> str:
+        cleaned = str(value or "").strip()
+        return f"{label}: {cleaned}" if cleaned else f"{label}: __________________"
 
     def render_artifacts(
         self,
@@ -414,6 +945,8 @@ class FormalComplaintDocumentBuilder:
                 self._render_docx(draft, path)
             elif output_format == "pdf":
                 self._render_pdf(draft, path)
+            elif output_format == "txt":
+                self._render_txt(draft, path)
             artifacts[output_format] = {
                 "path": str(path),
                 "filename": path.name,
@@ -437,9 +970,12 @@ class FormalComplaintDocumentBuilder:
         normalized = []
         for value in values:
             current = str(value or "").strip().lower()
-            if current in {"docx", "pdf"} and current not in normalized:
+            if current in {"docx", "pdf", "txt"} and current not in normalized:
                 normalized.append(current)
         return normalized or ["docx", "pdf"]
+
+    def _render_txt(self, draft: Dict[str, Any], path: Path) -> None:
+        path.write_text(str(draft.get("draft_text") or self._render_draft_text(draft)), encoding="utf-8")
 
     def _get_existing_formal_complaint(self) -> Dict[str, Any]:
         phase_manager = getattr(self.mediator, "phase_manager", None)
@@ -595,10 +1131,11 @@ class FormalComplaintDocumentBuilder:
                 required_support_kinds=["evidence", "authority"],
             ) or {}
             overview_claim = overview.get("claims", {}).get(claim_type, {}) if isinstance(overview, dict) else {}
-            claim_facts = self._collect_claim_facts(claim_type, user_id, support_claim)
             related_exhibits = [
                 exhibit for exhibit in exhibits if not exhibit.get("claim_type") or exhibit.get("claim_type") == claim_type
             ]
+            claim_facts = self._collect_claim_facts(claim_type, user_id, support_claim)
+            claim_facts = self._annotate_lines_with_exhibits(claim_facts, related_exhibits)
             claims.append(
                 {
                     "claim_type": claim_type,
@@ -703,6 +1240,278 @@ class FormalComplaintDocumentBuilder:
                 if text:
                     summary.append(text)
         return _unique_preserving_order(summary)
+
+    def _safe_mediator_dict(self, method_name: str, **kwargs: Any) -> Dict[str, Any]:
+        method = getattr(self.mediator, method_name, None)
+        if not callable(method):
+            return {}
+        try:
+            result = method(**kwargs)
+        except Exception:
+            return {}
+        return result if isinstance(result, dict) else {}
+
+    def _build_drafting_readiness(
+        self,
+        *,
+        user_id: str,
+        draft: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        support_summary = self._safe_mediator_dict("summarize_claim_support", user_id=user_id)
+        gap_summary = self._safe_mediator_dict("get_claim_support_gaps", user_id=user_id)
+        validation_summary = self._safe_mediator_dict("get_claim_support_validation", user_id=user_id)
+
+        support_claims = support_summary.get("claims", {}) if isinstance(support_summary.get("claims"), dict) else {}
+        gap_claims = gap_summary.get("claims", {}) if isinstance(gap_summary.get("claims"), dict) else {}
+        validation_claims = validation_summary.get("claims", {}) if isinstance(validation_summary.get("claims"), dict) else {}
+
+        claim_types = _unique_preserving_order(
+            _extract_text_candidates((draft.get("source_context") or {}).get("claim_types"))
+            + list(support_claims.keys())
+            + list(validation_claims.keys())
+            + [
+                str(claim.get("claim_type") or "").strip()
+                for claim in _coerce_list(draft.get("claims_for_relief"))
+                if isinstance(claim, dict)
+            ]
+        )
+
+        claim_readiness: List[Dict[str, Any]] = []
+        aggregate_warning_count = 0
+        overall_status = "ready"
+
+        for claim_type in claim_types:
+            support_claim = support_claims.get(claim_type, {}) if isinstance(support_claims.get(claim_type), dict) else {}
+            gap_claim = gap_claims.get(claim_type, {}) if isinstance(gap_claims.get(claim_type), dict) else {}
+            validation_claim = validation_claims.get(claim_type, {}) if isinstance(validation_claims.get(claim_type), dict) else {}
+            overview_payload = self._safe_mediator_dict(
+                "get_claim_overview",
+                claim_type=claim_type,
+                user_id=user_id,
+                required_support_kinds=["evidence", "authority"],
+            )
+            overview_claim = overview_payload.get("claims", {}).get(claim_type, {}) if isinstance(overview_payload.get("claims"), dict) else {}
+            treatment_summary = support_claim.get("authority_treatment_summary", {}) if isinstance(support_claim.get("authority_treatment_summary"), dict) else {}
+            rule_summary = support_claim.get("authority_rule_candidate_summary", {}) if isinstance(support_claim.get("authority_rule_candidate_summary"), dict) else {}
+
+            claim_status = "ready"
+            warnings: List[Dict[str, Any]] = []
+
+            validation_status = str(validation_claim.get("validation_status") or "")
+            if validation_status == "contradicted":
+                claim_status = _merge_status(claim_status, "blocked")
+                warnings.append(
+                    {
+                        "code": "claim_contradicted",
+                        "severity": "blocked",
+                        "message": f"{claim_type.title()} has contradiction signals that should be resolved before filing.",
+                    }
+                )
+            elif validation_status in {"missing", "incomplete"}:
+                claim_status = _merge_status(claim_status, "warning")
+
+            if int(validation_claim.get("proof_gap_count", 0) or 0) > 0:
+                claim_status = _merge_status(claim_status, "warning")
+                warnings.append(
+                    {
+                        "code": "proof_gaps_present",
+                        "severity": "warning",
+                        "message": f"{claim_type.title()} still has proof or failed-premise gaps.",
+                    }
+                )
+
+            if int(treatment_summary.get("adverse_authority_link_count", 0) or 0) > 0:
+                claim_status = _merge_status(claim_status, "warning")
+                warnings.append(
+                    {
+                        "code": "adverse_authority_present",
+                        "severity": "warning",
+                        "message": f"{claim_type.title()} includes adverse or limiting authority that should be reviewed before relying on it in the draft.",
+                    }
+                )
+
+            uncertain_authority_count = int(treatment_summary.get("uncertain_authority_link_count", 0) or 0)
+            uncertain_treatment_types = sorted(
+                str(name)
+                for name in (treatment_summary.get("treatment_type_counts", {}) or {}).keys()
+                if str(name) in {"questioned", "limits", "superseded", "good_law_unconfirmed"}
+            )
+            if uncertain_authority_count > 0 or uncertain_treatment_types:
+                claim_status = _merge_status(claim_status, "warning")
+                warnings.append(
+                    {
+                        "code": "authority_reliability_uncertain",
+                        "severity": "warning",
+                        "message": f"{claim_type.title()} has authority support with unresolved treatment or good-law uncertainty.",
+                    }
+                )
+
+            unresolved_elements = int(gap_claim.get("unresolved_count", 0) or 0)
+            if unresolved_elements == 0:
+                unresolved_elements = len(_coerce_list(overview_claim.get("missing"))) + len(_coerce_list(overview_claim.get("partially_supported")))
+            if unresolved_elements > 0:
+                claim_status = _merge_status(claim_status, "warning")
+                warnings.append(
+                    {
+                        "code": "unresolved_elements",
+                        "severity": "warning",
+                        "message": f"{claim_type.title()} still has {unresolved_elements} unresolved claim element(s).",
+                    }
+                )
+
+            claim_entry = {
+                "claim_type": claim_type,
+                "status": claim_status,
+                "validation_status": validation_status or ("supported" if claim_status == "ready" else "incomplete"),
+                "covered_elements": int(support_claim.get("covered_elements", 0) or 0),
+                "total_elements": int(support_claim.get("total_elements", 0) or 0),
+                "unresolved_element_count": unresolved_elements,
+                "proof_gap_count": int(validation_claim.get("proof_gap_count", 0) or 0),
+                "contradiction_candidate_count": int(validation_claim.get("contradiction_candidate_count", 0) or 0),
+                "support_by_kind": support_claim.get("support_by_kind", {}),
+                "authority_treatment_summary": treatment_summary,
+                "authority_rule_candidate_summary": rule_summary,
+                "warnings": warnings,
+            }
+            aggregate_warning_count += len(warnings)
+            overall_status = _merge_status(overall_status, claim_status)
+            claim_readiness.append(claim_entry)
+
+        claims_section_status = "ready"
+        for claim_entry in claim_readiness:
+            claims_section_status = _merge_status(claims_section_status, claim_entry.get("status", "ready"))
+
+        total_fact_count = sum(int(claim.get("total_facts", 0) or 0) for claim in support_claims.values() if isinstance(claim, dict))
+        if total_fact_count <= 0:
+            total_fact_count = sum(
+                len(self._normalize_text_lines(claim.get("supporting_facts", [])))
+                for claim in _coerce_list(draft.get("claims_for_relief"))
+                if isinstance(claim, dict)
+            )
+        summary_fact_count = len(self._normalize_text_lines(draft.get("summary_of_facts", [])))
+        exhibits = _coerce_list(draft.get("exhibits"))
+        relief_items = self._normalize_text_lines(draft.get("requested_relief", []))
+
+        sections: Dict[str, Dict[str, Any]] = {}
+
+        facts_status = "ready" if total_fact_count > 0 and summary_fact_count > 0 else "warning"
+        facts_warnings: List[Dict[str, Any]] = []
+        if facts_status != "ready":
+            facts_warnings.append(
+                {
+                    "code": "fact_support_thin",
+                    "severity": "warning",
+                    "message": "The factual allegations section has limited fact-backed support and should be reviewed before filing.",
+                }
+            )
+        sections["summary_of_facts"] = {
+            "title": "Summary of Facts",
+            "status": facts_status,
+            "metrics": {
+                "summary_fact_count": summary_fact_count,
+                "support_fact_count": total_fact_count,
+            },
+            "warnings": facts_warnings,
+        }
+
+        jurisdiction_status = "ready" if draft.get("jurisdiction_statement") and draft.get("venue_statement") else "warning"
+        jurisdiction_warnings: List[Dict[str, Any]] = []
+        procedural_rule_count = sum(
+            int((entry.get("authority_rule_candidate_summary", {}).get("rule_type_counts", {}) or {}).get("procedural_prerequisite", 0) or 0)
+            for entry in claim_readiness
+            if isinstance(entry, dict)
+        )
+        if jurisdiction_status != "ready":
+            jurisdiction_warnings.append(
+                {
+                    "code": "jurisdiction_or_venue_incomplete",
+                    "severity": "warning",
+                    "message": "Jurisdiction or venue language is incomplete and should be confirmed before export.",
+                }
+            )
+        if procedural_rule_count > 0:
+            jurisdiction_status = _merge_status(jurisdiction_status, "warning")
+            jurisdiction_warnings.append(
+                {
+                    "code": "procedural_prerequisites_identified",
+                    "severity": "warning",
+                    "message": "Authority-derived procedural prerequisites were identified and should be checked against the current facts before filing.",
+                }
+            )
+        sections["jurisdiction_and_venue"] = {
+            "title": "Jurisdiction and Venue",
+            "status": jurisdiction_status,
+            "metrics": {
+                "procedural_rule_count": procedural_rule_count,
+            },
+            "warnings": jurisdiction_warnings,
+        }
+
+        sections["claims_for_relief"] = {
+            "title": "Claims for Relief",
+            "status": claims_section_status,
+            "metrics": {
+                "claim_count": len(claim_readiness),
+                "blocked_claim_count": len([entry for entry in claim_readiness if entry.get("status") == "blocked"]),
+                "warning_claim_count": len([entry for entry in claim_readiness if entry.get("status") == "warning"]),
+            },
+            "warnings": [
+                warning
+                for entry in claim_readiness
+                for warning in entry.get("warnings", [])
+                if isinstance(warning, dict)
+            ],
+        }
+
+        exhibits_status = "ready" if exhibits else "warning"
+        exhibits_warnings: List[Dict[str, Any]] = []
+        if not exhibits:
+            exhibits_warnings.append(
+                {
+                    "code": "no_exhibits",
+                    "severity": "warning",
+                    "message": "No exhibits are currently attached to the draft package.",
+                }
+            )
+        sections["exhibits"] = {
+            "title": "Exhibits",
+            "status": exhibits_status,
+            "metrics": {
+                "exhibit_count": len(exhibits),
+            },
+            "warnings": exhibits_warnings,
+        }
+
+        relief_status = "ready" if relief_items else "warning"
+        relief_warnings: List[Dict[str, Any]] = []
+        if not relief_items:
+            relief_warnings.append(
+                {
+                    "code": "requested_relief_missing",
+                    "severity": "warning",
+                    "message": "Requested relief should be confirmed before filing.",
+                }
+            )
+        sections["requested_relief"] = {
+            "title": "Requested Relief",
+            "status": relief_status,
+            "metrics": {
+                "requested_relief_count": len(relief_items),
+            },
+            "warnings": relief_warnings,
+        }
+
+        for section in sections.values():
+            overall_status = _merge_status(overall_status, str(section.get("status") or "ready"))
+            aggregate_warning_count += len(section.get("warnings", []) or [])
+
+        return {
+            "status": overall_status,
+            "claim_types": claim_types,
+            "warning_count": aggregate_warning_count,
+            "claims": claim_readiness,
+            "sections": sections,
+        }
 
     def _select_statutes_for_claim(
         self,
@@ -823,6 +1632,72 @@ class FormalComplaintDocumentBuilder:
             return f"https://ipfs.io/ipfs/{support_ref}"
         return ""
 
+    def _annotate_lines_with_exhibits(
+        self,
+        lines: List[str],
+        exhibits: List[Dict[str, Any]],
+    ) -> List[str]:
+        if not lines or not exhibits:
+            return lines
+        annotated: List[str] = []
+        for index, line in enumerate(lines):
+            exhibit = self._select_exhibit_for_line(line, exhibits)
+            if exhibit is None and index == 0:
+                exhibit = exhibits[0]
+            annotated.append(self._append_exhibit_citation(line, exhibit))
+        return annotated
+
+    def _select_exhibit_for_line(
+        self,
+        line: str,
+        exhibits: List[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        line_tokens = self._text_tokens(line)
+        if not line_tokens:
+            return exhibits[0] if exhibits else None
+
+        best_match: Optional[Dict[str, Any]] = None
+        best_score = 0
+        for exhibit in exhibits:
+            if not isinstance(exhibit, dict):
+                continue
+            exhibit_tokens = self._text_tokens(
+                " ".join(
+                    str(exhibit.get(field) or "")
+                    for field in ("title", "summary", "source_ref", "claim_type")
+                )
+            )
+            score = len(line_tokens & exhibit_tokens)
+            if score > best_score:
+                best_score = score
+                best_match = exhibit
+
+        return best_match if best_score > 0 else None
+
+    def _append_exhibit_citation(
+        self,
+        line: str,
+        exhibit: Optional[Dict[str, Any]],
+    ) -> str:
+        text = str(line or "").strip()
+        if not text or exhibit is None:
+            return text
+        label = str(exhibit.get("label") or "").strip()
+        if not label:
+            return text
+        if label.lower() in text.lower():
+            return text
+        punctuation = "." if text.endswith(".") else ""
+        base = text[:-1] if punctuation else text
+        return f"{base} (See {label}){punctuation}"
+
+    def _text_tokens(self, value: str) -> set[str]:
+        return {
+            token
+            for token in re.split(r"\W+", str(value or "").lower())
+            if len(token) >= 4
+        }
+
     def _render_docx(self, draft: Dict[str, Any], path: Path) -> None:
         from docx import Document
         from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -876,7 +1751,17 @@ class FormalComplaintDocumentBuilder:
                 f"Defendant: {', '.join(draft.get('parties', {}).get('defendants', []))}.",
             ],
         )
+        self._add_docx_section(
+            document,
+            "Jurisdiction and Venue",
+            [draft.get("jurisdiction_statement"), draft.get("venue_statement")],
+        )
         self._add_docx_numbered_facts(document, "Summary of Facts", draft.get("summary_of_facts", []))
+        self._add_docx_numbered_facts(
+            document,
+            "Factual Allegations",
+            draft.get("factual_allegations") or draft.get("summary_of_facts", []),
+        )
 
         legal_standards = draft.get("legal_standards", [])
         if legal_standards:
@@ -886,7 +1771,13 @@ class FormalComplaintDocumentBuilder:
         for index, claim in enumerate(draft.get("claims_for_relief", []), start=1):
             document.add_heading(f"Count {_roman(index)} - {claim.get('count_title', 'Claim')}", level=2)
             self._add_docx_subsection(document, "Legal Standard", claim.get("legal_standards", []))
-            self._add_docx_subsection(document, "Supporting Facts", claim.get("supporting_facts", []), numbered=True)
+            incorporated_clause = self._format_incorporated_reference_clause(
+                claim.get("allegation_references", []),
+                claim.get("supporting_exhibits", []),
+            )
+            if incorporated_clause:
+                self._add_docx_subsection(document, "Incorporated Support", [incorporated_clause])
+            self._add_docx_subsection(document, "Claim-Specific Support", claim.get("supporting_facts", []))
             missing = claim.get("missing_elements", [])
             if missing:
                 self._add_docx_subsection(document, "Open Support Gaps", missing)
@@ -928,12 +1819,47 @@ class FormalComplaintDocumentBuilder:
                     RGBColor,
                 )
 
+        verification = draft.get("verification", {}) if isinstance(draft.get("verification"), dict) else {}
+        if verification:
+            self._add_docx_section(
+                document,
+                verification.get("title") or "Verification",
+                [verification.get("text"), verification.get("dated"), verification.get("signature_line")],
+            )
+        certificate_of_service = draft.get("certificate_of_service", {}) if isinstance(draft.get("certificate_of_service"), dict) else {}
+        if certificate_of_service:
+            self._add_docx_section(
+                document,
+                certificate_of_service.get("title") or "Certificate of Service",
+                [
+                    certificate_of_service.get("text"),
+                    certificate_of_service.get("dated"),
+                    certificate_of_service.get("signature_line"),
+                ],
+            )
+        signature_block = draft.get("signature_block", {}) if isinstance(draft.get("signature_block"), dict) else {}
+        self._add_docx_section(
+            document,
+            "Signature Block",
+            [
+                "Respectfully submitted,",
+                signature_block.get("signature_line"),
+                signature_block.get("name") or "Plaintiff",
+                signature_block.get("title"),
+                signature_block.get("firm"),
+                f"Bar No. {signature_block['bar_number']}" if signature_block.get("bar_number") else None,
+                signature_block.get("contact"),
+                signature_block.get("dated"),
+            ],
+        )
+
         document.save(path)
 
     def _add_docx_section(self, document: Any, title: str, paragraphs: List[str]) -> None:
         document.add_heading(title, level=1)
         for paragraph in paragraphs:
-            document.add_paragraph(str(paragraph))
+            if paragraph:
+                document.add_paragraph(str(paragraph))
 
     def _add_docx_numbered_facts(self, document: Any, title: str, facts: List[str]) -> None:
         document.add_heading(title, level=1)
@@ -1077,7 +2003,19 @@ class FormalComplaintDocumentBuilder:
                 f"Defendant: {', '.join(draft.get('parties', {}).get('defendants', []))}.",
             ],
         )
+        self._append_pdf_section(
+            story,
+            styles,
+            "Jurisdiction and Venue",
+            [draft.get("jurisdiction_statement"), draft.get("venue_statement")],
+        )
         self._append_pdf_numbered_section(story, styles, "Summary of Facts", draft.get("summary_of_facts", []))
+        self._append_pdf_numbered_section(
+            story,
+            styles,
+            "Factual Allegations",
+            draft.get("factual_allegations") or draft.get("summary_of_facts", []),
+        )
         self._append_pdf_section(
             story,
             styles,
@@ -1094,7 +2032,13 @@ class FormalComplaintDocumentBuilder:
                 )
             )
             self._append_pdf_section(story, styles, "Legal Standard", claim.get("legal_standards", []), heading_style="Heading3")
-            self._append_pdf_numbered_section(story, styles, "Supporting Facts", claim.get("supporting_facts", []), heading_style="Heading3")
+            incorporated_clause = self._format_incorporated_reference_clause(
+                claim.get("allegation_references", []),
+                claim.get("supporting_exhibits", []),
+            )
+            if incorporated_clause:
+                self._append_pdf_section(story, styles, "Incorporated Support", [incorporated_clause], heading_style="Heading3")
+            self._append_pdf_section(story, styles, "Claim-Specific Support", claim.get("supporting_facts", []), heading_style="Heading3")
             if claim.get("missing_elements"):
                 self._append_pdf_section(story, styles, "Open Support Gaps", claim.get("missing_elements", []), heading_style="Heading3")
             if claim.get("supporting_exhibits"):
@@ -1111,6 +2055,43 @@ class FormalComplaintDocumentBuilder:
         story.append(Paragraph("Supporting Exhibits", styles["SectionHeading"]))
         for exhibit in draft.get("exhibits", []):
             story.append(Paragraph(self._pdf_exhibit_markup(exhibit), styles["Normal"]))
+
+        verification = draft.get("verification", {}) if isinstance(draft.get("verification"), dict) else {}
+        if verification:
+            self._append_pdf_section(
+                story,
+                styles,
+                verification.get("title") or "Verification",
+                [verification.get("text"), verification.get("dated"), verification.get("signature_line")],
+            )
+        certificate_of_service = draft.get("certificate_of_service", {}) if isinstance(draft.get("certificate_of_service"), dict) else {}
+        if certificate_of_service:
+            self._append_pdf_section(
+                story,
+                styles,
+                certificate_of_service.get("title") or "Certificate of Service",
+                [
+                    certificate_of_service.get("text"),
+                    certificate_of_service.get("dated"),
+                    certificate_of_service.get("signature_line"),
+                ],
+            )
+        signature_block = draft.get("signature_block", {}) if isinstance(draft.get("signature_block"), dict) else {}
+        self._append_pdf_section(
+            story,
+            styles,
+            "Signature Block",
+            [
+                "Respectfully submitted,",
+                signature_block.get("signature_line"),
+                signature_block.get("name") or "Plaintiff",
+                signature_block.get("title"),
+                signature_block.get("firm"),
+                f"Bar No. {signature_block['bar_number']}" if signature_block.get("bar_number") else None,
+                signature_block.get("contact"),
+                signature_block.get("dated"),
+            ],
+        )
 
         doc.build(story)
 

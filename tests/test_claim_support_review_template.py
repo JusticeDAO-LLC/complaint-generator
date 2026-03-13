@@ -10,6 +10,7 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
 
     assert template_path.exists()
     content = template_path.read_text()
+    assert "/document" in content
     assert "/api/claim-support/review" in content
     assert "/api/claim-support/execute-follow-up" in content
     assert "/api/claim-support/resolve-manual-review" in content
@@ -34,6 +35,10 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "History rule biases: ${selectedProgramRuleBiases.map(([label, count]) => `${label}=${count}`).join(', ')}" in content
     assert "program: ${entry.selected_search_program_type}" in content
     assert "recommended_next_action" in content
+    assert "URLSearchParams(window.location.search" in content
+    assert "prefill-context-line" in content
+    assert "Opened from document workflow:" in content
+    assert "params.get('section')" in content
     assert "Lineage Signals" in content
     assert "Parse Signals" in content
     assert "Authority Signals" in content
@@ -63,6 +68,8 @@ def test_landing_pages_link_to_claim_support_review_dashboard():
 
     assert "/claim-support-review" in index_content
     assert "/claim-support-review" in home_content
+    assert "/document" in index_content
+    assert "/document" in home_content
 
 
 def test_document_template_exists_and_targets_document_endpoints():
@@ -70,12 +77,64 @@ def test_document_template_exists_and_targets_document_endpoints():
 
     assert template_path.exists()
     content = template_path.read_text()
+    assert "/claim-support-review" in content
     assert "/api/documents/formal-complaint" in content
     assert "download_url" in content
     assert "Formal Complaint Builder" in content
     assert "Generate Formal Complaint" in content
     assert "Requested Relief Overrides" in content
+    assert "Signer Name" in content
+    assert "Law Firm or Office" in content
+    assert "Bar Number" in content
+    assert "Signer Contact Block" in content
+    assert "Verification Declarant" in content
+    assert "Service Method" in content
+    assert "Service Recipients" in content
+    assert "Signature Date" in content
+    assert "Verification Date" in content
+    assert "Service Date" in content
     assert "Draft Preview" in content
+    assert "Drafting Readiness" in content
+    assert "Section Readiness" in content
+    assert "Claim Readiness" in content
+    assert "Factual Allegations" in content
+    assert "Incorporated Support" in content
+    assert "Supporting Exhibit Details" in content
+    assert "Open filing warnings" in content
+    assert "pleading-paragraphs" in content
+    assert "Pleading Text" in content
+    assert "Copy Pleading Text" in content
+    assert "value=\"txt\"" in content
+    assert "formalComplaintBuilderState" in content
+    assert "formalComplaintBuilderPreview" in content
+    assert "localStorage" in content
+    assert "renderSectionReadiness" in content
+    assert "renderClaimReadiness" in content
+    assert "Open Section Review" in content
+    assert "No claim-level drafting signals are available." in content
+    assert "Source Drilldown" in content
+    assert "Open Claim Support Review" in content
+    assert "Open Review Dashboard" in content
+    assert "buildClaimReviewUrl" in content
+    assert "resolveClaimReviewUrl" in content
+    assert "resolveSectionReviewUrl" in content
+    assert "getSectionReviewLinkMap" in content
+    assert "renderSectionClaimLinks" in content
+    assert "Section Review</a>" in content
+    assert "renderReviewLinks" in content
+    assert "review_links" in content
+
+
+def test_chat_and_results_templates_link_to_document_workflow():
+    chat_content = Path("templates/chat.html").read_text()
+    results_content = Path("templates/results.html").read_text()
+
+    assert "/document" in chat_content
+    assert "Open Formal Complaint Builder" in chat_content
+    assert "/claim-support-review" in chat_content
+    assert "/document" in results_content
+    assert "Open Formal Complaint Builder" in results_content
+    assert "/claim-support-review" in results_content
 
 
 def test_review_dashboard_app_registers_claim_support_review_page():

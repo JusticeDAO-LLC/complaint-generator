@@ -88,8 +88,8 @@ After authentication, the system enters interactive mode where:
 | `!reset` | Wipe current state and start over with a new complaint |
 | `!save` | Save current conversation state to disk |
 | `!resume` | Load a previously saved state from disk |
-| `!claim-review` | Print a compact parse-quality review summary, plus follow-up authority search-program counts and primary treatment-versus-rule bias mixes when present, and then the claim-support review payload in JSON for a claim type |
-| `!execute-follow-up` | Execute follow-up retrieval tasks, print a compact execution-quality summary with the canonical `recommended_next_action` when parse-quality remediation is still needed, include authority search-program counts and primary treatment-versus-rule bias mixes when present, and then print the execution payload in JSON |
+| `!claim-review` | Print a compact parse-quality review summary, plus follow-up authority search-program counts, primary treatment-versus-rule bias mixes, and recent selected-program history mixes when present, and then the claim-support review payload in JSON for a claim type |
+| `!execute-follow-up` | Execute follow-up retrieval tasks, print a compact execution-quality summary with the canonical `recommended_next_action` when parse-quality remediation is still needed, include authority search-program counts and post-execution selected-program history mixes when present, and then print the execution payload in JSON |
 | `!export-complaint` | Build a court-style complaint draft and render document artifacts such as DOCX and PDF, then print a compact summary and the full package JSON |
 
 Review command examples:
@@ -170,6 +170,7 @@ python run.py --config config.review_surface.json
 This mode serves:
 
 - `/claim-support-review` for the operator dashboard
+- `/document` for the browser-based formal complaint builder and preview surface
 - `/api/claim-support/review` for read-only review payloads
 - `/api/claim-support/execute-follow-up` for explicit follow-up execution
 - `/api/documents/formal-complaint` for building formal complaint drafts and rendering DOCX/PDF artifacts
@@ -188,7 +189,7 @@ This mode serves:
 | `/claim-support-review` | Operator review dashboard for claim support, parse-quality signals, follow-up execution, recent follow-up history, and manual-review resolution | HTML template (claim_support_review.html) |
 | `/profile` | User profile page | HTML template (profile.html) |
 | `/results` | Results/complaint display | HTML template (results.html) |
-| `/document` | Document viewer | HTML template (document.html) |
+| `/document` | Formal complaint builder and preview surface for court-style pleading drafts | HTML template (document.html) |
 | `/cookies` | Debug cookie information | JSON cookie data |
 | `/test` | Test authentication | Profile data or error |
 
@@ -270,7 +271,9 @@ Example response fields:
 
 ##### `/api/documents/formal-complaint` - Formal Complaint Export
 
-POST to this endpoint to build a filing-style complaint package from the current intake, legal analysis, claim support, and evidence context. The export includes a court caption, parties, nature of the action, summary of facts, claims for relief, legal standards, requested relief, and linked exhibits.
+POST to this endpoint to build a filing-style complaint package from the current intake, legal analysis, claim support, and evidence context. The export includes a court caption, parties, nature of the action, summary of facts, fuller factual allegations, claims for relief, legal standards, requested relief, and linked exhibits.
+
+The browser UI for this workflow is available at `/document`, which submits to this endpoint and renders artifact download links, section-level drafting readiness, claim-level filing warnings, and the generated pleading text from the response payload.
 
 Example request:
 
@@ -280,15 +283,23 @@ Example request:
   "case_number": "25-cv-00001",
   "plaintiff_names": ["Jane Doe"],
   "defendant_names": ["Acme Corporation"],
-  "output_formats": ["docx", "pdf"]
+  "output_formats": ["docx", "pdf", "txt"]
 }
 ```
 
 Example response fields:
 
 - `draft`: structured complaint content used for rendering.
+- `draft.factual_allegations`: expanded pleading-body allegations assembled from the summary facts plus claim-specific supporting facts.
+- `draft.factual_allegation_paragraphs`: numbered allegation entries used by the preview to keep one paragraph numbering scheme across the pleading.
+- `draft.draft_text`: copy-ready pleading text synthesized from the same structured draft used for DOCX and PDF rendering.
+- `draft.claims_for_relief[*].allegation_references`: paragraph numbers each count incorporates by reference from the factual allegations section, surfaced in the preview and rendered pleadings as `¶` / `¶¶` citations.
+- `draft.claims_for_relief[*].supporting_exhibits`: exhibit labels and links used alongside the paragraph citations to build the count-level incorporated-support block in the preview and rendered pleading.
+- `drafting_readiness`: section-level and claim-level filing-readiness signals surfaced in the builder preview.
+- `review_links`: API-layer navigation metadata pointing back to `/claim-support-review` for the current user context, specific claim types, and section-specific drafting review links.
 - `artifacts.docx.path`: filesystem path to the generated DOCX document when requested.
 - `artifacts.pdf.path`: filesystem path to the generated PDF document when requested.
+- `artifacts.txt.path`: filesystem path to the generated plain-text pleading when requested.
 - `artifacts.*.download_url`: application route for downloading generated artifacts when they were written under the managed output directory.
 - `output_formats`: formats rendered for the request.
 - `generated_at`: UTC timestamp for the export operation.
@@ -298,10 +309,6 @@ Example response fields:
 GET this endpoint with a `path` query parameter returned from the formal complaint export payload when you want the application to stream a generated artifact back to the browser.
 
 This route only serves files from the managed generated-documents directory and rejects requests outside that boundary.
-- `follow_up_execution_summary`: compact execution, suppression, cooldown-skip, and graph-support counts keyed by claim type.
-- `execution_quality_summary`: before-versus-after parse-quality comparison keyed by claim type when post-execution review is requested.
-- `execution_quality_summary[*].recommended_next_action`: canonical next-step recommendation exposed to the CLI and dashboard when post-execution review still shows parse-quality gaps.
-- `post_execution_review`: refreshed review payload after execution, including updated coverage and optional follow-up planning.
 
 Use this endpoint for new clients that want execution to be unambiguously side-effecting. The review endpoint remains available for read-only review and backward-compatible opt-in execution.
 

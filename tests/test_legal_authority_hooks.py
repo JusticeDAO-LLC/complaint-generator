@@ -475,6 +475,8 @@ class TestLegalAuthorityStorageHook:
                 assert authority['parse_metadata']['source'] == 'legal_authority'
                 assert authority['parse_metadata']['content_origin'] == 'authority_full_text'
                 assert authority['parse_metadata']['content_source_field'] == 'content'
+                assert authority['provenance']['metadata']['content_origin'] == 'authority_full_text'
+                assert authority['provenance']['metadata']['text_available'] is True
                 assert authority['parse_metadata']['transform_lineage']['source'] == 'legal_authority'
                 assert authority['parse_metadata']['transform_lineage']['content_origin'] == 'authority_full_text'
                 assert len(chunks) >= 1
@@ -561,6 +563,9 @@ class TestLegalAuthorityStorageHook:
                 assert authority['parse_metadata']['content_origin'] == 'authority_reference_fallback'
                 assert authority['parse_metadata']['content_source_field'] == 'citation_title_fallback'
                 assert authority['parse_metadata']['fallback_mode'] == 'citation_title_only'
+                assert authority['provenance']['metadata']['content_origin'] == 'authority_reference_fallback'
+                assert authority['provenance']['metadata']['fallback_mode'] == 'citation_title_only'
+                assert authority['provenance']['metadata']['text_available'] is False
                 assert authority['parse_metadata']['transform_lineage']['content_origin'] == 'authority_reference_fallback'
                 assert authority['parse_metadata']['transform_lineage']['fallback_mode'] == 'citation_title_only'
                 assert authority['parsed_text_preview'].startswith('Smith v. Jones')

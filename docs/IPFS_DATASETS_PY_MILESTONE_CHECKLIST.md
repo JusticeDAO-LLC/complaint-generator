@@ -245,6 +245,54 @@ Suggested focused validation:
 - `./.venv/bin/python -m pytest tests/test_review_api.py -q`
 - `./.venv/bin/python -m pytest tests/test_web_evidence_hooks.py tests/test_claim_support_hooks.py tests/test_review_api.py -q`
 
+## M5: Drafting and Filing Readiness
+
+Goal:
+
+- make the formal complaint builder and export APIs consume support packets, authority-treatment state, graph traces, and validation diagnostics before artifact generation
+
+Status:
+
+- in progress; the formal complaint package now exposes drafting-readiness payloads, the browser workflow renders section and claim-level filing warnings, and operators can navigate between `/document` and `/claim-support-review` with claim context preserved
+
+Primary files:
+
+- `document_pipeline.py`
+- `applications/document_api.py`
+- `templates/document.html`
+- `mediator/mediator.py`
+- `mediator/claim_support_hooks.py`
+- `claim_support_review.py`
+- `docs/APPLICATIONS.md`
+- `docs/PAYLOAD_CONTRACTS.md`
+
+Checklist:
+
+- [x] document payloads expose section-level support or warning objects for major complaint sections
+- [x] drafting surfaces can distinguish unsupported facts from adverse authority and from proof-gap warnings
+- [x] artifact metadata can point back to support provenance or review summaries where appropriate
+- [x] browser drafting workflows can surface filing-readiness status without requiring raw JSON inspection
+- [x] degraded mode remains usable when treatment, graph, or logic enrichments are unavailable
+- [x] drafting payload changes are documented and covered by focused tests
+
+Acceptance criteria:
+
+- at least one complaint workflow can emit a filing draft with explicit readiness and warning metadata tied to source-backed support state
+- operators can move from support review into the drafting workflow without losing provenance, authority, or validation context
+
+Validation:
+
+- focused document-pipeline tests
+- focused review-surface tests for the browser builder
+- payload contract and application-doc updates
+
+Suggested focused validation:
+
+- `./.venv/bin/python -m pytest tests/test_document_pipeline.py -q`
+- `./.venv/bin/python -m pytest tests/test_claim_support_review_template.py -q`
+- `./.venv/bin/python -m pytest tests/test_review_api.py -q`
+- `./.venv/bin/python -m pytest tests/test_review_api.py tests/test_claim_support_review_dashboard_flow.py tests/test_mediator.py tests/test_cli_commands.py tests/test_formal_document_pipeline.py -q`
+
 ## Cross-Milestone Guardrails
 
 - [ ] every milestone lands with at least one mediator-visible consumer
@@ -260,6 +308,7 @@ Suggested focused validation:
 3. M2
 4. M3
 5. M4
+6. M5
 
 ## Exit Condition
 

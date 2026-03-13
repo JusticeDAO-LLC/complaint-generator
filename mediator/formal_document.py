@@ -125,6 +125,17 @@ class ComplaintDocumentBuilder:
         plaintiff_names: Optional[List[str]] = None,
         defendant_names: Optional[List[str]] = None,
         requested_relief: Optional[List[str]] = None,
+        signer_name: Optional[str] = None,
+        signer_title: Optional[str] = None,
+        signer_firm: Optional[str] = None,
+        signer_bar_number: Optional[str] = None,
+        signer_contact: Optional[str] = None,
+        declarant_name: Optional[str] = None,
+        service_method: Optional[str] = None,
+        service_recipients: Optional[List[str]] = None,
+        signature_date: Optional[str] = None,
+        verification_date: Optional[str] = None,
+        service_date: Optional[str] = None,
         user_id: Optional[str] = None,
         base_formal_complaint: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
@@ -176,7 +187,28 @@ class ComplaintDocumentBuilder:
         nature_of_action = self._build_nature_of_action(base.get("statement_of_claim"), claims)
         jurisdiction_statement = self._build_jurisdiction_statement(jurisdiction, authority_records)
         venue_statement = self._build_venue_statement(district, division)
-        signature_block = self._build_signature_block(parties)
+        signature_block = self._build_signature_block(
+            parties,
+            signer_name=signer_name,
+            signer_title=signer_title,
+            signer_firm=signer_firm,
+            signer_bar_number=signer_bar_number,
+            signer_contact=signer_contact,
+            signature_date=signature_date,
+        )
+        verification = self._build_verification(
+            parties,
+            declarant_name=declarant_name,
+            signer_name=signer_name,
+            verification_date=verification_date,
+        )
+        certificate_of_service = self._build_certificate_of_service(
+            parties,
+            signer_name=signer_name,
+            service_method=service_method,
+            service_recipients=service_recipients,
+            service_date=service_date,
+        )
         legal_standards = [
             {
                 "claim_name": claim.get("claim_name", ""),
@@ -216,6 +248,8 @@ class ComplaintDocumentBuilder:
             "supporting_exhibits": exhibits,
             "intake_summary": intake_summary,
             "signature_block": signature_block,
+            "verification": verification,
+            "certificate_of_service": certificate_of_service,
         }
         draft["draft_text"] = self.render_text(draft)
         return draft
@@ -330,12 +364,45 @@ class ComplaintDocumentBuilder:
                 if summary:
                     lines.append(f"  {_clean_sentence(summary)}")
 
+        verification = draft.get("verification", {}) if isinstance(draft.get("verification"), dict) else {}
+        if verification:
+            lines.append("")
+            lines.append(str(verification.get("title") or "VERIFICATION").upper())
+            if verification.get("text"):
+                lines.append(_clean_sentence(verification.get("text")))
+            if verification.get("dated"):
+                lines.append(str(verification["dated"]))
+            if verification.get("signature_line"):
+                lines.append(str(verification["signature_line"]))
+
+        certificate_of_service = draft.get("certificate_of_service", {}) if isinstance(draft.get("certificate_of_service"), dict) else {}
+        if certificate_of_service:
+            lines.append("")
+            lines.append(str(certificate_of_service.get("title") or "CERTIFICATE OF SERVICE").upper())
+            if certificate_of_service.get("text"):
+                lines.append(_clean_sentence(certificate_of_service.get("text")))
+            if certificate_of_service.get("dated"):
+                lines.append(str(certificate_of_service["dated"]))
+            if certificate_of_service.get("signature_line"):
+                lines.append(str(certificate_of_service["signature_line"]))
+
         signature_block = draft.get("signature_block", {}) if isinstance(draft.get("signature_block"), dict) else {}
         lines.append("")
+        lines.append("SIGNATURE BLOCK")
         lines.append("Respectfully submitted,")
+        if signature_block.get("signature_line"):
+            lines.append(signature_block["signature_line"])
         lines.append(signature_block.get("name") or "Plaintiff")
+        if signature_block.get("title"):
+            lines.append(signature_block["title"])
+        if signature_block.get("firm"):
+            lines.append(signature_block["firm"])
+        if signature_block.get("bar_number"):
+            lines.append(f"Bar No. {signature_block['bar_number']}")
         if signature_block.get("contact"):
             lines.append(signature_block["contact"])
+        if signature_block.get("dated"):
+            lines.append(signature_block["dated"])
         return "\n".join(line for line in lines if line is not None)
 
     def _safe_call(self, method_name: str, *args, default=None, **kwargs):
@@ -676,12 +743,75 @@ class ComplaintDocumentBuilder:
             return f"Venue is proper in the District of {district_text} because a substantial part of the events or omissions giving rise to these claims occurred there."
         return "Venue is proper in this Court because a substantial part of the events or omissions giving rise to these claims occurred in this judicial district."
 
-    def _build_signature_block(self, parties: Dict[str, List[str]]) -> Dict[str, str]:
-        plaintiff_name = parties.get("plaintiffs", ["Plaintiff"])[0]
+    def _build_signature_block(
+        self,
+        parties: Dict[str, List[str]],
+        *,
+        signer_name: Optional[str] = None,
+        signer_title: Optional[str] = None,
+        signer_firm: Optional[str] = None,
+        signer_bar_number: Optional[str] = None,
+        signer_contact: Optional[str] = None,
+        signature_date: Optional[str] = None,
+    ) -> Dict[str, str]:
+        plaintiff_name = _clean_text(signer_name) or parties.get("plaintiffs", ["Plaintiff"])[0]
         return {
             "name": plaintiff_name,
-            "contact": "Address and contact information to be completed.",
+            "signature_line": f"/s/ {plaintiff_name}",
+            "title": _clean_text(signer_title) or "Plaintiff, Pro Se",
+            "firm": _clean_text(signer_firm),
+            "bar_number": _clean_text(signer_bar_number),
+            "contact": _clean_text(signer_contact) or "Mailing address, telephone number, and email address to be completed before filing.",
+            "dated": self._format_dated_line("Dated", signature_date),
         }
+
+    def _build_verification(
+        self,
+        parties: Dict[str, List[str]],
+        *,
+        declarant_name: Optional[str] = None,
+        signer_name: Optional[str] = None,
+        verification_date: Optional[str] = None,
+    ) -> Dict[str, str]:
+        plaintiff_name = _clean_text(declarant_name) or _clean_text(signer_name) or parties.get("plaintiffs", ["Plaintiff"])[0]
+        return {
+            "title": "Verification",
+            "text": (
+                f"I, {plaintiff_name}, declare under penalty of perjury that I have reviewed this Complaint "
+                "and that the factual allegations stated in it are true and correct to the best of my knowledge, "
+                "information, and belief."
+            ),
+            "dated": self._format_dated_line("Executed on", verification_date),
+            "signature_line": f"/s/ {plaintiff_name}",
+        }
+
+    def _build_certificate_of_service(
+        self,
+        parties: Dict[str, List[str]],
+        *,
+        signer_name: Optional[str] = None,
+        service_method: Optional[str] = None,
+        service_recipients: Optional[List[str]] = None,
+        service_date: Optional[str] = None,
+    ) -> Dict[str, str]:
+        plaintiff_name = _clean_text(signer_name) or parties.get("plaintiffs", ["Plaintiff"])[0]
+        recipients_list = self._dedupe(_clean_text(item) for item in _listify(service_recipients)) or parties.get("defendants", []) or ["all defendants"]
+        recipients = ", ".join(recipients_list)
+        method_text = _clean_text(service_method) or "a method authorized by the applicable rules of civil procedure"
+        return {
+            "title": "Certificate of Service",
+            "text": (
+                "I certify that a true and correct copy of this Complaint will be served on "
+                f"{recipients} using {method_text} promptly after filing."
+            ),
+            "recipients": recipients_list,
+            "dated": self._format_dated_line("Service date", service_date),
+            "signature_line": f"/s/ {plaintiff_name}",
+        }
+
+    def _format_dated_line(self, label: str, value: Optional[str]) -> str:
+        cleaned = _clean_text(value)
+        return f"{label}: {cleaned}" if cleaned else f"{label}: __________________"
 
     def _compose_legal_standard(self, claim_name: str, legal_standard_elements: List[Dict[str, str]], authorities: List[Dict[str, Any]]) -> str:
         if legal_standard_elements:
@@ -796,8 +926,39 @@ class ComplaintDocumentBuilder:
                 line = f"{line} ({exhibit['reference']})"
             exhibit_lines.append(line)
         self._docx_section(document, "Exhibits", exhibit_lines)
-        document.add_paragraph("Respectfully submitted,")
-        document.add_paragraph(draft.get("signature_block", {}).get("name") or "Plaintiff")
+        verification = draft.get("verification", {}) if isinstance(draft.get("verification"), dict) else {}
+        if verification:
+            self._docx_section(
+                document,
+                verification.get("title") or "Verification",
+                [verification.get("text"), verification.get("dated"), verification.get("signature_line")],
+            )
+        certificate_of_service = draft.get("certificate_of_service", {}) if isinstance(draft.get("certificate_of_service"), dict) else {}
+        if certificate_of_service:
+            self._docx_section(
+                document,
+                certificate_of_service.get("title") or "Certificate of Service",
+                [
+                    certificate_of_service.get("text"),
+                    certificate_of_service.get("dated"),
+                    certificate_of_service.get("signature_line"),
+                ],
+            )
+        signature_block = draft.get("signature_block", {}) if isinstance(draft.get("signature_block"), dict) else {}
+        self._docx_section(
+            document,
+            "Signature Block",
+            [
+                "Respectfully submitted,",
+                signature_block.get("signature_line"),
+                signature_block.get("name") or "Plaintiff",
+                signature_block.get("title"),
+                signature_block.get("firm"),
+                f"Bar No. {signature_block['bar_number']}" if signature_block.get("bar_number") else None,
+                signature_block.get("contact"),
+                signature_block.get("dated"),
+            ],
+        )
         document.save(str(destination))
 
     def _docx_section(self, document, heading: str, paragraphs: Sequence[Any], *, numbered: bool = False, bulleted: bool = False) -> None:
@@ -880,9 +1041,45 @@ class ComplaintDocumentBuilder:
                 line = f"{line} ({exhibit['reference']})"
             exhibit_lines.append(line)
         self._pdf_section(story, section, body, "Exhibits", exhibit_lines)
-        story.append(Spacer(1, 0.2 * inch))
-        story.append(Paragraph("Respectfully submitted,", body))
-        story.append(Paragraph(draft.get("signature_block", {}).get("name") or "Plaintiff", body))
+        verification = draft.get("verification", {}) if isinstance(draft.get("verification"), dict) else {}
+        if verification:
+            self._pdf_section(
+                story,
+                section,
+                body,
+                verification.get("title") or "Verification",
+                [verification.get("text"), verification.get("dated"), verification.get("signature_line")],
+            )
+        certificate_of_service = draft.get("certificate_of_service", {}) if isinstance(draft.get("certificate_of_service"), dict) else {}
+        if certificate_of_service:
+            self._pdf_section(
+                story,
+                section,
+                body,
+                certificate_of_service.get("title") or "Certificate of Service",
+                [
+                    certificate_of_service.get("text"),
+                    certificate_of_service.get("dated"),
+                    certificate_of_service.get("signature_line"),
+                ],
+            )
+        signature_block = draft.get("signature_block", {}) if isinstance(draft.get("signature_block"), dict) else {}
+        self._pdf_section(
+            story,
+            section,
+            body,
+            "Signature Block",
+            [
+                "Respectfully submitted,",
+                signature_block.get("signature_line"),
+                signature_block.get("name") or "Plaintiff",
+                signature_block.get("title"),
+                signature_block.get("firm"),
+                f"Bar No. {signature_block['bar_number']}" if signature_block.get("bar_number") else None,
+                signature_block.get("contact"),
+                signature_block.get("dated"),
+            ],
+        )
         document = SimpleDocTemplate(str(destination), pagesize=letter)
         document.build(story)
 

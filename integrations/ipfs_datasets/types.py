@@ -81,6 +81,7 @@ class ProvenanceRecord:
     content_hash: str = ""
     source_system: str = ""
     jurisdiction: str = ""
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> Dict[str, Any]:
         return asdict(self)

@@ -17,6 +17,7 @@ from starlette.responses import RedirectResponse
 from .review_api import attach_claim_support_review_routes
 from .review_ui import attach_claim_support_review_ui_routes
 from .document_api import attach_document_routes
+from .document_ui import load_document_html
 
 
 class SERVER:
@@ -66,12 +67,7 @@ class SERVER:
 
         @app.get("/document", response_class=HTMLResponse)
         async def read_items(request: Request ):
-            template = ""
-            filename = os.getcwd() + "/templates/document.html"
-            if os.path.isfile(filename):
-                with open(filename, "r") as f:
-                    template = f.read()
-            return template
+            return load_document_html()
     
         @app.get("/results", response_class=HTMLResponse)
         async def read_items(request: Request ):

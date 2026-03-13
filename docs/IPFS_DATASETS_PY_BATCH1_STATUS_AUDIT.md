@@ -10,6 +10,7 @@ Companion docs:
 - `docs/IPFS_DATASETS_PY_BATCH1_IMPLEMENTATION_PLAN.md`
 - `docs/IPFS_DATASETS_PY_FILE_WORKLIST.md`
 - `docs/IPFS_DATASETS_PY_BATCH1_SLICE1_TASKLIST.md`
+- `docs/IPFS_DATASETS_PY_BATCH1_SLICE2_TASKLIST.md`
 
 ## Purpose
 
@@ -39,7 +40,7 @@ The main remaining Batch 1 work is not “add parsing.” It is to finish contra
 | Slice | Status | Summary |
 |---|---|---|
 | Slice 1: Canonical parse envelope completion | Partial | The shared parse contract exists and is already used, but richer format-level semantics and stronger page- or passage-oriented metadata are still incomplete. |
-| Slice 2: Provenance and transform-lineage alignment | Partial | Shared lineage helpers exist and are used, but archive-specific and source-family-specific provenance normalization is not yet fully unified. |
+| Slice 2: Provenance and transform-lineage alignment | Complete | Provenance records now carry durable normalized metadata, archived web evidence and authority text persist that metadata, and claim-support review summaries consume provenance-backed lineage consistently. |
 | Slice 3: Archived-page corpus normalization | Partial | Web evidence already enters the shared storage and parse path, but archive-history and historical-context metadata are still thinner than the target corpus contract. |
 | Slice 4: Legal authority text as corpus asset | Mostly Complete | Authority text parsing, chunks, facts, and graph metadata already exist, but passage-level review semantics and explicit fallback distinctions can still be improved. |
 | Slice 5: Shared fact-registry completion | Partial | Evidence and authority facts already flow into claim support, but Batch 1 still needs stronger cross-source durability and explicit archived-page corpus guarantees. |
@@ -83,11 +84,11 @@ Status: Partial
 
 ### Audit conclusion
 
-The parse envelope exists and is already useful. Batch 1 should treat this as a contract-completion pass, not a first implementation pass.
+The parse envelope exists and is already useful, but it should still be treated as a contract-completion pass rather than as fully finished baseline for every richer format and passage-fidelity use case.
 
 ## Slice 2: Provenance and transform-lineage alignment
 
-Status: Partial
+Status: Complete
 
 ### What is already true
 
@@ -105,15 +106,21 @@ Status: Partial
 - `build_fact_lineage_metadata(...)` already injects parse-lineage information into persisted fact metadata.
 - `tests/test_web_evidence_hooks.py` and `tests/test_legal_authority_hooks.py` already validate lineage fields such as source and parser version.
 
-### What is still missing or incomplete
+### What is now true
 
-- archive-specific provenance is still thinner than the target model described in the Batch 1 plan.
-- the code clearly tracks `source_type`, `source_url`, `acquisition_method`, and `source_system`, but historical metadata such as capture source, archive timestamp, and version relationship is not yet clearly standardized into one durable lineage family.
-- provenance normalization exists, but it is still easier than it should be for source-family quirks to leak into later support or operator review work.
+- `ProvenanceRecord` carries a durable `metadata` payload in addition to the coarse core provenance fields.
+- archived web evidence persists normalized archive context such as capture source, archive URL, version relationship, capture time, and observed time in durable provenance metadata.
+- legal authority storage persists normalized source-context metadata such as `authority_full_text` versus `authority_reference_fallback`, `content_source_field`, `fallback_mode`, and `text_available`.
+- claim-support packet and trace summaries fall back to provenance-backed normalized record summaries when fact-level lineage is missing or sparse.
+
+### Remaining caveats
+
+- later timeline or archive-comparison workflows may still want richer archived-page-specific drilldown than the current compact lineage summaries expose.
+- broader source-family guarantees still depend on finishing the remaining archived-page and shared fact-registry slices.
 
 ### Audit conclusion
 
-The shared provenance substrate exists, but Batch 1 still needs a normalization pass focused on historical web evidence and cross-source alignment.
+The shared provenance substrate and cross-source lineage normalization pass are complete for the current Batch 1 contract. Remaining Batch 1 work should move to archived-page corpus behavior and broader shared fact-registry guarantees rather than reopening provenance basics.
 
 ## Slice 3: Archived-page corpus normalization
 
@@ -208,18 +215,19 @@ The shared fact registry is already real. Batch 1 should finish it by tightening
 
 Based on the current audit, the highest-leverage next slice is:
 
-1. `integrations/ipfs_datasets/provenance.py`
-2. `mediator/web_evidence_hooks.py`
-3. `mediator/legal_authority_hooks.py`
-4. focused `tests/test_web_evidence_hooks.py`
-5. focused `tests/test_legal_authority_hooks.py`
+1. `mediator/web_evidence_hooks.py`
+2. `mediator/claim_support_hooks.py`
+3. focused `tests/test_web_evidence_hooks.py`
+4. focused `tests/test_claim_support_hooks.py`
+5. `docs/PAYLOAD_CONTRACTS.md`
+6. Batch 1 planning docs touched by archived-page corpus semantics
 
 ### Why this slice is best
 
-- the parse substrate already exists, so the most valuable remaining Batch 1 work is cross-source lineage normalization
-- archived pages are the most likely source family to fragment the corpus contract later
-- authority text is already close to target state, so it is the best second source family for tightening the shared contract
-- this slice improves the later graph, review, and proof layers without forcing deeper graph or logic work yet
+- provenance normalization is now stable enough that the next risk is not source attribution drift but archived-page corpus behavior and review depth
+- archived pages already flow through the shared storage and support path, so the next gains come from tightening their corpus guarantees rather than reworking basic lineage
+- shared fact-registry durability still benefits from making archived-page support feel less like an adjacent evidence subtype and more like a first-class corpus artifact
+- this keeps Batch 1 focused on corpus completion without prematurely pulling in Batch 2 or graph-store redesign work
 
 ## Recommended status changes to planning assumptions
 

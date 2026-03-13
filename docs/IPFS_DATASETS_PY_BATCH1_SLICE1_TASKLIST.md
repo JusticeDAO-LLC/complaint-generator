@@ -1,7 +1,15 @@
 # IPFS Datasets Py Batch 1 Slice 1 Task List
 
 Date: 2026-03-12
-Status: Ready for implementation
+Status: Complete
+
+Completion summary:
+
+- shared provenance records now carry normalized metadata for archive and authority source context
+- web evidence persists archive lineage in durable provenance and parse contracts
+- legal authority storage persists full-text versus citation-fallback semantics in durable provenance
+- claim-support packet and trace summaries now fall back to provenance-backed record summaries when fact-level lineage is sparse
+- focused and downstream validation passed across provenance, web evidence, authority, claim support, review, mediator, and CLI surfaces
 
 Companion docs:
 
@@ -167,3 +175,9 @@ Do not include these in this slice unless required by a discovered dependency:
 ## Stop Condition
 
 Stop this slice once provenance normalization is stable enough that later graph and logic work can rely on archived web evidence and authority text behaving like the same corpus family.
+
+Completed validation:
+
+```bash
+./.venv/bin/python -m pytest tests/test_ipfs_provenance.py tests/test_web_evidence_hooks.py tests/test_legal_authority_hooks.py tests/test_claim_support_hooks.py tests/test_review_api.py tests/test_claim_support_review_dashboard_flow.py tests/test_claim_support_review_template.py tests/test_mediator.py tests/test_cli_commands.py -q
+```

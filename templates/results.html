@@ -9,7 +9,59 @@
     <!-- jQuery library -->
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
     <style>
+        body {
+            background: #f8fafc;
+            color: #0f172a;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 32px 20px;
+        }
 
+        .results-shell {
+            max-width: 960px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+            padding: 28px;
+        }
+
+        .surface-links {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        .surface-link {
+            display: inline-block;
+            padding: 10px 16px;
+            border-radius: 999px;
+            background: #e2e8f0;
+            color: #0f172a;
+            font-weight: 600;
+            text-decoration: none;
+        }
+
+        #Err {
+            display: none;
+            margin-bottom: 16px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        #profile_data {
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: "Courier New", monospace;
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            border-radius: 16px;
+            padding: 18px;
+            min-height: 240px;
+        }
     </style>
     <script>
         hostname = "localhost:19000";
@@ -92,13 +144,21 @@
 </head>
 
 <body>
-    <div class="Err">
-        <div id="Err">
-            <br/>
+    <div class="results-shell">
+        <h1>Profile Data</h1>
+        <div class="surface-links">
+            <a class="surface-link" href="/document">Open Formal Complaint Builder</a>
+            <a class="surface-link" href="/claim-support-review">Open Claim Support Review</a>
+        </div>
+        <div class="Err">
+            <div id="Err">
+                <br/>
+            </div>
         </div>
         <div id="profile_data">
 
         </div>
+    </div>
 
 
 

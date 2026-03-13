@@ -595,6 +595,7 @@ class EvidenceStateHook:
                     content_hash=str(provenance_payload.get('content_hash', '')),
                     source_system=str(provenance_payload.get('source_system', '')),
                     jurisdiction=str(provenance_payload.get('jurisdiction', '')),
+                    metadata=provenance_payload.get('metadata', {}) if isinstance(provenance_payload.get('metadata'), dict) else {},
                 ),
             )
             conn.execute(

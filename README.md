@@ -128,6 +128,7 @@ python run.py --config config.llm_router.json
 ```bash
 python run.py --config config.review_surface.json
 # Access the operator dashboard at http://localhost:8000/claim-support-review
+# Access the formal complaint builder at http://localhost:8000/document
 ```
 
 **Agentic Scraper CLI:**

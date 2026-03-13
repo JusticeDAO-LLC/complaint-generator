@@ -58,6 +58,34 @@ The end state should be a complaint generator that can answer, for every claim e
 - what predicates are still missing for legal sufficiency
 - what follow-up action is most valuable next
 
+## Improvement Plan At A Glance
+
+The integration plan should be executed as eight coordinated workstreams, not as isolated feature work.
+
+| Workstream | Primary `ipfs_datasets_py` features | Complaint-generator outcome |
+|---|---|---|
+| Acquisition | web search, archive search, legal scrapers, IPFS storage | broader and more reproducible factual and legal intake |
+| Corpus normalization | document parsing, provenance helpers, chunk contracts | one durable artifact model across uploads, archives, and authorities |
+| Legal reasoning | legal search wrappers, rule extraction inputs, treatment-friendly schemas | claim-element-aware authority support and opposition |
+| Information organization | knowledge-graph extraction, graph storage, graph queries | one case graph spanning facts, events, actors, authorities, and timelines |
+| Retrieval quality | GraphRAG, hybrid search, support-path scoring | better ranking of evidence and authorities by claim relevance |
+| Formal validation | FOL, deontic translation, theorem provers, neuro-symbolic coordination | contradiction, failed-premise, and proof-gap analysis |
+| Review and operator tooling | compact payloads, provenance bundles, history-aware summaries | inspectable support packets and follow-up rationale |
+| Drafting and exports | support packets, authority treatment, proof diagnostics | filing drafts with better factual grounding and citation hygiene |
+
+## Information Organization Principles
+
+The repository already has many useful subsystems. The improvement plan should unify them around a few strict principles.
+
+1. Organize around claim elements, not around raw tools.
+2. Treat uploaded evidence, archived pages, scraped pages, authorities, and generated bundles as one artifact family.
+3. Preserve provenance, temporal context, and jurisdiction on every durable object.
+4. Model both support and opposition explicitly so adverse authority and contradictory facts are first-class.
+5. Keep graph and proof workflows grounded in parse spans, facts, and authority-derived rules.
+6. Keep `ipfs_datasets_py` behind `integrations/ipfs_datasets/` so degraded mode remains viable.
+
+These principles are what let the graph database, theorem provers, web archiving, legal search, and drafting pipeline work as one system instead of as parallel utilities.
+
 ## Planning Assumptions
 
 This plan assumes the following current-state facts are true in this checkout:
@@ -108,6 +136,22 @@ The most important typed contracts already in place are:
 - `GraphSupportResult`
 
 These should be treated as the base contracts for the next integration phase rather than replaced.
+
+## Capability-to-Workflow Mapping
+
+The validated upstream capabilities should be used for specific complaint-generator workflows rather than as generic optional extras.
+
+| Upstream capability family | Adapter boundary | Best complaint-generator use |
+|---|---|---|
+| `ipfs_datasets_py.ipfs_backend_router` | `integrations/ipfs_datasets/storage.py` | CID-backed artifact storage, deduplication, reproducible evidence retention |
+| `ipfs_datasets_py.web_archiving` | `integrations/ipfs_datasets/search.py` | current-web discovery, archive-first capture, source-history preservation |
+| `ipfs_datasets_py.processors.legal_scrapers.*` | `integrations/ipfs_datasets/legal.py` | statutes, regulations, case-source search, and treatment-oriented follow-up |
+| `ipfs_datasets_py.knowledge_graphs.extraction` | `integrations/ipfs_datasets/graphs.py` | entity, event, authority, and relationship extraction from parsed material |
+| `ipfs_datasets_py.knowledge_graphs.query` and `storage` | `integrations/ipfs_datasets/graphs.py` | graph snapshot persistence, support-path queries, cross-artifact linkage |
+| `ipfs_datasets_py.optimizers.graphrag` | `integrations/ipfs_datasets/graphrag.py` | ontology refinement, support-path scoring, coverage-gap signals |
+| `ipfs_datasets_py.logic.fol`, `deontic`, `TDFOL`, prover bridges | `integrations/ipfs_datasets/logic.py` | formal rule translation, contradiction analysis, and proof-gap review |
+
+The practical rule is simple: every upstream feature should either improve claim-element coverage, improve reviewability, or improve drafting quality. If it does not do one of those three things, it should not be prioritized.
 
 ## Core Integration Rule
 
@@ -746,6 +790,34 @@ Minimum fields:
 | Review and dashboard | review APIs and dashboard | compact summaries, provenance, graph, proof packets | operator workspace for support, contradictions, and history |
 | Drafting | complaint generation path | support bundles, citations, proof warnings | filing-ready substantiation for each claim section |
 
+## Document Generation Pipeline Impact
+
+The most important product-facing result of this integration work is not just better retrieval. It is a better complaint package.
+
+Each major section of the formal complaint builder should be backed by the shared corpus, graph, and validation layers:
+
+| Draft section | Primary inputs | `ipfs_datasets_py` contribution |
+|---|---|---|
+| Caption and party framing | intake data, complaint analysis | initial entity extraction and party normalization |
+| Nature of the action | claim classification, legal authority search | authority-family ranking and claim-element legal framing |
+| Jurisdiction and venue | authority search, procedural rules, archived public records | procedural search programs and rule-candidate extraction |
+| Factual allegations | uploaded evidence, archived pages, web discovery | shared parse contracts, fact extraction, timeline provenance |
+| Claims for relief | claim elements, authority records, rule candidates | element-definition search, adverse-authority review, rule-to-fact matching |
+| Requested relief | authority support, damages facts, procedural prerequisites | remedy-oriented authority search and contradiction checks |
+| Exhibits and appendices | artifacts, provenance, archive captures | CID-backed evidence bundles, archive lineage, download-safe references |
+
+This means the document pipeline should stop behaving like a final text-generation step and should instead behave like the last mile of a structured support system. A generated complaint should be explainable back to source chunks, authority records, graph traces, and validation records.
+
+## Delivery Gates
+
+The plan should be considered complete only when the following gates are met:
+
+1. Corpus gate: evidence, archived pages, and authority text all use one parse and provenance family.
+2. Legal gate: each supported claim type can surface supportive and adverse authorities, plus at least first-pass treatment state.
+3. Graph gate: review flows can drill into graph-backed support paths instead of only aggregate counts.
+4. Validation gate: at least one complaint flow emits grounded contradiction or failed-premise outputs from stored facts and rules.
+5. Drafting gate: formal complaint exports can expose support packets or drafting warnings tied to claim sections.
+
 ## Recommended Delivery Phases
 
 ## Phase 0: Guardrails and import hygiene
@@ -1027,6 +1099,7 @@ If this plan is executed incrementally, the highest-value next batch is:
 4. Deepen graph snapshot persistence and support-path queries.
 5. Implement the logic adapter enough to replace placeholder proof behavior with grounded contradiction and failed-premise outputs.
 6. Add operator support packets that combine provenance, graph trace, authority support, authority treatment, and proof status per claim element.
+7. Thread those support packets into the formal complaint builder so the drafting workflow can surface missing-proof and adverse-authority warnings before export.
 
 ## Summary
 

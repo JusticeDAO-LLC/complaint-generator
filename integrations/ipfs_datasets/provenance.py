@@ -16,6 +16,7 @@ def build_provenance(
     content_hash: str = "",
     source_system: str = "",
     jurisdiction: str = "",
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> ProvenanceRecord:
     return ProvenanceRecord(
         source_url=source_url,
@@ -25,6 +26,7 @@ def build_provenance(
         content_hash=content_hash,
         source_system=source_system,
         jurisdiction=jurisdiction,
+        metadata=_merge_nonempty_values({}, metadata),
     )
 
 
@@ -53,7 +55,8 @@ def merge_metadata_with_provenance(
     provenance: ProvenanceRecord,
 ) -> Dict[str, Any]:
     payload = dict(metadata or {})
-    payload.setdefault("provenance", provenance.as_dict())
+    existing = payload.get("provenance") if isinstance(payload.get("provenance"), dict) else {}
+    payload["provenance"] = _merge_nonempty_values(existing, provenance.as_dict())
     return payload
 
 

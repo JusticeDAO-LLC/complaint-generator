@@ -19,13 +19,15 @@ Use this document when selecting the next coding slice.
 
 ## Scope
 
-This worklist focuses on the highest-value early milestones:
+This worklist focuses on the highest-value milestones that currently have clear implementation targets:
 
 - M0: Adapter and capability hardening
 - M1: Shared parse and corpus contract
 - M2: Persistent support and graph query plane
+- M4: Operator productization
+- M5: Drafting and filing readiness
 
-Later milestones remain downstream of these slices and should not start until the earlier contracts are stable.
+M3 remains downstream of stabilized parse, support, and graph contracts, but M4 and M5 now have concrete application-layer entrypoints that can be prepared in parallel once their input payloads are stable.
 
 ## M0 File Worklist
 
@@ -204,6 +206,8 @@ Tasks:
 Current state:
 
 - completed for stored parse metadata and document-parse summary metadata via shared provenance helpers
+- completed for durable provenance metadata across evidence, archived web evidence, and legal authorities
+- completed for claim-support packet and trace summary fallback to provenance-backed normalized record summaries
 
 Done when:
 
@@ -246,6 +250,7 @@ Tasks:
 Current state:
 
 - completed through evidence-hook storage reuse with explicit `parse_source='web_document'` and request-level parse reporting
+- completed for durable archive provenance metadata in stored web evidence and review-facing lineage summaries
 - ensure review and follow-up payloads can distinguish live fetches from archived captures
 
 Done when:
@@ -265,6 +270,11 @@ Tasks:
 - preserve authority parse summaries, chunks, facts, and graph metadata through one normalized contract
 - align authority provenance with evidence and archived pages
 - capture passage-level provenance needed for future contradiction, support-path, and predicate review
+
+Current state:
+
+- completed for durable provenance metadata distinguishing full-text corpus assets from citation-only fallback records
+- completed for propagation of normalized authority source-context metadata into downstream fact, treatment, and rule-candidate provenance clones
 
 Done when:
 
@@ -421,6 +431,134 @@ Validation:
 - prefer a vertical slice that touches one adapter plus one mediator consumer plus one focused test module
 - do not start GraphRAG or theorem-prover work until the M1 and M2 contracts are stable
 - when in doubt, pick the next slice that improves operator-visible support explanation rather than only internal plumbing
+
+## M4 File Worklist
+
+### `applications/review_api.py`
+
+Tasks:
+
+- expose richer support-packet drilldown without forcing callers to reconstruct provenance, graph, and validation context client-side
+- keep compact summary payloads stable while adding drilldown-ready companions
+
+Done when:
+
+- review clients can retrieve one claim element with enough detail to explain support, contradiction, provenance, and follow-up rationale
+
+Validation:
+
+- focused review API tests
+- `./.venv/bin/python -m pytest tests/test_review_api.py -q`
+
+### `claim_support_review.py`
+
+Tasks:
+
+- produce support-packet, contradiction-packet, and timeline-ready summary helpers
+- keep packet ordering and compatibility semantics explicit in compact payloads
+
+Done when:
+
+- operator surfaces can depend on stable drilldown-oriented helpers instead of rebuilding packet logic in templates or API handlers
+
+Validation:
+
+- focused review and dashboard tests
+- `./.venv/bin/python -m pytest tests/test_review_api.py tests/test_claim_support_review_dashboard_flow.py -q`
+
+### `mediator/mediator.py`
+
+Tasks:
+
+- expose stable review and follow-up entrypoints that can be reused by the dashboard and future drafting workflow
+
+Done when:
+
+- application surfaces do not need direct table knowledge to assemble support-review state
+
+Validation:
+
+- focused mediator and review tests
+- `./.venv/bin/python -m pytest tests/test_review_api.py tests/test_claim_support_hooks.py -q`
+
+## M5 File Worklist
+
+### `document_pipeline.py`
+
+Tasks:
+
+- consume section-level support bundles rather than relying only on intake and legacy generated-complaint state
+- add drafting-warning objects for unsupported facts, adverse authority, weak treatment confidence, and proof gaps
+- keep artifact rendering backward compatible for clients that only care about DOCX or PDF output
+
+Done when:
+
+- the document builder can explain which sections are grounded, weak, or blocked before rendering artifacts
+
+Validation:
+
+- focused document-pipeline tests
+- `./.venv/bin/python -m pytest tests/test_document_pipeline.py -q`
+
+### `applications/document_api.py`
+
+Tasks:
+
+- expose section readiness and warning metadata in the formal complaint API response
+- keep download-link behavior confined to managed artifact directories
+
+Done when:
+
+- API consumers can render drafting readiness without inspecting unrelated review endpoints first
+
+Validation:
+
+- focused document API and review-surface tests
+- `./.venv/bin/python -m pytest tests/test_document_pipeline.py -q`
+
+### `templates/document.html`
+
+Tasks:
+
+- render section readiness, drafting warnings, and artifact provenance in a browser-friendly shape
+- preserve the existing builder workflow while making support-aware drafting inspectable before export
+
+Done when:
+
+- operators can see where a complaint draft is strong, weak, or blocked directly in the browser builder
+
+Validation:
+
+- focused document template and workflow tests
+- `./.venv/bin/python -m pytest tests/test_claim_support_review_template.py tests/test_document_pipeline.py -q`
+
+### `docs/PAYLOAD_CONTRACTS.md`
+
+Tasks:
+
+- document the contract for document section readiness, drafting warnings, and support-bundle metadata
+
+Done when:
+
+- document-workflow payloads are versioned and understandable without reading implementation code
+
+Validation:
+
+- doc updates alongside focused workflow tests
+
+### `docs/APPLICATIONS.md`
+
+Tasks:
+
+- document the browser builder and export workflow as a support-aware drafting surface rather than only an artifact generator
+
+Done when:
+
+- operator docs explain how `/document` relates to claim-support review and export APIs
+
+Validation:
+
+- doc updates alongside focused workflow tests
 
 ## Recommended First Coding Slice
 

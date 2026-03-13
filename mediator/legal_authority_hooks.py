@@ -41,6 +41,19 @@ except ImportError:
     duckdb = None
 
 
+def _clone_provenance_record(provenance) -> Any:
+    return build_provenance(
+        source_url=str(provenance.source_url or ''),
+        acquisition_method=str(provenance.acquisition_method or ''),
+        source_type=str(provenance.source_type or ''),
+        acquired_at=str(provenance.acquired_at or ''),
+        content_hash=str(provenance.content_hash or ''),
+        source_system=str(provenance.source_system or ''),
+        jurisdiction=str(provenance.jurisdiction or ''),
+        metadata=dict(getattr(provenance, 'metadata', {}) or {}),
+    )
+
+
 class LegalAuthoritySearchHook:
     """
     Hook for searching relevant legal authorities.
@@ -714,6 +727,34 @@ class LegalAuthorityStorageHook:
         authority['metadata'] = authority_metadata
         return parsed
 
+    def _build_authority_provenance_metadata(
+        self,
+        authority_data: Dict[str, Any],
+        document_parse: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        authority_metadata = authority_data.get('metadata', {}) if isinstance(authority_data.get('metadata'), dict) else {}
+        parse_contract = build_document_parse_contract(document_parse or {}, default_source='legal_authority')
+        parse_lineage = parse_contract.get('lineage', {}) if isinstance(parse_contract.get('lineage'), dict) else {}
+        parse_summary = parse_contract.get('summary', {}) if isinstance(parse_contract.get('summary'), dict) else {}
+        content_origin = str(parse_lineage.get('content_origin') or authority_metadata.get('content_origin') or '')
+        content_source_field = str(parse_lineage.get('content_source_field') or authority_metadata.get('content_source_field') or '')
+        fallback_mode = str(parse_lineage.get('fallback_mode') or authority_metadata.get('fallback_mode') or '')
+        metadata = {
+            'content_origin': content_origin,
+            'content_source_field': content_source_field,
+            'fallback_mode': fallback_mode,
+            'text_available': content_origin == 'authority_full_text',
+            'authority_type': str(authority_data.get('type') or ''),
+            'authority_source': str(authority_data.get('source') or ''),
+            'citation': str(authority_data.get('citation') or ''),
+            'title': str(authority_data.get('title') or ''),
+            'input_format': str(parse_summary.get('input_format') or parse_lineage.get('input_format') or ''),
+        }
+        url = str(authority_data.get('url') or '').strip()
+        if url:
+            metadata['source_url'] = url
+        return {key: value for key, value in metadata.items() if value not in ('', None)}
+
     def _store_authority_chunks(self, conn, authority_id: int, document_parse: Dict[str, Any]) -> None:
         chunks = document_parse.get('chunks', []) or []
         if not chunks:
@@ -768,15 +809,7 @@ class LegalAuthorityStorageHook:
                     record_scope='legal_authority',
                     source_ref=f'authority:{authority_id}',
                 ),
-                provenance=build_provenance(
-                    source_url=str(provenance.source_url or ''),
-                    acquisition_method=str(provenance.acquisition_method or ''),
-                    source_type=str(provenance.source_type or ''),
-                    acquired_at=str(provenance.acquired_at or ''),
-                    content_hash=str(provenance.content_hash or ''),
-                    source_system=str(provenance.source_system or ''),
-                    jurisdiction=str(provenance.jurisdiction or ''),
-                ),
+                provenance=_clone_provenance_record(provenance),
             )
             conn.execute(
                 """
@@ -929,15 +962,7 @@ class LegalAuthorityStorageHook:
                     treatment_date=str(record.get('treatment_date') or ''),
                     treatment_explanation=str(record.get('treatment_explanation') or record.get('explanation') or ''),
                     metadata=metadata,
-                    provenance=build_provenance(
-                        source_url=str(provenance.source_url or ''),
-                        acquisition_method=str(provenance.acquisition_method or ''),
-                        source_type=str(provenance.source_type or ''),
-                        acquired_at=str(provenance.acquired_at or ''),
-                        content_hash=str(provenance.content_hash or ''),
-                        source_system=str(provenance.source_system or ''),
-                        jurisdiction=str(provenance.jurisdiction or ''),
-                    ),
+                    provenance=_clone_provenance_record(provenance),
                 )
             )
         return treatment_records
@@ -1086,15 +1111,7 @@ class LegalAuthorityStorageHook:
                         'authority_type': authority.get('type', ''),
                         'authority_source': authority.get('source', ''),
                     },
-                    provenance=build_provenance(
-                        source_url=str(provenance.source_url or ''),
-                        acquisition_method=str(provenance.acquisition_method or ''),
-                        source_type=str(provenance.source_type or ''),
-                        acquired_at=str(provenance.acquired_at or ''),
-                        content_hash=str(provenance.content_hash or ''),
-                        source_system=str(provenance.source_system or ''),
-                        jurisdiction=str(provenance.jurisdiction or ''),
-                    ),
+                    provenance=_clone_provenance_record(provenance),
                 )
             )
 
@@ -1416,6 +1433,7 @@ class LegalAuthorityStorageHook:
                 acquired_at=datetime.now().isoformat(),
                 source_system=str(authority_data.get('source', 'unknown')),
                 jurisdiction=str(authority_data.get('jurisdiction', '')),
+                metadata=self._build_authority_provenance_metadata(authority_data, document_parse),
             )
             authority = CaseAuthority(
                 authority_type=authority_data.get('type', 'unknown'),

@@ -1955,7 +1955,10 @@ class TestClaimSupportHook:
                 'citation_title_only': 1,
             }
             assert protected_activity['support_trace_summary']['trace_count'] == 3
-            assert protected_activity['support_trace_summary']['parse_source_counts']['unknown'] == 3
+            assert protected_activity['support_trace_summary']['parse_source_counts'] == {
+                'bytes': 2,
+                'legal_authority': 1,
+            }
             assert protected_activity['support_trace_summary']['parse_input_format_counts']['email'] == 1
             assert protected_activity['support_traces'][0]['record_summary']['parse_summary']['quality_tier'] == 'high'
             assert protected_activity['support_traces'][0]['trace_kind'] == 'fact'
@@ -1971,6 +1974,348 @@ class TestClaimSupportHook:
             assert historical_packet['lineage_summary']['archive_url'] == 'https://web.archive.org/web/20240101120000/https://example.com/evidence'
             assert fallback_packet['lineage_summary']['fallback_mode'] == 'citation_title_only'
             assert protected_activity['support_packet_summary']['historical_capture_count'] == 2
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_claim_coverage_matrix_support_packets_fall_back_to_provenance_metadata(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.evidence_state = Mock()
+        mock_mediator.evidence_state.get_evidence_by_cid = Mock(return_value={
+            'id': 18,
+            'cid': 'QmEvidence6',
+            'type': 'document',
+            'source_url': 'https://example.com/evidence',
+            'parse_status': 'parsed',
+            'chunk_count': 2,
+            'parsed_text_preview': 'Subject: HR complaint\n\nI reported discrimination.',
+            'parse_metadata': {
+                'source': 'bytes',
+                'input_format': 'email',
+                'extraction_method': 'email_to_text',
+                'quality_tier': 'high',
+                'quality_score': 96.0,
+                'page_count': 1,
+                'source_span': {'char_start': 0, 'char_end': 52, 'text_length': 52, 'raw_size': 64, 'page_count': 1},
+                'transform_lineage': {
+                    'source': 'bytes',
+                    'input_format': 'email',
+                    'normalization': 'email_to_text',
+                },
+            },
+            'provenance': {
+                'source_url': 'https://web.archive.org/web/20240101120000/https://example.com/evidence',
+                'metadata': {
+                    'content_origin': 'historical_archive_capture',
+                    'historical_capture': True,
+                    'capture_source': 'archived_domain_scrape',
+                    'archive_url': 'https://web.archive.org/web/20240101120000/https://example.com/evidence',
+                    'version_of': 'https://example.com/evidence',
+                    'captured_at': '2024-01-01T12:00:00Z',
+                    'observed_at': '2024-01-02T00:00:00Z',
+                },
+            },
+            'graph_status': 'ready',
+            'graph_entity_count': 1,
+            'graph_relationship_count': 1,
+            'fact_count': 1,
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:evidence-18',
+                    'created': True,
+                    'reused': False,
+                    'metadata': {'lineage': {'status': 'ready'}},
+                }
+            },
+        })
+        mock_mediator.evidence_state.get_evidence_facts = Mock(return_value=[])
+        mock_mediator.evidence_state.get_evidence_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:1'}],
+            'relationships': [{'id': 'rel:1'}],
+        })
+        mock_mediator.legal_authority_storage = Mock()
+        mock_mediator.legal_authority_storage.get_authority_by_citation = Mock(return_value={
+            'id': 7,
+            'citation': '42 U.S.C. § 1983',
+            'title': 'Civil Rights Act',
+            'url': 'https://example.com/usc/1983',
+            'parse_status': 'parsed',
+            'chunk_count': 1,
+            'parsed_text_preview': 'Civil Rights Act\n\nSection 1983 authorizes relief.',
+            'parse_metadata': {
+                'source': 'legal_authority',
+                'quality_tier': 'high',
+                'quality_score': 95.0,
+                'page_count': 1,
+                'source_span': {'char_start': 0, 'char_end': 48, 'text_length': 48, 'raw_size': 60, 'page_count': 1},
+                'transform_lineage': {
+                    'source': 'legal_authority',
+                    'input_format': 'html',
+                    'normalization': 'html_to_text',
+                },
+            },
+            'provenance': {
+                'source_url': 'https://example.com/usc/1983',
+                'metadata': {
+                    'content_origin': 'authority_reference_fallback',
+                    'content_source_field': 'citation_title_fallback',
+                    'fallback_mode': 'citation_title_only',
+                    'input_format': 'html',
+                },
+            },
+            'graph_status': 'ready',
+            'graph_entity_count': 1,
+            'graph_relationship_count': 1,
+            'fact_count': 0,
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:authority-7',
+                    'created': True,
+                    'reused': False,
+                    'metadata': {'lineage': {'status': 'ready'}},
+                }
+            },
+            'treatment_summary': {},
+            'rule_candidate_summary': {},
+        })
+        mock_mediator.legal_authority_storage.get_authority_facts = Mock(return_value=[])
+        mock_mediator.legal_authority_storage.get_authority_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:a'}],
+            'relationships': [{'id': 'rel:a'}],
+        })
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements('testuser', {'employment': ['Protected activity']})
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidence6',
+                support_label='Archived complaint email',
+                source_table='evidence',
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='authority',
+                support_ref='42 U.S.C. § 1983',
+                support_label='Civil Rights Act',
+                source_table='legal_authorities',
+            )
+
+            matrix = hook.get_claim_coverage_matrix('testuser', 'employment')
+            claim_matrix = matrix['claims']['employment']
+            protected_activity = claim_matrix['elements'][0]
+
+            assert claim_matrix['support_packet_summary']['historical_capture_count'] == 1
+            assert claim_matrix['support_packet_summary']['content_origin_counts'] == {
+                'historical_archive_capture': 1,
+                'authority_reference_fallback': 1,
+            }
+            assert claim_matrix['support_packet_summary']['capture_source_counts'] == {
+                'archived_domain_scrape': 1,
+            }
+            assert claim_matrix['support_packet_summary']['fallback_mode_counts'] == {
+                'citation_title_only': 1,
+            }
+            assert claim_matrix['support_packet_summary']['content_source_field_counts'] == {
+                'citation_title_fallback': 1,
+            }
+            historical_packet = next(
+                packet for packet in protected_activity['support_packets']
+                if packet['lineage_summary']['content_origin'] == 'historical_archive_capture'
+            )
+            fallback_packet = next(
+                packet for packet in protected_activity['support_packets']
+                if packet['lineage_summary']['fallback_mode'] == 'citation_title_only'
+            )
+            assert historical_packet['lineage_summary']['archive_url'] == 'https://web.archive.org/web/20240101120000/https://example.com/evidence'
+            assert historical_packet['lineage_summary']['captured_at'] == '2024-01-01T12:00:00Z'
+            assert fallback_packet['lineage_summary']['content_source_field'] == 'citation_title_fallback'
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_claim_coverage_matrix_support_trace_summary_falls_back_to_record_parse_summary(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.evidence_state = Mock()
+        mock_mediator.evidence_state.get_evidence_by_cid = Mock(return_value={
+            'id': 18,
+            'cid': 'QmEvidence6',
+            'type': 'document',
+            'source_url': 'https://example.com/evidence',
+            'parse_status': 'parsed',
+            'chunk_count': 1,
+            'parsed_text_preview': 'Subject: HR complaint\n\nI reported discrimination.',
+            'parse_metadata': {
+                'source': 'bytes',
+                'input_format': 'email',
+                'extraction_method': 'email_to_text',
+                'quality_tier': 'high',
+                'quality_score': 96.0,
+                'page_count': 1,
+                'source_span': {'char_start': 0, 'char_end': 52, 'text_length': 52, 'raw_size': 64, 'page_count': 1},
+                'transform_lineage': {
+                    'source': 'bytes',
+                    'input_format': 'email',
+                    'normalization': 'email_to_text',
+                },
+            },
+            'provenance': {
+                'source_url': 'https://web.archive.org/web/20240101120000/https://example.com/evidence',
+                'metadata': {
+                    'content_origin': 'historical_archive_capture',
+                },
+            },
+            'graph_status': 'ready',
+            'graph_entity_count': 1,
+            'graph_relationship_count': 1,
+            'fact_count': 1,
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:evidence-18',
+                    'created': True,
+                    'reused': False,
+                    'metadata': {'lineage': {'status': 'ready'}},
+                }
+            },
+        })
+        mock_mediator.evidence_state.get_evidence_facts = Mock(return_value=[
+            {
+                'fact_id': 'fact:1',
+                'text': 'Employee complained to HR.',
+                'metadata': {
+                    'parse_lineage': {
+                        'source': 'bytes',
+                    }
+                },
+            }
+        ])
+        mock_mediator.evidence_state.get_evidence_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:1'}],
+            'relationships': [{'id': 'rel:1'}],
+        })
+        mock_mediator.legal_authority_storage = Mock()
+        mock_mediator.legal_authority_storage.get_authority_by_citation = Mock(return_value={
+            'id': 7,
+            'citation': '42 U.S.C. § 1983',
+            'title': 'Civil Rights Act',
+            'url': 'https://example.com/usc/1983',
+            'parse_status': 'parsed',
+            'chunk_count': 1,
+            'parsed_text_preview': 'Civil Rights Act\n\nSection 1983 authorizes relief.',
+            'parse_metadata': {
+                'source': 'legal_authority',
+                'input_format': 'html',
+                'quality_tier': 'high',
+                'quality_score': 95.0,
+                'page_count': 1,
+                'source_span': {'char_start': 0, 'char_end': 48, 'text_length': 48, 'raw_size': 60, 'page_count': 1},
+                'transform_lineage': {
+                    'source': 'legal_authority',
+                    'input_format': 'html',
+                    'normalization': 'html_to_text',
+                },
+            },
+            'provenance': {
+                'source_url': 'https://example.com/usc/1983',
+                'metadata': {
+                    'content_origin': 'authority_reference_fallback',
+                    'fallback_mode': 'citation_title_only',
+                },
+            },
+            'graph_status': 'ready',
+            'graph_entity_count': 1,
+            'graph_relationship_count': 1,
+            'fact_count': 1,
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:authority-7',
+                    'created': True,
+                    'reused': False,
+                    'metadata': {'lineage': {'status': 'ready'}},
+                }
+            },
+            'treatment_summary': {},
+            'rule_candidate_summary': {},
+        })
+        mock_mediator.legal_authority_storage.get_authority_facts = Mock(return_value=[
+            {
+                'fact_id': 'fact:a',
+                'text': 'Section 1983 authorizes relief.',
+                'metadata': {
+                    'parse_lineage': {
+                        'source': 'legal_authority',
+                    }
+                },
+            }
+        ])
+        mock_mediator.legal_authority_storage.get_authority_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:a'}],
+            'relationships': [{'id': 'rel:a'}],
+        })
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements('testuser', {'employment': ['Protected activity']})
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidence6',
+                support_label='Archived complaint email',
+                source_table='evidence',
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='authority',
+                support_ref='42 U.S.C. § 1983',
+                support_label='Civil Rights Act',
+                source_table='legal_authorities',
+            )
+
+            matrix = hook.get_claim_coverage_matrix('testuser', 'employment')
+            trace_summary = matrix['claims']['employment']['support_trace_summary']
+
+            assert trace_summary['parse_source_counts'] == {
+                'bytes': 1,
+                'legal_authority': 1,
+            }
+            assert trace_summary['content_origin_counts'] == {
+                'historical_archive_capture': 1,
+                'authority_reference_fallback': 1,
+            }
+            assert trace_summary['fallback_mode_counts'] == {
+                'citation_title_only': 1,
+            }
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)

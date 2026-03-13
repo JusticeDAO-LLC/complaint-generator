@@ -108,6 +108,7 @@ class CLI:
 				'plaintiff_names',
 				'defendant_names',
 				'requested_relief',
+				'service_recipients',
 			}:
 				parsed_value = [item.strip() for item in value.split(',') if item.strip()]
 			else:
@@ -148,6 +149,14 @@ class CLI:
 				self._format_authority_search_program_summary(
 					'follow-up plan authority search summary:',
 					follow_up_plan_summary,
+				)
+			)
+		follow_up_history_summary = payload.get('follow_up_history_summary', {}) if isinstance(payload, dict) else {}
+		if isinstance(follow_up_history_summary, dict) and follow_up_history_summary:
+			sections.append(
+				self._format_authority_search_history_summary(
+					'follow-up history authority search summary:',
+					follow_up_history_summary,
 				)
 			)
 		sections.append(json.dumps(payload, indent=2, default=str))
@@ -237,6 +246,42 @@ class CLI:
 				lines.append(f'  primary_rule_biases: {rule_bias_labels}')
 		return '' if len(lines) == 1 else '\n'.join(lines)
 
+	def _format_authority_search_history_summary(self, title, follow_up_history_summary):
+		lines = [title]
+		for claim_type in sorted(follow_up_history_summary.keys()):
+			summary = follow_up_history_summary.get(claim_type, {})
+			if not isinstance(summary, dict):
+				continue
+			selected_program_type_counts = summary.get('selected_authority_program_type_counts', {}) if isinstance(summary.get('selected_authority_program_type_counts'), dict) else {}
+			selected_program_bias_counts = summary.get('selected_authority_program_bias_counts', {}) if isinstance(summary.get('selected_authority_program_bias_counts'), dict) else {}
+			selected_program_rule_bias_counts = summary.get('selected_authority_program_rule_bias_counts', {}) if isinstance(summary.get('selected_authority_program_rule_bias_counts'), dict) else {}
+			history_program_entry_count = sum(int(count or 0) for count in selected_program_type_counts.values())
+			if not (
+				history_program_entry_count > 0
+				or selected_program_bias_counts
+				or selected_program_rule_bias_counts
+			):
+				continue
+			lines.append(
+				f'- {claim_type}: history_program_entries={history_program_entry_count}'
+			)
+			if selected_program_type_counts:
+				program_labels = ', '.join(
+					f"{program_type}={count}" for program_type, count in sorted(selected_program_type_counts.items())
+				)
+				lines.append(f'  selected_programs: {program_labels}')
+			if selected_program_bias_counts:
+				bias_labels = ', '.join(
+					f"{bias}={count}" for bias, count in sorted(selected_program_bias_counts.items())
+				)
+				lines.append(f'  selected_biases: {bias_labels}')
+			if selected_program_rule_bias_counts:
+				rule_bias_labels = ', '.join(
+					f"{bias}={count}" for bias, count in sorted(selected_program_rule_bias_counts.items())
+				)
+				lines.append(f'  selected_rule_biases: {rule_bias_labels}')
+		return '' if len(lines) == 1 else '\n'.join(lines)
+
 	def execute_follow_up(self, args):
 		positionals, options = self._parse_command_options(args)
 		claim_type = options.get('claim_type')
@@ -268,6 +313,15 @@ class CLI:
 				self._format_authority_search_program_summary(
 					'follow-up execution authority search summary:',
 					follow_up_execution_summary,
+				)
+			)
+		post_execution_review = payload.get('post_execution_review', {}) if isinstance(payload, dict) else {}
+		post_execution_history_summary = post_execution_review.get('follow_up_history_summary', {}) if isinstance(post_execution_review, dict) else {}
+		if isinstance(post_execution_history_summary, dict) and post_execution_history_summary:
+			sections.append(
+				self._format_authority_search_history_summary(
+					'follow-up history authority search summary:',
+					post_execution_history_summary,
 				)
 			)
 		sections.append(json.dumps(payload, indent=2, default=str))
@@ -311,6 +365,17 @@ class CLI:
 			plaintiff_names=options.get('plaintiff_names'),
 			defendant_names=options.get('defendant_names'),
 			requested_relief=options.get('requested_relief'),
+			signer_name=options.get('signer_name'),
+			signer_title=options.get('signer_title'),
+			signer_firm=options.get('signer_firm'),
+			signer_bar_number=options.get('signer_bar_number'),
+			signer_contact=options.get('signer_contact'),
+			declarant_name=options.get('declarant_name'),
+			service_method=options.get('service_method'),
+			service_recipients=options.get('service_recipients'),
+			signature_date=options.get('signature_date'),
+			verification_date=options.get('verification_date'),
+			service_date=options.get('service_date'),
 			output_dir=output_dir,
 			output_formats=options.get('output_formats'),
 		)

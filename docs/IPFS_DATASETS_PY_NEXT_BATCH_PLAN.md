@@ -259,6 +259,54 @@ Turn the existing compact review, dashboard, and follow-up summaries into a full
 ./.venv/bin/python -m pytest tests/test_web_evidence_hooks.py tests/test_claim_support_hooks.py tests/test_review_api.py -q
 ```
 
+## Batch 6: Drafting and Export Integration
+
+### Goal
+
+Make the formal complaint builder and export pipeline consume the same support, authority-treatment, graph, and validation signals that the review layer uses.
+
+### Primary files
+
+- `document_pipeline.py`
+- `applications/document_api.py`
+- `mediator/mediator.py`
+- `mediator/claim_support_hooks.py`
+- `claim_support_review.py`
+- `templates/document.html`
+- `docs/PAYLOAD_CONTRACTS.md`
+- `docs/APPLICATIONS.md`
+
+### Work
+
+- derive drafting-ready support packets for factual allegations, jurisdiction and venue, claims for relief, and requested relief
+- expose section-level readiness and warning objects for unsupported facts, adverse authority, weak treatment confidence, failed premises, and unresolved procedural prerequisites
+- keep exports compatible with degraded mode by distinguishing missing enrichment from actual legal insufficiency
+- thread artifact provenance and support-bundle summaries into the browser builder so operators can inspect filing readiness before export
+- ensure generated payloads remain download-safe and backward compatible for existing artifact consumers
+
+### Expected output
+
+- a formal complaint workflow that is support-aware rather than text-generation-only
+- stable document payload fields for section readiness, warnings, and support provenance
+- browser-visible drafting warnings and readiness summaries before or alongside artifacts
+
+### Current status
+
+- implemented in the current checkout for drafting-readiness payloads, browser-side readiness rendering, source drilldown, and review-surface deep links; further work can build on this baseline rather than reopening the initial Batch 6 slice
+
+### Stop condition
+
+- at least one complaint flow can build a filing draft with explicit section-level support or warning metadata derived from claim-support state
+- the `/document` workflow can expose support-aware readiness without requiring the operator to inspect raw review payloads first
+
+### Suggested validation
+
+```bash
+./.venv/bin/python -m pytest tests/test_document_pipeline.py -q
+./.venv/bin/python -m pytest tests/test_review_api.py -q
+./.venv/bin/python -m pytest tests/test_claim_support_review_template.py -q
+```
+
 ## Recommended Delivery Order
 
 1. Batch 1
@@ -266,6 +314,7 @@ Turn the existing compact review, dashboard, and follow-up summaries into a full
 3. Batch 3
 4. Batch 4
 5. Batch 5
+6. Batch 6
 
 ## Recommended Ownership Split
 
@@ -284,6 +333,10 @@ Turn the existing compact review, dashboard, and follow-up summaries into a full
 ### Track D: Operator productization
 
 - Batch 5 after Batch 3 and Batch 4 stabilize their payloads
+
+### Track E: Drafting and filing-readiness productization
+
+- Batch 6 after Batch 5 makes support packets stable enough to consume from the document pipeline
 
 ## Exit Condition For This Plan
 

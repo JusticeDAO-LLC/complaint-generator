@@ -126,6 +126,17 @@ def test_generate_formal_complaint_builds_court_style_sections():
     result = mediator.generate_formal_complaint(
         district='New Mexico',
         case_number='1:26-cv-12345',
+        signer_name='Jane Doe, Esq.',
+        signer_title='Counsel for Plaintiff',
+        signer_firm='Doe Legal Advocacy PLLC',
+        signer_bar_number='NM-12345',
+        signer_contact='123 Main Street\nSanta Fe, NM 87501',
+        declarant_name='Jane Doe',
+        service_method='CM/ECF',
+        service_recipients=['Registered Agent for Acme Corporation', 'Defense Counsel'],
+        signature_date='2026-03-12',
+        verification_date='2026-03-12',
+        service_date='2026-03-13',
     )
 
     complaint = result['formal_complaint']
@@ -136,7 +147,32 @@ def test_generate_formal_complaint_builds_court_style_sections():
     assert complaint['legal_claims'][0]['legal_standard_elements'][0]['citation'] == '42 U.S.C. § 2000e-3(a)'
     assert complaint['exhibits'][0]['label'] == 'Exhibit A'
     assert complaint['exhibits'][0]['reference'] == 'https://example.org/termination-letter.pdf'
+    assert complaint['verification']['title'] == 'Verification'
+    assert 'under penalty of perjury' in complaint['verification']['text']
+    assert complaint['certificate_of_service']['title'] == 'Certificate of Service'
+    assert complaint['signature_block']['signature_line'] == '/s/ Jane Doe, Esq.'
+    assert complaint['signature_block']['title'] == 'Counsel for Plaintiff'
+    assert complaint['signature_block']['firm'] == 'Doe Legal Advocacy PLLC'
+    assert complaint['signature_block']['bar_number'] == 'NM-12345'
+    assert complaint['signature_block']['contact'] == '123 Main Street\nSanta Fe, NM 87501'
+    assert complaint['signature_block']['dated'] == 'Dated: 2026-03-12'
+    assert complaint['verification']['signature_line'] == '/s/ Jane Doe'
+    assert complaint['verification']['text'].startswith('I, Jane Doe, declare under penalty of perjury')
+    assert complaint['verification']['dated'] == 'Executed on: 2026-03-12'
+    assert complaint['certificate_of_service']['recipients'] == ['Registered Agent for Acme Corporation', 'Defense Counsel']
+    assert complaint['certificate_of_service']['dated'] == 'Service date: 2026-03-13'
+    assert 'CM/ECF' in complaint['certificate_of_service']['text']
+    assert 'Registered Agent for Acme Corporation' in complaint['certificate_of_service']['text']
     assert 'IN THE UNITED STATES DISTRICT COURT FOR THE DISTRICT OF NEW MEXICO' in result['draft_text']
+    assert 'VERIFICATION' in result['draft_text']
+    assert 'CERTIFICATE OF SERVICE' in result['draft_text']
+    assert '/s/ Jane Doe, Esq.' in result['draft_text']
+    assert 'Doe Legal Advocacy PLLC' in result['draft_text']
+    assert 'Bar No. NM-12345' in result['draft_text']
+    assert '/s/ Jane Doe' in result['draft_text']
+    assert 'Dated: 2026-03-12' in result['draft_text']
+    assert 'Defense Counsel' in result['draft_text']
+    assert 'Service date: 2026-03-13' in result['draft_text']
     assert result['ready_to_file'] is True
 
 

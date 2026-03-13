@@ -113,6 +113,7 @@ Representative shape:
 Compatibility notes:
 
 - `metadata.document_parse_summary` remains present for existing callers.
+- `metadata.provenance.metadata` is the canonical place for normalized source-context fields that do not fit the core provenance columns, such as archive capture context or authority full-text versus fallback semantics.
 - Stored DuckDB parse columns still use `parse_status`, `chunk_count`, `parsed_text_preview`, and `parse_metadata`.
 - `document_parse_contract` is the canonical bundle those compatibility fields are now derived from.
 - `summary.input_format` and `lineage.input_format` may now be `text`, `html`, `email`, `rtf`, `docx`, or `pdf`, depending on the adapter-owned normalization path.
@@ -248,6 +249,7 @@ Count semantics:
 - `parse_details`: Per-record parse metadata extracted from `document_parse_summary`.
 - `parse_summary.avg_quality_score`: Mean adapter-reported quality score across stored web evidence for the request.
 - `parse_details[*].quality_tier` and `parse_details[*].source_span`: Per-record extraction diagnostics derived from the shared parse contract.
+- Stored web evidence provenance now also preserves normalized archive context under `metadata.provenance.metadata`, including fields such as `content_origin`, `capture_source`, `historical_capture`, `archive_url`, `version_of`, `captured_at`, and `observed_at` when available.
 
 ## Automatic Evidence Discovery
 
@@ -414,6 +416,7 @@ Aggregate semantics:
 Stored authority records returned by `Mediator.get_legal_authorities(...)` also include:
 
 - `fact_count`: Number of persisted fact rows extracted from the authority text.
+- `provenance.metadata`: Normalized authority source-context metadata, including `content_origin`, `content_source_field`, `fallback_mode`, `text_available`, and the parse-detected `input_format`.
 
 Per-source keys follow the pattern:
 
@@ -893,7 +896,7 @@ Support-link semantics:
 - `graph_summary`: Compact counts from the currently available stored graph rows.
 - `graph_trace`: Provenance-oriented graph packet combining source table, record id, adapter snapshot semantics, and stored lineage metadata for review or downstream tracing.
 - `support_traces`: Persisted fact-oriented trace rows derived from the stored support links, fact tables, and graph lineage. These are the strongest review-oriented explanation layer for why an element is currently covered or still weak.
-- `support_trace_summary`: Compact counts over `support_traces`, including fact-trace volume, parse-source mix, graph-status mix, and distinct record or graph counts.
+- `support_trace_summary`: Compact counts over `support_traces`, including fact-trace volume, parse-source mix, graph-status mix, and distinct record or graph counts. Source-context counts are derived from fact lineage when available and otherwise fall back to the normalized record summary built from persisted provenance or parse metadata.
 - `support_packet_summary`: Compact lineage counts over the traced support corpus, including archive-capture totals, capture-source mix, authority fallback modes, and source-field fallback mix.
 - `authority_treatment_summary`: Compact authority-reliability counts over authority links, including supportive versus adverse versus uncertain link totals, treatment-type mix, and maximum treatment confidence.
 - `authority_rule_candidate_summary`: Compact counts over structured rule candidates extracted from authority text, including aligned rule totals, rule-type mix such as `element`, `exception`, or `procedural_prerequisite`, and maximum extraction confidence.
@@ -908,7 +911,7 @@ Interpretation notes:
 - `proof_supported_element_count`, `logic_unprovable_element_count`, and `ontology_invalid_element_count` summarize how often proof and ontology adapters positively supported an element, downgraded an element as unprovable, or reported an invalid reasoning graph.
 - `authority_treatment_summary` summarizes whether current legal-authority support appears clean, adverse, or uncertain based on persisted treatment records such as `questioned`, `limits`, `superseded`, or `good_law_unconfirmed`.
 - `authority_rule_candidate_summary` summarizes whether current legal-authority support already contains structured rule statements for the claim element. When authority support is present but `evidence` is still missing, operators can treat that as a likely factual-predicate gap rather than a legal-research gap.
-- `support_packet_summary` summarizes operator-visible parse lineage across the claim, including archive captures, capture-source mix, citation-only fallback modes, and content-source-field fallbacks.
+- `support_packet_summary` summarizes operator-visible source-context lineage across the claim, including archive captures, capture-source mix, citation-only fallback modes, and content-source-field fallbacks. It prefers persisted `provenance.metadata` when present and falls back to parse lineage for older stored records.
 - `graph_trace_summary` is the compact lineage companion for dashboards and audit surfaces; it counts traced links, snapshot creation versus reuse, source-table mix, and distinct graph ids without requiring callers to inspect raw support links.
 - `support_trace_summary` remains the parse-diagnostics aggregate, while `support_packet_summary` is the operator-facing lineage aggregate built from those traced records.
 - `unresolved_element_count`, `unresolved_elements`, and `recommended_gap_actions` compress the richer gap payload into one per-claim summary for dashboards.
@@ -2081,3 +2084,127 @@ Authority task result:
   }
 }
 ```
+
+## Formal Complaint Document Package
+
+`Mediator.build_formal_complaint_document_package(...)` returns a document-oriented package used by `/api/documents/formal-complaint` and the `/document` browser workflow.
+
+Representative shape:
+
+```json
+{
+  "draft": {
+    "title": "Jane Doe v. Acme Corporation",
+    "case_caption": {
+      "plaintiffs": ["Jane Doe"],
+      "defendants": ["Acme Corporation"],
+      "case_number": "25-cv-00001",
+      "document_title": "COMPLAINT"
+    },
+    "claims_for_relief": [],
+    "requested_relief": [],
+    "exhibits": [],
+    "drafting_readiness": {
+      "status": "warning",
+      "claim_types": ["retaliation"],
+      "warning_count": 2,
+      "claims": [
+        {
+          "claim_type": "retaliation",
+          "status": "warning",
+          "validation_status": "incomplete",
+          "covered_elements": 2,
+          "total_elements": 3,
+          "unresolved_element_count": 1,
+          "proof_gap_count": 1,
+          "contradiction_candidate_count": 0,
+          "support_by_kind": {
+            "evidence": 1,
+            "authority": 1
+          },
+          "authority_treatment_summary": {},
+          "authority_rule_candidate_summary": {},
+          "warnings": [
+            {
+              "code": "unresolved_elements",
+              "severity": "warning",
+              "message": "Retaliation still has 1 unresolved claim element(s)."
+            }
+          ]
+        }
+      ],
+      "sections": {
+        "summary_of_facts": {
+          "title": "Summary of Facts",
+          "status": "ready",
+          "metrics": {
+            "summary_fact_count": 4,
+            "support_fact_count": 3
+          },
+          "warnings": []
+        },
+        "claims_for_relief": {
+          "title": "Claims for Relief",
+          "status": "warning",
+          "metrics": {
+            "claim_count": 1,
+            "blocked_claim_count": 0,
+            "warning_claim_count": 1
+          },
+          "warnings": []
+        }
+      }
+    }
+  },
+  "drafting_readiness": {
+    "status": "warning",
+    "claim_types": ["retaliation"],
+    "warning_count": 2,
+    "claims": [],
+    "sections": {}
+  },
+  "review_links": {
+    "dashboard_url": "/claim-support-review?user_id=abc123",
+    "claims": [
+      {
+        "claim_type": "retaliation",
+        "review_url": "/claim-support-review?user_id=abc123&claim_type=retaliation"
+      }
+    ],
+    "sections": [
+      {
+        "section_key": "claims_for_relief",
+        "title": "Claims for Relief",
+        "review_url": "/claim-support-review?user_id=abc123&claim_type=retaliation&section=claims_for_relief",
+        "review_context": {
+          "user_id": "abc123",
+          "section": "claims_for_relief",
+          "claim_type": "retaliation"
+        }
+      }
+    ]
+  },
+  "artifacts": {
+    "docx": {
+      "path": "/workspace/tmp/generated_documents/example.docx",
+      "filename": "example.docx",
+      "size_bytes": 12345,
+      "download_url": "/api/documents/download?path=/workspace/tmp/generated_documents/example.docx"
+    }
+  },
+  "output_formats": ["docx"],
+  "generated_at": "2026-03-12T12:00:00+00:00"
+}
+```
+
+Interpretation notes:
+
+- `drafting_readiness` is duplicated at the package top level and under `draft` for convenience; both carry the same payload family.
+- `drafting_readiness.status` is one of `ready`, `warning`, or `blocked` and summarizes filing readiness across all draft sections and claim-level validation signals.
+- `drafting_readiness.claims[*]` lifts claim-support and validation state into drafting-oriented claim summaries, including unresolved elements, proof-gap counts, contradiction counts, and compact authority-treatment or rule-candidate signals when available.
+- `drafting_readiness.claims[*].review_url` and `drafting_readiness.claims[*].review_context` are added by the document API layer so clients can deep-link into the claim-support review surface without reconstructing query parameters themselves.
+- `drafting_readiness.sections` groups filing-readiness by major complaint section such as `summary_of_facts`, `jurisdiction_and_venue`, `claims_for_relief`, `requested_relief`, and `exhibits`.
+- `drafting_readiness.sections[*].review_url` and `drafting_readiness.sections[*].review_context` are added by the document API layer so clients can link section warnings back to the review dashboard with stable query context.
+- `drafting_readiness.sections[*].warnings[*].severity` distinguishes soft filing warnings from harder blockers so degraded-mode drafting can remain usable.
+- `review_links.dashboard_url` points to the review dashboard for the current user context, while `review_links.claims[*]` and `review_links.sections[*]` provide claim-specific and section-specific review URLs for non-browser consumers.
+- `artifacts[*].download_url` is added by the document API layer only when the generated file path is inside the managed generated-documents directory.

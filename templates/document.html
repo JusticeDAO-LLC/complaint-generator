@@ -87,6 +87,27 @@
             padding: 20px;
         }
 
+        .surface-links {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 18px;
+        }
+
+        .surface-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px 14px;
+            border-radius: 999px;
+            border: 1px solid rgba(22, 33, 38, 0.14);
+            background: rgba(255,255,255,0.84);
+            color: var(--accent);
+            font-size: 0.92rem;
+            font-weight: 700;
+            text-decoration: none;
+        }
+
         .metric {
             border-radius: 18px;
             padding: 18px;
@@ -278,6 +299,183 @@
             color: #255e37;
         }
 
+        .readiness-banner {
+            margin-bottom: 18px;
+            border-radius: 18px;
+            padding: 16px;
+            border: 1px solid rgba(22, 33, 38, 0.12);
+            background: rgba(255,255,255,0.86);
+        }
+
+        .readiness-banner[data-status="warning"] {
+            border-color: rgba(143, 45, 30, 0.24);
+            background: rgba(143, 45, 30, 0.08);
+        }
+
+        .readiness-banner[data-status="blocked"] {
+            border-color: rgba(143, 45, 30, 0.4);
+            background: rgba(143, 45, 30, 0.14);
+        }
+
+        .readiness-title {
+            margin: 0 0 8px;
+            font-size: 0.95rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--accent-deep);
+        }
+
+        .readiness-grid {
+            display: grid;
+            gap: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        }
+
+        .readiness-chip {
+            padding: 12px;
+            border-radius: 14px;
+            border: 1px solid rgba(22, 33, 38, 0.1);
+            background: rgba(255,255,255,0.72);
+        }
+
+        .readiness-chip strong {
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            border: 1px solid rgba(22, 33, 38, 0.12);
+            background: rgba(255,255,255,0.76);
+            color: var(--ink);
+        }
+
+        .status-pill[data-status="warning"] {
+            border-color: rgba(143, 45, 30, 0.22);
+            background: rgba(143, 45, 30, 0.1);
+            color: var(--accent-deep);
+        }
+
+        .status-pill[data-status="blocked"] {
+            border-color: rgba(143, 45, 30, 0.38);
+            background: rgba(143, 45, 30, 0.16);
+            color: var(--accent-deep);
+        }
+
+        .readiness-detail-grid {
+            display: grid;
+            gap: 14px;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            margin-top: 16px;
+        }
+
+        .readiness-detail-card {
+            border: 1px solid rgba(22, 33, 38, 0.1);
+            border-radius: 16px;
+            padding: 16px;
+            background: rgba(255,255,255,0.7);
+        }
+
+        .readiness-detail-card h3,
+        .readiness-claim-card h3 {
+            margin: 0 0 10px;
+            font-size: 1rem;
+        }
+
+        .readiness-card-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .metric-list,
+        .warning-list {
+            margin: 0;
+            padding-left: 18px;
+            line-height: 1.6;
+        }
+
+        .warning-list li + li,
+        .metric-list li + li {
+            margin-top: 6px;
+        }
+
+        .warning-list {
+            color: var(--accent-deep);
+        }
+
+        .provenance-list {
+            margin: 0;
+            padding-left: 18px;
+            line-height: 1.6;
+            color: var(--muted);
+        }
+
+        .provenance-list li + li {
+            margin-top: 6px;
+        }
+
+        .inline-link-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+
+        .inline-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(22, 33, 38, 0.12);
+            background: rgba(255,255,255,0.86);
+            color: var(--accent);
+            font-size: 0.84rem;
+            font-weight: 700;
+            text-decoration: none;
+        }
+
+        .readiness-claim-stack {
+            display: grid;
+            gap: 14px;
+            margin-top: 16px;
+        }
+
+        .readiness-claim-card {
+            border: 1px solid rgba(22, 33, 38, 0.1);
+            border-radius: 18px;
+            padding: 16px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(247,242,232,0.88));
+        }
+
+        .readiness-summary-line {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .readiness-subtitle {
+            margin: 18px 0 10px;
+            font-size: 0.86rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--accent-deep);
+        }
+
         .preview-header {
             display: flex;
             justify-content: space-between;
@@ -324,6 +522,27 @@
             word-break: break-word;
         }
 
+        .pleading-text {
+            margin: 0;
+            padding: 18px;
+            border-radius: 18px;
+            background: #fcfaf5;
+            border: 1px solid rgba(22, 33, 38, 0.12);
+            color: var(--ink);
+            font-family: 'Newsreader', serif;
+            font-size: 1rem;
+            line-height: 1.65;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .pleading-tools {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
         .draft-shell {
             border-top: 1px solid var(--line);
             margin-top: 24px;
@@ -364,6 +583,52 @@
             margin: 0;
             padding-left: 18px;
             line-height: 1.7;
+        }
+
+        .pleading-paragraphs {
+            display: grid;
+            gap: 12px;
+        }
+
+        .pleading-paragraph {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 12px;
+            align-items: flex-start;
+            padding: 12px 14px;
+            border-radius: 14px;
+            background: rgba(255,255,255,0.7);
+            border: 1px solid rgba(22, 33, 38, 0.08);
+        }
+
+        .pleading-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 42px;
+            padding: 6px 8px;
+            border-radius: 999px;
+            background: rgba(143, 45, 30, 0.1);
+            color: var(--accent-deep);
+            font-size: 0.82rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+
+        .pleading-copy {
+            line-height: 1.72;
+        }
+
+        .claim-warning-callout {
+            border-radius: 14px;
+            padding: 12px 14px;
+            background: rgba(143, 45, 30, 0.08);
+            border: 1px solid rgba(143, 45, 30, 0.14);
+        }
+
+        .claim-warning-callout strong {
+            display: block;
+            margin-bottom: 8px;
         }
 
         .empty-state {
@@ -439,6 +704,9 @@
                     This page builds the caption, facts, claims for relief, legal standards, requested relief, and linked exhibits,
                     then renders DOCX and PDF outputs from the same structured draft.
                 </p>
+                <div class="surface-links">
+                    <a class="surface-link" href="/claim-support-review">Open Claim Support Review Dashboard</a>
+                </div>
             </article>
             <aside class="hero-card hero-metrics">
                 <div class="metric">
@@ -516,11 +784,70 @@
                         <textarea id="requestedRelief" name="requestedRelief" placeholder="One relief item per line"></textarea>
                     </div>
 
+                    <div class="field-row">
+                        <div>
+                            <label for="signerName">Signer Name</label>
+                            <input id="signerName" name="signerName" type="text" placeholder="Jane Doe">
+                        </div>
+                        <div>
+                            <label for="signerTitle">Signer Title</label>
+                            <input id="signerTitle" name="signerTitle" type="text" placeholder="Plaintiff, Pro Se">
+                        </div>
+                    </div>
+
+                    <div class="field-row">
+                        <div>
+                            <label for="signerFirm">Law Firm or Office</label>
+                            <input id="signerFirm" name="signerFirm" type="text" placeholder="Doe Legal Advocacy PLLC">
+                        </div>
+                        <div>
+                            <label for="signerBarNumber">Bar Number</label>
+                            <input id="signerBarNumber" name="signerBarNumber" type="text" placeholder="NM-12345">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="signerContact">Signer Contact Block</label>
+                        <textarea id="signerContact" name="signerContact" placeholder="123 Main Street&#10;City, State ZIP&#10;(555) 555-5555&#10;name@example.com"></textarea>
+                    </div>
+
+                    <div>
+                        <label for="declarantName">Verification Declarant</label>
+                        <input id="declarantName" name="declarantName" type="text" placeholder="Jane Doe">
+                    </div>
+
+                    <div>
+                        <label for="serviceMethod">Service Method</label>
+                        <input id="serviceMethod" name="serviceMethod" type="text" placeholder="CM/ECF and first-class mail">
+                    </div>
+
+                    <div>
+                        <label for="serviceRecipients">Service Recipients</label>
+                        <textarea id="serviceRecipients" name="serviceRecipients" placeholder="One recipient per line"></textarea>
+                    </div>
+
+                    <div class="field-row">
+                        <div>
+                            <label for="signatureDate">Signature Date</label>
+                            <input id="signatureDate" name="signatureDate" type="date">
+                        </div>
+                        <div>
+                            <label for="verificationDate">Verification Date</label>
+                            <input id="verificationDate" name="verificationDate" type="date">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="serviceDate">Service Date</label>
+                        <input id="serviceDate" name="serviceDate" type="date">
+                    </div>
+
                     <div>
                         <label>Output Formats</label>
                         <div class="checkbox-row">
                             <label class="check-pill"><input type="checkbox" name="outputFormat" value="docx" checked> DOCX</label>
                             <label class="check-pill"><input type="checkbox" name="outputFormat" value="pdf" checked> PDF</label>
+                            <label class="check-pill"><input type="checkbox" name="outputFormat" value="txt"> TXT</label>
                         </div>
                     </div>
 
@@ -557,6 +884,8 @@
     </div>
 
     <script>
+        const DRAFT_STORAGE_KEY = 'formalComplaintBuilderState';
+        const PREVIEW_STORAGE_KEY = 'formalComplaintBuilderPreview';
         const state = {
             userId: null,
             generatedPayload: null,
@@ -572,6 +901,19 @@
             showBox('statusBox', '');
             showBox('successBox', '');
             showBox('errorBox', '');
+        }
+
+        async function copyPleadingText() {
+            if (!state.generatedPayload || !state.generatedPayload.draft || !state.generatedPayload.draft.draft_text) {
+                showBox('errorBox', 'No pleading text is available to copy yet.');
+                return;
+            }
+            try {
+                await navigator.clipboard.writeText(state.generatedPayload.draft.draft_text);
+                showBox('successBox', 'Pleading text copied to the clipboard.');
+            } catch (error) {
+                showBox('errorBox', 'Unable to copy pleading text from this browser session.');
+            }
         }
 
         function splitLines(value) {
@@ -590,6 +932,14 @@
             }
             try {
                 return JSON.parse(value);
+            } catch (error) {
+                return null;
+            }
+        }
+
+        function getLocalStorage() {
+            try {
+                return window.localStorage;
             } catch (error) {
                 return null;
             }
@@ -633,12 +983,115 @@
             return data || null;
         }
 
-        function setFieldValue(id, value) {
+        function setFieldValue(id, value, overwrite = false) {
             const element = document.getElementById(id);
             if (!element || value == null || value === '') {
                 return;
             }
+            if (!overwrite && typeof element.value === 'string' && element.value.trim()) {
+                return;
+            }
             element.value = value;
+        }
+
+        function setCheckedFormats(values) {
+            const selected = new Set(Array.isArray(values) && values.length ? values : ['docx', 'pdf']);
+            document.querySelectorAll('input[name="outputFormat"]').forEach((node) => {
+                node.checked = selected.has(node.value);
+            });
+        }
+
+        function getDraftState() {
+            return {
+                courtName: document.getElementById('courtName').value,
+                district: document.getElementById('district').value,
+                division: document.getElementById('division').value,
+                caseNumber: document.getElementById('caseNumber').value,
+                courtHeaderOverride: document.getElementById('courtHeaderOverride').value,
+                plaintiffs: document.getElementById('plaintiffs').value,
+                defendants: document.getElementById('defendants').value,
+                titleOverride: document.getElementById('titleOverride').value,
+                requestedRelief: document.getElementById('requestedRelief').value,
+                signerName: document.getElementById('signerName').value,
+                signerTitle: document.getElementById('signerTitle').value,
+                signerFirm: document.getElementById('signerFirm').value,
+                signerBarNumber: document.getElementById('signerBarNumber').value,
+                signerContact: document.getElementById('signerContact').value,
+                declarantName: document.getElementById('declarantName').value,
+                serviceMethod: document.getElementById('serviceMethod').value,
+                serviceRecipients: document.getElementById('serviceRecipients').value,
+                signatureDate: document.getElementById('signatureDate').value,
+                verificationDate: document.getElementById('verificationDate').value,
+                serviceDate: document.getElementById('serviceDate').value,
+                outputFormats: Array.from(document.querySelectorAll('input[name="outputFormat"]:checked')).map((node) => node.value),
+            };
+        }
+
+        function persistDraftState() {
+            const storage = getLocalStorage();
+            if (!storage) {
+                return;
+            }
+            storage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(getDraftState()));
+        }
+
+        function restoreDraftState() {
+            const storage = getLocalStorage();
+            if (!storage) {
+                return false;
+            }
+            const saved = safeJsonParse(storage.getItem(DRAFT_STORAGE_KEY));
+            if (!saved || typeof saved !== 'object') {
+                return false;
+            }
+
+            setFieldValue('courtName', saved.courtName, true);
+            setFieldValue('district', saved.district, true);
+            setFieldValue('division', saved.division, true);
+            setFieldValue('caseNumber', saved.caseNumber, true);
+            setFieldValue('courtHeaderOverride', saved.courtHeaderOverride, true);
+            setFieldValue('plaintiffs', saved.plaintiffs, true);
+            setFieldValue('defendants', saved.defendants, true);
+            setFieldValue('titleOverride', saved.titleOverride, true);
+            setFieldValue('requestedRelief', saved.requestedRelief, true);
+            setFieldValue('signerName', saved.signerName, true);
+            setFieldValue('signerTitle', saved.signerTitle, true);
+            setFieldValue('signerFirm', saved.signerFirm, true);
+            setFieldValue('signerBarNumber', saved.signerBarNumber, true);
+            setFieldValue('signerContact', saved.signerContact, true);
+            setFieldValue('declarantName', saved.declarantName, true);
+            setFieldValue('serviceMethod', saved.serviceMethod, true);
+            setFieldValue('serviceRecipients', saved.serviceRecipients, true);
+            setFieldValue('signatureDate', saved.signatureDate, true);
+            setFieldValue('verificationDate', saved.verificationDate, true);
+            setFieldValue('serviceDate', saved.serviceDate, true);
+            setCheckedFormats(saved.outputFormats);
+            return true;
+        }
+
+        function persistGeneratedPayload(payload) {
+            const storage = getLocalStorage();
+            if (!storage) {
+                return;
+            }
+            if (!payload) {
+                storage.removeItem(PREVIEW_STORAGE_KEY);
+                return;
+            }
+            storage.setItem(PREVIEW_STORAGE_KEY, JSON.stringify(payload));
+        }
+
+        function restoreGeneratedPayload() {
+            const storage = getLocalStorage();
+            if (!storage) {
+                return false;
+            }
+            const saved = safeJsonParse(storage.getItem(PREVIEW_STORAGE_KEY));
+            if (!saved || typeof saved !== 'object') {
+                return false;
+            }
+            renderPreview(saved);
+            return true;
         }
 
         function hydrateFormFromSummary(summary) {
@@ -657,6 +1110,13 @@
             setFieldValue('plaintiffs', plaintiffs.join('\n'));
             setFieldValue('defendants', defendants.join('\n'));
             setFieldValue('requestedRelief', relief);
+            if (plaintiffs.length) {
+                setFieldValue('signerName', plaintiffs[0]);
+                setFieldValue('declarantName', plaintiffs[0]);
+            }
+            if (defendants.length) {
+                setFieldValue('serviceRecipients', defendants.join('\n'));
+            }
         }
 
         function escapeHtml(value) {
@@ -675,6 +1135,80 @@
             const tag = ordered ? 'ol' : 'ul';
             const body = lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('');
             return `<${tag} class="list-lines">${body}</${tag}>`;
+        }
+
+        function renderPleadingParagraphs(lines, startNumber = 1) {
+            if (!Array.isArray(lines) || lines.length === 0) {
+                return '<div class="preview-meta">No content available.</div>';
+            }
+            const body = lines.map((line, index) => {
+                const number = line && typeof line === 'object' && line.number != null ? line.number : startNumber + index;
+                const text = line && typeof line === 'object' ? line.text : line;
+                return `
+                <div class="pleading-paragraph">
+                    <div class="pleading-number">P ${escapeHtml(String(number))}</div>
+                    <div class="pleading-copy">${escapeHtml(text)}</div>
+                </div>
+            `;
+            }).join('');
+            return `<div class="pleading-paragraphs">${body}</div>`;
+        }
+
+        function formatParagraphReferences(references) {
+            const values = Array.isArray(references)
+                ? references
+                    .map((value) => Number(value))
+                    .filter((value) => Number.isInteger(value) && value > 0)
+                : [];
+            if (!values.length) {
+                return '';
+            }
+            const uniqueSorted = [...new Set(values)].sort((left, right) => left - right);
+            const ranges = [];
+            let rangeStart = uniqueSorted[0];
+            let rangeEnd = uniqueSorted[0];
+
+            for (const value of uniqueSorted.slice(1)) {
+                if (value === rangeEnd + 1) {
+                    rangeEnd = value;
+                    continue;
+                }
+                ranges.push(rangeStart === rangeEnd ? `${rangeStart}` : `${rangeStart}-${rangeEnd}`);
+                rangeStart = value;
+                rangeEnd = value;
+            }
+            ranges.push(rangeStart === rangeEnd ? `${rangeStart}` : `${rangeStart}-${rangeEnd}`);
+
+            const marker = uniqueSorted.length === 1 ? '¶' : '¶¶';
+            return `${marker} ${ranges.join(', ')}`;
+        }
+
+        function formatExhibitReferences(exhibits) {
+            const labels = Array.isArray(exhibits)
+                ? exhibits
+                    .map((item) => item && typeof item === 'object' ? String(item.label || '').trim() : '')
+                    .filter(Boolean)
+                : [];
+            const uniqueLabels = [...new Set(labels)];
+            if (!uniqueLabels.length) {
+                return '';
+            }
+            if (uniqueLabels.length === 1) {
+                return uniqueLabels[0];
+            }
+            if (uniqueLabels.length === 2) {
+                return `${uniqueLabels[0]} and ${uniqueLabels[1]}`;
+            }
+            return `${uniqueLabels.slice(0, -1).join(', ')}, and ${uniqueLabels[uniqueLabels.length - 1]}`;
+        }
+
+        function formatIncorporatedSupport(claim) {
+            const paragraphReferences = formatParagraphReferences(claim.allegation_references || []);
+            const exhibitReferences = formatExhibitReferences(claim.supporting_exhibits || []);
+            if (paragraphReferences && exhibitReferences) {
+                return `${paragraphReferences}; ${exhibitReferences}`;
+            }
+            return paragraphReferences || exhibitReferences;
         }
 
         function renderArtifacts(artifacts) {
@@ -699,28 +1233,48 @@
             return `<section><h2>Artifacts</h2><div class="artifact-grid">${cards}</div></section>`;
         }
 
-        function renderClaims(claims) {
+        function renderClaims(claims, readinessClaims = []) {
             if (!Array.isArray(claims) || !claims.length) {
                 return '';
             }
+            const readinessByClaim = new Map(
+                (Array.isArray(readinessClaims) ? readinessClaims : [])
+                    .filter((claim) => claim && typeof claim === 'object')
+                    .map((claim) => [String(claim.claim_type || '').toLowerCase(), claim])
+            );
             const cards = claims.map((claim) => {
-                const exhibits = Array.isArray(claim.supporting_exhibits) && claim.supporting_exhibits.length
-                    ? `<div class="preview-meta"><strong>Exhibits:</strong> ${claim.supporting_exhibits.map((item) => escapeHtml(item.label + ' ' + item.title)).join('; ')}</div>`
+                const readiness = readinessByClaim.get(String(claim.claim_type || '').toLowerCase()) || null;
+                const readinessWarningBlock = readiness && Array.isArray(readiness.warnings) && readiness.warnings.length
+                    ? `
+                        <div class="claim-warning-callout">
+                            <strong>Open filing warnings</strong>
+                            ${renderWarningList(readiness.warnings)}
+                        </div>
+                    `
+                    : '';
+                const incorporatedSupport = formatIncorporatedSupport(claim);
+                const exhibitDetails = Array.isArray(claim.supporting_exhibits) && claim.supporting_exhibits.length
+                    ? `<div class="preview-meta"><strong>Supporting Exhibit Details:</strong> ${claim.supporting_exhibits.map((item) => escapeHtml(item.label + ' ' + item.title)).join('; ')}</div>`
                     : '';
                 return `
                     <article class="claim-card">
-                        <h3>${escapeHtml(claim.count_title || claim.claim_type || 'Claim')}</h3>
+                        <div class="readiness-card-header">
+                            <h3>${escapeHtml(claim.count_title || claim.claim_type || 'Claim')}</h3>
+                            ${readiness ? renderStatusPill(readiness.status || 'ready') : ''}
+                        </div>
                         <div class="section-stack">
                             <div>
                                 <strong>Legal standards</strong>
                                 ${renderLines(claim.legal_standards || [])}
                             </div>
+                            ${incorporatedSupport ? `<div class="preview-meta"><strong>Incorporated Support:</strong> ${escapeHtml(incorporatedSupport)}</div>` : ''}
                             <div>
-                                <strong>Supporting facts</strong>
-                                ${renderLines(claim.supporting_facts || [], true)}
+                                <strong>Claim-Specific Support</strong>
+                                ${renderLines(claim.supporting_facts || [])}
                             </div>
                             ${claim.missing_elements && claim.missing_elements.length ? `<div><strong>Open support gaps</strong>${renderLines(claim.missing_elements || [])}</div>` : ''}
-                            ${exhibits}
+                            ${readinessWarningBlock}
+                            ${exhibitDetails}
                         </div>
                     </article>
                 `;
@@ -748,12 +1302,349 @@
             return `<section><h2>Supporting Exhibits</h2><div class="exhibit-stack">${cards}</div></section>`;
         }
 
+        function renderStructuredBlock(title, values) {
+            const lines = (values || []).filter(Boolean);
+            if (!lines.length) {
+                return '';
+            }
+            return `
+                <article class="section-card">
+                    <h3>${escapeHtml(title)}</h3>
+                    ${renderLines(lines)}
+                </article>
+            `;
+        }
+
+        function humanizeKey(value) {
+            return String(value || '')
+                .replace(/_/g, ' ')
+                .replace(/\b\w/g, (char) => char.toUpperCase());
+        }
+
+        function renderStatusPill(status) {
+            const normalized = String(status || 'ready').toLowerCase();
+            return `<span class="status-pill" data-status="${escapeHtml(normalized)}">${escapeHtml(normalized)}</span>`;
+        }
+
+        function renderMetricList(metrics) {
+            const entries = Object.entries(metrics || {}).filter(([, value]) => value !== null && value !== undefined && value !== '');
+            if (!entries.length) {
+                return '<div class="preview-meta">No numeric drafting signals were reported.</div>';
+            }
+            const items = entries.map(([key, value]) => `<li><strong>${escapeHtml(humanizeKey(key))}:</strong> ${escapeHtml(String(value))}</li>`).join('');
+            return `<ul class="metric-list">${items}</ul>`;
+        }
+
+        function renderWarningList(warnings) {
+            const normalized = Array.isArray(warnings) ? warnings.filter((warning) => warning && typeof warning === 'object') : [];
+            if (!normalized.length) {
+                return '<div class="preview-meta">No drafting warnings are currently reported.</div>';
+            }
+            const items = normalized.map((warning) => {
+                const severity = warning.severity ? `[${String(warning.severity).toUpperCase()}] ` : '';
+                const code = warning.code ? `${humanizeKey(warning.code)}: ` : '';
+                return `<li>${escapeHtml(`${severity}${code}${warning.message || 'Warning reported.'}`)}</li>`;
+            }).join('');
+            return `<ul class="warning-list">${items}</ul>`;
+        }
+
+        function buildClaimReviewUrl(claimType) {
+            const params = new URLSearchParams();
+            const normalizedClaimType = String(claimType || '').trim();
+            const userId = String(state.userId || '').trim();
+            if (normalizedClaimType) {
+                params.set('claim_type', normalizedClaimType);
+            }
+            if (userId) {
+                params.set('user_id', userId);
+            }
+            const query = params.toString();
+            return query ? `/claim-support-review?${query}` : '/claim-support-review';
+        }
+
+        function getReviewLinkMap(reviewLinks) {
+            const claims = Array.isArray(reviewLinks && reviewLinks.claims)
+                ? reviewLinks.claims.filter((claim) => claim && typeof claim === 'object')
+                : [];
+            return claims.reduce((accumulator, claim) => {
+                const claimType = String(claim.claim_type || '').trim().toLowerCase();
+                if (claimType && !accumulator[claimType]) {
+                    accumulator[claimType] = claim;
+                }
+                return accumulator;
+            }, {});
+        }
+
+        function getSectionReviewLinkMap(reviewLinks) {
+            const sections = Array.isArray(reviewLinks && reviewLinks.sections)
+                ? reviewLinks.sections.filter((section) => section && typeof section === 'object')
+                : [];
+            return sections.reduce((accumulator, section) => {
+                const sectionKey = String(section.section_key || '').trim().toLowerCase();
+                if (sectionKey && !accumulator[sectionKey]) {
+                    accumulator[sectionKey] = section;
+                }
+                return accumulator;
+            }, {});
+        }
+
+        function resolveSectionReviewEntry(sectionKey, section, reviewLinks) {
+            if (section && typeof section === 'object' && (section.review_url || section.claim_links)) {
+                return section;
+            }
+            const normalizedSectionKey = String(sectionKey || '').trim().toLowerCase();
+            return getSectionReviewLinkMap(reviewLinks)[normalizedSectionKey] || section || {};
+        }
+
+        function resolveClaimReviewUrl(claim, reviewLinks) {
+            const directReviewUrl = String((claim && claim.review_url) || '').trim();
+            if (directReviewUrl) {
+                return directReviewUrl;
+            }
+            const claimType = String((claim && claim.claim_type) || '').trim().toLowerCase();
+            const mappedReview = getReviewLinkMap(reviewLinks)[claimType];
+            const mappedUrl = String((mappedReview && mappedReview.review_url) || '').trim();
+            if (mappedUrl) {
+                return mappedUrl;
+            }
+            const normalizedClaimType = String((claim && claim.claim_type) || '').trim();
+            return normalizedClaimType ? buildClaimReviewUrl(normalizedClaimType) : '';
+        }
+
+        function renderReviewLinks(reviewLinks) {
+            const dashboardUrl = String((reviewLinks && reviewLinks.dashboard_url) || '').trim() || '/claim-support-review';
+            return `
+                <div class="inline-link-row">
+                    <a class="inline-link" href="${escapeHtml(dashboardUrl)}">Open Review Dashboard</a>
+                </div>
+            `;
+        }
+
+        function resolveSectionReviewUrl(sectionKey, section, reviewLinks) {
+            const sectionEntry = resolveSectionReviewEntry(sectionKey, section, reviewLinks);
+            const directReviewUrl = String((sectionEntry && sectionEntry.review_url) || '').trim();
+            if (directReviewUrl) {
+                return directReviewUrl;
+            }
+            const normalizedSectionKey = String(sectionKey || '').trim().toLowerCase();
+            if (!normalizedSectionKey) {
+                return '';
+            }
+            const params = new URLSearchParams();
+            const userId = String(state.userId || '').trim();
+            if (userId) {
+                params.set('user_id', userId);
+            }
+            params.set('section', normalizedSectionKey);
+            const query = params.toString();
+            return query ? `/claim-support-review?${query}` : '/claim-support-review';
+        }
+
+        function renderSectionClaimLinks(sectionKey, section, reviewLinks) {
+            const sectionEntry = resolveSectionReviewEntry(sectionKey, section, reviewLinks);
+            const claimLinks = Array.isArray(sectionEntry && sectionEntry.claim_links)
+                ? sectionEntry.claim_links.filter((claim) => claim && typeof claim === 'object')
+                : [];
+            if (claimLinks.length <= 1) {
+                return '';
+            }
+            return `
+                <div class="inline-link-row">
+                    ${claimLinks.map((claim) => {
+                        const claimType = String(claim.claim_type || '').trim();
+                        const reviewUrl = String(claim.review_url || '').trim();
+                        if (!claimType || !reviewUrl) {
+                            return '';
+                        }
+                        return `<a class="inline-link" href="${escapeHtml(reviewUrl)}">Open ${escapeHtml(humanizeKey(claimType))} Section Review</a>`;
+                    }).join('')}
+                </div>
+            `;
+        }
+
+        function renderClaimActions(claim, reviewLinks) {
+            const claimType = String((claim && claim.claim_type) || '').trim();
+            const reviewUrl = resolveClaimReviewUrl(claim, reviewLinks);
+            if (!claimType || !reviewUrl) {
+                return '';
+            }
+            return `
+                <div class="inline-link-row">
+                    <a class="inline-link" href="${escapeHtml(reviewUrl)}">Open Claim Support Review</a>
+                </div>
+            `;
+        }
+
+        function findSupportingExhibitsForClaim(claim, exhibits) {
+            const claimType = String((claim && claim.claim_type) || '').trim().toLowerCase();
+            const normalizedExhibits = Array.isArray(exhibits) ? exhibits.filter((exhibit) => exhibit && typeof exhibit === 'object') : [];
+            const directExhibits = Array.isArray(claim && claim.supporting_exhibits)
+                ? claim.supporting_exhibits.filter((exhibit) => exhibit && typeof exhibit === 'object')
+                : [];
+            const seen = new Set();
+            const merged = [];
+            [...directExhibits, ...normalizedExhibits].forEach((exhibit) => {
+                const exhibitClaimType = String(exhibit.claim_type || '').trim().toLowerCase();
+                const key = `${exhibit.label || ''}|${exhibit.title || ''}|${exhibit.link || ''}|${exhibit.source_ref || ''}`;
+                if (seen.has(key)) {
+                    return;
+                }
+                if (!claimType || !exhibitClaimType || exhibitClaimType === claimType) {
+                    seen.add(key);
+                    merged.push(exhibit);
+                }
+            });
+            return merged;
+        }
+
+        function renderProvenanceList(claim, exhibits) {
+            const supportingExhibits = findSupportingExhibitsForClaim(claim, exhibits);
+            const treatmentSummary = claim && typeof claim.authority_treatment_summary === 'object'
+                ? claim.authority_treatment_summary
+                : {};
+            const ruleSummary = claim && typeof claim.authority_rule_candidate_summary === 'object'
+                ? claim.authority_rule_candidate_summary
+                : {};
+            const items = [];
+
+            supportingExhibits.forEach((exhibit) => {
+                const label = exhibit.label || 'Exhibit';
+                const title = exhibit.title || exhibit.summary || 'Supporting exhibit';
+                const sourceRef = exhibit.source_ref ? ` | source ${exhibit.source_ref}` : '';
+                items.push(`${label}: ${title}${sourceRef}`);
+            });
+
+            const treatmentCounts = Object.entries(treatmentSummary.treatment_type_counts || {})
+                .filter(([, count]) => Number(count || 0) > 0)
+                .map(([label, count]) => `${label}=${count}`);
+            if (Number(treatmentSummary.supportive_authority_link_count || 0) > 0) {
+                items.push(`Supportive authorities: ${treatmentSummary.supportive_authority_link_count}`);
+            }
+            if (Number(treatmentSummary.adverse_authority_link_count || 0) > 0) {
+                items.push(`Adverse authorities: ${treatmentSummary.adverse_authority_link_count}`);
+            }
+            if (Number(treatmentSummary.uncertain_authority_link_count || 0) > 0) {
+                items.push(`Uncertain authorities: ${treatmentSummary.uncertain_authority_link_count}`);
+            }
+            if (treatmentCounts.length) {
+                items.push(`Treatment mix: ${treatmentCounts.join(', ')}`);
+            }
+
+            const ruleCounts = Object.entries(ruleSummary.rule_type_counts || {})
+                .filter(([, count]) => Number(count || 0) > 0)
+                .map(([label, count]) => `${label}=${count}`);
+            if (ruleCounts.length) {
+                items.push(`Rule candidates: ${ruleCounts.join(', ')}`);
+            }
+
+            if (!items.length) {
+                return '<div class="preview-meta">No source-backed provenance or authority drilldown is currently available for this claim.</div>';
+            }
+
+            return `<ul class="provenance-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+        }
+
+        function renderSectionReadiness(sections, reviewLinks) {
+            const values = Object.entries(sections || {});
+            if (!values.length) {
+                return '<div class="preview-meta">No section-level filing readiness data is available.</div>';
+            }
+            const cards = values.map(([key, section]) => {
+                const reviewUrl = resolveSectionReviewUrl(key, section, reviewLinks);
+                return `
+                <article class="readiness-detail-card">
+                    <div class="readiness-card-header">
+                        <h3>${escapeHtml(section.title || humanizeKey(key))}</h3>
+                        ${renderStatusPill(section.status || 'ready')}
+                    </div>
+                    <div class="readiness-subtitle">Section Metrics</div>
+                    ${renderMetricList(section.metrics || {})}
+                    <div class="readiness-subtitle">Section Warnings</div>
+                    ${renderWarningList(section.warnings || [])}
+                    ${reviewUrl ? `<div class="inline-link-row"><a class="inline-link" href="${escapeHtml(reviewUrl)}">Open Section Review</a></div>` : ''}
+                    ${renderSectionClaimLinks(key, section, reviewLinks)}
+                </article>
+            `;
+            }).join('');
+            return `<div class="readiness-detail-grid">${cards}</div>`;
+        }
+
+        function renderClaimReadiness(claims, exhibits, reviewLinks) {
+            const values = Array.isArray(claims) ? claims.filter((claim) => claim && typeof claim === 'object') : [];
+            if (!values.length) {
+                return '<div class="preview-meta">No claim-level drafting signals are available.</div>';
+            }
+            const cards = values.map((claim) => {
+                const supportByKind = Object.entries(claim.support_by_kind || {}).filter(([, value]) => value !== null && value !== undefined && value !== '');
+                const supportSummary = supportByKind.length
+                    ? supportByKind.map(([key, value]) => `${humanizeKey(key)}=${value}`).join(', ')
+                    : 'No support-by-kind counts reported.';
+                return `
+                    <article class="readiness-claim-card">
+                        <div class="readiness-card-header">
+                            <h3>${escapeHtml(humanizeKey(claim.claim_type || 'claim'))}</h3>
+                            ${renderStatusPill(claim.status || 'ready')}
+                        </div>
+                        <div class="readiness-summary-line">
+                            <span><strong>Validation:</strong> ${escapeHtml(claim.validation_status || 'unknown')}</span>
+                            <span><strong>Covered:</strong> ${escapeHtml(String(claim.covered_elements || 0))}/${escapeHtml(String(claim.total_elements || 0))}</span>
+                            <span><strong>Support Mix:</strong> ${escapeHtml(supportSummary)}</span>
+                        </div>
+                        <div class="readiness-subtitle">Claim Metrics</div>
+                        ${renderMetricList({
+                            unresolved_element_count: claim.unresolved_element_count,
+                            proof_gap_count: claim.proof_gap_count,
+                            contradiction_candidate_count: claim.contradiction_candidate_count,
+                        })}
+                        <div class="readiness-subtitle">Claim Warnings</div>
+                        ${renderWarningList(claim.warnings || [])}
+                        <div class="readiness-subtitle">Source Drilldown</div>
+                        ${renderProvenanceList(claim, exhibits)}
+                        ${renderClaimActions(claim, reviewLinks)}
+                    </article>
+                `;
+            }).join('');
+            return `<div class="readiness-claim-stack">${cards}</div>`;
+        }
+
+        function renderReadiness(readiness, exhibits, reviewLinks) {
+            if (!readiness || typeof readiness !== 'object') {
+                return '';
+            }
+            const sections = Object.entries(readiness.sections || {});
+            const warningCount = Number(readiness.warning_count || 0);
+            const sectionCards = sections.map(([key, section]) => `
+                <div class="readiness-chip">
+                    <strong>${escapeHtml(section.title || key)}</strong>
+                    <div class="preview-meta">Status: ${escapeHtml(section.status || 'ready')}</div>
+                </div>
+            `).join('');
+            return `
+                <section class="readiness-banner" data-status="${escapeHtml(readiness.status || 'ready')}">
+                    <div class="readiness-title">Drafting Readiness</div>
+                    <div class="preview-meta">Overall status: ${escapeHtml(readiness.status || 'ready')} | Warnings: ${escapeHtml(String(warningCount))}</div>
+                    ${renderReviewLinks(reviewLinks)}
+                    <div class="readiness-grid">${sectionCards}</div>
+                    <div class="readiness-subtitle">Section Readiness</div>
+                    ${renderSectionReadiness(readiness.sections || {}, reviewLinks)}
+                    <div class="readiness-subtitle">Claim Readiness</div>
+                    ${renderClaimReadiness(readiness.claims || [], exhibits || [], reviewLinks)}
+                </section>
+            `;
+        }
+
         function renderPreview(payload) {
             state.generatedPayload = payload;
+            persistGeneratedPayload(payload);
             const draft = payload.draft || {};
+            const readiness = payload.drafting_readiness || draft.drafting_readiness || {};
+            const reviewLinks = payload.review_links || {};
             const caption = draft.case_caption || {};
             const plaintiffs = (caption.plaintiffs || []).join('\n');
             const defendants = (caption.defendants || []).join('\n');
+            const signatureBlock = draft.signature_block || {};
+            const verification = draft.verification || {};
+            const certificateOfService = draft.certificate_of_service || {};
             const previewMeta = document.getElementById('previewMeta');
             previewMeta.textContent = payload.generated_at
                 ? `Generated ${new Date(payload.generated_at).toLocaleString()}`
@@ -765,6 +1656,7 @@
             const html = `
                 ${renderArtifacts(payload.artifacts || {})}
                 <div class="draft-shell">
+                    ${renderReadiness(readiness, draft.exhibits || [], reviewLinks)}
                     <div class="court-header">${escapeHtml(draft.court_header || '')}</div>
                     <div class="caption-block">
                         <div class="caption-parties">${escapeHtml(plaintiffs)}\n\nPlaintiff,\n\nv.\n\n${escapeHtml(defendants)}\n\nDefendant.</div>
@@ -785,12 +1677,21 @@
                             ${renderLines(draft.summary_of_facts || [], true)}
                         </article>
                         <article class="section-card">
+                            <h3>Factual Allegations</h3>
+                            ${renderPleadingParagraphs(draft.factual_allegation_paragraphs || draft.factual_allegations || draft.summary_of_facts || [], 1)}
+                        </article>
+                        ${draft.jurisdiction_statement || draft.venue_statement ? `
+                        <article class="section-card">
+                            <h3>Jurisdiction and Venue</h3>
+                            ${renderLines([draft.jurisdiction_statement, draft.venue_statement].filter(Boolean))}
+                        </article>` : ''}
+                        <article class="section-card">
                             <h3>Applicable Legal Standards</h3>
                             ${renderLines(draft.legal_standards || [])}
                         </article>
                     </div>
 
-                    ${renderClaims(draft.claims_for_relief || [])}
+                    ${renderClaims(draft.claims_for_relief || [], readiness.claims || [])}
 
                     <section>
                         <h2>Requested Relief</h2>
@@ -799,12 +1700,27 @@
                         </article>
                     </section>
 
+                    <section>
+                        <h2>Filing Blocks</h2>
+                        <div class="section-stack">
+                            ${renderStructuredBlock('Signature Block', [signatureBlock.signature_line, signatureBlock.name, signatureBlock.title, signatureBlock.firm, signatureBlock.bar_number ? `Bar No. ${signatureBlock.bar_number}` : '', signatureBlock.contact, signatureBlock.dated])}
+                            ${renderStructuredBlock(verification.title || 'Verification', [verification.text, verification.dated, verification.signature_line])}
+                            ${renderStructuredBlock(certificateOfService.title || 'Certificate of Service', [certificateOfService.text].concat((certificateOfService.recipients || []).map((recipient) => `Recipient: ${recipient}`), [certificateOfService.dated, certificateOfService.signature_line]))}
+                        </div>
+                    </section>
+
+                    ${draft.draft_text ? `<section><h2>Pleading Text</h2><div class="pleading-tools"><button type="button" class="secondary" id="copyPleadingButton">Copy Pleading Text</button></div><pre class="pleading-text">${escapeHtml(draft.draft_text)}</pre></section>` : ''}
+
                     ${renderExhibits(draft.exhibits || [])}
                 </div>
             `;
 
             document.getElementById('previewRoot').className = '';
             document.getElementById('previewRoot').innerHTML = html;
+            const copyButton = document.getElementById('copyPleadingButton');
+            if (copyButton) {
+                copyButton.addEventListener('click', copyPleadingText);
+            }
         }
 
         function buildPayload() {
@@ -822,6 +1738,17 @@
                 plaintiff_names: splitLines(document.getElementById('plaintiffs').value),
                 defendant_names: splitLines(document.getElementById('defendants').value),
                 requested_relief: splitLines(document.getElementById('requestedRelief').value),
+                signer_name: document.getElementById('signerName').value.trim() || null,
+                signer_title: document.getElementById('signerTitle').value.trim() || null,
+                signer_firm: document.getElementById('signerFirm').value.trim() || null,
+                signer_bar_number: document.getElementById('signerBarNumber').value.trim() || null,
+                signer_contact: document.getElementById('signerContact').value.trim() || null,
+                declarant_name: document.getElementById('declarantName').value.trim() || null,
+                service_method: document.getElementById('serviceMethod').value.trim() || null,
+                service_recipients: splitLines(document.getElementById('serviceRecipients').value),
+                signature_date: document.getElementById('signatureDate').value || null,
+                verification_date: document.getElementById('verificationDate').value || null,
+                service_date: document.getElementById('serviceDate').value || null,
                 output_formats: outputFormats,
             };
         }
@@ -829,6 +1756,7 @@
         async function generateDocument(event) {
             event.preventDefault();
             clearMessages();
+            persistDraftState();
 
             const payload = buildPayload();
             if (!payload.output_formats.length) {
@@ -868,22 +1796,29 @@
 
         function resetForm() {
             document.getElementById('documentForm').reset();
-            document.querySelectorAll('input[name="outputFormat"]').forEach((node) => {
-                node.checked = node.value === 'docx' || node.value === 'pdf';
-            });
+            setCheckedFormats(['docx', 'pdf']);
             clearMessages();
+            state.generatedPayload = null;
             document.getElementById('previewRoot').className = 'empty-state';
             document.getElementById('previewRoot').innerHTML = '<div><strong>Nothing rendered yet</strong>Submit the build request to generate a structured draft and download-ready artifacts.</div>';
             document.getElementById('previewMeta').textContent = 'No document generated yet.';
             document.getElementById('artifactMetric').textContent = 'None yet';
+            const storage = getLocalStorage();
+            if (storage) {
+                storage.removeItem(DRAFT_STORAGE_KEY);
+                storage.removeItem(PREVIEW_STORAGE_KEY);
+            }
         }
 
         async function bootstrap() {
+            restoreDraftState();
+            restoreGeneratedPayload();
             try {
                 const cookies = await fetchCookies();
                 state.userId = cookies.hashed_username || null;
                 const summary = await fetchProfileSummary(cookies.hashed_username, cookies.hashed_password);
                 hydrateFormFromSummary(summary);
+                persistDraftState();
             } catch (error) {
                 showBox('errorBox', 'Unable to prefill the document form from the current profile. You can still build the document manually.');
             }
@@ -891,6 +1826,8 @@
 
         document.getElementById('documentForm').addEventListener('submit', generateDocument);
         document.getElementById('resetButton').addEventListener('click', resetForm);
+        document.getElementById('documentForm').addEventListener('input', persistDraftState);
+        document.getElementById('documentForm').addEventListener('change', persistDraftState);
         bootstrap();
     </script>
 </body>

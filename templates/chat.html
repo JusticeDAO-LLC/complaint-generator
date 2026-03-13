@@ -66,6 +66,24 @@
         body {
             background-color: transparent;
         }
+
+        .surface-links {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .surface-link {
+            display: inline-block;
+            padding: 8px 14px;
+            border-radius: 999px;
+            background-color: #f3f4f6;
+            color: #1f2937;
+            text-decoration: none;
+            font-weight: 600;
+        }
     </style>
     <script>
         hostname = "localhost:19000";
@@ -193,6 +211,10 @@
         <div class="card-body">
             <strong id="profile"></strong>
             <h4 class="card-title text-center"> Lex Publicus Chat App </h4>
+            <div class="surface-links">
+                <a class="surface-link" href="/document">Open Formal Complaint Builder</a>
+                <a class="surface-link" href="/claim-support-review">Open Claim Support Review</a>
+            </div>
             <hr>
             <div class="Err">
                 <div id="Err">

@@ -95,6 +95,27 @@
             margin-top: 22px;
         }
 
+        .surface-links {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 18px;
+        }
+
+        .surface-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px 14px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: rgba(255, 250, 242, 0.9);
+            color: var(--accent);
+            font-size: 0.92rem;
+            font-weight: 600;
+            text-decoration: none;
+        }
+
         .stat {
             background: var(--panel-strong);
             border: 1px solid var(--line);
@@ -613,6 +634,10 @@
                     Inspect claim-element coverage, review missing evidence or authority support, and trigger bounded
                     follow-up retrieval without leaving the browser.
                 </p>
+                <div class="surface-links">
+                    <a class="surface-link" href="/document">Open Formal Complaint Builder</a>
+                </div>
+                <div class="status-line" id="prefill-context-line" hidden>Opened from document workflow.</div>
                 <div class="hero-stats">
                     <div class="stat">
                         <span class="stat-label">Covered</span>
@@ -836,6 +861,23 @@
     </div>
 
     <script>
+        function humanizeQueryValue(value) {
+            return String(value || '')
+                .replace(/_/g, ' ')
+                .replace(/\b\w/g, (char) => char.toUpperCase());
+        }
+
+        function setPrefillContext(sectionKey) {
+            const contextLine = document.getElementById('prefill-context-line');
+            if (!sectionKey) {
+                contextLine.hidden = true;
+                contextLine.textContent = 'Opened from document workflow.';
+                return;
+            }
+            contextLine.hidden = false;
+            contextLine.textContent = `Opened from document workflow: ${humanizeQueryValue(sectionKey)}.`;
+        }
+
         function parseRequiredSupportKinds() {
             const raw = document.getElementById('required-kinds').value || '';
             return raw.split(',').map((item) => item.trim()).filter(Boolean);
@@ -1093,6 +1135,21 @@
             document.getElementById('execution-result-status').textContent = 'unchanged';
             document.getElementById('execution-result-chips').innerHTML = '';
             document.getElementById('execution-result-notes').textContent = '';
+        }
+
+        function applyQueryPrefill() {
+            const params = new URLSearchParams(window.location.search || '');
+            const claimType = params.get('claim_type');
+            const userId = params.get('user_id');
+            const section = params.get('section');
+            if (claimType) {
+                document.getElementById('claim-type').value = claimType;
+            }
+            if (userId) {
+                document.getElementById('user-id').value = userId;
+            }
+            setPrefillContext(section);
+            return Boolean(claimType || userId || section);
         }
 
         function prefillResolutionForm(values) {
@@ -1612,6 +1669,9 @@
             });
             setStatus('Resolution form prefilled from selected follow-up item.');
         });
+        if (applyQueryPrefill()) {
+            setStatus('Review prefilled from document workflow.');
+        }
         loadReview();
     </script>
 </body>

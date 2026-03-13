@@ -89,6 +89,7 @@ These are the main execution targets:
 | W7 | Retrieval and follow-up optimization | In Progress | P1 | Retrieval is driven by missing support and provenance-aware ranking |
 | W8 | Review and operator tooling | In Progress | P1 | Existing coverage, follow-up, and dashboard payloads graduate into richer inspectable review surfaces |
 | W9 | Legal corpus search and authority treatment | Planned | P0 | Claim elements can be researched for support, opposition, and authority reliability |
+| W10 | Drafting and filing readiness | Planned | P0 | Formal complaint drafts become support-aware, citation-aware, and validation-aware |
 
 ## W1: Adapter Hardening
 
@@ -835,6 +836,100 @@ Acceptance criteria:
 
 - long-running enrichment no longer blocks interactive case work
 
+## W10: Drafting and Filing Readiness
+
+Status: Planned
+Priority: P0
+
+### Why this matters
+
+The repository already has a formal complaint document builder, export API, and browser workflow. The missing step is to make drafting consume the same support, authority, graph, and validation signals that the review layer already exposes.
+
+### Work Package W10.1: Claim-section support packets
+
+Status: Planned
+Target files:
+
+- `document_pipeline.py`
+- `mediator/mediator.py`
+- `mediator/claim_support_hooks.py`
+- `claim_support_review.py`
+
+Tasks:
+
+- derive section-level support packets for factual allegations, jurisdiction and venue, claims for relief, and requested relief
+- map claim-element support status into drafting-ready bundles instead of requiring the document builder to infer readiness ad hoc
+- carry provenance, authority-treatment, and validation summaries into document-ready packet shapes
+
+Acceptance criteria:
+
+- the document pipeline can request drafting support bundles from the mediator without re-querying raw support tables directly
+- each major complaint section can surface source-backed support status or explicit gaps
+
+### Work Package W10.2: Drafting-time authority and proof guardrails
+
+Status: Planned
+Target files:
+
+- `document_pipeline.py`
+- `mediator/legal_authority_hooks.py`
+- `mediator/claim_support_hooks.py`
+- `docs/PAYLOAD_CONTRACTS.md`
+
+Tasks:
+
+- surface warnings for adverse authority, weak treatment confidence, unresolved good-law checks, and missing procedural prerequisites before export
+- surface proof-gap and failed-premise warnings where the validation layer can already explain legal insufficiency
+- distinguish hard blockers from soft drafting warnings so degraded mode remains usable
+
+Acceptance criteria:
+
+- complaint exports can flag unsupported or legally fragile sections without breaking existing artifact generation
+- document payloads expose stable warning objects suitable for UI and CLI consumers
+
+### Work Package W10.3: Browser builder and export workflow integration
+
+Status: Planned
+Target files:
+
+- `applications/document_api.py`
+- `applications/server.py`
+- `templates/document.html`
+- `docs/APPLICATIONS.md`
+
+Tasks:
+
+- expose section-level support readiness, warning summaries, and artifact provenance in the `/document` workflow
+- let the browser builder show when a complaint section is grounded by evidence, authority, archive captures, graph support, or proof diagnostics
+- keep generated artifact download behavior aligned with managed output paths and review-safe payloads
+
+Acceptance criteria:
+
+- the browser builder can render readiness and warning state before or alongside generated artifacts
+- operators can navigate from drafting output back to claim-support review without losing context
+
+### Work Package W10.4: Filing-readiness tests and docs
+
+Status: Planned
+Target files:
+
+- `tests/test_document_pipeline.py`
+- `tests/test_review_api.py`
+- `tests/test_claim_support_review_template.py`
+- `docs/APPLICATIONS.md`
+- `docs/PAYLOAD_CONTRACTS.md`
+
+Tasks:
+
+- add focused tests for section support packets, drafting warnings, and document workflow round-trips
+- document the contract for drafting warnings, support bundles, and artifact metadata
+- confirm degraded mode when graph, authority treatment, or logic extras are unavailable
+
+Acceptance criteria:
+
+- document export behavior is covered by focused tests instead of only broad endpoint smoke tests
+- operator-facing drafting payload changes are documented and stable
+
 ## Recommended Sequence
 
 ## Immediate sequence
@@ -846,6 +941,7 @@ Acceptance criteria:
 5. Deepen W4.1 and W4.4 so graph snapshots and coverage views become a stronger persistent query plane.
 6. Advance W6.1, W6.3, and W6.4 from proof-aware placeholder flows to grounded validation runs with authority-derived rules.
 7. Stabilize W8.1 support packet reporting around the existing review and dashboard payloads.
+8. Add W10.1 and W10.2 so the document pipeline can consume section-level support packets and drafting warnings.
 
 ## Next sequence
 
@@ -855,6 +951,7 @@ Acceptance criteria:
 4. Add W9.4 authority graph and review integration.
 5. Start W5.1 ontology generation workflow.
 6. Add W8 timeline, archive-history, and provenance drilldown packets.
+7. Add W10.3 browser builder readiness and warning integration.
 
 ## Later sequence
 
@@ -862,6 +959,7 @@ Acceptance criteria:
 2. Add W5.2 support-path scoring.
 3. Add W6.3 formal validation loop.
 4. Expose W8.1 support packet reporting.
+5. Complete W10.4 filing-readiness testing and payload documentation.
 
 ## Suggested Sprint Breakdown
 
@@ -918,9 +1016,20 @@ Definition of done:
 
 Definition of done:
 
-- at least one complaint type has end-to-end formal validation and contradiction reporting
+- grounded proof and contradiction signals are stable enough for downstream drafting and review consumers
 
 ### Sprint 6
+
+- W10.1
+- W10.2
+- W10.3
+- W10.4
+
+Definition of done:
+
+- the formal complaint builder can show section readiness, drafting warnings, and source-backed support context before export, with at least one complaint type carrying end-to-end formal validation and contradiction reporting into the drafting workflow
+
+### Sprint 7
 
 - W8.1
 - W8.2

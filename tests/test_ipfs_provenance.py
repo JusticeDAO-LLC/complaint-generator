@@ -1,7 +1,9 @@
 from integrations.ipfs_datasets.provenance import (
+    build_provenance,
     build_document_parse_contract,
     build_document_parse_summary_metadata,
     build_fact_lineage_metadata,
+    merge_metadata_with_provenance,
     build_storage_parse_metadata,
 )
 
@@ -114,3 +116,42 @@ def test_build_fact_lineage_metadata_embeds_parse_contract_fields():
     assert metadata["parse_lineage"]["parser_version"] == "documents-adapter:1"
     assert metadata["parse_lineage"]["record_scope"] == "legal_authority"
     assert metadata["parse_lineage"]["source_ref"] == "authority:7"
+
+
+def test_build_provenance_preserves_normalized_source_context_metadata():
+    provenance = build_provenance(
+        source_url="https://web.archive.org/web/20240101120000/https://example.com/policy",
+        acquisition_method="web_discovery",
+        source_type="archived_domain_scrape",
+        source_system="ipfs_datasets_py",
+        metadata={
+            "content_origin": "historical_archive_capture",
+            "archive_url": "https://web.archive.org/web/20240101120000/https://example.com/policy",
+            "version_of": "https://example.com/policy",
+            "captured_at": "2024-01-01T12:00:00Z",
+        },
+    )
+
+    assert provenance.as_dict()["metadata"]["content_origin"] == "historical_archive_capture"
+    assert provenance.as_dict()["metadata"]["version_of"] == "https://example.com/policy"
+
+
+def test_merge_metadata_with_provenance_updates_existing_provenance_payload():
+    payload = merge_metadata_with_provenance(
+        {
+            "provenance": {
+                "source_url": "https://example.com/policy",
+                "metadata": {"observed_at": "2024-01-02T00:00:00Z"},
+            }
+        },
+        build_provenance(
+            source_url="https://web.archive.org/web/20240101120000/https://example.com/policy",
+            acquisition_method="web_discovery",
+            source_type="archived_domain_scrape",
+            metadata={"archive_url": "https://web.archive.org/web/20240101120000/https://example.com/policy"},
+        ),
+    )
+
+    assert payload["provenance"]["source_url"] == "https://web.archive.org/web/20240101120000/https://example.com/policy"
+    assert payload["provenance"]["metadata"]["observed_at"] == "2024-01-02T00:00:00Z"
+    assert payload["provenance"]["metadata"]["archive_url"] == "https://web.archive.org/web/20240101120000/https://example.com/policy"

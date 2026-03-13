@@ -451,10 +451,16 @@ class ClaimSupportHook:
         payload = record if isinstance(record, dict) else {}
         parse_metadata = payload.get('parse_metadata', {}) if isinstance(payload.get('parse_metadata'), dict) else {}
         transform_lineage = parse_metadata.get('transform_lineage', {}) if isinstance(parse_metadata.get('transform_lineage'), dict) else {}
+        provenance_payload = payload.get('provenance', {}) if isinstance(payload.get('provenance'), dict) else {}
+        if not provenance_payload and isinstance(payload.get('metadata'), dict):
+            metadata_provenance = payload['metadata'].get('provenance')
+            if isinstance(metadata_provenance, dict):
+                provenance_payload = metadata_provenance
+        provenance_metadata = provenance_payload.get('metadata', {}) if isinstance(provenance_payload.get('metadata'), dict) else {}
         source_span = parse_metadata.get('source_span', {}) if isinstance(parse_metadata.get('source_span'), dict) else {}
         parse_quality = parse_metadata.get('parse_quality', {}) if isinstance(parse_metadata.get('parse_quality'), dict) else {}
 
-        input_format = str(parse_metadata.get('input_format') or transform_lineage.get('input_format') or '')
+        input_format = str(parse_metadata.get('input_format') or transform_lineage.get('input_format') or provenance_metadata.get('input_format') or '')
         extraction_method = str(parse_metadata.get('extraction_method') or transform_lineage.get('normalization') or '')
         quality_tier = str(parse_metadata.get('quality_tier') or parse_quality.get('quality_tier') or '')
         quality_score = float(parse_metadata.get('quality_score') or parse_quality.get('quality_score') or 0.0)
@@ -469,16 +475,16 @@ class ClaimSupportHook:
             'quality_score': quality_score,
             'page_count': page_count,
             'source': str(parse_metadata.get('source') or transform_lineage.get('source') or ''),
-            'content_origin': str(parse_metadata.get('content_origin') or transform_lineage.get('content_origin') or ''),
-            'historical_capture': bool(parse_metadata.get('historical_capture', transform_lineage.get('historical_capture', False))),
-            'capture_source': str(parse_metadata.get('capture_source') or transform_lineage.get('capture_source') or ''),
-            'archive_url': str(parse_metadata.get('archive_url') or transform_lineage.get('archive_url') or ''),
-            'original_url': str(parse_metadata.get('original_url') or transform_lineage.get('original_url') or ''),
-            'version_of': str(parse_metadata.get('version_of') or transform_lineage.get('version_of') or ''),
-            'captured_at': str(parse_metadata.get('captured_at') or transform_lineage.get('captured_at') or ''),
-            'observed_at': str(parse_metadata.get('observed_at') or transform_lineage.get('observed_at') or ''),
-            'content_source_field': str(parse_metadata.get('content_source_field') or transform_lineage.get('content_source_field') or ''),
-            'fallback_mode': str(parse_metadata.get('fallback_mode') or transform_lineage.get('fallback_mode') or ''),
+            'content_origin': str(parse_metadata.get('content_origin') or transform_lineage.get('content_origin') or provenance_metadata.get('content_origin') or ''),
+            'historical_capture': bool(parse_metadata.get('historical_capture', transform_lineage.get('historical_capture', provenance_metadata.get('historical_capture', False)))),
+            'capture_source': str(parse_metadata.get('capture_source') or transform_lineage.get('capture_source') or provenance_metadata.get('capture_source') or ''),
+            'archive_url': str(parse_metadata.get('archive_url') or transform_lineage.get('archive_url') or provenance_metadata.get('archive_url') or ''),
+            'original_url': str(parse_metadata.get('original_url') or transform_lineage.get('original_url') or provenance_metadata.get('original_url') or ''),
+            'version_of': str(parse_metadata.get('version_of') or transform_lineage.get('version_of') or provenance_metadata.get('version_of') or ''),
+            'captured_at': str(parse_metadata.get('captured_at') or transform_lineage.get('captured_at') or provenance_metadata.get('captured_at') or ''),
+            'observed_at': str(parse_metadata.get('observed_at') or transform_lineage.get('observed_at') or provenance_metadata.get('observed_at') or ''),
+            'content_source_field': str(parse_metadata.get('content_source_field') or transform_lineage.get('content_source_field') or provenance_metadata.get('content_source_field') or ''),
+            'fallback_mode': str(parse_metadata.get('fallback_mode') or transform_lineage.get('fallback_mode') or provenance_metadata.get('fallback_mode') or ''),
             'parsed_text_preview': str(payload.get('parsed_text_preview') or ''),
             'source_span': dict(source_span),
         }
@@ -616,12 +622,14 @@ class ClaimSupportHook:
             support_by_source[source_table] = support_by_source.get(source_table, 0) + 1
 
             parse_lineage = trace.get('parse_lineage', {}) if isinstance(trace.get('parse_lineage'), dict) else {}
-            parse_source = str(parse_lineage.get('source') or 'unknown')
+            record_summary = trace.get('record_summary', {}) if isinstance(trace.get('record_summary'), dict) else {}
+            parse_summary = record_summary.get('parse_summary', {}) if isinstance(record_summary.get('parse_summary'), dict) else {}
+            parse_source = str(parse_lineage.get('source') or parse_summary.get('source') or 'unknown')
             parse_source_counts[parse_source] = parse_source_counts.get(parse_source, 0) + 1
-            content_origin = str(parse_lineage.get('content_origin') or '')
+            content_origin = str(parse_lineage.get('content_origin') or parse_summary.get('content_origin') or '')
             if content_origin:
                 content_origin_counts[content_origin] = content_origin_counts.get(content_origin, 0) + 1
-            fallback_mode = str(parse_lineage.get('fallback_mode') or '')
+            fallback_mode = str(parse_lineage.get('fallback_mode') or parse_summary.get('fallback_mode') or '')
             if fallback_mode:
                 fallback_mode_counts[fallback_mode] = fallback_mode_counts.get(fallback_mode, 0) + 1
 
@@ -644,8 +652,6 @@ class ClaimSupportHook:
             if record_id not in (None, ''):
                 unique_record_ids.add(record_id)
 
-            record_summary = trace.get('record_summary', {}) if isinstance(trace.get('record_summary'), dict) else {}
-            parse_summary = record_summary.get('parse_summary', {}) if isinstance(record_summary.get('parse_summary'), dict) else {}
             if parse_summary:
                 parse_key = str(record_id or trace.get('support_ref') or trace.get('source_lineage_ref') or '')
                 if parse_key:

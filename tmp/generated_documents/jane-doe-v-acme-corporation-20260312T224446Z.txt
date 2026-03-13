@@ -1,0 +1,80 @@
+IN THE UNITED STATES DISTRICT COURT FOR THE NORTHERN DISTRICT OF CALIFORNIA
+
+Jane Doe, Plaintiff,
+v.
+Acme Corporation, Defendant.
+Civil Action No. 25-cv-00001
+
+COMPLAINT
+
+NATURE OF THE ACTION
+This is a civil action arising from the facts disclosed during the complaint intake process. Plaintiff seeks relief for employment discrimination, retaliation within federal jurisdiction.
+The action implicates the following areas of law: employment law, civil rights law.
+The draft relies on the following principal legal authorities: 42 U.S.C. § 2000e-2, 42 U.S.C. § 2000e-3.
+
+PARTIES
+Plaintiff: Jane Doe.
+Defendant: Acme Corporation.
+
+JURISDICTION AND VENUE
+This Court has subject-matter jurisdiction under federal law, including 42 U.S.C. § 2000e-2, because Plaintiff alleges violations arising under the laws of the United States.
+Venue is proper in the Northern District of California because a substantial part of the events or omissions giving rise to these claims occurred there.
+
+SUMMARY OF FACTS
+1. Plaintiff complained to human resources about race discrimination (See Exhibit B).
+2. Defendant terminated Plaintiff shortly after the complaint (See Exhibit A).
+3. What happened after you reported discrimination?: I was fired two days later and lost my pay and benefits (See Exhibit A).
+4. Plaintiff reported discrimination to human resources and was terminated two days later. Plaintiff seeks reinstatement, back pay, and injunctive relief (See Exhibit B).
+
+CLAIMS FOR RELIEF
+
+COUNT I - Employment Discrimination
+Legal Standard:
+- Membership in a protected class.
+- Adverse employment action.
+- Discriminatory motive or disparate treatment.
+- 42 U.S.C. § 2000e-2 - Title VII of the Civil Rights Act - Prohibits discrimination in employment.
+Supporting Facts:
+1. Evidence shows facts supporting employment discrimination (See Exhibit A).
+2. Termination email and HR complaint timeline (See Exhibit A).
+3. Element supported: Adverse employment action (See Exhibit A)
+4. Title VII of the Civil Rights Act (See Exhibit C)
+Open Support Gaps:
+- Discriminatory motive
+Exhibits Incorporated by Reference: Exhibit A, Exhibit C.
+
+COUNT II - Retaliation
+Legal Standard:
+- Protected activity.
+- Materially adverse action.
+- Causal connection between the activity and the adverse action.
+- 42 U.S.C. § 2000e-3 - Title VII anti-retaliation provision - Prohibits retaliation for protected complaints.
+Supporting Facts:
+1. Evidence shows facts supporting retaliation (See Exhibit B).
+2. Termination email and HR complaint timeline (See Exhibit B).
+Exhibits Incorporated by Reference: Exhibit B.
+
+REQUESTED RELIEF
+1. Reinstatement or front pay in lieu of reinstatement.
+2. Back pay, front pay, and lost benefits.
+3. Injunctive relief to prevent continuing violations.
+4. Compensatory damages in an amount to be proven at trial.
+5. Pre- and post-judgment interest as allowed by law.
+6. Reasonable attorney's fees and costs where authorized.
+7. Injunctive and declaratory relief sufficient to stop the unlawful conduct.
+8. Such other and further relief as the Court deems just and proper.
+
+EXHIBITS
+Exhibit A - Termination email from Defendant. (https://ipfs.io/ipfs/QmTerminationEmail)
+  Email confirming termination effective immediately.
+Exhibit B - Human resources complaint email. (https://ipfs.io/ipfs/QmHRComplaint)
+  Email to HR reporting discrimination.
+Exhibit C - Title VII of the Civil Rights Act (https://www.eeoc.gov/statutes/title-vii-civil-rights-act-1964)
+
+Respectfully submitted,
+/s/ Jane Doe, Esq.
+Jane Doe, Esq.
+Counsel for Plaintiff
+123 Main Street
+San Francisco, CA 94105
+Dated: 2026-03-12

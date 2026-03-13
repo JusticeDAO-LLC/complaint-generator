@@ -1,7 +1,7 @@
 # IPFS Datasets Py Batch 1 Implementation Plan
 
 Date: 2026-03-12
-Status: Ready for execution
+Status: In progress; provenance-normalization slice completed, archived-page corpus slice next
 
 Companion docs:
 
@@ -13,6 +13,7 @@ Companion docs:
 - `docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md`
 - `docs/IPFS_DATASETS_PY_BATCH1_STATUS_AUDIT.md`
 - `docs/IPFS_DATASETS_PY_BATCH1_SLICE1_TASKLIST.md`
+- `docs/IPFS_DATASETS_PY_BATCH1_SLICE2_TASKLIST.md`
 
 ## Purpose
 
@@ -119,6 +120,12 @@ Done when:
 Suggested issue title:
 
 - `Unify artifact provenance and transform lineage across evidence, archives, and authorities`
+
+Current status:
+
+- completed in the current checkout
+- durable provenance metadata now preserves archive-capture context for web evidence and full-text versus citation-fallback semantics for legal authorities
+- claim-support review summaries now consume provenance-backed normalized record summaries instead of relying only on parse-lineage fields
 
 ## Slice 3: Archived-page corpus normalization
 
@@ -278,15 +285,14 @@ Mitigation:
 - [ ] shared fact registry completed across evidence, archives, and authority text
 - [ ] focused ingestion and claim-support tests pass
 
-## Recommended first coding slice
+## Recommended next coding slice
 
-If Batch 1 starts now, the recommended first coding slice is:
+Given the current checkout, the recommended next Batch 1 coding slice is:
 
-1. `integrations/ipfs_datasets/documents.py`
-2. `integrations/ipfs_datasets/provenance.py`
-3. `mediator/web_evidence_hooks.py`
-4. `mediator/legal_authority_hooks.py`
-5. `tests/test_web_evidence_hooks.py`
-6. `tests/test_legal_authority_hooks.py`
+1. `mediator/web_evidence_hooks.py`
+2. `mediator/claim_support_hooks.py`
+3. `tests/test_web_evidence_hooks.py`
+4. `tests/test_claim_support_hooks.py`
+5. `docs/PAYLOAD_CONTRACTS.md`
 
-That slice has the highest leverage because it closes the remaining parse and provenance drift for the two source families most likely to fragment the corpus contract: archived pages and authority text.
+That slice has the highest leverage because provenance normalization is now stable enough that the main remaining Batch 1 risk is archived-page corpus behavior drifting into an evidence-adjacent special case. Tightening archived-page storage, support packets, and fact-backed review semantics will complete more of the shared corpus contract without prematurely pulling in Batch 2 or graph-store redesign work.
