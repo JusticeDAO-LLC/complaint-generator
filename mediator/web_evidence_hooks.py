@@ -13,6 +13,7 @@ import json
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pathlib import Path
+from mediator.state import extract_chat_history_context_strings_from_state
 
 from .integrations import (
     IPFSDatasetsAdapter,
@@ -175,27 +176,8 @@ class WebEvidenceSearchHook:
         for attr in ('complaint_summary', 'original_complaint', 'complaint', 'last_message'):
             _add(getattr(state, attr, None))
 
-        state_data = getattr(state, 'data', {}) or {}
-        if isinstance(state_data, dict):
-            context_values = []
-            extractor = getattr(state, 'extract_chat_history_context_strings', None)
-            if callable(extractor):
-                extracted = extractor(limit=3)
-                if isinstance(extracted, (list, tuple)):
-                    context_values = list(extracted)
-            if not context_values:
-                chat_history = state_data.get('chat_history', {})
-                if isinstance(chat_history, dict):
-                    for _, value in list(chat_history.items())[-3:]:
-                        if isinstance(value, dict):
-                            for candidate in (value.get('message'), value.get('question')):
-                                text = str(candidate or '').strip()
-                                if text and text not in context_values:
-                                    context_values.append(text)
-                        else:
-                            context_values.append(value)
-            for value in context_values:
-                _add(value)
+        for value in extract_chat_history_context_strings_from_state(state, limit=3):
+            _add(value)
 
         return context[:8]
     

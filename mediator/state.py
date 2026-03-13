@@ -13,6 +13,79 @@ import requests
 from backends.llm_router_backend import LLMRouterBackend
 
 
+def _normalize_chat_history_entry(entry):
+	if isinstance(entry, dict):
+		normalized = dict(entry)
+	else:
+		normalized = {"message": entry}
+
+	normalized_message = normalized.get("message")
+	if normalized_message is None:
+		normalized_message = normalized.get("question") or ""
+	normalized["message"] = normalized_message
+
+	if normalized.get("question") is None:
+		inquiry = normalized.get("inquiry")
+		if isinstance(inquiry, dict):
+			normalized["question"] = inquiry.get("question") or normalized_message
+		else:
+			normalized["question"] = normalized_message
+
+	return normalized
+
+
+def _normalize_chat_history(chat_history):
+	if not isinstance(chat_history, dict):
+		return {}
+	return {
+		key: _normalize_chat_history_entry(value)
+		for key, value in chat_history.items()
+	}
+
+
+def extract_chat_history_context_strings_from_state(state, limit=3):
+	context = []
+
+	def _add(value):
+		text = str(value or "").strip()
+		if text and text not in context:
+			context.append(text)
+
+	if state is None:
+		return context
+
+	extractor = getattr(state, "extract_chat_history_context_strings", None)
+	if callable(extractor):
+		try:
+			extracted = extractor(limit=limit)
+		except TypeError:
+			try:
+				extracted = extractor()
+			except Exception:
+				extracted = []
+		except Exception:
+			extracted = []
+		if isinstance(extracted, (list, tuple)):
+			for value in extracted:
+				_add(value)
+			if context:
+				return context
+
+	chat_history = getattr(state, "chat_history", None)
+	if not isinstance(chat_history, dict) or not chat_history:
+		state_data = getattr(state, "data", {}) or {}
+		if isinstance(state_data, dict):
+			chat_history = state_data.get("chat_history", {})
+		else:
+			chat_history = {}
+
+	for _, value in list(_normalize_chat_history(chat_history).items())[-limit:]:
+		for candidate in (value.get("message"), value.get("question")):
+			_add(candidate)
+
+	return context
+
+
 
 class State:
 	@classmethod		
@@ -60,32 +133,10 @@ class State:
 		return response_message
 
 	def normalize_chat_history_entry(self, entry):
-		if isinstance(entry, dict):
-			normalized = dict(entry)
-		else:
-			normalized = {"message": entry}
-
-		normalized_message = normalized.get("message")
-		if normalized_message is None:
-			normalized_message = normalized.get("question") or ""
-		normalized["message"] = normalized_message
-
-		if normalized.get("question") is None:
-			inquiry = normalized.get("inquiry")
-			if isinstance(inquiry, dict):
-				normalized["question"] = inquiry.get("question") or normalized_message
-			else:
-				normalized["question"] = normalized_message
-
-		return normalized
+		return _normalize_chat_history_entry(entry)
 
 	def normalize_chat_history(self, chat_history):
-		if not isinstance(chat_history, dict):
-			return {}
-		return {
-			key: self.normalize_chat_history_entry(value)
-			for key, value in chat_history.items()
-		}
+		return _normalize_chat_history(chat_history)
 
 	def _sync_chat_history_state(self):
 		normalized = self.normalize_chat_history(self.data.get("chat_history", {}))
@@ -97,14 +148,7 @@ class State:
 
 	def extract_chat_history_context_strings(self, limit=3):
 		self._sync_chat_history_state()
-		chat_history = self.chat_history
-		context = []
-		for _, value in list(chat_history.items())[-limit:]:
-			for candidate in (value.get("message"), value.get("question")):
-				text = str(candidate or "").strip()
-				if text and text not in context:
-					context.append(text)
-		return context
+		return extract_chat_history_context_strings_from_state(self, limit=limit)
 
 	def append_chat_history(self, message, sender=None, inquiry=None, explanation=None, hashed_username=None, timestamp=None):
 		if "chat_history" not in self.data or not isinstance(self.data.get("chat_history"), dict):

@@ -1,5 +1,6 @@
 from time import time
 from typing import List, Optional, Dict, Any
+from lib.chat_payloads import build_chat_payload
 from .strings import user_prompts
 from .state import State
 from .inquiries import Inquiries
@@ -260,12 +261,7 @@ class Mediator:
 	def io_payload(self, text) -> Dict[str, Any]:
 		message = self.io(text)
 		inquiry_payload = self.get_current_inquiry_payload()
-		return {
-			'message': message,
-			'question': inquiry_payload.get('question') or message,
-			'inquiry': inquiry_payload.get('inquiry'),
-			'explanation': inquiry_payload.get('explanation'),
-		}
+		return build_chat_payload(message, inquiry_payload=inquiry_payload)
 
 	def get_current_inquiry_payload(self) -> Dict[str, Any]:
 		return {

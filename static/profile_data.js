@@ -1,4 +1,6 @@
 window.ProfileDataPage = (function() {
+    const chatEntryUtils = window.ChatEntryUtils || {};
+
     function escapeHtml(text) {
         return $("<div>").text(text || "").html();
     }
@@ -38,6 +40,9 @@ window.ProfileDataPage = (function() {
     }
 
     function normalizeChatEntry(entry) {
+        if (typeof chatEntryUtils.normalizeChatEntry === "function") {
+            return chatEntryUtils.normalizeChatEntry(entry);
+        }
         if (typeof entry === "string") {
             return {
                 message: entry,
@@ -46,10 +51,10 @@ window.ProfileDataPage = (function() {
         }
         const normalized = Object.assign({}, entry || {});
         if (!normalized.message) {
-            normalized.message = normalized.question || "";
+            normalized.message = normalized.question || ((normalized.inquiry || {}).question) || "";
         }
         if (!normalized.question) {
-            normalized.question = normalized.message || "";
+            normalized.question = ((normalized.inquiry || {}).question) || normalized.message || "";
         }
         return normalized;
     }

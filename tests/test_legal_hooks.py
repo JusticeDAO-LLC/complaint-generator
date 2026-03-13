@@ -268,6 +268,37 @@ RELEVANCE: Covers retaliation after reporting discrimination
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
+    def test_build_evidence_context_uses_structured_chat_message_text_without_helper(self):
+        try:
+            from mediator.legal_hooks import StatuteRetrievalHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.state = Mock()
+            mock_mediator.state.complaint_summary = None
+            mock_mediator.state.original_complaint = None
+            mock_mediator.state.complaint = None
+            mock_mediator.state.last_message = None
+            mock_mediator.state.extract_chat_history_context_strings = lambda limit=3: 'not-a-list'
+            mock_mediator.state.data = {
+                'chat_history': {
+                    '1': {
+                        'sender': 'user-123',
+                        'message': 'Structured termination email detail.',
+                        'question': 'Do you have the termination email?',
+                    }
+                }
+            }
+
+            hook = StatuteRetrievalHook(mock_mediator)
+            context = hook._build_evidence_context({'claim_types': ['employment retaliation']})
+
+            assert 'Structured termination email detail.' in context
+            assert 'Do you have the termination email?' in context
+            assert not any('{\'sender\':' in item for item in context)
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
 
 class TestSummaryJudgmentHook:
     """Test cases for SummaryJudgmentHook"""

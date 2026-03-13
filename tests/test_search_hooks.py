@@ -229,6 +229,30 @@ class TestLegalCorpusRAGHook:
             assert bundle['normalized'][0]['metadata'].get('evidence_similarity_applied') is True
             assert bundle['normalized'][0]['metadata'].get('evidence_similarity_score', 0.0) > 0.0
 
+    def test_build_evidence_context_uses_structured_chat_message_text_without_helper(self, mock_mediator):
+        mock_mediator.state = Mock()
+        mock_mediator.state.complaint_summary = None
+        mock_mediator.state.original_complaint = None
+        mock_mediator.state.complaint = None
+        mock_mediator.state.last_message = None
+        mock_mediator.state.extract_chat_history_context_strings = lambda limit=3: 'not-a-list'
+        mock_mediator.state.data = {
+            'chat_history': {
+                '1': {
+                    'sender': 'user-123',
+                    'message': 'Structured retaliation evidence detail.',
+                    'question': 'Do you have the employer email?',
+                }
+            }
+        }
+
+        hook = LegalCorpusRAGHook(mock_mediator)
+        context = hook._build_evidence_context('employment retaliation')
+
+        assert 'Structured retaliation evidence detail.' in context
+        assert 'Do you have the employer email?' in context
+        assert not any('{\'sender\':' in item for item in context)
+
     def test_search_legal_corpus_bundle_graph_reranker_boosts_graph_aligned_record(self, mock_mediator):
         """Enhanced graph mode should rerank legal corpus bundle using graph context."""
 

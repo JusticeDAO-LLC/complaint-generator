@@ -12,7 +12,7 @@ from fastapi import FastAPI, Request, HTTPException, BackgroundTasks, Cookie, We
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from lib.chat_payloads import build_chat_payload
+from lib.chat_payloads import build_chat_payload as shared_build_chat_payload
 from starlette.status import HTTP_403_FORBIDDEN
 from starlette.responses import RedirectResponse
 import uvicorn
@@ -20,16 +20,22 @@ import uvicorn
 
 class SERVER:
     @staticmethod
-    def build_chat_payload(message, inquiry_payload=None, sender="Bot:"):
-        return build_chat_payload(message, inquiry_payload=inquiry_payload, sender=sender)
+    def build_chat_payload(message, inquiry_payload=None, sender="Bot:", hashed_username=None):
+        return shared_build_chat_payload(
+            message,
+            inquiry_payload=inquiry_payload,
+            sender=sender,
+            hashed_username=hashed_username,
+        )
 
     @staticmethod
-    def process_chat_message(mediator, message, sender="Bot:"):
+    def process_chat_message(mediator, message, sender="Bot:", hashed_username=None):
         bot_payload = mediator.io_payload(message)
         return SERVER.build_chat_payload(
             bot_payload["message"],
             bot_payload,
             sender=sender,
+            hashed_username=hashed_username,
         )
        
     def __init__(self, mediator):
@@ -352,11 +358,13 @@ class SERVER:
         async def chat_post(request: Request):
             payload = await request.json()
             message = ""
+            hashed_username = request.cookies.get("hashed_username")
             if isinstance(payload, dict):
                 message = payload.get("message") or payload.get("text") or ""
+                hashed_username = hashed_username or payload.get("hashed_username")
             if not message:
                 raise HTTPException(status_code=400, detail="message is required")
-            return self.process_chat_message(mediator, message)
+            return self.process_chat_message(mediator, message, hashed_username=hashed_username)
 
 
         @app.websocket("/api/chat")
@@ -387,6 +395,7 @@ class SERVER:
                 response = self.build_chat_payload(
                     "Please state your legal complaint",
                     mediator.get_current_inquiry_payload(),
+                    hashed_username=hashed_username,
                 )
 
                 await manager.broadcast(response)
@@ -395,10 +404,18 @@ class SERVER:
                         data = await websocket.receive_json()
                         message = data.get("message") if isinstance(data, dict) else str(data)
                         mediator.state.load_profile(dict({"results":{ "hashed_username": hashed_username, "hashed_password":hashed_password}}))
-                        user_payload = self.build_chat_payload(message, sender=hashed_username or "User:")
+                        user_payload = self.build_chat_payload(
+                            message,
+                            sender=hashed_username or "User:",
+                            hashed_username=hashed_username,
+                        )
                         await manager.broadcast(user_payload)
                         mediator.state.message(user_payload)
-                        bot_payload = self.process_chat_message(mediator, message)
+                        bot_payload = self.process_chat_message(
+                            mediator,
+                            message,
+                            hashed_username=hashed_username,
+                        )
                         await manager.broadcast(bot_payload)
                         mediator.state.message(bot_payload)
                         mediator.state.store_profile(dict({"results":{ "hashed_username": hashed_username, "hashed_password":hashed_password}}))

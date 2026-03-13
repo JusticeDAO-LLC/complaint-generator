@@ -1,5 +1,6 @@
 window.ChatPage = (function() {
     const hostname = "localhost:19000";
+    const chatEntryUtils = window.ChatEntryUtils || {};
 
     function loadProfile(username, password) {
         $.ajaxSetup({ async: false });
@@ -36,10 +37,35 @@ window.ChatPage = (function() {
     }
 
     function normalizeSender(sender, hashedUsername) {
+        if (typeof chatEntryUtils.normalizeSender === 'function') {
+            return chatEntryUtils.normalizeSender(sender, hashedUsername);
+        }
         if (sender == hashedUsername) {
             return "You";
         }
         return sender || "Bot:";
+    }
+
+    function normalizeChatEntry(entry) {
+        if (typeof chatEntryUtils.normalizeChatEntry === 'function') {
+            return chatEntryUtils.normalizeChatEntry(entry);
+        }
+        if (typeof entry === 'string') {
+            return {
+                message: entry,
+                question: entry
+            };
+        }
+
+        const normalized = Object.assign({}, entry || {});
+        if (!normalized.message) {
+            normalized.message = normalized.question || ((normalized.inquiry || {}).question) || '';
+        }
+        if (!normalized.question) {
+            normalized.question = ((normalized.inquiry || {}).question) || normalized.message || '';
+        }
+
+        return normalized;
     }
 
     function renderMessage(parent, data, hashedUsername) {
@@ -47,12 +73,7 @@ window.ChatPage = (function() {
             return;
         }
 
-        if (typeof data === 'string') {
-            data = {
-                message: data,
-                question: data
-            };
-        }
+        data = normalizeChatEntry(data);
 
         const sender = normalizeSender(data['sender'], hashedUsername);
         const message = escapeHtml(data['message'] || '');
@@ -120,6 +141,7 @@ window.ChatPage = (function() {
     return {
         initialize,
         renderMessage,
+        normalizeChatEntry,
         normalizeSender,
         escapeHtml,
         showError,

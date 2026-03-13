@@ -306,6 +306,7 @@ class TestWebEvidenceSearchHook:
             mock_mediator.state.original_complaint = None
             mock_mediator.state.complaint = None
             mock_mediator.state.last_message = None
+            mock_mediator.state.extract_chat_history_context_strings = lambda limit=3: 'not-a-list'
             mock_mediator.state.data = {
                 'chat_history': {
                     '1': {
