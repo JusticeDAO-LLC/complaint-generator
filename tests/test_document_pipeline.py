@@ -382,15 +382,16 @@ def test_formal_complaint_document_builder_uses_state_court_opening_language(tmp
     assert result["draft"]["case_caption"]["assigned_judge_label"] == "Judicial Officer"
     assert result["draft"]["case_caption"]["courtroom_label"] == "Department"
     assert result["draft"]["verification"]["text"].startswith(
-        "I, Jane Doe, declare under penalty of perjury that I have reviewed this Complaint"
+        "I, Jane Doe, verify that I have reviewed this Complaint and know its contents."
     )
-    assert result["draft"]["verification"]["dated"] == "Executed on: __________________"
+    assert result["draft"]["verification"]["dated"] == "Verified on: __________________"
     assert result["draft"]["certificate_of_service"]["title"] == "Proof of Service"
     assert "I declare that a true and correct copy" in result["draft"]["certificate_of_service"]["text"]
     assert result["draft"]["affidavit"]["intro"].startswith(
-        "I, Jane Doe, declare under penalty of perjury that I am competent to testify"
+        "I, Jane Doe, being duly sworn, state that I am competent to testify"
     )
-    assert result["draft"]["affidavit"]["jurat"] == "Subscribed and sworn to (or affirmed) before me on __________________ by Jane Doe."
+    assert result["draft"]["affidavit"]["dated"] == "Verified on: __________________"
+    assert result["draft"]["affidavit"]["jurat"] == "Subscribed and sworn to before me on __________________ by Jane Doe."
     assert result["draft"]["venue_statement"] == (
         "Venue is proper in this Court because a substantial part of the events or omissions giving rise "
         "to these claims occurred in Los Angeles County."
@@ -400,8 +401,9 @@ def test_formal_complaint_document_builder_uses_state_court_opening_language(tmp
     assert "Case No. ________________" in result["draft"]["draft_text"]
     assert "Plaintiff Jane Doe is a party bringing this civil action in this Court." in result["draft"]["draft_text"]
     assert "Defendant Acme Corporation is named as the party from whom relief is sought." in result["draft"]["draft_text"]
-    assert "declare under penalty of perjury that I am competent to testify" in result["draft"]["draft_text"]
-    assert "Subscribed and sworn to (or affirmed) before me on __________________ by Jane Doe." in result["draft"]["draft_text"]
+    assert "verify that I have reviewed this Complaint and know its contents" in result["draft"]["draft_text"]
+    assert "being duly sworn, state that I am competent to testify" in result["draft"]["draft_text"]
+    assert "Subscribed and sworn to before me on __________________ by Jane Doe." in result["draft"]["draft_text"]
     assert "Related Proceeding No. JCCP-5123" in result["draft"]["draft_text"]
     assert "Coordination No. 24STCV10001" in result["draft"]["draft_text"]
     assert "Judicial Officer: Hon. Elena Park" in result["draft"]["draft_text"]

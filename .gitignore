@@ -21,5 +21,6 @@ ENV/
 env.bak/
 venv.bak/
 tmp/
+tmp/generated_documents/
 # Local stray artifact seen during config debugging
 test_extended_config.log

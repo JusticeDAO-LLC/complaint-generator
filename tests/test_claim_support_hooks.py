@@ -2538,6 +2538,13 @@ class TestClaimSupportHook:
             'id': 52,
             'cid': 'QmTrace1',
             'fact_count': 1,
+            'parse_metadata': {
+                'source': 'web_document',
+                'input_format': 'email',
+                'quality_tier': 'high',
+                'quality_score': 96.0,
+                'page_count': 1,
+            },
             'graph_metadata': {
                 'graph_snapshot': {
                     'graph_id': 'graph:evidence-52',
@@ -2594,6 +2601,11 @@ class TestClaimSupportHook:
             assert traces[0]['source_record_id'] == 52
             assert traces[0]['source_ref'] == 'QmTrace1'
             assert traces[0]['record_scope'] == 'evidence'
+            assert traces[0]['parse_source'] == 'bytes'
+            assert traces[0]['input_format'] == 'email'
+            assert traces[0]['quality_tier'] == 'high'
+            assert traces[0]['quality_score'] == 96.0
+            assert traces[0]['page_count'] == 1
             assert traces[0]['parse_lineage']['source'] == 'bytes'
             assert traces[0]['graph_id'] == 'graph:evidence-52'
             assert traces[0]['record_id'] == 52
