@@ -8,6 +8,7 @@ from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import urlencode
 
 from complaint_phases import ComplaintPhase
+from document_optimization import AgenticDocumentOptimizer
 
 
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "tmp" / "generated_documents"
@@ -16,6 +17,12 @@ DEFAULT_RELIEF = [
     "Pre- and post-judgment interest as allowed by law.",
     "Reasonable attorney's fees and costs where authorized.",
     "Injunctive and declaratory relief sufficient to stop the unlawful conduct.",
+    "Such other and further relief as the Court deems just and proper.",
+]
+
+STATE_DEFAULT_RELIEF = [
+    "General and special damages according to proof.",
+    "Costs of suit incurred herein.",
     "Such other and further relief as the Court deems just and proper.",
 ]
 
@@ -175,6 +182,12 @@ class FormalComplaintDocumentBuilder:
         affidavit_venue_lines: Optional[List[str]] = None,
         affidavit_jurat: Optional[str] = None,
         affidavit_notary_block: Optional[List[str]] = None,
+        enable_agentic_optimization: bool = False,
+        optimization_max_iterations: int = 2,
+        optimization_target_score: float = 0.9,
+        optimization_provider: Optional[str] = None,
+        optimization_model_name: Optional[str] = None,
+        optimization_persist_artifacts: bool = False,
         output_dir: Optional[str] = None,
         output_formats: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
@@ -220,6 +233,16 @@ class FormalComplaintDocumentBuilder:
             affidavit_jurat=affidavit_jurat,
             affidavit_notary_block=affidavit_notary_block,
         )
+        document_optimization = None
+        if enable_agentic_optimization:
+            draft, document_optimization = self._optimize_draft(
+                draft,
+                max_iterations=optimization_max_iterations,
+                target_score=optimization_target_score,
+                provider=optimization_provider,
+                model_name=optimization_model_name,
+                persist_artifacts=optimization_persist_artifacts,
+            )
         drafting_readiness = self._build_drafting_readiness(
             user_id=resolved_user_id,
             draft=draft,
@@ -243,6 +266,7 @@ class FormalComplaintDocumentBuilder:
             "drafting_readiness": drafting_readiness,
             "filing_checklist": filing_checklist,
             "artifacts": artifacts,
+            "document_optimization": document_optimization,
             "output_formats": formats,
             "generated_at": _utcnow().isoformat(),
         }
@@ -467,7 +491,7 @@ class FormalComplaintDocumentBuilder:
             list(requested_relief or [])
             + list(generated_complaint.get("prayer_for_relief", []) or [])
             + self._extract_requested_relief_from_facts(facts)
-            + DEFAULT_RELIEF
+            + (STATE_DEFAULT_RELIEF if str(classification.get("jurisdiction") or "").strip().lower() == "state" else DEFAULT_RELIEF)
         )
         jury_demand_block = self._build_jury_demand(jury_demand=jury_demand, jury_demand_text=jury_demand_text)
         court_header = self._build_court_header(
@@ -579,6 +603,43 @@ class FormalComplaintDocumentBuilder:
         draft["affidavit"] = self._build_affidavit(draft)
         draft["draft_text"] = self._render_draft_text(draft)
         return draft
+
+    def _optimize_draft(
+        self,
+        draft: Dict[str, Any],
+        *,
+        max_iterations: int,
+        target_score: float,
+        provider: Optional[str],
+        model_name: Optional[str],
+        persist_artifacts: bool,
+    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        optimizer = AgenticDocumentOptimizer(
+            self.mediator,
+            provider=provider,
+            model_name=model_name,
+            max_iterations=max_iterations,
+            target_score=target_score,
+            persist_artifacts=persist_artifacts,
+        )
+        optimized_draft, report = optimizer.optimize(draft)
+        optimized_draft["summary_of_facts"] = self._normalize_text_lines(optimized_draft.get("summary_of_facts", []))
+        optimized_draft["factual_allegations"] = self._expand_allegation_sources(
+            optimized_draft.get("factual_allegations", []),
+            limit=24,
+        ) or self._expand_allegation_sources(draft.get("factual_allegations", []), limit=24)
+        for claim in _coerce_list(optimized_draft.get("claims_for_relief")):
+            if not isinstance(claim, dict):
+                continue
+            claim["supporting_facts"] = self._expand_allegation_sources(
+                claim.get("supporting_facts", []),
+                limit=10,
+            ) or self._normalize_text_lines(claim.get("supporting_facts", []))
+        self._attach_allegation_references(optimized_draft)
+        self._annotate_case_caption_display(optimized_draft)
+        optimized_draft["affidavit"] = self._build_affidavit(optimized_draft)
+        optimized_draft["draft_text"] = self._render_draft_text(optimized_draft)
+        return optimized_draft, report
 
     def _adapt_formal_complaint_to_package_draft(self, formal_complaint: Dict[str, Any]) -> Dict[str, Any]:
         caption = formal_complaint.get("caption", {}) if isinstance(formal_complaint.get("caption"), dict) else {}
@@ -943,8 +1004,7 @@ class FormalComplaintDocumentBuilder:
         if draft.get("venue_statement"):
             lines.append(str(draft["venue_statement"]))
         lines.extend(["", "FACTUAL ALLEGATIONS"])
-        factual_allegations = draft.get("factual_allegations") or draft.get("summary_of_facts", [])
-        lines.extend(self._numbered_lines(factual_allegations))
+        lines.extend(self._grouped_allegation_text_lines(draft))
         claims = draft.get("claims_for_relief", []) if isinstance(draft.get("claims_for_relief"), list) else []
         if claims:
             lines.extend(["", "CLAIMS FOR RELIEF"])
@@ -968,6 +1028,8 @@ class FormalComplaintDocumentBuilder:
                 lines.append("Open Support Gaps:")
                 lines.extend([f"- {line}" for line in missing])
         lines.extend(["", "REQUESTED RELIEF"])
+        if forum_type == "state":
+            lines.append("Wherefore, Plaintiff prays for judgment against Defendant as follows:")
         lines.extend(self._numbered_lines(draft.get("requested_relief", [])))
         jury_demand = draft.get("jury_demand", {}) if isinstance(draft.get("jury_demand"), dict) else {}
         if jury_demand:
@@ -1036,11 +1098,7 @@ class FormalComplaintDocumentBuilder:
                 str(affidavit.get("jurat") or ""),
             ])
             lines.extend(str(line) for line in _coerce_list(affidavit.get("notary_block")) if str(line or "").strip())
-        lines.extend([
-            "",
-            "Respectfully submitted,",
-            *self._signature_block_lines(signature_block),
-        ])
+        lines.extend(["", *self._build_signature_section_lines(signature_block, forum_type)])
         return "\n".join(line for line in lines if line is not None)
 
     def _normalize_text_lines(self, values: Any) -> List[str]:
@@ -1078,6 +1136,10 @@ class FormalComplaintDocumentBuilder:
         replacements = (
             (r"^i was\b", "Plaintiff was"),
             (r"^i am\b", "Plaintiff is"),
+            (r"^i need\b", "Plaintiff needs"),
+            (r"^i needed\b", "Plaintiff needed"),
+            (r"^i lost\b", "Plaintiff lost"),
+            (r"^i asked\b", "Plaintiff asked"),
             (r"^i reported\b", "Plaintiff reported"),
             (r"^i complained\b", "Plaintiff complained"),
             (r"^i informed\b", "Plaintiff informed"),
@@ -1087,8 +1149,62 @@ class FormalComplaintDocumentBuilder:
             (r"^i experienced\b", "Plaintiff experienced"),
             (r"^i suffered\b", "Plaintiff suffered"),
             (r"^i told\b", "Plaintiff told"),
+            (r"^they\b", "Defendant"),
         )
         for pattern, replacement in replacements:
+            text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+        clause_replacements = (
+            (r"([,;]\s+)i was\b", r"\1Plaintiff was"),
+            (r"([,;]\s+)i am\b", r"\1Plaintiff is"),
+            (r"([,;]\s+)i need\b", r"\1Plaintiff needs"),
+            (r"([,;]\s+)i needed\b", r"\1Plaintiff needed"),
+            (r"([,;]\s+)i lost\b", r"\1Plaintiff lost"),
+            (r"([,;]\s+)i asked\b", r"\1Plaintiff asked"),
+            (r"([,;]\s+)i reported\b", r"\1Plaintiff reported"),
+            (r"([,;]\s+)i complained\b", r"\1Plaintiff complained"),
+            (r"([,;]\s+)i requested\b", r"\1Plaintiff requested"),
+            (r"([,;]\s+)i informed\b", r"\1Plaintiff informed"),
+            (r"([,;]\s+)i notified\b", r"\1Plaintiff notified"),
+            (r"([,;]\s+)i suffered\b", r"\1Plaintiff suffered"),
+            (r"([,;]\s+)i experienced\b", r"\1Plaintiff experienced"),
+            (r"([,;]\s+)i told\b", r"\1Plaintiff told"),
+            (r"(\band\s+)i was\b", r"\1Plaintiff was"),
+            (r"(\band\s+)i am\b", r"\1Plaintiff is"),
+            (r"(\band\s+)i need\b", r"\1Plaintiff needs"),
+            (r"(\band\s+)i needed\b", r"\1Plaintiff needed"),
+            (r"(\band\s+)i lost\b", r"\1Plaintiff lost"),
+            (r"(\band\s+)i asked\b", r"\1Plaintiff asked"),
+            (r"(\band\s+)i reported\b", r"\1Plaintiff reported"),
+            (r"(\band\s+)i complained\b", r"\1Plaintiff complained"),
+            (r"(\band\s+)i requested\b", r"\1Plaintiff requested"),
+            (r"(\band\s+)i informed\b", r"\1Plaintiff informed"),
+            (r"(\band\s+)i notified\b", r"\1Plaintiff notified"),
+            (r"(\band\s+)i suffered\b", r"\1Plaintiff suffered"),
+            (r"(\band\s+)i experienced\b", r"\1Plaintiff experienced"),
+            (r"(\band\s+)i told\b", r"\1Plaintiff told"),
+            (r"(\bafter\s+)i was\b", r"\1Plaintiff was"),
+            (r"(\bafter\s+)i am\b", r"\1Plaintiff is"),
+            (r"(\bafter\s+)i need\b", r"\1Plaintiff needs"),
+            (r"(\bafter\s+)i needed\b", r"\1Plaintiff needed"),
+            (r"(\bafter\s+)i lost\b", r"\1Plaintiff lost"),
+            (r"(\bafter\s+)i asked\b", r"\1Plaintiff asked"),
+            (r"(\bafter\s+)i reported\b", r"\1Plaintiff reported"),
+            (r"(\bafter\s+)i complained\b", r"\1Plaintiff complained"),
+            (r"(\bafter\s+)i requested\b", r"\1Plaintiff requested"),
+            (r"(\bafter\s+)i informed\b", r"\1Plaintiff informed"),
+            (r"(\bafter\s+)i notified\b", r"\1Plaintiff notified"),
+            (r"(\bafter\s+)i suffered\b", r"\1Plaintiff suffered"),
+            (r"(\bafter\s+)i experienced\b", r"\1Plaintiff experienced"),
+            (r"(\bafter\s+)i told\b", r"\1Plaintiff told"),
+            (r"(\bthat\s+)i am\b", r"\1Plaintiff is"),
+            (r"(\bthat\s+)i need\b", r"\1Plaintiff needs"),
+            (r"(\bthat\s+)i needed\b", r"\1Plaintiff needed"),
+            (r"(\bthat\s+)i asked\b", r"\1Plaintiff asked"),
+            (r"(\bthat\s+)i complained\b", r"\1Plaintiff complained"),
+            (r"(\bthat\s+)i requested\b", r"\1Plaintiff requested"),
+            (r"(\bthat\s+)i told\b", r"\1Plaintiff told"),
+        )
+        for pattern, replacement in clause_replacements:
             text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
         text = re.sub(r"\bmy\b", "Plaintiff's", text, flags=re.IGNORECASE)
         text = re.sub(r"\bmine\b", "Plaintiff's", text, flags=re.IGNORECASE)
@@ -1141,6 +1257,18 @@ class FormalComplaintDocumentBuilder:
         if not cleaned:
             return []
 
+        def _normalize_adverse_clause(clause: str) -> str:
+            text = str(clause or "").strip().rstrip(".!?")
+            if re.match(r"^(after|following)\b", text, flags=re.IGNORECASE) and "," in text:
+                text = text.split(",", 1)[1].strip()
+            return text
+
+        def _normalize_harm_clause(clause: str) -> str:
+            text = str(clause or "").strip().rstrip(".!?")
+            text = re.sub(r",?\s+as a result$", "", text, flags=re.IGNORECASE)
+            text = re.sub(r",?\s+as a direct result$", "", text, flags=re.IGNORECASE)
+            return text.strip()
+
         def _pick(pattern: str, *, require_plaintiff: bool = False) -> str:
             for item in cleaned:
                 lowered = item.lower()
@@ -1153,15 +1281,126 @@ class FormalComplaintDocumentBuilder:
         report_clause = _pick(r"\b(reported|complained|opposed|informed|notified|told|requested)\b", require_plaintiff=True)
         adverse_clause = _pick(r"\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied)\b")
         harm_clause = _pick(r"\blost (pay|wages|salary|income|benefits)\b|\b(suffered|experienced)\b", require_plaintiff=True)
+        harm_already_tied_to_adverse_action = any(
+            re.search(r"\b(lost|suffered|experienced)\b", item.lower())
+            and re.search(r"\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied)\b", item.lower())
+            for item in cleaned
+        )
 
         synthesized: List[str] = []
         if report_clause and adverse_clause:
-            synthesized.append(f"After {report_clause}, {adverse_clause}.")
-        if harm_clause:
-            loss_match = re.search(r"\blost ([^.]+)", harm_clause, flags=re.IGNORECASE)
+            synthesized.append(f"After {report_clause}, {_normalize_adverse_clause(adverse_clause)}.")
+        if harm_clause and not harm_already_tied_to_adverse_action:
+            normalized_harm_clause = _normalize_harm_clause(harm_clause)
+            loss_match = re.search(r"\blost ([^.]+)", normalized_harm_clause, flags=re.IGNORECASE)
             if loss_match:
                 synthesized.append(f"As a direct result of Defendant's conduct, Plaintiff lost {loss_match.group(1).strip()}." )
         return _unique_preserving_order(synthesized)
+
+    def _prune_subsumed_narrative_clauses(self, allegations: List[str]) -> List[str]:
+        cleaned = [str(item).strip() for item in allegations if str(item).strip()]
+        if not cleaned:
+            return []
+
+        def _pick(pattern: str, *, require_plaintiff: bool = False) -> str:
+            for item in cleaned:
+                lowered = item.lower()
+                if require_plaintiff and "plaintiff" not in lowered:
+                    continue
+                if re.search(pattern, lowered):
+                    return item.strip()
+            return ""
+
+        report_clause = _pick(r"\b(reported|complained|opposed|informed|notified|told|requested)\b", require_plaintiff=True)
+        adverse_clause = _pick(r"\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied)\b")
+        has_harm_tied_to_adverse_action = any(
+            re.search(r"\b(lost|suffered|experienced)\b", item.lower())
+            and re.search(r"\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied)\b", item.lower())
+            for item in cleaned
+        )
+        consumed = {item.lower() for item in (report_clause, adverse_clause) if item}
+        if has_harm_tied_to_adverse_action:
+            combined_clause = _pick(
+                r"\b(reported|complained|opposed|informed|notified|told|requested)\b.*\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied)\b"
+                r"|\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied)\b.*\b(reported|complained|opposed|informed|notified|told|requested)\b",
+                require_plaintiff=True,
+            )
+            if combined_clause:
+                consumed.add(combined_clause.lower())
+        return [item for item in cleaned if item.lower() not in consumed]
+
+    def _prune_near_duplicate_allegations(self, allegations: List[str]) -> List[str]:
+        def _tokens(value: str) -> set[str]:
+            scrubbed = re.sub(r"\(see exhibit [^)]+\)", "", value, flags=re.IGNORECASE)
+            return {
+                token
+                for token in re.split(r"\W+", scrubbed.lower())
+                if len(token) >= 4 and token not in {"plaintiff", "defendant", "exhibit", "after", "those", "this", "that"}
+            }
+
+        def _categories(value: str) -> set[str]:
+            lowered = value.lower()
+            flags = set()
+            if re.search(r"\b(reported|complained|opposed|informed|notified|told|requested)\b", lowered):
+                flags.add("report")
+            if re.search(r"\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied|removed|stripped)\b", lowered) or re.search(r"\b(end(?:ed|ing))\b[^.]{0,40}\bemployment\b", lowered):
+                flags.add("adverse")
+            if re.search(r"\b(lost|suffered|experienced|benefits|wages|salary|income|opportunities)\b", lowered):
+                flags.add("harm")
+            return flags
+
+        def _features(value: str) -> set[str]:
+            lowered = value.lower()
+            flags = set()
+            if re.search(r"\b(reported|complained|opposed|informed|notified|told|requested)\b", lowered):
+                flags.add("report")
+            if re.search(r"\b(human resources|hr)\b", lowered):
+                flags.add("hr")
+            if re.search(r"\bregional management|management\b", lowered):
+                flags.add("management")
+            if re.search(r"\b(key|major)\s+accounts?\b|\b(accounts?)\b[^.]{0,20}\b(removed|stripped|taken away)\b|\b(removed|stripped|took away)\b[^.]{0,20}\baccounts?\b", lowered):
+                flags.add("accounts")
+            if re.search(r"\bovertime\b", lowered):
+                flags.add("overtime")
+            if re.search(r"\bshift(s)?\b", lowered):
+                flags.add("shifts")
+            if re.search(r"\b(absences?|attendance|treatment-related absences?)\b", lowered):
+                flags.add("absences")
+            if re.search(r"\b(disciplined|discipline|wrote me up|write-up|write up)\b", lowered):
+                flags.add("discipline")
+            if re.search(r"\b(terminated|fired)\b", lowered) or re.search(r"\b(end(?:ed|ing))\b[^.]{0,40}\bemployment\b", lowered):
+                flags.add("termination")
+            if re.search(r"\b(wages|pay|salary|income|benefits)\b", lowered):
+                flags.add("economic_harm")
+            if re.search(r"\b(career opportunities|future opportunities|opportunities)\b", lowered):
+                flags.add("opportunities")
+            return flags
+
+        kept: List[str] = []
+        for candidate in allegations:
+            candidate_tokens = _tokens(candidate)
+            candidate_categories = _categories(candidate)
+            candidate_features = _features(candidate)
+            skip = False
+            for existing in kept:
+                existing_tokens = _tokens(existing)
+                existing_categories = _categories(existing)
+                existing_features = _features(existing)
+                if not candidate_tokens or not existing_tokens:
+                    continue
+                if not (candidate_categories & existing_categories):
+                    continue
+                overlap = len(candidate_tokens & existing_tokens) / max(1, min(len(candidate_tokens), len(existing_tokens)))
+                shared_features = candidate_features & existing_features
+                if overlap >= 0.7:
+                    skip = True
+                    break
+                if "adverse" in candidate_categories and "adverse" in existing_categories and len(shared_features) >= 3:
+                    skip = True
+                    break
+            if not skip:
+                kept.append(candidate)
+        return kept
 
     def _build_factual_allegations(
         self,
@@ -1171,7 +1410,7 @@ class FormalComplaintDocumentBuilder:
     ) -> List[str]:
         base_allegations = list(self._expand_allegation_sources(summary_of_facts, limit=14))
         allegations = list(self._synthesize_narrative_allegations(base_allegations))
-        for item in base_allegations:
+        for item in self._prune_subsumed_narrative_clauses(base_allegations):
             if item.lower() not in {entry.lower() for entry in allegations}:
                 allegations.append(item)
         seen = {entry.lower() for entry in allegations}
@@ -1185,7 +1424,9 @@ class FormalComplaintDocumentBuilder:
                     continue
                 prefixed_fact = fact
                 if count_title and not fact.lower().startswith("as to ") and fact.lower() not in seen:
-                    lowered = fact[0].lower() + fact[1:] if len(fact) > 1 and fact[0].isalpha() else fact
+                    lowered = fact
+                    if not re.match(r"^(Plaintiff|Defendant)\b", fact):
+                        lowered = fact[0].lower() + fact[1:] if len(fact) > 1 and fact[0].isalpha() else fact
                     prefixed_fact = f"As to {count_title}, {lowered}"
                     if not prefixed_fact.endswith((".", "?", "!")):
                         prefixed_fact = f"{prefixed_fact}."
@@ -1195,9 +1436,10 @@ class FormalComplaintDocumentBuilder:
                 seen.add(key)
                 allegations.append(prefixed_fact)
                 if len(allegations) >= 24:
-                    return allegations
+                    return self._prune_near_duplicate_allegations(allegations)
 
-        return allegations or ["Additional factual development is required before filing."]
+        pruned = self._prune_near_duplicate_allegations(allegations)
+        return pruned or ["Additional factual development is required before filing."]
 
     def _attach_allegation_references(self, draft: Dict[str, Any]) -> None:
         allegation_lines = self._normalize_text_lines(
@@ -1212,6 +1454,7 @@ class FormalComplaintDocumentBuilder:
         ]
         draft["factual_allegations"] = allegation_lines
         draft["factual_allegation_paragraphs"] = paragraph_entries
+        draft["factual_allegation_groups"] = self._build_factual_allegation_groups(paragraph_entries)
 
         claims = draft.get("claims_for_relief") if isinstance(draft.get("claims_for_relief"), list) else []
         for claim in claims:
@@ -1221,6 +1464,60 @@ class FormalComplaintDocumentBuilder:
                 claim=claim,
                 allegation_paragraphs=paragraph_entries,
             )
+
+    def _build_factual_allegation_groups(self, allegation_paragraphs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        ordered_titles = [
+            "Protected Activity and Complaints",
+            "Adverse Action and Retaliatory Conduct",
+            "Damages and Resulting Harm",
+            "Additional Factual Support",
+        ]
+        groups: Dict[str, List[Dict[str, Any]]] = {title: [] for title in ordered_titles}
+
+        for paragraph in allegation_paragraphs:
+            if not isinstance(paragraph, dict):
+                continue
+            text = str(paragraph.get("text") or "").strip()
+            lowered = text.lower()
+            if re.search(r"\b(reported|complained|opposed|informed|notified|told|requested)\b", lowered):
+                title = "Protected Activity and Complaints"
+            elif re.search(r"\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied)\b", lowered):
+                title = "Adverse Action and Retaliatory Conduct"
+            elif re.search(r"\b(lost|damages|harm|injur|suffered|experienced|benefits|wages|salary|income)\b", lowered):
+                title = "Damages and Resulting Harm"
+            else:
+                title = "Additional Factual Support"
+            groups[title].append(paragraph)
+
+        return [
+            {"title": title, "paragraphs": groups[title]}
+            for title in ordered_titles
+            if groups[title]
+        ]
+
+    def _grouped_allegation_text_lines(self, draft: Dict[str, Any]) -> List[str]:
+        groups = draft.get("factual_allegation_groups") if isinstance(draft.get("factual_allegation_groups"), list) else []
+        if not groups:
+            return self._numbered_lines(draft.get("factual_allegations") or draft.get("summary_of_facts", []))
+
+        lines: List[str] = []
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            title = str(group.get("title") or "").strip()
+            paragraphs = group.get("paragraphs") if isinstance(group.get("paragraphs"), list) else []
+            if not paragraphs:
+                continue
+            if title:
+                lines.append(title.upper())
+            for paragraph in paragraphs:
+                if not isinstance(paragraph, dict):
+                    continue
+                number = paragraph.get("number")
+                text = str(paragraph.get("text") or "").strip()
+                if text:
+                    lines.append(f"{number}. {text}" if number else text)
+        return lines
 
     def _select_allegation_references_for_claim(
         self,
@@ -1429,6 +1726,11 @@ class FormalComplaintDocumentBuilder:
         if signature_block.get("dated"):
             lines.append(str(signature_block["dated"]))
         return lines
+
+    def _build_signature_section_lines(self, signature_block: Dict[str, Any], forum_type: str) -> List[str]:
+        if forum_type == "state":
+            return ["Respectfully submitted,", *self._signature_block_lines(signature_block)]
+        return ["Respectfully submitted,", *self._signature_block_lines(signature_block)]
 
     def _build_jury_demand(
         self,
@@ -2074,10 +2376,16 @@ class FormalComplaintDocumentBuilder:
                         facts.append(answer)
         complaint_text = getattr(state, "complaint", None) if state is not None else None
         original_text = getattr(state, "original_complaint", None) if state is not None else None
-        if complaint_text:
-            facts.append(str(complaint_text))
+        if isinstance(complaint_text, dict):
+            explicit_facts = _extract_text_candidates(complaint_text.get("facts"))
+            if explicit_facts:
+                facts.extend(explicit_facts)
+            else:
+                facts.extend(_extract_text_candidates(complaint_text.get("summary") or complaint_text))
+        elif complaint_text:
+            facts.extend(_extract_text_candidates(complaint_text))
         elif original_text:
-            facts.append(str(original_text))
+            facts.extend(_extract_text_candidates(original_text))
 
         normalized = []
         for item in _unique_preserving_order(facts):
@@ -2980,6 +3288,7 @@ class FormalComplaintDocumentBuilder:
             document,
             "Factual Allegations",
             draft.get("factual_allegations") or draft.get("summary_of_facts", []),
+            groups=draft.get("factual_allegation_groups") if isinstance(draft.get("factual_allegation_groups"), list) else None,
         )
 
         legal_standards = draft.get("legal_standards", [])
@@ -3086,7 +3395,7 @@ class FormalComplaintDocumentBuilder:
         self._add_docx_section(
             document,
             "Signature Block",
-            ["Respectfully submitted,", *self._signature_block_lines(signature_block)],
+            self._build_signature_section_lines(signature_block, self._resolve_draft_forum_type(draft)),
         )
 
         document.save(path)
@@ -3097,8 +3406,24 @@ class FormalComplaintDocumentBuilder:
             if paragraph:
                 document.add_paragraph(str(paragraph))
 
-    def _add_docx_numbered_facts(self, document: Any, title: str, facts: List[str]) -> None:
+    def _add_docx_numbered_facts(self, document: Any, title: str, facts: List[str], groups: Optional[List[Dict[str, Any]]] = None) -> None:
         document.add_heading(title, level=1)
+        if groups:
+            for group in groups:
+                if not isinstance(group, dict):
+                    continue
+                heading = str(group.get("title") or "").strip()
+                paragraphs = group.get("paragraphs") if isinstance(group.get("paragraphs"), list) else []
+                if heading:
+                    document.add_paragraph(heading)
+                for paragraph in paragraphs:
+                    if not isinstance(paragraph, dict):
+                        continue
+                    number = paragraph.get("number")
+                    text = str(paragraph.get("text") or "").strip()
+                    if text:
+                        document.add_paragraph(f"{number}. {text}" if number else text)
+            return
         for index, fact in enumerate(facts, start=1):
             document.add_paragraph(f"{index}. {fact}")
 
@@ -3280,6 +3605,7 @@ class FormalComplaintDocumentBuilder:
             styles,
             "Factual Allegations",
             draft.get("factual_allegations") or draft.get("summary_of_facts", []),
+            groups=draft.get("factual_allegation_groups") if isinstance(draft.get("factual_allegation_groups"), list) else None,
         )
         self._append_pdf_section(
             story,
@@ -3370,7 +3696,7 @@ class FormalComplaintDocumentBuilder:
             story,
             styles,
             "Signature Block",
-            ["Respectfully submitted,", *self._signature_block_lines(signature_block)],
+            self._build_signature_section_lines(signature_block, self._resolve_draft_forum_type(draft)),
         )
 
         doc.build(story)
@@ -3398,12 +3724,30 @@ class FormalComplaintDocumentBuilder:
         title: str,
         paragraphs: List[str],
         heading_style: str = "SectionHeading",
+        groups: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         from reportlab.platypus import Paragraph
 
-        if not paragraphs:
+        if not paragraphs and not groups:
             return
         story.append(Paragraph(escape(title), styles[heading_style]))
+        if groups:
+            for group in groups:
+                if not isinstance(group, dict):
+                    continue
+                group_title = str(group.get("title") or "").strip()
+                entries = group.get("paragraphs") if isinstance(group.get("paragraphs"), list) else []
+                if group_title:
+                    story.append(Paragraph(escape(group_title), styles["Heading3"]))
+                for entry in entries:
+                    if not isinstance(entry, dict):
+                        continue
+                    number = entry.get("number")
+                    text = str(entry.get("text") or "").strip()
+                    if text:
+                        prefix = f"{number}. " if number else ""
+                        story.append(Paragraph(escape(f"{prefix}{text}"), styles["Normal"]))
+            return
         for index, paragraph in enumerate(paragraphs, start=1):
             story.append(Paragraph(escape(f"{index}. {paragraph}"), styles["Normal"]))
 

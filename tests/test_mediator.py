@@ -203,6 +203,89 @@ class TestMediatorWithMocks:
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
+    def test_get_claim_graph_facts_returns_fact_backed_graph_bundle(self):
+        """Mediator should expose persisted support facts together with graph-support ranking metadata."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.phase_manager = Mock()
+            mediator.phase_manager.get_phase_data = Mock(return_value=Mock(
+                entities=['entity:1'],
+                relationships=['rel:1', 'rel:2'],
+            ))
+
+            support_facts = [
+                {
+                    'fact_id': 'fact:1',
+                    'support_kind': 'evidence',
+                    'source_family': 'evidence',
+                },
+                {
+                    'fact_id': 'fact:2',
+                    'support_kind': 'authority',
+                    'source_family': 'legal_authority',
+                },
+                {
+                    'fact_id': 'fact:3',
+                    'support_kind': 'evidence',
+                    'source_family': 'evidence',
+                },
+            ]
+            mediator.claim_support.get_claim_element_summary = Mock(return_value={
+                'element_id': 'employment:1',
+                'element_text': 'Protected activity',
+            })
+            mediator.claim_support.get_claim_support_facts = Mock(return_value=support_facts)
+
+            graph_payload = _make_graph_support_payload(
+                total_fact_count=3,
+                unique_fact_count=3,
+                duplicate_fact_count=0,
+                semantic_cluster_count=2,
+                semantic_duplicate_count=0,
+                max_score=2.1,
+                results=[_make_graph_support_result(fact_id='fact:1', score=2.1)],
+            )
+
+            with patch('mediator.mediator.query_graph_support', return_value=graph_payload) as query_mock:
+                result = mediator.get_claim_graph_facts(
+                    claim_type='employment',
+                    claim_element='Protected activity',
+                    user_id='testuser',
+                    max_results=5,
+                )
+
+            assert result['claim_type'] == 'employment'
+            assert result['claim_element_id'] == 'employment:1'
+            assert result['claim_element'] == 'Protected activity'
+            assert result['exists'] is True
+            assert result['support_facts'] == support_facts
+            assert result['total_facts'] == 3
+            assert result['support_by_kind'] == {'evidence': 2, 'authority': 1}
+            assert result['support_by_source_family'] == {'evidence': 2, 'legal_authority': 1}
+            assert result['graph_support']['summary']['total_fact_count'] == 3
+            assert result['graph_support']['graph_context'] == {
+                'knowledge_graph_available': True,
+                'entity_count': 1,
+                'relationship_count': 2,
+            }
+
+            query_mock.assert_called_once_with(
+                'employment:1',
+                graph_id='intake-knowledge-graph',
+                support_facts=support_facts,
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                max_results=5,
+            )
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
     def test_follow_up_plan_uses_manual_review_for_reasoning_gaps(self):
         """Reasoning-only validation gaps should create manual-review tasks instead of suppressed retrieval."""
         try:

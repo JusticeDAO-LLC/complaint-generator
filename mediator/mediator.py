@@ -2444,6 +2444,7 @@ class Mediator:
 			'is_covered': bool(element_summary.get('total_links', 0)),
 			'missing_support': element_summary.get('total_links', 0) == 0,
 			'support_summary': element_summary,
+			'graph_support': current_gap_summary.get('graph_support', {}),
 			'gap_summary': current_gap_summary,
 			'validation_summary': current_validation_summary,
 			'contradiction_candidates': contradiction_candidates,
@@ -2458,7 +2459,7 @@ class Mediator:
 			'total_authorities': len(authority_records),
 		}
 
-	def query_claim_graph_support(
+	def get_claim_graph_facts(
 		self,
 		claim_type: str,
 		claim_element_id: str = None,
@@ -2466,7 +2467,7 @@ class Mediator:
 		user_id: str = None,
 		max_results: int = 10,
 	):
-		"""Query fallback graph support using persisted claim-support fact rows."""
+		"""Return persisted claim-support facts together with the fallback graph-support ranking."""
 		if user_id is None:
 			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
 
@@ -2498,7 +2499,45 @@ class Mediator:
 			'entity_count': len(kg.entities) if kg else 0,
 			'relationship_count': len(kg.relationships) if kg else 0,
 		}
-		return graph_result
+
+		support_by_kind: Dict[str, int] = {}
+		support_by_source_family: Dict[str, int] = {}
+		for fact in support_facts:
+			if not isinstance(fact, dict):
+				continue
+			support_kind = str(fact.get('support_kind') or 'unknown')
+			support_by_kind[support_kind] = support_by_kind.get(support_kind, 0) + 1
+			source_family = str(fact.get('source_family') or 'unknown')
+			support_by_source_family[source_family] = support_by_source_family.get(source_family, 0) + 1
+
+		return {
+			'claim_type': claim_type,
+			'claim_element_id': target_element_id,
+			'claim_element': target_element_text,
+			'exists': bool(target_element_id or target_element_text),
+			'support_facts': support_facts,
+			'total_facts': len(support_facts),
+			'support_by_kind': support_by_kind,
+			'support_by_source_family': support_by_source_family,
+			'graph_support': graph_result,
+		}
+
+	def query_claim_graph_support(
+		self,
+		claim_type: str,
+		claim_element_id: str = None,
+		claim_element: str = None,
+		user_id: str = None,
+		max_results: int = 10,
+	):
+		"""Query fallback graph support using persisted claim-support fact rows."""
+		return self.get_claim_graph_facts(
+			claim_type=claim_type,
+			claim_element_id=claim_element_id,
+			claim_element=claim_element,
+			user_id=user_id,
+			max_results=max_results,
+		).get('graph_support', {})
 
 	def _summarize_claim_coverage_claim(
 		self,
@@ -3898,6 +3937,12 @@ class Mediator:
 		affidavit_venue_lines: List[str] = None,
 		affidavit_jurat: str = None,
 		affidavit_notary_block: List[str] = None,
+		enable_agentic_optimization: bool = False,
+		optimization_max_iterations: int = 2,
+		optimization_target_score: float = 0.9,
+		optimization_provider: str = None,
+		optimization_model_name: str = None,
+		optimization_persist_artifacts: bool = False,
 		output_dir: str = None,
 		output_formats: List[str] = None,
 	):
@@ -3942,6 +3987,12 @@ class Mediator:
 			affidavit_venue_lines=affidavit_venue_lines,
 			affidavit_jurat=affidavit_jurat,
 			affidavit_notary_block=affidavit_notary_block,
+			enable_agentic_optimization=enable_agentic_optimization,
+			optimization_max_iterations=optimization_max_iterations,
+			optimization_target_score=optimization_target_score,
+			optimization_provider=optimization_provider,
+			optimization_model_name=optimization_model_name,
+			optimization_persist_artifacts=optimization_persist_artifacts,
 			output_dir=output_dir,
 			output_formats=output_formats,
 		)

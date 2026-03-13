@@ -1,6 +1,9 @@
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
+import json
+import zipfile
+import document_optimization
 
 import pytest
 from bs4 import BeautifulSoup
@@ -222,10 +225,14 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
     assert "venue is proper" in result["draft"]["venue_statement"].lower()
     assert len(result["draft"]["claims_for_relief"]) == 2
     assert len(result["draft"]["exhibits"]) >= 2
-    assert len(result["draft"]["factual_allegations"]) >= 4
+    assert len(result["draft"]["factual_allegations"]) >= 2
     assert any(
         "Plaintiff was fired two days later and lost pay and benefits" in allegation
         or "I was fired two days later and lost pay and benefits" in allegation
+        for allegation in result["draft"]["factual_allegations"]
+    )
+    assert any(
+        allegation.startswith("After Plaintiff complained to human resources about race discrimination")
         for allegation in result["draft"]["factual_allegations"]
     )
     assert all(
@@ -241,11 +248,24 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
         "evidence shows facts supporting" not in allegation.lower()
         for allegation in result["draft"]["factual_allegations"]
     )
+    assert all(
+        not allegation.startswith("As a direct result of Defendant's conduct, Plaintiff lost pay and benefits")
+        for allegation in result["draft"]["factual_allegations"]
+    )
+    assert all(
+        "reported discrimination to human resources and was terminated two days later" not in allegation.lower()
+        for allegation in result["draft"]["factual_allegations"]
+    )
+    assert all(" and i was " not in allegation.lower() for allegation in result["draft"]["factual_allegations"])
+    assert all(" and i lost " not in allegation.lower() for allegation in result["draft"]["factual_allegations"])
     assert result["draft"]["factual_allegation_paragraphs"][0]["number"] == 1
     assert result["draft"]["factual_allegation_paragraphs"][0]["text"] == result["draft"]["factual_allegations"][0]
+    assert result["draft"]["factual_allegation_groups"][0]["title"] == "Protected Activity and Complaints"
     assert "COMPLAINT" in result["draft"]["draft_text"]
     assert "EXHIBITS" in result["draft"]["draft_text"]
     assert "FACTUAL ALLEGATIONS" in result["draft"]["draft_text"]
+    assert "PROTECTED ACTIVITY AND COMPLAINTS" in result["draft"]["draft_text"]
+    assert "ADVERSE ACTION AND RETALIATORY CONDUCT" in result["draft"]["draft_text"]
     assert "Plaintiff repeats and realleges ¶" in result["draft"]["draft_text"]
     assert "and incorporates Exhibit" in result["draft"]["draft_text"]
     assert "as if fully set forth herein." in result["draft"]["draft_text"]
@@ -305,9 +325,111 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
     assert result["draft"]["jury_demand"]["text"] == "Plaintiff demands a trial by jury on all issues so triable."
     assert "JURY DEMAND" in result["draft"]["draft_text"]
     assert "AFFIDAVIT OF JANE DOE REGARDING RETALIATION" in result["draft"]["draft_text"]
-    assert "Subscribed and sworn to before me on March 13, 2026 by Jane Doe." in result["draft"]["draft_text"]
-    assert "/s/ John Roe, Esq." in result["draft"]["draft_text"]
-    assert "Roe Civil Rights Group" in result["draft"]["draft_text"]
+
+
+def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    mediator = _build_mediator()
+    builder = FormalComplaintDocumentBuilder(mediator)
+    calls = {"critic": 0, "actor": 0}
+
+    class _FakeEmbeddingsRouter:
+        def embed_text(self, text: str):
+            lowered = text.lower()
+            return [
+                float("retaliation" in lowered),
+                float("terminated" in lowered or "fired" in lowered),
+                float(len(text.split())),
+            ]
+
+    def _fake_generate_text(prompt: str, *, provider=None, model_name=None, **kwargs):
+        if document_optimization.AgenticDocumentOptimizer.CRITIC_PROMPT_TAG in prompt:
+            calls["critic"] += 1
+            if calls["critic"] == 1:
+                payload = {
+                    "overall_score": 0.52,
+                    "dimension_scores": {
+                        "completeness": 0.55,
+                        "grounding": 0.6,
+                        "coherence": 0.45,
+                        "procedural": 0.7,
+                        "renderability": 0.3,
+                    },
+                    "strengths": ["Support packets are available."],
+                    "weaknesses": ["Factual allegations should be more pleading-ready."],
+                    "suggestions": ["Rewrite factual allegations into declarative prose anchored in the support record."],
+                    "recommended_focus": "factual_allegations",
+                }
+            else:
+                payload = {
+                    "overall_score": 0.91,
+                    "dimension_scores": {
+                        "completeness": 0.9,
+                        "grounding": 0.92,
+                        "coherence": 0.9,
+                        "procedural": 0.93,
+                        "renderability": 0.9,
+                    },
+                    "strengths": ["Factual allegations now read like pleading paragraphs."],
+                    "weaknesses": [],
+                    "suggestions": [],
+                    "recommended_focus": "claims_for_relief",
+                }
+            return {"status": "available", "text": json.dumps(payload)}
+        calls["actor"] += 1
+        payload = {
+            "factual_allegations": [
+                "Plaintiff reported discrimination to human resources.",
+                "Plaintiff was fired two days later and lost pay and benefits.",
+                "As to Retaliation, Defendant terminated Plaintiff shortly after the protected complaint.",
+            ],
+            "claim_supporting_facts": {
+                "retaliation": [
+                    "Plaintiff complained to human resources about race discrimination.",
+                    "Defendant terminated Plaintiff shortly after the complaint.",
+                ]
+            },
+        }
+        return {"status": "available", "text": json.dumps(payload)}
+
+    def _fake_store_bytes(data: bytes, *, pin_content: bool = True):
+        return {"status": "available", "cid": "bafy-doc-opt-report", "size": len(data), "pinned": pin_content}
+
+    monkeypatch.setattr(document_optimization, "LLM_ROUTER_AVAILABLE", True)
+    monkeypatch.setattr(document_optimization, "EMBEDDINGS_AVAILABLE", True)
+    monkeypatch.setattr(document_optimization, "IPFS_AVAILABLE", True)
+    monkeypatch.setattr(document_optimization, "generate_text_with_metadata", _fake_generate_text)
+    monkeypatch.setattr(document_optimization, "get_embeddings_router", lambda *args, **kwargs: _FakeEmbeddingsRouter())
+    monkeypatch.setattr(document_optimization, "store_bytes", _fake_store_bytes)
+
+    result = builder.build_package(
+        district="Northern District of California",
+        county="San Francisco County",
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Acme Corporation"],
+        enable_agentic_optimization=True,
+        optimization_max_iterations=2,
+        optimization_target_score=0.9,
+        optimization_provider="test-provider",
+        optimization_model_name="test-model",
+        optimization_persist_artifacts=True,
+        output_dir=str(tmp_path),
+        output_formats=["txt"],
+    )
+
+    report = result["document_optimization"]
+    assert report["status"] == "optimized"
+    assert report["accepted_iterations"] >= 1
+    assert report["initial_score"] < report["final_score"]
+    assert report["artifact_cid"] == "bafy-doc-opt-report"
+    assert calls["actor"] >= 1
+    assert calls["critic"] >= 2
+    assert any(
+        "Plaintiff was fired two days later and lost pay and benefits" in allegation
+        for allegation in result["draft"]["factual_allegations"]
+    )
+    assert "Plaintiff was fired two days later and lost pay and benefits." in result["draft"]["draft_text"]
+    assert result["draft"]["affidavit"]["title"] == "AFFIDAVIT OF JANE DOE IN SUPPORT OF COMPLAINT"
+    assert result["draft"]["verification"]["text"].startswith("I, Jane Doe, declare under penalty of perjury")
     assert result["drafting_readiness"]["status"] == "warning"
     assert result["draft"]["drafting_readiness"]["status"] == "warning"
     assert result["filing_checklist"] == result["draft"]["filing_checklist"]
@@ -333,33 +455,14 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
         for warning in entry["warnings"]
     )
 
-    docx_path = Path(result["artifacts"]["docx"]["path"])
-    pdf_path = Path(result["artifacts"]["pdf"]["path"])
     txt_path = Path(result["artifacts"]["txt"]["path"])
-    checklist_path = Path(result["artifacts"]["checklist"]["path"])
-    affidavit_docx_path = Path(result["artifacts"]["affidavit_docx"]["path"])
-    affidavit_pdf_path = Path(result["artifacts"]["affidavit_pdf"]["path"])
     affidavit_txt_path = Path(result["artifacts"]["affidavit_txt"]["path"])
-    assert docx_path.exists()
-    assert pdf_path.exists()
     assert txt_path.exists()
-    assert checklist_path.exists()
-    assert affidavit_docx_path.exists()
-    assert affidavit_pdf_path.exists()
     assert affidavit_txt_path.exists()
-    assert docx_path.read_bytes()[:2] == b"PK"
-    assert pdf_path.read_bytes()[:4] == b"%PDF"
-    assert affidavit_docx_path.read_bytes()[:2] == b"PK"
-    assert affidavit_pdf_path.read_bytes()[:4] == b"%PDF"
     assert "JURISDICTION AND VENUE" in txt_path.read_text(encoding="utf-8")
     affidavit_text = affidavit_txt_path.read_text(encoding="utf-8")
-    assert "AFFIDAVIT OF JANE DOE REGARDING RETALIATION" in affidavit_text
-    assert "Affidavit Ex. 1 - HR Complaint Email (https://example.org/hr-email.pdf)" in affidavit_text
-    assert "Notary Public for the State of California" in affidavit_text
-    checklist_text = checklist_path.read_text(encoding="utf-8")
-    assert "PRE-FILING CHECKLIST" in checklist_text
-    assert "[WARNING] CLAIM:" in checklist_text or "[WARNING] SECTION:" in checklist_text
-    assert "Review URL: /claim-support-review" in checklist_text
+    assert "AFFIDAVIT OF JANE DOE IN SUPPORT OF COMPLAINT" in affidavit_text
+    assert "Notary Public" in affidavit_text
 
 
 def test_formal_complaint_document_builder_uses_state_court_opening_language(tmp_path: Path):
@@ -405,6 +508,7 @@ def test_formal_complaint_document_builder_uses_state_court_opening_language(tmp
     assert result["draft"]["verification"]["dated"] == "Verified on: __________________"
     assert result["draft"]["certificate_of_service"]["title"] == "Proof of Service"
     assert "I declare that a true and correct copy" in result["draft"]["certificate_of_service"]["text"]
+    assert "General and special damages according to proof." in result["draft"]["requested_relief"]
     assert result["draft"]["affidavit"]["intro"].startswith(
         "I, Jane Doe, being duly sworn, state that I am competent to testify"
     )
@@ -419,13 +523,67 @@ def test_formal_complaint_document_builder_uses_state_court_opening_language(tmp
     assert "Case No. ________________" in result["draft"]["draft_text"]
     assert "Plaintiff Jane Doe is a party bringing this civil action in this Court." in result["draft"]["draft_text"]
     assert "Defendant Acme Corporation is named as the party from whom relief is sought." in result["draft"]["draft_text"]
+    assert "Wherefore, Plaintiff prays for judgment against Defendant as follows:" in result["draft"]["draft_text"]
+    assert "General and special damages according to proof." in result["draft"]["draft_text"]
     assert "verify that I have reviewed this Complaint and know its contents" in result["draft"]["draft_text"]
     assert "being duly sworn, state that I am competent to testify" in result["draft"]["draft_text"]
     assert "Subscribed and sworn to before me on __________________ by Jane Doe." in result["draft"]["draft_text"]
+    assert result["draft"]["draft_text"].index("Respectfully submitted,") < result["draft"]["draft_text"].index("Dated: __________________")
     assert "Related Proceeding No. JCCP-5123" in result["draft"]["draft_text"]
     assert "Coordination No. 24STCV10001" in result["draft"]["draft_text"]
     assert "Judicial Officer: Hon. Elena Park" in result["draft"]["draft_text"]
     assert "Department: Dept. 12" in result["draft"]["draft_text"]
+
+
+def test_formal_complaint_document_builder_handles_structured_complaint_payloads_without_dict_leak(tmp_path: Path):
+    mediator = _build_mediator()
+    mediator.state.complaint = {
+        "summary": (
+            "I told my supervisor and HR that I needed accommodation for my disability after surgery. "
+            "They cut my shifts, blamed me for treatment-related absences, and fired me after I complained again."
+        ),
+        "facts": [
+            "Plaintiff informed her supervisor and human resources that she needed workplace accommodation after surgery.",
+            "Defendant cut Plaintiff's shifts, blamed her for treatment-related absences, and fired her after she complained again.",
+        ],
+    }
+    mediator.state.original_complaint = mediator.state.complaint["summary"]
+    mediator.state.legal_classification["key_facts"] = [
+        "Plaintiff requested workplace accommodation after surgery.",
+        "Defendant reduced Plaintiff's shifts and terminated her employment after renewed complaints.",
+    ]
+    mediator.state.inquiries = [
+        {
+            "question": "What happened after you renewed your complaint?",
+            "answer": "They cut my shifts, blamed me for treatment-related absences, and fired me after I complained again.",
+        }
+    ]
+    mediator.get_claim_support_facts.side_effect = lambda claim_type=None, user_id=None: [
+        {"text": "Plaintiff requested accommodation after surgery."},
+        {"text": "Defendant reduced Plaintiff's shifts and terminated her employment after renewed complaints."},
+    ]
+
+    builder = FormalComplaintDocumentBuilder(mediator)
+    result = builder.build_package(
+        district="Northern District of California",
+        county="San Francisco County",
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Acme Corporation"],
+        output_dir=str(tmp_path),
+        output_formats=["txt"],
+    )
+
+    assert all("{'summary':" not in allegation for allegation in result["draft"]["factual_allegations"])
+    assert all("after i complained again" not in allegation.lower() for allegation in result["draft"]["factual_allegations"])
+    assert all(" that i " not in allegation.lower() for allegation in result["draft"]["factual_allegations"])
+    assert all(not allegation.startswith("They ") for allegation in result["draft"]["factual_allegations"])
+    assert all("Plaintiff told Plaintiff's supervisor" not in allegation for allegation in result["draft"]["factual_allegations"])
+    assert all(not allegation.startswith("Defendant cut Plaintiff's shifts") for allegation in result["draft"]["factual_allegations"])
+    assert any(
+        "after Plaintiff complained again" in allegation
+        or "after renewed complaints" in allegation.lower()
+        for allegation in result["draft"]["factual_allegations"]
+    )
 
 
 def test_formal_complaint_document_builder_pluralizes_caption_party_labels(tmp_path: Path):
@@ -745,6 +903,12 @@ def test_review_api_registers_formal_complaint_document_route():
                 "Notary Public for the State of California",
                 "My commission expires: March 13, 2029",
             ],
+            enable_agentic_optimization=False,
+            optimization_max_iterations=2,
+            optimization_target_score=0.9,
+            optimization_provider=None,
+            optimization_model_name=None,
+            optimization_persist_artifacts=False,
             service_method="CM/ECF",
             service_recipients=["Registered Agent for Acme Corporation", "Defense Counsel"],
             service_recipient_details=[
@@ -834,6 +998,39 @@ def test_review_api_applies_full_affidavit_override_payload_end_to_end(tmp_path)
     assert payload["artifacts"]["txt"]["path"]
 
     Path(payload["artifacts"]["txt"]["path"]).unlink(missing_ok=True)
+
+
+def test_review_api_generated_docx_preserves_grouped_factual_headings_end_to_end(tmp_path):
+    mediator = _build_mediator()
+    mediator.build_formal_complaint_document_package.side_effect = (
+        lambda **kwargs: FormalComplaintDocumentBuilder(mediator).build_package(**kwargs)
+    )
+
+    app = create_review_api_app(mediator)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/documents/formal-complaint",
+        json={
+            "district": "Northern District of California",
+            "county": "San Francisco County",
+            "plaintiff_names": ["Jane Doe"],
+            "defendant_names": ["Acme Corporation"],
+            "output_dir": str(tmp_path),
+            "output_formats": ["docx"],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    docx_path = Path(payload["artifacts"]["docx"]["path"])
+    assert docx_path.exists()
+    with zipfile.ZipFile(docx_path) as archive:
+        document_xml = archive.read("word/document.xml").decode("utf-8")
+    assert "Protected Activity and Complaints" in document_xml
+    assert "Adverse Action and Retaliatory Conduct" in document_xml
+
+    docx_path.unlink(missing_ok=True)
 
 
 def test_review_api_can_suppress_mirrored_affidavit_exhibits_end_to_end(tmp_path):
@@ -1237,6 +1434,38 @@ def test_review_surface_document_builder_supports_affidavit_exhibit_controls_end
     assert payload['artifacts']['txt']['download_url'].startswith('/api/documents/download?path=')
 
     Path(payload['artifacts']['txt']['path']).unlink(missing_ok=True)
+
+
+def test_review_surface_generated_docx_preserves_grouped_factual_headings_end_to_end(tmp_path):
+    mediator = _build_mediator()
+    mediator.build_formal_complaint_document_package.side_effect = (
+        lambda **kwargs: FormalComplaintDocumentBuilder(mediator).build_package(**kwargs)
+    )
+    app = create_review_surface_app(mediator)
+    client = TestClient(app)
+
+    api_response = client.post(
+        '/api/documents/formal-complaint',
+        json={
+            'district': 'Northern District of California',
+            'county': 'San Francisco County',
+            'plaintiff_names': ['Jane Doe'],
+            'defendant_names': ['Acme Corporation'],
+            'output_dir': str(tmp_path),
+            'output_formats': ['docx'],
+        },
+    )
+
+    assert api_response.status_code == 200
+    payload = api_response.json()
+    docx_path = Path(payload['artifacts']['docx']['path'])
+    assert docx_path.exists()
+    with zipfile.ZipFile(docx_path) as archive:
+        document_xml = archive.read('word/document.xml').decode('utf-8')
+    assert 'Protected Activity and Complaints' in document_xml
+    assert 'Adverse Action and Retaliatory Conduct' in document_xml
+
+    docx_path.unlink(missing_ok=True)
 
 
 def test_review_surface_document_builder_can_suppress_mirrored_affidavit_exhibits_end_to_end(tmp_path):

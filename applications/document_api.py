@@ -70,6 +70,12 @@ class FormalComplaintDocumentRequest(BaseModel):
     affidavit_venue_lines: List[str] = Field(default_factory=list)
     affidavit_jurat: Optional[str] = None
     affidavit_notary_block: List[str] = Field(default_factory=list)
+    enable_agentic_optimization: bool = False
+    optimization_max_iterations: int = 2
+    optimization_target_score: float = 0.9
+    optimization_provider: Optional[str] = None
+    optimization_model_name: Optional[str] = None
+    optimization_persist_artifacts: bool = False
     output_dir: Optional[str] = None
     output_formats: List[str] = Field(default_factory=lambda: ["docx", "pdf"])
 
@@ -396,6 +402,12 @@ def create_document_router(mediator: Any) -> APIRouter:
             affidavit_venue_lines=request.affidavit_venue_lines,
             affidavit_jurat=request.affidavit_jurat,
             affidavit_notary_block=request.affidavit_notary_block,
+            enable_agentic_optimization=request.enable_agentic_optimization,
+            optimization_max_iterations=request.optimization_max_iterations,
+            optimization_target_score=request.optimization_target_score,
+            optimization_provider=request.optimization_provider,
+            optimization_model_name=request.optimization_model_name,
+            optimization_persist_artifacts=request.optimization_persist_artifacts,
             output_dir=request.output_dir,
             output_formats=request.output_formats,
         )

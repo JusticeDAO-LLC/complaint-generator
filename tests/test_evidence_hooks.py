@@ -710,6 +710,8 @@ class TestMediatorEvidenceIntegration:
                 assert element_view['gap_summary']['graph_trace_summary']['traced_link_count'] >= 1
                 assert element_view['gap_summary']['graph_support']['summary']['total_fact_count'] >= 1
                 assert len(element_view['gap_summary']['graph_support']['results']) >= 1
+                assert element_view['graph_support']['summary']['total_fact_count'] >= 1
+                assert len(element_view['graph_support']['results']) >= 1
                 assert element_view['gap_summary']['graph_support']['results'][0]['source_family'] == 'evidence'
                 assert element_view['gap_summary']['graph_support']['results'][0]['source_record_id'] == result['record_id']
                 assert element_view['gap_summary']['graph_support']['results'][0]['support_ref'] == result['cid']

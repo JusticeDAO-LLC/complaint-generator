@@ -1,4 +1,5 @@
 import sys
+import zipfile
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -12,7 +13,7 @@ from complaint_phases.knowledge_graph import Entity, KnowledgeGraph
 from complaint_phases.legal_graph import LegalElement, LegalGraph
 from complaint_phases.neurosymbolic_matcher import NeurosymbolicMatcher
 from mediator import Mediator
-from mediator.formal_document import HAS_DOCX
+from mediator.formal_document import ComplaintDocumentBuilder, HAS_DOCX
 
 
 pytestmark = pytest.mark.no_auto_network
@@ -221,11 +222,20 @@ def test_generate_formal_complaint_builds_court_style_sections():
         or 'I was fired after reporting sexual harassment to HR.' == allegation
         for allegation in complaint['factual_allegations']
     )
+    assert any(
+        allegation.startswith('After Plaintiff reported repeated sexual harassment to management on January 5, 2026')
+        for allegation in complaint['factual_allegations']
+    )
+    assert complaint['factual_allegation_groups'][0]['title'] == 'Protected Activity and Complaints'
     assert all('lost my pay' not in allegation.lower() for allegation in complaint['factual_allegations'])
+    assert all(' and i was ' not in allegation.lower() for allegation in complaint['factual_allegations'])
+    assert all(' and i lost ' not in allegation.lower() for allegation in complaint['factual_allegations'])
     assert all(
         not allegation.lower().startswith('plaintiff seeks reinstatement')
         for allegation in complaint['factual_allegations']
     )
+    assert 'PROTECTED ACTIVITY AND COMPLAINTS' in complaint['draft_text']
+    assert 'ADVERSE ACTION AND RETALIATORY CONDUCT' in complaint['draft_text']
     assert complaint['certificate_of_service']['title'] == 'Certificate of Service'
     assert complaint['signature_block']['signature_line'] == '/s/ Jane Doe, Esq.'
     assert complaint['signature_block']['title'] == 'Counsel for Plaintiff'
@@ -289,6 +299,29 @@ def test_generate_formal_complaint_can_suppress_mirrored_affidavit_exhibits():
     assert complaint['affidavit']['supporting_exhibits'] == []
 
 
+def test_factual_allegations_merge_overlapping_adverse_action_narratives():
+    builder = ComplaintDocumentBuilder(Mock())
+
+    allegations = builder._build_factual_allegations(
+        [
+            'Plaintiff complained to human resources and regional management about race discrimination and unequal pay.',
+            'After those complaints, Defendant removed Plaintiff from key accounts, cut her overtime, and then terminated her employment.',
+            'Plaintiff lost wages, benefits, and future career opportunities as a result.',
+            'My major accounts were taken away, my overtime was cut, and I was fired within weeks after complaining to HR and regional management.',
+            'I lost wages, benefits, and future career opportunities.',
+            'Plaintiff reported race discrimination and unequal pay to human resources and regional management before Defendant terminated her employment.',
+            'After Plaintiff made those complaints, Defendant stripped her of major accounts and overtime before ending her employment.',
+        ],
+        None,
+        [],
+    )
+
+    assert allegations == [
+        'After Plaintiff complained to human resources and regional management about race discrimination and unequal pay, Defendant removed Plaintiff from key accounts, cut her overtime, and then terminated her employment.',
+        "As a direct result of Defendant's conduct, Plaintiff lost wages, benefits, and future career opportunities.",
+    ]
+
+
 def test_export_formal_complaint_pdf_writes_file(tmp_path):
     mediator = _build_seeded_mediator()
     output_path = tmp_path / 'formal_complaint.pdf'
@@ -318,3 +351,7 @@ def test_export_formal_complaint_docx_writes_file(tmp_path):
     assert result['export']['format'] == 'docx'
     assert output_path.exists()
     assert output_path.stat().st_size > 0
+    with zipfile.ZipFile(output_path) as archive:
+        document_xml = archive.read('word/document.xml').decode('utf-8')
+    assert 'Protected Activity and Complaints' in document_xml
+    assert 'Adverse Action and Retaliatory Conduct' in document_xml

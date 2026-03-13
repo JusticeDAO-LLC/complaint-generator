@@ -91,6 +91,10 @@ def _formalize_allegation_fragment(value: Any) -> str:
     replacements = (
         (r"^i was\b", "Plaintiff was"),
         (r"^i am\b", "Plaintiff is"),
+        (r"^i need\b", "Plaintiff needs"),
+        (r"^i needed\b", "Plaintiff needed"),
+        (r"^i lost\b", "Plaintiff lost"),
+        (r"^i asked\b", "Plaintiff asked"),
         (r"^i reported\b", "Plaintiff reported"),
         (r"^i complained\b", "Plaintiff complained"),
         (r"^i informed\b", "Plaintiff informed"),
@@ -100,8 +104,62 @@ def _formalize_allegation_fragment(value: Any) -> str:
         (r"^i experienced\b", "Plaintiff experienced"),
         (r"^i suffered\b", "Plaintiff suffered"),
         (r"^i told\b", "Plaintiff told"),
+        (r"^they\b", "Defendant"),
     )
     for pattern, replacement in replacements:
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    clause_replacements = (
+        (r"([,;]\s+)i was\b", r"\1Plaintiff was"),
+        (r"([,;]\s+)i am\b", r"\1Plaintiff is"),
+        (r"([,;]\s+)i need\b", r"\1Plaintiff needs"),
+        (r"([,;]\s+)i needed\b", r"\1Plaintiff needed"),
+        (r"([,;]\s+)i lost\b", r"\1Plaintiff lost"),
+        (r"([,;]\s+)i asked\b", r"\1Plaintiff asked"),
+        (r"([,;]\s+)i reported\b", r"\1Plaintiff reported"),
+        (r"([,;]\s+)i complained\b", r"\1Plaintiff complained"),
+        (r"([,;]\s+)i requested\b", r"\1Plaintiff requested"),
+        (r"([,;]\s+)i informed\b", r"\1Plaintiff informed"),
+        (r"([,;]\s+)i notified\b", r"\1Plaintiff notified"),
+        (r"([,;]\s+)i suffered\b", r"\1Plaintiff suffered"),
+        (r"([,;]\s+)i experienced\b", r"\1Plaintiff experienced"),
+        (r"([,;]\s+)i told\b", r"\1Plaintiff told"),
+        (r"(\band\s+)i was\b", r"\1Plaintiff was"),
+        (r"(\band\s+)i am\b", r"\1Plaintiff is"),
+        (r"(\band\s+)i need\b", r"\1Plaintiff needs"),
+        (r"(\band\s+)i needed\b", r"\1Plaintiff needed"),
+        (r"(\band\s+)i lost\b", r"\1Plaintiff lost"),
+        (r"(\band\s+)i asked\b", r"\1Plaintiff asked"),
+        (r"(\band\s+)i reported\b", r"\1Plaintiff reported"),
+        (r"(\band\s+)i complained\b", r"\1Plaintiff complained"),
+        (r"(\band\s+)i requested\b", r"\1Plaintiff requested"),
+        (r"(\band\s+)i informed\b", r"\1Plaintiff informed"),
+        (r"(\band\s+)i notified\b", r"\1Plaintiff notified"),
+        (r"(\band\s+)i suffered\b", r"\1Plaintiff suffered"),
+        (r"(\band\s+)i experienced\b", r"\1Plaintiff experienced"),
+        (r"(\band\s+)i told\b", r"\1Plaintiff told"),
+        (r"(\bafter\s+)i was\b", r"\1Plaintiff was"),
+        (r"(\bafter\s+)i am\b", r"\1Plaintiff is"),
+        (r"(\bafter\s+)i need\b", r"\1Plaintiff needs"),
+        (r"(\bafter\s+)i needed\b", r"\1Plaintiff needed"),
+        (r"(\bafter\s+)i lost\b", r"\1Plaintiff lost"),
+        (r"(\bafter\s+)i asked\b", r"\1Plaintiff asked"),
+        (r"(\bafter\s+)i reported\b", r"\1Plaintiff reported"),
+        (r"(\bafter\s+)i complained\b", r"\1Plaintiff complained"),
+        (r"(\bafter\s+)i requested\b", r"\1Plaintiff requested"),
+        (r"(\bafter\s+)i informed\b", r"\1Plaintiff informed"),
+        (r"(\bafter\s+)i notified\b", r"\1Plaintiff notified"),
+        (r"(\bafter\s+)i suffered\b", r"\1Plaintiff suffered"),
+        (r"(\bafter\s+)i experienced\b", r"\1Plaintiff experienced"),
+        (r"(\bafter\s+)i told\b", r"\1Plaintiff told"),
+        (r"(\bthat\s+)i am\b", r"\1Plaintiff is"),
+        (r"(\bthat\s+)i need\b", r"\1Plaintiff needs"),
+        (r"(\bthat\s+)i needed\b", r"\1Plaintiff needed"),
+        (r"(\bthat\s+)i asked\b", r"\1Plaintiff asked"),
+        (r"(\bthat\s+)i complained\b", r"\1Plaintiff complained"),
+        (r"(\bthat\s+)i requested\b", r"\1Plaintiff requested"),
+        (r"(\bthat\s+)i told\b", r"\1Plaintiff told"),
+    )
+    for pattern, replacement in clause_replacements:
         text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
     text = re.sub(r"\bmy\b", "Plaintiff's", text, flags=re.IGNORECASE)
     text = re.sub(r"\bmine\b", "Plaintiff's", text, flags=re.IGNORECASE)
@@ -159,6 +217,18 @@ def _synthesize_narrative_allegations(allegations: List[str]) -> List[str]:
     if not cleaned:
         return []
 
+    def _normalize_adverse_clause(clause: str) -> str:
+        text = str(clause or "").strip().rstrip(".!?")
+        if re.match(r"^(after|following)\b", text, flags=re.IGNORECASE) and "," in text:
+            text = text.split(",", 1)[1].strip()
+        return text
+
+    def _normalize_harm_clause(clause: str) -> str:
+        text = str(clause or "").strip().rstrip(".!?")
+        text = re.sub(r",?\s+as a result$", "", text, flags=re.IGNORECASE)
+        text = re.sub(r",?\s+as a direct result$", "", text, flags=re.IGNORECASE)
+        return text.strip()
+
     def _pick(pattern: str, *, require_plaintiff: bool = False) -> str:
         for item in cleaned:
             lowered = item.lower()
@@ -171,15 +241,165 @@ def _synthesize_narrative_allegations(allegations: List[str]) -> List[str]:
     report_clause = _pick(r"\b(reported|complained|opposed|informed|notified|told|requested)\b", require_plaintiff=True)
     adverse_clause = _pick(r"\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied)\b")
     harm_clause = _pick(r"\blost (pay|wages|salary|income|benefits)\b|\b(suffered|experienced)\b", require_plaintiff=True)
+    harm_already_tied_to_adverse_action = any(
+        re.search(r"\b(lost|suffered|experienced)\b", item.lower())
+        and re.search(r"\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied)\b", item.lower())
+        for item in cleaned
+    )
 
     synthesized: List[str] = []
     if report_clause and adverse_clause:
-        synthesized.append(f"After {report_clause}, {adverse_clause}.")
-    if harm_clause:
-        loss_match = re.search(r"\blost ([^.]+)", harm_clause, flags=re.IGNORECASE)
+        synthesized.append(f"After {report_clause}, {_normalize_adverse_clause(adverse_clause)}.")
+    if harm_clause and not harm_already_tied_to_adverse_action:
+        normalized_harm_clause = _normalize_harm_clause(harm_clause)
+        loss_match = re.search(r"\blost ([^.]+)", normalized_harm_clause, flags=re.IGNORECASE)
         if loss_match:
             synthesized.append(f"As a direct result of Defendant's conduct, Plaintiff lost {loss_match.group(1).strip()}.")
-    return _expand_allegation_sources(_listify(_dedupe(synthesized)), limit=4)
+    unique: List[str] = []
+    seen = set()
+    for item in synthesized:
+        marker = item.lower()
+        if marker in seen:
+            continue
+        seen.add(marker)
+        unique.append(item)
+    return _expand_allegation_sources(unique, limit=4)
+
+
+def _prune_subsumed_narrative_clauses(allegations: List[str]) -> List[str]:
+    cleaned = [str(item).strip() for item in allegations if str(item).strip()]
+    if not cleaned:
+        return []
+
+    def _pick(pattern: str, *, require_plaintiff: bool = False) -> str:
+        for item in cleaned:
+            lowered = item.lower()
+            if require_plaintiff and "plaintiff" not in lowered:
+                continue
+            if re.search(pattern, lowered):
+                return item.strip()
+        return ""
+
+    report_clause = _pick(r"\b(reported|complained|opposed|informed|notified|told|requested)\b", require_plaintiff=True)
+    adverse_clause = _pick(r"\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied)\b")
+    has_harm_tied_to_adverse_action = any(
+        re.search(r"\b(lost|suffered|experienced)\b", item.lower())
+        and re.search(r"\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied)\b", item.lower())
+        for item in cleaned
+    )
+    consumed = {item.lower() for item in (report_clause, adverse_clause) if item}
+    if has_harm_tied_to_adverse_action:
+        combined_clause = _pick(
+            r"\b(reported|complained|opposed|informed|notified|told|requested)\b.*\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied)\b"
+            r"|\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied)\b.*\b(reported|complained|opposed|informed|notified|told|requested)\b",
+            require_plaintiff=True,
+        )
+        if combined_clause:
+            consumed.add(combined_clause.lower())
+    return [item for item in cleaned if item.lower() not in consumed]
+
+
+def _prune_near_duplicate_allegations(allegations: List[str]) -> List[str]:
+    def _tokens(value: str) -> set[str]:
+        scrubbed = re.sub(r"\(see exhibit [^)]+\)", "", value, flags=re.IGNORECASE)
+        return {
+            token
+            for token in re.split(r"\W+", scrubbed.lower())
+            if len(token) >= 4 and token not in {"plaintiff", "defendant", "exhibit", "after", "those", "this", "that"}
+        }
+
+    def _categories(value: str) -> set[str]:
+        lowered = value.lower()
+        flags = set()
+        if re.search(r"\b(reported|complained|opposed|informed|notified|told|requested)\b", lowered):
+            flags.add("report")
+        if re.search(r"\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied|removed|stripped)\b", lowered) or re.search(r"\b(end(?:ed|ing))\b[^.]{0,40}\bemployment\b", lowered):
+            flags.add("adverse")
+        if re.search(r"\b(lost|suffered|experienced|benefits|wages|salary|income|opportunities)\b", lowered):
+            flags.add("harm")
+        return flags
+
+    def _features(value: str) -> set[str]:
+        lowered = value.lower()
+        flags = set()
+        if re.search(r"\b(reported|complained|opposed|informed|notified|told|requested)\b", lowered):
+            flags.add("report")
+        if re.search(r"\b(human resources|hr)\b", lowered):
+            flags.add("hr")
+        if re.search(r"\bregional management|management\b", lowered):
+            flags.add("management")
+        if re.search(r"\b(key|major)\s+accounts?\b|\b(accounts?)\b[^.]{0,20}\b(removed|stripped|taken away)\b|\b(removed|stripped|took away)\b[^.]{0,20}\baccounts?\b", lowered):
+            flags.add("accounts")
+        if re.search(r"\bovertime\b", lowered):
+            flags.add("overtime")
+        if re.search(r"\bshift(s)?\b", lowered):
+            flags.add("shifts")
+        if re.search(r"\b(absences?|attendance|treatment-related absences?)\b", lowered):
+            flags.add("absences")
+        if re.search(r"\b(disciplined|discipline|wrote me up|write-up|write up)\b", lowered):
+            flags.add("discipline")
+        if re.search(r"\b(terminated|fired)\b", lowered) or re.search(r"\b(end(?:ed|ing))\b[^.]{0,40}\bemployment\b", lowered):
+            flags.add("termination")
+        if re.search(r"\b(wages|pay|salary|income|benefits)\b", lowered):
+            flags.add("economic_harm")
+        if re.search(r"\b(career opportunities|future opportunities|opportunities)\b", lowered):
+            flags.add("opportunities")
+        return flags
+
+    kept: List[str] = []
+    for candidate in allegations:
+        candidate_tokens = _tokens(candidate)
+        candidate_categories = _categories(candidate)
+        candidate_features = _features(candidate)
+        skip = False
+        for existing in kept:
+            existing_tokens = _tokens(existing)
+            existing_categories = _categories(existing)
+            existing_features = _features(existing)
+            if not candidate_tokens or not existing_tokens:
+                continue
+            if not (candidate_categories & existing_categories):
+                continue
+            overlap = len(candidate_tokens & existing_tokens) / max(1, min(len(candidate_tokens), len(existing_tokens)))
+            shared_features = candidate_features & existing_features
+            if overlap >= 0.7:
+                skip = True
+                break
+            if "adverse" in candidate_categories and "adverse" in existing_categories and len(shared_features) >= 3:
+                skip = True
+                break
+        if not skip:
+            kept.append(candidate)
+    return kept
+
+
+def _build_factual_allegation_groups(allegations: Sequence[Any]) -> List[Dict[str, Any]]:
+    ordered_titles = [
+        "Protected Activity and Complaints",
+        "Adverse Action and Retaliatory Conduct",
+        "Damages and Resulting Harm",
+        "Additional Factual Support",
+    ]
+    groups: Dict[str, List[Dict[str, Any]]] = {title: [] for title in ordered_titles}
+    for index, value in enumerate(_listify(allegations), 1):
+        text = _clean_sentence(value)
+        if not text:
+            continue
+        lowered = text.lower()
+        if re.search(r"\b(reported|complained|opposed|informed|notified|told|requested)\b", lowered):
+            title = "Protected Activity and Complaints"
+        elif re.search(r"\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied)\b", lowered):
+            title = "Adverse Action and Retaliatory Conduct"
+        elif re.search(r"\b(lost|damages|harm|injur|suffered|experienced|benefits|wages|salary|income)\b", lowered):
+            title = "Damages and Resulting Harm"
+        else:
+            title = "Additional Factual Support"
+        groups[title].append({"number": index, "text": text})
+    return [
+        {"title": title, "paragraphs": groups[title]}
+        for title in ordered_titles
+        if groups[title]
+    ]
 
 
 def _listify(value: Any) -> List[Any]:
@@ -404,6 +624,7 @@ class ComplaintDocumentBuilder:
             "statement_of_claim": str(base.get("statement_of_claim") or nature_of_action),
             "summary_of_facts": factual_allegations[: min(len(factual_allegations), 6)],
             "factual_allegations": factual_allegations,
+            "factual_allegation_groups": _build_factual_allegation_groups(factual_allegations),
             "legal_standards": legal_standards,
             "legal_claims": claims,
             "claims_for_relief": claims,
@@ -484,8 +705,22 @@ class ComplaintDocumentBuilder:
         lines.append(_clean_sentence(draft.get("venue_statement")))
         lines.append("")
         lines.append("FACTUAL ALLEGATIONS")
-        for index, allegation in enumerate(_listify(draft.get("factual_allegations")), 1):
-            lines.append(f"{index}. {_clean_sentence(allegation)}")
+        allegation_groups = draft.get("factual_allegation_groups") if isinstance(draft.get("factual_allegation_groups"), list) else []
+        if allegation_groups:
+            for group in allegation_groups:
+                if not isinstance(group, dict):
+                    continue
+                if group.get("title"):
+                    lines.append(str(group["title"]).upper())
+                for entry in _listify(group.get("paragraphs")):
+                    if not isinstance(entry, dict):
+                        continue
+                    text = _clean_sentence(entry.get("text"))
+                    if text:
+                        lines.append(f"{entry.get('number')}. {text}")
+        else:
+            for index, allegation in enumerate(_listify(draft.get("factual_allegations")), 1):
+                lines.append(f"{index}. {_clean_sentence(allegation)}")
 
         claims = _listify(draft.get("legal_claims"))
         if claims:
@@ -767,7 +1002,9 @@ class ComplaintDocumentBuilder:
         allegations.extend(_expand_allegation_sources(fallback, limit=8))
         deduped = self._dedupe(allegations)
         combined = _synthesize_narrative_allegations(deduped)
-        return self._dedupe(combined + deduped)[:18] or ["Plaintiff will supplement the factual record with additional detail."]
+        pruned = _prune_subsumed_narrative_clauses(deduped)
+        merged = self._dedupe(combined + pruned)
+        return _prune_near_duplicate_allegations(merged)[:18] or ["Plaintiff will supplement the factual record with additional detail."]
 
     def _build_affidavit(
         self,
@@ -1437,7 +1674,24 @@ class ComplaintDocumentBuilder:
             party_lines.append(f"Defendant {defendant} is alleged to be responsible for the conduct described below.")
         self._docx_section(document, "Parties", party_lines)
         self._docx_section(document, "Jurisdiction and Venue", [draft.get("jurisdiction_statement"), draft.get("venue_statement")])
-        self._docx_section(document, "Factual Allegations", draft.get("factual_allegations", []), numbered=True)
+        allegation_groups = draft.get("factual_allegation_groups") if isinstance(draft.get("factual_allegation_groups"), list) else []
+        if allegation_groups:
+            heading_paragraph = document.add_paragraph()
+            heading_paragraph.add_run("Factual Allegations").bold = True
+            for group in allegation_groups:
+                if not isinstance(group, dict):
+                    continue
+                if group.get("title"):
+                    group_heading = document.add_paragraph()
+                    group_heading.add_run(str(group["title"])).italic = True
+                for entry in _listify(group.get("paragraphs")):
+                    if not isinstance(entry, dict):
+                        continue
+                    text = _clean_sentence(entry.get("text"))
+                    if text:
+                        document.add_paragraph(f"{entry.get('number')}. {text}")
+        else:
+            self._docx_section(document, "Factual Allegations", draft.get("factual_allegations", []), numbered=True)
 
         claims_heading = document.add_paragraph()
         claims_heading.add_run("Claims for Relief").bold = True
@@ -1578,7 +1832,22 @@ class ComplaintDocumentBuilder:
             party_lines.append(f"Defendant {defendant} is alleged to be responsible for the conduct described below.")
         self._pdf_section(story, section, body, "Parties", party_lines)
         self._pdf_section(story, section, body, "Jurisdiction and Venue", [draft.get("jurisdiction_statement"), draft.get("venue_statement")])
-        self._pdf_section(story, section, body, "Factual Allegations", draft.get("factual_allegations", []), numbered=True)
+        allegation_groups = draft.get("factual_allegation_groups") if isinstance(draft.get("factual_allegation_groups"), list) else []
+        if allegation_groups:
+            story.append(Paragraph("Factual Allegations", section))
+            for group in allegation_groups:
+                if not isinstance(group, dict):
+                    continue
+                if group.get("title"):
+                    story.append(Paragraph(str(group["title"]), body))
+                for entry in _listify(group.get("paragraphs")):
+                    if not isinstance(entry, dict):
+                        continue
+                    text = _clean_sentence(entry.get("text"))
+                    if text:
+                        story.append(Paragraph(f"{entry.get('number')}. {text}", body))
+        else:
+            self._pdf_section(story, section, body, "Factual Allegations", draft.get("factual_allegations", []), numbered=True)
 
         story.append(Paragraph("Claims for Relief", section))
         for claim in _listify(draft.get("legal_claims")):
