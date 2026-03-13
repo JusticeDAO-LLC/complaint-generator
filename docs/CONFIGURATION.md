@@ -72,7 +72,8 @@ Uses the `ipfs_datasets_py` LLM router for multi-provider support:
 #### Supported Providers
 
 - `openrouter` - OpenRouter API (multiple models)
-- `huggingface` - HuggingFace API or local models
+- `huggingface` - Local Hugging Face Transformers fallback via `ipfs_datasets_py.llm_router`
+- `huggingface_router` - Hugging Face Inference via the OpenAI-compatible router endpoint used by Chat UI `llm-router`
 - `copilot_cli` - GitHub Copilot CLI
 - `codex_cli` - OpenAI Codex CLI
 - `gemini_cli` - Google Gemini CLI
@@ -80,6 +81,44 @@ Uses the `ipfs_datasets_py` LLM router for multi-provider support:
 - `copilot_sdk` - GitHub Copilot Python SDK
 
 See [docs/LLM_ROUTER.md](LLM_ROUTER.md) for detailed provider documentation.
+
+#### Hugging Face Router / Chat UI Compatibility
+
+To send requests through Hugging Face Inference using the same OpenAI-compatible router endpoint documented for Chat UI `llm-router`, configure a backend like this:
+
+```json
+{
+  "id": "hf-router",
+  "type": "llm_router",
+  "provider": "huggingface_router",
+  "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+  "base_url": "https://router.huggingface.co/v1",
+  "max_tokens": 2048,
+  "temperature": 0.2
+}
+```
+
+Set one of these environment variables for authentication:
+
+- `HF_TOKEN`
+- `HUGGINGFACE_HUB_TOKEN`
+- `HUGGINGFACE_API_KEY`
+
+The formal complaint API and document pipeline also accept `optimization_llm_config` so the agentic optimizer can use the same Hugging Face router settings:
+
+```json
+{
+  "enable_agentic_optimization": true,
+  "optimization_provider": "huggingface_router",
+  "optimization_model_name": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+  "optimization_llm_config": {
+    "base_url": "https://router.huggingface.co/v1",
+    "headers": {
+      "X-Title": "Complaint Generator"
+    }
+  }
+}
+```
 
 ### OpenAI Backend
 

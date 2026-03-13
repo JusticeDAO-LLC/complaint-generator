@@ -2349,6 +2349,7 @@ Relevant agentic drafting controls:
 
 - `enable_agentic_optimization`: optional boolean. When `true`, the builder runs a post-knowledge-graph actor/mediator/critic/optimizer loop before rendering DOCX/PDF/TXT artifacts.
 - `optimization_max_iterations`, `optimization_target_score`, `optimization_provider`, and `optimization_model_name`: optional controls for the refinement loop and routed LLM selection.
+- `optimization_llm_config`: optional object. Passes provider-specific routed LLM settings such as a Hugging Face router `base_url` or request headers when the optimizer should override the default router configuration.
 - `optimization_persist_artifacts`: optional boolean. When `true`, the optimization trace is stored through the IPFS adapter and the response exposes the resulting CID.
 
 Representative request parameters:
@@ -2379,6 +2380,12 @@ Representative request parameters:
   "optimization_target_score": 0.9,
   "optimization_provider": "openrouter",
   "optimization_model_name": "anthropic/claude-3.5-sonnet",
+  "optimization_llm_config": {
+    "base_url": "https://router.huggingface.co/v1",
+    "headers": {
+      "X-Title": "Complaint Generator"
+    }
+  },
   "optimization_persist_artifacts": true,
   "affidavit_venue_lines": ["State of California", "County of San Francisco"],
   "affidavit_jurat": "Subscribed and sworn to before me on March 13, 2026 by Jane Doe.",

@@ -59,7 +59,7 @@ for backend_id in config_mediator['backends']:
 		model = cfg.get('model') or cfg.get('engine')
 		cfg.pop('api_key', None)
 		cfg.pop('engine', None)
-		backend = LLMRouterBackend(id=cfg.get('id', backend_id), provider=cfg.get('provider', 'huggingface'), model=model, **{k: v for k, v in cfg.items() if k not in ('id', 'type', 'provider', 'model')})
+		backend = LLMRouterBackend(id=cfg.get('id', backend_id), provider=cfg.get('provider', 'huggingface_router'), model=model, **{k: v for k, v in cfg.items() if k not in ('id', 'type', 'provider', 'model')})
 	elif backend_config['type'] == 'workstation':
 		backendDatabases  = WorkstationBackendDatabases(**backend_config)
 		backendModels = WorkstationBackendModels(**backend_config)

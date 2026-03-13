@@ -69,7 +69,7 @@ Complete index of all documentation in the complaint-generator repository.
 ### Evidence Management
 - [docs/EVIDENCE_MANAGEMENT.md](docs/EVIDENCE_MANAGEMENT.md) - IPFS storage and DuckDB metadata
 - [docs/WEB_EVIDENCE_DISCOVERY.md](docs/WEB_EVIDENCE_DISCOVERY.md) - Automated web evidence discovery
-- [docs/PAYLOAD_CONTRACTS.md](docs/PAYLOAD_CONTRACTS.md) - Central reference for evidence, authority, follow-up, and graph projection response payloads
+- [docs/PAYLOAD_CONTRACTS.md](docs/PAYLOAD_CONTRACTS.md) - Central reference for evidence, authority, follow-up, graph projection, and formal complaint document package payloads, including agentic document optimization
 
 ### Search Integration
 - [docs/SEARCH_HOOKS.md](docs/SEARCH_HOOKS.md) - Legal corpus RAG and search integration
@@ -89,6 +89,7 @@ Complete index of all documentation in the complaint-generator repository.
 - [docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md](docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md) - Milestone-by-milestone execution checklist with file targets, acceptance criteria, and validation expectations
 - [docs/IPFS_DATASETS_PY_FILE_WORKLIST.md](docs/IPFS_DATASETS_PY_FILE_WORKLIST.md) - File-by-file implementation worklist for the early milestones, with code targets and slice selection guidance
 - [docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md](docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md) - Validated module map and adapter targets for the checked out `ipfs_datasets_py` submodule
+- [docs/DOCUMENT_GENERATION_AGENTIC_OPTIMIZATION_PLAN.md](docs/DOCUMENT_GENERATION_AGENTIC_OPTIMIZATION_PLAN.md) - Focused next-step plan for support-aware actor/mediator/critic optimization of formal complaint document packages and rendered artifacts
 
 ### DEI Analysis (HACC)
 - [docs/HACC_INTEGRATION.md](docs/HACC_INTEGRATION.md) - DEI policy analysis
@@ -216,7 +217,7 @@ See [docs/EXAMPLES.md](docs/EXAMPLES.md) for detailed documentation of all 21 ex
 - **Contribute code** → CONTRIBUTING.md
 - **Write tests** → tests/README.md, TESTING.md
 - **Integrate IPFS** → docs/IPFS_DATASETS_INTEGRATION.md
-- **Plan `ipfs_datasets_py` integration work** → docs/IPFS_DATASETS_PY_INTEGRATION.md, docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md, docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md, docs/IPFS_DATASETS_PY_BATCH1_IMPLEMENTATION_PLAN.md, docs/IPFS_DATASETS_PY_DIRECT_IMPORT_AUDIT.md, docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md, docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md, docs/IPFS_DATASETS_PY_FILE_WORKLIST.md
+- **Plan `ipfs_datasets_py` integration work** → docs/IPFS_DATASETS_PY_INTEGRATION.md, docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md, docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md, docs/IPFS_DATASETS_PY_BATCH1_IMPLEMENTATION_PLAN.md, docs/IPFS_DATASETS_PY_DIRECT_IMPORT_AUDIT.md, docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md, docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md, docs/IPFS_DATASETS_PY_FILE_WORKLIST.md, docs/DOCUMENT_GENERATION_AGENTIC_OPTIMIZATION_PLAN.md
 - **Perform legal research** → docs/LEGAL_AUTHORITY_RESEARCH.md
 - **Manage evidence** → docs/EVIDENCE_MANAGEMENT.md
 - **Use search/RAG** → docs/SEARCH_HOOKS.md
@@ -250,5 +251,5 @@ Found an issue with documentation? Please:
 
 ---
 
-**Last Updated**: 2026-02-10
+**Last Updated**: 2026-03-13
 **Total Documentation**: 42+ markdown files, 250+ pages

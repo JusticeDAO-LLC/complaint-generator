@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from html import escape
+import json
 from pathlib import Path
 import re
 from typing import Any, Dict, Iterable, List, Optional
@@ -187,6 +188,7 @@ class FormalComplaintDocumentBuilder:
         optimization_target_score: float = 0.9,
         optimization_provider: Optional[str] = None,
         optimization_model_name: Optional[str] = None,
+        optimization_llm_config: Optional[Dict[str, Any]] = None,
         optimization_persist_artifacts: bool = False,
         output_dir: Optional[str] = None,
         output_formats: Optional[List[str]] = None,
@@ -241,6 +243,7 @@ class FormalComplaintDocumentBuilder:
                 target_score=optimization_target_score,
                 provider=optimization_provider,
                 model_name=optimization_model_name,
+                llm_config=optimization_llm_config,
                 persist_artifacts=optimization_persist_artifacts,
             )
         drafting_readiness = self._build_drafting_readiness(
@@ -612,6 +615,7 @@ class FormalComplaintDocumentBuilder:
         target_score: float,
         provider: Optional[str],
         model_name: Optional[str],
+        llm_config: Optional[Dict[str, Any]],
         persist_artifacts: bool,
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
         optimizer = AgenticDocumentOptimizer(
@@ -622,7 +626,20 @@ class FormalComplaintDocumentBuilder:
             target_score=target_score,
             persist_artifacts=persist_artifacts,
         )
-        optimized_draft, report = optimizer.optimize(draft)
+        report = optimizer.optimize_draft(
+            draft=draft,
+            user_id=None,
+            drafting_readiness={},
+            config={
+                "provider": provider,
+                "model_name": model_name,
+                "max_iterations": max_iterations,
+                "target_score": target_score,
+                "persist_artifacts": persist_artifacts,
+                "llm_config": dict(llm_config or {}),
+            },
+        )
+        optimized_draft = report.get("draft") or dict(draft)
         optimized_draft["summary_of_facts"] = self._normalize_text_lines(optimized_draft.get("summary_of_facts", []))
         optimized_draft["factual_allegations"] = self._expand_allegation_sources(
             optimized_draft.get("factual_allegations", []),
@@ -1368,6 +1385,10 @@ class FormalComplaintDocumentBuilder:
                 flags.add("absences")
             if re.search(r"\b(disciplined|discipline|wrote me up|write-up|write up)\b", lowered):
                 flags.add("discipline")
+            if re.search(r"\b(accommodation|accommodate|light duty|schedule flexibility|medical restrictions?|doctor-imposed restrictions?)\b", lowered):
+                flags.add("accommodation")
+            if re.search(r"\b(restrictions?|light duty|schedule flexibility)\b", lowered):
+                flags.add("restrictions")
             if re.search(r"\b(terminated|fired)\b", lowered) or re.search(r"\b(end(?:ed|ing))\b[^.]{0,40}\bemployment\b", lowered):
                 flags.add("termination")
             if re.search(r"\b(wages|pay|salary|income|benefits)\b", lowered):
@@ -1398,9 +1419,18 @@ class FormalComplaintDocumentBuilder:
                 if "adverse" in candidate_categories and "adverse" in existing_categories and len(shared_features) >= 3:
                     skip = True
                     break
+                if "report" in candidate_categories and "report" in existing_categories and "accommodation" in shared_features and len(shared_features) >= 2:
+                    skip = True
+                    break
             if not skip:
                 kept.append(candidate)
         return kept
+
+    def _is_near_duplicate_allegation(self, candidate: str, existing: List[str]) -> bool:
+        if not candidate:
+            return False
+        pruned = self._prune_near_duplicate_allegations([*existing, candidate])
+        return len(pruned) == len(existing)
 
     def _build_factual_allegations(
         self,
@@ -1421,6 +1451,8 @@ class FormalComplaintDocumentBuilder:
             count_title = str(claim.get("count_title") or claim.get("claim_type") or "Claim").strip()
             for fact in self._expand_allegation_sources(claim.get("supporting_facts", []), limit=10):
                 if not fact:
+                    continue
+                if self._is_near_duplicate_allegation(fact, allegations):
                     continue
                 prefixed_fact = fact
                 if count_title and not fact.lower().startswith("as to ") and fact.lower() not in seen:
@@ -1697,7 +1729,7 @@ class FormalComplaintDocumentBuilder:
             )
         return normalized
 
-    def _signature_block_lines(self, signature_block: Dict[str, Any]) -> List[str]:
+    def _signature_block_lines(self, signature_block: Dict[str, Any], *, include_dated: bool = True) -> List[str]:
         lines: List[str] = [
             str(signature_block.get("signature_line") or "/s/ Plaintiff"),
             str(signature_block.get("name") or "Plaintiff"),
@@ -1723,13 +1755,17 @@ class FormalComplaintDocumentBuilder:
                 lines.append(f"Bar No. {signer['bar_number']}")
             if signer.get("contact"):
                 lines.append(str(signer["contact"]))
-        if signature_block.get("dated"):
+        if include_dated and signature_block.get("dated"):
             lines.append(str(signature_block["dated"]))
         return lines
 
     def _build_signature_section_lines(self, signature_block: Dict[str, Any], forum_type: str) -> List[str]:
         if forum_type == "state":
-            return ["Respectfully submitted,", *self._signature_block_lines(signature_block)]
+            lines: List[str] = []
+            if signature_block.get("dated"):
+                lines.append(str(signature_block["dated"]))
+            lines.extend(["", "Respectfully submitted,", *self._signature_block_lines(signature_block, include_dated=False)])
+            return lines
         return ["Respectfully submitted,", *self._signature_block_lines(signature_block)]
 
     def _build_jury_demand(
@@ -1866,6 +1902,8 @@ class FormalComplaintDocumentBuilder:
         artifacts: Dict[str, Dict[str, Any]] = {}
 
         for output_format in output_formats:
+            if output_format == "packet":
+                continue
             path = self._artifact_path(output_root, file_stem, output_format)
             if output_format == "docx":
                 self._render_docx(draft, path)
@@ -1902,6 +1940,15 @@ class FormalComplaintDocumentBuilder:
                 "size_bytes": path.stat().st_size,
             }
 
+        if "packet" in output_formats:
+            path = self._artifact_path(output_root, file_stem, "packet")
+            self._render_packet_json(draft, path, artifacts=artifacts)
+            artifacts["packet"] = {
+                "path": str(path),
+                "filename": path.name,
+                "size_bytes": path.stat().st_size,
+            }
+
         return artifacts
 
     def _resolve_user_id(self, user_id: Optional[str]) -> str:
@@ -1919,7 +1966,7 @@ class FormalComplaintDocumentBuilder:
         normalized = []
         for value in values:
             current = str(value or "").strip().lower()
-            if current in {"docx", "pdf", "txt", "checklist"} and current not in normalized:
+            if current in {"docx", "pdf", "txt", "checklist", "packet"} and current not in normalized:
                 normalized.append(current)
         return normalized or ["docx", "pdf"]
 
@@ -2144,7 +2191,64 @@ class FormalComplaintDocumentBuilder:
         suffix = "-affidavit" if document_kind == "affidavit" else ""
         if output_format == "checklist":
             return output_root / f"{file_stem}{suffix}-checklist.txt"
+        if output_format == "packet":
+            return output_root / f"{file_stem}-packet.json"
         return output_root / f"{file_stem}{suffix}.{output_format}"
+
+    def _render_packet_json(
+        self,
+        draft: Dict[str, Any],
+        path: Path,
+        *,
+        artifacts: Dict[str, Dict[str, Any]],
+    ) -> None:
+        payload = self._build_filing_packet_payload(draft, artifacts=artifacts)
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    def _build_filing_packet_payload(
+        self,
+        draft: Dict[str, Any],
+        *,
+        artifacts: Dict[str, Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        case_caption = draft.get("case_caption", {}) if isinstance(draft.get("case_caption"), dict) else {}
+        source_context = draft.get("source_context", {}) if isinstance(draft.get("source_context"), dict) else {}
+        packet_artifacts = {
+            key: {
+                "filename": value.get("filename"),
+                "path": value.get("path"),
+                "size_bytes": value.get("size_bytes"),
+            }
+            for key, value in artifacts.items()
+            if isinstance(value, dict)
+        }
+        return {
+            "title": draft.get("title"),
+            "court_header": draft.get("court_header"),
+            "generated_at": source_context.get("generated_at") or _utcnow().isoformat(),
+            "case_caption": {
+                "plaintiffs": case_caption.get("plaintiffs", []),
+                "defendants": case_caption.get("defendants", []),
+                "case_number": case_caption.get("case_number"),
+                "document_title": case_caption.get("document_title"),
+                "jury_demand_notice": case_caption.get("jury_demand_notice"),
+            },
+            "sections": {
+                "nature_of_action": draft.get("nature_of_action", []),
+                "summary_of_facts": draft.get("summary_of_facts", []),
+                "factual_allegations": draft.get("factual_allegations", []),
+                "claims_for_relief": draft.get("claims_for_relief", []),
+                "legal_standards": draft.get("legal_standards", []),
+                "requested_relief": draft.get("requested_relief", []),
+            },
+            "affidavit": draft.get("affidavit", {}),
+            "verification": draft.get("verification", {}),
+            "certificate_of_service": draft.get("certificate_of_service", {}),
+            "exhibits": draft.get("exhibits", []),
+            "filing_checklist": draft.get("filing_checklist", []),
+            "drafting_readiness": draft.get("drafting_readiness", {}),
+            "artifacts": packet_artifacts,
+        }
 
     def _render_affidavit_text(self, draft: Dict[str, Any], affidavit: Dict[str, Any]) -> str:
         caption = draft.get("case_caption", {}) if isinstance(draft.get("case_caption"), dict) else {}

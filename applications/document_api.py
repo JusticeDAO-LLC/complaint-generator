@@ -75,6 +75,7 @@ class FormalComplaintDocumentRequest(BaseModel):
     optimization_target_score: float = 0.9
     optimization_provider: Optional[str] = None
     optimization_model_name: Optional[str] = None
+    optimization_llm_config: Dict[str, Any] = Field(default_factory=dict)
     optimization_persist_artifacts: bool = False
     output_dir: Optional[str] = None
     output_formats: List[str] = Field(default_factory=lambda: ["docx", "pdf"])
@@ -363,7 +364,7 @@ def create_document_router(mediator: Any) -> APIRouter:
     ) -> Dict[str, Any]:
         if not request.output_formats:
             raise HTTPException(status_code=400, detail="At least one output format is required")
-        payload = mediator.build_formal_complaint_document_package(
+        build_kwargs = dict(
             user_id=request.user_id,
             court_name=request.court_name,
             district=request.district,
@@ -411,6 +412,9 @@ def create_document_router(mediator: Any) -> APIRouter:
             output_dir=request.output_dir,
             output_formats=request.output_formats,
         )
+        if request.optimization_llm_config:
+            build_kwargs["optimization_llm_config"] = request.optimization_llm_config
+        payload = mediator.build_formal_complaint_document_package(**build_kwargs)
         payload = _annotate_artifacts_with_download_urls(payload)
         return _annotate_review_links(payload, user_id=request.user_id)
 

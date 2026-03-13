@@ -15,6 +15,15 @@
             "max_tokens": 128
         },
         {
+            "id": "hf-router",
+            "type": "llm_router",
+            "provider": "huggingface_router",
+            "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+            "base_url": "https://router.huggingface.co/v1",
+            "max_tokens": 1024,
+            "temperature": 0.2
+        },
+        {
             "id": "openai-davinci",
             "type": "openai",
             "api_key": "${OPENAI_API_KEY}",

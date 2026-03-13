@@ -338,6 +338,10 @@ def _prune_near_duplicate_allegations(allegations: List[str]) -> List[str]:
             flags.add("absences")
         if re.search(r"\b(disciplined|discipline|wrote me up|write-up|write up)\b", lowered):
             flags.add("discipline")
+        if re.search(r"\b(accommodation|accommodate|light duty|schedule flexibility|medical restrictions?|doctor-imposed restrictions?)\b", lowered):
+            flags.add("accommodation")
+        if re.search(r"\b(restrictions?|light duty|schedule flexibility)\b", lowered):
+            flags.add("restrictions")
         if re.search(r"\b(terminated|fired)\b", lowered) or re.search(r"\b(end(?:ed|ing))\b[^.]{0,40}\bemployment\b", lowered):
             flags.add("termination")
         if re.search(r"\b(wages|pay|salary|income|benefits)\b", lowered):
@@ -366,6 +370,9 @@ def _prune_near_duplicate_allegations(allegations: List[str]) -> List[str]:
                 skip = True
                 break
             if "adverse" in candidate_categories and "adverse" in existing_categories and len(shared_features) >= 3:
+                skip = True
+                break
+            if "report" in candidate_categories and "report" in existing_categories and "accommodation" in shared_features and len(shared_features) >= 2:
                 skip = True
                 break
         if not skip:

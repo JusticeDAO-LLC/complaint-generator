@@ -1,11 +1,12 @@
 """LLM Router Backend."""
 
 import logging
+import os
 import random
 import time
 import threading
 
-from integrations.ipfs_datasets.llm import generate_text
+from integrations.ipfs_datasets.llm import LLM_ROUTER_AVAILABLE, generate_text_via_router as generate_text
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,17 @@ class LLMRouterBackend:
         self.id = id
         self.provider = provider or 'copilot_cli'
         if model is None:
-            self.model = 'gpt-5.3-codex' if self.provider == 'codex_cli' else 'gpt-5-mini'
+            if self.provider == 'codex_cli':
+                self.model = 'gpt-5.3-codex'
+            elif str(self.provider).strip().lower() in {'hf_inference', 'hf_router', 'huggingface_inference', 'huggingface_router'}:
+                self.model = (
+                    os.getenv('LLM_ROUTER_FALLBACK_MODEL', '').strip()
+                    or os.getenv('IPFS_DATASETS_PY_OPENROUTER_MODEL', '').strip()
+                    or os.getenv('IPFS_DATASETS_PY_LLM_MODEL', '').strip()
+                    or None
+                )
+            else:
+                self.model = 'gpt-5-mini'
         else:
             self.model = model
 
@@ -64,7 +75,7 @@ class LLMRouterBackend:
         }
         
         # Check if llm_router is available
-        if generate_text is None:
+        if not LLM_ROUTER_AVAILABLE:
             raise ImportError(
                 "llm_router not available. Please ensure ipfs_datasets_py submodule "
                 "is initialized with: git submodule update --init --recursive"

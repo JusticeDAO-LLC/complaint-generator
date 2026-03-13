@@ -331,6 +331,7 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     mediator = _build_mediator()
     builder = FormalComplaintDocumentBuilder(mediator)
     calls = {"critic": 0, "actor": 0}
+    llm_invocations = []
 
     class _FakeEmbeddingsRouter:
         def embed_text(self, text: str):
@@ -342,6 +343,7 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
             ]
 
     def _fake_generate_text(prompt: str, *, provider=None, model_name=None, **kwargs):
+        llm_invocations.append({"provider": provider, "model_name": model_name, "kwargs": dict(kwargs)})
         if document_optimization.AgenticDocumentOptimizer.CRITIC_PROMPT_TAG in prompt:
             calls["critic"] += 1
             if calls["critic"] == 1:
@@ -411,6 +413,10 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
         optimization_target_score=0.9,
         optimization_provider="test-provider",
         optimization_model_name="test-model",
+        optimization_llm_config={
+            "base_url": "https://router.huggingface.co/v1",
+            "headers": {"X-Title": "Complaint Generator Tests"},
+        },
         optimization_persist_artifacts=True,
         output_dir=str(tmp_path),
         output_formats=["txt"],
@@ -421,8 +427,19 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     assert report["accepted_iterations"] >= 1
     assert report["initial_score"] < report["final_score"]
     assert report["artifact_cid"] == "bafy-doc-opt-report"
+    assert report["packet_projection"]["section_presence"]["factual_allegations"] is True
+    assert report["packet_projection"]["has_affidavit"] is True
+    assert report["section_history"]
+    assert report["section_history"][0]["focus_section"] == "factual_allegations"
+    assert report["section_history"][0]["selected_support_context"]["focus_section"] == "factual_allegations"
+    assert "selected_provider" in report["upstream_optimizer"]
     assert calls["actor"] >= 1
     assert calls["critic"] >= 2
+    assert llm_invocations
+    assert all(entry["provider"] == "test-provider" for entry in llm_invocations)
+    assert all(entry["model_name"] == "test-model" for entry in llm_invocations)
+    assert all(entry["kwargs"].get("base_url") == "https://router.huggingface.co/v1" for entry in llm_invocations)
+    assert all(entry["kwargs"].get("headers", {}).get("X-Title") == "Complaint Generator Tests" for entry in llm_invocations)
     assert any(
         "Plaintiff was fired two days later and lost pay and benefits" in allegation
         for allegation in result["draft"]["factual_allegations"]
@@ -528,7 +545,10 @@ def test_formal_complaint_document_builder_uses_state_court_opening_language(tmp
     assert "verify that I have reviewed this Complaint and know its contents" in result["draft"]["draft_text"]
     assert "being duly sworn, state that I am competent to testify" in result["draft"]["draft_text"]
     assert "Subscribed and sworn to before me on __________________ by Jane Doe." in result["draft"]["draft_text"]
-    assert result["draft"]["draft_text"].index("Respectfully submitted,") < result["draft"]["draft_text"].index("Dated: __________________")
+    closing_block = result["draft"]["draft_text"].rsplit("SIGNATURE BLOCK", 1)[-1]
+    assert "Dated: __________________" in closing_block
+    assert "Respectfully submitted," in closing_block
+    assert closing_block.index("Dated: __________________") < closing_block.index("Respectfully submitted,")
     assert "Related Proceeding No. JCCP-5123" in result["draft"]["draft_text"]
     assert "Coordination No. 24STCV10001" in result["draft"]["draft_text"]
     assert "Judicial Officer: Hon. Elena Park" in result["draft"]["draft_text"]
@@ -579,6 +599,7 @@ def test_formal_complaint_document_builder_handles_structured_complaint_payloads
     assert all(not allegation.startswith("They ") for allegation in result["draft"]["factual_allegations"])
     assert all("Plaintiff told Plaintiff's supervisor" not in allegation for allegation in result["draft"]["factual_allegations"])
     assert all(not allegation.startswith("Defendant cut Plaintiff's shifts") for allegation in result["draft"]["factual_allegations"])
+    assert all(not allegation.startswith("As to Employment Discrimination, Plaintiff requested") for allegation in result["draft"]["factual_allegations"])
     assert any(
         "after Plaintiff complained again" in allegation
         or "after renewed complaints" in allegation.lower()
@@ -714,6 +735,33 @@ def test_formal_complaint_document_builder_can_suppress_mirrored_affidavit_exhib
 
     assert result["draft"]["exhibits"]
     assert result["draft"]["affidavit"]["supporting_exhibits"] == []
+
+
+def test_formal_complaint_document_builder_generates_filing_packet_json(tmp_path: Path):
+    mediator = _build_mediator()
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    result = builder.build_package(
+        district="Northern District of California",
+        county="San Francisco County",
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Acme Corporation"],
+        output_dir=str(tmp_path),
+        output_formats=["txt", "packet"],
+    )
+
+    packet_path = Path(result["artifacts"]["packet"]["path"])
+    assert packet_path.exists()
+    packet = json.loads(packet_path.read_text(encoding="utf-8"))
+    assert packet["court_header"] == "IN THE UNITED STATES DISTRICT COURT FOR THE NORTHERN DISTRICT OF CALIFORNIA"
+    assert packet["case_caption"]["plaintiffs"] == ["Jane Doe"]
+    assert packet["sections"]["summary_of_facts"]
+    assert packet["sections"]["claims_for_relief"]
+    assert packet["affidavit"]["knowledge_graph_note"].startswith(
+        "This affidavit is generated from the complaint intake knowledge graph"
+    )
+    assert packet["certificate_of_service"]["title"] == "Certificate of Service"
+    assert packet["artifacts"]["txt"]["filename"].endswith(".txt")
 
 
 def test_review_api_registers_formal_complaint_document_route():
@@ -1307,6 +1355,7 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert 'Copy Pleading Text' in page_html
         assert 'value="txt"' in page_html
         assert 'value="checklist"' in page_html
+        assert 'value="packet"' in page_html
         assert 'Drafting Readiness' in page_html
         assert 'Pre-Filing Checklist' in page_html
         assert 'Open Checklist Review' in page_html
@@ -1434,6 +1483,36 @@ def test_review_surface_document_builder_supports_affidavit_exhibit_controls_end
     assert payload['artifacts']['txt']['download_url'].startswith('/api/documents/download?path=')
 
     Path(payload['artifacts']['txt']['path']).unlink(missing_ok=True)
+
+
+def test_review_surface_document_builder_returns_packet_artifact_end_to_end(tmp_path):
+    mediator = _build_mediator()
+    mediator.build_formal_complaint_document_package.side_effect = (
+        lambda **kwargs: FormalComplaintDocumentBuilder(mediator).build_package(**kwargs)
+    )
+    app = create_review_surface_app(mediator)
+    client = TestClient(app)
+
+    api_response = client.post(
+        '/api/documents/formal-complaint',
+        json={
+            'district': 'Northern District of California',
+            'county': 'San Francisco County',
+            'plaintiff_names': ['Jane Doe'],
+            'defendant_names': ['Acme Corporation'],
+            'output_formats': ['packet'],
+        },
+    )
+
+    assert api_response.status_code == 200
+    payload = api_response.json()
+    assert payload['artifacts']['packet']['download_url'].startswith('/api/documents/download?path=')
+    packet_path = Path(payload['artifacts']['packet']['path'])
+    packet = json.loads(packet_path.read_text(encoding='utf-8'))
+    assert packet['sections']['requested_relief']
+    assert packet['affidavit']['facts']
+
+    packet_path.unlink(missing_ok=True)
 
 
 def test_review_surface_generated_docx_preserves_grouped_factual_headings_end_to_end(tmp_path):

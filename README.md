@@ -54,7 +54,7 @@ Flexible AI backend integration with automatic fallback:
 - Anthropic Claude (via OpenRouter)
 - Google Gemini
 - GitHub Copilot
-- HuggingFace Models
+- Hugging Face local models and Hugging Face router/inference endpoints
 
 [LLM Router Guide →](docs/LLM_ROUTER.md)
 
@@ -134,6 +134,8 @@ python run.py --config config.review_surface.json
 The formal complaint builder and `/api/documents/formal-complaint` endpoint also support affidavit-specific exhibit controls. Use `affidavit_supporting_exhibits` to provide a curated affidavit exhibit list, or set `affidavit_include_complaint_exhibits=false` when the affidavit should not inherit the complaint's exhibit list by default.
 
 The same formal complaint payload now carries claim-level support summaries and drafting-readiness source-context counts, so the builder can show whether each count is currently grounded in evidence, authority, archived captures, or fallback-only authority references without requiring a separate dashboard round-trip.
+
+Agentic document optimization can also use Hugging Face Inference through the same OpenAI-compatible router endpoint documented for Chat UI `llm-router`. Set `optimization_provider` to `huggingface_router`, choose a Hugging Face model in `optimization_model_name`, and pass `optimization_llm_config.base_url=https://router.huggingface.co/v1` when you need to override the default router URL.
 
 **Agentic Scraper CLI:**
 ```bash

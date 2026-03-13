@@ -41,7 +41,7 @@ class HuggingFaceBackend(LLMRouterBackend):
 			)
 
 		model = config.pop("model", None) or engine
-		super().__init__(id=id, provider=config.pop("provider", "huggingface"), model=model, **config)
+		super().__init__(id=id, provider=config.pop("provider", "huggingface_router"), model=model, **config)
 
 	def __call__(self, payload: str | Mapping[str, Any]):
 		# Legacy HF usage sometimes calls with {"inputs": "..."}.

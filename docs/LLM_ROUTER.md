@@ -4,7 +4,7 @@ The complaint-generator now includes a backend that uses the `llm_router` from t
 
 ## Features
 
-- **Multiple Provider Support**: Route requests to OpenRouter, local HuggingFace models, and more
+- **Multiple Provider Support**: Route requests to OpenRouter, Hugging Face router/inference endpoints, local Hugging Face models, and more
 - **Automatic Fallback**: Falls back to local models if remote providers are unavailable
 - **Provider Caching**: Efficiently reuses provider instances
 - **Configurable**: Supports custom configuration per backend
@@ -55,6 +55,43 @@ Set the environment variable:
 export OPENROUTER_API_KEY="your-api-key"
 ```
 
+### Using Hugging Face Router / Inference
+
+To use the same OpenAI-compatible Hugging Face router endpoint documented for Chat UI `llm-router`:
+
+```json
+{
+    "BACKENDS": [
+        {
+            "id": "hf-router",
+            "type": "llm_router",
+            "provider": "huggingface_router",
+            "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+            "base_url": "https://router.huggingface.co/v1",
+            "max_tokens": 1024,
+            "temperature": 0.2
+        }
+    ],
+    "MEDIATOR": {
+        "backends": ["hf-router"]
+    }
+}
+```
+
+Set one of these environment variables for authentication:
+
+```bash
+export HF_TOKEN="your-huggingface-token"
+# or
+export HUGGINGFACE_HUB_TOKEN="your-huggingface-token"
+```
+
+Notes:
+
+- `provider="huggingface_router"` is normalized onto the existing OpenAI-compatible transport used by `ipfs_datasets_py.llm_router`.
+- `provider="huggingface"` still means the local Transformers fallback unless you also set a Hugging Face router `base_url`.
+- The same settings can be passed to the document optimizer through `optimization_provider`, `optimization_model_name`, and `optimization_llm_config`.
+
 ### Auto-detect Provider
 
 Let the router automatically detect the best available provider:
@@ -81,7 +118,8 @@ The router will try providers in this order:
 
 Note: In this repository's current `ipfs_datasets_py/llm_router.py` shim implementation, `codex_cli`, `copilot_cli`, `claude_code`, and `gemini_cli` are implemented as CLI providers. For `gemini_cli`, you must configure the correct CLI command/flags for the specific Gemini CLI you installed (there are multiple, with different argument conventions).
 
-- `local_hf` / `huggingface` - Local HuggingFace transformers
+- `local_hf` / `huggingface` - Local Hugging Face Transformers fallback
+- `huggingface_router` / `hf_router` / `huggingface_inference` / `hf_inference` - Hugging Face router/inference via `https://router.huggingface.co/v1`
 - `openrouter` - OpenRouter API
 - `codex_cli` - OpenAI Codex CLI
 - `copilot_cli` - GitHub Copilot CLI
@@ -221,6 +259,7 @@ SDK-specific keys (all optional):
 - `IPFS_DATASETS_PY_LLM_PROVIDER` - Force a specific provider
 - `IPFS_DATASETS_PY_LLM_MODEL` - Default model name
 - `OPENROUTER_API_KEY` - OpenRouter API key
+- `HF_TOKEN` / `HUGGINGFACE_HUB_TOKEN` - Hugging Face router/inference token
 - `IPFS_DATASETS_PY_ENABLE_IPFS_ACCELERATE` - Enable accelerate provider
 
 ## Example in run.py
