@@ -135,10 +135,15 @@ python run.py --config config.review_surface.json
 ```bash
 export HF_TOKEN="your-huggingface-token"
 
-# General server mode with Hugging Face router as the active backend
+# Optional: override the routing model or the reasoning target used by the smoke tests
+export HF_ARCH_ROUTER_MODEL="katanemo/Arch-Router-1.5B"
+export HF_ROUTER_ARCH_REASONING_MODEL="meta-llama/Llama-3.3-70B-Instruct"
+
+# General server mode with Hugging Face router as the active backend.
+# The shipped config now uses Arch-Router to choose between legal-reasoning and drafting models.
 python run.py --config config.huggingface_router.json
 
-# Review surface and formal complaint builder with Hugging Face router
+# Review surface and formal complaint builder with the same auto-routing profile
 python run.py --config config.review_surface.huggingface_router.json
 
 # Optional: real network smoke test for the HF router adapter path
@@ -164,7 +169,9 @@ The formal complaint builder and `/api/documents/formal-complaint` endpoint also
 
 The same formal complaint payload now carries claim-level support summaries and drafting-readiness source-context counts, so the builder can show whether each count is currently grounded in evidence, authority, archived captures, or fallback-only authority references without requiring a separate dashboard round-trip.
 
-Agentic document optimization can also use Hugging Face Inference through the same OpenAI-compatible router endpoint documented for Chat UI `llm-router`. Set `optimization_provider` to `huggingface_router`, choose a Hugging Face model in `optimization_model_name`, and pass `optimization_llm_config.base_url=https://router.huggingface.co/v1` when you need to override the default router URL. The `/document` review surface now exposes these optimization controls directly, including iteration/target tuning, routed model selection, basic router overrides, and optional IPFS trace persistence.
+Agentic document optimization can also use Hugging Face Inference through the same OpenAI-compatible router endpoint documented for Chat UI `llm-router`. Set `optimization_provider` to `huggingface_router`, choose a Hugging Face model in `optimization_model_name`, and pass `optimization_llm_config.base_url=https://router.huggingface.co/v1` when you need to override the default router URL. The `/document` review surface now exposes these optimization controls directly, including iteration/target tuning, routed model selection, basic router overrides, an advanced JSON editor for `optimization_llm_config`, and optional IPFS trace persistence.
+
+If you want automatic model selection for optimization requests, include `optimization_llm_config.arch_router` with a routing model such as `katanemo/Arch-Router-1.5B` and a route map like `legal_reasoning -> meta-llama/Llama-3.3-70B-Instruct` and `drafting -> Qwen/Qwen3-Coder-480B-A35B-Instruct`.
 
 When `enable_agentic_optimization=true`, the formal complaint response adds a top-level `document_optimization` report summarizing the post-knowledge-graph actor/mediator/critic loop. The current report shape includes the optimization method/backend, initial and final scores, accepted iteration count, optimized section names, router/IPFS status, a compact section history, and an optional trace CID when `optimization_persist_artifacts=true`.
 

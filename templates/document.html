@@ -1021,6 +1021,12 @@
                     </div>
 
                     <div>
+                        <label for="optimizationAdvancedConfig">Advanced Optimization LLM Config (JSON)</label>
+                        <textarea id="optimizationAdvancedConfig" name="optimizationAdvancedConfig" rows="6" placeholder='{"arch_router": {"enabled": true, "routes": {"drafting": "Qwen/Qwen3-Coder-480B-A35B-Instruct"}}}'></textarea>
+                        <div class="input-hint">Provide an optional JSON object for advanced router settings. Basic fields above override matching keys like <code>base_url</code>, <code>timeout</code>, and <code>headers.X-Title</code>.</div>
+                    </div>
+
+                    <div>
                         <label for="optimizationPersistArtifacts">
                             <input id="optimizationPersistArtifacts" name="optimizationPersistArtifacts" type="checkbox">
                             Persist optimization trace through the IPFS adapter
@@ -1386,6 +1392,7 @@
                 optimizationBaseUrl: document.getElementById('optimizationBaseUrl').value,
                 optimizationTimeout: document.getElementById('optimizationTimeout').value,
                 optimizationTitleHeader: document.getElementById('optimizationTitleHeader').value,
+                optimizationAdvancedConfig: document.getElementById('optimizationAdvancedConfig').value,
                 optimizationPersistArtifacts: document.getElementById('optimizationPersistArtifacts').checked,
                 outputFormats: Array.from(document.querySelectorAll('input[name="outputFormat"]:checked')).map((node) => node.value),
             };
@@ -1463,6 +1470,7 @@
             setFieldValue('optimizationBaseUrl', saved.optimizationBaseUrl, true);
             setFieldValue('optimizationTimeout', saved.optimizationTimeout, true);
             setFieldValue('optimizationTitleHeader', saved.optimizationTitleHeader, true);
+            setFieldValue('optimizationAdvancedConfig', saved.optimizationAdvancedConfig, true);
             const optimizationPersistArtifactsElement = document.getElementById('optimizationPersistArtifacts');
             if (optimizationPersistArtifactsElement && typeof saved.optimizationPersistArtifacts === 'boolean') {
                 optimizationPersistArtifactsElement.checked = saved.optimizationPersistArtifacts;
@@ -2145,6 +2153,40 @@
             });
         }
 
+        function buildOptimizationLlmConfig() {
+            const optimizationBaseUrl = document.getElementById('optimizationBaseUrl').value.trim();
+            const optimizationTimeoutRaw = document.getElementById('optimizationTimeout').value.trim();
+            const optimizationTitleHeader = document.getElementById('optimizationTitleHeader').value.trim();
+            const optimizationAdvancedConfigRaw = document.getElementById('optimizationAdvancedConfig').value.trim();
+
+            let optimizationLlmConfig = {};
+            if (optimizationAdvancedConfigRaw) {
+                const parsedConfig = safeJsonParse(optimizationAdvancedConfigRaw);
+                if (!parsedConfig || typeof parsedConfig !== 'object' || Array.isArray(parsedConfig)) {
+                    throw new Error('Advanced optimization config must be a valid JSON object.');
+                }
+                optimizationLlmConfig = { ...parsedConfig };
+            }
+
+            if (optimizationBaseUrl) {
+                optimizationLlmConfig.base_url = optimizationBaseUrl;
+            }
+            if (optimizationTimeoutRaw) {
+                const parsedTimeout = Number(optimizationTimeoutRaw);
+                if (!Number.isNaN(parsedTimeout) && parsedTimeout > 0) {
+                    optimizationLlmConfig.timeout = parsedTimeout;
+                }
+            }
+            if (optimizationTitleHeader) {
+                const existingHeaders = optimizationLlmConfig.headers && typeof optimizationLlmConfig.headers === 'object' && !Array.isArray(optimizationLlmConfig.headers)
+                    ? optimizationLlmConfig.headers
+                    : {};
+                optimizationLlmConfig.headers = { ...existingHeaders, 'X-Title': optimizationTitleHeader };
+            }
+
+            return optimizationLlmConfig;
+        }
+
         function renderPreview(payload) {
             state.generatedPayload = payload;
             persistGeneratedPayload(payload);
@@ -2296,22 +2338,7 @@
             const outputFormats = Array.from(document.querySelectorAll('input[name="outputFormat"]:checked'))
                 .map((node) => node.value);
 
-            const optimizationBaseUrl = document.getElementById('optimizationBaseUrl').value.trim();
-            const optimizationTimeoutRaw = document.getElementById('optimizationTimeout').value.trim();
-            const optimizationTitleHeader = document.getElementById('optimizationTitleHeader').value.trim();
-            const optimizationLlmConfig = {};
-            if (optimizationBaseUrl) {
-                optimizationLlmConfig.base_url = optimizationBaseUrl;
-            }
-            if (optimizationTimeoutRaw) {
-                const parsedTimeout = Number(optimizationTimeoutRaw);
-                if (!Number.isNaN(parsedTimeout) && parsedTimeout > 0) {
-                    optimizationLlmConfig.timeout = parsedTimeout;
-                }
-            }
-            if (optimizationTitleHeader) {
-                optimizationLlmConfig.headers = { 'X-Title': optimizationTitleHeader };
-            }
+            const optimizationLlmConfig = buildOptimizationLlmConfig();
 
             const payload = {
                 user_id: state.userId,
@@ -2371,7 +2398,13 @@
             clearMessages();
             persistDraftState();
 
-            const payload = buildPayload();
+            let payload;
+            try {
+                payload = buildPayload();
+            } catch (error) {
+                showBox('errorBox', error.message || 'Invalid optimization configuration.');
+                return;
+            }
             if (!payload.output_formats.length) {
                 showBox('errorBox', 'Select at least one output format.');
                 return;

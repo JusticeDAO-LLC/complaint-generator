@@ -1151,6 +1151,23 @@ def test_review_api_forwards_optimization_llm_config_to_mediator():
     }
 
 
+def test_review_api_openapi_exposes_arch_router_request_example():
+    mediator = Mock()
+    app = create_review_api_app(mediator)
+    client = TestClient(app)
+
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    schema = response.json()
+    request_schema = schema["components"]["schemas"]["FormalComplaintDocumentRequest"]
+    example = request_schema["example"]
+    assert example["optimization_provider"] == "huggingface_router"
+    assert example["optimization_llm_config"]["arch_router"]["model"] == "katanemo/Arch-Router-1.5B"
+    assert example["optimization_llm_config"]["arch_router"]["routes"]["legal_reasoning"] == "meta-llama/Llama-3.3-70B-Instruct"
+    assert example["output_formats"] == ["txt", "packet"]
+
+
 def test_review_api_returns_document_optimization_contract_end_to_end(monkeypatch: pytest.MonkeyPatch):
     mediator = _build_mediator()
     mediator.build_formal_complaint_document_package.side_effect = (
@@ -1354,6 +1371,7 @@ def test_review_api_live_huggingface_router_optimization_smoke(tmp_path):
     app = create_review_api_app(mediator)
     client = TestClient(app)
     model_name = os.getenv("HF_ROUTER_SMOKE_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
+    reasoning_model_name = os.getenv("HF_ROUTER_ARCH_REASONING_MODEL", model_name)
 
     response = client.post(
         "/api/documents/formal-complaint",
@@ -1370,6 +1388,15 @@ def test_review_api_live_huggingface_router_optimization_smoke(tmp_path):
             "optimization_llm_config": {
                 "base_url": "https://router.huggingface.co/v1",
                 "headers": {"X-Title": "Complaint Generator API Smoke Test"},
+                "arch_router": {
+                    "enabled": True,
+                    "model": os.getenv("HF_ARCH_ROUTER_MODEL", "katanemo/Arch-Router-1.5B"),
+                    "context": "Complaint drafting, legal issue spotting, and filing packet generation.",
+                    "routes": {
+                        "legal_reasoning": reasoning_model_name,
+                        "drafting": model_name,
+                    },
+                },
                 "timeout": 45,
             },
             "output_dir": str(tmp_path),
@@ -1385,6 +1412,13 @@ def test_review_api_live_huggingface_router_optimization_smoke(tmp_path):
     assert payload["document_optimization"]["final_score"] >= 0.0
     assert payload["document_optimization"]["trace_storage"]["status"] == "disabled"
     assert payload["document_optimization"]["draft"]["draft_text"]
+    final_review_metadata = payload["document_optimization"]["final_review"].get("llm_metadata") or {}
+    assert final_review_metadata.get("effective_provider_name") == "openrouter"
+    assert final_review_metadata.get("arch_router_model_name") == os.getenv("HF_ARCH_ROUTER_MODEL", "katanemo/Arch-Router-1.5B")
+    assert final_review_metadata.get("arch_router_status") in {"selected", "fallback"}
+    assert final_review_metadata.get("arch_router_selected_route") in {"legal_reasoning", "drafting", "unknown_path", None}
+    selected_model = final_review_metadata.get("arch_router_selected_model")
+    assert selected_model in {model_name, reasoning_model_name, ""}
     assert payload["artifacts"]["txt"]["path"]
 
     Path(payload["artifacts"]["txt"]["path"]).unlink(missing_ok=True)
@@ -1720,6 +1754,7 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert 'Optimization Model' in page_html
         assert 'Optimization Router Base URL' in page_html
         assert 'Optimization Timeout (seconds)' in page_html
+        assert 'Advanced Optimization LLM Config (JSON)' in page_html
         assert 'Persist optimization trace through the IPFS adapter' in page_html
         assert 'Document Optimization' in page_html
         assert 'Optimized Sections' in page_html

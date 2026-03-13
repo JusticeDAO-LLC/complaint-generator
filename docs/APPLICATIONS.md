@@ -188,7 +188,7 @@ This mode serves:
 - `/api/documents/download` for downloading generated DOCX/PDF artifacts from the managed output directory
 - `/health` for lightweight liveness and readiness checks on the dedicated review app
 
-The formal complaint endpoint also accepts agentic optimization controls, including `optimization_provider`, `optimization_model_name`, and `optimization_llm_config`, so the browser builder or external callers can route optimization traffic through the same Hugging Face router endpoint when needed.
+The formal complaint endpoint also accepts agentic optimization controls, including `optimization_provider`, `optimization_model_name`, and `optimization_llm_config`, so the browser builder or external callers can route optimization traffic through the same Hugging Face router endpoint when needed. The `/document` builder exposes both simple router fields and an advanced JSON editor for `optimization_llm_config`, with the simple fields overriding matching top-level keys for quick experimentation.
 
 ### API Endpoints
 
@@ -319,7 +319,7 @@ Optimization controls:
 - `enable_agentic_optimization`: runs a post-knowledge-graph refinement loop before artifact rendering.
 - `optimization_max_iterations` / `optimization_target_score`: bounds the loop and stopping threshold.
 - `optimization_provider` / `optimization_model_name`: selects the routed model used by the actor and critic prompts.
-- `optimization_llm_config`: optional provider-specific router overrides such as `base_url`, headers, or timeouts.
+- `optimization_llm_config`: optional provider-specific router overrides such as `base_url`, headers, timeouts, or nested routing settings. In the `/document` UI, the advanced JSON editor is merged with the simple router fields, and the simple fields win on conflicts.
 - `optimization_persist_artifacts`: stores the optimization trace through the IPFS adapter and surfaces the resulting CID in the response.
 
 Minimal TXT-only optimization request:

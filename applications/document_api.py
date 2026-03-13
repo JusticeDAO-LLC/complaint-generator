@@ -4,9 +4,39 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from document_pipeline import DEFAULT_OUTPUT_DIR
+
+
+FORMAL_COMPLAINT_DOCUMENT_REQUEST_EXAMPLE = {
+    "district": "Northern District of California",
+    "county": "San Francisco County",
+    "plaintiff_names": ["Jane Doe"],
+    "defendant_names": ["Acme Corporation"],
+    "enable_agentic_optimization": True,
+    "optimization_max_iterations": 1,
+    "optimization_target_score": 0.95,
+    "optimization_provider": "huggingface_router",
+    "optimization_model_name": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+    "optimization_llm_config": {
+        "base_url": "https://router.huggingface.co/v1",
+        "headers": {
+            "X-Title": "Complaint Generator"
+        },
+        "arch_router": {
+            "enabled": True,
+            "model": "katanemo/Arch-Router-1.5B",
+            "context": "Complaint drafting, legal issue spotting, and filing packet generation.",
+            "routes": {
+                "legal_reasoning": "meta-llama/Llama-3.3-70B-Instruct",
+                "drafting": "Qwen/Qwen3-Coder-480B-A35B-Instruct"
+            }
+        },
+        "timeout": 45
+    },
+    "output_formats": ["txt", "packet"]
+}
 
 
 class ServiceRecipientDetail(BaseModel):
@@ -32,6 +62,8 @@ class AffidavitExhibitDetail(BaseModel):
 
 
 class FormalComplaintDocumentRequest(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"example": FORMAL_COMPLAINT_DOCUMENT_REQUEST_EXAMPLE})
+
     user_id: Optional[str] = None
     court_name: str = "United States District Court"
     district: str = ""
