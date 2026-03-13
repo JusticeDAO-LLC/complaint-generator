@@ -298,8 +298,42 @@ Example request:
   "case_number": "25-cv-00001",
   "plaintiff_names": ["Jane Doe"],
   "defendant_names": ["Acme Corporation"],
+  "enable_agentic_optimization": true,
+  "optimization_max_iterations": 2,
+  "optimization_target_score": 0.9,
+  "optimization_provider": "huggingface_router",
+  "optimization_model_name": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+  "optimization_llm_config": {
+    "base_url": "https://router.huggingface.co/v1",
+    "headers": {
+      "X-Title": "Complaint Generator"
+    }
+  },
   "affidavit_include_complaint_exhibits": false,
   "output_formats": ["docx", "pdf", "txt", "checklist"]
+}
+```
+
+Optimization controls:
+
+- `enable_agentic_optimization`: runs a post-knowledge-graph refinement loop before artifact rendering.
+- `optimization_max_iterations` / `optimization_target_score`: bounds the loop and stopping threshold.
+- `optimization_provider` / `optimization_model_name`: selects the routed model used by the actor and critic prompts.
+- `optimization_llm_config`: optional provider-specific router overrides such as `base_url`, headers, or timeouts.
+- `optimization_persist_artifacts`: stores the optimization trace through the IPFS adapter and surfaces the resulting CID in the response.
+
+Minimal TXT-only optimization request:
+
+```json
+{
+  "district": "Northern District of California",
+  "county": "San Francisco County",
+  "plaintiff_names": ["Jane Doe"],
+  "defendant_names": ["Acme Corporation"],
+  "enable_agentic_optimization": true,
+  "optimization_max_iterations": 1,
+  "optimization_target_score": 0.9,
+  "output_formats": ["txt"]
 }
 ```
 
@@ -408,6 +442,7 @@ Example response fields:
 - `artifacts.txt.path`: filesystem path to the generated plain-text pleading when requested.
 - `artifacts.affidavit_docx.path`, `artifacts.affidavit_pdf.path`, `artifacts.affidavit_txt.path`: filesystem paths to the generated affidavit companion documents when the matching output formats are requested.
 - `artifacts.checklist.path`: filesystem path to the generated plain-text pre-filing checklist artifact when requested, including embedded review URLs for direct remediation follow-up.
+- `document_optimization`: present only when optimization is enabled. The current payload includes `status`, `method`, `optimizer_backend`, `initial_score`, `final_score`, `iteration_count`, `accepted_iterations`, `optimized_sections`, `artifact_cid`, `trace_storage`, `router_status`, `upstream_optimizer`, `packet_projection`, and `section_history`.
 - `artifacts.*.download_url`: application route for downloading generated artifacts when they were written under the managed output directory.
 - `output_formats`: formats rendered for the request.
 - `generated_at`: UTC timestamp for the export operation.

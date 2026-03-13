@@ -386,7 +386,19 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
                     "suggestions": [],
                     "recommended_focus": "claims_for_relief",
                 }
-            return {"status": "available", "text": json.dumps(payload)}
+            return {
+                "status": "available",
+                "text": json.dumps(payload),
+                "provider_name": provider,
+                "model_name": model_name,
+                "effective_provider_name": "openrouter",
+                "effective_model_name": "meta-llama/Llama-3.3-70B-Instruct",
+                "router_base_url": kwargs.get("base_url"),
+                "arch_router_status": "selected",
+                "arch_router_selected_route": "legal_reasoning",
+                "arch_router_selected_model": "meta-llama/Llama-3.3-70B-Instruct",
+                "arch_router_model_name": "katanemo/Arch-Router-1.5B",
+            }
         calls["actor"] += 1
         payload = {
             "factual_allegations": [
@@ -401,7 +413,19 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
                 ]
             },
         }
-        return {"status": "available", "text": json.dumps(payload)}
+        return {
+            "status": "available",
+            "text": json.dumps(payload),
+            "provider_name": provider,
+            "model_name": model_name,
+            "effective_provider_name": "openrouter",
+            "effective_model_name": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+            "router_base_url": kwargs.get("base_url"),
+            "arch_router_status": "selected",
+            "arch_router_selected_route": "drafting",
+            "arch_router_selected_model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+            "arch_router_model_name": "katanemo/Arch-Router-1.5B",
+        }
 
     def _fake_store_bytes(data: bytes, *, pin_content: bool = True):
         return {"status": "available", "cid": "bafy-doc-opt-report", "size": len(data), "pinned": pin_content}
@@ -426,6 +450,13 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
         optimization_llm_config={
             "base_url": "https://router.huggingface.co/v1",
             "headers": {"X-Title": "Complaint Generator Tests"},
+            "arch_router": {
+                "enabled": True,
+                "routes": {
+                    "legal_reasoning": "meta-llama/Llama-3.3-70B-Instruct",
+                    "drafting": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+                },
+            },
         },
         optimization_persist_artifacts=True,
         output_dir=str(tmp_path),
@@ -441,7 +472,11 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     assert report["packet_projection"]["has_affidavit"] is True
     assert report["section_history"]
     assert report["section_history"][0]["focus_section"] == "factual_allegations"
+    assert report["section_history"][0]["critic_llm_metadata"]["arch_router_selected_route"] == "legal_reasoning"
+    assert report["section_history"][0]["actor_llm_metadata"]["arch_router_selected_route"] == "drafting"
     assert report["section_history"][0]["selected_support_context"]["focus_section"] == "factual_allegations"
+    assert report["initial_review"]["llm_metadata"]["effective_model_name"] == "meta-llama/Llama-3.3-70B-Instruct"
+    assert report["final_review"]["llm_metadata"]["arch_router_selected_route"] == "legal_reasoning"
     assert "selected_provider" in report["upstream_optimizer"]
     assert calls["actor"] >= 1
     assert calls["critic"] >= 2
@@ -1116,6 +1151,192 @@ def test_review_api_forwards_optimization_llm_config_to_mediator():
     }
 
 
+def test_review_api_returns_document_optimization_contract_end_to_end(monkeypatch: pytest.MonkeyPatch):
+    mediator = _build_mediator()
+    mediator.build_formal_complaint_document_package.side_effect = (
+        lambda **kwargs: FormalComplaintDocumentBuilder(mediator).build_package(**kwargs)
+    )
+
+    calls = {"critic": 0, "actor": 0}
+
+    class _FakeEmbeddingsRouter:
+        def embed_text(self, text: str):
+            lowered = text.lower()
+            return [
+                float("retaliation" in lowered),
+                float("terminated" in lowered or "fired" in lowered),
+                float(len(text.split())),
+            ]
+
+    def _fake_generate_text(prompt: str, *, provider=None, model_name=None, **kwargs):
+        if document_optimization.AgenticDocumentOptimizer.CRITIC_PROMPT_TAG in prompt:
+            calls["critic"] += 1
+            if calls["critic"] == 1:
+                payload = {
+                    "overall_score": 0.52,
+                    "dimension_scores": {
+                        "completeness": 0.55,
+                        "grounding": 0.6,
+                        "coherence": 0.45,
+                        "procedural": 0.7,
+                        "renderability": 0.3,
+                    },
+                    "strengths": ["Support packets are available."],
+                    "weaknesses": ["Factual allegations should be more pleading-ready."],
+                    "suggestions": ["Rewrite factual allegations into declarative prose anchored in the support record."],
+                    "recommended_focus": "factual_allegations",
+                }
+            else:
+                payload = {
+                    "overall_score": 0.91,
+                    "dimension_scores": {
+                        "completeness": 0.9,
+                        "grounding": 0.92,
+                        "coherence": 0.9,
+                        "procedural": 0.93,
+                        "renderability": 0.9,
+                    },
+                    "strengths": ["Factual allegations now read like pleading paragraphs."],
+                    "weaknesses": [],
+                    "suggestions": [],
+                    "recommended_focus": "claims_for_relief",
+                }
+            return {
+                "status": "available",
+                "text": json.dumps(payload),
+                "provider_name": provider,
+                "model_name": model_name,
+                "effective_provider_name": "openrouter",
+                "effective_model_name": "meta-llama/Llama-3.3-70B-Instruct",
+                "router_base_url": kwargs.get("base_url"),
+                "arch_router_status": "selected",
+                "arch_router_selected_route": "legal_reasoning",
+                "arch_router_selected_model": "meta-llama/Llama-3.3-70B-Instruct",
+                "arch_router_model_name": "katanemo/Arch-Router-1.5B",
+            }
+
+        calls["actor"] += 1
+        payload = {
+            "factual_allegations": [
+                "Plaintiff reported discrimination to human resources.",
+                "Plaintiff was fired two days later and lost pay and benefits.",
+                "As to Retaliation, Defendant terminated Plaintiff shortly after the protected complaint.",
+            ],
+            "claim_supporting_facts": {
+                "retaliation": [
+                    "Plaintiff complained to human resources about race discrimination.",
+                    "Defendant terminated Plaintiff shortly after the complaint.",
+                ]
+            },
+        }
+        return {
+            "status": "available",
+            "text": json.dumps(payload),
+            "provider_name": provider,
+            "model_name": model_name,
+            "effective_provider_name": "openrouter",
+            "effective_model_name": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+            "router_base_url": kwargs.get("base_url"),
+            "arch_router_status": "selected",
+            "arch_router_selected_route": "drafting",
+            "arch_router_selected_model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+            "arch_router_model_name": "katanemo/Arch-Router-1.5B",
+        }
+
+    def _fake_store_bytes(data: bytes, *, pin_content: bool = True):
+        return {"status": "available", "cid": "bafy-doc-opt-report", "size": len(data), "pinned": pin_content}
+
+    monkeypatch.setattr(document_optimization, "LLM_ROUTER_AVAILABLE", True)
+    monkeypatch.setattr(document_optimization, "EMBEDDINGS_AVAILABLE", True)
+    monkeypatch.setattr(document_optimization, "IPFS_AVAILABLE", True)
+    monkeypatch.setattr(document_optimization, "generate_text_with_metadata", _fake_generate_text)
+    monkeypatch.setattr(document_optimization, "get_embeddings_router", lambda *args, **kwargs: _FakeEmbeddingsRouter())
+    monkeypatch.setattr(document_optimization, "store_bytes", _fake_store_bytes)
+
+    app = create_review_api_app(mediator)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/documents/formal-complaint",
+        json={
+            "district": "Northern District of California",
+            "county": "San Francisco County",
+            "plaintiff_names": ["Jane Doe"],
+            "defendant_names": ["Acme Corporation"],
+            "enable_agentic_optimization": True,
+            "optimization_max_iterations": 2,
+            "optimization_target_score": 0.9,
+            "optimization_provider": "test-provider",
+            "optimization_model_name": "test-model",
+            "optimization_llm_config": {
+                "base_url": "https://router.huggingface.co/v1",
+                "headers": {"X-Title": "Complaint Generator API Contract Test"},
+                "arch_router": {
+                    "enabled": True,
+                    "routes": {
+                        "legal_reasoning": "meta-llama/Llama-3.3-70B-Instruct",
+                        "drafting": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+                    },
+                },
+                "timeout": 45,
+            },
+            "optimization_persist_artifacts": True,
+            "output_formats": ["txt"],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    report = payload["document_optimization"]
+
+    assert report["status"] == "optimized"
+    assert report["method"] == "actor_mediator_critic_optimizer"
+    assert report["optimizer_backend"] in {"upstream_agentic", "local_fallback"}
+    assert report["initial_score"] < report["final_score"]
+    assert report["iteration_count"] >= 1
+    assert report["accepted_iterations"] >= 1
+    assert report["optimized_sections"] == ["factual_allegations"]
+    assert report["artifact_cid"] == "bafy-doc-opt-report"
+    assert report["trace_storage"] == {
+        "status": "available",
+        "cid": "bafy-doc-opt-report",
+        "size": report["trace_storage"]["size"],
+        "pinned": True,
+    }
+    assert report["router_status"] == {
+        "llm_router": "available",
+        "embeddings_router": "available",
+        "ipfs_router": "available",
+        "optimizers_agentic": report["router_status"]["optimizers_agentic"],
+    }
+    assert report["router_status"]["optimizers_agentic"] in {"available", "unavailable"}
+    assert report["upstream_optimizer"]["available"] in {True, False}
+    assert "selected_provider" in report["upstream_optimizer"]
+    assert "selected_method" in report["upstream_optimizer"]
+    assert "control_loop" in report["upstream_optimizer"]
+    assert report["packet_projection"]["section_presence"]["factual_allegations"] is True
+    assert report["packet_projection"]["has_affidavit"] is True
+    assert report["packet_projection"]["has_certificate_of_service"] is True
+    assert len(report["section_history"]) >= 1
+    assert report["section_history"][0]["focus_section"] == "factual_allegations"
+    assert report["section_history"][0]["accepted"] is True
+    assert report["section_history"][0]["overall_score"] >= 0.0
+    assert report["section_history"][0]["critic_llm_metadata"]["arch_router_selected_route"] == "legal_reasoning"
+    assert report["section_history"][0]["actor_llm_metadata"]["arch_router_selected_route"] == "drafting"
+    assert report["section_history"][0]["selected_support_context"]["focus_section"] == "factual_allegations"
+    assert report["initial_review"]["llm_metadata"]["effective_provider_name"] == "openrouter"
+    assert report["final_review"]["llm_metadata"]["arch_router_model_name"] == "katanemo/Arch-Router-1.5B"
+    assert report["draft"]["draft_text"]
+    assert "Plaintiff was fired two days later and lost pay and benefits." in report["draft"]["draft_text"]
+    assert payload["draft"]["draft_text"] == report["draft"]["draft_text"]
+    assert payload["artifacts"]["txt"]["path"]
+    assert calls["critic"] >= 2
+    assert calls["actor"] >= 1
+
+    Path(payload["artifacts"]["txt"]["path"]).unlink(missing_ok=True)
+    Path(payload["artifacts"]["affidavit_txt"]["path"]).unlink(missing_ok=True)
+
+
 @pytest.mark.llm
 @pytest.mark.network
 def test_review_api_live_huggingface_router_optimization_smoke(tmp_path):
@@ -1492,6 +1713,18 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert 'pleading-paragraphs' in page_html
         assert 'Verification Declarant' in page_html
         assert 'Service Recipients' in page_html
+        assert 'Enable agentic draft optimization before rendering artifacts' in page_html
+        assert 'Optimization Iterations' in page_html
+        assert 'Optimization Target Score' in page_html
+        assert 'Optimization Provider' in page_html
+        assert 'Optimization Model' in page_html
+        assert 'Optimization Router Base URL' in page_html
+        assert 'Optimization Timeout (seconds)' in page_html
+        assert 'Persist optimization trace through the IPFS adapter' in page_html
+        assert 'Document Optimization' in page_html
+        assert 'Optimized Sections' in page_html
+        assert 'Trace CID' in page_html
+        assert 'Section History' in page_html
 
         api_response = client.post(
             '/api/documents/formal-complaint',
@@ -1662,6 +1895,255 @@ def test_review_surface_document_builder_forwards_optimization_llm_config_to_med
             },
         },
     }
+
+
+def test_review_surface_returns_document_optimization_contract_end_to_end(monkeypatch: pytest.MonkeyPatch):
+    mediator = _build_mediator()
+    mediator.build_formal_complaint_document_package.side_effect = (
+        lambda **kwargs: FormalComplaintDocumentBuilder(mediator).build_package(**kwargs)
+    )
+
+    calls = {'critic': 0, 'actor': 0}
+
+    class _FakeEmbeddingsRouter:
+        def embed_text(self, text: str):
+            lowered = text.lower()
+            return [
+                float('retaliation' in lowered),
+                float('terminated' in lowered or 'fired' in lowered),
+                float(len(text.split())),
+            ]
+
+    def _fake_generate_text(prompt: str, *, provider=None, model_name=None, **kwargs):
+        if document_optimization.AgenticDocumentOptimizer.CRITIC_PROMPT_TAG in prompt:
+            calls['critic'] += 1
+            if calls['critic'] == 1:
+                payload = {
+                    'overall_score': 0.52,
+                    'dimension_scores': {
+                        'completeness': 0.55,
+                        'grounding': 0.6,
+                        'coherence': 0.45,
+                        'procedural': 0.7,
+                        'renderability': 0.3,
+                    },
+                    'strengths': ['Support packets are available.'],
+                    'weaknesses': ['Factual allegations should be more pleading-ready.'],
+                    'suggestions': ['Rewrite factual allegations into declarative prose anchored in the support record.'],
+                    'recommended_focus': 'factual_allegations',
+                }
+            else:
+                payload = {
+                    'overall_score': 0.91,
+                    'dimension_scores': {
+                        'completeness': 0.9,
+                        'grounding': 0.92,
+                        'coherence': 0.9,
+                        'procedural': 0.93,
+                        'renderability': 0.9,
+                    },
+                    'strengths': ['Factual allegations now read like pleading paragraphs.'],
+                    'weaknesses': [],
+                    'suggestions': [],
+                    'recommended_focus': 'claims_for_relief',
+                }
+            return {
+                'status': 'available',
+                'text': json.dumps(payload),
+                'provider_name': provider,
+                'model_name': model_name,
+                'effective_provider_name': 'openrouter',
+                'effective_model_name': 'meta-llama/Llama-3.3-70B-Instruct',
+                'router_base_url': kwargs.get('base_url'),
+                'arch_router_status': 'selected',
+                'arch_router_selected_route': 'legal_reasoning',
+                'arch_router_selected_model': 'meta-llama/Llama-3.3-70B-Instruct',
+                'arch_router_model_name': 'katanemo/Arch-Router-1.5B',
+            }
+
+        calls['actor'] += 1
+        payload = {
+            'factual_allegations': [
+                'Plaintiff reported discrimination to human resources.',
+                'Plaintiff was fired two days later and lost pay and benefits.',
+                'As to Retaliation, Defendant terminated Plaintiff shortly after the protected complaint.',
+            ],
+            'claim_supporting_facts': {
+                'retaliation': [
+                    'Plaintiff complained to human resources about race discrimination.',
+                    'Defendant terminated Plaintiff shortly after the complaint.',
+                ]
+            },
+        }
+        return {
+            'status': 'available',
+            'text': json.dumps(payload),
+            'provider_name': provider,
+            'model_name': model_name,
+            'effective_provider_name': 'openrouter',
+            'effective_model_name': 'Qwen/Qwen3-Coder-480B-A35B-Instruct',
+            'router_base_url': kwargs.get('base_url'),
+            'arch_router_status': 'selected',
+            'arch_router_selected_route': 'drafting',
+            'arch_router_selected_model': 'Qwen/Qwen3-Coder-480B-A35B-Instruct',
+            'arch_router_model_name': 'katanemo/Arch-Router-1.5B',
+        }
+
+    def _fake_store_bytes(data: bytes, *, pin_content: bool = True):
+        return {'status': 'available', 'cid': 'bafy-doc-opt-report', 'size': len(data), 'pinned': pin_content}
+
+    monkeypatch.setattr(document_optimization, 'LLM_ROUTER_AVAILABLE', True)
+    monkeypatch.setattr(document_optimization, 'EMBEDDINGS_AVAILABLE', True)
+    monkeypatch.setattr(document_optimization, 'IPFS_AVAILABLE', True)
+    monkeypatch.setattr(document_optimization, 'generate_text_with_metadata', _fake_generate_text)
+    monkeypatch.setattr(document_optimization, 'get_embeddings_router', lambda *args, **kwargs: _FakeEmbeddingsRouter())
+    monkeypatch.setattr(document_optimization, 'store_bytes', _fake_store_bytes)
+
+    app = create_review_surface_app(mediator)
+    client = TestClient(app)
+
+    page_response = client.get('/document')
+
+    assert page_response.status_code == 200
+    assert '/api/documents/formal-complaint' in page_response.text
+
+    api_response = client.post(
+        '/api/documents/formal-complaint',
+        json={
+            'district': 'Northern District of California',
+            'county': 'San Francisco County',
+            'plaintiff_names': ['Jane Doe'],
+            'defendant_names': ['Acme Corporation'],
+            'enable_agentic_optimization': True,
+            'optimization_max_iterations': 2,
+            'optimization_target_score': 0.9,
+            'optimization_provider': 'test-provider',
+            'optimization_model_name': 'test-model',
+            'optimization_llm_config': {
+                'base_url': 'https://router.huggingface.co/v1',
+                'headers': {'X-Title': 'Complaint Generator Review Surface Contract Test'},
+                'arch_router': {
+                    'enabled': True,
+                    'routes': {
+                        'legal_reasoning': 'meta-llama/Llama-3.3-70B-Instruct',
+                        'drafting': 'Qwen/Qwen3-Coder-480B-A35B-Instruct',
+                    },
+                },
+                'timeout': 45,
+            },
+            'optimization_persist_artifacts': True,
+            'output_formats': ['txt'],
+        },
+    )
+
+    assert api_response.status_code == 200, api_response.text
+    payload = api_response.json()
+    report = payload['document_optimization']
+
+    assert report['status'] == 'optimized'
+    assert report['method'] == 'actor_mediator_critic_optimizer'
+    assert report['optimizer_backend'] in {'upstream_agentic', 'local_fallback'}
+    assert report['initial_score'] < report['final_score']
+    assert report['iteration_count'] >= 1
+    assert report['accepted_iterations'] >= 1
+    assert report['optimized_sections'] == ['factual_allegations']
+    assert report['artifact_cid'] == 'bafy-doc-opt-report'
+    assert report['trace_storage'] == {
+        'status': 'available',
+        'cid': 'bafy-doc-opt-report',
+        'size': report['trace_storage']['size'],
+        'pinned': True,
+    }
+    assert report['router_status'] == {
+        'llm_router': 'available',
+        'embeddings_router': 'available',
+        'ipfs_router': 'available',
+        'optimizers_agentic': report['router_status']['optimizers_agentic'],
+    }
+    assert report['router_status']['optimizers_agentic'] in {'available', 'unavailable'}
+    assert report['upstream_optimizer']['available'] in {True, False}
+    assert 'selected_provider' in report['upstream_optimizer']
+    assert 'selected_method' in report['upstream_optimizer']
+    assert 'control_loop' in report['upstream_optimizer']
+    assert report['packet_projection']['section_presence']['factual_allegations'] is True
+    assert report['packet_projection']['has_affidavit'] is True
+    assert report['packet_projection']['has_certificate_of_service'] is True
+    assert len(report['section_history']) >= 1
+    assert report['section_history'][0]['focus_section'] == 'factual_allegations'
+    assert report['section_history'][0]['accepted'] is True
+    assert report['section_history'][0]['overall_score'] >= 0.0
+    assert report['section_history'][0]['critic_llm_metadata']['arch_router_selected_route'] == 'legal_reasoning'
+    assert report['section_history'][0]['actor_llm_metadata']['arch_router_selected_route'] == 'drafting'
+    assert report['section_history'][0]['selected_support_context']['focus_section'] == 'factual_allegations'
+    assert report['initial_review']['llm_metadata']['effective_provider_name'] == 'openrouter'
+    assert report['final_review']['llm_metadata']['arch_router_model_name'] == 'katanemo/Arch-Router-1.5B'
+    assert report['draft']['draft_text']
+    assert 'Plaintiff was fired two days later and lost pay and benefits.' in report['draft']['draft_text']
+    assert payload['draft']['draft_text'] == report['draft']['draft_text']
+    assert payload['artifacts']['txt']['download_url'].startswith('/api/documents/download?path=')
+    assert calls['critic'] >= 2
+    assert calls['actor'] >= 1
+
+    Path(payload['artifacts']['txt']['path']).unlink(missing_ok=True)
+    Path(payload['artifacts']['affidavit_txt']['path']).unlink(missing_ok=True)
+
+
+@pytest.mark.llm
+@pytest.mark.network
+def test_review_surface_live_huggingface_router_optimization_smoke(tmp_path):
+    if not document_optimization.LLM_ROUTER_AVAILABLE:
+        pytest.skip('llm_router unavailable for live review-surface smoke test')
+
+    if not _live_hf_token():
+        pytest.skip('Set HF_TOKEN or HUGGINGFACE_HUB_TOKEN to run the live Hugging Face router review-surface smoke test')
+
+    mediator = _build_mediator()
+    mediator.build_formal_complaint_document_package.side_effect = (
+        lambda **kwargs: FormalComplaintDocumentBuilder(mediator).build_package(**kwargs)
+    )
+
+    app = create_review_surface_app(mediator)
+    client = TestClient(app)
+    model_name = os.getenv('HF_ROUTER_SMOKE_MODEL', 'meta-llama/Llama-3.1-8B-Instruct')
+
+    page_response = client.get('/document')
+
+    assert page_response.status_code == 200
+    assert '/api/documents/formal-complaint' in page_response.text
+
+    api_response = client.post(
+        '/api/documents/formal-complaint',
+        json={
+            'district': 'Northern District of California',
+            'county': 'San Francisco County',
+            'plaintiff_names': ['Jane Doe'],
+            'defendant_names': ['Acme Corporation'],
+            'enable_agentic_optimization': True,
+            'optimization_max_iterations': 1,
+            'optimization_target_score': 1.1,
+            'optimization_provider': 'huggingface_router',
+            'optimization_model_name': model_name,
+            'optimization_llm_config': {
+                'base_url': 'https://router.huggingface.co/v1',
+                'headers': {'X-Title': 'Complaint Generator Review Surface Smoke Test'},
+                'timeout': 45,
+            },
+            'output_dir': str(tmp_path),
+            'output_formats': ['txt'],
+        },
+    )
+
+    assert api_response.status_code == 200, api_response.text
+    payload = api_response.json()
+    assert payload['document_optimization']['router_status']['llm_router'] == 'available'
+    assert payload['document_optimization']['iteration_count'] == 1
+    assert payload['document_optimization']['initial_score'] >= 0.0
+    assert payload['document_optimization']['final_score'] >= 0.0
+    assert payload['document_optimization']['trace_storage']['status'] == 'disabled'
+    assert payload['draft']['draft_text']
+    assert payload['artifacts']['txt']['download_url'].startswith('/api/documents/download?path=')
+
+    Path(payload['artifacts']['txt']['path']).unlink(missing_ok=True)
 
 
 def test_review_surface_document_builder_returns_packet_artifact_end_to_end(tmp_path):

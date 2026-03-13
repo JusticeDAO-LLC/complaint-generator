@@ -79,8 +79,8 @@ Representative optimization router metadata fragment:
     "router_status": {
       "llm_router": "available"
     },
-    "draft": {
-      "critic": {
+    "final_review": {
+      "llm_metadata": {
         "effective_provider_name": "openrouter",
         "effective_model_name": "meta-llama/Llama-3.3-70B-Instruct",
         "arch_router_status": "selected",
@@ -88,6 +88,18 @@ Representative optimization router metadata fragment:
         "arch_router_selected_model": "meta-llama/Llama-3.3-70B-Instruct",
         "arch_router_model_name": "katanemo/Arch-Router-1.5B"
       }
+    },
+    "section_history": [
+      {
+        "focus_section": "factual_allegations",
+        "critic_llm_metadata": {
+          "arch_router_selected_route": "legal_reasoning"
+        },
+        "actor_llm_metadata": {
+          "arch_router_selected_route": "drafting"
+        }
+      }
+    ]
     }
   }
 }
@@ -2407,7 +2419,7 @@ Relevant agentic drafting controls:
 
 - `enable_agentic_optimization`: optional boolean. When `true`, the builder runs a post-knowledge-graph actor/mediator/critic/optimizer loop before rendering DOCX/PDF/TXT artifacts.
 - `optimization_max_iterations`, `optimization_target_score`, `optimization_provider`, and `optimization_model_name`: optional controls for the refinement loop and routed LLM selection.
-- `optimization_llm_config`: optional object. Passes provider-specific routed LLM settings such as a Hugging Face router `base_url` or request headers when the optimizer should override the default router configuration.
+- `optimization_llm_config`: optional object. Passes provider-specific routed LLM settings such as a Hugging Face router `base_url`, headers, or timeouts when the optimizer should override the default router configuration.
 - `optimization_persist_artifacts`: optional boolean. When `true`, the optimization trace is stored through the IPFS adapter and the response exposes the resulting CID.
 
 Representative request parameters:
@@ -2442,7 +2454,8 @@ Representative request parameters:
     "base_url": "https://router.huggingface.co/v1",
     "headers": {
       "X-Title": "Complaint Generator"
-    }
+    },
+    "timeout": 45
   },
   "optimization_persist_artifacts": true,
   "affidavit_venue_lines": ["State of California", "County of San Francisco"],
@@ -2784,12 +2797,28 @@ Representative shape:
   "document_optimization": {
     "status": "optimized",
     "method": "actor_mediator_critic_optimizer",
+    "optimizer_backend": "upstream_agentic",
     "initial_score": 0.52,
     "final_score": 0.91,
     "iteration_count": 1,
     "accepted_iterations": 1,
     "optimized_sections": ["factual_allegations"],
     "artifact_cid": "bafy...",
+    "router_status": {
+      "llm_router": "available",
+      "embeddings_router": "available",
+      "ipfs_router": "available",
+      "optimizers_agentic": "available"
+    },
+    "upstream_optimizer": {
+      "available": true,
+      "selected_provider": "huggingface_router",
+      "selected_method": "actor_critic",
+      "control_loop": {
+        "max_iterations": 2,
+        "target_score": 0.9
+      }
+    },
     "packet_projection": {
       "section_presence": {
         "factual_allegations": true,
@@ -2840,6 +2869,6 @@ Interpretation notes:
 - `drafting_readiness.sections[*].warnings[*].severity` distinguishes soft filing warnings from harder blockers so degraded-mode drafting can remain usable.
 - `review_links.dashboard_url` points to the review dashboard for the current user context, while `review_links.claims[*]` and `review_links.sections[*]` provide claim-specific and section-specific review URLs for non-browser consumers, each paired with normalized `review_intent` metadata.
 - `review_intent` is a top-level server-rendered review focus chosen from the current readiness warnings so the browser can restore the most relevant review destination before the operator clicks a follow-up link.
-- `document_optimization` is present only when agentic optimization is enabled. It records the actor/mediator/critic loop outcome, accepted iteration count, final score, optimized sections, packet-projection render context, section-level support history, and optional IPFS trace metadata.
+- `document_optimization` is present only when agentic optimization is enabled. It records the actor/mediator/critic loop outcome, selected backend (`upstream_agentic` when the `ipfs_datasets_py.optimizers.agentic` classes are importable, otherwise `local_fallback`), accepted iteration count, final score, optimized sections, packet-projection render context, section-level support history, router availability, and optional IPFS trace metadata.
 - `artifacts.affidavit_docx`, `artifacts.affidavit_pdf`, and `artifacts.affidavit_txt` are companion affidavit exports emitted when the matching complaint formats are requested; they follow the same artifact schema and download URL rules as the primary complaint files.
 - `artifacts[*].download_url` is added by the document API layer only when the generated file path is inside the managed generated-documents directory.

@@ -975,6 +975,60 @@
                     </div>
 
                     <div>
+                        <label for="enableAgenticOptimization">
+                            <input id="enableAgenticOptimization" name="enableAgenticOptimization" type="checkbox">
+                            Enable agentic draft optimization before rendering artifacts
+                        </label>
+                        <div class="input-hint">Run the actor, mediator, and critic refinement loop after the knowledge graph has been assembled to improve the final pleading before export.</div>
+                    </div>
+
+                    <div class="field-row">
+                        <div>
+                            <label for="optimizationMaxIterations">Optimization Iterations</label>
+                            <input id="optimizationMaxIterations" name="optimizationMaxIterations" type="number" min="1" step="1" value="2">
+                        </div>
+                        <div>
+                            <label for="optimizationTargetScore">Optimization Target Score</label>
+                            <input id="optimizationTargetScore" name="optimizationTargetScore" type="number" min="0" max="1.5" step="0.01" value="0.9">
+                        </div>
+                    </div>
+
+                    <div class="field-row">
+                        <div>
+                            <label for="optimizationProvider">Optimization Provider</label>
+                            <input id="optimizationProvider" name="optimizationProvider" type="text" placeholder="huggingface_router">
+                        </div>
+                        <div>
+                            <label for="optimizationModelName">Optimization Model</label>
+                            <input id="optimizationModelName" name="optimizationModelName" type="text" placeholder="Qwen/Qwen3-Coder-480B-A35B-Instruct">
+                        </div>
+                    </div>
+
+                    <div class="field-row">
+                        <div>
+                            <label for="optimizationBaseUrl">Optimization Router Base URL</label>
+                            <input id="optimizationBaseUrl" name="optimizationBaseUrl" type="text" placeholder="https://router.huggingface.co/v1">
+                        </div>
+                        <div>
+                            <label for="optimizationTimeout">Optimization Timeout (seconds)</label>
+                            <input id="optimizationTimeout" name="optimizationTimeout" type="number" min="1" step="1" placeholder="45">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="optimizationTitleHeader">Optimization Request Title Header</label>
+                        <input id="optimizationTitleHeader" name="optimizationTitleHeader" type="text" placeholder="Complaint Generator">
+                    </div>
+
+                    <div>
+                        <label for="optimizationPersistArtifacts">
+                            <input id="optimizationPersistArtifacts" name="optimizationPersistArtifacts" type="checkbox">
+                            Persist optimization trace through the IPFS adapter
+                        </label>
+                        <div class="input-hint">When enabled, the response includes an optimization trace CID if the IPFS adapter is available.</div>
+                    </div>
+
+                    <div>
                         <label>Output Formats</label>
                         <div class="checkbox-row">
                             <label class="check-pill"><input type="checkbox" name="outputFormat" value="docx" checked> DOCX</label>
@@ -1324,6 +1378,15 @@
                 signatureDate: document.getElementById('signatureDate').value,
                 verificationDate: document.getElementById('verificationDate').value,
                 serviceDate: document.getElementById('serviceDate').value,
+                enableAgenticOptimization: document.getElementById('enableAgenticOptimization').checked,
+                optimizationMaxIterations: document.getElementById('optimizationMaxIterations').value,
+                optimizationTargetScore: document.getElementById('optimizationTargetScore').value,
+                optimizationProvider: document.getElementById('optimizationProvider').value,
+                optimizationModelName: document.getElementById('optimizationModelName').value,
+                optimizationBaseUrl: document.getElementById('optimizationBaseUrl').value,
+                optimizationTimeout: document.getElementById('optimizationTimeout').value,
+                optimizationTitleHeader: document.getElementById('optimizationTitleHeader').value,
+                optimizationPersistArtifacts: document.getElementById('optimizationPersistArtifacts').checked,
                 outputFormats: Array.from(document.querySelectorAll('input[name="outputFormat"]:checked')).map((node) => node.value),
             };
         }
@@ -1389,6 +1452,21 @@
             setFieldValue('signatureDate', saved.signatureDate, true);
             setFieldValue('verificationDate', saved.verificationDate, true);
             setFieldValue('serviceDate', saved.serviceDate, true);
+            const enableAgenticOptimizationElement = document.getElementById('enableAgenticOptimization');
+            if (enableAgenticOptimizationElement && typeof saved.enableAgenticOptimization === 'boolean') {
+                enableAgenticOptimizationElement.checked = saved.enableAgenticOptimization;
+            }
+            setFieldValue('optimizationMaxIterations', saved.optimizationMaxIterations, true);
+            setFieldValue('optimizationTargetScore', saved.optimizationTargetScore, true);
+            setFieldValue('optimizationProvider', saved.optimizationProvider, true);
+            setFieldValue('optimizationModelName', saved.optimizationModelName, true);
+            setFieldValue('optimizationBaseUrl', saved.optimizationBaseUrl, true);
+            setFieldValue('optimizationTimeout', saved.optimizationTimeout, true);
+            setFieldValue('optimizationTitleHeader', saved.optimizationTitleHeader, true);
+            const optimizationPersistArtifactsElement = document.getElementById('optimizationPersistArtifacts');
+            if (optimizationPersistArtifactsElement && typeof saved.optimizationPersistArtifacts === 'boolean') {
+                optimizationPersistArtifactsElement.checked = saved.optimizationPersistArtifacts;
+            }
             setCheckedFormats(saved.outputFormats);
             return true;
         }
@@ -2022,6 +2100,43 @@
             return `<section><h2>Pre-Filing Checklist</h2><div class="checklist-stack">${cards}</div></section>`;
         }
 
+        function renderOptimizationReport(report) {
+            if (!report || typeof report !== 'object') {
+                return '';
+            }
+            const optimizedSections = Array.isArray(report.optimized_sections) ? report.optimized_sections : [];
+            const sectionHistory = Array.isArray(report.section_history) ? report.section_history : [];
+            const routerStatus = report.router_status && typeof report.router_status === 'object' ? report.router_status : {};
+            const traceStorage = report.trace_storage && typeof report.trace_storage === 'object' ? report.trace_storage : {};
+            const routerLines = Object.entries(routerStatus).map(([key, value]) => `${humanizeKey(key)}: ${value}`);
+            const historyLines = sectionHistory.map((entry) => {
+                const focusSection = humanizeKey(entry.focus_section || 'section');
+                const accepted = entry.accepted ? 'accepted' : 'rejected';
+                const overallScore = entry.overall_score != null ? `score ${entry.overall_score}` : 'score unavailable';
+                return `Iteration ${entry.iteration || '?'}: ${focusSection} ${accepted} (${overallScore})`;
+            });
+            const traceLines = [
+                `Trace status: ${traceStorage.status || 'disabled'}`,
+                traceStorage.cid ? `Trace CID: ${traceStorage.cid}` : '',
+            ].filter(Boolean);
+            return `
+                <section>
+                    <h2>Document Optimization</h2>
+                    <article class="section-card">
+                        <div class="preview-meta"><strong>Status:</strong> ${escapeHtml(report.status || 'unknown')}</div>
+                        <div class="preview-meta"><strong>Method:</strong> ${escapeHtml(report.method || 'unspecified')}</div>
+                        <div class="preview-meta"><strong>Backend:</strong> ${escapeHtml(report.optimizer_backend || 'unknown')}</div>
+                        <div class="preview-meta"><strong>Scores:</strong> ${escapeHtml(String(report.initial_score ?? ''))} → ${escapeHtml(String(report.final_score ?? ''))}</div>
+                        <div class="preview-meta"><strong>Iterations:</strong> ${escapeHtml(String(report.accepted_iterations || 0))} accepted / ${escapeHtml(String(report.iteration_count || 0))} total</div>
+                        ${optimizedSections.length ? `<div class="preview-meta"><strong>Optimized Sections:</strong> ${escapeHtml(optimizedSections.map(humanizeKey).join(', '))}</div>` : ''}
+                        ${routerLines.length ? renderLines(routerLines) : ''}
+                        ${traceLines.length ? renderLines(traceLines) : ''}
+                        ${historyLines.length ? `<div class="preview-meta"><strong>Section History</strong></div>${renderLines(historyLines)}` : ''}
+                    </article>
+                </section>
+            `;
+        }
+
         function bindReviewIntentLinks() {
             document.querySelectorAll('[data-review-intent-link="true"]').forEach((node) => {
                 node.addEventListener('click', () => {
@@ -2037,6 +2152,7 @@
             const readiness = payload.drafting_readiness || draft.drafting_readiness || {};
             const filingChecklist = payload.filing_checklist || draft.filing_checklist || [];
             const reviewLinks = payload.review_links || {};
+            const optimizationReport = payload.document_optimization || null;
             const payloadReviewIntent = normalizeReviewIntent(payload.review_intent);
             if (payloadReviewIntent) {
                 persistReviewIntent(payloadReviewIntent);
@@ -2066,6 +2182,7 @@
                 ${renderArtifacts(payload.artifacts || {})}
                 <div class="draft-shell">
                     ${renderReadiness(readiness, draft.exhibits || [], reviewLinks)}
+                    ${renderOptimizationReport(optimizationReport)}
                     <div class="court-header">${escapeHtml(draft.court_header || '')}</div>
                     <div class="caption-block">
                         <div class="caption-parties">${escapeHtml(captionPartyLines.join('\n\n'))}</div>
@@ -2179,7 +2296,24 @@
             const outputFormats = Array.from(document.querySelectorAll('input[name="outputFormat"]:checked'))
                 .map((node) => node.value);
 
-            return {
+            const optimizationBaseUrl = document.getElementById('optimizationBaseUrl').value.trim();
+            const optimizationTimeoutRaw = document.getElementById('optimizationTimeout').value.trim();
+            const optimizationTitleHeader = document.getElementById('optimizationTitleHeader').value.trim();
+            const optimizationLlmConfig = {};
+            if (optimizationBaseUrl) {
+                optimizationLlmConfig.base_url = optimizationBaseUrl;
+            }
+            if (optimizationTimeoutRaw) {
+                const parsedTimeout = Number(optimizationTimeoutRaw);
+                if (!Number.isNaN(parsedTimeout) && parsedTimeout > 0) {
+                    optimizationLlmConfig.timeout = parsedTimeout;
+                }
+            }
+            if (optimizationTitleHeader) {
+                optimizationLlmConfig.headers = { 'X-Title': optimizationTitleHeader };
+            }
+
+            const payload = {
                 user_id: state.userId,
                 court_name: document.getElementById('courtName').value.trim(),
                 district: document.getElementById('district').value.trim(),
@@ -2218,8 +2352,18 @@
                 signature_date: document.getElementById('signatureDate').value || null,
                 verification_date: document.getElementById('verificationDate').value || null,
                 service_date: document.getElementById('serviceDate').value || null,
+                enable_agentic_optimization: document.getElementById('enableAgenticOptimization').checked,
+                optimization_max_iterations: Number(document.getElementById('optimizationMaxIterations').value || 2),
+                optimization_target_score: Number(document.getElementById('optimizationTargetScore').value || 0.9),
+                optimization_provider: document.getElementById('optimizationProvider').value.trim() || null,
+                optimization_model_name: document.getElementById('optimizationModelName').value.trim() || null,
+                optimization_persist_artifacts: document.getElementById('optimizationPersistArtifacts').checked,
                 output_formats: outputFormats,
             };
+            if (Object.keys(optimizationLlmConfig).length) {
+                payload.optimization_llm_config = optimizationLlmConfig;
+            }
+            return payload;
         }
 
         async function generateDocument(event) {

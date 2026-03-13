@@ -152,13 +152,21 @@ HF_TOKEN="$HF_TOKEN" .venv/bin/python -m pytest \
     tests/test_document_pipeline.py \
     -k live_huggingface_router_optimization_smoke \
     --run-network --run-llm
+
+# Optional: real network smoke test through the review-surface app path
+HF_TOKEN="$HF_TOKEN" .venv/bin/python -m pytest \
+    tests/test_document_pipeline.py \
+    -k review_surface_live_huggingface_router_optimization_smoke \
+    --run-network --run-llm
 ```
 
 The formal complaint builder and `/api/documents/formal-complaint` endpoint also support affidavit-specific exhibit controls. Use `affidavit_supporting_exhibits` to provide a curated affidavit exhibit list, or set `affidavit_include_complaint_exhibits=false` when the affidavit should not inherit the complaint's exhibit list by default.
 
 The same formal complaint payload now carries claim-level support summaries and drafting-readiness source-context counts, so the builder can show whether each count is currently grounded in evidence, authority, archived captures, or fallback-only authority references without requiring a separate dashboard round-trip.
 
-Agentic document optimization can also use Hugging Face Inference through the same OpenAI-compatible router endpoint documented for Chat UI `llm-router`. Set `optimization_provider` to `huggingface_router`, choose a Hugging Face model in `optimization_model_name`, and pass `optimization_llm_config.base_url=https://router.huggingface.co/v1` when you need to override the default router URL.
+Agentic document optimization can also use Hugging Face Inference through the same OpenAI-compatible router endpoint documented for Chat UI `llm-router`. Set `optimization_provider` to `huggingface_router`, choose a Hugging Face model in `optimization_model_name`, and pass `optimization_llm_config.base_url=https://router.huggingface.co/v1` when you need to override the default router URL. The `/document` review surface now exposes these optimization controls directly, including iteration/target tuning, routed model selection, basic router overrides, and optional IPFS trace persistence.
+
+When `enable_agentic_optimization=true`, the formal complaint response adds a top-level `document_optimization` report summarizing the post-knowledge-graph actor/mediator/critic loop. The current report shape includes the optimization method/backend, initial and final scores, accepted iteration count, optimized section names, router/IPFS status, a compact section history, and an optional trace CID when `optimization_persist_artifacts=true`.
 
 **Agentic Scraper CLI:**
 ```bash

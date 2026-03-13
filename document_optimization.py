@@ -222,10 +222,14 @@ class AgenticDocumentOptimizer:
                     "focus_section": str(entry.get("focus_section") or ""),
                     "accepted": bool(entry.get("accepted")),
                     "overall_score": float((entry.get("critic") or {}).get("overall_score") or 0.0),
+                    "critic_llm_metadata": dict((entry.get("critic") or {}).get("llm_metadata") or {}),
+                    "actor_llm_metadata": dict((entry.get("actor_payload") or {}).get("llm_metadata") or {}),
                     "selected_support_context": dict(entry.get("selected_support_context") or {}),
                 }
                 for entry in iterations
             ],
+            "initial_review": self._serialize_review(initial_review),
+            "final_review": self._serialize_review(current_review),
             "draft": working_draft,
         }
 
@@ -355,7 +359,11 @@ class AgenticDocumentOptimizer:
         )
         text = payload.get("text") if isinstance(payload, dict) else payload
         parsed = self._parse_json_payload(text)
-        return self._merge_review_payload(parsed, heuristic_review)
+        merged = self._merge_review_payload(parsed, heuristic_review)
+        llm_metadata = self._extract_llm_metadata(payload)
+        if llm_metadata:
+            merged["llm_metadata"] = llm_metadata
+        return merged
 
     def _run_actor(
         self,
@@ -388,7 +396,11 @@ class AgenticDocumentOptimizer:
         parsed = self._parse_json_payload(text) or {}
         if "focus_section" not in parsed:
             parsed["focus_section"] = focus_section
-        return {**fallback_payload, **parsed}
+        merged = {**fallback_payload, **parsed}
+        llm_metadata = self._extract_llm_metadata(payload)
+        if llm_metadata:
+            merged["llm_metadata"] = llm_metadata
+        return merged
 
     def _apply_actor_payload(
         self,
@@ -620,6 +632,47 @@ class AgenticDocumentOptimizer:
             merged["recommended_focus"] = recommended_focus
         merged["overall_score"] = _clamp(float(merged.get("overall_score") or 0.0))
         return merged
+
+    def _serialize_review(self, review: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(review, dict):
+            return {}
+        serialized = {
+            "overall_score": float(review.get("overall_score") or 0.0),
+            "dimension_scores": dict(review.get("dimension_scores") or {}),
+            "section_scores": dict(review.get("section_scores") or {}),
+            "strengths": list(review.get("strengths") or []),
+            "weaknesses": list(review.get("weaknesses") or []),
+            "suggestions": list(review.get("suggestions") or []),
+            "recommended_focus": str(review.get("recommended_focus") or ""),
+        }
+        llm_metadata = dict(review.get("llm_metadata") or {})
+        if llm_metadata:
+            serialized["llm_metadata"] = llm_metadata
+        return serialized
+
+    def _extract_llm_metadata(self, payload: Any) -> Dict[str, Any]:
+        if not isinstance(payload, dict):
+            return {}
+        allowed_keys = (
+            "status",
+            "provider_name",
+            "model_name",
+            "effective_provider_name",
+            "effective_model_name",
+            "router_base_url",
+            "arch_router_status",
+            "arch_router_selected_route",
+            "arch_router_selected_model",
+            "arch_router_model_name",
+            "error",
+        )
+        metadata = {}
+        for key in allowed_keys:
+            value = payload.get(key)
+            if value in (None, "", []):
+                continue
+            metadata[key] = value
+        return metadata
 
     def _choose_focus_section(
         self,
