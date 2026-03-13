@@ -189,7 +189,9 @@ class FormalComplaintDocumentBuilder:
             user_id=resolved_user_id,
             draft=draft,
         )
+        filing_checklist = self._build_filing_checklist(drafting_readiness)
         draft["drafting_readiness"] = drafting_readiness
+        draft["filing_checklist"] = filing_checklist
         artifacts = self.render_artifacts(
             draft,
             output_dir=output_dir,
@@ -198,6 +200,7 @@ class FormalComplaintDocumentBuilder:
         return {
             "draft": draft,
             "drafting_readiness": drafting_readiness,
+            "filing_checklist": filing_checklist,
             "artifacts": artifacts,
             "output_formats": formats,
             "generated_at": _utcnow().isoformat(),
@@ -1512,6 +1515,94 @@ class FormalComplaintDocumentBuilder:
             "claims": claim_readiness,
             "sections": sections,
         }
+
+    def _build_filing_checklist(self, drafting_readiness: Dict[str, Any]) -> List[Dict[str, Any]]:
+        if not isinstance(drafting_readiness, dict):
+            return []
+
+        checklist: List[Dict[str, Any]] = []
+        sections = drafting_readiness.get("sections") if isinstance(drafting_readiness.get("sections"), dict) else {}
+        claims = drafting_readiness.get("claims") if isinstance(drafting_readiness.get("claims"), list) else []
+
+        for section_key, section in sections.items():
+            if not isinstance(section, dict):
+                continue
+            status = str(section.get("status") or "ready")
+            title = str(section.get("title") or section_key or "Section").strip()
+            warnings = section.get("warnings") if isinstance(section.get("warnings"), list) else []
+            metrics = section.get("metrics") if isinstance(section.get("metrics"), dict) else {}
+            if status == "ready":
+                checklist.append(
+                    {
+                        "scope": "section",
+                        "key": str(section_key),
+                        "title": title,
+                        "status": "ready",
+                        "summary": f"{title} is ready for filing review.",
+                        "detail": self._summarize_metrics(metrics),
+                    }
+                )
+                continue
+            primary_warning = warnings[0] if warnings and isinstance(warnings[0], dict) else {}
+            checklist.append(
+                {
+                    "scope": "section",
+                    "key": str(section_key),
+                    "title": title,
+                    "status": status,
+                    "summary": str(primary_warning.get("message") or f"Review {title} before filing."),
+                    "detail": self._summarize_metrics(metrics),
+                }
+            )
+
+        for claim in claims:
+            if not isinstance(claim, dict):
+                continue
+            status = str(claim.get("status") or "ready")
+            claim_type = str(claim.get("claim_type") or "claim").strip()
+            warnings = claim.get("warnings") if isinstance(claim.get("warnings"), list) else []
+            metrics = {
+                "covered_elements": claim.get("covered_elements"),
+                "total_elements": claim.get("total_elements"),
+                "unresolved_element_count": claim.get("unresolved_element_count"),
+                "proof_gap_count": claim.get("proof_gap_count"),
+            }
+            if status == "ready":
+                checklist.append(
+                    {
+                        "scope": "claim",
+                        "key": claim_type,
+                        "title": claim_type.title(),
+                        "status": "ready",
+                        "summary": f"{claim_type.title()} is ready for filing review.",
+                        "detail": self._summarize_metrics(metrics),
+                    }
+                )
+                continue
+            primary_warning = warnings[0] if warnings and isinstance(warnings[0], dict) else {}
+            checklist.append(
+                {
+                    "scope": "claim",
+                    "key": claim_type,
+                    "title": claim_type.title(),
+                    "status": status,
+                    "summary": str(primary_warning.get("message") or f"Review {claim_type.title()} before filing."),
+                    "detail": self._summarize_metrics(metrics),
+                }
+            )
+
+        checklist.sort(key=lambda item: {"blocked": 0, "warning": 1, "ready": 2}.get(str(item.get("status")), 3))
+        return checklist
+
+    def _summarize_metrics(self, metrics: Dict[str, Any]) -> str:
+        parts = []
+        for key, value in metrics.items():
+            if value in (None, "", []):
+                continue
+            parts.append(f"{key.replace('_', ' ')}={value}")
+            if len(parts) >= 3:
+                break
+        return "; ".join(parts)
 
     def _select_statutes_for_claim(
         self,

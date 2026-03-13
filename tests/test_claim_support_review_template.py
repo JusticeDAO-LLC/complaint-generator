@@ -37,8 +37,15 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "recommended_next_action" in content
     assert "URLSearchParams(window.location.search" in content
     assert "prefill-context-line" in content
+    assert "section-focus-chip-row" in content
     assert "Opened from document workflow:" in content
     assert "params.get('section')" in content
+    assert "SECTION_FOCUS_CONFIG" in content
+    assert "applySectionFocus" in content
+    assert "clearSectionFocus" in content
+    assert "Focused lane:" in content
+    assert "data-section-focus-target" in content
+    assert "is-section-focus" in content
     assert "Lineage Signals" in content
     assert "Parse Signals" in content
     assert "Authority Signals" in content
@@ -95,6 +102,7 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Service Date" in content
     assert "Draft Preview" in content
     assert "Drafting Readiness" in content
+    assert "Pre-Filing Checklist" in content
     assert "Section Readiness" in content
     assert "Claim Readiness" in content
     assert "Factual Allegations" in content

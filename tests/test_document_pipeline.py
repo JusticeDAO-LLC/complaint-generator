@@ -198,6 +198,9 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
     assert "Defense Counsel" in result["draft"]["certificate_of_service"]["text"]
     assert result["drafting_readiness"]["status"] == "warning"
     assert result["draft"]["drafting_readiness"]["status"] == "warning"
+    assert result["filing_checklist"] == result["draft"]["filing_checklist"]
+    assert any(item["status"] == "warning" for item in result["filing_checklist"])
+    assert any(item["scope"] == "claim" for item in result["filing_checklist"])
     assert result["drafting_readiness"]["sections"]["claims_for_relief"]["status"] == "warning"
     assert result["drafting_readiness"]["sections"]["summary_of_facts"]["status"] == "ready"
     assert any(
@@ -472,6 +475,7 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert 'Copy Pleading Text' in page_html
         assert 'value="txt"' in page_html
         assert 'Drafting Readiness' in page_html
+        assert 'Pre-Filing Checklist' in page_html
         assert 'Section Readiness' in page_html
         assert 'Claim Readiness' in page_html
         assert 'Source Drilldown' in page_html

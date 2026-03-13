@@ -631,6 +631,39 @@
             margin-bottom: 8px;
         }
 
+        .checklist-stack {
+            display: grid;
+            gap: 12px;
+        }
+
+        .checklist-card {
+            border: 1px solid rgba(22, 33, 38, 0.1);
+            border-radius: 18px;
+            padding: 16px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(247,242,232,0.9));
+        }
+
+        .checklist-card-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+
+        .checklist-card h3 {
+            margin: 0;
+            font-size: 1rem;
+        }
+
+        .checklist-scope {
+            color: var(--muted);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 6px;
+        }
+
         .empty-state {
             min-height: 540px;
             display: grid;
@@ -1633,11 +1666,33 @@
             `;
         }
 
+        function renderFilingChecklist(items) {
+            const values = Array.isArray(items) ? items.filter((item) => item && typeof item === 'object') : [];
+            if (!values.length) {
+                return '';
+            }
+            const cards = values.map((item) => `
+                <article class="checklist-card">
+                    <div class="checklist-card-header">
+                        <div>
+                            <div class="checklist-scope">${escapeHtml(String(item.scope || 'item'))}</div>
+                            <h3>${escapeHtml(item.title || 'Checklist Item')}</h3>
+                        </div>
+                        ${renderStatusPill(item.status || 'ready')}
+                    </div>
+                    <div>${escapeHtml(item.summary || '')}</div>
+                    ${item.detail ? `<div class="preview-meta" style="margin-top: 8px;">${escapeHtml(item.detail)}</div>` : ''}
+                </article>
+            `).join('');
+            return `<section><h2>Pre-Filing Checklist</h2><div class="checklist-stack">${cards}</div></section>`;
+        }
+
         function renderPreview(payload) {
             state.generatedPayload = payload;
             persistGeneratedPayload(payload);
             const draft = payload.draft || {};
             const readiness = payload.drafting_readiness || draft.drafting_readiness || {};
+            const filingChecklist = payload.filing_checklist || draft.filing_checklist || [];
             const reviewLinks = payload.review_links || {};
             const caption = draft.case_caption || {};
             const plaintiffs = (caption.plaintiffs || []).join('\n');
@@ -1692,6 +1747,8 @@
                     </div>
 
                     ${renderClaims(draft.claims_for_relief || [], readiness.claims || [])}
+
+                    ${renderFilingChecklist(filingChecklist)}
 
                     <section>
                         <h2>Requested Relief</h2>

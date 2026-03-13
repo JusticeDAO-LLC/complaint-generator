@@ -2180,7 +2180,34 @@ Representative shape:
           "user_id": "abc123",
           "section": "claims_for_relief",
           "claim_type": "retaliation"
-        }
+        },
+        "claim_links": [
+          {
+            "claim_type": "retaliation",
+            "review_url": "/claim-support-review?user_id=abc123&claim_type=retaliation&section=claims_for_relief"
+          }
+        ]
+      },
+      {
+        "section_key": "summary_of_facts",
+        "title": "Summary of Facts",
+        "review_url": "/claim-support-review?user_id=abc123&section=summary_of_facts",
+        "review_context": {
+          "user_id": "abc123",
+          "section": "summary_of_facts",
+          "claim_type": null
+        },
+        "claim_links": [
+          {
+            "claim_type": "employment discrimination",
+            "review_url": "/claim-support-review?user_id=abc123&claim_type=employment+discrimination&section=summary_of_facts"
+          },
+          {
+            "claim_type": "retaliation",
+            "review_url": "/claim-support-review?user_id=abc123&claim_type=retaliation&section=summary_of_facts"
+          }
+        ]
+      }
       }
     ]
   },
@@ -2205,6 +2232,7 @@ Interpretation notes:
 - `drafting_readiness.claims[*].review_url` and `drafting_readiness.claims[*].review_context` are added by the document API layer so clients can deep-link into the claim-support review surface without reconstructing query parameters themselves.
 - `drafting_readiness.sections` groups filing-readiness by major complaint section such as `summary_of_facts`, `jurisdiction_and_venue`, `claims_for_relief`, `requested_relief`, and `exhibits`.
 - `drafting_readiness.sections[*].review_url` and `drafting_readiness.sections[*].review_context` are added by the document API layer so clients can link section warnings back to the review dashboard with stable query context.
+- `drafting_readiness.sections[*].claim_links` is present when a section maps to one or more claim types; multi-claim drafts can use those targeted links instead of relying on a single generic section URL.
 - `drafting_readiness.sections[*].warnings[*].severity` distinguishes soft filing warnings from harder blockers so degraded-mode drafting can remain usable.
 - `review_links.dashboard_url` points to the review dashboard for the current user context, while `review_links.claims[*]` and `review_links.sections[*]` provide claim-specific and section-specific review URLs for non-browser consumers.
 - `artifacts[*].download_url` is added by the document API layer only when the generated file path is inside the managed generated-documents directory.

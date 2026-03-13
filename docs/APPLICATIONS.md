@@ -296,7 +296,7 @@ Example response fields:
 - `draft.claims_for_relief[*].allegation_references`: paragraph numbers each count incorporates by reference from the factual allegations section, surfaced in the preview and rendered pleadings as `¶` / `¶¶` citations.
 - `draft.claims_for_relief[*].supporting_exhibits`: exhibit labels and links used alongside the paragraph citations to build the count-level incorporated-support block in the preview and rendered pleading.
 - `drafting_readiness`: section-level and claim-level filing-readiness signals surfaced in the builder preview.
-- `review_links`: API-layer navigation metadata pointing back to `/claim-support-review` for the current user context, specific claim types, and section-specific drafting review links.
+- `review_links`: API-layer navigation metadata pointing back to `/claim-support-review` for the current user context, specific claim types, and section-specific drafting review links, including per-claim section links for multi-claim drafts.
 - `artifacts.docx.path`: filesystem path to the generated DOCX document when requested.
 - `artifacts.pdf.path`: filesystem path to the generated PDF document when requested.
 - `artifacts.txt.path`: filesystem path to the generated plain-text pleading when requested.

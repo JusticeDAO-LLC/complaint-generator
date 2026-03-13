@@ -239,6 +239,39 @@
             padding: 22px;
         }
 
+        .panel.is-section-focus,
+        .focus-block.is-section-focus {
+            border-color: rgba(154, 52, 18, 0.45);
+            box-shadow: 0 0 0 3px rgba(154, 52, 18, 0.12), var(--shadow);
+            background: rgba(255, 248, 239, 0.98);
+        }
+
+        .focus-block {
+            border-radius: 18px;
+            padding: 8px 10px;
+            transition: box-shadow 140ms ease, border-color 140ms ease, background 140ms ease;
+        }
+
+        .focus-chip-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .focus-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(154, 52, 18, 0.22);
+            background: rgba(255, 244, 232, 0.92);
+            color: var(--accent);
+            font-size: 0.82rem;
+            font-weight: 600;
+        }
+
         .panel h2 {
             margin: 0 0 14px;
             font-size: 1.1rem;
@@ -638,6 +671,7 @@
                     <a class="surface-link" href="/document">Open Formal Complaint Builder</a>
                 </div>
                 <div class="status-line" id="prefill-context-line" hidden>Opened from document workflow.</div>
+                <div class="focus-chip-row" id="section-focus-chip-row" hidden></div>
                 <div class="hero-stats">
                     <div class="stat">
                         <span class="stat-label">Covered</span>
@@ -755,7 +789,7 @@
         </section>
 
         <section class="layout">
-            <div class="panel">
+            <div class="panel" data-section-focus-target="summary_of_facts jurisdiction_and_venue requested_relief claims_for_relief exhibits">
                 <h2>Coverage Summary</h2>
                 <div class="summary-grid">
                     <div class="summary-card good">
@@ -777,7 +811,7 @@
                     <div class="chip-row" id="coverage-chips"></div>
                 </div>
 
-                <div>
+                <div class="focus-block" data-section-focus-target="summary_of_facts exhibits">
                     <h2 style="margin-top: 18px;">Lineage Signals</h2>
                     <div class="signal-grid">
                         <div class="signal-card">
@@ -793,7 +827,7 @@
                     </div>
                 </div>
 
-                <div>
+                <div class="focus-block" data-section-focus-target="summary_of_facts claims_for_relief">
                     <h2 style="margin-top: 18px;">Parse Signals</h2>
                     <div class="signal-grid">
                         <div class="signal-card">
@@ -809,7 +843,7 @@
                     </div>
                 </div>
 
-                <div>
+                <div class="focus-block" data-section-focus-target="jurisdiction_and_venue claims_for_relief requested_relief">
                     <h2 style="margin-top: 18px;">Authority Signals</h2>
                     <div class="signal-grid">
                         <div class="signal-card">
@@ -825,7 +859,7 @@
                     </div>
                 </div>
 
-                <div>
+                <div class="focus-block" data-section-focus-target="claims_for_relief requested_relief">
                     <h2 style="margin-top: 18px;">Follow-Up Signals</h2>
                     <div class="signal-grid">
                         <div class="signal-card">
@@ -841,13 +875,13 @@
                     </div>
                 </div>
 
-                <div>
+                <div class="focus-block" data-section-focus-target="claims_for_relief requested_relief">
                     <h2 style="margin-top: 18px;">Follow-Up Plan</h2>
                     <div class="task-list" id="task-list"></div>
                 </div>
             </div>
 
-            <div class="panel">
+            <div class="panel" data-section-focus-target="summary_of_facts claims_for_relief exhibits">
                 <h2>Claim Elements</h2>
                 <div class="element-list" id="element-list"></div>
 
@@ -861,13 +895,70 @@
     </div>
 
     <script>
+        const SECTION_FOCUS_CONFIG = {
+            summary_of_facts: {
+                supportKind: 'evidence',
+                chips: ['Evidence lane', 'Fact coverage', 'Lineage review'],
+            },
+            exhibits: {
+                supportKind: 'evidence',
+                chips: ['Evidence lane', 'Exhibit lineage', 'Packet drilldown'],
+            },
+            jurisdiction_and_venue: {
+                supportKind: 'authority',
+                chips: ['Authority lane', 'Procedural support', 'Venue review'],
+            },
+            claims_for_relief: {
+                supportKind: 'authority',
+                chips: ['Authority lane', 'Element review', 'Follow-up plan'],
+            },
+            requested_relief: {
+                supportKind: '',
+                chips: ['Remedy review', 'Follow-up plan'],
+            },
+        };
+
         function humanizeQueryValue(value) {
             return String(value || '')
                 .replace(/_/g, ' ')
                 .replace(/\b\w/g, (char) => char.toUpperCase());
         }
 
-        function setPrefillContext(sectionKey) {
+        function clearSectionFocus() {
+            document.querySelectorAll('[data-section-focus-target]').forEach((node) => {
+                node.classList.remove('is-section-focus');
+            });
+            const chipRow = document.getElementById('section-focus-chip-row');
+            chipRow.hidden = true;
+            chipRow.innerHTML = '';
+        }
+
+        function applySectionFocus(sectionKey) {
+            clearSectionFocus();
+            if (!sectionKey) {
+                return null;
+            }
+            const normalizedSectionKey = String(sectionKey || '').trim();
+            const sectionConfig = SECTION_FOCUS_CONFIG[normalizedSectionKey] || { supportKind: '', chips: [] };
+            document.querySelectorAll('[data-section-focus-target]').forEach((node) => {
+                const targets = String(node.getAttribute('data-section-focus-target') || '')
+                    .split(/\s+/)
+                    .filter(Boolean);
+                if (targets.includes(normalizedSectionKey)) {
+                    node.classList.add('is-section-focus');
+                }
+            });
+            if (sectionConfig.supportKind) {
+                document.getElementById('support-kind').value = sectionConfig.supportKind;
+            }
+            const chipRow = document.getElementById('section-focus-chip-row');
+            const chips = [humanizeQueryValue(normalizedSectionKey)].concat(sectionConfig.chips || []);
+            chipRow.hidden = false;
+            chipRow.innerHTML = chips.map((label) => `<span class="focus-chip">${label}</span>`).join('');
+            return sectionConfig;
+        }
+
+        function setPrefillContext(sectionKey, sectionConfig) {
             const contextLine = document.getElementById('prefill-context-line');
             if (!sectionKey) {
                 contextLine.hidden = true;
@@ -875,7 +966,10 @@
                 return;
             }
             contextLine.hidden = false;
-            contextLine.textContent = `Opened from document workflow: ${humanizeQueryValue(sectionKey)}.`;
+            const laneSummary = sectionConfig && sectionConfig.supportKind
+                ? ` Focused lane: ${humanizeQueryValue(sectionConfig.supportKind)}.`
+                : '';
+            contextLine.textContent = `Opened from document workflow: ${humanizeQueryValue(sectionKey)}.${laneSummary}`;
         }
 
         function parseRequiredSupportKinds() {
@@ -1148,7 +1242,8 @@
             if (userId) {
                 document.getElementById('user-id').value = userId;
             }
-            setPrefillContext(section);
+            const sectionConfig = applySectionFocus(section);
+            setPrefillContext(section, sectionConfig);
             return Boolean(claimType || userId || section);
         }
 
