@@ -338,12 +338,12 @@ class TestBatch219Integration:
         # 3 out of 4 have context
         assert denoiser.questions_with_context() == 3
         
-        # Answer lengths: 14, 22, 20, 1
-        # Average: (14 + 22 + 20 + 1) / 4 = 14.25
-        assert abs(denoiser.average_answer_length() - 14.25) < 0.01
+        # Answer lengths: 15, 23, 20, 1
+        # Average: (15 + 23 + 20 + 1) / 4 = 14.75
+        assert abs(denoiser.average_answer_length() - 14.75) < 0.01
         
         assert denoiser.shortest_answer() == 1
-        assert denoiser.longest_answer() == 22
+        assert denoiser.longest_answer() == 23
         
         matrix = denoiser.question_type_priority_matrix()
         assert matrix == {

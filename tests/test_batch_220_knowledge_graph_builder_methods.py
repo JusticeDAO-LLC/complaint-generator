@@ -35,17 +35,18 @@ def create_mock_graph(num_entities=3, num_relationships=2):
         graph.add_entity(entity)
     
     for i in range(num_relationships):
-        if i * 2 + 1 < num_entities:
-            rel = Relationship(
-                id=f'r{i+1}',
-                source_id=f'e{i*2+1}',
-                target_id=f'e{i*2+2}',
-                relation_type='knows',
-                attributes={},
-                confidence=0.8,
-                source='test'
-            )
-            graph.add_relationship(rel)
+        source_index = (i % num_entities) + 1
+        target_index = ((i + 1) % num_entities) + 1
+        rel = Relationship(
+            id=f'r{i+1}',
+            source_id=f'e{source_index}',
+            target_id=f'e{target_index}',
+            relation_type='knows',
+            attributes={},
+            confidence=0.8,
+            source='test'
+        )
+        graph.add_relationship(rel)
     
     return graph
 

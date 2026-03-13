@@ -92,6 +92,48 @@ Notes:
 - `provider="huggingface"` still means the local Transformers fallback unless you also set a Hugging Face router `base_url`.
 - The same settings can be passed to the document optimizer through `optimization_provider`, `optimization_model_name`, and `optimization_llm_config`.
 
+### Using Arch-Router For Automatic Model Choice
+
+If you want Hugging Face requests to select a target model automatically before generation, pass an `arch_router` block. The adapter will call `katanemo/Arch-Router-1.5B` first, map its selected route to one of your configured target models, and then send the real generation request through the existing Hugging Face router transport.
+
+```json
+{
+    "BACKENDS": [
+        {
+            "id": "hf-router-auto-legal",
+            "type": "llm_router",
+            "provider": "huggingface_router",
+            "base_url": "https://router.huggingface.co/v1",
+            "max_tokens": 1024,
+            "arch_router": {
+                "enabled": true,
+                "model": "katanemo/Arch-Router-1.5B",
+                "context": "Complaint drafting and legal analysis workload.",
+                "routes": [
+                    {
+                        "name": "legal_reasoning",
+                        "model": "meta-llama/Llama-3.3-70B-Instruct",
+                        "description": "Use for issue spotting, legal analysis, and argument selection."
+                    },
+                    {
+                        "name": "drafting",
+                        "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+                        "description": "Use for structured complaint drafting, section revision, and formatting."
+                    }
+                ]
+            }
+        }
+    ]
+}
+```
+
+Notes:
+
+- `arch_router.routes` accepts either a list of objects or a simple object map of route name to model.
+- If Arch-Router returns an unknown route, the adapter falls back to the request's original `model`.
+- The response metadata includes `arch_router_status`, `arch_router_selected_route`, `arch_router_selected_model`, and `arch_router_model_name`.
+- The same `arch_router` block can be passed through `optimization_llm_config` when using document optimization.
+
 ### Auto-detect Provider
 
 Let the router automatically detect the best available provider:
@@ -111,8 +153,9 @@ Let the router automatically detect the best available provider:
 The router will try providers in this order:
 1. ipfs_accelerate_py (if available)
 2. OpenRouter (if API key is set)
-3. Other CLI providers
-4. Local HuggingFace models
+3. Hugging Face router/inference endpoints when configured
+4. Other CLI providers
+5. Local HuggingFace models
 
 ## Supported Providers
 

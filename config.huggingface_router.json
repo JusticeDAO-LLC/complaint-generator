@@ -1,0 +1,31 @@
+{
+    "BACKENDS": [
+        {
+            "id": "hf-router",
+            "type": "llm_router",
+            "provider": "huggingface_router",
+            "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+            "base_url": "https://router.huggingface.co/v1",
+            "max_tokens": 1024,
+            "temperature": 0.2
+        },
+        {
+            "id": "llm-router-codex",
+            "type": "llm_router",
+            "provider": "codex_cli",
+            "model": "gpt-5.2-codex",
+            "max_tokens": 128
+        }
+    ],
+    "MEDIATOR": {
+        "backends": ["hf-router"]
+    },
+    "APPLICATION": {
+        "type": {
+            "server": "server"
+        }
+    },
+    "LOG": {
+        "level": "WARN"
+    }
+}

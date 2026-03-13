@@ -131,6 +131,29 @@ python run.py --config config.review_surface.json
 # Access the formal complaint builder at http://localhost:8000/document
 ```
 
+**Hugging Face Router Quick Start:**
+```bash
+export HF_TOKEN="your-huggingface-token"
+
+# General server mode with Hugging Face router as the active backend
+python run.py --config config.huggingface_router.json
+
+# Review surface and formal complaint builder with Hugging Face router
+python run.py --config config.review_surface.huggingface_router.json
+
+# Optional: real network smoke test for the HF router adapter path
+HF_TOKEN="$HF_TOKEN" .venv/bin/python -m pytest \
+    tests/test_ipfs_llm_huggingface_router.py \
+    -k live_huggingface_router_smoke \
+    --run-network --run-llm
+
+# Optional: real network smoke test through the formal complaint API path
+HF_TOKEN="$HF_TOKEN" .venv/bin/python -m pytest \
+    tests/test_document_pipeline.py \
+    -k live_huggingface_router_optimization_smoke \
+    --run-network --run-llm
+```
+
 The formal complaint builder and `/api/documents/formal-complaint` endpoint also support affidavit-specific exhibit controls. Use `affidavit_supporting_exhibits` to provide a curated affidavit exhibit list, or set `affidavit_include_complaint_exhibits=false` when the affidavit should not inherit the complaint's exhibit list by default.
 
 The same formal complaint payload now carries claim-level support summaries and drafting-readiness source-context counts, so the builder can show whether each count is currently grounded in evidence, authority, archived captures, or fallback-only authority references without requiring a separate dashboard round-trip.

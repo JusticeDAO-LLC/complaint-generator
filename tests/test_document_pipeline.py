@@ -1,6 +1,7 @@
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
+import os
 import json
 import zipfile
 import document_optimization
@@ -15,6 +16,15 @@ from document_pipeline import DEFAULT_OUTPUT_DIR, FormalComplaintDocumentBuilder
 
 
 pytestmark = pytest.mark.no_auto_network
+
+
+def _live_hf_token() -> str:
+    return (
+        os.getenv("HF_TOKEN", "").strip()
+        or os.getenv("HUGGINGFACE_HUB_TOKEN", "").strip()
+        or os.getenv("HUGGINGFACE_API_KEY", "").strip()
+        or os.getenv("HF_API_TOKEN", "").strip()
+    )
 
 
 def _build_mediator() -> Mock:
@@ -1048,6 +1058,117 @@ def test_review_api_applies_full_affidavit_override_payload_end_to_end(tmp_path)
     Path(payload["artifacts"]["txt"]["path"]).unlink(missing_ok=True)
 
 
+def test_review_api_forwards_optimization_llm_config_to_mediator():
+    mediator = Mock()
+    mediator.build_formal_complaint_document_package.return_value = {
+        "draft": {"title": "Jane Doe v. Acme Corporation"},
+        "drafting_readiness": {"status": "ready", "sections": {}, "claims": [], "warning_count": 0},
+        "filing_checklist": [],
+        "artifacts": {},
+        "output_formats": ["txt"],
+        "generated_at": "2026-03-13T12:00:00+00:00",
+    }
+
+    app = create_review_api_app(mediator)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/documents/formal-complaint",
+        json={
+            "district": "Northern District of California",
+            "county": "San Francisco County",
+            "plaintiff_names": ["Jane Doe"],
+            "defendant_names": ["Acme Corporation"],
+            "enable_agentic_optimization": True,
+            "optimization_provider": "huggingface_router",
+            "optimization_model_name": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+            "optimization_llm_config": {
+                "base_url": "https://router.huggingface.co/v1",
+                "headers": {"X-Title": "Complaint Generator API Test"},
+                "arch_router": {
+                    "enabled": True,
+                    "routes": {
+                        "legal_reasoning": "meta-llama/Llama-3.3-70B-Instruct",
+                        "drafting": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+                    },
+                },
+            },
+            "output_formats": ["txt"],
+        },
+    )
+
+    assert response.status_code == 200
+    mediator.build_formal_complaint_document_package.assert_called_once()
+    kwargs = mediator.build_formal_complaint_document_package.call_args.kwargs
+    assert kwargs["enable_agentic_optimization"] is True
+    assert kwargs["optimization_provider"] == "huggingface_router"
+    assert kwargs["optimization_model_name"] == "Qwen/Qwen3-Coder-480B-A35B-Instruct"
+    assert kwargs["optimization_llm_config"] == {
+        "base_url": "https://router.huggingface.co/v1",
+        "headers": {"X-Title": "Complaint Generator API Test"},
+        "arch_router": {
+            "enabled": True,
+            "routes": {
+                "legal_reasoning": "meta-llama/Llama-3.3-70B-Instruct",
+                "drafting": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+            },
+        },
+    }
+
+
+@pytest.mark.llm
+@pytest.mark.network
+def test_review_api_live_huggingface_router_optimization_smoke(tmp_path):
+    if not document_optimization.LLM_ROUTER_AVAILABLE:
+        pytest.skip("llm_router unavailable for live optimization smoke test")
+
+    if not _live_hf_token():
+        pytest.skip("Set HF_TOKEN or HUGGINGFACE_HUB_TOKEN to run the live Hugging Face router API smoke test")
+
+    mediator = _build_mediator()
+    mediator.build_formal_complaint_document_package.side_effect = (
+        lambda **kwargs: FormalComplaintDocumentBuilder(mediator).build_package(**kwargs)
+    )
+
+    app = create_review_api_app(mediator)
+    client = TestClient(app)
+    model_name = os.getenv("HF_ROUTER_SMOKE_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
+
+    response = client.post(
+        "/api/documents/formal-complaint",
+        json={
+            "district": "Northern District of California",
+            "county": "San Francisco County",
+            "plaintiff_names": ["Jane Doe"],
+            "defendant_names": ["Acme Corporation"],
+            "enable_agentic_optimization": True,
+            "optimization_max_iterations": 1,
+            "optimization_target_score": 1.1,
+            "optimization_provider": "huggingface_router",
+            "optimization_model_name": model_name,
+            "optimization_llm_config": {
+                "base_url": "https://router.huggingface.co/v1",
+                "headers": {"X-Title": "Complaint Generator API Smoke Test"},
+                "timeout": 45,
+            },
+            "output_dir": str(tmp_path),
+            "output_formats": ["txt"],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["document_optimization"]["router_status"]["llm_router"] == "available"
+    assert payload["document_optimization"]["iteration_count"] == 1
+    assert payload["document_optimization"]["initial_score"] >= 0.0
+    assert payload["document_optimization"]["final_score"] >= 0.0
+    assert payload["document_optimization"]["trace_storage"]["status"] == "disabled"
+    assert payload["document_optimization"]["draft"]["draft_text"]
+    assert payload["artifacts"]["txt"]["path"]
+
+    Path(payload["artifacts"]["txt"]["path"]).unlink(missing_ok=True)
+
+
 def test_review_api_generated_docx_preserves_grouped_factual_headings_end_to_end(tmp_path):
     mediator = _build_mediator()
     mediator.build_formal_complaint_document_package.side_effect = (
@@ -1483,6 +1604,64 @@ def test_review_surface_document_builder_supports_affidavit_exhibit_controls_end
     assert payload['artifacts']['txt']['download_url'].startswith('/api/documents/download?path=')
 
     Path(payload['artifacts']['txt']['path']).unlink(missing_ok=True)
+
+
+def test_review_surface_document_builder_forwards_optimization_llm_config_to_mediator():
+    mediator = Mock()
+    mediator.build_formal_complaint_document_package.return_value = {
+        "draft": {"title": "Jane Doe v. Acme Corporation"},
+        "drafting_readiness": {"status": "ready", "sections": {}, "claims": [], "warning_count": 0},
+        "filing_checklist": [],
+        "artifacts": {},
+        "output_formats": ["txt"],
+        "generated_at": "2026-03-13T12:00:00+00:00",
+    }
+
+    app = create_review_surface_app(mediator)
+    client = TestClient(app)
+
+    response = client.post(
+        '/api/documents/formal-complaint',
+        json={
+            'district': 'Northern District of California',
+            'county': 'San Francisco County',
+            'plaintiff_names': ['Jane Doe'],
+            'defendant_names': ['Acme Corporation'],
+            'enable_agentic_optimization': True,
+            'optimization_provider': 'huggingface_router',
+            'optimization_model_name': 'Qwen/Qwen3-Coder-480B-A35B-Instruct',
+            'optimization_llm_config': {
+                'base_url': 'https://router.huggingface.co/v1',
+                'headers': {'X-Title': 'Complaint Generator Review Surface Test'},
+                'arch_router': {
+                    'enabled': True,
+                    'routes': {
+                        'legal_reasoning': 'meta-llama/Llama-3.3-70B-Instruct',
+                        'drafting': 'Qwen/Qwen3-Coder-480B-A35B-Instruct',
+                    },
+                },
+            },
+            'output_formats': ['txt'],
+        },
+    )
+
+    assert response.status_code == 200
+    mediator.build_formal_complaint_document_package.assert_called_once()
+    kwargs = mediator.build_formal_complaint_document_package.call_args.kwargs
+    assert kwargs['enable_agentic_optimization'] is True
+    assert kwargs['optimization_provider'] == 'huggingface_router'
+    assert kwargs['optimization_model_name'] == 'Qwen/Qwen3-Coder-480B-A35B-Instruct'
+    assert kwargs['optimization_llm_config'] == {
+        'base_url': 'https://router.huggingface.co/v1',
+        'headers': {'X-Title': 'Complaint Generator Review Surface Test'},
+        'arch_router': {
+            'enabled': True,
+            'routes': {
+                'legal_reasoning': 'meta-llama/Llama-3.3-70B-Instruct',
+                'drafting': 'Qwen/Qwen3-Coder-480B-A35B-Instruct',
+            },
+        },
+    }
 
 
 def test_review_surface_document_builder_returns_packet_artifact_end_to_end(tmp_path):

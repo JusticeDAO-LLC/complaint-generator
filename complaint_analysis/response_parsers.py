@@ -504,47 +504,52 @@ class StateFileIngester:
         return True
 
 
+class _ParserAccessor:
+    """Descriptor that supports class-level fresh parsers and instance-level caching."""
+
+    def __get__(self, obj, owner):
+        if obj is None:
+            def get_parser(parser_type: str) -> BaseResponseParser:
+                if parser_type not in owner._parser_map:
+                    raise ValueError(f"Unknown parser type: {parser_type}")
+                return owner._parser_map[parser_type]()
+
+            return get_parser
+
+        def get_parser(parser_type: str) -> BaseResponseParser:
+            return obj._get_cached_parser(parser_type)
+
+        return get_parser
+
+
 class ResponseParserFactory:
     """Factory for creating appropriate parsers with caching and history tracking."""
+
+    _parser_map = {
+        'json': JSONResponseParser,
+        'structured_text': StructuredTextParser,
+        'entities': EntityParser,
+        'relationships': RelationshipParser,
+        'questions': QuestionParser,
+        'claims': ClaimParser,
+    }
+    get_parser = _ParserAccessor()
     
     def __init__(self):
         """Initialize the parser factory with caching."""
-        self._parser_instances = {}  # Cache parser instances
+        self._parser_instances: Dict[str, BaseResponseParser] = {}
         self._parsing_history = []  # Track all parsing operations
         self._parse_success_count = 0  # Counter for successful parses
         self._parse_failure_count = 0  # Counter for failed parses
-    
-    def get_parser(self, parser_type: str) -> BaseResponseParser:
-        """
-        Get appropriate parser for response type with caching.
-        
-        Args:
-            parser_type: Type of parser needed
-            
-        Returns:
-            Parser instance (cached if already created)
-        """
-        # Return cached instance if available
+
+    def _get_cached_parser(self, parser_type: str) -> BaseResponseParser:
+        """Get or create a cached parser instance for this factory."""
         if parser_type in self._parser_instances:
             return self._parser_instances[parser_type]
-        
-        # Create new instance based on type
-        parser_map = {
-            'json': JSONResponseParser,
-            'structured_text': StructuredTextParser,
-            'entities': EntityParser,
-            'relationships': RelationshipParser,
-            'questions': QuestionParser,
-            'claims': ClaimParser
-        }
-        
-        if parser_type not in parser_map:
+        if parser_type not in self._parser_map:
             raise ValueError(f"Unknown parser type: {parser_type}")
-        
-        # Create and cache the parser
-        parser = parser_map[parser_type]()
+        parser = self._parser_map[parser_type]()
         self._parser_instances[parser_type] = parser
-        
         return parser
     
     def parse_with_tracking(self, response: str, parser_type: str) -> ParsedResponse:
@@ -558,7 +563,7 @@ class ResponseParserFactory:
         Returns:
             ParsedResponse with tracking
         """
-        parser = self.get_parser(parser_type)
+        parser = self._get_cached_parser(parser_type)
         parsed = parser.parse(response)
         
         # Track the operation

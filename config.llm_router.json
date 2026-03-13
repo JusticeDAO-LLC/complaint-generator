@@ -24,6 +24,32 @@
             "temperature": 0.2
         },
         {
+            "id": "hf-router-auto-legal",
+            "type": "llm_router",
+            "provider": "huggingface_router",
+            "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+            "base_url": "https://router.huggingface.co/v1",
+            "max_tokens": 1024,
+            "temperature": 0.2,
+            "arch_router": {
+                "enabled": true,
+                "model": "katanemo/Arch-Router-1.5B",
+                "context": "Complaint drafting, legal issue spotting, evidence synthesis, and filing-packet generation.",
+                "routes": [
+                    {
+                        "name": "legal_reasoning",
+                        "model": "meta-llama/Llama-3.3-70B-Instruct",
+                        "description": "Use for legal analysis, issue spotting, causation reasoning, and selecting the strongest claim framing."
+                    },
+                    {
+                        "name": "drafting",
+                        "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+                        "description": "Use for complaint drafting, structured section revision, checklist updates, and packet formatting."
+                    }
+                ]
+            }
+        },
+        {
             "id": "openai-davinci",
             "type": "openai",
             "api_key": "${OPENAI_API_KEY}",

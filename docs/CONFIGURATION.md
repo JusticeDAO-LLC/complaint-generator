@@ -120,6 +120,33 @@ The formal complaint API and document pipeline also accept `optimization_llm_con
 }
 ```
 
+If you want automatic model selection before the optimization or drafting call, add an `arch_router` block. This runs `katanemo/Arch-Router-1.5B` as a pre-router and maps the returned route to one of your configured models:
+
+```json
+{
+  "enable_agentic_optimization": true,
+  "optimization_provider": "huggingface_router",
+  "optimization_model_name": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+  "optimization_llm_config": {
+    "base_url": "https://router.huggingface.co/v1",
+    "headers": {
+      "X-Title": "Complaint Generator"
+    },
+    "arch_router": {
+      "enabled": true,
+      "model": "katanemo/Arch-Router-1.5B",
+      "context": "Complaint drafting, legal issue spotting, and filing packet generation.",
+      "routes": {
+        "legal_reasoning": "meta-llama/Llama-3.3-70B-Instruct",
+        "drafting": "Qwen/Qwen3-Coder-480B-A35B-Instruct"
+      }
+    }
+  }
+}
+```
+
+The repository's sample [config.llm_router.json](../config.llm_router.json) now includes an `hf-router-auto-legal` backend profile with this pattern pre-configured.
+
 ### OpenAI Backend
 
 Direct OpenAI API integration:

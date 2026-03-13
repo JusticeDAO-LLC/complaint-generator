@@ -8,7 +8,7 @@ The review operator surface also has dedicated app factories for non-legacy depl
 - `applications.create_review_dashboard_app()` mounts only the `/claim-support-review` HTML dashboard.
 - `applications.create_review_surface_app(mediator)` mounts both the dashboard UI and the review/follow-up API routes on one FastAPI app.
 
-The repository also includes `config.review_surface.json` for launching the combined review surface through `run.py`.
+The repository also includes `config.review_surface.json` for launching the combined review surface through `run.py`, and `config.review_surface.huggingface_router.json` for launching that same surface against Hugging Face router/inference by default.
 
 ## Overview
 
@@ -170,6 +170,14 @@ The dedicated review surface can be started without the broader legacy web app:
 python run.py --config config.review_surface.json
 ```
 
+To launch the same review/document surface with Hugging Face router inference as the active backend:
+
+```bash
+python run.py --config config.review_surface.huggingface_router.json
+```
+
+Set `HF_TOKEN` or `HUGGINGFACE_HUB_TOKEN` before starting the app when the selected Hugging Face model requires authentication.
+
 This mode serves:
 
 - `/claim-support-review` for the operator dashboard
@@ -179,6 +187,8 @@ This mode serves:
 - `/api/documents/formal-complaint` for building formal complaint drafts and rendering DOCX/PDF artifacts
 - `/api/documents/download` for downloading generated DOCX/PDF artifacts from the managed output directory
 - `/health` for lightweight liveness and readiness checks on the dedicated review app
+
+The formal complaint endpoint also accepts agentic optimization controls, including `optimization_provider`, `optimization_model_name`, and `optimization_llm_config`, so the browser builder or external callers can route optimization traffic through the same Hugging Face router endpoint when needed.
 
 ### API Endpoints
 

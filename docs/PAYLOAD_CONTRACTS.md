@@ -43,6 +43,64 @@ Metadata semantics:
 - `implementation_status`: Normalized implementation state for the adapter surface, such as `implemented`, `fallback`, `not_implemented`, `pending`, `noop`, `empty`, `error`, or `unavailable`.
 - `degraded_reason`: Import or availability reason when the adapter is running degraded.
 
+## Document Optimization Router Hints
+
+The formal complaint document API accepts provider-specific optimizer settings through `optimization_llm_config`. When using Hugging Face router requests, this can now include an optional `arch_router` block for automatic model selection.
+
+Representative request fragment:
+
+```json
+{
+  "enable_agentic_optimization": true,
+  "optimization_provider": "huggingface_router",
+  "optimization_model_name": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+  "optimization_llm_config": {
+    "base_url": "https://router.huggingface.co/v1",
+    "headers": {
+      "X-Title": "Complaint Generator"
+    },
+    "arch_router": {
+      "enabled": true,
+      "model": "katanemo/Arch-Router-1.5B",
+      "routes": {
+        "legal_reasoning": "meta-llama/Llama-3.3-70B-Instruct",
+        "drafting": "Qwen/Qwen3-Coder-480B-A35B-Instruct"
+      }
+    }
+  }
+}
+```
+
+Representative optimization router metadata fragment:
+
+```json
+{
+  "document_optimization": {
+    "router_status": {
+      "llm_router": "available"
+    },
+    "draft": {
+      "critic": {
+        "effective_provider_name": "openrouter",
+        "effective_model_name": "meta-llama/Llama-3.3-70B-Instruct",
+        "arch_router_status": "selected",
+        "arch_router_selected_route": "legal_reasoning",
+        "arch_router_selected_model": "meta-llama/Llama-3.3-70B-Instruct",
+        "arch_router_model_name": "katanemo/Arch-Router-1.5B"
+      }
+    }
+  }
+}
+```
+
+Semantics:
+
+- `arch_router.routes`: Route-to-model mapping or route objects used by the pre-router.
+- `arch_router_status`: `selected` when Arch-Router chose one of the configured routes, `fallback` when the adapter reverted to the request's original model.
+- `arch_router_selected_route`: Normalized route name returned by Arch-Router.
+- `arch_router_selected_model`: Final model chosen for the actual generation call.
+- `arch_router_model_name`: Routing model used for the pre-selection call.
+
 ## Shared Parse Contract
 
 Uploaded evidence, stored web evidence, and legal authority text now share one normalized parse bundle.
@@ -2378,8 +2436,8 @@ Representative request parameters:
   "enable_agentic_optimization": true,
   "optimization_max_iterations": 2,
   "optimization_target_score": 0.9,
-  "optimization_provider": "openrouter",
-  "optimization_model_name": "anthropic/claude-3.5-sonnet",
+  "optimization_provider": "huggingface_router",
+  "optimization_model_name": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
   "optimization_llm_config": {
     "base_url": "https://router.huggingface.co/v1",
     "headers": {
@@ -2732,6 +2790,27 @@ Representative shape:
     "accepted_iterations": 1,
     "optimized_sections": ["factual_allegations"],
     "artifact_cid": "bafy...",
+    "packet_projection": {
+      "section_presence": {
+        "factual_allegations": true,
+        "claims_for_relief": true,
+        "requested_relief": true
+      },
+      "has_affidavit": true,
+      "has_certificate_of_service": true
+    },
+    "section_history": [
+      {
+        "iteration": 1,
+        "focus_section": "factual_allegations",
+        "accepted": true,
+        "overall_score": 0.91,
+        "selected_support_context": {
+          "focus_section": "factual_allegations",
+          "query": "factual allegations pleading-ready support record"
+        }
+      }
+    ],
     "trace_storage": {
       "status": "available",
       "cid": "bafy...",
@@ -2761,6 +2840,6 @@ Interpretation notes:
 - `drafting_readiness.sections[*].warnings[*].severity` distinguishes soft filing warnings from harder blockers so degraded-mode drafting can remain usable.
 - `review_links.dashboard_url` points to the review dashboard for the current user context, while `review_links.claims[*]` and `review_links.sections[*]` provide claim-specific and section-specific review URLs for non-browser consumers, each paired with normalized `review_intent` metadata.
 - `review_intent` is a top-level server-rendered review focus chosen from the current readiness warnings so the browser can restore the most relevant review destination before the operator clicks a follow-up link.
-- `document_optimization` is present only when agentic optimization is enabled. It records the actor/mediator/critic loop outcome, accepted iteration count, final score, optimized sections, and optional IPFS trace metadata.
+- `document_optimization` is present only when agentic optimization is enabled. It records the actor/mediator/critic loop outcome, accepted iteration count, final score, optimized sections, packet-projection render context, section-level support history, and optional IPFS trace metadata.
 - `artifacts.affidavit_docx`, `artifacts.affidavit_pdf`, and `artifacts.affidavit_txt` are companion affidavit exports emitted when the matching complaint formats are requested; they follow the same artifact schema and download URL rules as the primary complaint files.
 - `artifacts[*].download_url` is added by the document API layer only when the generated file path is inside the managed generated-documents directory.
