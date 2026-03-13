@@ -895,6 +895,7 @@
     </div>
 
     <script>
+        const REVIEW_INTENT_STORAGE_KEY = 'formalComplaintReviewIntent';
         const SECTION_FOCUS_CONFIG = {
             summary_of_facts: {
                 supportKind: 'evidence',
@@ -917,6 +918,79 @@
                 chips: ['Remedy review', 'Follow-up plan'],
             },
         };
+        const sectionFocusState = {
+            sectionKey: null,
+        };
+
+        function getLocalStorage() {
+            try {
+                return window.localStorage;
+            } catch (error) {
+                return null;
+            }
+        }
+
+        function safeJsonParse(value) {
+            if (!value) {
+                return null;
+            }
+            try {
+                return JSON.parse(value);
+            } catch (error) {
+                return null;
+            }
+        }
+
+        function buildReviewIntent(payload = {}) {
+            const claimType = String(payload.claim_type || document.getElementById('claim-type').value || '').trim() || null;
+            const userId = String(payload.user_id || document.getElementById('user-id').value || '').trim() || null;
+            const sectionKey = String(payload.section || sectionFocusState.sectionKey || '').trim() || null;
+            const supportKind = String(payload.follow_up_support_kind || document.getElementById('support-kind').value || '').trim() || null;
+            const params = new URLSearchParams();
+            if (claimType) {
+                params.set('claim_type', claimType);
+            }
+            if (userId) {
+                params.set('user_id', userId);
+            }
+            if (sectionKey) {
+                params.set('section', sectionKey);
+            }
+            const query = params.toString();
+            return {
+                claim_type: claimType,
+                user_id: userId,
+                section: sectionKey,
+                follow_up_support_kind: supportKind,
+                review_url: query ? `/claim-support-review?${query}` : '/claim-support-review',
+            };
+        }
+
+        function persistReviewIntent(payload = {}) {
+            const storage = getLocalStorage();
+            const intent = buildReviewIntent(payload);
+            if (!storage) {
+                return intent;
+            }
+            storage.setItem(REVIEW_INTENT_STORAGE_KEY, JSON.stringify(intent));
+            return intent;
+        }
+
+        function syncReviewIntentUrl(intent) {
+            if (!intent || !intent.review_url || !window.history || !window.history.replaceState) {
+                return;
+            }
+            window.history.replaceState(null, '', intent.review_url);
+        }
+
+        function restoreReviewIntent() {
+            const storage = getLocalStorage();
+            if (!storage) {
+                return null;
+            }
+            const saved = safeJsonParse(storage.getItem(REVIEW_INTENT_STORAGE_KEY));
+            return saved && typeof saved === 'object' ? saved : null;
+        }
 
         function humanizeQueryValue(value) {
             return String(value || '')
@@ -925,6 +999,7 @@
         }
 
         function clearSectionFocus() {
+            sectionFocusState.sectionKey = null;
             document.querySelectorAll('[data-section-focus-target]').forEach((node) => {
                 node.classList.remove('is-section-focus');
             });
@@ -933,12 +1008,163 @@
             chipRow.innerHTML = '';
         }
 
+        function scrollToSectionFocus() {
+            const focusedNode = document.querySelector('[data-section-focus-target].is-section-focus');
+            if (!focusedNode) {
+                return;
+            }
+            focusedNode.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function expandSectionFocusDetails(sectionKey) {
+            if (sectionKey !== 'exhibits') {
+                return;
+            }
+            const focusedNode = document.querySelector('[data-section-focus-target].is-section-focus');
+            if (!focusedNode) {
+                return;
+            }
+            const firstPacketDetails = focusedNode.querySelector('.packet-details');
+            if (firstPacketDetails) {
+                firstPacketDetails.open = true;
+            }
+        }
+
+        function finalizeSectionFocus() {
+            if (!sectionFocusState.sectionKey) {
+                return;
+            }
+            window.requestAnimationFrame(() => {
+                expandSectionFocusDetails(sectionFocusState.sectionKey);
+                scrollToSectionFocus();
+            });
+        }
+
+        function getActiveSectionFocusConfig() {
+            if (!sectionFocusState.sectionKey) {
+                return null;
+            }
+            return SECTION_FOCUS_CONFIG[sectionFocusState.sectionKey] || { supportKind: '', chips: [] };
+        }
+
+        function sortBySectionFocus(items, scoreFn, labelFn) {
+            const activeSectionKey = sectionFocusState.sectionKey;
+            if (!activeSectionKey) {
+                return Array.isArray(items) ? items : [];
+            }
+            return [...(Array.isArray(items) ? items : [])].sort((left, right) => {
+                const scoreDifference = scoreFn(right) - scoreFn(left);
+                if (scoreDifference !== 0) {
+                    return scoreDifference;
+                }
+                return labelFn(left).localeCompare(labelFn(right));
+            });
+        }
+
+        function renderFocusPin(score) {
+            if (!sectionFocusState.sectionKey || score <= 0) {
+                return '';
+            }
+            return '<span class="chip">Pinned for section focus</span>';
+        }
+
+        function scoreElementForSectionFocus(element) {
+            const sectionKey = sectionFocusState.sectionKey;
+            const sectionConfig = getActiveSectionFocusConfig();
+            if (!sectionKey || !element || typeof element !== 'object') {
+                return 0;
+            }
+            const preferredSupportKind = sectionConfig && sectionConfig.supportKind ? sectionConfig.supportKind : '';
+            const linksByKind = element.links_by_kind || {};
+            const supportPackets = Array.isArray(element.support_packets) ? element.support_packets : [];
+            const packetSummary = element.support_packet_summary || {};
+            const authoritySummary = element.authority_treatment_summary || {};
+            let score = 0;
+
+            if (preferredSupportKind && Array.isArray(linksByKind[preferredSupportKind]) && linksByKind[preferredSupportKind].length) {
+                score += 4;
+            }
+            if (preferredSupportKind && supportPackets.some((packet) => packet && packet.support_kind === preferredSupportKind)) {
+                score += 3;
+            }
+            if (sectionKey === 'exhibits' && Number(packetSummary.historical_capture_count || 0) > 0) {
+                score += 4;
+            }
+            if (sectionKey === 'summary_of_facts' && Number(element.fact_count || 0) > 0) {
+                score += 3;
+            }
+            if ((sectionKey === 'claims_for_relief' || sectionKey === 'jurisdiction_and_venue') && Number(authoritySummary.authority_link_count || 0) > 0) {
+                score += 3;
+            }
+            if (Array.isArray(element.missing_support_kinds) && preferredSupportKind && element.missing_support_kinds.includes(preferredSupportKind)) {
+                score += 2;
+            }
+            return score;
+        }
+
+        function scoreTaskForSectionFocus(task) {
+            const sectionKey = sectionFocusState.sectionKey;
+            const sectionConfig = getActiveSectionFocusConfig();
+            if (!sectionKey || !task || typeof task !== 'object') {
+                return 0;
+            }
+            const preferredSupportKind = sectionConfig && sectionConfig.supportKind ? sectionConfig.supportKind : '';
+            const missingKinds = Array.isArray(task.missing_support_kinds) ? task.missing_support_kinds : [];
+            let score = 0;
+
+            if (preferredSupportKind && missingKinds.includes(preferredSupportKind)) {
+                score += 4;
+            }
+            if (preferredSupportKind && String(task.follow_up_focus || '') === preferredSupportKind) {
+                score += 3;
+            }
+            if (sectionKey === 'claims_for_relief' && String(task.recommended_action || '').includes('support')) {
+                score += 2;
+            }
+            if (sectionKey === 'requested_relief' && String(task.status || '') === 'missing') {
+                score += 2;
+            }
+            if ((sectionKey === 'jurisdiction_and_venue' || sectionKey === 'claims_for_relief')
+                && task.authority_search_program_summary
+                && task.authority_search_program_summary.program_count) {
+                score += 2;
+            }
+            if (sectionKey === 'summary_of_facts' && String(task.recommended_action || '') === 'improve_parse_quality') {
+                score += 2;
+            }
+            return score;
+        }
+
+        function scoreHistoryEntryForSectionFocus(entry) {
+            const sectionKey = sectionFocusState.sectionKey;
+            const sectionConfig = getActiveSectionFocusConfig();
+            if (!sectionKey || !entry || typeof entry !== 'object') {
+                return 0;
+            }
+            const preferredSupportKind = sectionConfig && sectionConfig.supportKind ? sectionConfig.supportKind : '';
+            let score = 0;
+            if (preferredSupportKind && String(entry.support_kind || '') === preferredSupportKind) {
+                score += 4;
+            }
+            if (sectionKey === 'exhibits' && String(entry.query_strategy || '').includes('archive')) {
+                score += 3;
+            }
+            if ((sectionKey === 'claims_for_relief' || sectionKey === 'jurisdiction_and_venue') && entry.selected_search_program_type) {
+                score += 2;
+            }
+            if (String(entry.resolution_status || '').startsWith('resolved')) {
+                score += 1;
+            }
+            return score;
+        }
+
         function applySectionFocus(sectionKey) {
             clearSectionFocus();
             if (!sectionKey) {
                 return null;
             }
             const normalizedSectionKey = String(sectionKey || '').trim();
+            sectionFocusState.sectionKey = normalizedSectionKey;
             const sectionConfig = SECTION_FOCUS_CONFIG[normalizedSectionKey] || { supportKind: '', chips: [] };
             document.querySelectorAll('[data-section-focus-target]').forEach((node) => {
                 const targets = String(node.getAttribute('data-section-focus-target') || '')
@@ -1233,17 +1459,24 @@
 
         function applyQueryPrefill() {
             const params = new URLSearchParams(window.location.search || '');
-            const claimType = params.get('claim_type');
-            const userId = params.get('user_id');
-            const section = params.get('section');
+            const storedIntent = restoreReviewIntent() || {};
+            const claimType = params.get('claim_type') || storedIntent.claim_type;
+            const userId = params.get('user_id') || storedIntent.user_id;
+            const section = params.get('section') || storedIntent.section;
             if (claimType) {
                 document.getElementById('claim-type').value = claimType;
             }
             if (userId) {
                 document.getElementById('user-id').value = userId;
             }
+            if (!params.get('section') && storedIntent.follow_up_support_kind) {
+                document.getElementById('support-kind').value = storedIntent.follow_up_support_kind;
+            }
             const sectionConfig = applySectionFocus(section);
             setPrefillContext(section, sectionConfig);
+            const intent = persistReviewIntent({ claim_type: claimType, user_id: userId, section, follow_up_support_kind: document.getElementById('support-kind').value || null });
+            syncReviewIntentUrl(intent);
+            finalizeSectionFocus();
             return Boolean(claimType || userId || section);
         }
 
@@ -1395,7 +1628,13 @@
                 return;
             }
 
-            container.innerHTML = elements.map((element) => {
+            const orderedElements = sortBySectionFocus(
+                elements,
+                scoreElementForSectionFocus,
+                (element) => String(element && (element.element_text || element.element_id || '')),
+            );
+            container.innerHTML = orderedElements.map((element) => {
+                const focusScore = scoreElementForSectionFocus(element);
                 const supportPackets = sortSupportPackets(element.support_packets || []);
                 const archivedPacketCount = supportPackets.filter(
                     (packet) => Boolean(packet?.lineage_summary?.historical_capture),
@@ -1506,6 +1745,7 @@
                             </div>
                             <span class="badge ${element.status}">${element.status || 'unknown'}</span>
                         </div>
+                        ${renderFocusPin(focusScore)}
                         ${missingKinds}
                         ${lineageChips.length ? `<div class="chip-row">${lineageChips.join('')}</div>` : ''}
                         ${authorityChips.length ? `<div class="chip-row">${authorityChips.join('')}</div>` : ''}
@@ -1526,7 +1766,14 @@
                 container.innerHTML = `<div class="task-card">${summaryText}</div>`;
                 return;
             }
-            container.innerHTML = tasks.map((task) => `
+            const orderedTasks = sortBySectionFocus(
+                tasks,
+                scoreTaskForSectionFocus,
+                (task) => String(task && (task.claim_element || task.claim_element_id || '')),
+            );
+            container.innerHTML = orderedTasks.map((task) => {
+                const focusScore = scoreTaskForSectionFocus(task);
+                return `
                 <article class="task-card">
                     <div class="row-head">
                         <div>
@@ -1536,6 +1783,7 @@
                         <span class="badge ${task.status || 'missing'}">${task.status || 'task'}</span>
                     </div>
                     <div class="chip-row">
+                        ${renderFocusPin(focusScore)}
                         ${(task.missing_support_kinds || []).map((kind) => `<span class="chip">Need ${kind}</span>`).join('')}
                         ${task.follow_up_focus ? `<span class="chip">focus ${task.follow_up_focus}</span>` : ''}
                         ${task.query_strategy ? `<span class="chip">strategy ${task.query_strategy}</span>` : ''}
@@ -1557,7 +1805,8 @@
                         >Load Into Resolution Form</button>
                     </div>
                 </article>
-            `).join('');
+            `;
+            }).join('');
         }
 
         function renderHistory(historyEntries, historySummary) {
@@ -1587,14 +1836,20 @@
                 ? summaryLabels.map((label) => `<span class="chip">${label}</span>`).join('')
                 : '<span class="chip">No history summary available.</span>';
 
-            const entries = historyEntries || [];
+            const entries = sortBySectionFocus(
+                historyEntries || [],
+                scoreHistoryEntryForSectionFocus,
+                (entry) => String(entry && (entry.claim_element_text || entry.claim_element_id || entry.timestamp || '')),
+            );
             if (!entries.length) {
                 historyList.innerHTML = '<div class="history-card">No follow-up history returned.</div>';
                 return;
             }
 
             historyList.innerHTML = entries.map((entry) => {
+                const focusScore = scoreHistoryEntryForSectionFocus(entry);
                 const chips = [];
+                const focusPin = renderFocusPin(focusScore);
                 if (entry.support_kind) chips.push(`<span class="chip">${entry.support_kind}</span>`);
                 if (entry.status) chips.push(`<span class="chip">${entry.status}</span>`);
                 if (entry.query_strategy) chips.push(`<span class="chip">${entry.query_strategy}</span>`);
@@ -1611,7 +1866,7 @@
                                 <div class="meta">${entry.timestamp || 'no timestamp'} · ${entry.execution_mode || 'unknown mode'}</div>
                             </div>
                         </div>
-                        <div class="chip-row">${chips.join('')}</div>
+                        <div class="chip-row">${focusPin}${chips.join('')}</div>
                         <div class="button-row" style="margin-top: 12px;">
                             <button
                                 class="button-tertiary prefill-resolution-button"
@@ -1661,6 +1916,7 @@
             renderTasks(plan, planSummary);
             renderHistory(historyEntries, historySummary);
             document.getElementById('raw-output').textContent = JSON.stringify(payload, null, 2);
+            finalizeSectionFocus();
         }
 
         async function loadReview() {
@@ -1668,6 +1924,7 @@
                 ...baseRequest(),
                 execute_follow_up: false,
             };
+            syncReviewIntentUrl(persistReviewIntent(payload));
             clearExecutionFeedback();
             clearResolutionFeedback();
             setStatus('Loading review payload...');
@@ -1686,6 +1943,7 @@
                 follow_up_force: document.getElementById('force-execution').checked,
                 include_post_execution_review: document.getElementById('post-review').checked,
             };
+            syncReviewIntentUrl(persistReviewIntent(payload));
             clearExecutionFeedback();
             clearResolutionFeedback();
             setStatus('Executing follow-up tasks...');
@@ -1703,6 +1961,7 @@
 
         async function resolveManualReview() {
             const payload = buildResolutionRequest();
+            syncReviewIntentUrl(persistReviewIntent(payload));
             clearExecutionFeedback();
             setStatus('Recording manual review resolution...');
             try {

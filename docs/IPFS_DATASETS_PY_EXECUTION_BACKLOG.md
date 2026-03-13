@@ -65,7 +65,7 @@ These are the main execution targets:
 - `integrations/ipfs_datasets/graphs.py` is still primarily fallback extraction and stub persistence
 - `integrations/ipfs_datasets/graphrag.py` is not yet used in support scoring or denoiser planning
 - `integrations/ipfs_datasets/logic.py` still returns `not_implemented` for proof workflows
-- the shared fact registry exists for evidence and authorities but does not yet provide one durable corpus service across archived pages, graph artifacts, and future predicates
+- the shared fact registry now also covers archived web evidence through the shared persisted evidence fact path, but it does not yet provide one fully explicit durable corpus service across graph artifacts and future predicates
 - no graph-store persistence or query plane exists for multi-artifact support tracing
 - review payloads and a dedicated dashboard now exist, but there is still no full contradiction, provenance, timeline, and support-path review workspace
 
@@ -205,6 +205,12 @@ Tasks:
 - deepen the existing extracted-fact persistence so archived pages, authorities, and uploaded evidence share one durable corpus contract
 - link facts to claim elements, artifacts, authorities, and future graph or logic outputs
 - store fact provenance at the chunk or passage level when available and preserve lineage into review payloads
+
+Current state:
+
+- evidence, authority, and archived web evidence facts already flow through one persisted fact substrate in current mediator-backed paths
+- archived web evidence now has focused assertions proving that the shared evidence fact API preserves explicit artifact, corpus, and parse-lineage fields for archived captures
+- remaining backlog work is to make that contract fully durable across future graph artifacts, predicates, and other higher-level consumers
 
 Acceptance criteria:
 

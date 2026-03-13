@@ -136,22 +136,42 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
 
     result = builder.build_package(
         district="Northern District of California",
+        county="San Francisco County",
         plaintiff_names=["Jane Doe"],
         defendant_names=["Acme Corporation"],
         case_number="25-cv-00001",
+        lead_case_number="24-cv-00077",
+        related_case_number="24-cv-00110",
+        assigned_judge="Hon. Maria Valdez",
+        courtroom="Courtroom 4A",
         signer_name="Jane Doe, Esq.",
         signer_title="Counsel for Plaintiff",
         signer_firm="Doe Legal Advocacy PLLC",
         signer_bar_number="CA-54321",
         signer_contact="123 Main Street\nSan Francisco, CA 94105",
+        additional_signers=[
+            {
+                "name": "John Roe, Esq.",
+                "title": "Co-Counsel for Plaintiff",
+                "firm": "Roe Civil Rights Group",
+                "bar_number": "CA-67890",
+                "contact": "456 Side Street\nOakland, CA 94607",
+            }
+        ],
         declarant_name="Jane Doe",
         service_method="CM/ECF",
         service_recipients=["Registered Agent for Acme Corporation", "Defense Counsel"],
+        service_recipient_details=[
+            {"recipient": "Defense Counsel", "method": "Email", "address": "counsel@example.com"},
+            {"recipient": "Registered Agent for Acme Corporation", "method": "Certified Mail", "address": "123 Main Street"},
+        ],
+        jury_demand=True,
+        jury_demand_text="Plaintiff demands a trial by jury on all issues so triable.",
         signature_date="2026-03-12",
         verification_date="2026-03-12",
         service_date="2026-03-13",
         output_dir=str(tmp_path),
-        output_formats=["docx", "pdf", "txt"],
+        output_formats=["docx", "pdf", "txt", "checklist"],
     )
 
     assert result["draft"]["court_header"] == (
@@ -159,6 +179,12 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
     )
     assert result["draft"]["case_caption"]["plaintiffs"] == ["Jane Doe"]
     assert result["draft"]["case_caption"]["defendants"] == ["Acme Corporation"]
+    assert result["draft"]["case_caption"]["county"] == "SAN FRANCISCO COUNTY"
+    assert result["draft"]["case_caption"]["lead_case_number"] == "24-cv-00077"
+    assert result["draft"]["case_caption"]["related_case_number"] == "24-cv-00110"
+    assert result["draft"]["case_caption"]["assigned_judge"] == "Hon. Maria Valdez"
+    assert result["draft"]["case_caption"]["courtroom"] == "Courtroom 4A"
+    assert result["draft"]["case_caption"]["jury_demand_notice"] == "JURY TRIAL DEMANDED"
     assert "subject-matter jurisdiction" in result["draft"]["jurisdiction_statement"].lower()
     assert "venue is proper" in result["draft"]["venue_statement"].lower()
     assert len(result["draft"]["claims_for_relief"]) == 2
@@ -189,13 +215,21 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
     assert result["draft"]["signature_block"]["bar_number"] == "CA-54321"
     assert result["draft"]["signature_block"]["contact"] == "123 Main Street\nSan Francisco, CA 94105"
     assert result["draft"]["signature_block"]["dated"] == "Dated: 2026-03-12"
+    assert result["draft"]["signature_block"]["additional_signers"][0]["signature_line"] == "/s/ John Roe, Esq."
+    assert result["draft"]["signature_block"]["additional_signers"][0]["firm"] == "Roe Civil Rights Group"
     assert result["draft"]["verification"]["signature_line"] == "/s/ Jane Doe"
     assert result["draft"]["verification"]["text"].startswith("I, Jane Doe, declare under penalty of perjury")
     assert result["draft"]["verification"]["dated"] == "Executed on: 2026-03-12"
     assert result["draft"]["certificate_of_service"]["recipients"] == ["Registered Agent for Acme Corporation", "Defense Counsel"]
+    assert result["draft"]["certificate_of_service"]["recipient_details"][0]["recipient"] == "Defense Counsel"
+    assert "Defense Counsel | Method: Email | Address: counsel@example.com" in result["draft"]["certificate_of_service"]["detail_lines"]
     assert result["draft"]["certificate_of_service"]["dated"] == "Service date: 2026-03-13"
-    assert "CM/ECF" in result["draft"]["certificate_of_service"]["text"]
-    assert "Defense Counsel" in result["draft"]["certificate_of_service"]["text"]
+    assert "following recipients" in result["draft"]["certificate_of_service"]["text"]
+    assert result["draft"]["jury_demand"]["title"] == "Jury Demand"
+    assert result["draft"]["jury_demand"]["text"] == "Plaintiff demands a trial by jury on all issues so triable."
+    assert "JURY DEMAND" in result["draft"]["draft_text"]
+    assert "/s/ John Roe, Esq." in result["draft"]["draft_text"]
+    assert "Roe Civil Rights Group" in result["draft"]["draft_text"]
     assert result["drafting_readiness"]["status"] == "warning"
     assert result["draft"]["drafting_readiness"]["status"] == "warning"
     assert result["filing_checklist"] == result["draft"]["filing_checklist"]
@@ -216,12 +250,54 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
     docx_path = Path(result["artifacts"]["docx"]["path"])
     pdf_path = Path(result["artifacts"]["pdf"]["path"])
     txt_path = Path(result["artifacts"]["txt"]["path"])
+    checklist_path = Path(result["artifacts"]["checklist"]["path"])
     assert docx_path.exists()
     assert pdf_path.exists()
     assert txt_path.exists()
+    assert checklist_path.exists()
     assert docx_path.read_bytes()[:2] == b"PK"
     assert pdf_path.read_bytes()[:4] == b"%PDF"
     assert "JURISDICTION AND VENUE" in txt_path.read_text(encoding="utf-8")
+    checklist_text = checklist_path.read_text(encoding="utf-8")
+    assert "PRE-FILING CHECKLIST" in checklist_text
+    assert "[WARNING] CLAIM:" in checklist_text or "[WARNING] SECTION:" in checklist_text
+    assert "Review URL: /claim-support-review" in checklist_text
+
+
+def test_formal_complaint_document_builder_uses_state_court_opening_language(tmp_path: Path):
+    mediator = _build_mediator()
+    mediator.state.legal_classification["jurisdiction"] = "state"
+    mediator.state.legal_classification["legal_areas"] = ["employment law", "state civil rights law"]
+    mediator.state.applicable_statutes = [
+        {
+            "citation": "Cal. Gov. Code § 12940",
+            "title": "California Fair Employment and Housing Act",
+            "relevance": "Prohibits discrimination and retaliation in employment.",
+        }
+    ]
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    result = builder.build_package(
+        court_name="Superior Court of California",
+        district="County of Los Angeles",
+        county="Los Angeles County",
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Acme Corporation"],
+        output_dir=str(tmp_path),
+        output_formats=["txt"],
+    )
+
+    assert "state court" in result["draft"]["nature_of_action"][0].lower()
+    assert "governing state law" in result["draft"]["nature_of_action"][0].lower()
+    assert "governing state law" in result["draft"]["jurisdiction_statement"].lower()
+    assert "within this court's authority" in result["draft"]["jurisdiction_statement"].lower()
+    assert result["draft"]["court_header"] == "IN THE SUPERIOR COURT OF CALIFORNIA FOR THE COUNTY OF LOS ANGELES COUNTY"
+    assert result["draft"]["venue_statement"] == (
+        "Venue is proper in this Court because a substantial part of the events or omissions giving rise "
+        "to these claims occurred in Los Angeles County."
+    )
+    assert "NATURE OF THE ACTION" in result["draft"]["draft_text"]
+    assert "JURISDICTION AND VENUE" in result["draft"]["draft_text"]
 
 
 def test_review_api_registers_formal_complaint_document_route():
@@ -232,6 +308,9 @@ def test_review_api_registers_formal_complaint_document_route():
     try:
         mediator.build_formal_complaint_document_package.return_value = {
             "draft": {"title": "Jane Doe v. Acme Corporation"},
+            "filing_checklist": [
+                {"scope": "claim", "key": "retaliation", "title": "Retaliation", "status": "ready", "summary": "Retaliation is ready for filing review."}
+            ],
             "drafting_readiness": {
                 "status": "ready",
                 "sections": {},
@@ -250,16 +329,36 @@ def test_review_api_registers_formal_complaint_document_route():
             "/api/documents/formal-complaint",
             json={
                 "district": "District of Columbia",
+                "county": "Washington County",
                 "plaintiff_names": ["Jane Doe"],
                 "defendant_names": ["Acme Corporation"],
+                "lead_case_number": "24-cv-00077",
+                "related_case_number": "24-cv-00110",
+                "assigned_judge": "Hon. Maria Valdez",
+                "courtroom": "Courtroom 4A",
                 "signer_name": "Jane Doe",
                 "signer_title": "Counsel for Plaintiff",
                 "signer_firm": "Doe Legal Advocacy PLLC",
                 "signer_bar_number": "DC-10101",
                 "signer_contact": "123 Main Street\nWashington, DC 20001",
+                "additional_signers": [
+                    {
+                        "name": "John Roe, Esq.",
+                        "title": "Co-Counsel for Plaintiff",
+                        "firm": "Roe Civil Rights Group",
+                        "bar_number": "DC-20202",
+                        "contact": "456 Side Street\nWashington, DC 20002",
+                    }
+                ],
                 "declarant_name": "Jane Doe",
                 "service_method": "CM/ECF",
                 "service_recipients": ["Registered Agent for Acme Corporation", "Defense Counsel"],
+                "service_recipient_details": [
+                    {"recipient": "Defense Counsel", "method": "Email", "address": "counsel@example.com"},
+                    {"recipient": "Registered Agent for Acme Corporation", "method": "Certified Mail", "address": "123 Main Street"},
+                ],
+                "jury_demand": True,
+                "jury_demand_text": "Plaintiff demands a trial by jury on all issues so triable.",
                 "signature_date": "2026-03-12",
                 "verification_date": "2026-03-12",
                 "service_date": "2026-03-13",
@@ -274,6 +373,11 @@ def test_review_api_registers_formal_complaint_document_route():
         assert response.json()["review_links"]["dashboard_url"] == "/claim-support-review"
         assert response.json()["review_links"]["claims"][0]["review_url"] == "/claim-support-review?claim_type=retaliation"
         assert response.json()["review_links"]["sections"] == []
+        assert response.json()["filing_checklist"][0]["review_url"] == "/claim-support-review?claim_type=retaliation"
+        assert response.json()["filing_checklist"][0]["review_context"] == {
+            "user_id": None,
+            "claim_type": "retaliation",
+        }
         assert response.json()["drafting_readiness"]["claims"][0]["review_context"] == {
             "user_id": None,
             "claim_type": "retaliation",
@@ -282,21 +386,41 @@ def test_review_api_registers_formal_complaint_document_route():
             user_id=None,
             court_name="United States District Court",
             district="District of Columbia",
+            county="Washington County",
             division=None,
             court_header_override=None,
             case_number=None,
+            lead_case_number="24-cv-00077",
+            related_case_number="24-cv-00110",
+            assigned_judge="Hon. Maria Valdez",
+            courtroom="Courtroom 4A",
             title_override=None,
             plaintiff_names=["Jane Doe"],
             defendant_names=["Acme Corporation"],
             requested_relief=[],
+            jury_demand=True,
+            jury_demand_text="Plaintiff demands a trial by jury on all issues so triable.",
             signer_name="Jane Doe",
             signer_title="Counsel for Plaintiff",
             signer_firm="Doe Legal Advocacy PLLC",
             signer_bar_number="DC-10101",
             signer_contact="123 Main Street\nWashington, DC 20001",
+            additional_signers=[
+                {
+                    "name": "John Roe, Esq.",
+                    "title": "Co-Counsel for Plaintiff",
+                    "firm": "Roe Civil Rights Group",
+                    "bar_number": "DC-20202",
+                    "contact": "456 Side Street\nWashington, DC 20002",
+                }
+            ],
             declarant_name="Jane Doe",
             service_method="CM/ECF",
             service_recipients=["Registered Agent for Acme Corporation", "Defense Counsel"],
+            service_recipient_details=[
+                {"recipient": "Defense Counsel", "method": "Email", "address": "counsel@example.com"},
+                {"recipient": "Registered Agent for Acme Corporation", "method": "Certified Mail", "address": "123 Main Street"},
+            ],
             signature_date="2026-03-12",
             verification_date="2026-03-12",
             service_date="2026-03-13",
@@ -315,6 +439,10 @@ def test_review_api_multiclaim_section_links_include_targeted_claim_urls():
     try:
         mediator.build_formal_complaint_document_package.return_value = {
             "draft": {"title": "Jane Doe v. Acme Corporation"},
+            "filing_checklist": [
+                {"scope": "section", "key": "claims_for_relief", "title": "Claims for Relief", "status": "warning", "summary": "Review Claims for Relief before filing."},
+                {"scope": "claim", "key": "retaliation", "title": "Retaliation", "status": "warning", "summary": "Review Retaliation before filing."},
+            ],
             "drafting_readiness": {
                 "status": "warning",
                 "sections": {
@@ -363,6 +491,8 @@ def test_review_api_multiclaim_section_links_include_targeted_claim_urls():
             "section": "claims_for_relief",
             "claim_type": None,
         }
+        assert payload["filing_checklist"][0]["review_url"] == "/claim-support-review?section=claims_for_relief"
+        assert payload["filing_checklist"][1]["review_url"] == "/claim-support-review?claim_type=retaliation"
         assert payload["drafting_readiness"]["sections"]["claims_for_relief"]["claim_links"] == [
             {
                 "claim_type": "employment discrimination",
@@ -408,6 +538,12 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
                     "plaintiffs": ["Jane Doe"],
                     "defendants": ["Acme Corporation"],
                     "case_number": "25-cv-00001",
+                    "county": "WASHINGTON COUNTY",
+                    "lead_case_number": "24-cv-00077",
+                    "related_case_number": "24-cv-00110",
+                    "assigned_judge": "Hon. Maria Valdez",
+                    "courtroom": "Courtroom 4A",
+                    "jury_demand_notice": "JURY TRIAL DEMANDED",
                     "document_title": "COMPLAINT",
                 },
                 "claims_for_relief": [{"count_title": "Count I - Retaliation"}],
@@ -474,8 +610,10 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert 'Pleading Text' in page_html
         assert 'Copy Pleading Text' in page_html
         assert 'value="txt"' in page_html
+        assert 'value="checklist"' in page_html
         assert 'Drafting Readiness' in page_html
         assert 'Pre-Filing Checklist' in page_html
+        assert 'Open Checklist Review' in page_html
         assert 'Section Readiness' in page_html
         assert 'Claim Readiness' in page_html
         assert 'Source Drilldown' in page_html
@@ -491,7 +629,12 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
             '/api/documents/formal-complaint',
             json={
                 'district': 'District of Columbia',
+                'county': 'Washington County',
                 'case_number': '25-cv-00001',
+                'lead_case_number': '24-cv-00077',
+                'related_case_number': '24-cv-00110',
+                'assigned_judge': 'Hon. Maria Valdez',
+                'courtroom': 'Courtroom 4A',
                 'plaintiff_names': ['Jane Doe'],
                 'defendant_names': ['Acme Corporation'],
                 'output_formats': ['docx'],
@@ -502,6 +645,12 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         payload = api_response.json()
         assert payload['draft']['title'] == 'Jane Doe v. Acme Corporation'
         assert payload['draft']['case_caption']['case_number'] == '25-cv-00001'
+        assert payload['draft']['case_caption']['county'] == 'WASHINGTON COUNTY'
+        assert payload['draft']['case_caption']['lead_case_number'] == '24-cv-00077'
+        assert payload['draft']['case_caption']['related_case_number'] == '24-cv-00110'
+        assert payload['draft']['case_caption']['assigned_judge'] == 'Hon. Maria Valdez'
+        assert payload['draft']['case_caption']['courtroom'] == 'Courtroom 4A'
+        assert payload['draft']['case_caption']['jury_demand_notice'] == 'JURY TRIAL DEMANDED'
         assert payload['drafting_readiness']['status'] == 'warning'
         assert payload['review_links']['dashboard_url'] == '/claim-support-review'
         assert payload['review_links']['claims'][0]['review_url'] == '/claim-support-review?claim_type=retaliation'

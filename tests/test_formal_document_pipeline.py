@@ -125,15 +125,35 @@ def test_generate_formal_complaint_builds_court_style_sections():
 
     result = mediator.generate_formal_complaint(
         district='New Mexico',
+        county='Santa Fe County',
         case_number='1:26-cv-12345',
+        lead_case_number='1:25-cv-00077',
+        related_case_number='1:25-cv-00091',
+        assigned_judge='Hon. Maria Valdez',
+        courtroom='Courtroom 4A',
         signer_name='Jane Doe, Esq.',
         signer_title='Counsel for Plaintiff',
         signer_firm='Doe Legal Advocacy PLLC',
         signer_bar_number='NM-12345',
         signer_contact='123 Main Street\nSanta Fe, NM 87501',
+        additional_signers=[
+            {
+                'name': 'John Roe, Esq.',
+                'title': 'Co-Counsel for Plaintiff',
+                'firm': 'Roe Civil Rights Group',
+                'bar_number': 'NM-54321',
+                'contact': '456 Side Street\nSanta Fe, NM 87505',
+            }
+        ],
         declarant_name='Jane Doe',
         service_method='CM/ECF',
         service_recipients=['Registered Agent for Acme Corporation', 'Defense Counsel'],
+        service_recipient_details=[
+            {'recipient': 'Defense Counsel', 'method': 'Email', 'address': 'counsel@example.com'},
+            {'recipient': 'Registered Agent for Acme Corporation', 'method': 'Certified Mail', 'address': '123 Main Street'},
+        ],
+        jury_demand=True,
+        jury_demand_text='Plaintiff demands a trial by jury on all issues so triable.',
         signature_date='2026-03-12',
         verification_date='2026-03-12',
         service_date='2026-03-13',
@@ -142,6 +162,12 @@ def test_generate_formal_complaint_builds_court_style_sections():
     complaint = result['formal_complaint']
     assert complaint['court_header'] == 'IN THE UNITED STATES DISTRICT COURT FOR THE DISTRICT OF NEW MEXICO'
     assert complaint['caption']['case_number'] == '1:26-cv-12345'
+    assert complaint['caption']['county_line'] == 'SANTA FE COUNTY'
+    assert complaint['caption']['lead_case_number'] == '1:25-cv-00077'
+    assert complaint['caption']['related_case_number'] == '1:25-cv-00091'
+    assert complaint['caption']['assigned_judge'] == 'Hon. Maria Valdez'
+    assert complaint['caption']['courtroom'] == 'Courtroom 4A'
+    assert complaint['caption']['jury_demand_notice'] == 'JURY TRIAL DEMANDED'
     assert complaint['nature_of_action']
     assert complaint['legal_claims'][0]['title'] == 'COUNT I - RETALIATION'
     assert complaint['legal_claims'][0]['legal_standard_elements'][0]['citation'] == '42 U.S.C. § 2000e-3(a)'
@@ -156,20 +182,37 @@ def test_generate_formal_complaint_builds_court_style_sections():
     assert complaint['signature_block']['bar_number'] == 'NM-12345'
     assert complaint['signature_block']['contact'] == '123 Main Street\nSanta Fe, NM 87501'
     assert complaint['signature_block']['dated'] == 'Dated: 2026-03-12'
+    assert complaint['signature_block']['additional_signers'][0]['signature_line'] == '/s/ John Roe, Esq.'
+    assert complaint['signature_block']['additional_signers'][0]['firm'] == 'Roe Civil Rights Group'
     assert complaint['verification']['signature_line'] == '/s/ Jane Doe'
     assert complaint['verification']['text'].startswith('I, Jane Doe, declare under penalty of perjury')
     assert complaint['verification']['dated'] == 'Executed on: 2026-03-12'
     assert complaint['certificate_of_service']['recipients'] == ['Registered Agent for Acme Corporation', 'Defense Counsel']
+    assert complaint['certificate_of_service']['recipient_details'][0]['recipient'] == 'Defense Counsel'
+    assert complaint['certificate_of_service']['recipient_details'][0]['method'] == 'Email'
+    assert 'Defense Counsel | Method: Email | Address: counsel@example.com' in complaint['certificate_of_service']['detail_lines']
     assert complaint['certificate_of_service']['dated'] == 'Service date: 2026-03-13'
-    assert 'CM/ECF' in complaint['certificate_of_service']['text']
-    assert 'Registered Agent for Acme Corporation' in complaint['certificate_of_service']['text']
+    assert 'following recipients' in complaint['certificate_of_service']['text']
+    assert complaint['jury_demand']['title'] == 'Jury Demand'
+    assert complaint['jury_demand']['text'] == 'Plaintiff demands a trial by jury on all issues so triable.'
     assert 'IN THE UNITED STATES DISTRICT COURT FOR THE DISTRICT OF NEW MEXICO' in result['draft_text']
+    assert 'Assigned to: Hon. Maria Valdez' in result['draft_text']
+    assert 'Lead Case No.: 1:25-cv-00077' in result['draft_text']
+    assert 'Related Case No.: 1:25-cv-00091' in result['draft_text']
+    assert 'Courtroom: Courtroom 4A' in result['draft_text']
+    assert 'JURY TRIAL DEMANDED' in result['draft_text']
     assert 'VERIFICATION' in result['draft_text']
     assert 'CERTIFICATE OF SERVICE' in result['draft_text']
     assert '/s/ Jane Doe, Esq.' in result['draft_text']
     assert 'Doe Legal Advocacy PLLC' in result['draft_text']
+    assert '/s/ John Roe, Esq.' in result['draft_text']
+    assert 'Roe Civil Rights Group' in result['draft_text']
+    assert 'Bar No. NM-54321' in result['draft_text']
     assert 'Bar No. NM-12345' in result['draft_text']
+    assert 'JURY DEMAND' in result['draft_text']
+    assert 'Plaintiff demands a trial by jury on all issues so triable.' in result['draft_text']
     assert '/s/ Jane Doe' in result['draft_text']
+    assert 'Defense Counsel | Method: Email | Address: counsel@example.com' in result['draft_text']
     assert 'Dated: 2026-03-12' in result['draft_text']
     assert 'Defense Counsel' in result['draft_text']
     assert 'Service date: 2026-03-13' in result['draft_text']

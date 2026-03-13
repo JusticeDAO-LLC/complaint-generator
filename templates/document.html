@@ -744,7 +744,7 @@
             <aside class="hero-card hero-metrics">
                 <div class="metric">
                     <span class="metric-label">Output</span>
-                    <span class="metric-value">DOCX + PDF</span>
+                    <span class="metric-value">DOCX + PDF + Checklist</span>
                 </div>
                 <div class="metric">
                     <span class="metric-label">Source</span>
@@ -786,8 +786,38 @@
                             <input id="division" name="division" type="text" placeholder="San Francisco Division">
                         </div>
                         <div>
+                            <label for="county">County</label>
+                            <input id="county" name="county" type="text" placeholder="Los Angeles County">
+                        </div>
+                    </div>
+
+                    <div class="field-row">
+                        <div>
                             <label for="caseNumber">Case Number</label>
                             <input id="caseNumber" name="caseNumber" type="text" placeholder="25-cv-00001">
+                        </div>
+                        <div>
+                            <label for="leadCaseNumber">Lead Case Number</label>
+                            <input id="leadCaseNumber" name="leadCaseNumber" type="text" placeholder="24-cv-00077">
+                        </div>
+                    </div>
+
+                    <div class="field-row">
+                        <div>
+                            <label for="relatedCaseNumber">Related Case Number</label>
+                            <input id="relatedCaseNumber" name="relatedCaseNumber" type="text" placeholder="24-cv-00110">
+                        </div>
+                        <div></div>
+                    </div>
+
+                    <div class="field-row">
+                        <div>
+                            <label for="assignedJudge">Assigned Judge</label>
+                            <input id="assignedJudge" name="assignedJudge" type="text" placeholder="Hon. Jane Smith">
+                        </div>
+                        <div>
+                            <label for="courtroom">Courtroom</label>
+                            <input id="courtroom" name="courtroom" type="text" placeholder="Courtroom 12B">
                         </div>
                     </div>
 
@@ -815,6 +845,15 @@
                     <div>
                         <label for="requestedRelief">Requested Relief Overrides</label>
                         <textarea id="requestedRelief" name="requestedRelief" placeholder="One relief item per line"></textarea>
+                    </div>
+
+                    <div class="checkbox-row">
+                        <label class="check-pill"><input id="juryDemand" name="juryDemand" type="checkbox"> Demand Jury Trial</label>
+                    </div>
+
+                    <div>
+                        <label for="juryDemandText">Jury Demand Text</label>
+                        <textarea id="juryDemandText" name="juryDemandText" placeholder="Plaintiff demands a trial by jury on all issues so triable."></textarea>
                     </div>
 
                     <div class="field-row">
@@ -845,6 +884,11 @@
                     </div>
 
                     <div>
+                        <label for="additionalSigners">Additional Signature Entries</label>
+                        <textarea id="additionalSigners" name="additionalSigners" placeholder="Name | Title | Firm | Bar Number | Contact&#10;John Roe, Esq. | Co-Counsel for Plaintiff | Roe Civil Rights Group | NM-54321 | john.roe@example.com"></textarea>
+                    </div>
+
+                    <div>
                         <label for="declarantName">Verification Declarant</label>
                         <input id="declarantName" name="declarantName" type="text" placeholder="Jane Doe">
                     </div>
@@ -857,6 +901,11 @@
                     <div>
                         <label for="serviceRecipients">Service Recipients</label>
                         <textarea id="serviceRecipients" name="serviceRecipients" placeholder="One recipient per line"></textarea>
+                    </div>
+
+                    <div>
+                        <label for="serviceRecipientDetails">Detailed Service Entries</label>
+                        <textarea id="serviceRecipientDetails" name="serviceRecipientDetails" placeholder="Recipient | Method | Address or Notes&#10;Defense Counsel | Email | counsel@example.com&#10;Registered Agent for Acme Corporation | Certified Mail | 123 Main Street"></textarea>
                     </div>
 
                     <div class="field-row">
@@ -881,6 +930,7 @@
                             <label class="check-pill"><input type="checkbox" name="outputFormat" value="docx" checked> DOCX</label>
                             <label class="check-pill"><input type="checkbox" name="outputFormat" value="pdf" checked> PDF</label>
                             <label class="check-pill"><input type="checkbox" name="outputFormat" value="txt"> TXT</label>
+                            <label class="check-pill"><input type="checkbox" name="outputFormat" value="checklist"> Checklist</label>
                         </div>
                     </div>
 
@@ -919,9 +969,11 @@
     <script>
         const DRAFT_STORAGE_KEY = 'formalComplaintBuilderState';
         const PREVIEW_STORAGE_KEY = 'formalComplaintBuilderPreview';
+        const REVIEW_INTENT_STORAGE_KEY = 'formalComplaintReviewIntent';
         const state = {
             userId: null,
             generatedPayload: null,
+            reviewIntent: null,
         };
 
         function showBox(id, message) {
@@ -956,6 +1008,65 @@
                 .filter(Boolean);
         }
 
+        function parseServiceRecipientDetails(value) {
+            return splitLines(value).map((line) => {
+                const parts = line.split('|').map((part) => part.trim()).filter(Boolean);
+                if (!parts.length) {
+                    return null;
+                }
+                const [recipient, method, address, ...notesParts] = parts;
+                const detail = {
+                    recipient: recipient || null,
+                    method: method || null,
+                    address: address || null,
+                    notes: notesParts.length ? notesParts.join(' | ') : null,
+                };
+                return Object.values(detail).some(Boolean) ? detail : null;
+            }).filter(Boolean);
+        }
+
+        function parseAdditionalSigners(value) {
+            return splitLines(value).map((line) => {
+                const parts = line.split('|').map((part) => part.trim());
+                if (!parts.some(Boolean)) {
+                    return null;
+                }
+                const [name, title, firm, barNumber, ...contactParts] = parts;
+                const detail = {
+                    name: name || null,
+                    title: title || null,
+                    firm: firm || null,
+                    bar_number: barNumber || null,
+                    contact: contactParts.length ? contactParts.join(' | ') : null,
+                };
+                return Object.values(detail).some(Boolean) ? detail : null;
+            }).filter(Boolean);
+        }
+
+        function formatAdditionalSignerLines(signers) {
+            const values = Array.isArray(signers) ? signers.filter((signer) => signer && typeof signer === 'object') : [];
+            return values.flatMap((signer) => {
+                const lines = [''];
+                if (signer.signature_line) {
+                    lines.push(signer.signature_line);
+                }
+                lines.push(signer.name || 'Additional Counsel');
+                if (signer.title) {
+                    lines.push(signer.title);
+                }
+                if (signer.firm) {
+                    lines.push(signer.firm);
+                }
+                if (signer.bar_number) {
+                    lines.push(`Bar No. ${signer.bar_number}`);
+                }
+                if (signer.contact) {
+                    lines.push(signer.contact);
+                }
+                return lines;
+            });
+        }
+
         function safeJsonParse(value) {
             if (!value) {
                 return null;
@@ -976,6 +1087,53 @@
             } catch (error) {
                 return null;
             }
+        }
+
+        function normalizeReviewIntent(value) {
+            if (!value || typeof value !== 'object') {
+                return null;
+            }
+            const reviewUrl = String(value.review_url || value.reviewUrl || '').trim();
+            if (!reviewUrl) {
+                return null;
+            }
+            const parsedUrl = new URL(reviewUrl, window.location.origin);
+            const claimType = String(value.claim_type || value.claimType || parsedUrl.searchParams.get('claim_type') || '').trim() || null;
+            const sectionKey = String(value.section || value.section_key || value.sectionKey || parsedUrl.searchParams.get('section') || '').trim() || null;
+            const userId = String(value.user_id || value.userId || parsedUrl.searchParams.get('user_id') || '').trim() || null;
+            return {
+                review_url: `${parsedUrl.pathname}${parsedUrl.search}`,
+                claim_type: claimType,
+                section: sectionKey,
+                user_id: userId,
+            };
+        }
+
+        function persistReviewIntent(intent) {
+            const storage = getLocalStorage();
+            const normalized = normalizeReviewIntent(intent);
+            state.reviewIntent = normalized;
+            if (!storage) {
+                return;
+            }
+            if (!normalized) {
+                storage.removeItem(REVIEW_INTENT_STORAGE_KEY);
+                return;
+            }
+            storage.setItem(REVIEW_INTENT_STORAGE_KEY, JSON.stringify(normalized));
+        }
+
+        function restoreReviewIntent() {
+            const storage = getLocalStorage();
+            if (!storage) {
+                return false;
+            }
+            const saved = normalizeReviewIntent(safeJsonParse(storage.getItem(REVIEW_INTENT_STORAGE_KEY)));
+            if (!saved) {
+                return false;
+            }
+            state.reviewIntent = saved;
+            return true;
         }
 
         async function fetchCookies() {
@@ -1039,20 +1197,29 @@
                 courtName: document.getElementById('courtName').value,
                 district: document.getElementById('district').value,
                 division: document.getElementById('division').value,
+                county: document.getElementById('county').value,
                 caseNumber: document.getElementById('caseNumber').value,
+                leadCaseNumber: document.getElementById('leadCaseNumber').value,
+                relatedCaseNumber: document.getElementById('relatedCaseNumber').value,
+                assignedJudge: document.getElementById('assignedJudge').value,
+                courtroom: document.getElementById('courtroom').value,
                 courtHeaderOverride: document.getElementById('courtHeaderOverride').value,
                 plaintiffs: document.getElementById('plaintiffs').value,
                 defendants: document.getElementById('defendants').value,
                 titleOverride: document.getElementById('titleOverride').value,
                 requestedRelief: document.getElementById('requestedRelief').value,
+                juryDemand: document.getElementById('juryDemand').checked,
+                juryDemandText: document.getElementById('juryDemandText').value,
                 signerName: document.getElementById('signerName').value,
                 signerTitle: document.getElementById('signerTitle').value,
                 signerFirm: document.getElementById('signerFirm').value,
                 signerBarNumber: document.getElementById('signerBarNumber').value,
                 signerContact: document.getElementById('signerContact').value,
+                additionalSigners: document.getElementById('additionalSigners').value,
                 declarantName: document.getElementById('declarantName').value,
                 serviceMethod: document.getElementById('serviceMethod').value,
                 serviceRecipients: document.getElementById('serviceRecipients').value,
+                serviceRecipientDetails: document.getElementById('serviceRecipientDetails').value,
                 signatureDate: document.getElementById('signatureDate').value,
                 verificationDate: document.getElementById('verificationDate').value,
                 serviceDate: document.getElementById('serviceDate').value,
@@ -1081,20 +1248,32 @@
             setFieldValue('courtName', saved.courtName, true);
             setFieldValue('district', saved.district, true);
             setFieldValue('division', saved.division, true);
+            setFieldValue('county', saved.county, true);
             setFieldValue('caseNumber', saved.caseNumber, true);
+            setFieldValue('leadCaseNumber', saved.leadCaseNumber, true);
+            setFieldValue('relatedCaseNumber', saved.relatedCaseNumber, true);
+            setFieldValue('assignedJudge', saved.assignedJudge, true);
+            setFieldValue('courtroom', saved.courtroom, true);
             setFieldValue('courtHeaderOverride', saved.courtHeaderOverride, true);
             setFieldValue('plaintiffs', saved.plaintiffs, true);
             setFieldValue('defendants', saved.defendants, true);
             setFieldValue('titleOverride', saved.titleOverride, true);
             setFieldValue('requestedRelief', saved.requestedRelief, true);
+            const juryDemandElement = document.getElementById('juryDemand');
+            if (juryDemandElement && typeof saved.juryDemand === 'boolean') {
+                juryDemandElement.checked = saved.juryDemand;
+            }
+            setFieldValue('juryDemandText', saved.juryDemandText, true);
             setFieldValue('signerName', saved.signerName, true);
             setFieldValue('signerTitle', saved.signerTitle, true);
             setFieldValue('signerFirm', saved.signerFirm, true);
             setFieldValue('signerBarNumber', saved.signerBarNumber, true);
             setFieldValue('signerContact', saved.signerContact, true);
+            setFieldValue('additionalSigners', saved.additionalSigners, true);
             setFieldValue('declarantName', saved.declarantName, true);
             setFieldValue('serviceMethod', saved.serviceMethod, true);
             setFieldValue('serviceRecipients', saved.serviceRecipients, true);
+            setFieldValue('serviceRecipientDetails', saved.serviceRecipientDetails, true);
             setFieldValue('signatureDate', saved.signatureDate, true);
             setFieldValue('verificationDate', saved.verificationDate, true);
             setFieldValue('serviceDate', saved.serviceDate, true);
@@ -1137,9 +1316,11 @@
             const relief = complaintSummary.relief || '';
             const district = complaintSummary.district_name || '';
             const division = complaintSummary.division_name || '';
+            const county = complaintSummary.county_name || '';
 
             setFieldValue('district', district);
             setFieldValue('division', division);
+            setFieldValue('county', county);
             setFieldValue('plaintiffs', plaintiffs.join('\n'));
             setFieldValue('defendants', defendants.join('\n'));
             setFieldValue('requestedRelief', relief);
@@ -1446,9 +1627,14 @@
 
         function renderReviewLinks(reviewLinks) {
             const dashboardUrl = String((reviewLinks && reviewLinks.dashboard_url) || '').trim() || '/claim-support-review';
+            const resumeIntent = normalizeReviewIntent(state.reviewIntent);
+            const resumeLink = resumeIntent && resumeIntent.review_url && resumeIntent.review_url !== dashboardUrl
+                ? `<a class="inline-link" data-review-intent-link="true" href="${escapeHtml(resumeIntent.review_url)}">Resume Review Focus</a>`
+                : '';
             return `
                 <div class="inline-link-row">
-                    <a class="inline-link" href="${escapeHtml(dashboardUrl)}">Open Review Dashboard</a>
+                    <a class="inline-link" data-review-intent-link="true" href="${escapeHtml(dashboardUrl)}">Open Review Dashboard</a>
+                    ${resumeLink}
                 </div>
             `;
         }
@@ -1489,7 +1675,7 @@
                         if (!claimType || !reviewUrl) {
                             return '';
                         }
-                        return `<a class="inline-link" href="${escapeHtml(reviewUrl)}">Open ${escapeHtml(humanizeKey(claimType))} Section Review</a>`;
+                        return `<a class="inline-link" data-review-intent-link="true" href="${escapeHtml(reviewUrl)}">Open ${escapeHtml(humanizeKey(claimType))} Section Review</a>`;
                     }).join('')}
                 </div>
             `;
@@ -1503,7 +1689,7 @@
             }
             return `
                 <div class="inline-link-row">
-                    <a class="inline-link" href="${escapeHtml(reviewUrl)}">Open Claim Support Review</a>
+                    <a class="inline-link" data-review-intent-link="true" href="${escapeHtml(reviewUrl)}">Open Claim Support Review</a>
                 </div>
             `;
         }
@@ -1594,7 +1780,7 @@
                     ${renderMetricList(section.metrics || {})}
                     <div class="readiness-subtitle">Section Warnings</div>
                     ${renderWarningList(section.warnings || [])}
-                    ${reviewUrl ? `<div class="inline-link-row"><a class="inline-link" href="${escapeHtml(reviewUrl)}">Open Section Review</a></div>` : ''}
+                    ${reviewUrl ? `<div class="inline-link-row"><a class="inline-link" data-review-intent-link="true" href="${escapeHtml(reviewUrl)}">Open Section Review</a></div>` : ''}
                     ${renderSectionClaimLinks(key, section, reviewLinks)}
                 </article>
             `;
@@ -1682,9 +1868,18 @@
                     </div>
                     <div>${escapeHtml(item.summary || '')}</div>
                     ${item.detail ? `<div class="preview-meta" style="margin-top: 8px;">${escapeHtml(item.detail)}</div>` : ''}
+                    ${item.review_url ? `<div class="inline-link-row"><a class="inline-link" data-review-intent-link="true" href="${escapeHtml(item.review_url)}">Open Checklist Review</a></div>` : ''}
                 </article>
             `).join('');
             return `<section><h2>Pre-Filing Checklist</h2><div class="checklist-stack">${cards}</div></section>`;
+        }
+
+        function bindReviewIntentLinks() {
+            document.querySelectorAll('[data-review-intent-link="true"]').forEach((node) => {
+                node.addEventListener('click', () => {
+                    persistReviewIntent({ review_url: node.getAttribute('href') || '' });
+                });
+            });
         }
 
         function renderPreview(payload) {
@@ -1718,7 +1913,13 @@
                         <div class="caption-side">
                             <div><strong>Civil Action No.</strong></div>
                             <div>${escapeHtml(caption.case_number || '________________')}</div>
+                            ${caption.lead_case_number ? `<div style="margin-top: 12px;"><strong>Lead Case No.</strong></div><div>${escapeHtml(caption.lead_case_number)}</div>` : ''}
+                            ${caption.related_case_number ? `<div style="margin-top: 12px;"><strong>Related Case No.</strong></div><div>${escapeHtml(caption.related_case_number)}</div>` : ''}
+                            ${caption.assigned_judge ? `<div style="margin-top: 16px;"><strong>Assigned Judge</strong></div><div>${escapeHtml(caption.assigned_judge)}</div>` : ''}
+                            ${caption.courtroom ? `<div style="margin-top: 12px;"><strong>Courtroom</strong></div><div>${escapeHtml(caption.courtroom)}</div>` : ''}
+                            ${caption.county ? `<div style="margin-top: 12px;"><strong>County</strong></div><div>${escapeHtml(caption.county)}</div>` : ''}
                             <div style="margin-top: 16px;"><strong>${escapeHtml(caption.document_title || 'COMPLAINT')}</strong></div>
+                            ${caption.jury_demand_notice ? `<div style="margin-top: 8px;"><strong>${escapeHtml(caption.jury_demand_notice)}</strong></div>` : ''}
                         </div>
                     </div>
 
@@ -1757,12 +1958,20 @@
                         </article>
                     </section>
 
+                    ${draft.jury_demand && draft.jury_demand.text ? `
+                    <section>
+                        <h2>${escapeHtml(draft.jury_demand.title || 'Jury Demand')}</h2>
+                        <article class="section-card">
+                            ${renderLines([draft.jury_demand.text])}
+                        </article>
+                    </section>` : ''}
+
                     <section>
                         <h2>Filing Blocks</h2>
                         <div class="section-stack">
-                            ${renderStructuredBlock('Signature Block', [signatureBlock.signature_line, signatureBlock.name, signatureBlock.title, signatureBlock.firm, signatureBlock.bar_number ? `Bar No. ${signatureBlock.bar_number}` : '', signatureBlock.contact, signatureBlock.dated])}
+                            ${renderStructuredBlock('Signature Block', [signatureBlock.signature_line, signatureBlock.name, signatureBlock.title, signatureBlock.firm, signatureBlock.bar_number ? `Bar No. ${signatureBlock.bar_number}` : '', signatureBlock.contact].concat(formatAdditionalSignerLines(signatureBlock.additional_signers || []), [signatureBlock.dated]))}
                             ${renderStructuredBlock(verification.title || 'Verification', [verification.text, verification.dated, verification.signature_line])}
-                            ${renderStructuredBlock(certificateOfService.title || 'Certificate of Service', [certificateOfService.text].concat((certificateOfService.recipients || []).map((recipient) => `Recipient: ${recipient}`), [certificateOfService.dated, certificateOfService.signature_line]))}
+                            ${renderStructuredBlock(certificateOfService.title || 'Certificate of Service', [certificateOfService.text].concat((certificateOfService.detail_lines || []).map((line) => line), (certificateOfService.detail_lines || []).length ? [] : (certificateOfService.recipients || []).map((recipient) => `Recipient: ${recipient}`), [certificateOfService.dated, certificateOfService.signature_line]))}
                         </div>
                     </section>
 
@@ -1774,6 +1983,7 @@
 
             document.getElementById('previewRoot').className = '';
             document.getElementById('previewRoot').innerHTML = html;
+            bindReviewIntentLinks();
             const copyButton = document.getElementById('copyPleadingButton');
             if (copyButton) {
                 copyButton.addEventListener('click', copyPleadingText);
@@ -1789,20 +1999,29 @@
                 court_name: document.getElementById('courtName').value.trim(),
                 district: document.getElementById('district').value.trim(),
                 division: document.getElementById('division').value.trim() || null,
+                county: document.getElementById('county').value.trim() || null,
                 case_number: document.getElementById('caseNumber').value.trim() || null,
+                lead_case_number: document.getElementById('leadCaseNumber').value.trim() || null,
+                related_case_number: document.getElementById('relatedCaseNumber').value.trim() || null,
+                assigned_judge: document.getElementById('assignedJudge').value.trim() || null,
+                courtroom: document.getElementById('courtroom').value.trim() || null,
                 court_header_override: document.getElementById('courtHeaderOverride').value.trim() || null,
                 title_override: document.getElementById('titleOverride').value.trim() || null,
                 plaintiff_names: splitLines(document.getElementById('plaintiffs').value),
                 defendant_names: splitLines(document.getElementById('defendants').value),
                 requested_relief: splitLines(document.getElementById('requestedRelief').value),
+                jury_demand: document.getElementById('juryDemand').checked,
+                jury_demand_text: document.getElementById('juryDemandText').value.trim() || null,
                 signer_name: document.getElementById('signerName').value.trim() || null,
                 signer_title: document.getElementById('signerTitle').value.trim() || null,
                 signer_firm: document.getElementById('signerFirm').value.trim() || null,
                 signer_bar_number: document.getElementById('signerBarNumber').value.trim() || null,
                 signer_contact: document.getElementById('signerContact').value.trim() || null,
+                additional_signers: parseAdditionalSigners(document.getElementById('additionalSigners').value),
                 declarant_name: document.getElementById('declarantName').value.trim() || null,
                 service_method: document.getElementById('serviceMethod').value.trim() || null,
                 service_recipients: splitLines(document.getElementById('serviceRecipients').value),
+                service_recipient_details: parseServiceRecipientDetails(document.getElementById('serviceRecipientDetails').value),
                 signature_date: document.getElementById('signatureDate').value || null,
                 verification_date: document.getElementById('verificationDate').value || null,
                 service_date: document.getElementById('serviceDate').value || null,
@@ -1865,9 +2084,11 @@
                 storage.removeItem(DRAFT_STORAGE_KEY);
                 storage.removeItem(PREVIEW_STORAGE_KEY);
             }
+            persistReviewIntent(null);
         }
 
         async function bootstrap() {
+            restoreReviewIntent();
             restoreDraftState();
             restoreGeneratedPayload();
             try {

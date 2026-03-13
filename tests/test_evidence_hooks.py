@@ -443,6 +443,12 @@ class TestEvidenceStateHook:
                 assert len(facts) >= 1
                 assert facts[0]['fact_id'].startswith('fact:')
                 assert facts[0]['source_artifact_id']
+                assert facts[0]['source_family'] == 'evidence'
+                assert facts[0]['source_record_id'] == record_id
+                assert facts[0]['source_ref'] == facts[0]['source_artifact_id']
+                assert facts[0]['record_scope'] == 'evidence'
+                assert facts[0]['parse_source'] == 'bytes'
+                assert facts[0]['input_format'] == 'text'
                 assert facts[0]['metadata']['parse_lineage']['source'] == 'bytes'
                 assert any(entity['type'] == 'fact' for entity in graph['entities'])
                 assert any(rel['relation_type'] == 'has_fact' for rel in graph['relationships'])
@@ -703,6 +709,11 @@ class TestMediatorEvidenceIntegration:
                 assert element_view['gap_summary']['missing_support_kinds'] == ['authority']
                 assert element_view['gap_summary']['graph_trace_summary']['traced_link_count'] >= 1
                 assert element_view['gap_summary']['graph_support']['summary']['total_fact_count'] >= 1
+                assert len(element_view['gap_summary']['graph_support']['results']) >= 1
+                assert element_view['gap_summary']['graph_support']['results'][0]['source_family'] == 'evidence'
+                assert element_view['gap_summary']['graph_support']['results'][0]['source_record_id'] == result['record_id']
+                assert element_view['gap_summary']['graph_support']['results'][0]['support_ref'] == result['cid']
+                assert element_view['gap_summary']['graph_support']['results'][0]['record_scope'] == 'evidence'
                 assert element_view['contradiction_candidates'] == []
                 assert element_view['total_facts'] >= 1
                 assert len(element_view['support_facts']) >= 1
@@ -719,6 +730,11 @@ class TestMediatorEvidenceIntegration:
                 assert graph_support['summary']['support_by_kind']['evidence'] >= 1
                 assert len(graph_support['results']) >= 1
                 assert graph_support['results'][0]['support_kind'] == 'evidence'
+                assert graph_support['results'][0]['source_family'] == 'evidence'
+                assert graph_support['results'][0]['source_record_id'] == result['record_id']
+                assert graph_support['results'][0]['support_ref'] == result['cid']
+                assert graph_support['results'][0]['source_ref']
+                assert graph_support['results'][0]['record_scope'] == 'evidence'
 
                 overview = mediator.get_claim_overview(
                     claim_type='breach of contract',
@@ -851,7 +867,24 @@ class TestMediatorEvidenceIntegration:
                     'support_by_kind': {'authority': 6},
                 },
                 'results': [
-                    {'fact_id': 'fact:1', 'score': 2.5, 'matched_claim_element': True, 'duplicate_count': 3},
+                    {
+                        'fact_id': 'fact:1',
+                        'score': 2.5,
+                        'matched_claim_element': True,
+                        'duplicate_count': 3,
+                        'source_family': 'authority',
+                        'source_record_id': 'authority:1',
+                        'support_ref': '42 U.S.C. § 1983',
+                        'source_ref': '42 U.S.C. § 1983',
+                        'record_scope': 'legal_authority',
+                        'artifact_family': 'legal_authority_reference',
+                        'corpus_family': 'legal_authority',
+                        'content_origin': 'legal_authority_reference',
+                        'parse_source': 'authority_reference',
+                        'input_format': 'text/plain',
+                        'quality_tier': 'high',
+                        'quality_score': 0.95,
+                    },
                 ],
             })
             mediator.discover_web_evidence = Mock(return_value={'total_records': 1})
@@ -949,7 +982,23 @@ class TestMediatorEvidenceIntegration:
                     'support_by_kind': {'evidence': 1, 'authority': 1},
                 },
                 'results': [
-                    {'fact_id': 'fact:1', 'score': 1.0, 'matched_claim_element': True},
+                    {
+                        'fact_id': 'fact:1',
+                        'score': 1.0,
+                        'matched_claim_element': True,
+                        'source_family': 'mixed',
+                        'source_record_id': 'support:1',
+                        'support_ref': 'support:1',
+                        'source_ref': 'artifact:1',
+                        'record_scope': 'claim_support',
+                        'artifact_family': 'support_packet',
+                        'corpus_family': 'claim_support',
+                        'content_origin': 'support_packet',
+                        'parse_source': 'support_link_aggregation',
+                        'input_format': 'application/json',
+                        'quality_tier': 'medium',
+                        'quality_score': 0.7,
+                    },
                 ],
             })
             mediator.discover_web_evidence = Mock(return_value={'total_records': 1})
@@ -1082,7 +1131,23 @@ class TestMediatorEvidenceIntegration:
                     'support_by_kind': {'authority': 1},
                 },
                 'results': [
-                    {'fact_id': 'fact:1', 'score': 1.0, 'matched_claim_element': True},
+                    {
+                        'fact_id': 'fact:1',
+                        'score': 1.0,
+                        'matched_claim_element': True,
+                        'source_family': 'authority',
+                        'source_record_id': 'authority:1',
+                        'support_ref': 'authority:1',
+                        'source_ref': 'authority:1',
+                        'record_scope': 'legal_authority',
+                        'artifact_family': 'legal_authority_reference',
+                        'corpus_family': 'legal_authority',
+                        'content_origin': 'legal_authority_reference',
+                        'parse_source': 'authority_reference',
+                        'input_format': 'text/plain',
+                        'quality_tier': 'high',
+                        'quality_score': 0.9,
+                    },
                 ],
             })
             mediator.discover_web_evidence = Mock(return_value={'total_records': 1})

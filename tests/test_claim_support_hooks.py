@@ -354,6 +354,15 @@ class TestClaimSupportHook:
         mock_mediator.evidence_state.get_evidence_by_cid = Mock(return_value={
             'id': 12,
             'fact_count': 2,
+            'parse_metadata': {
+                'content_origin': 'historical_archive_capture',
+                'artifact_family': 'archived_web_page',
+                'corpus_family': 'web_page',
+                'input_format': 'html',
+                'quality_tier': 'high',
+                'quality_score': 98.0,
+                'page_count': 1,
+            },
             'graph_metadata': {
                 'graph_snapshot': {
                     'graph_id': 'graph:evidence-12',
@@ -369,7 +378,26 @@ class TestClaimSupportHook:
             },
         })
         mock_mediator.evidence_state.get_evidence_facts = Mock(return_value=[
-            {'fact_id': 'fact:1', 'text': 'Employee complained about discrimination.'},
+            {
+                'fact_id': 'fact:1',
+                'text': 'Employee complained about discrimination.',
+                'source_artifact_id': 'QmEvidenceFacts',
+                'metadata': {
+                    'parse_lineage': {
+                        'record_scope': 'evidence',
+                        'source_ref': 'QmEvidenceFacts',
+                        'source': 'web_document',
+                        'input_format': 'html',
+                        'quality_tier': 'high',
+                        'quality_score': 98.0,
+                        'transform_lineage': {
+                            'content_origin': 'historical_archive_capture',
+                            'artifact_family': 'archived_web_page',
+                            'corpus_family': 'web_page',
+                        },
+                    },
+                },
+            },
             {'fact_id': 'fact:2', 'text': 'Complaint was sent to HR.'},
         ])
         mock_mediator.evidence_state.get_evidence_graph = Mock(return_value={
@@ -422,6 +450,16 @@ class TestClaimSupportHook:
         mock_mediator.evidence_state.get_evidence_by_cid = Mock(return_value={
             'id': 12,
             'fact_count': 2,
+            'parse_metadata': {
+                'source': 'web_document',
+                'content_origin': 'historical_archive_capture',
+                'artifact_family': 'archived_web_page',
+                'corpus_family': 'web_page',
+                'input_format': 'html',
+                'quality_tier': 'high',
+                'quality_score': 98.0,
+                'page_count': 1,
+            },
             'graph_metadata': {
                 'graph_snapshot': {
                     'graph_id': 'graph:evidence-12',
@@ -437,7 +475,26 @@ class TestClaimSupportHook:
             },
         })
         mock_mediator.evidence_state.get_evidence_facts = Mock(return_value=[
-            {'fact_id': 'fact:1', 'text': 'Employee complained about discrimination.'},
+            {
+                'fact_id': 'fact:1',
+                'text': 'Employee complained about discrimination.',
+                'source_artifact_id': 'QmEvidenceFacts',
+                'metadata': {
+                    'parse_lineage': {
+                        'record_scope': 'evidence',
+                        'source_ref': 'QmEvidenceFacts',
+                        'source': 'web_document',
+                        'input_format': 'html',
+                        'quality_tier': 'high',
+                        'quality_score': 98.0,
+                        'transform_lineage': {
+                            'content_origin': 'historical_archive_capture',
+                            'artifact_family': 'archived_web_page',
+                            'corpus_family': 'web_page',
+                        },
+                    },
+                },
+            },
             {'fact_id': 'fact:2', 'text': 'Complaint was sent to HR.'},
         ])
         mock_mediator.evidence_state.get_evidence_graph = Mock(return_value={
@@ -476,9 +533,120 @@ class TestClaimSupportHook:
             assert facts[0]['claim_element_text'] == 'Protected activity'
             assert facts[0]['support_kind'] == 'evidence'
             assert facts[0]['evidence_record_id'] == 12
+            assert facts[0]['source_family'] == 'evidence'
+            assert facts[0]['source_record_id'] == 12
+            assert facts[0]['source_ref'] == 'QmEvidenceFacts'
+            assert facts[0]['record_scope'] == 'evidence'
+            assert facts[0]['artifact_family'] == 'archived_web_page'
+            assert facts[0]['corpus_family'] == 'web_page'
+            assert facts[0]['content_origin'] == 'historical_archive_capture'
+            assert facts[0]['parse_source'] == 'web_document'
+            assert facts[0]['input_format'] == 'html'
+            assert facts[0]['quality_tier'] == 'high'
             assert facts[0]['graph_summary']['entity_count'] == 1
             assert facts[0]['graph_trace']['snapshot']['graph_id'] == 'graph:evidence-12'
             assert facts[0]['graph_trace']['lineage']['text_length'] == 64
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_claim_support_facts_normalizes_authority_fact_rows(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.legal_authority_storage = Mock()
+        mock_mediator.legal_authority_storage.get_authority_by_citation = Mock(return_value={
+            'id': 41,
+            'citation': '42 U.S.C. § 1983',
+            'fact_count': 1,
+            'parse_metadata': {
+                'content_origin': 'authority_reference_fallback',
+                'content_source_field': 'citation_title_fallback',
+                'fallback_mode': 'citation_title_only',
+            },
+            'provenance': {
+                'metadata': {
+                    'artifact_family': 'legal_authority_reference',
+                    'corpus_family': 'legal_authority',
+                    'content_origin': 'authority_reference_fallback',
+                },
+            },
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:authority-41',
+                    'created': False,
+                    'reused': True,
+                },
+            },
+        })
+        mock_mediator.legal_authority_storage.get_authority_facts = Mock(return_value=[
+            {
+                'fact_id': 'fact:authority-1',
+                'text': 'Protected activity is recognized by statute.',
+                'source_authority_id': 'authority:41',
+                'metadata': {
+                    'parse_lineage': {
+                        'record_scope': 'legal_authority',
+                        'source_ref': 'authority:41',
+                        'source': 'legal_authority',
+                        'input_format': 'text',
+                        'quality_tier': 'fallback',
+                        'quality_score': 0.0,
+                        'transform_lineage': {
+                            'content_origin': 'authority_reference_fallback',
+                        },
+                    },
+                },
+            },
+        ])
+        mock_mediator.legal_authority_storage.get_authority_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:a'}],
+            'relationships': [{'id': 'rel:a'}],
+        })
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='authority',
+                support_ref='42 U.S.C. § 1983',
+                support_label='Protected activity authority',
+                source_table='legal_authorities',
+            )
+
+            facts = hook.get_claim_support_facts(
+                'testuser',
+                'employment',
+                claim_element_text='Protected activity',
+            )
+
+            assert len(facts) == 1
+            assert facts[0]['support_kind'] == 'authority'
+            assert facts[0]['source_family'] == 'legal_authority'
+            assert facts[0]['source_record_id'] == 41
+            assert facts[0]['source_ref'] == 'authority:41'
+            assert facts[0]['record_scope'] == 'legal_authority'
+            assert facts[0]['artifact_family'] == 'legal_authority_reference'
+            assert facts[0]['corpus_family'] == 'legal_authority'
+            assert facts[0]['content_origin'] == 'authority_reference_fallback'
+            assert facts[0]['parse_source'] == 'legal_authority'
+            assert facts[0]['input_format'] == 'text'
+            assert facts[0]['authority_record_id'] == 41
+            assert facts[0]['graph_trace']['snapshot']['graph_id'] == 'graph:authority-41'
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)
@@ -1946,7 +2114,15 @@ class TestClaimSupportHook:
             assert claim_matrix['support_trace_summary']['parse_input_format_counts']['html'] == 1
             assert claim_matrix['support_trace_summary']['parse_quality_tier_counts']['high'] == 2
             assert claim_matrix['support_trace_summary']['avg_parse_quality_score'] == 95.5
+            assert claim_matrix['support_trace_summary']['artifact_family_counts'] == {
+                'archived_web_page': 2,
+                'legal_authority_reference': 1,
+            }
             assert claim_matrix['support_packet_summary']['historical_capture_count'] == 2
+            assert claim_matrix['support_packet_summary']['artifact_family_counts'] == {
+                'archived_web_page': 2,
+                'legal_authority_reference': 1,
+            }
             assert claim_matrix['support_packet_summary']['content_origin_counts'] == {
                 'historical_archive_capture': 2,
                 'authority_reference_fallback': 1,
@@ -1972,7 +2148,9 @@ class TestClaimSupportHook:
                 if packet['lineage_summary']['fallback_mode'] == 'citation_title_only'
             )
             assert historical_packet['lineage_summary']['archive_url'] == 'https://web.archive.org/web/20240101120000/https://example.com/evidence'
+            assert historical_packet['lineage_summary']['artifact_family'] == 'archived_web_page'
             assert fallback_packet['lineage_summary']['fallback_mode'] == 'citation_title_only'
+            assert fallback_packet['lineage_summary']['artifact_family'] == 'legal_authority_reference'
             assert protected_activity['support_packet_summary']['historical_capture_count'] == 2
         finally:
             if os.path.exists(db_path):
@@ -2012,6 +2190,8 @@ class TestClaimSupportHook:
             'provenance': {
                 'source_url': 'https://web.archive.org/web/20240101120000/https://example.com/evidence',
                 'metadata': {
+                    'artifact_family': 'archived_web_page',
+                    'corpus_family': 'web_page',
                     'content_origin': 'historical_archive_capture',
                     'historical_capture': True,
                     'capture_source': 'archived_domain_scrape',
@@ -2064,6 +2244,8 @@ class TestClaimSupportHook:
             'provenance': {
                 'source_url': 'https://example.com/usc/1983',
                 'metadata': {
+                    'artifact_family': 'legal_authority_reference',
+                    'corpus_family': 'legal_authority',
                     'content_origin': 'authority_reference_fallback',
                     'content_source_field': 'citation_title_fallback',
                     'fallback_mode': 'citation_title_only',
@@ -2122,6 +2304,10 @@ class TestClaimSupportHook:
             protected_activity = claim_matrix['elements'][0]
 
             assert claim_matrix['support_packet_summary']['historical_capture_count'] == 1
+            assert claim_matrix['support_packet_summary']['artifact_family_counts'] == {
+                'archived_web_page': 1,
+                'legal_authority_reference': 1,
+            }
             assert claim_matrix['support_packet_summary']['content_origin_counts'] == {
                 'historical_archive_capture': 1,
                 'authority_reference_fallback': 1,
@@ -2145,7 +2331,9 @@ class TestClaimSupportHook:
             )
             assert historical_packet['lineage_summary']['archive_url'] == 'https://web.archive.org/web/20240101120000/https://example.com/evidence'
             assert historical_packet['lineage_summary']['captured_at'] == '2024-01-01T12:00:00Z'
+            assert historical_packet['lineage_summary']['artifact_family'] == 'archived_web_page'
             assert fallback_packet['lineage_summary']['content_source_field'] == 'citation_title_fallback'
+            assert fallback_packet['lineage_summary']['artifact_family'] == 'legal_authority_reference'
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)
@@ -2184,6 +2372,7 @@ class TestClaimSupportHook:
             'provenance': {
                 'source_url': 'https://web.archive.org/web/20240101120000/https://example.com/evidence',
                 'metadata': {
+                    'artifact_family': 'archived_web_page',
                     'content_origin': 'historical_archive_capture',
                 },
             },
@@ -2241,6 +2430,7 @@ class TestClaimSupportHook:
             'provenance': {
                 'source_url': 'https://example.com/usc/1983',
                 'metadata': {
+                    'artifact_family': 'legal_authority_reference',
                     'content_origin': 'authority_reference_fallback',
                     'fallback_mode': 'citation_title_only',
                 },
@@ -2308,6 +2498,10 @@ class TestClaimSupportHook:
             assert trace_summary['parse_source_counts'] == {
                 'bytes': 1,
                 'legal_authority': 1,
+            }
+            assert trace_summary['artifact_family_counts'] == {
+                'archived_web_page': 1,
+                'legal_authority_reference': 1,
             }
             assert trace_summary['content_origin_counts'] == {
                 'historical_archive_capture': 1,

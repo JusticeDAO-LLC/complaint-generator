@@ -457,7 +457,7 @@ class TestWebEvidenceIntegrationHook:
                         'title': 'Policy page',
                         'url': 'https://example.com/policy',
                         'content': '<html><body><h1>Policy</h1><p>Retaliation is prohibited.</p></body></html>',
-                        'source_type': 'common_crawl',
+                        'source_type': 'web',
                     }
                 ],
                 keywords=['retaliation'],
@@ -471,13 +471,16 @@ class TestWebEvidenceIntegrationHook:
             assert result['parse_summary']['quality_tier_counts']['high'] == 1
             assert result['parse_details'][0]['input_format'] == 'html'
             assert result['parse_details'][0]['extraction_method'] == 'html_to_text'
+            assert result['parse_details'][0]['lineage']['artifact_family'] == 'live_web_page'
+            assert result['parse_details'][0]['lineage']['corpus_family'] == 'web_page'
             add_record_kwargs = mock_mediator.evidence_state.upsert_evidence_record.call_args.kwargs
             assert add_record_kwargs['evidence_info']['document_parse']['summary']['input_format'] == 'html'
             assert add_record_kwargs['evidence_info']['document_parse']['summary']['quality_tier'] == 'high'
             assert add_record_kwargs['evidence_info']['metadata']['document_parse_contract']['lineage']['input_format'] == 'html'
             assert add_record_kwargs['evidence_info']['metadata']['document_parse_contract']['parse_quality']['quality_tier'] == 'high'
+            assert add_record_kwargs['evidence_info']['metadata']['provenance']['metadata']['artifact_family'] == 'live_web_page'
             support_kwargs = mock_mediator.claim_support.upsert_support_link.call_args.kwargs
-            assert support_kwargs['metadata']['source_type'] == 'common_crawl'
+            assert support_kwargs['metadata']['source_type'] == 'web'
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
@@ -616,6 +619,8 @@ class TestWebEvidenceIntegrationHook:
 
             assert result['stored_new'] == 1
             assert result['parse_details'][0]['lineage']['content_origin'] == 'historical_archive_capture'
+            assert result['parse_details'][0]['lineage']['artifact_family'] == 'archived_web_page'
+            assert result['parse_details'][0]['lineage']['corpus_family'] == 'web_page'
             assert result['parse_details'][0]['lineage']['historical_capture'] is True
             assert result['parse_details'][0]['lineage']['capture_source'] == 'archived_domain_scrape'
             assert result['parse_details'][0]['lineage']['archive_url'] == 'https://web.archive.org/web/20240101120000/https://example.com/policy'
@@ -623,12 +628,90 @@ class TestWebEvidenceIntegrationHook:
             persisted_info = mock_mediator.evidence_state.upsert_evidence_record.call_args.kwargs['evidence_info']
             persisted_lineage = persisted_info['document_parse']['metadata']['transform_lineage']
             assert persisted_lineage['content_origin'] == 'historical_archive_capture'
+            assert persisted_lineage['artifact_family'] == 'archived_web_page'
             assert persisted_lineage['captured_at'] == '2024-01-01T12:00:00Z'
             assert persisted_lineage['observed_at'] == '2024-01-02T00:00:00Z'
             persisted_provenance = persisted_info['metadata']['provenance']
+            assert persisted_provenance['metadata']['artifact_family'] == 'archived_web_page'
             assert persisted_provenance['metadata']['content_origin'] == 'historical_archive_capture'
             assert persisted_provenance['metadata']['archive_url'] == 'https://web.archive.org/web/20240101120000/https://example.com/policy'
             assert persisted_provenance['metadata']['version_of'] == 'https://example.com/policy'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_store_evidence_items_persists_archived_web_fact_contract(self):
+        """Test archived web evidence facts round-trip through the shared evidence fact contract."""
+        try:
+            from mediator.evidence_hooks import EvidenceStateHook, EvidenceStorageHook
+            from mediator.web_evidence_hooks import WebEvidenceIntegrationHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.state = Mock()
+            mock_mediator.state.username = 'testuser'
+            mock_mediator.state.complaint_id = 'complaint-1'
+            mock_mediator.phase_manager = Mock()
+            mock_mediator.phase_manager.get_phase_data = Mock(return_value=None)
+            mock_mediator.web_evidence_search = Mock()
+            mock_mediator.web_evidence_search.validate_evidence = Mock(return_value={
+                'valid': True,
+                'relevance_score': 0.88,
+            })
+            mock_mediator.evidence_storage = EvidenceStorageHook(mock_mediator)
+
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                db_path = f.name
+
+            try:
+                mock_mediator.evidence_state = EvidenceStateHook(mock_mediator, db_path=db_path)
+
+                hook = WebEvidenceIntegrationHook(mock_mediator)
+                result = hook._store_evidence_items(
+                    [
+                        {
+                            'title': 'Archived discrimination policy',
+                            'url': 'https://web.archive.org/web/20240101120000/https://example.com/policy',
+                            'content': '<html><body><p>Employees may report discrimination to HR without retaliation.</p></body></html>',
+                            'source_type': 'archived_domain_scrape',
+                            'discovered_at': '2024-01-02T00:00:00Z',
+                            'metadata': {
+                                'archive_url': 'https://web.archive.org/web/20240101120000/https://example.com/policy',
+                                'original_url': 'https://example.com/policy',
+                                'captured_at': '2024-01-01T12:00:00Z',
+                                'original_source_type': 'common_crawl',
+                            },
+                        }
+                    ],
+                    keywords=['discrimination', 'retaliation'],
+                    user_id='testuser',
+                    claim_type=None,
+                    min_relevance=0.5,
+                )
+
+                assert result['stored_new'] == 1
+                record = mock_mediator.evidence_state.get_evidence_by_cid(result['evidence_cids'][0])
+                assert record is not None
+                facts = mock_mediator.evidence_state.get_evidence_facts(record['id'])
+
+                assert len(facts) >= 1
+                assert facts[0]['fact_id'].startswith('fact:')
+                assert facts[0]['source_family'] == 'evidence'
+                assert facts[0]['source_record_id'] == record['id']
+                assert facts[0]['record_scope'] == 'evidence'
+                assert facts[0]['source_artifact_id']
+                assert facts[0]['source_ref'] == facts[0]['source_artifact_id']
+                assert facts[0]['artifact_family'] == 'archived_web_page'
+                assert facts[0]['corpus_family'] == 'web_page'
+                assert facts[0]['content_origin'] == 'historical_archive_capture'
+                assert facts[0]['parse_source'] == 'web_document'
+                assert facts[0]['input_format'] == 'html'
+                assert facts[0]['quality_tier'] == 'high'
+                assert facts[0]['quality_score'] > 0.0
+                assert facts[0]['metadata']['parse_lineage']['source'] == 'web_document'
+                assert facts[0]['provenance']['metadata']['artifact_family'] == 'archived_web_page'
+            finally:
+                if os.path.exists(db_path):
+                    os.unlink(db_path)
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 

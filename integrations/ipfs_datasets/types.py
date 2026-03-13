@@ -230,12 +230,25 @@ class GraphSupportMatch:
     claim_element_text: str = ""
     support_ref: str = ""
     support_label: str = ""
+    source_family: str = ""
+    source_record_id: Optional[int] = None
+    source_ref: str = ""
+    record_scope: str = ""
+    artifact_family: str = ""
+    corpus_family: str = ""
+    content_origin: str = ""
+    parse_source: str = ""
+    input_format: str = ""
+    quality_tier: str = ""
+    quality_score: float = 0.0
     evidence_record_id: Optional[int] = None
     authority_record_id: Optional[int] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> Dict[str, Any]:
         payload = asdict(self)
+        if self.source_record_id is None:
+            payload.pop("source_record_id", None)
         if self.evidence_record_id is None:
             payload.pop("evidence_record_id", None)
         if self.authority_record_id is None:
@@ -465,10 +478,102 @@ class CaseFact:
     text: str
     source_artifact_id: str = ""
     source_authority_id: str = ""
+    source_family: str = ""
+    source_record_id: Optional[int] = None
+    source_ref: str = ""
+    record_scope: str = ""
+    artifact_family: str = ""
+    corpus_family: str = ""
+    content_origin: str = ""
+    parse_source: str = ""
+    input_format: str = ""
+    quality_tier: str = ""
+    quality_score: float = 0.0
+    page_count: int = 0
     confidence: float = 0.0
     temporal_scope: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
     provenance: ProvenanceRecord = field(default_factory=ProvenanceRecord)
+
+    def __post_init__(self) -> None:
+        parse_lineage = self.metadata.get("parse_lineage") if isinstance(self.metadata.get("parse_lineage"), dict) else {}
+        transform_lineage = parse_lineage.get("transform_lineage") if isinstance(parse_lineage.get("transform_lineage"), dict) else {}
+        parse_quality = parse_lineage.get("parse_quality") if isinstance(parse_lineage.get("parse_quality"), dict) else {}
+        source_span = parse_lineage.get("source_span") if isinstance(parse_lineage.get("source_span"), dict) else {}
+        provenance_metadata = self.provenance.metadata if isinstance(self.provenance.metadata, dict) else {}
+
+        if not self.source_family:
+            inferred_source_family = "legal_authority" if self.source_authority_id else "evidence" if self.source_artifact_id else ""
+            if inferred_source_family:
+                object.__setattr__(self, "source_family", inferred_source_family)
+
+        if not self.source_ref:
+            source_ref = self.source_artifact_id or self.source_authority_id or str(parse_lineage.get("source_ref") or "")
+            if source_ref:
+                object.__setattr__(self, "source_ref", source_ref)
+
+        if not self.record_scope:
+            record_scope = str(parse_lineage.get("record_scope") or self.source_family or "")
+            if record_scope:
+                object.__setattr__(self, "record_scope", record_scope)
+
+        content_origin = self.content_origin or str(
+            transform_lineage.get("content_origin")
+            or parse_lineage.get("content_origin")
+            or provenance_metadata.get("content_origin")
+            or ""
+        )
+        if content_origin and not self.content_origin:
+            object.__setattr__(self, "content_origin", content_origin)
+
+        artifact_family = self.artifact_family or str(
+            transform_lineage.get("artifact_family")
+            or parse_lineage.get("artifact_family")
+            or provenance_metadata.get("artifact_family")
+            or {
+                "historical_archive_capture": "archived_web_page",
+                "live_web_capture": "live_web_page",
+                "authority_full_text": "legal_authority_text",
+                "authority_reference_fallback": "legal_authority_reference",
+            }.get(content_origin, "")
+        )
+        if artifact_family and not self.artifact_family:
+            object.__setattr__(self, "artifact_family", artifact_family)
+
+        corpus_family = self.corpus_family or str(
+            transform_lineage.get("corpus_family")
+            or parse_lineage.get("corpus_family")
+            or provenance_metadata.get("corpus_family")
+            or {
+                "archived_web_page": "web_page",
+                "live_web_page": "web_page",
+                "legal_authority_text": "legal_authority",
+                "legal_authority_reference": "legal_authority",
+            }.get(artifact_family, "")
+        )
+        if corpus_family and not self.corpus_family:
+            object.__setattr__(self, "corpus_family", corpus_family)
+
+        if not self.parse_source:
+            parse_source = str(parse_lineage.get("source") or "")
+            if parse_source:
+                object.__setattr__(self, "parse_source", parse_source)
+        if not self.input_format:
+            input_format = str(parse_lineage.get("input_format") or "")
+            if input_format:
+                object.__setattr__(self, "input_format", input_format)
+        if not self.quality_tier:
+            quality_tier = str(parse_lineage.get("quality_tier") or parse_quality.get("quality_tier") or "")
+            if quality_tier:
+                object.__setattr__(self, "quality_tier", quality_tier)
+        if not self.quality_score:
+            quality_score = float(parse_lineage.get("quality_score") or parse_quality.get("quality_score") or 0.0)
+            if quality_score:
+                object.__setattr__(self, "quality_score", quality_score)
+        if not self.page_count:
+            page_count = int(parse_lineage.get("page_count") or source_span.get("page_count") or 0)
+            if page_count:
+                object.__setattr__(self, "page_count", page_count)
 
     def as_dict(self) -> Dict[str, Any]:
         return asdict(self)

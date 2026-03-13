@@ -72,7 +72,7 @@ Goal:
 
 Status:
 
-- core parse contract and provenance alignment are implemented and runtime-validated in the current checkout
+- core parse contract, provenance alignment, and archived-page corpus identity are implemented and runtime-validated in the current checkout
 
 Primary files:
 
@@ -92,7 +92,7 @@ Checklist:
 - [x] legal authority text uses the same parse family when source text is available
 - [x] provenance fields align across evidence, archived pages, and authority text
 - [ ] PDF, DOCX, RTF, HTML, email, and office-document parsing behavior is fully encapsulated inside the adapter layer with no hook-local format branching
-- [ ] the existing fact registry is extended to future predicate-bearing artifacts; archived pages already flow through the evidence-backed fact path
+- [ ] the existing fact registry is extended into one explicit cross-source durable fact contract; archived pages already flow through the evidence-backed fact path, now carry explicit corpus identity, and are asserted through the shared persisted evidence fact API
 
 Acceptance criteria:
 

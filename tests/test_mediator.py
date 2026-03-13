@@ -10,6 +10,66 @@ import pytest
 from unittest.mock import Mock, MagicMock, patch
 
 
+def _make_graph_support_result(
+    *,
+    fact_id='fact:1',
+    score=1.0,
+    matched_claim_element=True,
+    source_family='evidence',
+    source_record_id='record:1',
+    support_ref='support:1',
+    source_ref='artifact:1',
+    record_scope='evidence',
+    artifact_family='archived_web_page',
+    corpus_family='web_page',
+    content_origin='archived_web_page',
+    parse_source='document_parse_pipeline',
+    input_format='text/html',
+    quality_tier='high',
+    quality_score=0.92,
+):
+    return {
+        'fact_id': fact_id,
+        'score': score,
+        'matched_claim_element': matched_claim_element,
+        'source_family': source_family,
+        'source_record_id': source_record_id,
+        'support_ref': support_ref,
+        'source_ref': source_ref,
+        'record_scope': record_scope,
+        'artifact_family': artifact_family,
+        'corpus_family': corpus_family,
+        'content_origin': content_origin,
+        'parse_source': parse_source,
+        'input_format': input_format,
+        'quality_tier': quality_tier,
+        'quality_score': quality_score,
+    }
+
+
+def _make_graph_support_payload(
+    *,
+    total_fact_count=0,
+    unique_fact_count=0,
+    duplicate_fact_count=0,
+    semantic_cluster_count=0,
+    semantic_duplicate_count=0,
+    max_score=0.0,
+    results=None,
+):
+    return {
+        'summary': {
+            'total_fact_count': total_fact_count,
+            'unique_fact_count': unique_fact_count,
+            'duplicate_fact_count': duplicate_fact_count,
+            'semantic_cluster_count': semantic_cluster_count,
+            'semantic_duplicate_count': semantic_duplicate_count,
+            'max_score': max_score,
+        },
+        'results': [] if results is None else results,
+    }
+
+
 class TestMediatorBasics:
     """Basic test cases for Mediator functionality"""
     
@@ -190,19 +250,15 @@ class TestMediatorWithMocks:
                     }
                 }
             })
-            mediator.query_claim_graph_support = Mock(return_value={
-                'summary': {
-                    'total_fact_count': 6,
-                    'unique_fact_count': 2,
-                    'duplicate_fact_count': 4,
-                    'semantic_cluster_count': 2,
-                    'semantic_duplicate_count': 4,
-                    'max_score': 2.5,
-                },
-                'results': [
-                    {'fact_id': 'fact:1', 'score': 2.5, 'matched_claim_element': True},
-                ],
-            })
+            mediator.query_claim_graph_support = Mock(return_value=_make_graph_support_payload(
+                total_fact_count=6,
+                unique_fact_count=2,
+                duplicate_fact_count=4,
+                semantic_cluster_count=2,
+                semantic_duplicate_count=4,
+                max_score=2.5,
+                results=[_make_graph_support_result(score=2.5)],
+            ))
 
             plan = mediator.get_claim_follow_up_plan(
                 claim_type='employment',
@@ -269,17 +325,7 @@ class TestMediatorWithMocks:
                     }
                 }
             })
-            mediator.query_claim_graph_support = Mock(return_value={
-                'summary': {
-                    'total_fact_count': 0,
-                    'unique_fact_count': 0,
-                    'duplicate_fact_count': 0,
-                    'semantic_cluster_count': 0,
-                    'semantic_duplicate_count': 0,
-                    'max_score': 0.0,
-                },
-                'results': [],
-            })
+            mediator.query_claim_graph_support = Mock(return_value=_make_graph_support_payload())
             mediator.legal_authority_search.build_search_programs = Mock(return_value=[
                 {
                     'program_id': 'legal_search_program:reasoning-1',
@@ -411,17 +457,7 @@ class TestMediatorWithMocks:
                     }
                 }
             })
-            mediator.query_claim_graph_support = Mock(return_value={
-                'summary': {
-                    'total_fact_count': 0,
-                    'unique_fact_count': 0,
-                    'duplicate_fact_count': 0,
-                    'semantic_cluster_count': 0,
-                    'semantic_duplicate_count': 0,
-                    'max_score': 0.0,
-                },
-                'results': [],
-            })
+            mediator.query_claim_graph_support = Mock(return_value=_make_graph_support_payload())
 
             plan = mediator.get_claim_follow_up_plan(
                 claim_type='employment',
@@ -495,17 +531,7 @@ class TestMediatorWithMocks:
                     }
                 }
             })
-            mediator.query_claim_graph_support = Mock(return_value={
-                'summary': {
-                    'total_fact_count': 0,
-                    'unique_fact_count': 0,
-                    'duplicate_fact_count': 0,
-                    'semantic_cluster_count': 0,
-                    'semantic_duplicate_count': 0,
-                    'max_score': 0.0,
-                },
-                'results': [],
-            })
+            mediator.query_claim_graph_support = Mock(return_value=_make_graph_support_payload())
             mediator.legal_authority_search.build_search_programs = Mock(return_value=[
                 {
                     'program_id': 'legal_search_program:fact-1',
@@ -643,19 +669,15 @@ class TestMediatorWithMocks:
                     }
                 }
             })
-            mediator.query_claim_graph_support = Mock(return_value={
-                'summary': {
-                    'total_fact_count': 4,
-                    'unique_fact_count': 2,
-                    'duplicate_fact_count': 2,
-                    'semantic_cluster_count': 2,
-                    'semantic_duplicate_count': 2,
-                    'max_score': 2.2,
-                },
-                'results': [
-                    {'fact_id': 'fact:1', 'score': 2.2, 'matched_claim_element': True},
-                ],
-            })
+            mediator.query_claim_graph_support = Mock(return_value=_make_graph_support_payload(
+                total_fact_count=4,
+                unique_fact_count=2,
+                duplicate_fact_count=2,
+                semantic_cluster_count=2,
+                semantic_duplicate_count=2,
+                max_score=2.2,
+                results=[_make_graph_support_result(score=2.2)],
+            ))
 
             plan = mediator.get_claim_follow_up_plan(
                 claim_type='employment',
@@ -738,17 +760,13 @@ class TestMediatorWithMocks:
                     }
                 }
             })
-            mediator.query_claim_graph_support = Mock(return_value={
-                'summary': {
-                    'total_fact_count': 1,
-                    'unique_fact_count': 1,
-                    'duplicate_fact_count': 0,
-                    'semantic_cluster_count': 1,
-                    'semantic_duplicate_count': 0,
-                    'max_score': 1.1,
-                },
-                'results': [{'fact_id': 'fact:1', 'score': 1.1}],
-            })
+            mediator.query_claim_graph_support = Mock(return_value=_make_graph_support_payload(
+                total_fact_count=1,
+                unique_fact_count=1,
+                semantic_cluster_count=1,
+                max_score=1.1,
+                results=[_make_graph_support_result(score=1.1)],
+            ))
             mediator.legal_authority_search.build_search_programs = Mock(return_value=[
                 {
                     'program_id': 'legal_search_program:fact-1',
@@ -889,17 +907,7 @@ class TestMediatorWithMocks:
                     }
                 }
             })
-            mediator.query_claim_graph_support = Mock(return_value={
-                'summary': {
-                    'total_fact_count': 0,
-                    'unique_fact_count': 0,
-                    'duplicate_fact_count': 0,
-                    'semantic_cluster_count': 0,
-                    'semantic_duplicate_count': 0,
-                    'max_score': 0.0,
-                },
-                'results': [],
-            })
+            mediator.query_claim_graph_support = Mock(return_value=_make_graph_support_payload())
             mediator.legal_authority_search.build_search_programs = Mock(return_value=[
                 {
                     'program_id': 'legal_search_program:fact-1',
@@ -1032,17 +1040,7 @@ class TestMediatorWithMocks:
                     }
                 }
             })
-            mediator.query_claim_graph_support = Mock(return_value={
-                'summary': {
-                    'total_fact_count': 0,
-                    'unique_fact_count': 0,
-                    'duplicate_fact_count': 0,
-                    'semantic_cluster_count': 0,
-                    'semantic_duplicate_count': 0,
-                    'max_score': 0.0,
-                },
-                'results': [],
-            })
+            mediator.query_claim_graph_support = Mock(return_value=_make_graph_support_payload())
             mediator.legal_authority_search.build_search_programs = Mock(return_value=[
                 {
                     'program_id': 'legal_search_program:fact-1',
@@ -1162,17 +1160,7 @@ class TestMediatorWithMocks:
                     }
                 }
             })
-            mediator.query_claim_graph_support = Mock(return_value={
-                'summary': {
-                    'total_fact_count': 0,
-                    'unique_fact_count': 0,
-                    'duplicate_fact_count': 0,
-                    'semantic_cluster_count': 0,
-                    'semantic_duplicate_count': 0,
-                    'max_score': 0.0,
-                },
-                'results': [],
-            })
+            mediator.query_claim_graph_support = Mock(return_value=_make_graph_support_payload())
 
             plan = mediator.get_claim_follow_up_plan(
                 claim_type='employment',
@@ -1256,19 +1244,15 @@ class TestMediatorWithMocks:
                     }
                 }
             })
-            mediator.query_claim_graph_support = Mock(return_value={
-                'summary': {
-                    'total_fact_count': 3,
-                    'unique_fact_count': 1,
-                    'duplicate_fact_count': 2,
-                    'semantic_cluster_count': 1,
-                    'semantic_duplicate_count': 2,
-                    'max_score': 2.1,
-                },
-                'results': [
-                    {'fact_id': 'fact:1', 'score': 2.1, 'matched_claim_element': True},
-                ],
-            })
+            mediator.query_claim_graph_support = Mock(return_value=_make_graph_support_payload(
+                total_fact_count=3,
+                unique_fact_count=1,
+                duplicate_fact_count=2,
+                semantic_cluster_count=1,
+                semantic_duplicate_count=2,
+                max_score=2.1,
+                results=[_make_graph_support_result(score=2.1)],
+            ))
 
             plan = mediator.get_claim_follow_up_plan(
                 claim_type='employment',
@@ -1369,17 +1353,7 @@ class TestMediatorWithMocks:
                     }
                 }
             })
-            mediator.query_claim_graph_support = Mock(return_value={
-                'summary': {
-                    'total_fact_count': 0,
-                    'unique_fact_count': 0,
-                    'duplicate_fact_count': 0,
-                    'semantic_cluster_count': 0,
-                    'semantic_duplicate_count': 0,
-                    'max_score': 0.0,
-                },
-                'results': [],
-            })
+            mediator.query_claim_graph_support = Mock(return_value=_make_graph_support_payload())
 
             plan = mediator.get_claim_follow_up_plan(
                 claim_type='employment',
@@ -1452,17 +1426,7 @@ class TestMediatorWithMocks:
                     }
                 }
             })
-            mediator.query_claim_graph_support = Mock(return_value={
-                'summary': {
-                    'total_fact_count': 0,
-                    'unique_fact_count': 0,
-                    'duplicate_fact_count': 0,
-                    'semantic_cluster_count': 0,
-                    'semantic_duplicate_count': 0,
-                    'max_score': 0.0,
-                },
-                'results': [],
-            })
+            mediator.query_claim_graph_support = Mock(return_value=_make_graph_support_payload())
             mediator.discover_web_evidence = Mock(return_value={
                 'discovered': 0,
                 'stored': 0,
@@ -1531,17 +1495,7 @@ class TestMediatorWithMocks:
                     }
                 }
             })
-            mediator.query_claim_graph_support = Mock(return_value={
-                'summary': {
-                    'total_fact_count': 0,
-                    'unique_fact_count': 0,
-                    'duplicate_fact_count': 0,
-                    'semantic_cluster_count': 0,
-                    'semantic_duplicate_count': 0,
-                    'max_score': 0.0,
-                },
-                'results': [],
-            })
+            mediator.query_claim_graph_support = Mock(return_value=_make_graph_support_payload())
             mediator.legal_authority_search.build_search_programs = Mock(return_value=[
                 {
                     'program_id': 'legal_search_program:authority-1',

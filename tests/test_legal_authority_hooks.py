@@ -475,6 +475,7 @@ class TestLegalAuthorityStorageHook:
                 assert authority['parse_metadata']['source'] == 'legal_authority'
                 assert authority['parse_metadata']['content_origin'] == 'authority_full_text'
                 assert authority['parse_metadata']['content_source_field'] == 'content'
+                assert authority['provenance']['metadata']['artifact_family'] == 'legal_authority_text'
                 assert authority['provenance']['metadata']['content_origin'] == 'authority_full_text'
                 assert authority['provenance']['metadata']['text_available'] is True
                 assert authority['parse_metadata']['transform_lineage']['source'] == 'legal_authority'
@@ -485,6 +486,14 @@ class TestLegalAuthorityStorageHook:
                 facts = hook.get_authority_facts(record_id)
                 assert len(facts) >= 1
                 assert facts[0]['source_authority_id'] == f'authority:{record_id}'
+                assert facts[0]['source_family'] == 'legal_authority'
+                assert facts[0]['source_record_id'] == record_id
+                assert facts[0]['source_ref'] == f'authority:{record_id}'
+                assert facts[0]['record_scope'] == 'legal_authority'
+                assert facts[0]['artifact_family'] == 'legal_authority_text'
+                assert facts[0]['corpus_family'] == 'legal_authority'
+                assert facts[0]['content_origin'] == 'authority_full_text'
+                assert facts[0]['parse_source'] == 'legal_authority'
                 assert facts[0]['metadata']['parse_lineage']['source'] == 'legal_authority'
             finally:
                 if os.path.exists(db_path):
@@ -563,6 +572,7 @@ class TestLegalAuthorityStorageHook:
                 assert authority['parse_metadata']['content_origin'] == 'authority_reference_fallback'
                 assert authority['parse_metadata']['content_source_field'] == 'citation_title_fallback'
                 assert authority['parse_metadata']['fallback_mode'] == 'citation_title_only'
+                assert authority['provenance']['metadata']['artifact_family'] == 'legal_authority_reference'
                 assert authority['provenance']['metadata']['content_origin'] == 'authority_reference_fallback'
                 assert authority['provenance']['metadata']['fallback_mode'] == 'citation_title_only'
                 assert authority['provenance']['metadata']['text_available'] is False
@@ -983,7 +993,24 @@ class TestMediatorLegalAuthorityIntegration:
                         'support_by_kind': {'authority': 6},
                     },
                     'results': [
-                        {'fact_id': 'fact:1', 'score': 2.5, 'matched_claim_element': True, 'duplicate_count': 3},
+                        {
+                            'fact_id': 'fact:1',
+                            'score': 2.5,
+                            'matched_claim_element': True,
+                            'duplicate_count': 3,
+                            'source_family': 'authority',
+                            'source_record_id': 'authority:1',
+                            'support_ref': 'support:authority:1',
+                            'source_ref': 'authority:1',
+                            'record_scope': 'legal_authority',
+                            'artifact_family': 'legal_authority_text',
+                            'corpus_family': 'legal_authority',
+                            'content_origin': 'legal_authority_text',
+                            'parse_source': 'authority_document_parse',
+                            'input_format': 'text/html',
+                            'quality_tier': 'high',
+                            'quality_score': 0.94,
+                        },
                     ],
                 })
                 mediator.discover_web_evidence = Mock(return_value={'total_records': 1})

@@ -24,6 +24,20 @@ except ImportError:
 class ClaimSupportHook:
     """Track which evidence and authorities support each claim type."""
 
+    _CONTENT_ORIGIN_ARTIFACT_FAMILY = {
+        'historical_archive_capture': 'archived_web_page',
+        'live_web_capture': 'live_web_page',
+        'authority_full_text': 'legal_authority_text',
+        'authority_reference_fallback': 'legal_authority_reference',
+    }
+
+    _ARTIFACT_FAMILY_CORPUS_FAMILY = {
+        'archived_web_page': 'web_page',
+        'live_web_page': 'web_page',
+        'legal_authority_text': 'legal_authority',
+        'legal_authority_reference': 'legal_authority',
+    }
+
     def __init__(self, mediator, db_path: Optional[str] = None):
         self.mediator = mediator
         self.db_path = db_path or self._get_default_db_path()
@@ -37,6 +51,20 @@ class ClaimSupportHook:
         if not state_dir.exists():
             state_dir = Path('.')
         return str(state_dir / 'claim_support.duckdb')
+
+    def _resolve_artifact_identity(
+        self,
+        *,
+        content_origin: str = '',
+        artifact_family: str = '',
+        corpus_family: str = '',
+    ) -> Dict[str, str]:
+        resolved_artifact_family = artifact_family or self._CONTENT_ORIGIN_ARTIFACT_FAMILY.get(content_origin, '')
+        resolved_corpus_family = corpus_family or self._ARTIFACT_FAMILY_CORPUS_FAMILY.get(resolved_artifact_family, '')
+        return {
+            'artifact_family': resolved_artifact_family,
+            'corpus_family': resolved_corpus_family,
+        }
 
     def _prepare_duckdb_path(self):
         try:
@@ -465,17 +493,30 @@ class ClaimSupportHook:
         quality_tier = str(parse_metadata.get('quality_tier') or parse_quality.get('quality_tier') or '')
         quality_score = float(parse_metadata.get('quality_score') or parse_quality.get('quality_score') or 0.0)
         page_count = int(parse_metadata.get('page_count', source_span.get('page_count', 0)) or 0)
+        content_origin = str(parse_metadata.get('content_origin') or transform_lineage.get('content_origin') or provenance_metadata.get('content_origin') or '')
+        artifact_family = str(parse_metadata.get('artifact_family') or transform_lineage.get('artifact_family') or provenance_metadata.get('artifact_family') or '')
+        corpus_family = str(parse_metadata.get('corpus_family') or transform_lineage.get('corpus_family') or provenance_metadata.get('corpus_family') or '')
+
+        artifact_identity = self._resolve_artifact_identity(
+            content_origin=content_origin,
+            artifact_family=artifact_family,
+            corpus_family=corpus_family,
+        )
+        artifact_family = artifact_identity['artifact_family']
+        corpus_family = artifact_identity['corpus_family']
 
         return {
             'parse_status': payload.get('parse_status'),
             'chunk_count': int(payload.get('chunk_count', 0) or 0),
+            'corpus_family': corpus_family,
+            'artifact_family': artifact_family,
             'input_format': input_format,
             'extraction_method': extraction_method,
             'quality_tier': quality_tier,
             'quality_score': quality_score,
             'page_count': page_count,
             'source': str(parse_metadata.get('source') or transform_lineage.get('source') or ''),
-            'content_origin': str(parse_metadata.get('content_origin') or transform_lineage.get('content_origin') or provenance_metadata.get('content_origin') or ''),
+            'content_origin': content_origin,
             'historical_capture': bool(parse_metadata.get('historical_capture', transform_lineage.get('historical_capture', provenance_metadata.get('historical_capture', False)))),
             'capture_source': str(parse_metadata.get('capture_source') or transform_lineage.get('capture_source') or provenance_metadata.get('capture_source') or ''),
             'archive_url': str(parse_metadata.get('archive_url') or transform_lineage.get('archive_url') or provenance_metadata.get('archive_url') or ''),
@@ -489,6 +530,85 @@ class ClaimSupportHook:
             'source_span': dict(source_span),
         }
 
+    def _normalize_support_fact(self, fact: Dict[str, Any], link: Dict[str, Any]) -> Dict[str, Any]:
+        payload = fact if isinstance(fact, dict) else {}
+        metadata = payload.get('metadata', {}) if isinstance(payload.get('metadata'), dict) else {}
+        provenance = payload.get('provenance', {}) if isinstance(payload.get('provenance'), dict) else {}
+        provenance_metadata = provenance.get('metadata', {}) if isinstance(provenance.get('metadata'), dict) else {}
+        parse_lineage = metadata.get('parse_lineage', {}) if isinstance(metadata.get('parse_lineage'), dict) else {}
+        transform_lineage = parse_lineage.get('transform_lineage', {}) if isinstance(parse_lineage.get('transform_lineage'), dict) else {}
+        parse_quality = parse_lineage.get('parse_quality', {}) if isinstance(parse_lineage.get('parse_quality'), dict) else {}
+        source_span = parse_lineage.get('source_span', {}) if isinstance(parse_lineage.get('source_span'), dict) else {}
+        record_summary = link.get('record_summary', {}) if isinstance(link.get('record_summary'), dict) else {}
+        record_parse_summary = record_summary.get('parse_summary', {}) if isinstance(record_summary.get('parse_summary'), dict) else {}
+        source_table = str(link.get('source_table') or '')
+        source_family = str(payload.get('source_family') or parse_lineage.get('record_scope') or '')
+        if not source_family:
+            source_family = 'legal_authority' if source_table == 'legal_authorities' else source_table or str(link.get('support_kind') or '')
+        source_record_id = payload.get('source_record_id')
+        if source_record_id is None:
+            source_record_id = link.get('authority_record_id') if source_family == 'legal_authority' else link.get('evidence_record_id')
+
+        content_origin = str(
+            transform_lineage.get('content_origin')
+            or parse_lineage.get('content_origin')
+            or record_parse_summary.get('content_origin')
+            or provenance_metadata.get('content_origin')
+            or ''
+        )
+        artifact_identity = self._resolve_artifact_identity(
+            content_origin=content_origin,
+            artifact_family=str(
+                transform_lineage.get('artifact_family')
+                or parse_lineage.get('artifact_family')
+                or record_parse_summary.get('artifact_family')
+                or provenance_metadata.get('artifact_family')
+                or ''
+            ),
+            corpus_family=str(
+                transform_lineage.get('corpus_family')
+                or parse_lineage.get('corpus_family')
+                or record_parse_summary.get('corpus_family')
+                or provenance_metadata.get('corpus_family')
+                or ''
+            ),
+        )
+
+        return {
+            **payload,
+            'claim_type': link.get('claim_type'),
+            'claim_element_id': link.get('claim_element_id'),
+            'claim_element_text': link.get('claim_element_text'),
+            'support_kind': link.get('support_kind'),
+            'support_ref': link.get('support_ref'),
+            'support_label': link.get('support_label'),
+            'source_table': source_table,
+            'source_family': source_family,
+            'source_record_id': source_record_id,
+            'source_ref': str(
+                payload.get('source_ref')
+                or parse_lineage.get('source_ref')
+                or payload.get('source_artifact_id')
+                or payload.get('source_authority_id')
+                or link.get('support_ref')
+                or ''
+            ),
+            'record_scope': str(parse_lineage.get('record_scope') or source_family),
+            'artifact_family': artifact_identity['artifact_family'],
+            'corpus_family': artifact_identity['corpus_family'],
+            'content_origin': content_origin,
+            'parse_source': str(parse_lineage.get('source') or record_parse_summary.get('source') or ''),
+            'input_format': str(parse_lineage.get('input_format') or record_parse_summary.get('input_format') or ''),
+            'quality_tier': str(parse_lineage.get('quality_tier') or record_parse_summary.get('quality_tier') or ''),
+            'quality_score': float(parse_lineage.get('quality_score') or record_parse_summary.get('quality_score') or parse_quality.get('quality_score') or 0.0),
+            'page_count': int(parse_lineage.get('page_count') or record_parse_summary.get('page_count') or source_span.get('page_count') or 0),
+            'evidence_record_id': link.get('evidence_record_id'),
+            'authority_record_id': link.get('authority_record_id'),
+            'graph_summary': link.get('graph_summary', {}),
+            'graph_trace': link.get('graph_trace', {}),
+            'record_summary': record_summary,
+        }
+
     def _build_support_packet_lineage_summary(
         self,
         *,
@@ -500,6 +620,8 @@ class ClaimSupportHook:
         source_span = parse_lineage.get('source_span') if isinstance(parse_lineage.get('source_span'), dict) else record_parse_summary.get('source_span', {}) if isinstance(record_parse_summary.get('source_span'), dict) else {}
 
         return {
+            'corpus_family': str(parse_lineage.get('corpus_family') or record_parse_summary.get('corpus_family') or ''),
+            'artifact_family': str(parse_lineage.get('artifact_family') or record_parse_summary.get('artifact_family') or ''),
             'source': str(parse_lineage.get('source') or record_parse_summary.get('source') or ''),
             'input_format': str(parse_lineage.get('input_format') or record_parse_summary.get('input_format') or ''),
             'parser_version': str(parse_lineage.get('parser_version') or ''),
@@ -542,6 +664,7 @@ class ClaimSupportHook:
         }
 
     def _summarize_support_packets(self, packets: List[Dict[str, Any]]) -> Dict[str, Any]:
+        artifact_family_counts: Dict[str, int] = {}
         content_origin_counts: Dict[str, int] = {}
         capture_source_counts: Dict[str, int] = {}
         fallback_mode_counts: Dict[str, int] = {}
@@ -559,12 +682,15 @@ class ClaimSupportHook:
                 link_only_packet_count += 1
 
             lineage_summary = packet.get('lineage_summary', {}) if isinstance(packet.get('lineage_summary'), dict) else {}
+            artifact_family = str(lineage_summary.get('artifact_family') or '')
             content_origin = str(lineage_summary.get('content_origin') or '')
             capture_source = str(lineage_summary.get('capture_source') or '')
             fallback_mode = str(lineage_summary.get('fallback_mode') or '')
             content_source_field = str(lineage_summary.get('content_source_field') or '')
             historical_capture = bool(lineage_summary.get('historical_capture', False))
 
+            if artifact_family:
+                artifact_family_counts[artifact_family] = artifact_family_counts.get(artifact_family, 0) + 1
             if content_origin:
                 content_origin_counts[content_origin] = content_origin_counts.get(content_origin, 0) + 1
             if capture_source:
@@ -581,6 +707,7 @@ class ClaimSupportHook:
             'fact_packet_count': fact_packet_count,
             'link_only_packet_count': link_only_packet_count,
             'historical_capture_count': historical_capture_count,
+            'artifact_family_counts': artifact_family_counts,
             'content_origin_counts': content_origin_counts,
             'capture_source_counts': capture_source_counts,
             'fallback_mode_counts': fallback_mode_counts,
@@ -603,6 +730,7 @@ class ClaimSupportHook:
         parse_source_counts: Dict[str, int] = {}
         parse_input_format_counts: Dict[str, int] = {}
         parse_quality_tier_counts: Dict[str, int] = {}
+        artifact_family_counts: Dict[str, int] = {}
         content_origin_counts: Dict[str, int] = {}
         fallback_mode_counts: Dict[str, int] = {}
         graph_status_counts: Dict[str, int] = {}
@@ -626,6 +754,9 @@ class ClaimSupportHook:
             parse_summary = record_summary.get('parse_summary', {}) if isinstance(record_summary.get('parse_summary'), dict) else {}
             parse_source = str(parse_lineage.get('source') or parse_summary.get('source') or 'unknown')
             parse_source_counts[parse_source] = parse_source_counts.get(parse_source, 0) + 1
+            artifact_family = str(parse_lineage.get('artifact_family') or parse_summary.get('artifact_family') or '')
+            if artifact_family:
+                artifact_family_counts[artifact_family] = artifact_family_counts.get(artifact_family, 0) + 1
             content_origin = str(parse_lineage.get('content_origin') or parse_summary.get('content_origin') or '')
             if content_origin:
                 content_origin_counts[content_origin] = content_origin_counts.get(content_origin, 0) + 1
@@ -684,6 +815,7 @@ class ClaimSupportHook:
             'parse_source_counts': parse_source_counts,
             'parse_input_format_counts': parse_input_format_counts,
             'parse_quality_tier_counts': parse_quality_tier_counts,
+            'artifact_family_counts': artifact_family_counts,
             'content_origin_counts': content_origin_counts,
             'fallback_mode_counts': fallback_mode_counts,
             'avg_parse_quality_score': round(quality_score_total / parsed_record_count, 2) if parsed_record_count else 0.0,
@@ -2271,23 +2403,7 @@ class ClaimSupportHook:
                 continue
 
             for fact in link.get('facts', []) or []:
-                facts.append(
-                    {
-                        **fact,
-                        'claim_type': link.get('claim_type'),
-                        'claim_element_id': link.get('claim_element_id'),
-                        'claim_element_text': link.get('claim_element_text'),
-                        'support_kind': link.get('support_kind'),
-                        'support_ref': link.get('support_ref'),
-                        'support_label': link.get('support_label'),
-                        'source_table': link.get('source_table'),
-                        'evidence_record_id': link.get('evidence_record_id'),
-                        'authority_record_id': link.get('authority_record_id'),
-                        'graph_summary': link.get('graph_summary', {}),
-                        'graph_trace': link.get('graph_trace', {}),
-                        'record_summary': link.get('record_summary', {}),
-                    }
-                )
+                facts.append(self._normalize_support_fact(fact, link))
 
         return facts
 

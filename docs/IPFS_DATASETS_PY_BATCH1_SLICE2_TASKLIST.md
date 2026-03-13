@@ -1,7 +1,7 @@
 # IPFS Datasets Py Batch 1 Slice 2 Task List
 
 Date: 2026-03-12
-Status: Ready for implementation
+Status: Completed 2026-03-13
 
 Companion docs:
 
@@ -177,3 +177,21 @@ Do not include these in this slice unless required by a discovered dependency:
 ## Stop Condition
 
 Stop this slice once archived-page storage, support packets, and support traces behave strongly enough that later graph and logic work can treat archived pages as first-class shared corpus artifacts.
+
+## Completion Notes
+
+Completed in the current checkout on 2026-03-13.
+
+Implemented outcomes:
+
+- web evidence lineage now carries explicit `corpus_family='web_page'` plus stable `artifact_family` identity for live versus archived captures
+- legal-authority provenance metadata now carries explicit `corpus_family='legal_authority'` and `artifact_family` identity for full-text versus citation-fallback authority records
+- claim-support packet and trace summaries now surface `artifact_family_counts` so downstream review flows do not need to infer artifact class from `content_origin` alone
+- claim-support normalization now backfills artifact identity from older `content_origin` values so legacy stored records remain compatible with the new summaries
+
+Validated with:
+
+```bash
+./.venv/bin/python -m pytest tests/test_web_evidence_hooks.py tests/test_claim_support_hooks.py tests/test_legal_authority_hooks.py -q
+./.venv/bin/python -m pytest tests/test_review_api.py tests/test_claim_support_review_dashboard_flow.py tests/test_claim_support_review_template.py tests/test_mediator.py tests/test_cli_commands.py -q
+```

@@ -52,6 +52,10 @@ def _build_dashboard_mediator() -> Mock:
                     "fact_packet_count": 3,
                     "link_only_packet_count": 0,
                     "historical_capture_count": 2,
+                    "artifact_family_counts": {
+                        "archived_web_page": 2,
+                        "legal_authority_reference": 1,
+                    },
                     "content_origin_counts": {
                         "historical_archive_capture": 2,
                         "authority_reference_fallback": 1,
@@ -380,6 +384,10 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
         "fact_packet_count": 3,
         "link_only_packet_count": 0,
         "historical_capture_count": 2,
+        "artifact_family_counts": {
+            "archived_web_page": 2,
+            "legal_authority_reference": 1,
+        },
         "content_origin_counts": {
             "historical_archive_capture": 2,
             "authority_reference_fallback": 1,

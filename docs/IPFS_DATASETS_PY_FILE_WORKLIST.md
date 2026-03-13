@@ -251,7 +251,8 @@ Current state:
 
 - completed through evidence-hook storage reuse with explicit `parse_source='web_document'` and request-level parse reporting
 - completed for durable archive provenance metadata in stored web evidence and review-facing lineage summaries
-- ensure review and follow-up payloads can distinguish live fetches from archived captures
+- completed for explicit `corpus_family='web_page'` and stable `artifact_family` identity for live versus archived captures in stored lineage and review-facing summaries
+- completed for archived web evidence fact round-tripping through the shared persisted evidence fact API with explicit artifact, corpus, and parse-lineage fields
 
 Done when:
 

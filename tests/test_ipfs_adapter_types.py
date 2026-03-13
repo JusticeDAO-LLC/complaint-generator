@@ -256,6 +256,18 @@ def test_graph_types_serialize_with_aliases_and_nested_summary():
         claim_element_id="employment:1",
         claim_element_text="Protected activity",
         support_ref="QmEvidence",
+        support_label="Termination email",
+        source_family="evidence",
+        source_record_id=12,
+        source_ref="QmEvidence",
+        record_scope="evidence",
+        artifact_family="archived_web_page",
+        corpus_family="web_page",
+        content_origin="historical_archive_capture",
+        parse_source="web_document",
+        input_format="html",
+        quality_tier="high",
+        quality_score=0.98,
         evidence_record_id=12,
     )
 
@@ -290,6 +302,18 @@ def test_graph_types_serialize_with_aliases_and_nested_summary():
     assert graph_payload["entities"][0]["id"] == "artifact:1"
     assert graph_payload["entities"][0]["type"] == "artifact"
     assert graph_payload["relationships"][0]["id"] == "rel:1"
+    assert payload["results"][0]["support_label"] == "Termination email"
+    assert payload["results"][0]["source_family"] == "evidence"
+    assert payload["results"][0]["source_record_id"] == 12
+    assert payload["results"][0]["source_ref"] == "QmEvidence"
+    assert payload["results"][0]["record_scope"] == "evidence"
+    assert payload["results"][0]["artifact_family"] == "archived_web_page"
+    assert payload["results"][0]["corpus_family"] == "web_page"
+    assert payload["results"][0]["content_origin"] == "historical_archive_capture"
+    assert payload["results"][0]["parse_source"] == "web_document"
+    assert payload["results"][0]["input_format"] == "html"
+    assert payload["results"][0]["quality_tier"] == "high"
+    assert payload["results"][0]["quality_score"] == 0.98
     assert payload["results"][0]["evidence_record_id"] == 12
     assert payload["summary"]["result_count"] == 1
     assert snapshot_payload["node_count"] == 1
@@ -326,12 +350,39 @@ def test_case_fact_serializes_with_provenance():
         text="Employee was terminated after complaint",
         source_artifact_id="artifact:1",
         confidence=0.9,
-        provenance=ProvenanceRecord(source_url="https://example.com/evidence"),
+        metadata={
+            "parse_lineage": {
+                "record_scope": "evidence",
+                "source": "web_document",
+                "input_format": "html",
+                "quality_tier": "high",
+                "quality_score": 0.9,
+                "source_span": {"page_count": 1},
+                "transform_lineage": {
+                    "content_origin": "historical_archive_capture",
+                },
+            },
+        },
+        provenance=ProvenanceRecord(
+            source_url="https://example.com/evidence",
+            metadata={"artifact_family": "archived_web_page", "corpus_family": "web_page"},
+        ),
     )
 
     payload = fact.as_dict()
     assert payload["fact_id"] == "fact:1"
     assert payload["source_artifact_id"] == "artifact:1"
+    assert payload["source_family"] == "evidence"
+    assert payload["source_ref"] == "artifact:1"
+    assert payload["record_scope"] == "evidence"
+    assert payload["artifact_family"] == "archived_web_page"
+    assert payload["corpus_family"] == "web_page"
+    assert payload["content_origin"] == "historical_archive_capture"
+    assert payload["parse_source"] == "web_document"
+    assert payload["input_format"] == "html"
+    assert payload["quality_tier"] == "high"
+    assert payload["quality_score"] == 0.9
+    assert payload["page_count"] == 1
     assert payload["provenance"]["source_url"] == "https://example.com/evidence"
 
 

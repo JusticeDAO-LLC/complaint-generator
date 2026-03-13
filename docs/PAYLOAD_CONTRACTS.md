@@ -897,7 +897,7 @@ Support-link semantics:
 - `graph_trace`: Provenance-oriented graph packet combining source table, record id, adapter snapshot semantics, and stored lineage metadata for review or downstream tracing.
 - `support_traces`: Persisted fact-oriented trace rows derived from the stored support links, fact tables, and graph lineage. These are the strongest review-oriented explanation layer for why an element is currently covered or still weak.
 - `support_trace_summary`: Compact counts over `support_traces`, including fact-trace volume, parse-source mix, graph-status mix, and distinct record or graph counts. Source-context counts are derived from fact lineage when available and otherwise fall back to the normalized record summary built from persisted provenance or parse metadata.
-- `support_packet_summary`: Compact lineage counts over the traced support corpus, including archive-capture totals, capture-source mix, authority fallback modes, and source-field fallback mix.
+- `support_packet_summary`: Compact lineage counts over the traced support corpus, including archive-capture totals, artifact-family mix, capture-source mix, authority fallback modes, and source-field fallback mix.
 - `authority_treatment_summary`: Compact authority-reliability counts over authority links, including supportive versus adverse versus uncertain link totals, treatment-type mix, and maximum treatment confidence.
 - `authority_rule_candidate_summary`: Compact counts over structured rule candidates extracted from authority text, including aligned rule totals, rule-type mix such as `element`, `exception`, or `procedural_prerequisite`, and maximum extraction confidence.
 
@@ -912,6 +912,7 @@ Interpretation notes:
 - `authority_treatment_summary` summarizes whether current legal-authority support appears clean, adverse, or uncertain based on persisted treatment records such as `questioned`, `limits`, `superseded`, or `good_law_unconfirmed`.
 - `authority_rule_candidate_summary` summarizes whether current legal-authority support already contains structured rule statements for the claim element. When authority support is present but `evidence` is still missing, operators can treat that as a likely factual-predicate gap rather than a legal-research gap.
 - `support_packet_summary` summarizes operator-visible source-context lineage across the claim, including archive captures, capture-source mix, citation-only fallback modes, and content-source-field fallbacks. It prefers persisted `provenance.metadata` when present and falls back to parse lineage for older stored records.
+- `artifact_family_counts` in `support_packet_summary` and `support_trace_summary` makes corpus identity explicit for archived web pages versus live web pages versus authority-backed artifacts, so review flows do not need to infer artifact class from `content_origin` alone.
 - `graph_trace_summary` is the compact lineage companion for dashboards and audit surfaces; it counts traced links, snapshot creation versus reuse, source-table mix, and distinct graph ids without requiring callers to inspect raw support links.
 - `support_trace_summary` remains the parse-diagnostics aggregate, while `support_packet_summary` is the operator-facing lineage aggregate built from those traced records.
 - `unresolved_element_count`, `unresolved_elements`, and `recommended_gap_actions` compress the richer gap payload into one per-claim summary for dashboards.
@@ -982,7 +983,9 @@ Field semantics:
 - `fact_count`: Sum of fact rows attached to enriched evidence and authority support links for the claim element.
 - `evidence_record_id`: DuckDB evidence row resolved from the support reference CID.
 - `authority_record_id`: DuckDB legal-authority row resolved from the persisted support-link metadata.
-- `facts`: Persisted fact rows returned by `Mediator.get_evidence_facts(...)` or `Mediator.get_authority_facts(...)`.
+- `facts`: Persisted fact rows returned by `Mediator.get_evidence_facts(...)` or `Mediator.get_authority_facts(...)`, now carrying explicit cross-source fields such as `source_family`, `source_record_id`, `source_ref`, `record_scope`, and any available artifact-identity or parse-lineage fields. Discovered and archived web evidence reuses the same evidence-backed fact path, so archived web pages surface the same flattened contract through `Mediator.get_evidence_facts(...)` rather than a separate web-only fact family.
+
+- For evidence-backed fact rows, `source_artifact_id` and `source_ref` are durable artifact identifiers from the parse-and-graph substrate, not necessarily the operator-facing CID used as the support link reference.
 
 ## Claim Element View
 
@@ -1040,6 +1043,33 @@ Representative shape:
     "recommended_action": "collect_missing_support_kind",
     "graph_support": {
       "status": "ready",
+      "results": [
+        {
+          "fact_id": "fact:abc123",
+          "text": "Employee complained about discrimination.",
+          "support_kind": "evidence",
+          "source_table": "evidence",
+          "source_family": "evidence",
+          "source_record_id": 14,
+          "source_ref": "Qm...",
+          "record_scope": "evidence",
+          "artifact_family": "archived_web_page",
+          "corpus_family": "web_page",
+          "content_origin": "historical_archive_capture",
+          "parse_source": "web_document",
+          "input_format": "html",
+          "quality_tier": "high",
+          "evidence_record_id": 14,
+          "score": 2.6,
+          "matched_claim_element": true,
+          "duplicate_count": 2,
+          "cluster_size": 2,
+          "cluster_texts": [
+            "Employee complained about discrimination.",
+            "Employee filed an HR discrimination complaint."
+          ]
+        }
+      ],
       "summary": {
         "total_match_count": 1,
         "total_fact_count": 2
@@ -1080,6 +1110,13 @@ Representative shape:
       "support_kind": "authority",
       "support_ref": "42 U.S.C. § 1983",
       "source_table": "legal_authorities",
+      "source_family": "legal_authority",
+      "source_record_id": 12,
+      "source_ref": "authority:12",
+      "record_scope": "legal_authority",
+      "artifact_family": "legal_authority_reference",
+      "corpus_family": "legal_authority",
+      "content_origin": "authority_reference_fallback",
       "authority_record_id": 12
     }
   ],
@@ -1134,6 +1171,7 @@ Interpretation notes:
 - `gap_summary` surfaces unresolved or partially satisfied support requirements for the same element, plus graph-backed trace counts and graph-support lookup output.
 - `contradiction_candidates` contains heuristic fact-pair conflicts for the element when support facts disagree with opposite polarity over materially overlapping terms.
 - `support_facts` is the flattened fact list collected from the element's enriched evidence and authority support links.
+- `gap_summary.graph_support.results[*]` preserves the same explicit source-family, artifact-identity, and parse-lineage fields exposed by `support_facts`, but ranked for graph-backed support review.
 - `support_packets` is the review-friendly lineage packet view over that same element-level support.
 - `support_packets[*].lineage_summary` carries archive-history fields such as `archive_url` and `capture_source`, plus fallback markers such as `fallback_mode` and `content_source_field`.
 - The raw API preserves support-packet data without imposing a display order; the review dashboard currently renders archive captures first, fallback-only authority packets next, and remaining packets after that for faster operator scanning.
@@ -1157,6 +1195,16 @@ Representative shape:
     "support_ref": "Qm...",
     "support_label": "HR complaint email",
     "source_table": "evidence",
+    "source_family": "evidence",
+    "source_record_id": 12,
+    "source_ref": "Qm...",
+    "record_scope": "evidence",
+    "artifact_family": "archived_web_page",
+    "corpus_family": "web_page",
+    "content_origin": "historical_archive_capture",
+    "parse_source": "web_document",
+    "input_format": "html",
+    "quality_tier": "high",
     "evidence_record_id": 12,
     "authority_record_id": null
   }
@@ -1164,6 +1212,13 @@ Representative shape:
 ```
 
 Use this when downstream workflows need a cross-source fact list without re-walking `support_summary.links`.
+
+Interpretation notes:
+
+- `source_family`, `source_record_id`, `source_ref`, and `record_scope` make the fact contract explicit across evidence-backed versus authority-backed support rows.
+- `source_ref` is the durable artifact or authority reference carried by the fact lineage, while `support_ref` remains the operator-facing support-link reference such as a CID or citation.
+- `artifact_family`, `corpus_family`, and `content_origin` surface the same corpus identity used by support packets and support traces, with compatibility fallback for older stored rows that only carried `content_origin`.
+- `parse_source`, `input_format`, `quality_tier`, and `quality_score` lift fact-lineage parse context into the flattened fact rows so downstream graph or proof workflows do not need to re-open the parent support link to classify the source.
 
 ## Claim Graph Support Query
 
@@ -1184,6 +1239,16 @@ Representative shape:
       "text": "Employee complained about discrimination.",
       "support_kind": "evidence",
       "source_table": "evidence",
+      "source_family": "evidence",
+      "source_record_id": 12,
+      "source_ref": "Qm...",
+      "record_scope": "evidence",
+      "artifact_family": "archived_web_page",
+      "corpus_family": "web_page",
+      "content_origin": "historical_archive_capture",
+      "parse_source": "web_document",
+      "input_format": "html",
+      "quality_tier": "high",
       "score": 2.6,
       "matched_claim_element": true,
       "duplicate_count": 2,
@@ -1219,6 +1284,10 @@ Representative shape:
   }
 }
 ```
+
+Interpretation notes:
+
+- `results[*]` preserves the same explicit source-family, artifact-identity, and parse-lineage fields exposed by `support_facts`, so graph-backed support ranking can be consumed without reopening raw fact rows.
 
 Interpretation notes:
 

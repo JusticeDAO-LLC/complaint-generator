@@ -627,8 +627,11 @@ class WebEvidenceIntegrationHook:
             or effective_source_type in {'archived_domain_scrape', 'common_crawl'}
         )
         content_origin = 'historical_archive_capture' if historical_capture else 'live_web_capture'
+        artifact_family = 'archived_web_page' if historical_capture else 'live_web_page'
 
         context = {
+            'corpus_family': 'web_page',
+            'artifact_family': artifact_family,
             'content_origin': content_origin,
             'capture_source': source_type or effective_source_type,
             'historical_capture': historical_capture,

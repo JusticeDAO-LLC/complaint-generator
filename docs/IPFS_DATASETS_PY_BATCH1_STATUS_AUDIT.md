@@ -41,9 +41,9 @@ The main remaining Batch 1 work is not “add parsing.” It is to finish contra
 |---|---|---|
 | Slice 1: Canonical parse envelope completion | Partial | The shared parse contract exists and is already used, but richer format-level semantics and stronger page- or passage-oriented metadata are still incomplete. |
 | Slice 2: Provenance and transform-lineage alignment | Complete | Provenance records now carry durable normalized metadata, archived web evidence and authority text persist that metadata, and claim-support review summaries consume provenance-backed lineage consistently. |
-| Slice 3: Archived-page corpus normalization | Partial | Web evidence already enters the shared storage and parse path, but archive-history and historical-context metadata are still thinner than the target corpus contract. |
+| Slice 3: Archived-page corpus normalization | Complete | Web evidence, authority provenance, and claim-support summaries now carry explicit corpus and artifact identity for archived versus live web artifacts and authority-backed artifacts. |
 | Slice 4: Legal authority text as corpus asset | Mostly Complete | Authority text parsing, chunks, facts, and graph metadata already exist, but passage-level review semantics and explicit fallback distinctions can still be improved. |
-| Slice 5: Shared fact-registry completion | Partial | Evidence and authority facts already flow into claim support, but Batch 1 still needs stronger cross-source durability and explicit archived-page corpus guarantees. |
+| Slice 5: Shared fact-registry completion | Partial | Evidence, authority, and archived web evidence facts already flow through the same persisted fact substrate, but Batch 1 still needs stronger cross-source enforcement and clearer documentation of that shared contract. |
 
 ## Detailed Findings
 
@@ -124,7 +124,7 @@ The shared provenance substrate and cross-source lineage normalization pass are 
 
 ## Slice 3: Archived-page corpus normalization
 
-Status: Partial
+Status: Complete
 
 ### What is already true
 
@@ -139,15 +139,17 @@ Status: Partial
 - tests already assert parse summaries, parser versions, and lineage source for web evidence.
 - tests also confirm archived-domain discovery results exist as a source family.
 
-### What is still missing or incomplete
+### What is now true
 
-- archived pages are present operationally, but archive-history semantics are still not fully promoted into a durable corpus model.
-- the code does not yet obviously standardize fields such as archive timestamp, capture source, historical comparison lineage, or version relationships into the same durable contract expected by later operator drilldown.
-- live-web and historical capture distinctions exist, but still need stronger normalization for timeline and contradiction review.
+- web evidence lineage now persists explicit `corpus_family='web_page'` and stable `artifact_family` identity for live versus archived captures.
+- archived-page provenance metadata already preserves capture source, archive URL, version relationship, capture time, and observed time through the durable provenance path.
+- legal-authority provenance metadata now persists explicit artifact identity for full-text versus citation-fallback authority records, which keeps support summaries aligned across source families.
+- claim-support packet and trace summaries now expose `artifact_family_counts`, so review flows can distinguish archived web pages from live web pages and authority-backed artifacts without inferring from `content_origin`.
+- support-summary normalization backfills artifact identity from existing `content_origin` values for older stored records that predate the explicit fields.
 
 ### Audit conclusion
 
-Archived pages already participate in the system, but not yet with the full historical-context contract Batch 1 is supposed to establish.
+Archived pages now participate in the system as first-class corpus artifacts strongly enough for the current Batch 1 contract. Remaining Batch 1 work should move to the shared fact-registry pass.
 
 ## Slice 4: Legal authority text as corpus asset
 
@@ -203,7 +205,7 @@ Status: Partial
 
 ### What is still missing or incomplete
 
-- the shared fact model is strong for evidence and authorities, but Batch 1 still needs to make archived-page facts unmistakably first-class in the same durable corpus contract.
+- archived-page facts now round-trip through the shared persisted evidence fact API with explicit artifact, corpus, and parse-lineage fields, but Batch 1 still needs to keep that contract enforced consistently across the remaining higher-level consumers.
 - future graph and logic layers still risk needing source-family exceptions unless fact lineage and source semantics are tightened further.
 - the current fact substrate is mediator-usable, but not yet clearly documented and enforced as the one durable corpus fact family for all acquisition paths.
 
@@ -215,18 +217,23 @@ The shared fact registry is already real. Batch 1 should finish it by tightening
 
 Based on the current audit, the highest-leverage next slice is:
 
-1. `mediator/web_evidence_hooks.py`
-2. `mediator/claim_support_hooks.py`
-3. focused `tests/test_web_evidence_hooks.py`
-4. focused `tests/test_claim_support_hooks.py`
-5. `docs/PAYLOAD_CONTRACTS.md`
-6. Batch 1 planning docs touched by archived-page corpus semantics
+1. `integrations/ipfs_datasets/types.py`
+2. `mediator/evidence_hooks.py`
+3. `mediator/web_evidence_hooks.py`
+4. `mediator/legal_authority_hooks.py`
+5. `mediator/claim_support_hooks.py`
+6. focused `tests/test_evidence_hooks.py`
+7. focused `tests/test_web_evidence_hooks.py`
+8. focused `tests/test_legal_authority_hooks.py`
+9. focused `tests/test_claim_support_hooks.py`
+10. `docs/PAYLOAD_CONTRACTS.md`
+11. Batch 1 planning docs touched by shared fact-registry semantics
 
 ### Why this slice is best
 
-- provenance normalization is now stable enough that the next risk is not source attribution drift but archived-page corpus behavior and review depth
-- archived pages already flow through the shared storage and support path, so the next gains come from tightening their corpus guarantees rather than reworking basic lineage
-- shared fact-registry durability still benefits from making archived-page support feel less like an adjacent evidence subtype and more like a first-class corpus artifact
+- parse, provenance, and archived-page corpus identity are now stable enough that the main remaining Batch 1 risk is fact-contract drift across source families
+- the current registry already spans evidence, archived pages, and authorities operationally, so the next gains come from tightening identity and lineage guarantees rather than inventing a new substrate
+- graph, contradiction, and proof work will stay simpler if they can consume one explicit fact family instead of reconstructing source semantics from storage tables
 - this keeps Batch 1 focused on corpus completion without prematurely pulling in Batch 2 or graph-store redesign work
 
 ## Recommended status changes to planning assumptions
@@ -236,7 +243,7 @@ These statements should be treated as true for future planning:
 - Batch 1 is not “implement shared parsing”; it is “complete and normalize the shared corpus contract”
 - legal authority text is already largely a corpus asset when source text is available
 - claim-support already has a real cross-source fact substrate
-- archived-page provenance and timeline semantics are the biggest remaining Batch 1 weakness
+- the biggest remaining Batch 1 weakness is that the shared fact substrate is still stronger in practice than it is as an explicit cross-source contract
 
 ## Exit Criteria Reframed For Batch 1
 

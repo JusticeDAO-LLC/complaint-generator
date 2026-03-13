@@ -354,25 +354,46 @@ class CLI:
 		output_dir = options.get('output_dir')
 		if output_dir is None and positionals:
 			output_dir = positionals[0]
+		service_recipient_details = options.get('service_recipient_details')
+		if isinstance(service_recipient_details, str):
+			try:
+				service_recipient_details = json.loads(service_recipient_details)
+			except ValueError as error:
+				raise UserPresentableException('service_recipient_details must be valid JSON') from error
+		additional_signers = options.get('additional_signers')
+		if isinstance(additional_signers, str):
+			try:
+				additional_signers = json.loads(additional_signers)
+			except ValueError as error:
+				raise UserPresentableException('additional_signers must be valid JSON') from error
 		payload = self.mediator.build_formal_complaint_document_package(
 			user_id=options.get('user_id'),
 			court_name=options.get('court_name', 'United States District Court'),
 			district=options.get('district', ''),
+			county=options.get('county'),
 			division=options.get('division'),
 			court_header_override=options.get('court_header_override'),
 			case_number=options.get('case_number'),
+			lead_case_number=options.get('lead_case_number'),
+			related_case_number=options.get('related_case_number'),
+			assigned_judge=options.get('assigned_judge'),
+			courtroom=options.get('courtroom'),
 			title_override=options.get('title_override'),
 			plaintiff_names=options.get('plaintiff_names'),
 			defendant_names=options.get('defendant_names'),
 			requested_relief=options.get('requested_relief'),
+			jury_demand=options.get('jury_demand'),
+			jury_demand_text=options.get('jury_demand_text'),
 			signer_name=options.get('signer_name'),
 			signer_title=options.get('signer_title'),
 			signer_firm=options.get('signer_firm'),
 			signer_bar_number=options.get('signer_bar_number'),
 			signer_contact=options.get('signer_contact'),
+			additional_signers=additional_signers,
 			declarant_name=options.get('declarant_name'),
 			service_method=options.get('service_method'),
 			service_recipients=options.get('service_recipients'),
+			service_recipient_details=service_recipient_details,
 			signature_date=options.get('signature_date'),
 			verification_date=options.get('verification_date'),
 			service_date=options.get('service_date'),

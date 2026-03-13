@@ -35,6 +35,82 @@ except ImportError:
     duckdb = None
 
 
+_CONTENT_ORIGIN_ARTIFACT_FAMILY = {
+    'historical_archive_capture': 'archived_web_page',
+    'live_web_capture': 'live_web_page',
+    'authority_full_text': 'legal_authority_text',
+    'authority_reference_fallback': 'legal_authority_reference',
+}
+
+_ARTIFACT_FAMILY_CORPUS_FAMILY = {
+    'archived_web_page': 'web_page',
+    'live_web_page': 'web_page',
+    'legal_authority_text': 'legal_authority',
+    'legal_authority_reference': 'legal_authority',
+}
+
+
+def _resolve_artifact_identity(*, content_origin: str = '', artifact_family: str = '', corpus_family: str = '') -> Dict[str, str]:
+    resolved_artifact_family = artifact_family or _CONTENT_ORIGIN_ARTIFACT_FAMILY.get(content_origin, '')
+    resolved_corpus_family = corpus_family or _ARTIFACT_FAMILY_CORPUS_FAMILY.get(resolved_artifact_family, '')
+    return {
+        'artifact_family': resolved_artifact_family,
+        'corpus_family': resolved_corpus_family,
+    }
+
+
+def _normalize_evidence_fact_row(row: Any, *, evidence_id: int) -> Dict[str, Any]:
+    metadata = json.loads(row[4]) if row[4] else {}
+    provenance = json.loads(row[5]) if row[5] else {}
+    parse_lineage = metadata.get('parse_lineage', {}) if isinstance(metadata.get('parse_lineage'), dict) else {}
+    transform_lineage = parse_lineage.get('transform_lineage', {}) if isinstance(parse_lineage.get('transform_lineage'), dict) else {}
+    parse_quality = parse_lineage.get('parse_quality', {}) if isinstance(parse_lineage.get('parse_quality'), dict) else {}
+    source_span = parse_lineage.get('source_span', {}) if isinstance(parse_lineage.get('source_span'), dict) else {}
+    provenance_metadata = provenance.get('metadata', {}) if isinstance(provenance.get('metadata'), dict) else {}
+    content_origin = str(
+        transform_lineage.get('content_origin')
+        or parse_lineage.get('content_origin')
+        or provenance_metadata.get('content_origin')
+        or ''
+    )
+    artifact_identity = _resolve_artifact_identity(
+        content_origin=content_origin,
+        artifact_family=str(
+            transform_lineage.get('artifact_family')
+            or parse_lineage.get('artifact_family')
+            or provenance_metadata.get('artifact_family')
+            or ''
+        ),
+        corpus_family=str(
+            transform_lineage.get('corpus_family')
+            or parse_lineage.get('corpus_family')
+            or provenance_metadata.get('corpus_family')
+            or ''
+        ),
+    )
+    source_ref = str(row[2] or parse_lineage.get('source_ref') or '')
+    return {
+        'fact_id': row[0],
+        'text': row[1],
+        'source_artifact_id': row[2],
+        'confidence': row[3] or 0.0,
+        'metadata': metadata,
+        'provenance': provenance,
+        'source_family': 'evidence',
+        'source_record_id': evidence_id,
+        'source_ref': source_ref,
+        'record_scope': str(parse_lineage.get('record_scope') or 'evidence'),
+        'artifact_family': artifact_identity['artifact_family'],
+        'corpus_family': artifact_identity['corpus_family'],
+        'content_origin': content_origin,
+        'parse_source': str(parse_lineage.get('source') or ''),
+        'input_format': str(parse_lineage.get('input_format') or ''),
+        'quality_tier': str(parse_lineage.get('quality_tier') or ''),
+        'quality_score': float(parse_lineage.get('quality_score') or parse_quality.get('quality_score') or 0.0),
+        'page_count': int(parse_lineage.get('page_count') or source_span.get('page_count') or 0),
+    }
+
+
 class EvidenceStorageHook:
     """
     Hook for storing evidence in IPFS.
@@ -580,6 +656,10 @@ class EvidenceStateHook:
                 fact_id=str(entity.get('id') or ''),
                 text=str(attributes.get('text') or entity.get('name') or ''),
                 source_artifact_id=artifact_id,
+                source_family='evidence',
+                source_record_id=evidence_id,
+                source_ref=artifact_id,
+                record_scope='evidence',
                 confidence=float(entity.get('confidence', 0.0) or 0.0),
                 metadata=build_fact_lineage_metadata(
                     attributes,
@@ -1094,14 +1174,7 @@ class EvidenceStateHook:
             ).fetchall()
             conn.close()
             return [
-                {
-                    'fact_id': row[0],
-                    'text': row[1],
-                    'source_artifact_id': row[2],
-                    'confidence': row[3] or 0.0,
-                    'metadata': json.loads(row[4]) if row[4] else {},
-                    'provenance': json.loads(row[5]) if row[5] else {},
-                }
+                _normalize_evidence_fact_row(row, evidence_id=evidence_id)
                 for row in rows
             ]
         except Exception as e:

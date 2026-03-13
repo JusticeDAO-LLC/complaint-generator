@@ -1,7 +1,7 @@
 # IPFS Datasets Py Batch 1 Implementation Plan
 
 Date: 2026-03-12
-Status: In progress; provenance-normalization slice completed, archived-page corpus slice next
+Status: In progress; provenance-normalization and archived-page corpus slices completed, shared fact-registry slice next
 
 Companion docs:
 
@@ -14,6 +14,7 @@ Companion docs:
 - `docs/IPFS_DATASETS_PY_BATCH1_STATUS_AUDIT.md`
 - `docs/IPFS_DATASETS_PY_BATCH1_SLICE1_TASKLIST.md`
 - `docs/IPFS_DATASETS_PY_BATCH1_SLICE2_TASKLIST.md`
+- `docs/IPFS_DATASETS_PY_BATCH1_SLICE3_TASKLIST.md`
 
 ## Purpose
 
@@ -155,6 +156,13 @@ Suggested issue title:
 
 - `Normalize archived and fetched web pages into the shared case corpus`
 
+Current status:
+
+- completed in the current checkout
+- web evidence lineage now persists explicit `corpus_family='web_page'` plus stable `artifact_family` identity for live versus archived captures
+- legal-authority provenance metadata now persists explicit artifact identity for full-text versus citation-fallback authority records
+- claim-support packet and trace summaries now expose `artifact_family_counts`, with compatibility fallback for older records that only persisted `content_origin`
+
 ## Slice 4: Legal authority text as corpus asset
 
 Goal:
@@ -211,6 +219,12 @@ Done when:
 Suggested issue title:
 
 - `Complete shared fact registry across evidence, archives, and authority text`
+
+Current status:
+
+- in progress
+- archived-page corpus identity is now explicit, and archived web evidence facts now round-trip through the shared persisted evidence fact API with the same explicit artifact, corpus, and parse-lineage fields asserted for the broader fact contract
+- the remaining Batch 1 gap is broader cross-source enforcement and documentation so later graph and logic consumers can treat that fact substrate as one durable family without source-specific assumptions
 
 ## Recommended execution order
 
@@ -295,4 +309,4 @@ Given the current checkout, the recommended next Batch 1 coding slice is:
 4. `tests/test_claim_support_hooks.py`
 5. `docs/PAYLOAD_CONTRACTS.md`
 
-That slice has the highest leverage because provenance normalization is now stable enough that the main remaining Batch 1 risk is archived-page corpus behavior drifting into an evidence-adjacent special case. Tightening archived-page storage, support packets, and fact-backed review semantics will complete more of the shared corpus contract without prematurely pulling in Batch 2 or graph-store redesign work.
+That slice had the highest leverage because provenance normalization was stable enough that the main remaining Batch 1 risk was archived-page corpus behavior drifting into an evidence-adjacent special case. Archived-page storage, support packets, and fact-backed review semantics are now covered more explicitly, so the remaining leverage is in keeping the broader cross-source fact contract enforced and documented without prematurely pulling in Batch 2 or graph-store redesign work.

@@ -118,21 +118,30 @@ class ComplaintDocumentBuilder:
         *,
         court_name: Optional[str] = None,
         district: Optional[str] = None,
+        county: Optional[str] = None,
         division: Optional[str] = None,
         court_header_override: Optional[str] = None,
         case_number: Optional[str] = None,
+        lead_case_number: Optional[str] = None,
+        related_case_number: Optional[str] = None,
+        assigned_judge: Optional[str] = None,
+        courtroom: Optional[str] = None,
         title_override: Optional[str] = None,
         plaintiff_names: Optional[List[str]] = None,
         defendant_names: Optional[List[str]] = None,
         requested_relief: Optional[List[str]] = None,
+        jury_demand: Optional[bool] = None,
+        jury_demand_text: Optional[str] = None,
         signer_name: Optional[str] = None,
         signer_title: Optional[str] = None,
         signer_firm: Optional[str] = None,
         signer_bar_number: Optional[str] = None,
         signer_contact: Optional[str] = None,
+        additional_signers: Optional[List[Dict[str, str]]] = None,
         declarant_name: Optional[str] = None,
         service_method: Optional[str] = None,
         service_recipients: Optional[List[str]] = None,
+        service_recipient_details: Optional[List[Dict[str, str]]] = None,
         signature_date: Optional[str] = None,
         verification_date: Optional[str] = None,
         service_date: Optional[str] = None,
@@ -163,9 +172,14 @@ class ComplaintDocumentBuilder:
             jurisdiction=jurisdiction,
             court_name=court_name,
             district=district,
+            county=county,
             division=division,
             court_header_override=court_header_override,
             case_number=case_number,
+            lead_case_number=lead_case_number,
+            related_case_number=related_case_number,
+            assigned_judge=assigned_judge,
+            courtroom=courtroom,
             title=title_override or str(base.get("title") or "").strip(),
         )
         factual_allegations = self._build_factual_allegations(
@@ -184,9 +198,11 @@ class ComplaintDocumentBuilder:
             user_id=resolved_user_id,
         )
         requested_relief = self._build_requested_relief(requested_relief or base.get("prayer_for_relief"))
+        jury_demand_block = self._build_jury_demand(jury_demand=jury_demand, jury_demand_text=jury_demand_text)
+        caption["jury_demand_notice"] = "JURY TRIAL DEMANDED" if jury_demand_block else None
         nature_of_action = self._build_nature_of_action(base.get("statement_of_claim"), claims)
         jurisdiction_statement = self._build_jurisdiction_statement(jurisdiction, authority_records)
-        venue_statement = self._build_venue_statement(district, division)
+        venue_statement = self._build_venue_statement(district, county, division, jurisdiction)
         signature_block = self._build_signature_block(
             parties,
             signer_name=signer_name,
@@ -194,6 +210,7 @@ class ComplaintDocumentBuilder:
             signer_firm=signer_firm,
             signer_bar_number=signer_bar_number,
             signer_contact=signer_contact,
+            additional_signers=additional_signers,
             signature_date=signature_date,
         )
         verification = self._build_verification(
@@ -207,6 +224,7 @@ class ComplaintDocumentBuilder:
             signer_name=signer_name,
             service_method=service_method,
             service_recipients=service_recipients,
+            service_recipient_details=service_recipient_details,
             service_date=service_date,
         )
         legal_standards = [
@@ -243,6 +261,7 @@ class ComplaintDocumentBuilder:
             "claims_for_relief": claims,
             "prayer_for_relief": requested_relief,
             "requested_relief": requested_relief,
+            "jury_demand": jury_demand_block,
             "supporting_documents": exhibits,
             "exhibits": exhibits,
             "supporting_exhibits": exhibits,
@@ -278,6 +297,8 @@ class ComplaintDocumentBuilder:
         lines.append(str(draft.get("court_header") or "IN THE COURT OF COMPETENT JURISDICTION"))
         if caption.get("division_line"):
             lines.append(str(caption["division_line"]))
+        if caption.get("county_line"):
+            lines.append(str(caption["county_line"]))
         lines.append("")
         plaintiffs = ", ".join(draft.get("parties", {}).get("plaintiffs", []) or ["Plaintiff"])
         defendants = ", ".join(draft.get("parties", {}).get("defendants", []) or ["Defendant"])
@@ -286,8 +307,18 @@ class ComplaintDocumentBuilder:
         lines.append("v.")
         lines.append(f"{defendants}, Defendant.")
         lines.append(f"Case No.: {case_number}")
+        if caption.get("lead_case_number"):
+            lines.append(f"Lead Case No.: {caption['lead_case_number']}")
+        if caption.get("related_case_number"):
+            lines.append(f"Related Case No.: {caption['related_case_number']}")
+        if caption.get("assigned_judge"):
+            lines.append(f"Assigned to: {caption['assigned_judge']}")
+        if caption.get("courtroom"):
+            lines.append(f"Courtroom: {caption['courtroom']}")
         lines.append("")
         lines.append("COMPLAINT")
+        if caption.get("jury_demand_notice"):
+            lines.append(str(caption["jury_demand_notice"]))
         lines.append("")
         lines.append("NATURE OF THE ACTION")
         lines.append(_clean_sentence(draft.get("nature_of_action")))
@@ -350,6 +381,13 @@ class ComplaintDocumentBuilder:
         for item in _listify(draft.get("requested_relief")):
             lines.append(f"- {_clean_sentence(item)}")
 
+        jury_demand = draft.get("jury_demand", {}) if isinstance(draft.get("jury_demand"), dict) else {}
+        if jury_demand:
+            lines.append("")
+            lines.append(str(jury_demand.get("title") or "JURY DEMAND").upper())
+            if jury_demand.get("text"):
+                lines.append(_clean_sentence(jury_demand.get("text")))
+
         exhibits = _listify(draft.get("exhibits"))
         if exhibits:
             lines.append("")
@@ -381,6 +419,9 @@ class ComplaintDocumentBuilder:
             lines.append(str(certificate_of_service.get("title") or "CERTIFICATE OF SERVICE").upper())
             if certificate_of_service.get("text"):
                 lines.append(_clean_sentence(certificate_of_service.get("text")))
+            for detail_line in _listify(certificate_of_service.get("detail_lines")):
+                if detail_line:
+                    lines.append(str(detail_line))
             if certificate_of_service.get("dated"):
                 lines.append(str(certificate_of_service["dated"]))
             if certificate_of_service.get("signature_line"):
@@ -390,19 +431,7 @@ class ComplaintDocumentBuilder:
         lines.append("")
         lines.append("SIGNATURE BLOCK")
         lines.append("Respectfully submitted,")
-        if signature_block.get("signature_line"):
-            lines.append(signature_block["signature_line"])
-        lines.append(signature_block.get("name") or "Plaintiff")
-        if signature_block.get("title"):
-            lines.append(signature_block["title"])
-        if signature_block.get("firm"):
-            lines.append(signature_block["firm"])
-        if signature_block.get("bar_number"):
-            lines.append(f"Bar No. {signature_block['bar_number']}")
-        if signature_block.get("contact"):
-            lines.append(signature_block["contact"])
-        if signature_block.get("dated"):
-            lines.append(signature_block["dated"])
+        lines.extend(self._signature_block_lines(signature_block))
         return "\n".join(line for line in lines if line is not None)
 
     def _safe_call(self, method_name: str, *args, default=None, **kwargs):
@@ -496,20 +525,30 @@ class ComplaintDocumentBuilder:
         jurisdiction: str,
         court_name: Optional[str],
         district: Optional[str],
+        county: Optional[str],
         division: Optional[str],
         court_header_override: Optional[str],
         case_number: Optional[str],
+        lead_case_number: Optional[str],
+        related_case_number: Optional[str],
+        assigned_judge: Optional[str],
+        courtroom: Optional[str],
         title: str,
     ) -> Dict[str, str]:
         district_text = _clean_text(district).upper()
+        county_text = _clean_text(county).upper()
         division_text = _clean_text(division).upper()
+        jurisdiction_text = str(jurisdiction).lower()
         if court_header_override:
             court_header = _clean_text(court_header_override).upper()
+        elif court_name and county_text and jurisdiction_text not in {"federal", "us", "united states"}:
+            county_suffix = county_text if county_text.startswith("COUNTY OF ") else f"COUNTY OF {county_text}"
+            court_header = f"IN THE {_clean_text(court_name).upper()} FOR THE {county_suffix}"
         elif court_name:
             court_header = _clean_text(court_name).upper()
         elif district_text:
             court_header = f"IN THE UNITED STATES DISTRICT COURT FOR THE DISTRICT OF {district_text}"
-        elif str(jurisdiction).lower() in {"federal", "us", "united states"}:
+        elif jurisdiction_text in {"federal", "us", "united states"}:
             court_header = "IN THE UNITED STATES DISTRICT COURT"
         else:
             court_header = "IN THE COURT OF COMPETENT JURISDICTION"
@@ -517,8 +556,13 @@ class ComplaintDocumentBuilder:
         return {
             "court_header": court_header,
             "division_line": division_text,
+            "county_line": county_text if county_text and county_text not in court_header else "",
             "case_title": resolved_title,
             "case_number": _clean_text(case_number) or "________________",
+            "lead_case_number": _clean_text(lead_case_number),
+            "related_case_number": _clean_text(related_case_number),
+            "assigned_judge": _clean_text(assigned_judge),
+            "courtroom": _clean_text(courtroom),
         }
 
     def _build_factual_allegations(self, base_allegations: Any, knowledge_graph, intake_summary: List[Dict[str, str]]) -> List[str]:
@@ -707,6 +751,25 @@ class ComplaintDocumentBuilder:
             "Such other and further relief as the Court deems just and proper",
         ]
 
+    def _build_jury_demand(
+        self,
+        *,
+        jury_demand: Optional[bool] = None,
+        jury_demand_text: Optional[str] = None,
+    ) -> Dict[str, str]:
+        text = _clean_sentence(jury_demand_text)
+        if text:
+            return {
+                "title": "Jury Demand",
+                "text": text,
+            }
+        if jury_demand:
+            return {
+                "title": "Jury Demand",
+                "text": "Plaintiff demands a trial by jury on all issues so triable.",
+            }
+        return {}
+
     def _build_nature_of_action(self, statement_of_claim: Any, claims: List[Dict[str, Any]]) -> str:
         statement = _clean_sentence(statement_of_claim)
         if statement:
@@ -734,9 +797,18 @@ class ComplaintDocumentBuilder:
             return "This Court has subject-matter jurisdiction under 28 U.S.C. § 1331 because Plaintiff alleges claims arising under federal law."
         return "This Court has subject-matter jurisdiction because the claims arise under the governing law identified in this pleading."
 
-    def _build_venue_statement(self, district: Optional[str], division: Optional[str]) -> str:
+    def _build_venue_statement(
+        self,
+        district: Optional[str],
+        county: Optional[str],
+        division: Optional[str],
+        jurisdiction: Optional[str],
+    ) -> str:
         district_text = _clean_text(district)
+        county_text = _clean_text(county)
         division_text = _clean_text(division)
+        if county_text and str(jurisdiction).lower() not in {"federal", "us", "united states"}:
+            return f"Venue is proper in this Court because a substantial part of the events or omissions giving rise to these claims occurred in {county_text}."
         if district_text and division_text:
             return f"Venue is proper in the {division_text} Division of the District of {district_text} because a substantial part of the events or omissions giving rise to these claims occurred there."
         if district_text:
@@ -752,8 +824,9 @@ class ComplaintDocumentBuilder:
         signer_firm: Optional[str] = None,
         signer_bar_number: Optional[str] = None,
         signer_contact: Optional[str] = None,
+        additional_signers: Optional[List[Dict[str, str]]] = None,
         signature_date: Optional[str] = None,
-    ) -> Dict[str, str]:
+    ) -> Dict[str, Any]:
         plaintiff_name = _clean_text(signer_name) or parties.get("plaintiffs", ["Plaintiff"])[0]
         return {
             "name": plaintiff_name,
@@ -762,8 +835,70 @@ class ComplaintDocumentBuilder:
             "firm": _clean_text(signer_firm),
             "bar_number": _clean_text(signer_bar_number),
             "contact": _clean_text(signer_contact) or "Mailing address, telephone number, and email address to be completed before filing.",
+            "additional_signers": self._normalize_additional_signers(additional_signers),
             "dated": self._format_dated_line("Dated", signature_date),
         }
+
+    def _normalize_additional_signers(self, values: Any) -> List[Dict[str, str]]:
+        normalized: List[Dict[str, str]] = []
+        seen: set[tuple[str, str, str, str, str]] = set()
+        for item in _listify(values):
+            if not isinstance(item, dict):
+                continue
+            name = _clean_text(item.get("name") or item.get("signer_name"))
+            title = _clean_text(item.get("title") or item.get("signer_title"))
+            firm = _clean_text(item.get("firm") or item.get("signer_firm"))
+            bar_number = _clean_text(item.get("bar_number") or item.get("signer_bar_number"))
+            contact = _clean_text(item.get("contact") or item.get("signer_contact"))
+            if not any((name, title, firm, bar_number, contact)):
+                continue
+            key = (name, title, firm, bar_number, contact)
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(
+                {
+                    "name": name or "Additional Counsel",
+                    "signature_line": f"/s/ {name}" if name else "",
+                    "title": title,
+                    "firm": firm,
+                    "bar_number": bar_number,
+                    "contact": contact,
+                }
+            )
+        return normalized
+
+    def _signature_block_lines(self, signature_block: Dict[str, Any]) -> List[str]:
+        lines: List[str] = []
+        if signature_block.get("signature_line"):
+            lines.append(str(signature_block["signature_line"]))
+        lines.append(str(signature_block.get("name") or "Plaintiff"))
+        if signature_block.get("title"):
+            lines.append(str(signature_block["title"]))
+        if signature_block.get("firm"):
+            lines.append(str(signature_block["firm"]))
+        if signature_block.get("bar_number"):
+            lines.append(f"Bar No. {signature_block['bar_number']}")
+        if signature_block.get("contact"):
+            lines.append(str(signature_block["contact"]))
+        for signer in _listify(signature_block.get("additional_signers")):
+            if not isinstance(signer, dict):
+                continue
+            lines.append("")
+            if signer.get("signature_line"):
+                lines.append(str(signer["signature_line"]))
+            lines.append(str(signer.get("name") or "Additional Counsel"))
+            if signer.get("title"):
+                lines.append(str(signer["title"]))
+            if signer.get("firm"):
+                lines.append(str(signer["firm"]))
+            if signer.get("bar_number"):
+                lines.append(f"Bar No. {signer['bar_number']}")
+            if signer.get("contact"):
+                lines.append(str(signer["contact"]))
+        if signature_block.get("dated"):
+            lines.append(str(signature_block["dated"]))
+        return lines
 
     def _build_verification(
         self,
@@ -792,22 +927,68 @@ class ComplaintDocumentBuilder:
         signer_name: Optional[str] = None,
         service_method: Optional[str] = None,
         service_recipients: Optional[List[str]] = None,
+        service_recipient_details: Optional[List[Dict[str, str]]] = None,
         service_date: Optional[str] = None,
-    ) -> Dict[str, str]:
+    ) -> Dict[str, Any]:
         plaintiff_name = _clean_text(signer_name) or parties.get("plaintiffs", ["Plaintiff"])[0]
-        recipients_list = self._dedupe(_clean_text(item) for item in _listify(service_recipients)) or parties.get("defendants", []) or ["all defendants"]
+        recipient_details = self._normalize_service_recipient_details(service_recipient_details)
+        recipient_names = [detail["recipient"] for detail in recipient_details if detail.get("recipient")]
+        recipients_list = self._dedupe(
+            list(_clean_text(item) for item in _listify(service_recipients)) + recipient_names
+        ) or parties.get("defendants", []) or ["all defendants"]
         recipients = ", ".join(recipients_list)
         method_text = _clean_text(service_method) or "a method authorized by the applicable rules of civil procedure"
-        return {
-            "title": "Certificate of Service",
-            "text": (
+        detail_lines = [self._format_service_recipient_detail(detail) for detail in recipient_details]
+        if detail_lines:
+            text = (
+                "I certify that a true and correct copy of this Complaint will be served promptly after filing "
+                "on the following recipients:"
+            )
+        else:
+            text = (
                 "I certify that a true and correct copy of this Complaint will be served on "
                 f"{recipients} using {method_text} promptly after filing."
-            ),
+            )
+        return {
+            "title": "Certificate of Service",
+            "text": text,
             "recipients": recipients_list,
+            "recipient_details": recipient_details,
+            "detail_lines": detail_lines,
             "dated": self._format_dated_line("Service date", service_date),
             "signature_line": f"/s/ {plaintiff_name}",
         }
+
+    def _normalize_service_recipient_details(self, values: Any) -> List[Dict[str, str]]:
+        details: List[Dict[str, str]] = []
+        seen: set[tuple[str, str, str, str]] = set()
+        for item in _listify(values):
+            if not isinstance(item, dict):
+                continue
+            detail = {
+                "recipient": _clean_text(item.get("recipient")),
+                "method": _clean_text(item.get("method")),
+                "address": _clean_text(item.get("address")),
+                "notes": _clean_text(item.get("notes")),
+            }
+            if not any(detail.values()):
+                continue
+            key = (detail["recipient"], detail["method"], detail["address"], detail["notes"])
+            if key in seen:
+                continue
+            seen.add(key)
+            details.append(detail)
+        return details
+
+    def _format_service_recipient_detail(self, detail: Dict[str, str]) -> str:
+        segments = [detail.get("recipient") or "Recipient"]
+        if detail.get("method"):
+            segments.append(f"Method: {detail['method']}")
+        if detail.get("address"):
+            segments.append(f"Address: {detail['address']}")
+        if detail.get("notes"):
+            segments.append(f"Notes: {detail['notes']}")
+        return " | ".join(segment for segment in segments if segment)
 
     def _format_dated_line(self, label: str, value: Optional[str]) -> str:
         cleaned = _clean_text(value)
@@ -879,11 +1060,24 @@ class ComplaintDocumentBuilder:
             f"v.\n"
             f"{', '.join(draft.get('parties', {}).get('defendants', []) or ['Defendant'])}, Defendant."
         )
-        table.cell(0, 1).text = f"Case No.: {caption.get('case_number', '________________')}"
+        right_lines = [f"Case No.: {caption.get('case_number', '________________')}"]
+        if caption.get("lead_case_number"):
+            right_lines.append(f"Lead Case No.: {caption['lead_case_number']}")
+        if caption.get("related_case_number"):
+            right_lines.append(f"Related Case No.: {caption['related_case_number']}")
+        if caption.get("assigned_judge"):
+            right_lines.append(f"Judge: {caption['assigned_judge']}")
+        if caption.get("courtroom"):
+            right_lines.append(f"Courtroom: {caption['courtroom']}")
+        table.cell(0, 1).text = "\n".join(right_lines)
 
         title = document.add_paragraph()
         title.alignment = WD_ALIGN_PARAGRAPH.CENTER
         title.add_run("COMPLAINT").bold = True
+        if caption.get("jury_demand_notice"):
+            jury_notice = document.add_paragraph()
+            jury_notice.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            jury_notice.add_run(str(caption["jury_demand_notice"])).bold = True
 
         self._docx_section(document, "Nature of the Action", [draft.get("nature_of_action")])
         party_lines = []
@@ -919,6 +1113,9 @@ class ComplaintDocumentBuilder:
                 document.add_paragraph(f"Supported by {exhibit_labels}.")
 
         self._docx_section(document, "Prayer for Relief", draft.get("requested_relief", []), bulleted=True)
+        jury_demand = draft.get("jury_demand", {}) if isinstance(draft.get("jury_demand"), dict) else {}
+        if jury_demand:
+            self._docx_section(document, jury_demand.get("title") or "Jury Demand", [jury_demand.get("text")])
         exhibit_lines = []
         for exhibit in _listify(draft.get("exhibits")):
             line = f"{exhibit.get('label', 'Exhibit')} - {exhibit.get('title', 'Supporting exhibit')}"
@@ -938,26 +1135,15 @@ class ComplaintDocumentBuilder:
             self._docx_section(
                 document,
                 certificate_of_service.get("title") or "Certificate of Service",
-                [
-                    certificate_of_service.get("text"),
-                    certificate_of_service.get("dated"),
-                    certificate_of_service.get("signature_line"),
-                ],
+                [certificate_of_service.get("text")]
+                + _listify(certificate_of_service.get("detail_lines"))
+                + [certificate_of_service.get("dated"), certificate_of_service.get("signature_line")],
             )
         signature_block = draft.get("signature_block", {}) if isinstance(draft.get("signature_block"), dict) else {}
         self._docx_section(
             document,
             "Signature Block",
-            [
-                "Respectfully submitted,",
-                signature_block.get("signature_line"),
-                signature_block.get("name") or "Plaintiff",
-                signature_block.get("title"),
-                signature_block.get("firm"),
-                f"Bar No. {signature_block['bar_number']}" if signature_block.get("bar_number") else None,
-                signature_block.get("contact"),
-                signature_block.get("dated"),
-            ],
+            ["Respectfully submitted,", *self._signature_block_lines(signature_block)],
         )
         document.save(str(destination))
 
@@ -993,7 +1179,16 @@ class ComplaintDocumentBuilder:
             f"{', '.join(draft.get('parties', {}).get('plaintiffs', []) or ['Plaintiff'])}, Plaintiff,<br/>"
             f"v.<br/>{', '.join(draft.get('parties', {}).get('defendants', []) or ['Defendant'])}, Defendant."
         )
-        right_caption = f"Case No.: {draft.get('case_number') or '________________'}"
+        right_lines = [f"Case No.: {draft.get('case_number') or '________________'}"]
+        if draft.get("caption", {}).get("lead_case_number"):
+            right_lines.append(f"Lead Case No.: {draft['caption']['lead_case_number']}")
+        if draft.get("caption", {}).get("related_case_number"):
+            right_lines.append(f"Related Case No.: {draft['caption']['related_case_number']}")
+        if draft.get("caption", {}).get("assigned_judge"):
+            right_lines.append(f"Judge: {draft['caption']['assigned_judge']}")
+        if draft.get("caption", {}).get("courtroom"):
+            right_lines.append(f"Courtroom: {draft['caption']['courtroom']}")
+        right_caption = "<br/>".join(right_lines)
         caption_table = Table([[Paragraph(left_caption, body), Paragraph(right_caption, body)]], colWidths=[4.5 * inch, 2.0 * inch])
         caption_table.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -1005,6 +1200,8 @@ class ComplaintDocumentBuilder:
         story.append(caption_table)
         story.append(Spacer(1, 0.2 * inch))
         story.append(Paragraph("COMPLAINT", centered))
+        if draft.get("caption", {}).get("jury_demand_notice"):
+            story.append(Paragraph(str(draft["caption"]["jury_demand_notice"]), centered))
 
         self._pdf_section(story, section, body, "Nature of the Action", [draft.get("nature_of_action")])
         party_lines = []
@@ -1034,6 +1231,9 @@ class ComplaintDocumentBuilder:
                 story.append(Paragraph(f"Supported by {exhibit_labels}.", body))
 
         self._pdf_section(story, section, body, "Prayer for Relief", draft.get("requested_relief", []), bulleted=True)
+        jury_demand = draft.get("jury_demand", {}) if isinstance(draft.get("jury_demand"), dict) else {}
+        if jury_demand:
+            self._pdf_section(story, section, body, jury_demand.get("title") or "Jury Demand", [jury_demand.get("text")])
         exhibit_lines = []
         for exhibit in _listify(draft.get("exhibits")):
             line = f"{exhibit.get('label', 'Exhibit')} - {exhibit.get('title', 'Supporting exhibit')}"
@@ -1057,11 +1257,9 @@ class ComplaintDocumentBuilder:
                 section,
                 body,
                 certificate_of_service.get("title") or "Certificate of Service",
-                [
-                    certificate_of_service.get("text"),
-                    certificate_of_service.get("dated"),
-                    certificate_of_service.get("signature_line"),
-                ],
+                [certificate_of_service.get("text")]
+                + _listify(certificate_of_service.get("detail_lines"))
+                + [certificate_of_service.get("dated"), certificate_of_service.get("signature_line")],
             )
         signature_block = draft.get("signature_block", {}) if isinstance(draft.get("signature_block"), dict) else {}
         self._pdf_section(
@@ -1069,16 +1267,7 @@ class ComplaintDocumentBuilder:
             section,
             body,
             "Signature Block",
-            [
-                "Respectfully submitted,",
-                signature_block.get("signature_line"),
-                signature_block.get("name") or "Plaintiff",
-                signature_block.get("title"),
-                signature_block.get("firm"),
-                f"Bar No. {signature_block['bar_number']}" if signature_block.get("bar_number") else None,
-                signature_block.get("contact"),
-                signature_block.get("dated"),
-            ],
+            ["Respectfully submitted,", *self._signature_block_lines(signature_block)],
         )
         document = SimpleDocTemplate(str(destination), pagesize=letter)
         document.build(story)

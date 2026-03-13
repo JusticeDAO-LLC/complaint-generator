@@ -81,6 +81,8 @@ Complete index of all documentation in the complaint-generator repository.
 - [docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md](docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md) - Implementation backlog with work packages, dependencies, acceptance criteria, and sprint sequencing
 - [docs/IPFS_DATASETS_PY_NEXT_BATCH_PLAN.md](docs/IPFS_DATASETS_PY_NEXT_BATCH_PLAN.md) - Concrete next implementation batches with file targets, validation commands, and stop or go criteria
 - [docs/IPFS_DATASETS_PY_BATCH1_IMPLEMENTATION_PLAN.md](docs/IPFS_DATASETS_PY_BATCH1_IMPLEMENTATION_PLAN.md) - Issue-sized Batch 1 execution plan for parse completion, corpus unification, and cross-source provenance normalization
+- [docs/IPFS_DATASETS_PY_BATCH1_SLICE2_TASKLIST.md](docs/IPFS_DATASETS_PY_BATCH1_SLICE2_TASKLIST.md) - Exact task list and completion notes for the archived-page corpus-normalization slice
+- [docs/IPFS_DATASETS_PY_BATCH1_SLICE3_TASKLIST.md](docs/IPFS_DATASETS_PY_BATCH1_SLICE3_TASKLIST.md) - Active task list for shared fact-registry completion in Batch 1
 - [docs/IPFS_DATASETS_PY_BATCH6_IMPLEMENTATION_PLAN.md](docs/IPFS_DATASETS_PY_BATCH6_IMPLEMENTATION_PLAN.md) - Issue-sized Batch 6 execution plan for support-aware drafting, filing readiness, and `/document` workflow integration
 - [docs/IPFS_DATASETS_PY_DIRECT_IMPORT_AUDIT.md](docs/IPFS_DATASETS_PY_DIRECT_IMPORT_AUDIT.md) - Production-only audit of direct `ipfs_datasets_py` imports, separating real adapter-boundary violations from test and documentation noise
 - [docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md](docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md) - Runtime and implementation dependency map for search, archival, parsing, graphs, GraphRAG, logic, and review workflows

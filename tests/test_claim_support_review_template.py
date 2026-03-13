@@ -36,6 +36,8 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "program: ${entry.selected_search_program_type}" in content
     assert "recommended_next_action" in content
     assert "URLSearchParams(window.location.search" in content
+    assert "REVIEW_INTENT_STORAGE_KEY" in content
+    assert "formalComplaintReviewIntent" in content
     assert "prefill-context-line" in content
     assert "section-focus-chip-row" in content
     assert "Opened from document workflow:" in content
@@ -43,6 +45,24 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "SECTION_FOCUS_CONFIG" in content
     assert "applySectionFocus" in content
     assert "clearSectionFocus" in content
+    assert "getLocalStorage" in content
+    assert "buildReviewIntent" in content
+    assert "persistReviewIntent" in content
+    assert "restoreReviewIntent" in content
+    assert "syncReviewIntentUrl" in content
+    assert "window.history.replaceState" in content
+    assert "sectionFocusState" in content
+    assert "scrollToSectionFocus" in content
+    assert "expandSectionFocusDetails" in content
+    assert "finalizeSectionFocus" in content
+    assert "getActiveSectionFocusConfig" in content
+    assert "sortBySectionFocus" in content
+    assert "scoreElementForSectionFocus" in content
+    assert "scoreTaskForSectionFocus" in content
+    assert "scoreHistoryEntryForSectionFocus" in content
+    assert "Pinned for section focus" in content
+    assert "scrollIntoView({ behavior: 'smooth', block: 'start' })" in content
+    assert "firstPacketDetails.open = true" in content
     assert "Focused lane:" in content
     assert "data-section-focus-target" in content
     assert "is-section-focus" in content
@@ -89,20 +109,30 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "download_url" in content
     assert "Formal Complaint Builder" in content
     assert "Generate Formal Complaint" in content
+    assert "Assigned Judge" in content
+    assert "Courtroom" in content
+    assert "County" in content
+    assert "Lead Case Number" in content
+    assert "Related Case Number" in content
     assert "Requested Relief Overrides" in content
+    assert "Demand Jury Trial" in content
+    assert "Jury Demand Text" in content
     assert "Signer Name" in content
     assert "Law Firm or Office" in content
     assert "Bar Number" in content
     assert "Signer Contact Block" in content
+    assert "Additional Signature Entries" in content
     assert "Verification Declarant" in content
     assert "Service Method" in content
     assert "Service Recipients" in content
+    assert "Detailed Service Entries" in content
     assert "Signature Date" in content
     assert "Verification Date" in content
     assert "Service Date" in content
     assert "Draft Preview" in content
     assert "Drafting Readiness" in content
     assert "Pre-Filing Checklist" in content
+    assert "Open Checklist Review" in content
     assert "Section Readiness" in content
     assert "Claim Readiness" in content
     assert "Factual Allegations" in content
@@ -113,9 +143,16 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Pleading Text" in content
     assert "Copy Pleading Text" in content
     assert "value=\"txt\"" in content
+    assert "value=\"checklist\"" in content
     assert "formalComplaintBuilderState" in content
     assert "formalComplaintBuilderPreview" in content
+    assert "parseAdditionalSigners" in content
+    assert "formatAdditionalSignerLines" in content
     assert "localStorage" in content
+    assert "REVIEW_INTENT_STORAGE_KEY" in content
+    assert "Resume Review Focus" in content
+    assert "data-review-intent-link=\"true\"" in content
+    assert "persistReviewIntent({ review_url: node.getAttribute('href') || '' })" in content
     assert "renderSectionReadiness" in content
     assert "renderClaimReadiness" in content
     assert "Open Section Review" in content

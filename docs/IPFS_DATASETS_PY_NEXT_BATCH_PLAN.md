@@ -60,7 +60,7 @@ Finish the shared parse contract so uploaded evidence, discovered pages, archive
 - close remaining format-specific gaps for PDF, DOCX, RTF, HTML, email-style text, and office documents inside the adapter layer
 - standardize parse quality, OCR usage, page-span, and chunk-offset metadata
 - ensure authority text and archived page content preserve the same parse and provenance model as uploaded evidence
-- expand the shared fact registry so archived pages and authority-derived facts are first-class support sources rather than adjacent special cases
+- keep expanding the shared fact registry so archived pages, authority-derived facts, and later graph or predicate artifacts share one durable support contract without source-specific branches
 - make chunk- and fact-level lineage dependable enough for later graph and logic consumers
 
 ### Expected output
@@ -72,7 +72,7 @@ Finish the shared parse contract so uploaded evidence, discovered pages, archive
 ### Stop condition
 
 - evidence, web-evidence, and legal-authority flows assert the same parse and provenance contract family
-- downstream consumers can treat archived pages and authority text as ordinary case artifacts
+- downstream consumers can treat archived pages and authority text as ordinary case artifacts, and archived web evidence facts already round-trip through the shared persisted evidence fact path
 
 ### Suggested validation
 
