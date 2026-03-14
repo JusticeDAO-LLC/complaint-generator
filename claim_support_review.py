@@ -734,6 +734,50 @@ def _summarize_fact_proof_statuses(facts: List[Dict[str, Any]]) -> Dict[str, int
     return counts
 
 
+def _build_contradiction_pair_payloads(
+    support_facts: List[Dict[str, Any]],
+    contradiction_candidates: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    fact_by_id = {
+        str(fact.get("fact_id") or ""): fact
+        for fact in support_facts
+        if isinstance(fact, dict) and str(fact.get("fact_id") or "")
+    }
+    pairs: List[Dict[str, Any]] = []
+
+    for index, candidate in enumerate(contradiction_candidates):
+        if not isinstance(candidate, dict):
+            continue
+        fact_ids = [str(fact_id) for fact_id in (candidate.get("fact_ids") or []) if fact_id]
+        paired_facts = [fact_by_id[fact_id] for fact_id in fact_ids if fact_id in fact_by_id]
+        left_fact = paired_facts[0] if paired_facts else None
+        right_fact = paired_facts[1] if len(paired_facts) > 1 else None
+        left_fact_text = str((left_fact or {}).get("text") or "").strip()
+        right_fact_text = str((right_fact or {}).get("text") or "").strip()
+        overlap_terms = [str(term) for term in (candidate.get("overlap_terms") or []) if term]
+
+        resolution_prompt = "Which version of this proposition is accurate, and what testimony or document best confirms it?"
+        if left_fact_text and right_fact_text:
+            resolution_prompt = (
+                f"These two propositions conflict for this element. Which version is accurate: \"{left_fact_text}\" "
+                f"or \"{right_fact_text}\"?"
+            )
+
+        pairs.append(
+            {
+                "pair_id": f"contradiction-pair:{index}",
+                "fact_ids": fact_ids,
+                "overlap_terms": overlap_terms,
+                "left_fact": left_fact,
+                "right_fact": right_fact,
+                "paired_fact_count": len(paired_facts),
+                "resolution_prompt": resolution_prompt,
+            }
+        )
+
+    return pairs
+
+
 def _attach_validation_to_claim_matrix(
     mediator: Any,
     user_id: str,
@@ -833,6 +877,10 @@ def _attach_validation_to_claim_matrix(
         ]
         support_fact_status_counts = _summarize_fact_proof_statuses(support_fact_packets)
         document_fact_status_counts = _summarize_fact_proof_statuses(document_fact_packets)
+        contradiction_pairs = _build_contradiction_pair_payloads(
+            support_fact_packets,
+            contradiction_candidates,
+        )
 
         element["validation_status"] = validation_status
         element["recommended_action"] = str(validation_element.get("recommended_action") or "")
@@ -849,6 +897,8 @@ def _attach_validation_to_claim_matrix(
         element["document_fact_packets"] = document_fact_packets
         element["document_fact_packet_count"] = len(document_fact_packets)
         element["document_fact_status_counts"] = document_fact_status_counts
+        element["contradiction_pairs"] = contradiction_pairs
+        element["contradiction_pair_count"] = len(contradiction_pairs)
 
     return claim_matrix
 
@@ -992,16 +1042,127 @@ def _build_claim_question_recommendations(
     claim_name: str,
     gap_claim: Optional[Dict[str, Any]],
     contradiction_claim: Optional[Dict[str, Any]],
+    claim_matrix: Optional[Dict[str, Any]] = None,
     *,
     max_questions: int = 6,
 ) -> List[Dict[str, Any]]:
     denoiser = ComplaintDenoiser()
-    return denoiser.generate_review_question_recommendations(
+    recommendations = denoiser.generate_review_question_recommendations(
         claim_name,
         gap_claim=gap_claim if isinstance(gap_claim, dict) else {},
         contradiction_claim=contradiction_claim if isinstance(contradiction_claim, dict) else {},
         max_questions=max_questions,
     )
+    return _augment_question_recommendations_with_fact_prompts(
+        claim_name,
+        recommendations,
+        claim_matrix,
+        max_questions=max_questions,
+    )
+
+
+def _augment_question_recommendations_with_fact_prompts(
+    claim_name: str,
+    recommendations: List[Dict[str, Any]],
+    claim_matrix: Optional[Dict[str, Any]],
+    *,
+    max_questions: int,
+) -> List[Dict[str, Any]]:
+    if not isinstance(claim_matrix, dict):
+        return recommendations[:max_questions]
+
+    denoiser = ComplaintDenoiser()
+    augmented = list(recommendations or [])
+    seen_keys = {
+        str(item.get("suppression_key") or "")
+        for item in augmented
+        if isinstance(item, dict) and item.get("suppression_key")
+    }
+    added: List[Dict[str, Any]] = []
+
+    for element in claim_matrix.get("elements", []) or []:
+        if not isinstance(element, dict):
+            continue
+        validation_status = str(element.get("validation_status") or element.get("status") or "missing")
+        element_id = str(element.get("element_id") or "")
+        element_text = str(element.get("element_text") or element_id or "this element")
+        missing_support_kinds = [
+            str(kind) for kind in (element.get("missing_support_kinds", []) or []) if kind
+        ]
+
+        candidate_packets = []
+        for packet in element.get("document_fact_packets", []) or []:
+            if isinstance(packet, dict) and str(packet.get("proof_status") or "") in {"contradicting", "unresolved"}:
+                candidate_packets.append(packet)
+        for packet in element.get("support_fact_packets", []) or []:
+            if not isinstance(packet, dict):
+                continue
+            if str(packet.get("proof_status") or "") not in {"contradicting", "unresolved"}:
+                continue
+            packet_id = str(packet.get("fact_id") or "")
+            if packet_id and any(str(existing.get("fact_id") or "") == packet_id for existing in candidate_packets if isinstance(existing, dict)):
+                continue
+            candidate_packets.append(packet)
+
+        for packet in candidate_packets:
+            proof_status = str(packet.get("proof_status") or "unresolved")
+            fact_id = str(packet.get("fact_id") or "")
+            fact_text = str(packet.get("text") or "").strip()
+            fact_snippet = " ".join(fact_text.split())
+            if len(fact_snippet) > 160:
+                fact_snippet = fact_snippet[:157] + "..."
+
+            if proof_status == "contradicting":
+                lane = "contradiction_resolution"
+                question_text = (
+                    f"The proposition for {element_text} appears conflicted. Which version of this fact is correct, "
+                    "and what testimony or document best confirms it?"
+                )
+                question_reason = (
+                    f"Resolve the contradicting proposition before relying on it for {element_text}."
+                )
+                expected_proof_gain = "high"
+            else:
+                lane = "document_request" if packet.get("source_table") == "evidence" else "testimony"
+                question_text = (
+                    f"What additional detail, document, or testimony would confirm this proposition for {element_text}?"
+                )
+                question_reason = (
+                    f"This proposition is still unresolved for {element_text} and needs clearer support before legal proof review."
+                )
+                expected_proof_gain = "high" if validation_status in {"missing", "incomplete"} else "medium"
+
+            recommendation = denoiser._build_review_question_recommendation(
+                claim_type=claim_name,
+                lane=lane,
+                target_claim_element_id=element_id,
+                target_claim_element_text=element_text,
+                question_text=question_text,
+                question_reason=question_reason,
+                expected_proof_gain=expected_proof_gain,
+                supporting_evidence_summary=(
+                    f"Fact packet: {fact_id or 'unspecified'}"
+                    + (f"; {fact_snippet}" if fact_snippet else "")
+                ),
+                current_status=validation_status,
+                missing_support_kinds=missing_support_kinds,
+                contradiction_fact_ids=[fact_id] if proof_status == "contradicting" and fact_id else [],
+            )
+            recommendation["source_fact_ids"] = [fact_id] if fact_id else []
+            recommendation["source_fact_text"] = fact_snippet
+            recommendation["source_fact_status"] = proof_status
+            recommendation["source_fact_table"] = str(packet.get("source_table") or "")
+
+            suppression_key = str(recommendation.get("suppression_key") or "")
+            if suppression_key and suppression_key in seen_keys:
+                continue
+            if suppression_key:
+                seen_keys.add(suppression_key)
+            added.append(recommendation)
+            if len(augmented) + len(added) >= max_questions:
+                return (added + augmented)[:max_questions]
+
+    return (added + augmented)[:max_questions]
 
 
 def _summarize_claim_coverage_claim(
@@ -2000,6 +2161,7 @@ def build_claim_support_review_payload(
                 claim_name,
                 gap_claims.get(claim_name, {}),
                 contradiction_claims.get(claim_name, {}),
+                coverage_claims.get(claim_name, {}),
             )
             for claim_name in coverage_claims.keys()
         },

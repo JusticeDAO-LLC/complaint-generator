@@ -109,6 +109,11 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                         {
                             "element_id": "retaliation:1",
                             "element_text": "Protected activity",
+                            "status": "covered",
+                            "missing_support_kinds": [],
+                            "total_links": 2,
+                            "support_trace_summary": {},
+                            "links": [],
                             "links": [
                                 {
                                     "support_kind": "evidence",
@@ -135,6 +140,22 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                                     },
                                 },
                             ],
+                        },
+                        {
+                            "element_id": "retaliation:2",
+                            "element_text": "Adverse action",
+                            "status": "partially_supported",
+                            "support_by_kind": {"authority": 1},
+                            "authority_treatment_summary": {},
+                            "authority_rule_candidate_summary": {},
+                            "total_links": 1,
+                            "fact_count": 1,
+                            "missing_support_kinds": ["evidence"],
+                            "links_by_kind": {},
+                            "support_trace_summary": {},
+                            "support_packet_summary": {},
+                            "support_packets": [],
+                            "links": [],
                         }
                     ],
                 }
@@ -169,7 +190,7 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "claims": {
                 "retaliation": {
                     "candidate_count": 1,
-                    "candidates": [{"claim_element_text": "Adverse action"}],
+                    "candidates": [{"claim_element_text": "Adverse action", "fact_ids": ["fact:authority:adverse", "fact:evidence:adverse"], "overlap_terms": ["termination", "complaint"]}],
                 }
             }
         }
@@ -230,6 +251,7 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                             "proof_diagnostics": {
                                 "decision_source": "logic_proof_supported",
                             },
+                            "contradiction_candidates": [],
                             "reasoning_diagnostics": {
                                 "predicate_count": 4,
                                 "used_fallback_ontology": True,
@@ -252,6 +274,38 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                                         "implementation_status": "implemented",
                                     },
                                 },
+                            },
+                        },
+                        {
+                            "element_id": "retaliation:2",
+                            "element_text": "Adverse action",
+                            "validation_status": "contradicted",
+                            "recommended_action": "resolve_contradiction",
+                            "proof_gap_count": 1,
+                            "proof_gaps": [
+                                {
+                                    "gap_type": "contradiction_candidates",
+                                    "message": "Conflicting support facts require operator review.",
+                                }
+                            ],
+                            "proof_decision_trace": {
+                                "decision_source": "heuristic_contradictions",
+                            },
+                            "proof_diagnostics": {
+                                "decision_source": "heuristic_contradictions",
+                            },
+                            "contradiction_candidate_count": 1,
+                            "contradiction_candidates": [
+                                {
+                                    "fact_ids": ["fact:authority:adverse", "fact:evidence:adverse"],
+                                    "overlap_terms": ["termination", "complaint"],
+                                }
+                            ],
+                            "reasoning_diagnostics": {
+                                "predicate_count": 2,
+                                "used_fallback_ontology": False,
+                                "backend_available_count": 2,
+                                "adapter_statuses": {},
                             },
                         }
                     ],
@@ -283,7 +337,32 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 "quality_tier": "high",
                 "record_id": 41,
             },
-        ] if kwargs.get("claim_element_id") == "retaliation:1" else []
+        ] if kwargs.get("claim_element_id") == "retaliation:1" else ([
+            {
+                "fact_id": "fact:evidence:adverse",
+                "fact_text": "The adverse action happened after the complaint.",
+                "support_kind": "evidence",
+                "source_table": "evidence",
+                "source_family": "evidence",
+                "source_ref": "QmAdverseTimeline",
+                "artifact_family": "document",
+                "content_origin": "operator_document_intake",
+                "quality_tier": "high",
+                "record_id": 53,
+            },
+            {
+                "fact_id": "fact:authority:adverse",
+                "fact_text": "The record says the adverse action happened before any complaint.",
+                "support_kind": "authority",
+                "source_table": "legal_authorities",
+                "source_family": "legal_authority",
+                "source_ref": "Contrary Source",
+                "artifact_family": "legal_authority_reference",
+                "content_origin": "authority_reference_fallback",
+                "quality_tier": "high",
+                "record_id": 52,
+            }
+        ] if kwargs.get("claim_element_id") == "retaliation:2" else [])
         mediator.get_recent_claim_follow_up_execution.return_value = {
             "claims": {
                 "retaliation": [
@@ -646,10 +725,29 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["validation_status"] == "supported"
         assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["proof_decision_trace"]["decision_source"] == "logic_proof_supported"
         assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_fact_packet_count"] == 2
+        assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_fact_status_counts"] == {
+            "supporting": 2,
+            "contradicting": 0,
+            "unresolved": 0,
+        }
         assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["document_fact_packet_count"] == 1
+        assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["document_fact_status_counts"] == {
+            "supporting": 1,
+            "contradicting": 0,
+            "unresolved": 0,
+        }
+        assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_fact_packets"][0]["proof_status"] == "supporting"
         assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["document_fact_packets"][0]["fact_id"] == "fact:dashboard:1"
+        assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["document_fact_packets"][0]["proof_status"] == "supporting"
+        assert payload["claim_coverage_matrix"]["retaliation"]["elements"][1]["contradiction_pair_count"] == 1
+        assert payload["claim_coverage_matrix"]["retaliation"]["elements"][1]["contradiction_pairs"][0]["left_fact"]["fact_id"] == "fact:authority:adverse"
+        assert payload["claim_coverage_matrix"]["retaliation"]["elements"][1]["contradiction_pairs"][0]["right_fact"]["fact_id"] == "fact:evidence:adverse"
         assert payload["document_artifacts"]["retaliation"][0]["fact_previews"][0]["fact_id"] == "fact:dashboard:1"
         assert payload["document_artifacts"]["retaliation"][0]["graph_preview"]["entity_count"] == 2
+        assert any(
+            item.get("question_lane") == "contradiction_resolution"
+            for item in payload["question_recommendations"]["retaliation"]
+        )
         assert payload["follow_up_history"]["retaliation"][0]["support_kind"] == "manual_review"
         assert payload["follow_up_history_summary"]["retaliation"] == {
             "total_entry_count": 2,
@@ -723,26 +821,31 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "contradiction_related_entry_count": 1,
             "latest_attempted_at": "2026-03-12T10:15:00",
         }
-        assert payload["claim_reasoning_review"]["retaliation"] == {
-            "claim_type": "retaliation",
-            "total_element_count": 1,
-            "flagged_element_count": 1,
-            "fallback_ontology_element_count": 1,
-            "unavailable_backend_element_count": 1,
-            "degraded_adapter_element_count": 1,
-            "flagged_elements": [
-                {
-                    "element_id": "retaliation:1",
-                    "element_text": "Protected activity",
-                    "validation_status": "supported",
-                    "predicate_count": 4,
-                    "used_fallback_ontology": True,
-                    "backend_available_count": 3,
-                    "unavailable_adapters": ["logic_contradictions"],
-                    "degraded_adapters": ["logic_contradictions", "logic_proof"],
-                }
-            ],
-        }
+        reasoning_review = payload["claim_reasoning_review"]["retaliation"]
+        assert reasoning_review["claim_type"] == "retaliation"
+        assert reasoning_review["total_element_count"] == 2
+        assert reasoning_review["flagged_element_count"] == 2
+        assert reasoning_review["fallback_ontology_element_count"] == 1
+        assert reasoning_review["unavailable_backend_element_count"] == 1
+        assert reasoning_review["degraded_adapter_element_count"] == 1
+        assert any(
+            item == {
+                "element_id": "retaliation:1",
+                "element_text": "Protected activity",
+                "validation_status": "supported",
+                "predicate_count": 4,
+                "used_fallback_ontology": True,
+                "backend_available_count": 3,
+                "unavailable_adapters": ["logic_contradictions"],
+                "degraded_adapters": ["logic_contradictions", "logic_proof"],
+            }
+            for item in reasoning_review["flagged_elements"]
+        )
+        assert any(
+            item["element_id"] == "retaliation:2"
+            and item["validation_status"] == "contradicted"
+            for item in reasoning_review["flagged_elements"]
+        )
         assert payload["claim_coverage_summary"]["retaliation"]["support_trace_summary"]["trace_count"] == 3
         assert payload["claim_coverage_summary"]["retaliation"]["support_trace_summary"]["parse_input_format_counts"] == {
             "email": 1,

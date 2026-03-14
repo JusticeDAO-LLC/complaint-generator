@@ -79,6 +79,7 @@ def _build_dashboard_mediator() -> Mock:
                 },
                 "elements": [
                     {
+                        "element_id": "retaliation:1",
                         "element_text": "Protected activity",
                         "status": "covered",
                         "fact_count": 2,
@@ -159,6 +160,19 @@ def _build_dashboard_mediator() -> Mock:
                                 }
                             ]
                         },
+                    },
+                    {
+                        "element_id": "retaliation:2",
+                        "element_text": "Causal connection",
+                        "status": "partially_supported",
+                        "fact_count": 1,
+                        "total_links": 1,
+                        "authority_treatment_summary": {},
+                        "missing_support_kinds": ["authority"],
+                        "support_packet_summary": {},
+                        "support_packets": [],
+                        "links_by_kind": {},
+                        "links": [],
                     }
                 ],
             }
@@ -199,7 +213,7 @@ def _build_dashboard_mediator() -> Mock:
                     {
                         "claim_element_id": "retaliation:2",
                         "claim_element_text": "Causal connection",
-                        "fact_ids": ["fact:1", "fact:2"],
+                        "fact_ids": ["fact:causal-contradiction", "fact:causal-support"],
                         "overlap_terms": ["complaint", "schedule"],
                     }
                 ],
@@ -212,6 +226,7 @@ def _build_dashboard_mediator() -> Mock:
                 "claim_type": "retaliation",
                 "elements": [
                     {
+                        "element_id": "retaliation:1",
                         "element_text": "Protected activity",
                         "validation_status": "supported",
                         "recommended_action": "review_existing_support",
@@ -223,6 +238,32 @@ def _build_dashboard_mediator() -> Mock:
                         "proof_diagnostics": {
                             "decision_source": "logic_proof_supported",
                         },
+                        "contradiction_candidates": [],
+                    },
+                    {
+                        "element_id": "retaliation:2",
+                        "element_text": "Causal connection",
+                        "validation_status": "contradicted",
+                        "recommended_action": "resolve_contradiction",
+                        "proof_gap_count": 1,
+                        "proof_gaps": [
+                            {
+                                "gap_type": "contradiction_candidates",
+                                "message": "Conflicting support facts require operator review.",
+                            }
+                        ],
+                        "proof_decision_trace": {
+                            "decision_source": "heuristic_contradictions",
+                        },
+                        "proof_diagnostics": {
+                            "decision_source": "heuristic_contradictions",
+                        },
+                        "contradiction_candidates": [
+                            {
+                                "fact_ids": ["fact:causal-contradiction", "fact:causal-support"],
+                                "overlap_terms": ["complaint", "schedule"],
+                            }
+                        ],
                     }
                 ],
             }
@@ -253,7 +294,33 @@ def _build_dashboard_mediator() -> Mock:
             "quality_tier": "high",
             "record_id": 44,
         },
-    ] if kwargs.get("claim_element_text") == "Protected activity" else []
+    ] if kwargs.get("claim_element_text") == "Protected activity" else ([
+        {
+            "fact_id": "fact:causal-contradiction",
+            "fact_text": "The schedule reduction happened before the complaint.",
+            "support_kind": "authority",
+            "source_table": "legal_authorities",
+            "source_family": "legal_authority",
+            "source_ref": "Contrary Source",
+            "artifact_family": "legal_authority_reference",
+            "content_origin": "authority_reference_fallback",
+            "quality_tier": "high",
+            "record_id": 44,
+        }
+        ,
+        {
+            "fact_id": "fact:causal-support",
+            "fact_text": "The schedule reduction followed the complaint.",
+            "support_kind": "evidence",
+            "source_table": "evidence",
+            "source_family": "evidence",
+            "source_ref": "QmDashboardDoc1",
+            "artifact_family": "document",
+            "content_origin": "operator_document_intake",
+            "quality_tier": "high",
+            "record_id": 81,
+        }
+    ] if kwargs.get("claim_element_text") == "Causal connection" else [])
     mediator.get_recent_claim_follow_up_execution.return_value = {
         "claims": {
             "retaliation": [
@@ -662,10 +729,28 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert review_payload["claim_coverage_summary"]["retaliation"]["document_total_fact_count"] == 1
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["validation_status"] == "supported"
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_fact_packet_count"] == 2
+    assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_fact_status_counts"] == {
+        "supporting": 2,
+        "contradicting": 0,
+        "unresolved": 0,
+    }
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["document_fact_packet_count"] == 1
+    assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["document_fact_status_counts"] == {
+        "supporting": 1,
+        "contradicting": 0,
+        "unresolved": 0,
+    }
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["document_fact_packets"][0]["fact_id"] == "fact:timeline-email"
+    assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["document_fact_packets"][0]["proof_status"] == "supporting"
     assert review_payload["document_artifacts"]["retaliation"][0]["fact_previews"][0]["fact_id"] == "fact:schedule-memo:1"
     assert review_payload["document_artifacts"]["retaliation"][0]["graph_preview"]["relationship_count"] == 1
+    assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][1]["contradiction_pair_count"] == 1
+    assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][1]["contradiction_pairs"][0]["left_fact"]["fact_id"] == "fact:causal-contradiction"
+    assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][1]["contradiction_pairs"][0]["right_fact"]["fact_id"] == "fact:causal-support"
+    assert any(
+        item.get("question_lane") == "contradiction_resolution"
+        for item in review_payload["question_recommendations"]["retaliation"]
+    )
 
     testimony_payload = await testimony_route.endpoint(
         ClaimSupportTestimonySaveRequest(

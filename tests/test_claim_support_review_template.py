@@ -43,6 +43,13 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Document proof facts" in content
     assert "All proof facts" in content
     assert "proof-gap-details" in content
+    assert "document supporting" in content
+    assert "contradicting" in content
+    assert "unresolved" in content
+    assert "source_fact_status" in content
+    assert "source_fact_ids" in content
+    assert "Contradiction pairs" in content
+    assert "contradiction-pair-details" in content
     assert "buildTestimonyRequest" in content
     assert "saveTestimony" in content
     assert "buildDocumentRequest" in content

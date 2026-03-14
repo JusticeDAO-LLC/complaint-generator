@@ -1832,6 +1832,7 @@
                 const documentFactPackets = Array.isArray(element.document_fact_packets) ? element.document_fact_packets : [];
                 const supportFactStatusCounts = element.support_fact_status_counts || {};
                 const documentFactStatusCounts = element.document_fact_status_counts || {};
+                const contradictionPairs = Array.isArray(element.contradiction_pairs) ? element.contradiction_pairs : [];
                 const proofGaps = Array.isArray(element.proof_gaps) ? element.proof_gaps : [];
                 const proofDecisionTrace = element.proof_decision_trace || {};
                 const archivedPacketCount = supportPackets.filter(
@@ -2007,6 +2008,47 @@
                         </details>
                     `
                     : '';
+                const contradictionPairDetails = contradictionPairs.length
+                    ? `
+                        <details class="packet-details contradiction-pair-details" style="margin-top: 12px;">
+                            <summary>Contradiction pairs (${contradictionPairs.length})</summary>
+                            <div class="packet-list">
+                                ${contradictionPairs.map((pair) => {
+                                    const leftFact = pair.left_fact || {};
+                                    const rightFact = pair.right_fact || {};
+                                    const overlapTerms = Array.isArray(pair.overlap_terms) ? pair.overlap_terms : [];
+                                    return `
+                                        <div class="packet-card contradiction-pair-card">
+                                            <div class="packet-card-title">${pair.pair_id || 'contradiction pair'}</div>
+                                            <div class="packet-card-meta">${pair.resolution_prompt || 'Resolve the conflicting propositions.'}</div>
+                                            <div class="chip-row">
+                                                ${overlapTerms.map((term) => `<span class="chip">overlap ${term}</span>`).join('')}
+                                            </div>
+                                            <div class="packet-list" style="margin-top: 10px; grid-template-columns: repeat(2, minmax(0, 1fr));">
+                                                <div class="packet-card">
+                                                    <div class="packet-card-title">${leftFact.fact_id || 'left fact'}</div>
+                                                    <div class="packet-card-meta">${leftFact.text || 'No left-side fact available.'}</div>
+                                                    <div class="chip-row">
+                                                        ${leftFact.proof_status ? `<span class="chip">${leftFact.proof_status}</span>` : ''}
+                                                        ${leftFact.source_table ? `<span class="chip">table ${leftFact.source_table}</span>` : ''}
+                                                    </div>
+                                                </div>
+                                                <div class="packet-card">
+                                                    <div class="packet-card-title">${rightFact.fact_id || 'right fact'}</div>
+                                                    <div class="packet-card-meta">${rightFact.text || 'No right-side fact available.'}</div>
+                                                    <div class="chip-row">
+                                                        ${rightFact.proof_status ? `<span class="chip">${rightFact.proof_status}</span>` : ''}
+                                                        ${rightFact.source_table ? `<span class="chip">table ${rightFact.source_table}</span>` : ''}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </details>
+                    `
+                    : '';
                 return `
                     <article class="element-card">
                         <div class="row-head">
@@ -2025,6 +2067,7 @@
                         ${documentProofFacts}
                         ${supportProofFacts}
                         ${proofGapDetails}
+                        ${contradictionPairDetails}
                         <div class="link-groups">${linkGroups || '<div class="link-group">No linked support records.</div>'}</div>
                     </article>
                 `;
@@ -2190,9 +2233,12 @@
                         <span class="badge ${recommendation.current_status || 'missing'}">${recommendation.current_status || 'open'}</span>
                     </div>
                     <div>${recommendation.question_text || ''}</div>
+                    ${recommendation.source_fact_text ? `<div class="meta" style="margin-top: 8px;">fact=${recommendation.source_fact_text}</div>` : ''}
                     <div class="chip-row" style="margin-top: 10px;">
                         <span class="chip">${recommendation.question_reason || 'Clarify unresolved support.'}</span>
                         ${recommendation.supporting_evidence_summary ? `<span class="chip">${recommendation.supporting_evidence_summary}</span>` : ''}
+                        ${recommendation.source_fact_status ? `<span class="chip">fact ${recommendation.source_fact_status}</span>` : ''}
+                        ${(recommendation.source_fact_ids || []).map((factId) => `<span class="chip">fact id ${factId}</span>`).join('')}
                         ${(recommendation.missing_support_kinds || []).map((kind) => `<span class="chip">missing ${kind}</span>`).join('')}
                     </div>
                     <div class="button-row" style="margin-top: 12px;">
