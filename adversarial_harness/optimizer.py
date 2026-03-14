@@ -58,6 +58,9 @@ class OptimizationReport:
     worst_session_id: str = None
     best_score: float = 0.0
     worst_score: float = 1.0
+    hacc_preset_performance: Dict[str, Dict[str, Any]] | None = None
+    anchor_section_performance: Dict[str, Dict[str, Any]] | None = None
+    recommended_hacc_preset: str | None = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -92,7 +95,10 @@ class OptimizationReport:
             'best_session_id': self.best_session_id,
             'worst_session_id': self.worst_session_id,
             'best_score': self.best_score,
-            'worst_score': self.worst_score
+            'worst_score': self.worst_score,
+            'hacc_preset_performance': self.hacc_preset_performance or {},
+            'anchor_section_performance': self.anchor_section_performance or {},
+            'recommended_hacc_preset': self.recommended_hacc_preset,
         }
 
 
@@ -232,6 +238,37 @@ class Optimizer:
         dg = ((g1 - g0) / iters) if (isinstance(g0, int) and isinstance(g1, int)) else None
         gaps_not_reducing = bool(isinstance(g0, int) and isinstance(g1, int) and g1 >= g0)
         return de, dr, dg, gaps_not_reducing
+
+    def _extract_seed_meta(self, result: Any) -> Dict[str, Any]:
+        seed = getattr(result, "seed_complaint", None)
+        if not isinstance(seed, dict):
+            return {}
+        meta = seed.get("_meta")
+        if not isinstance(meta, dict):
+            meta = {}
+        key_facts = seed.get("key_facts")
+        if not isinstance(key_facts, dict):
+            key_facts = {}
+        anchor_sections = list(meta.get("anchor_sections") or key_facts.get("anchor_sections") or [])
+        return {
+            "hacc_preset": meta.get("hacc_preset"),
+            "include_hacc_evidence": bool(meta.get("include_hacc_evidence")),
+            "seed_source": meta.get("seed_source") or seed.get("source"),
+            "anchor_sections": anchor_sections,
+        }
+
+    def _summarize_group_scores(self, grouped_scores: Dict[str, List[float]]) -> Dict[str, Dict[str, Any]]:
+        summary: Dict[str, Dict[str, Any]] = {}
+        for key, scores in grouped_scores.items():
+            if not scores:
+                continue
+            summary[key] = {
+                "count": len(scores),
+                "average_score": sum(scores) / len(scores),
+                "min_score": min(scores),
+                "max_score": max(scores),
+            }
+        return summary
     
     def analyze(self, results: List[Any]) -> OptimizationReport:
         """
@@ -329,6 +366,8 @@ class Optimizer:
         all_suggestions = []
         all_anchor_missing = []
         all_anchor_covered = []
+        preset_scores: Dict[str, List[float]] = {}
+        anchor_section_scores: Dict[str, List[float]] = {}
         
         for result in successful:
             all_strengths.extend(result.critic_score.strengths)
@@ -336,6 +375,13 @@ class Optimizer:
             all_suggestions.extend(result.critic_score.suggestions)
             all_anchor_missing.extend(getattr(result.critic_score, 'anchor_sections_missing', []) or [])
             all_anchor_covered.extend(getattr(result.critic_score, 'anchor_sections_covered', []) or [])
+            seed_meta = self._extract_seed_meta(result)
+            preset = seed_meta.get("hacc_preset")
+            if isinstance(preset, str) and preset:
+                preset_scores.setdefault(preset, []).append(result.critic_score.overall_score)
+            for section in list(seed_meta.get("anchor_sections") or []):
+                if isinstance(section, str) and section:
+                    anchor_section_scores.setdefault(section, []).append(result.critic_score.overall_score)
         
         # Find most common
         common_strengths = self._most_common(all_strengths, top_n=5)
@@ -384,6 +430,43 @@ class Optimizer:
         
         # Determine trend
         trend = self._determine_trend(scores)
+        hacc_preset_performance = self._summarize_group_scores(preset_scores)
+        anchor_section_performance = self._summarize_group_scores(anchor_section_scores)
+        recommended_hacc_preset = None
+        if hacc_preset_performance:
+            recommended_hacc_preset = max(
+                hacc_preset_performance.items(),
+                key=lambda item: (float(item[1].get("average_score") or 0.0), int(item[1].get("count") or 0)),
+            )[0]
+
+        if hacc_preset_performance:
+            best_preset = recommended_hacc_preset
+            weak_presets = [
+                name
+                for name, payload in hacc_preset_performance.items()
+                if float(payload.get("average_score") or 0.0) < avg_score
+            ]
+            if best_preset:
+                recommendations.append(
+                    f"Best HACC preset so far is '{best_preset}'. Prefer it when generating evidence-backed adversarial batches."
+                )
+            if weak_presets:
+                recommendations.append(
+                    "Lower-performing HACC presets may need different mediator probes or seed curation: "
+                    + ", ".join(sorted(weak_presets[:3])) + "."
+                )
+
+        if anchor_section_performance:
+            weakest_sections = sorted(
+                anchor_section_performance.items(),
+                key=lambda item: (float(item[1].get("average_score") or 0.0), int(item[1].get("count") or 0)),
+            )[:3]
+            weak_labels = [name for name, payload in weakest_sections if float(payload.get("average_score") or 0.0) < avg_score]
+            if weak_labels:
+                recommendations.append(
+                    "Decision-tree coverage is weakest for these seeded anchor sections: "
+                    + ", ".join(weak_labels) + ". Add more explicit branch logic for them."
+                )
         
         report = OptimizationReport(
             timestamp=datetime.now(UTC).isoformat(),
@@ -416,7 +499,10 @@ class Optimizer:
             best_session_id=best_result.session_id,
             worst_session_id=worst_result.session_id,
             best_score=best_result.critic_score.overall_score,
-            worst_score=worst_result.critic_score.overall_score
+            worst_score=worst_result.critic_score.overall_score,
+            hacc_preset_performance=hacc_preset_performance,
+            anchor_section_performance=anchor_section_performance,
+            recommended_hacc_preset=recommended_hacc_preset,
         )
         
         self.history.append(report)

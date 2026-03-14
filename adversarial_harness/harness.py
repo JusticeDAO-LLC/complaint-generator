@@ -221,7 +221,10 @@ class AdversarialHarness:
                 'session_id': session_id,
                 'seed': seed,
                 'personality': personality,
-                'max_turns': max_turns_per_session
+                'max_turns': max_turns_per_session,
+                'include_hacc_evidence': include_hacc_evidence,
+                'hacc_preset': hacc_preset,
+                'use_hacc_vector_search': use_hacc_vector_search,
             })
         
         # Run sessions in parallel
@@ -247,6 +250,15 @@ class AdversarialHarness:
                                 '_meta': {
                                     'personality': spec.get('personality'),
                                     'max_turns': spec.get('max_turns'),
+                                    'include_hacc_evidence': spec.get('include_hacc_evidence', False),
+                                    'hacc_preset': spec.get('hacc_preset'),
+                                    'use_hacc_vector_search': spec.get('use_hacc_vector_search', False),
+                                    'seed_source': result.seed_complaint.get('source'),
+                                    'anchor_sections': list(
+                                        (
+                                            result.seed_complaint.get('key_facts', {}) or {}
+                                        ).get('anchor_sections', [])
+                                    ),
                                 }
                             }
                     except Exception:

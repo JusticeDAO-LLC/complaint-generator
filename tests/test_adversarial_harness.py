@@ -589,6 +589,67 @@ class TestAdversarialHarness:
         assert captured['hacc_preset'] == 'retaliation_focus'
         assert captured['hacc_query_specs'][0]['query'] == 'retaliation policy'
         assert captured['use_hacc_vector_search'] is True
+        assert results[0].seed_complaint['_meta']['include_hacc_evidence'] is True
+        assert results[0].seed_complaint['_meta']['hacc_preset'] == 'retaliation_focus'
+        assert results[0].seed_complaint['_meta']['use_hacc_vector_search'] is True
+
+    def test_run_batch_records_anchor_metadata_for_optimizer(self, monkeypatch):
+        harness = AdversarialHarness(
+            MockLLMBackend(),
+            MockLLMBackend(),
+            MockMediator,
+            max_parallel=1
+        )
+
+        monkeypatch.setattr(
+            harness.seed_library,
+            'get_seed_complaints',
+            lambda **kwargs: [{
+                'type': 'housing_discrimination',
+                'source': 'hacc_research_engine',
+                'key_facts': {
+                    'evidence_summary': 'Anchored evidence',
+                    'anchor_sections': ['grievance_hearing', 'appeal_rights'],
+                },
+                'hacc_evidence': [{'title': 'Mock Policy'}],
+            }],
+        )
+        monkeypatch.setattr(
+            harness,
+            '_run_single_session',
+            lambda spec: SessionResult(
+                session_id=spec['session_id'],
+                timestamp="2024-01-01T00:00:00+00:00",
+                seed_complaint=spec['seed'],
+                initial_complaint_text="Complaint",
+                conversation_history=[],
+                num_questions=0,
+                num_turns=0,
+                final_state={},
+                critic_score=CriticScore(
+                    overall_score=0.7,
+                    question_quality=0.7,
+                    information_extraction=0.7,
+                    empathy=0.7,
+                    efficiency=0.7,
+                    coverage=0.7,
+                    feedback="ok",
+                    strengths=[],
+                    weaknesses=[],
+                    suggestions=[],
+                ),
+                success=True,
+            ),
+        )
+
+        results = harness.run_batch(
+            num_sessions=1,
+            include_hacc_evidence=True,
+            hacc_preset='core_hacc_policies',
+        )
+
+        assert results[0].seed_complaint['_meta']['seed_source'] == 'hacc_research_engine'
+        assert results[0].seed_complaint['_meta']['anchor_sections'] == ['grievance_hearing', 'appeal_rights']
 
 
 class TestOptimizer:
@@ -647,6 +708,59 @@ class TestOptimizer:
         assert report.num_sessions_analyzed == 3
         assert 0.0 <= report.average_score <= 1.0
         assert len(report.recommendations) > 0
+    
+    def test_analyze_reports_hacc_preset_and_anchor_performance(self):
+        optimizer = Optimizer()
+
+        results = []
+        scenarios = [
+            ("core_hacc_policies", ["grievance_hearing"], 0.82),
+            ("core_hacc_policies", ["grievance_hearing", "appeal_rights"], 0.78),
+            ("retaliation_focus", ["appeal_rights"], 0.61),
+        ]
+        for idx, (preset, anchor_sections, overall_score) in enumerate(scenarios):
+            results.append(
+                SessionResult(
+                    session_id=f"session_meta_{idx}",
+                    timestamp="2024-01-01",
+                    seed_complaint={
+                        "_meta": {
+                            "hacc_preset": preset,
+                            "include_hacc_evidence": True,
+                            "seed_source": "hacc_research_engine",
+                            "anchor_sections": anchor_sections,
+                        },
+                        "key_facts": {
+                            "anchor_sections": anchor_sections,
+                        },
+                    },
+                    initial_complaint_text="Test",
+                    conversation_history=[],
+                    num_questions=4,
+                    num_turns=3,
+                    final_state={},
+                    critic_score=CriticScore(
+                        overall_score=overall_score,
+                        question_quality=overall_score,
+                        information_extraction=overall_score,
+                        empathy=overall_score,
+                        efficiency=overall_score,
+                        coverage=overall_score,
+                        feedback="Test feedback",
+                        strengths=[],
+                        weaknesses=[],
+                        suggestions=[],
+                    ),
+                    success=True,
+                )
+            )
+
+        report = optimizer.analyze(results)
+
+        assert report.recommended_hacc_preset == "core_hacc_policies"
+        assert report.hacc_preset_performance["core_hacc_policies"]["count"] == 2
+        assert report.anchor_section_performance["grievance_hearing"]["count"] == 2
+        assert any("Best HACC preset so far is 'core_hacc_policies'" in rec for rec in report.recommendations)
 
     def test_optimizer_recommends_missing_anchor_sections(self):
         optimizer = Optimizer()
