@@ -172,7 +172,12 @@ class AdversarialHarness:
                    num_sessions: int = 10,
                    seed_complaints: List[Dict[str, Any]] = None,
                    personalities: List[str] = None,
-                  max_turns_per_session: int = 12) -> List[SessionResult]:
+                  max_turns_per_session: int = 12,
+                  include_hacc_evidence: bool = False,
+                  hacc_count: int | None = None,
+                  hacc_preset: str | None = None,
+                  hacc_query_specs: List[Dict[str, Any]] | None = None,
+                  use_hacc_vector_search: bool = False) -> List[SessionResult]:
         """
         Run a batch of adversarial sessions in parallel.
         
@@ -189,7 +194,14 @@ class AdversarialHarness:
         
         # Get seed complaints
         if seed_complaints is None:
-            seed_complaints = self.seed_library.get_seed_complaints(count=num_sessions)
+            seed_complaints = self.seed_library.get_seed_complaints(
+                count=num_sessions,
+                include_hacc_evidence=include_hacc_evidence,
+                hacc_count=hacc_count,
+                hacc_preset=hacc_preset,
+                hacc_query_specs=hacc_query_specs,
+                use_hacc_vector_search=use_hacc_vector_search,
+            )
         elif len(seed_complaints) < num_sessions:
             # Cycle through provided seeds
             seed_complaints = (seed_complaints * ((num_sessions // len(seed_complaints)) + 1))[:num_sessions]

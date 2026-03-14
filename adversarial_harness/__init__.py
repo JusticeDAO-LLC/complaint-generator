@@ -20,6 +20,12 @@ from .session import AdversarialSession, SessionResult
 from .harness import AdversarialHarness
 from .optimizer import Optimizer, OptimizationReport
 from .seed_complaints import SeedComplaintLibrary, ComplaintTemplate
+from .hacc_evidence import (
+    build_hacc_evidence_seeds,
+    DEFAULT_HACC_QUERY_SPECS,
+    HACC_QUERY_PRESETS,
+    get_hacc_query_specs,
+)
 from .search_hooks import (
     SearchEnrichedSeedGenerator,
     DecisionTreeEnhancer,
@@ -39,6 +45,10 @@ __all__ = [
     'OptimizationReport',
     'SeedComplaintLibrary',
     'ComplaintTemplate',
+    'build_hacc_evidence_seeds',
+    'DEFAULT_HACC_QUERY_SPECS',
+    'HACC_QUERY_PRESETS',
+    'get_hacc_query_specs',
     'SearchEnrichedSeedGenerator',
     'DecisionTreeEnhancer',
     'MediatorSearchIntegration',

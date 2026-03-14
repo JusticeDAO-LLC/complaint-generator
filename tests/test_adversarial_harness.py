@@ -16,6 +16,7 @@ from adversarial_harness import (
     SeedComplaintLibrary,
     ComplaintTemplate
 )
+import adversarial_harness.seed_complaints as seed_complaints_module
 
 
 class MockLLMBackend:
@@ -131,6 +132,58 @@ class TestComplainant:
         assert len(response) > 0
         assert backend.call_count == 1
 
+    def test_default_context_carries_hacc_evidence(self):
+        seed = {
+            'type': 'housing_discrimination',
+            'summary': 'A housing policy appears to support the complaint.',
+            'key_facts': {
+                'evidence_summary': 'The policy text suggests discriminatory treatment.',
+            },
+            'hacc_evidence': [
+                {
+                    'title': 'Admissions and Continued Occupancy Policy',
+                    'snippet': 'Applicants requesting accommodations must be reviewed individually.',
+                    'source_path': '/tmp/acop.txt',
+                }
+            ],
+        }
+
+        context = Complainant.build_default_context(seed, 'detailed')
+
+        assert context.evidence_summary == 'The policy text suggests discriminatory treatment.'
+        assert len(context.evidence_items) == 1
+
+    def test_prompt_includes_hacc_evidence(self):
+        prompts = []
+
+        def backend(prompt):
+            prompts.append(prompt)
+            return "Mock response"
+
+        complainant = Complainant(backend, personality="detailed")
+        seed = {
+            'type': 'housing_discrimination',
+            'summary': 'The evidence points to a policy problem.',
+            'key_facts': {
+                'evidence_summary': 'The policy text points to a policy problem.',
+            },
+            'hacc_evidence': [
+                {
+                    'title': 'HACC Policy',
+                    'snippet': 'This is a supporting excerpt.',
+                    'source_path': '/tmp/hacc-policy.txt',
+                }
+            ],
+        }
+
+        complainant.set_context(Complainant.build_default_context(seed, 'detailed'))
+        complainant.generate_initial_complaint(seed)
+        complainant.respond_to_question("What document supports this?")
+
+        assert any('Evidence grounding:' in prompt for prompt in prompts)
+        assert any('Evidence you can draw from:' in prompt for prompt in prompts)
+        assert any('HACC Policy' in prompt for prompt in prompts)
+
 
 class TestCritic:
     """Tests for Critic class."""
@@ -222,6 +275,44 @@ class TestSeedComplaintLibrary:
         assert len(seeds) == 5
         assert all('type' in s for s in seeds)
         assert all('key_facts' in s for s in seeds)
+
+    def test_get_hacc_seed_complaints(self, monkeypatch):
+        monkeypatch.setattr(
+            seed_complaints_module,
+            'build_hacc_evidence_seeds',
+            lambda **kwargs: [
+                {
+                    'type': 'housing_discrimination',
+                    'key_facts': {'evidence_summary': 'Mocked evidence'},
+                    'hacc_evidence': [{'title': 'Mock Policy'}],
+                }
+            ],
+        )
+
+        library = SeedComplaintLibrary()
+        seeds = library.get_hacc_seed_complaints(count=1)
+
+        assert len(seeds) == 1
+        assert seeds[0]['key_facts']['evidence_summary'] == 'Mocked evidence'
+
+    def test_get_seed_complaints_can_include_hacc_evidence(self, monkeypatch):
+        monkeypatch.setattr(
+            SeedComplaintLibrary,
+            'get_hacc_seed_complaints',
+            lambda self, **kwargs: [
+                {
+                    'type': 'housing_discrimination',
+                    'key_facts': {'evidence_summary': 'Mocked evidence'},
+                    'hacc_evidence': [{'title': 'Mock Policy'}],
+                }
+            ],
+        )
+
+        library = SeedComplaintLibrary()
+        seeds = library.get_seed_complaints(count=3, include_hacc_evidence=True, hacc_count=1)
+
+        assert len(seeds) == 3
+        assert seeds[0]['key_facts']['evidence_summary'] == 'Mocked evidence'
 
 
 class TestAdversarialSession:
@@ -325,6 +416,69 @@ class TestAdversarialHarness:
         
         stats = harness.get_statistics()
         assert stats['total_sessions'] == 0
+
+    def test_run_batch_forwards_hacc_seed_options(self, monkeypatch):
+        harness = AdversarialHarness(
+            MockLLMBackend(),
+            MockLLMBackend(),
+            MockMediator,
+            max_parallel=1
+        )
+
+        captured = {}
+
+        def fake_get_seed_complaints(**kwargs):
+            captured.update(kwargs)
+            return [{
+                'type': 'housing_discrimination',
+                'key_facts': {'evidence_summary': 'Mocked HACC evidence'},
+                'hacc_evidence': [{'title': 'Mock Policy'}],
+            }]
+
+        monkeypatch.setattr(harness.seed_library, 'get_seed_complaints', fake_get_seed_complaints)
+        monkeypatch.setattr(
+            harness,
+            '_run_single_session',
+            lambda spec: SessionResult(
+                session_id=spec['session_id'],
+                timestamp="2024-01-01T00:00:00+00:00",
+                seed_complaint=spec['seed'],
+                initial_complaint_text="Complaint",
+                conversation_history=[],
+                num_questions=0,
+                num_turns=0,
+                final_state={},
+                critic_score=CriticScore(
+                    overall_score=0.7,
+                    question_quality=0.7,
+                    information_extraction=0.7,
+                    empathy=0.7,
+                    efficiency=0.7,
+                    coverage=0.7,
+                    feedback="ok",
+                    strengths=[],
+                    weaknesses=[],
+                    suggestions=[],
+                ),
+                success=True,
+            ),
+        )
+
+        results = harness.run_batch(
+            num_sessions=1,
+            include_hacc_evidence=True,
+            hacc_count=1,
+            hacc_preset='retaliation_focus',
+            hacc_query_specs=[{'query': 'retaliation policy', 'type': 'housing_discrimination'}],
+            use_hacc_vector_search=True,
+        )
+
+        assert len(results) == 1
+        assert captured['include_hacc_evidence'] is True
+        assert captured['hacc_count'] == 1
+        assert captured['hacc_preset'] == 'retaliation_focus'
+        assert captured['hacc_query_specs'][0]['query'] == 'retaliation policy'
+        assert captured['use_hacc_vector_search'] is True
 
 
 class TestOptimizer:

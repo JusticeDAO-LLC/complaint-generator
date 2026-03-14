@@ -271,6 +271,50 @@ complaint = library.generate_from_template(
 )
 ```
 
+### HACC Evidence-Backed Seeds
+
+When the local `HACC` repository includes `hacc_research`, `research_results`, and the
+knowledge-graph artifacts, the harness can seed the complainant from that evidence
+instead of generic templates.
+
+```python
+from adversarial_harness import (
+    AdversarialHarness,
+    DEFAULT_HACC_QUERY_SPECS,
+    HACC_QUERY_PRESETS,
+    SeedComplaintLibrary,
+)
+
+seed_library = SeedComplaintLibrary()
+
+results = harness.run_batch(
+    num_sessions=6,
+    max_turns_per_session=6,
+    include_hacc_evidence=True,
+    hacc_count=4,
+    hacc_preset="retaliation_focus",
+    use_hacc_vector_search=False,
+)
+```
+
+Available presets include:
+- `full_audit`
+- `housing_focus`
+- `proxy_focus`
+- `retaliation_focus`
+- `contracting_focus`
+
+You can still bypass presets and pass `hacc_query_specs=DEFAULT_HACC_QUERY_SPECS`
+or your own custom list of query specs when you want tighter case-specific control.
+
+Each HACC-backed seed includes:
+- `key_facts["evidence_summary"]` for a short narrative grounding
+- `hacc_evidence` with top supporting snippets and source paths
+- complaint metadata that the complainant can use while answering mediator questions
+
+This is useful when you want the critic and optimizer to evaluate question quality
+against real local evidence rather than synthetic fact patterns.
+
 ### 7. Search Integration (`search_hooks.py`)
 
 **Purpose:** Enrich adversarial testing with legal research and web evidence.

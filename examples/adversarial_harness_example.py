@@ -12,7 +12,9 @@ sys.path.insert(0, os.path.abspath('.'))
 from adversarial_harness import (
     AdversarialHarness,
     Optimizer,
-    SeedComplaintLibrary
+    SeedComplaintLibrary,
+    DEFAULT_HACC_QUERY_SPECS,
+    HACC_QUERY_PRESETS,
 )
 from mediator.mediator import Mediator
 
@@ -110,6 +112,8 @@ def main():
     print("✓ Harness initialized")
     print(f"  - Max parallel sessions: {harness.max_parallel}")
     print(f"  - Seed templates available: {len(seed_library.templates)}")
+    print(f"  - HACC evidence query themes: {len(DEFAULT_HACC_QUERY_SPECS)}")
+    print(f"  - HACC presets available: {', '.join(sorted(HACC_QUERY_PRESETS.keys()))}")
     print()
     
     # Run batch of sessions
@@ -119,7 +123,10 @@ def main():
     num_sessions = 5
     results = harness.run_batch(
         num_sessions=num_sessions,
-        max_turns_per_session=5
+        max_turns_per_session=5,
+        include_hacc_evidence=True,
+        hacc_count=3,
+        hacc_preset='retaliation_focus',
     )
     
     print()

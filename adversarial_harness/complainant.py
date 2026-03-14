@@ -6,7 +6,7 @@ LLM-based complainant that generates complaints and responds to mediator questio
 
 import logging
 from typing import Dict, Any, List
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 
 logger = logging.getLogger(__name__)
@@ -113,6 +113,8 @@ class ComplaintContext:
     emotional_state: str = "distressed"
     cooperation_level: float = 0.8  # 0.0 to 1.0, how willing to provide info
     context_depth: int = 1  # How much detail complainant has
+    evidence_items: List[Dict[str, Any]] = field(default_factory=list)
+    evidence_summary: str = ""
 
 
 class Complainant:
@@ -143,12 +145,21 @@ class Complainant:
     def build_default_context(seed: Dict[str, Any], personality: str) -> ComplaintContext:
         p = _normalize_personality(personality)
         profile = _PERSONALITY_PROFILES.get(p) or _PERSONALITY_PROFILES["cooperative"]
+        key_facts = dict(seed.get("key_facts", {}))
+        evidence_items = list(seed.get("hacc_evidence") or key_facts.get("hacc_evidence") or [])
+        evidence_summary = str(
+            key_facts.get("evidence_summary")
+            or seed.get("summary")
+            or ""
+        )
         return ComplaintContext(
             complaint_type=seed.get("type", "unknown"),
-            key_facts=seed.get("key_facts", {}),
+            key_facts=key_facts,
             emotional_state=str(profile.get("emotional_state", "distressed")),
             cooperation_level=float(profile.get("cooperation_level", 0.8)),
             context_depth=int(profile.get("context_depth", 1)),
+            evidence_items=evidence_items,
+            evidence_summary=evidence_summary,
         )
     
     def set_context(self, context: ComplaintContext):
@@ -215,10 +226,14 @@ class Complainant:
     def _build_complaint_prompt(self, seed_data: Dict[str, Any]) -> str:
         """Build prompt for generating initial complaint."""
         instructions = "\n".join([f"- {x}" for x in (self.personality_profile.get("instructions") or [])])
+        evidence_text = self._format_seed_evidence(seed_data)
         prompt = f"""You are a person filing a complaint. Based on the following situation, write a detailed but natural complaint as if you were experiencing this issue.
 
 Situation:
 {json.dumps(seed_data, indent=2)}
+
+Evidence grounding:
+{evidence_text}
 
 Personality: {self.personality}
 
@@ -230,6 +245,7 @@ Generate a complaint that:
 2. Expresses how this affected you
 3. Mentions key facts but doesn't over-explain
 4. Sounds like a real person telling their story
+5. When evidence is provided, use it as grounding without sounding like a brief
 
 Complaint:"""
         return prompt
@@ -247,11 +263,15 @@ Complaint:"""
                           "defensive"
 
         instructions = "\n".join([f"- {x}" for x in (self.personality_profile.get("instructions") or [])])
+        evidence_text = self._format_context_evidence()
         
         prompt = f"""You are a complainant in a legal matter. You are {cooperation_desc} and your personality is {self.personality}.
 
 Your situation involves:
 {json.dumps(self.context.key_facts, indent=2)}
+
+Evidence you can draw from:
+{evidence_text}
 
 Recent conversation:
 {history_text}
@@ -263,6 +283,7 @@ Respond naturally as this person would. Your response should:
 2. Match your personality ({self.personality}) and cooperation level ({cooperation_desc})
 3. Be honest but not overly detailed unless asked
 4. Sound like a real person, not a legal document
+5. Use the evidence when it supports the answer, and say when something is only an inference
 
 Behavioral constraints:
 {instructions}
@@ -279,6 +300,34 @@ Response:"""
     def _fallback_response(self, question: str) -> str:
         """Fallback response if LLM fails."""
         return "I'm not sure how to answer that right now. Can you rephrase the question?"
+
+    def _format_seed_evidence(self, seed_data: Dict[str, Any]) -> str:
+        key_facts = seed_data.get("key_facts") if isinstance(seed_data.get("key_facts"), dict) else {}
+        summary = str(key_facts.get("evidence_summary") or seed_data.get("summary") or "").strip()
+        evidence_items = list(seed_data.get("hacc_evidence") or key_facts.get("hacc_evidence") or [])
+        return self._format_evidence_block(summary, evidence_items)
+
+    def _format_context_evidence(self) -> str:
+        return self._format_evidence_block(
+            self.context.evidence_summary,
+            self.context.evidence_items,
+        )
+
+    def _format_evidence_block(self, summary: str, evidence_items: List[Dict[str, Any]]) -> str:
+        lines: List[str] = []
+        if summary:
+            lines.append(f"Summary: {summary}")
+        for index, item in enumerate(evidence_items[:3], start=1):
+            title = str(item.get("title") or item.get("document_id") or f"evidence_{index}")
+            snippet = str(item.get("snippet") or "").strip()
+            source_path = str(item.get("source_path") or "").strip()
+            line = f"{index}. {title}"
+            if snippet:
+                line += f" - {snippet}"
+            if source_path:
+                line += f" (source: {source_path})"
+            lines.append(line)
+        return "\n".join(lines) if lines else "No external evidence was provided."
     
     def get_conversation_history(self) -> List[Dict[str, Any]]:
         """Get the full conversation history."""

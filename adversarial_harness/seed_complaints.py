@@ -6,9 +6,10 @@ Now uses complaint_analysis.SeedGenerator for data-driven seed generation.
 """
 
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Sequence
 
 from complaint_analysis import SeedGenerator as AnalysisSeedGenerator
+from .hacc_evidence import build_hacc_evidence_seeds
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,16 @@ class SeedComplaintLibrary:
         """
         return self._generator.list_templates(category=category)
     
-    def get_seed_complaints(self, count: int = 10) -> List[Dict[str, Any]]:
+    def get_seed_complaints(
+        self,
+        count: int = 10,
+        *,
+        include_hacc_evidence: bool = False,
+        hacc_count: Optional[int] = None,
+        hacc_preset: Optional[str] = None,
+        hacc_query_specs: Optional[Sequence[Dict[str, Any]]] = None,
+        use_hacc_vector_search: bool = False,
+    ) -> List[Dict[str, Any]]:
         """
         Get a set of pre-defined seed complaints.
         
@@ -77,6 +87,17 @@ class SeedComplaintLibrary:
             List of seed complaint data
         """
         seeds = []
+
+        if include_hacc_evidence:
+            requested_hacc_count = min(count, hacc_count or count)
+            seeds.extend(
+                self.get_hacc_seed_complaints(
+                    count=requested_hacc_count,
+                    preset=hacc_preset,
+                    query_specs=hacc_query_specs,
+                    use_vector=use_hacc_vector_search,
+                )
+            )
         
         # Get templates from different categories
         categories = ['employment', 'housing', 'consumer', 'civil_rights', 'healthcare']
@@ -103,6 +124,22 @@ class SeedComplaintLibrary:
                 break
         
         return seeds[:count]
+
+    def get_hacc_seed_complaints(
+        self,
+        *,
+        count: int = 5,
+        preset: Optional[str] = None,
+        query_specs: Optional[Sequence[Dict[str, Any]]] = None,
+        use_vector: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Build complaint seeds grounded in the local HACC evidence corpus."""
+        return build_hacc_evidence_seeds(
+            count=count,
+            preset=preset,
+            query_specs=query_specs,
+            use_vector=use_vector,
+        )
     
     def _get_example_values(self, template: ComplaintTemplate) -> Dict[str, Any]:
         """
