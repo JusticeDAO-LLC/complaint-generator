@@ -764,6 +764,15 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     )
     assert testimony_payload["recorded"] is True
     assert testimony_payload["post_save_review"]["testimony_summary"]["retaliation"]["record_count"] == 1
+    assert testimony_payload["post_save_review"]["testimony_summary"]["retaliation"]["linked_element_count"] == 1
+    assert testimony_payload["post_save_review"]["testimony_records"]["retaliation"][0]["claim_element_id"] == "retaliation:2"
+    assert testimony_payload["post_save_review"]["testimony_records"]["retaliation"][0]["claim_element_text"] == "Causal connection"
+    assert testimony_payload["post_save_review"]["claim_coverage_matrix"]["retaliation"]["elements"][1]["contradiction_pair_count"] == 1
+    assert any(
+        item.get("question_lane") == "contradiction_resolution"
+        and item.get("target_claim_element_id") == "retaliation:2"
+        for item in testimony_payload["post_save_review"]["question_recommendations"]["retaliation"]
+    )
 
     document_payload = await document_route.endpoint(
         ClaimSupportDocumentSaveRequest(

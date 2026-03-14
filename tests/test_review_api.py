@@ -1,6 +1,10 @@
+import json
+import os
+import tempfile
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import duckdb
 from datetime import datetime, timezone
 
 from fastapi import Response
@@ -23,6 +27,52 @@ from applications.review_api import (
     REVIEW_EXECUTION_SUNSET,
     create_review_api_app,
 )
+
+
+def _build_hook_backed_review_api_mediator(db_path: str):
+    try:
+        from mediator.claim_support_hooks import ClaimSupportHook
+    except ImportError as exc:
+        pytest.skip(f"ClaimSupportHook requires dependencies: {exc}")
+
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.log = Mock()
+
+    hook = ClaimSupportHook(mediator, db_path=db_path)
+    hook.register_claim_requirements(
+        "state-user",
+        {"retaliation": ["Protected activity", "Adverse action"]},
+    )
+
+    mediator.save_claim_testimony_record.side_effect = lambda **kwargs: hook.save_testimony_record(**kwargs)
+    mediator.get_claim_testimony_records.side_effect = lambda user_id, claim_type=None, limit=100: hook.get_claim_testimony_records(
+        user_id,
+        claim_type,
+        limit=limit,
+    )
+    mediator.get_claim_coverage_matrix.return_value = {
+        "claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}
+    }
+    mediator.get_claim_overview.return_value = {"claims": {"retaliation": {}}}
+    mediator.get_claim_support_diagnostic_snapshots.return_value = {"claims": {}}
+    mediator.get_claim_support_gaps.return_value = {
+        "claims": {"retaliation": {"claim_type": "retaliation", "unresolved_elements": []}}
+    }
+    mediator.get_claim_contradiction_candidates.return_value = {
+        "claims": {"retaliation": {"claim_type": "retaliation", "candidates": []}}
+    }
+    mediator.get_claim_support_validation.return_value = {
+        "claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}
+    }
+    mediator.get_recent_claim_follow_up_execution.return_value = {"claims": {"retaliation": []}}
+    mediator.get_claim_follow_up_plan.return_value = {
+        "claims": {"retaliation": {"claim_type": "retaliation", "tasks": []}}
+    }
+    mediator.get_user_evidence.return_value = []
+    mediator.summarize_claim_support.return_value = {"claims": {"retaliation": {}}}
+
+    return mediator, hook
 
 
 def test_claim_support_review_payload_returns_matrix_and_summary():
@@ -2084,6 +2134,106 @@ def test_claim_support_upload_document_route_accepts_multipart_file():
         evidence_type="document",
         metadata={},
     )
+
+
+def test_claim_support_save_testimony_route_canonicalizes_text_only_claim_element():
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_review_api_mediator(db_path)
+        app = create_review_api_app(mediator)
+        client = TestClient(app)
+
+        response = client.post(
+            "/api/claim-support/save-testimony",
+            json={
+                "claim_type": "retaliation",
+                "claim_element": "Protected activity",
+                "raw_narrative": "The HR complaint email does not exist.",
+                "firsthand_status": "firsthand",
+                "source_confidence": 0.92,
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["recorded"] is True
+        assert payload["testimony_result"]["claim_element_id"] == "retaliation:1"
+        assert payload["testimony_result"]["claim_element_text"] == "Protected activity"
+        assert payload["post_save_review"]["testimony_records"]["retaliation"][0]["claim_element_id"] == "retaliation:1"
+        assert payload["post_save_review"]["testimony_summary"]["retaliation"]["linked_element_count"] == 1
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+def test_claim_support_review_route_backfills_legacy_unlinked_testimony_rows():
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_review_api_mediator(db_path)
+        conn = duckdb.connect(db_path)
+        conn.execute(
+            """
+            INSERT INTO claim_testimony (
+                testimony_id,
+                user_id,
+                claim_type,
+                claim_element_id,
+                claim_element_text,
+                raw_narrative,
+                firsthand_status,
+                source_confidence,
+                metadata
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                "testimony:retaliation:legacy-route",
+                "state-user",
+                "retaliation",
+                None,
+                "Protected activity",
+                "Discrimination complaint email to HR does not exist.",
+                "firsthand",
+                0.9,
+                json.dumps({"source": "legacy-route"}),
+            ],
+        )
+        conn.close()
+
+        app = create_review_api_app(mediator)
+        client = TestClient(app)
+
+        response = client.post(
+            "/api/claim-support/review",
+            json={
+                "claim_type": "retaliation",
+                "include_support_summary": False,
+                "include_overview": False,
+                "include_follow_up_plan": False,
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["testimony_records"]["retaliation"][0]["claim_element_id"] == "retaliation:1"
+        assert payload["testimony_records"]["retaliation"][0]["claim_element_text"] == "Protected activity"
+        assert payload["testimony_summary"]["retaliation"]["linked_element_count"] == 1
+
+        conn = duckdb.connect(db_path)
+        persisted = conn.execute(
+            "SELECT claim_element_id, claim_element_text FROM claim_testimony WHERE testimony_id = ?",
+            ["testimony:retaliation:legacy-route"],
+        ).fetchone()
+        conn.close()
+
+        assert persisted == ("retaliation:1", "Protected activity")
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
 
 
 def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():

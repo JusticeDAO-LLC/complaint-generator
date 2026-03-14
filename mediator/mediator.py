@@ -722,16 +722,18 @@ class Mediator:
 		claim_type: str = None,
 		user_id: str = None,
 		claim_element_id: str = None,
+		claim_element_text: str = None,
 		claim_element: str = None,
 	):
 		"""Get persisted fact rows attached to evidence and authority support links."""
 		if user_id is None:
 			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		resolved_claim_element_text = claim_element_text or claim_element
 		return self.claim_support.get_claim_support_facts(
 			user_id,
 			claim_type,
 			claim_element_id=claim_element_id,
-			claim_element_text=claim_element,
+			claim_element_text=resolved_claim_element_text,
 		)
 
 	def get_claim_overview(

@@ -2822,3 +2822,114 @@ class TestClaimSupportHook:
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)
+
+    def test_save_testimony_record_resolves_text_only_claim_element_to_registered_id(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'retaliation': ['Protected activity', 'Adverse action']},
+            )
+
+            saved = hook.save_testimony_record(
+                'testuser',
+                'retaliation',
+                claim_element_text='Protected activity',
+                raw_narrative='The HR complaint email does not exist.',
+                firsthand_status='firsthand',
+                source_confidence=0.92,
+                metadata={'source': 'dashboard'},
+            )
+
+            records = hook.get_claim_testimony_records('testuser', 'retaliation')
+            record = records['claims']['retaliation'][0]
+
+            assert saved['recorded'] is True
+            assert saved['claim_element_id'] == 'retaliation:1'
+            assert saved['claim_element_text'] == 'Protected activity'
+            assert record['claim_element_id'] == 'retaliation:1'
+            assert record['claim_element_text'] == 'Protected activity'
+            assert records['summary']['retaliation']['linked_element_count'] == 1
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_claim_testimony_records_backfills_legacy_unlinked_rows(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'retaliation': ['Protected activity', 'Adverse action']},
+            )
+
+            conn = duckdb.connect(db_path)
+            conn.execute(
+                """
+                INSERT INTO claim_testimony (
+                    testimony_id,
+                    user_id,
+                    claim_type,
+                    claim_element_id,
+                    claim_element_text,
+                    raw_narrative,
+                    firsthand_status,
+                    source_confidence,
+                    metadata
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    'testimony:retaliation:legacy',
+                    'testuser',
+                    'retaliation',
+                    None,
+                    'Protected activity',
+                    'The HR complaint email does not exist.',
+                    'firsthand',
+                    0.92,
+                    json.dumps({'source': 'legacy'}),
+                ],
+            )
+            conn.close()
+
+            records = hook.get_claim_testimony_records('testuser', 'retaliation')
+            record = records['claims']['retaliation'][0]
+
+            assert record['claim_element_id'] == 'retaliation:1'
+            assert record['claim_element_text'] == 'Protected activity'
+            assert records['summary']['retaliation']['linked_element_count'] == 1
+
+            conn = duckdb.connect(db_path)
+            persisted = conn.execute(
+                "SELECT claim_element_id, claim_element_text FROM claim_testimony WHERE testimony_id = ?",
+                ['testimony:retaliation:legacy'],
+            ).fetchone()
+            conn.close()
+
+            assert persisted[0] == 'retaliation:1'
+            assert persisted[1] == 'Protected activity'
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)

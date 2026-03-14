@@ -2123,13 +2123,26 @@ class ClaimSupportHook:
         user_id: str,
         claim_type: str,
         *,
+        claim_element_id: Optional[str] = None,
         claim_element_text: Optional[str] = None,
         support_label: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Optional[str]]:
         requirements = self.get_claim_requirements(user_id, claim_type).get(claim_type, [])
         if not requirements:
-            return {'claim_element_id': None, 'claim_element_text': claim_element_text}
+            return {
+                'claim_element_id': claim_element_id,
+                'claim_element_text': claim_element_text,
+            }
+
+        normalized_element_id = str(claim_element_id or '').strip()
+        if normalized_element_id:
+            for requirement in requirements:
+                if str(requirement.get('element_id') or '').strip() == normalized_element_id:
+                    return {
+                        'claim_element_id': requirement['element_id'],
+                        'claim_element_text': requirement['element_text'],
+                    }
 
         if claim_element_text:
             normalized_input = ' '.join(self._tokenize_text(claim_element_text))
@@ -2144,7 +2157,10 @@ class ClaimSupportHook:
         match_text = self._extract_match_text(support_label, metadata)
         match_tokens = set(self._tokenize_text(match_text))
         if not match_tokens:
-            return {'claim_element_id': None, 'claim_element_text': claim_element_text}
+            return {
+                'claim_element_id': claim_element_id,
+                'claim_element_text': claim_element_text,
+            }
 
         best_requirement: Optional[Dict[str, Any]] = None
         best_score = 0.0
@@ -2164,7 +2180,10 @@ class ClaimSupportHook:
                 'claim_element_text': best_requirement['element_text'],
             }
 
-        return {'claim_element_id': None, 'claim_element_text': claim_element_text}
+        return {
+            'claim_element_id': claim_element_id,
+            'claim_element_text': claim_element_text,
+        }
 
     def register_claim_requirements(
         self,
@@ -3809,9 +3828,22 @@ class ClaimSupportHook:
                 'error': 'duckdb_unavailable',
             }
 
+        resolved_element = self.resolve_claim_element(
+            user_id,
+            claim_type,
+            claim_element_id=claim_element_id,
+            claim_element_text=claim_element_text,
+            support_label=raw_narrative,
+            metadata=metadata,
+        )
+
         normalized_payload = {
-            'claim_element_id': str(claim_element_id or ''),
-            'claim_element_text': str(claim_element_text or ''),
+            'claim_element_id': str(
+                resolved_element.get('claim_element_id') or claim_element_id or ''
+            ),
+            'claim_element_text': str(
+                resolved_element.get('claim_element_text') or claim_element_text or ''
+            ),
             'raw_narrative': str(raw_narrative or '').strip(),
             'event_date': str(event_date or '').strip(),
             'actor': str(actor or '').strip(),
@@ -3959,7 +3991,6 @@ class ClaimSupportHook:
                 """,
                 parameters,
             ).fetchall()
-            conn.close()
         except Exception as exc:
             self.mediator.log('claim_testimony_query_error', error=str(exc), claim_type=claim_type)
             return {
@@ -3975,12 +4006,42 @@ class ClaimSupportHook:
         claim_entries: Dict[str, List[Dict[str, Any]]] = {}
         for row in rows:
             entry_metadata = json.loads(row[13]) if row[13] else {}
+            resolved_claim_element_id = row[3]
+            resolved_claim_element_text = row[4]
+            if not str(resolved_claim_element_id or '').strip() and str(row[2] or '').strip():
+                resolved_element = self.resolve_claim_element(
+                    user_id,
+                    str(row[2] or ''),
+                    claim_element_text=str(row[4] or '').strip() or None,
+                    support_label=str(row[5] or '').strip() or None,
+                    metadata=entry_metadata,
+                )
+                candidate_element_id = str(resolved_element.get('claim_element_id') or '').strip()
+                if candidate_element_id:
+                    resolved_claim_element_id = candidate_element_id
+                    resolved_claim_element_text = (
+                        resolved_element.get('claim_element_text')
+                        or resolved_claim_element_text
+                    )
+                    conn.execute(
+                        """
+                        UPDATE claim_testimony
+                        SET claim_element_id = ?, claim_element_text = ?
+                        WHERE id = ?
+                        """,
+                        [
+                            resolved_claim_element_id,
+                            resolved_claim_element_text or None,
+                            row[0],
+                        ],
+                    )
+
             entry = {
                 'record_id': row[0],
                 'testimony_id': row[1],
                 'claim_type': row[2],
-                'claim_element_id': row[3],
-                'claim_element_text': row[4],
+                'claim_element_id': resolved_claim_element_id,
+                'claim_element_text': resolved_claim_element_text,
                 'raw_narrative': row[5] or '',
                 'event_date': row[6] or '',
                 'actor': row[7] or '',
@@ -3994,6 +4055,8 @@ class ClaimSupportHook:
             }
             current_claim = str(row[2] or '')
             claim_entries.setdefault(current_claim, []).append(entry)
+
+        conn.close()
 
         return {
             'available': True,
