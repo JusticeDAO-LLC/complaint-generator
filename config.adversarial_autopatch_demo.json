@@ -1,0 +1,27 @@
+{
+  "BACKENDS": [
+    {
+      "id": "llm-router",
+      "type": "llm_router",
+      "provider": "accelerate",
+      "model": "gpt2",
+      "max_tokens": 128
+    }
+  ],
+  "MEDIATOR": {
+    "backends": ["llm-router"]
+  },
+  "APPLICATION": {
+    "type": "adversarial-autopatch",
+    "demo_backend": true,
+    "output_dir": "tmp/run_py_adversarial_autopatch",
+    "target_file": "adversarial_harness/session.py",
+    "num_sessions": 1,
+    "max_turns": 2,
+    "max_parallel": 1,
+    "marker_prefix": "Launcher autopatch recommendation"
+  },
+  "LOG": {
+    "level": "WARN"
+  }
+}

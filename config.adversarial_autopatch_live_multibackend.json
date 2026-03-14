@@ -1,0 +1,43 @@
+{
+  "BACKENDS": [
+    {
+      "id": "llm-router",
+      "type": "llm_router",
+      "provider": "accelerate",
+      "model": "gpt2",
+      "max_tokens": 128
+    },
+    {
+      "id": "hf-router",
+      "type": "llm_router",
+      "provider": "huggingface_router",
+      "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+      "base_url": "https://router.huggingface.co/v1",
+      "max_tokens": 256,
+      "temperature": 0.2
+    },
+    {
+      "id": "llm-router-codex",
+      "type": "llm_router",
+      "provider": "codex_cli",
+      "model": "gpt-5.2-codex",
+      "max_tokens": 128
+    }
+  ],
+  "MEDIATOR": {
+    "backends": ["llm-router", "hf-router", "llm-router-codex"]
+  },
+  "APPLICATION": {
+    "type": "adversarial-autopatch",
+    "demo_backend": false,
+    "output_dir": "tmp/run_py_adversarial_autopatch_live_multibackend",
+    "target_file": "adversarial_harness/session.py",
+    "num_sessions": 1,
+    "max_turns": 2,
+    "max_parallel": 1,
+    "marker_prefix": "Launcher autopatch recommendation"
+  },
+  "LOG": {
+    "level": "WARN"
+  }
+}
