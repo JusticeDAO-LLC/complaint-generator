@@ -7,6 +7,7 @@ Orchestrates multiple adversarial sessions with parallel execution.
 import logging
 from typing import Dict, Any, List, Callable, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import Counter
 import json
 from datetime import UTC, datetime
 import os
@@ -395,6 +396,7 @@ class AdversarialHarness:
         scores = [r.critic_score.overall_score for r in successful]
         question_counts = [r.num_questions for r in successful]
         durations = [r.duration_seconds for r in successful]
+        anchor_summary = self._anchor_section_statistics(successful)
         
         return {
             'total_sessions': len(self.results),
@@ -405,7 +407,8 @@ class AdversarialHarness:
             'max_score': max(scores) if scores else 0,
             'average_questions': sum(question_counts) / len(question_counts) if question_counts else 0,
             'average_duration': sum(durations) / len(durations) if durations else 0,
-            'score_distribution': self._score_distribution(scores)
+            'score_distribution': self._score_distribution(scores),
+            'anchor_sections': anchor_summary,
         }
     
     def _score_distribution(self, scores: List[float]) -> Dict[str, int]:
@@ -454,3 +457,39 @@ class AdversarialHarness:
             json.dump(data, f, indent=2)
         
         logger.info(f"Results saved to {filepath}")
+
+    def _anchor_section_statistics(self, successful_results: List[SessionResult]) -> Dict[str, Any]:
+        expected_counter: Counter[str] = Counter()
+        covered_counter: Counter[str] = Counter()
+        missing_counter: Counter[str] = Counter()
+
+        for result in successful_results:
+            critic_score = getattr(result, 'critic_score', None)
+            if not critic_score:
+                continue
+            expected = list(getattr(critic_score, 'anchor_sections_expected', []) or [])
+            covered = list(getattr(critic_score, 'anchor_sections_covered', []) or [])
+            missing = list(getattr(critic_score, 'anchor_sections_missing', []) or [])
+            expected_counter.update(expected)
+            covered_counter.update(covered)
+            missing_counter.update(missing)
+
+        section_names = sorted(set(expected_counter) | set(covered_counter) | set(missing_counter))
+        coverage_by_section = {}
+        for name in section_names:
+            expected_count = expected_counter.get(name, 0)
+            covered_count = covered_counter.get(name, 0)
+            missing_count = missing_counter.get(name, 0)
+            coverage_by_section[name] = {
+                'expected': expected_count,
+                'covered': covered_count,
+                'missing': missing_count,
+                'coverage_rate': (covered_count / expected_count) if expected_count else 0.0,
+            }
+
+        return {
+            'expected_counts': dict(expected_counter),
+            'covered_counts': dict(covered_counter),
+            'missing_counts': dict(missing_counter),
+            'coverage_by_section': coverage_by_section,
+        }

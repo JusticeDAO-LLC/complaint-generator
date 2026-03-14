@@ -494,6 +494,39 @@ SUGGESTIONS:
         assert result.session_id == "test_run"
         assert result.num_questions >= 0
 
+    def test_session_result_to_dict_includes_anchor_section_summary(self):
+        result = SessionResult(
+            session_id="test_session",
+            timestamp="2024-01-01",
+            seed_complaint={},
+            initial_complaint_text="Test",
+            conversation_history=[],
+            num_questions=1,
+            num_turns=1,
+            final_state={},
+            critic_score=CriticScore(
+                overall_score=0.7,
+                question_quality=0.7,
+                information_extraction=0.7,
+                empathy=0.7,
+                efficiency=0.7,
+                coverage=0.7,
+                feedback="ok",
+                strengths=[],
+                weaknesses=[],
+                suggestions=[],
+                anchor_sections_expected=['grievance_hearing'],
+                anchor_sections_covered=['grievance_hearing'],
+                anchor_sections_missing=[],
+            ),
+            success=True,
+        )
+
+        payload = result.to_dict()
+
+        assert payload['anchor_section_summary']['expected'] == ['grievance_hearing']
+        assert payload['anchor_section_summary']['covered'] == ['grievance_hearing']
+
     def test_fallback_probe_prioritizes_missing_anchor_section(self):
         session = AdversarialSession(
             "test_session",
@@ -625,6 +658,49 @@ class TestAdversarialHarness:
         assert captured['hacc_preset'] == 'retaliation_focus'
         assert captured['hacc_query_specs'][0]['query'] == 'retaliation policy'
         assert captured['use_hacc_vector_search'] is True
+
+    def test_get_statistics_includes_anchor_section_coverage(self):
+        harness = AdversarialHarness(
+            MockLLMBackend(),
+            MockLLMBackend(),
+            MockMediator,
+            max_parallel=1
+        )
+        harness.results = [
+            SessionResult(
+                session_id='session_1',
+                timestamp='2024-01-01',
+                seed_complaint={},
+                initial_complaint_text='Test',
+                conversation_history=[],
+                num_questions=2,
+                num_turns=1,
+                final_state={},
+                critic_score=CriticScore(
+                    overall_score=0.7,
+                    question_quality=0.7,
+                    information_extraction=0.7,
+                    empathy=0.7,
+                    efficiency=0.7,
+                    coverage=0.7,
+                    feedback='ok',
+                    strengths=[],
+                    weaknesses=[],
+                    suggestions=[],
+                    anchor_sections_expected=['grievance_hearing', 'reasonable_accommodation'],
+                    anchor_sections_covered=['reasonable_accommodation'],
+                    anchor_sections_missing=['grievance_hearing'],
+                ),
+                success=True,
+                duration_seconds=1.0,
+            )
+        ]
+
+        stats = harness.get_statistics()
+
+        assert stats['anchor_sections']['expected_counts']['grievance_hearing'] == 1
+        assert stats['anchor_sections']['covered_counts']['reasonable_accommodation'] == 1
+        assert stats['anchor_sections']['missing_counts']['grievance_hearing'] == 1
         assert results[0].seed_complaint['_meta']['include_hacc_evidence'] is True
         assert results[0].seed_complaint['_meta']['hacc_preset'] == 'retaliation_focus'
         assert results[0].seed_complaint['_meta']['use_hacc_vector_search'] is True

@@ -50,6 +50,7 @@ class SessionResult:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
+        critic_payload = self.critic_score.to_dict() if self.critic_score else None
         result = {
             'session_id': self.session_id,
             'timestamp': self.timestamp,
@@ -63,7 +64,12 @@ class SessionResult:
             'dependency_graph_summary': self.dependency_graph_summary,
             'knowledge_graph': self.knowledge_graph,
             'dependency_graph': self.dependency_graph,
-            'critic_score': self.critic_score.to_dict() if self.critic_score else None,
+            'critic_score': critic_payload,
+            'anchor_section_summary': {
+                'expected': list((critic_payload or {}).get('anchor_sections_expected', []) or []),
+                'covered': list((critic_payload or {}).get('anchor_sections_covered', []) or []),
+                'missing': list((critic_payload or {}).get('anchor_sections_missing', []) or []),
+            },
             'duration_seconds': self.duration_seconds,
             'success': self.success,
             'error': self.error
