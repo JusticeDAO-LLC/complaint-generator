@@ -631,6 +631,12 @@ def _collect_claim_document_records(
             "description": record.get("description"),
             "timestamp": record.get("timestamp"),
             "source_url": record.get("source_url"),
+            "filename": (record.get("metadata") or {}).get("filename") if isinstance(record.get("metadata"), dict) else "",
+            "mime_type": (
+                ((record.get("metadata") or {}).get("mime_type"))
+                if isinstance(record.get("metadata"), dict)
+                else ""
+            ) or str((record.get("parse_metadata") or {}).get("mime_type") or ""),
             "parse_status": record.get("parse_status"),
             "chunk_count": int(record.get("chunk_count", 0) or 0),
             "fact_count": int(record.get("fact_count", 0) or 0),
@@ -1841,6 +1847,78 @@ def build_claim_support_document_payload(
                 include_support_summary=request.include_support_summary,
                 include_overview=request.include_overview,
                 include_follow_up_plan=request.include_follow_up_plan,
+                execute_follow_up=False,
+            ),
+        )
+
+    return payload
+
+
+def build_claim_support_uploaded_document_payload(
+    mediator: Any,
+    *,
+    user_id: Optional[str] = None,
+    claim_type: Optional[str] = None,
+    claim_element_id: Optional[str] = None,
+    claim_element: Optional[str] = None,
+    file_bytes: bytes,
+    filename: Optional[str] = None,
+    document_label: Optional[str] = None,
+    source_url: Optional[str] = None,
+    mime_type: Optional[str] = None,
+    evidence_type: str = "document",
+    document_metadata: Optional[Dict[str, Any]] = None,
+    required_support_kinds: Optional[List[str]] = None,
+    include_post_save_review: bool = True,
+    include_support_summary: bool = True,
+    include_overview: bool = True,
+    include_follow_up_plan: bool = True,
+) -> Dict[str, Any]:
+    resolved_user_id = _resolve_user_id(mediator, user_id)
+    normalized_required_support_kinds = (
+        required_support_kinds or list(DEFAULT_REQUIRED_SUPPORT_KINDS)
+    )
+
+    save_claim_support_document = getattr(mediator, "save_claim_support_document", None)
+    if not callable(save_claim_support_document):
+        payload: Dict[str, Any] = {
+            "user_id": resolved_user_id,
+            "claim_type": claim_type,
+            "recorded": False,
+            "error": "document_intake_unavailable",
+        }
+    else:
+        document_result = save_claim_support_document(
+            claim_type=claim_type,
+            user_id=resolved_user_id,
+            claim_element_id=claim_element_id,
+            claim_element_text=claim_element,
+            document_text=None,
+            document_bytes=file_bytes,
+            document_label=document_label,
+            source_url=source_url,
+            filename=filename,
+            mime_type=mime_type,
+            evidence_type=evidence_type,
+            metadata=document_metadata or {},
+        )
+        payload = {
+            "user_id": resolved_user_id,
+            "claim_type": claim_type,
+            "document_result": document_result,
+            "recorded": bool((document_result or {}).get("record_id")),
+        }
+
+    if include_post_save_review:
+        payload["post_save_review"] = build_claim_support_review_payload(
+            mediator,
+            ClaimSupportReviewRequest(
+                user_id=resolved_user_id,
+                claim_type=claim_type,
+                required_support_kinds=normalized_required_support_kinds,
+                include_support_summary=include_support_summary,
+                include_overview=include_overview,
+                include_follow_up_plan=include_follow_up_plan,
                 execute_follow_up=False,
             ),
         )

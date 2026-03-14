@@ -972,6 +972,10 @@
                             <label for="document-mime-type">MIME Type</label>
                             <input id="document-mime-type" type="text" placeholder="text/plain or application/pdf">
                         </div>
+                        <div>
+                            <label for="document-file-input">Document File</label>
+                            <input id="document-file-input" type="file" accept=".txt,.md,.html,.pdf,.doc,.docx,.rtf,.csv,.json">
+                        </div>
                     </div>
                     <div style="margin-top: 12px;">
                         <label for="document-text">Document Text</label>
@@ -1331,6 +1335,18 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
+            });
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || `Request failed with ${response.status}`);
+            }
+            return response.json();
+        }
+
+        async function postFormData(url, formData) {
+            const response = await fetch(url, {
+                method: 'POST',
+                body: formData,
             });
             if (!response.ok) {
                 const text = await response.text();
@@ -2306,6 +2322,7 @@
             document.getElementById('document-source-url').value = '';
             document.getElementById('document-mime-type').value = '';
             document.getElementById('document-text').value = '';
+            document.getElementById('document-file-input').value = '';
         }
 
         function buildDocumentRequest() {
@@ -2327,21 +2344,44 @@
             };
         }
 
+        function buildDocumentUploadFormData(file, payload) {
+            const formData = new FormData();
+            formData.append('file', file);
+            Object.entries(payload).forEach(([key, value]) => {
+                if (value === null || value === undefined || value === '') {
+                    return;
+                }
+                if (Array.isArray(value)) {
+                    formData.append(key, value.join(','));
+                    return;
+                }
+                formData.append(key, String(value));
+            });
+            return formData;
+        }
+
         async function saveDocument() {
             const payload = buildDocumentRequest();
-            if (!payload.document_text) {
-                setStatus('Paste document text before saving.');
+            const fileInput = document.getElementById('document-file-input');
+            const selectedFile = fileInput && fileInput.files ? fileInput.files[0] : null;
+            if (!payload.document_text && !selectedFile) {
+                setStatus('Paste document text or choose a file before saving.');
                 return;
             }
             syncReviewIntentUrl(persistReviewIntent(payload));
-            setStatus('Saving document...');
+            setStatus(selectedFile ? 'Uploading document...' : 'Saving document...');
             try {
-                const result = await postJson('/api/claim-support/save-document', payload);
+                const result = selectedFile
+                    ? await postFormData(
+                        '/api/claim-support/upload-document',
+                        buildDocumentUploadFormData(selectedFile, payload),
+                    )
+                    : await postJson('/api/claim-support/save-document', payload);
                 renderPayload(result.post_save_review || result);
                 document.getElementById('raw-output').textContent = JSON.stringify(result, null, 2);
                 if (result && result.recorded) {
                     clearDocumentForm();
-                    setStatus('Document saved and review payload refreshed.');
+                    setStatus(selectedFile ? 'Document uploaded and review payload refreshed.' : 'Document saved and review payload refreshed.');
                 } else {
                     const error = (result && result.document_result && result.document_result.error) || result.error || 'unknown error';
                     setStatus(`Document was not saved: ${error}`);

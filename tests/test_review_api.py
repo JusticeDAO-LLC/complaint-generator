@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 from datetime import datetime, timezone
 
 from fastapi import Response
+from fastapi.testclient import TestClient
 from claim_support_review import (
     ClaimSupportDocumentSaveRequest,
     ClaimSupportFollowUpExecuteRequest,
@@ -1695,6 +1696,12 @@ def test_claim_support_review_endpoint_is_registered_on_app():
         if hasattr(route, "methods")
     )
     assert any(
+        route.path == "/api/claim-support/upload-document"
+        and "POST" in route.methods
+        for route in app.routes
+        if hasattr(route, "methods")
+    )
+    assert any(
         route.path == "/api/documents/formal-complaint"
         and "POST" in route.methods
         for route in app.routes
@@ -1854,6 +1861,53 @@ def test_claim_support_document_payload_persists_and_refreshes_review():
         source_url="https://example.com/termination-memo",
         filename=None,
         mime_type=None,
+        evidence_type="document",
+        metadata={},
+    )
+
+
+def test_claim_support_upload_document_route_accepts_multipart_file():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.save_claim_support_document.return_value = {
+        "record_id": 91,
+        "cid": "QmUploadedDoc1",
+        "recorded": True,
+    }
+
+    app = create_review_api_app(mediator)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/claim-support/upload-document",
+        data={
+            "claim_type": "retaliation",
+            "claim_element_id": "retaliation:2",
+            "claim_element": "Adverse action",
+            "document_label": "Termination memo",
+            "source_url": "https://example.com/termination-memo",
+            "include_post_save_review": "false",
+        },
+        files={
+            "file": ("termination-memo.txt", b"Termination followed the complaint.", "text/plain"),
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["recorded"] is True
+    assert payload["document_result"]["cid"] == "QmUploadedDoc1"
+    mediator.save_claim_support_document.assert_called_once_with(
+        claim_type="retaliation",
+        user_id="state-user",
+        claim_element_id="retaliation:2",
+        claim_element_text="Adverse action",
+        document_text=None,
+        document_bytes=b"Termination followed the complaint.",
+        document_label="Termination memo",
+        source_url="https://example.com/termination-memo",
+        filename="termination-memo.txt",
+        mime_type="text/plain",
         evidence_type="document",
         metadata={},
     )

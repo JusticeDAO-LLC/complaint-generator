@@ -1,6 +1,7 @@
 """Tests for the complaint-generator ipfs_datasets adapter layer."""
 
 from io import BytesIO
+import integrations.ipfs_datasets.vector_store as vector_store_module
 import tempfile
 from unittest.mock import Mock, patch
 import zipfile
@@ -714,6 +715,82 @@ def test_stubbed_adapters_expose_canonical_operation_metadata():
 
     assert refinement_result['metadata']['rounds'] == 2
     assert refinement_result['metadata']['details']['rounds'] == 2
+
+
+def test_create_vector_index_succeeds_without_numpy_when_not_persisting_locally():
+    with patch.object(vector_store_module, 'np', None), patch.object(
+        vector_store_module,
+        '_numpy_error',
+        "No module named 'numpy'",
+    ), patch.object(
+        vector_store_module,
+        'embed_texts_batched',
+        Mock(return_value=[[0.1, 0.2, 0.3]]),
+    ):
+        result = create_vector_index(
+            [{'id': 'doc-1', 'text': 'Protected activity complaint'}],
+            index_name='test-index',
+        )
+
+    assert result['status'] == 'success'
+    assert result['index_name'] == 'test-index'
+    assert result['document_count'] == 1
+    assert result['dimension'] == 3
+    assert result['metadata']['operation'] == 'create_vector_index'
+    assert result['metadata']['backend_available'] is True
+    assert result['metadata']['implementation_status'] == 'implemented'
+
+
+def test_create_vector_index_returns_structured_unavailable_when_numpy_missing_for_local_persistence():
+    with tempfile.TemporaryDirectory() as tmp_dir, patch.object(vector_store_module, 'np', None), patch.object(
+        vector_store_module,
+        '_numpy_error',
+        "No module named 'numpy'",
+    ), patch.object(
+        vector_store_module,
+        'embed_texts_batched',
+        Mock(return_value=[[0.1, 0.2, 0.3]]),
+    ):
+        result = create_vector_index(
+            [{'id': 'doc-1', 'text': 'Protected activity complaint'}],
+            index_name='test-index',
+            output_dir=tmp_dir,
+        )
+
+    assert result['status'] == 'unavailable'
+    assert result['error'] == 'numpy is required for local vector persistence and search'
+    assert result['index_name'] == 'test-index'
+    assert result['document_count'] == 1
+    assert result['metadata']['operation'] == 'create_vector_index'
+    assert result['metadata']['backend_available'] is False
+    assert result['metadata']['implementation_status'] == 'unavailable'
+    assert result['metadata']['degraded_reason'] == "No module named 'numpy'"
+
+
+def test_search_vector_index_returns_structured_unavailable_when_numpy_missing():
+    with patch.object(vector_store_module, 'np', None), patch.object(
+        vector_store_module,
+        '_numpy_error',
+        "No module named 'numpy'",
+    ), patch.object(
+        vector_store_module,
+        'embed_texts_batched',
+        Mock(return_value=[[0.1, 0.2, 0.3]]),
+    ):
+        result = search_vector_index(
+            'protected activity',
+            index_name='test-index',
+            index_dir='/tmp/vector-index',
+        )
+
+    assert result['status'] == 'unavailable'
+    assert result['index_name'] == 'test-index'
+    assert result['query'] == 'protected activity'
+    assert result['results'] == []
+    assert result['metadata']['operation'] == 'search_vector_index'
+    assert result['metadata']['backend_available'] is False
+    assert result['metadata']['implementation_status'] == 'unavailable'
+    assert result['metadata']['degraded_reason'] == "No module named 'numpy'"
 
 
 def test_generate_text_with_metadata_wraps_success_response():

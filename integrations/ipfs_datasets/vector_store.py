@@ -4,7 +4,13 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-import numpy as np
+try:
+    import numpy as np
+except ModuleNotFoundError as exc:
+    np = None
+    _numpy_error = str(exc)
+else:
+    _numpy_error = ""
 
 from .loader import import_attr_optional, import_module_optional
 from .types import with_adapter_metadata
@@ -24,7 +30,20 @@ _vector_stores_module, _vector_stores_error = import_module_optional(
 
 EMBEDDINGS_AVAILABLE = embed_texts_batched is not None or EmbeddingsRouter is not None
 VECTOR_STORE_AVAILABLE = EMBEDDINGS_AVAILABLE or _vector_stores_module is not None
-VECTOR_STORE_ERROR = _embeddings_error or _embed_texts_batched_error or _vector_stores_error
+VECTOR_STORE_ERROR = _embeddings_error or _embed_texts_batched_error or _vector_stores_error or _numpy_error
+
+
+def _numpy_required_error(operation: str) -> Dict[str, Any]:
+    return with_adapter_metadata(
+        {
+            "status": "unavailable",
+            "error": "numpy is required for local vector persistence and search",
+        },
+        operation=operation,
+        backend_available=False,
+        degraded_reason=_numpy_error or "numpy unavailable",
+        implementation_status="unavailable",
+    )
 
 
 def get_embeddings_router(*args: Any, **kwargs: Any) -> Any:
@@ -58,6 +77,9 @@ def _write_index_payload(
     model_name: Optional[str],
     provider: Optional[str],
 ) -> Dict[str, str]:
+    if np is None:
+        raise RuntimeError("numpy is required for local vector persistence")
+
     output_dir.mkdir(parents=True, exist_ok=True)
 
     vectors_path = output_dir / f"{index_name}.vectors.npy"
@@ -154,6 +176,15 @@ def create_vector_index(
         "model_name": model_name or "",
     }
     if output_dir:
+        if np is None:
+            unavailable = _numpy_required_error("create_vector_index")
+            unavailable.update(
+                {
+                    "index_name": resolved_index_name,
+                    "document_count": len(document_list),
+                }
+            )
+            return unavailable
         payload["files"] = _write_index_payload(
             output_dir=Path(output_dir),
             index_name=resolved_index_name,
@@ -196,6 +227,18 @@ def search_vector_index(
             degraded_reason=VECTOR_STORE_ERROR,
             implementation_status="unavailable",
         )
+
+    if np is None:
+        unavailable = _numpy_required_error("search_vector_index")
+        unavailable.update(
+            {
+                "index_name": resolved_index_name,
+                "query": query,
+                "top_k": top_k,
+                "results": [],
+            }
+        )
+        return unavailable
 
     if not index_dir:
         return with_adapter_metadata(

@@ -460,6 +460,7 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert soup.find(id="resolve-button") is not None
     assert soup.find(id="save-testimony-button") is not None
     assert soup.find(id="save-document-button") is not None
+    assert soup.find(id="document-file-input") is not None
     assert soup.find(id="question-list") is not None
     assert soup.find(id="testimony-list") is not None
     assert soup.find(id="testimony-summary-chips") is not None
@@ -521,6 +522,8 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert "sortSupportPackets" in page_html
     assert "Save Testimony" in page_html
     assert "Save Document" in page_html
+    assert "buildDocumentUploadFormData" in page_html
+    assert "postFormData" in page_html
     assert "renderQuestionRecommendations" in page_html
     assert "renderTestimonyRecords" in page_html
     assert "renderDocumentArtifacts" in page_html

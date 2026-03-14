@@ -862,6 +862,7 @@ class Mediator:
 		claim_element_id: str = None,
 		claim_element_text: str = None,
 		document_text: str = None,
+		document_bytes: bytes = None,
 		document_label: str = None,
 		source_url: str = None,
 		filename: str = None,
@@ -874,10 +875,13 @@ class Mediator:
 			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
 
 		normalized_text = str(document_text or '').strip()
-		if not normalized_text:
+		data_bytes = document_bytes
+		if data_bytes is None and normalized_text:
+			data_bytes = normalized_text.encode('utf-8')
+		if not data_bytes:
 			return {
 				'recorded': False,
-				'error': 'empty_document_text',
+				'error': 'empty_document_payload',
 				'claim_type': claim_type,
 				'user_id': user_id,
 			}
@@ -896,7 +900,7 @@ class Mediator:
 			storage_metadata['provenance'] = provenance
 
 		result = self.submit_evidence(
-			data=normalized_text.encode('utf-8'),
+			data=data_bytes,
 			evidence_type=evidence_type or 'document',
 			user_id=user_id,
 			description=document_label or filename or source_url or 'Claim support document',
