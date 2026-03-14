@@ -122,28 +122,41 @@ text = document_parse['text']
 metadata = document_parse['metadata']
 ```
 
-### 5. GraphRAG (Future Integration)
+### 5. GraphRAG and PDF Knowledge Graphs
 
-**Available in ipfs_datasets_py:**
-- `GraphRAG` - Knowledge graph-based retrieval augmented generation
-- Graph construction from documents
-- Semantic search over knowledge graphs
+**Available through complaint-generator adapters:**
+- `integrations.ipfs_datasets.graphrag.build_ontology`
+- `integrations.ipfs_datasets.graphrag.validate_ontology`
+- `integrations.ipfs_datasets.graphrag.run_refinement_cycle`
+- `integrations.ipfs_datasets.graphrag.ingest_pdf_to_graphrag`
+- `integrations.ipfs_datasets.graphrag.extract_pdf_entities`
+- `integrations.ipfs_datasets.graphrag.analyze_pdf_relationships`
+- `integrations.ipfs_datasets.graphrag.cross_analyze_pdf_documents`
+- `integrations.ipfs_datasets.graphrag.batch_process_pdfs`
+- `integrations.ipfs_datasets.graphrag.query_pdf_knowledge_graph`
 
-**Planned Integration:**
 ```python
-# Future: Enhanced legal research with GraphRAG
-from integrations.ipfs_datasets.graphrag import build_ontology, validate_ontology
+# Preferred: use the adapter seam rather than direct upstream imports
+from integrations.ipfs_datasets.graphrag import (
+    build_ontology,
+    ingest_pdf_to_graphrag,
+    query_pdf_knowledge_graph,
+    validate_ontology,
+)
 
 ontology_result = build_ontology("\n\n".join(legal_documents))
 validation_result = validate_ontology(ontology_result.get('ontology'))
 
-# Query with graph-based retrieval
-relevant_info = {
-    'ontology_result': ontology_result,
-    'validation_result': validation_result,
-    'question': "What are the requirements for Title VII claim?",
-    'complaint_type': "employment_discrimination",
-}
+pdf_result = ingest_pdf_to_graphrag(
+    "/data/housing_policy.pdf",
+    target_llm="gpt-4",
+)
+
+graph_query = query_pdf_knowledge_graph(
+    graph_id=pdf_result.get("document_id", ""),
+    query="eligibility requirements for applicants",
+    query_type="natural_language",
+)
 ```
 
 ## Setup Instructions
@@ -250,7 +263,7 @@ else:
 | IPFS Storage | ✅ Integrated | Via `EvidenceHook` |
 | Legal Scrapers | ✅ Integrated | Via `LegalAuthorityHook` |
 | PDF Processing | 🔄 Planned | Will integrate for document upload |
-| GraphRAG | 🔄 Planned | Will integrate when stable |
+| GraphRAG | ✅ Integrated | Adapter facade delegates to upstream ontology and PDF GraphRAG tools |
 | Document Indexing | 🔄 Planned | Full-text search over evidence |
 
 **Legend:**
