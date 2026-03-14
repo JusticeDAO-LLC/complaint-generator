@@ -29,6 +29,7 @@ from .types import (
 	with_adapter_metadata,
 )
 from .search import (
+	discover_seeded_commoncrawl,
 	download_url,
 	download_with_recovery,
 	evaluate_scraped_content,
@@ -98,6 +99,7 @@ __all__ = [
 	"normalize_degraded_reason",
 	"with_adapter_metadata",
 	"evaluate_scraped_content",
+	"discover_seeded_commoncrawl",
 	"download_url",
 	"download_with_recovery",
 	"generate_text_with_metadata",

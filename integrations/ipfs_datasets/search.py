@@ -8,6 +8,8 @@ import re
 import time
 
 from datetime import datetime
+from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 from urllib.parse import urlparse
@@ -80,8 +82,223 @@ SEARCH_ERROR = (
 )
 
 
+@dataclass(frozen=True)
+class QuerySpec:
+    sites: list[str]
+    phrases: list[str]
+    tokens: list[str]
+
+
 def _looks_like_pdf_bytes(data: bytes) -> bool:
     return bytes(data[:5]) == b"%PDF-"
+
+
+def normalize_site(site: str) -> str:
+    value = (site or "").strip().lower()
+    value = re.sub(r"^https?://", "", value)
+    value = value.split("/", 1)[0]
+    if value.startswith("www."):
+        value = value[4:]
+    return value
+
+
+def parse_seeded_query(query: str) -> QuerySpec:
+    normalized = re.sub(r"\s+", " ", (query or "").strip())
+    sites = [normalize_site(site) for site in re.findall(r"\bsite:([^\s)]+)", normalized, flags=re.I)]
+    phrases = [phrase.strip() for phrase in re.findall(r"\"([^\"]+)\"", normalized) if phrase.strip()]
+    stripped = re.sub(r"\"[^\"]+\"", " ", normalized)
+    stripped = re.sub(r"\([^)]*\)", " ", stripped)
+    raw_tokens = [token for token in re.split(r"\s+", stripped) if token]
+    drop = {"or", "and", "policy", "rule", "statute", "complaint", "nondiscrimination"}
+    tokens: list[str] = []
+    for token in raw_tokens:
+        lowered = token.lower()
+        if lowered.startswith("site:") or lowered in drop:
+            continue
+        if not re.search(r"[a-z0-9]", lowered):
+            continue
+        if len(token) <= 2 and lowered not in {"vi", "ii"}:
+            continue
+        tokens.append(token)
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for token in tokens:
+        lowered = token.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        deduped.append(token)
+    return QuerySpec(sites=[site for site in sites if site], phrases=phrases, tokens=deduped)
+
+
+def load_seeded_queries(path: str | Path) -> list[str]:
+    queries: list[str] = []
+    for line in Path(path).read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            queries.append(stripped)
+    return queries
+
+
+def score_archive_url(url: str, terms: list[str]) -> int:
+    lowered_url = (url or "").lower()
+    score = 0
+    for term in terms:
+        lowered_term = (term or "").lower()
+        if not lowered_term:
+            continue
+        if lowered_term in lowered_url:
+            score += 3
+            continue
+        parts = [part for part in re.split(r"\s+", lowered_term) if part]
+        if len(parts) > 1 and all(part in lowered_url for part in parts):
+            score += 2
+    return score
+
+
+def fetch_commoncrawl_latest_index(session: requests.Session) -> str:
+    response = session.get("https://index.commoncrawl.org/collinfo.json", timeout=30)
+    response.raise_for_status()
+    indexes = response.json()
+    if not indexes:
+        raise RuntimeError("CommonCrawl collinfo.json returned no indexes")
+    return str(indexes[0]["cdx-api"])
+
+
+def commoncrawl_list_urls(session: requests.Session, cdx_api: str, site: str, limit: int) -> list[dict[str, Any]]:
+    response = session.get(cdx_api, params={"url": f"{site}/*", "output": "json", "limit": int(limit)}, timeout=60)
+    response.raise_for_status()
+    rows: list[dict[str, Any]] = []
+    for line in (response.text or "").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            rows.append(json.loads(stripped))
+        except Exception:
+            continue
+    return rows
+
+
+def fetch_archive_text(session: requests.Session, url: str) -> str:
+    response = session.get(url, timeout=30, headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"})
+    response.raise_for_status()
+    html = response.text or ""
+    html = re.sub(r"<script[\s\S]*?</script>", " ", html, flags=re.I)
+    html = re.sub(r"<style[\s\S]*?</style>", " ", html, flags=re.I)
+    text = re.sub(r"<[^>]+>", " ", html)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def discover_seeded_commoncrawl(
+    queries_file: str | Path,
+    *,
+    cc_limit: int = 1000,
+    top_per_site: int = 50,
+    fetch_top: int = 0,
+    sleep_seconds: float = 0.5,
+) -> Dict[str, Any]:
+    query_path = Path(queries_file)
+    if not query_path.exists():
+        return with_adapter_metadata(
+            {"status": "error", "error": f"missing queries file: {query_path}", "queries_file": str(query_path)},
+            operation="discover_seeded_commoncrawl",
+            backend_available=True,
+            implementation_status="error",
+        )
+
+    queries = load_seeded_queries(query_path)
+    specs = [parse_seeded_query(query) for query in queries]
+    site_terms: dict[str, list[str]] = defaultdict(list)
+    for spec in specs:
+        terms = [term for term in [*spec.phrases, *spec.tokens] if term and len(term) <= 60]
+        for site in spec.sites:
+            if site:
+                site_terms[site].extend(terms)
+    for site, terms in list(site_terms.items()):
+        seen: set[str] = set()
+        deduped: list[str] = []
+        for term in terms:
+            lowered = term.lower()
+            if lowered in seen:
+                continue
+            seen.add(lowered)
+            deduped.append(term)
+        site_terms[site] = deduped[:200]
+
+    session = requests.Session()
+    cdx_api = fetch_commoncrawl_latest_index(session)
+    candidates: Dict[str, Any] = {
+        "generated": datetime.now().isoformat(timespec="seconds"),
+        "cdx_api": cdx_api,
+        "queries_file": str(query_path),
+        "sites": {},
+    }
+    fetched: Dict[str, Any] = {
+        "generated": datetime.now().isoformat(timespec="seconds"),
+        "queries_file": str(query_path),
+        "sites": {},
+    }
+
+    for site, terms in sorted(site_terms.items()):
+        if sleep_seconds > 0:
+            time.sleep(sleep_seconds)
+        rows = commoncrawl_list_urls(session, cdx_api, site, limit=cc_limit)
+        scored: list[Dict[str, Any]] = []
+        for row in rows:
+            url = str(row.get("url") or "")
+            score = score_archive_url(url, terms)
+            if score <= 0:
+                continue
+            scored.append(
+                {
+                    "url": url,
+                    "score": score,
+                    "timestamp": row.get("timestamp"),
+                    "mime": row.get("mime"),
+                    "status": row.get("status"),
+                }
+            )
+        scored.sort(key=lambda item: (item["score"], item.get("url", "")), reverse=True)
+        candidates["sites"][site] = {
+            "terms": terms[:50],
+            "total_cc_rows": len(rows),
+            "scored_rows": len(scored),
+            "top": scored[:top_per_site],
+        }
+
+        if fetch_top > 0:
+            fetched_rows: list[Dict[str, Any]] = []
+            for item in scored[:fetch_top]:
+                url = item.get("url")
+                if not url:
+                    continue
+                try:
+                    if sleep_seconds > 0:
+                        time.sleep(sleep_seconds)
+                    text = fetch_archive_text(session, str(url))
+                except Exception as exc:
+                    fetched_rows.append({"url": url, "error": str(exc)})
+                    continue
+                hits: list[str] = []
+                lowered_text = text.lower()
+                for term in terms[:50]:
+                    if term.lower() in lowered_text:
+                        hits.append(term)
+                fetched_rows.append({"url": url, "hits": hits[:25], "text_snippet": text[:500]})
+            fetched["sites"][site] = {"requested": fetch_top, "fetched": len(fetched_rows), "rows": fetched_rows}
+
+    return with_adapter_metadata(
+        {
+            "status": "success",
+            "queries_file": str(query_path),
+            "candidates": candidates,
+            "fetched": fetched if fetch_top > 0 else None,
+        },
+        operation="discover_seeded_commoncrawl",
+        backend_available=True,
+        implementation_status="implemented",
+    )
 
 
 def _write_bytes(dest: Path, data: bytes) -> None:
@@ -645,6 +862,14 @@ __all__ = [
     "SCRAPER_VALIDATION_AVAILABLE",
     "SEARCH_ERROR",
     "search_brave_web",
+    "discover_seeded_commoncrawl",
+    "fetch_archive_text",
+    "fetch_commoncrawl_latest_index",
+    "load_seeded_queries",
+    "normalize_site",
+    "parse_seeded_query",
+    "QuerySpec",
+    "score_archive_url",
     "search_multi_engine_web",
     "scrape_web_content",
     "scrape_archived_domain",

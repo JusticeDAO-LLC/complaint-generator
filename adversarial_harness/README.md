@@ -370,6 +370,13 @@ python scripts/run_hacc_preset_matrix.py \
   --num-sessions 3
 ```
 
+To synthesize a draft complaint package from the winning matrix run:
+
+```bash
+python scripts/synthesize_hacc_complaint.py \
+  --matrix-summary output/hacc_preset_matrix/<timestamp>/preset_matrix_summary.json
+```
+
 ### 7. Search Integration (`search_hooks.py`)
 
 **Purpose:** Enrich adversarial testing with legal research and web evidence.

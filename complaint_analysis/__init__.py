@@ -94,6 +94,12 @@ from .research_queue_workflow import (
     download_queue,
     filter_download_queue,
 )
+from .research_bootstrap_workflow import (
+    extract_external_document_queue,
+    extract_third_party_candidates_from_corpus,
+    load_manifest_rows,
+    write_candidates_csv,
+)
 
 # Aliases for backward compatibility
 RiskScorer = ComplaintRiskScorer
@@ -143,6 +149,10 @@ __all__ = [
     'build_download_queue',
     'download_queue',
     'filter_download_queue',
+    'extract_external_document_queue',
+    'extract_third_party_candidates_from_corpus',
+    'load_manifest_rows',
+    'write_candidates_csv',
     
     # Functions
     'get_keywords',
