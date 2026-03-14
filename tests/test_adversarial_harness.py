@@ -701,6 +701,94 @@ class TestAdversarialHarness:
         assert stats['anchor_sections']['expected_counts']['grievance_hearing'] == 1
         assert stats['anchor_sections']['covered_counts']['reasonable_accommodation'] == 1
         assert stats['anchor_sections']['missing_counts']['grievance_hearing'] == 1
+
+    def test_save_anchor_section_report_csv(self, tmp_path):
+        harness = AdversarialHarness(
+            MockLLMBackend(),
+            MockLLMBackend(),
+            MockMediator,
+            max_parallel=1
+        )
+        harness.results = [
+            SessionResult(
+                session_id='session_1',
+                timestamp='2024-01-01',
+                seed_complaint={},
+                initial_complaint_text='Test',
+                conversation_history=[],
+                num_questions=2,
+                num_turns=1,
+                final_state={},
+                critic_score=CriticScore(
+                    overall_score=0.7,
+                    question_quality=0.7,
+                    information_extraction=0.7,
+                    empathy=0.7,
+                    efficiency=0.7,
+                    coverage=0.7,
+                    feedback='ok',
+                    strengths=[],
+                    weaknesses=[],
+                    suggestions=[],
+                    anchor_sections_expected=['grievance_hearing'],
+                    anchor_sections_covered=[],
+                    anchor_sections_missing=['grievance_hearing'],
+                ),
+                success=True,
+                duration_seconds=1.0,
+            )
+        ]
+
+        output = tmp_path / 'anchor_sections.csv'
+        harness.save_anchor_section_report(str(output), format='csv')
+        text = output.read_text(encoding='utf-8')
+
+        assert 'section,expected,covered,missing,coverage_rate' in text
+        assert 'grievance_hearing,1,0,1,0.0' in text
+
+    def test_save_anchor_section_report_markdown(self, tmp_path):
+        harness = AdversarialHarness(
+            MockLLMBackend(),
+            MockLLMBackend(),
+            MockMediator,
+            max_parallel=1
+        )
+        harness.results = [
+            SessionResult(
+                session_id='session_1',
+                timestamp='2024-01-01',
+                seed_complaint={},
+                initial_complaint_text='Test',
+                conversation_history=[],
+                num_questions=2,
+                num_turns=1,
+                final_state={},
+                critic_score=CriticScore(
+                    overall_score=0.7,
+                    question_quality=0.7,
+                    information_extraction=0.7,
+                    empathy=0.7,
+                    efficiency=0.7,
+                    coverage=0.7,
+                    feedback='ok',
+                    strengths=[],
+                    weaknesses=[],
+                    suggestions=[],
+                    anchor_sections_expected=['reasonable_accommodation'],
+                    anchor_sections_covered=['reasonable_accommodation'],
+                    anchor_sections_missing=[],
+                ),
+                success=True,
+                duration_seconds=1.0,
+            )
+        ]
+
+        output = tmp_path / 'anchor_sections.md'
+        harness.save_anchor_section_report(str(output), format='markdown')
+        text = output.read_text(encoding='utf-8')
+
+        assert '# Anchor Section Coverage' in text
+        assert '| reasonable_accommodation | 1 | 1 | 0 | 1.00 |' in text
         assert results[0].seed_complaint['_meta']['include_hacc_evidence'] is True
         assert results[0].seed_complaint['_meta']['hacc_preset'] == 'retaliation_focus'
         assert results[0].seed_complaint['_meta']['use_hacc_vector_search'] is True

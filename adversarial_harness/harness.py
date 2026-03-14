@@ -8,6 +8,7 @@ import logging
 from typing import Dict, Any, List, Callable, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import Counter
+import csv
 import json
 from datetime import UTC, datetime
 import os
@@ -457,6 +458,52 @@ class AdversarialHarness:
             json.dump(data, f, indent=2)
         
         logger.info(f"Results saved to {filepath}")
+
+    def save_anchor_section_report(self, filepath: str, format: str = "csv") -> None:
+        """Save aggregate anchor-section coverage as CSV or Markdown."""
+        stats = self.get_statistics()
+        anchor_stats = dict(stats.get('anchor_sections') or {})
+        coverage_by_section = dict(anchor_stats.get('coverage_by_section') or {})
+        rows = [
+            {
+                'section': section,
+                'expected': payload.get('expected', 0),
+                'covered': payload.get('covered', 0),
+                'missing': payload.get('missing', 0),
+                'coverage_rate': payload.get('coverage_rate', 0.0),
+            }
+            for section, payload in sorted(coverage_by_section.items())
+        ]
+
+        os.makedirs(os.path.dirname(filepath) if os.path.dirname(filepath) else '.', exist_ok=True)
+
+        normalized_format = str(format or "csv").strip().lower()
+        if normalized_format == "csv":
+            with open(filepath, 'w', newline='', encoding='utf-8') as handle:
+                writer = csv.DictWriter(
+                    handle,
+                    fieldnames=['section', 'expected', 'covered', 'missing', 'coverage_rate'],
+                )
+                writer.writeheader()
+                for row in rows:
+                    writer.writerow(row)
+        elif normalized_format in {"md", "markdown"}:
+            lines = [
+                "# Anchor Section Coverage",
+                "",
+                "| Section | Expected | Covered | Missing | Coverage Rate |",
+                "| --- | ---: | ---: | ---: | ---: |",
+            ]
+            for row in rows:
+                lines.append(
+                    f"| {row['section']} | {row['expected']} | {row['covered']} | {row['missing']} | {row['coverage_rate']:.2f} |"
+                )
+            with open(filepath, 'w', encoding='utf-8') as handle:
+                handle.write("\n".join(lines) + "\n")
+        else:
+            raise ValueError(f"Unsupported report format: {format}")
+
+        logger.info("Anchor section report saved to %s", filepath)
 
     def _anchor_section_statistics(self, successful_results: List[SessionResult]) -> Dict[str, Any]:
         expected_counter: Counter[str] = Counter()

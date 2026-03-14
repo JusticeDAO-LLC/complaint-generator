@@ -236,6 +236,10 @@ def main():
     results_file = 'adversarial_results.json'
     harness.save_results(results_file)
     print(f"✓ Results saved to: {results_file}")
+
+    anchor_report_file = 'anchor_section_coverage.csv'
+    harness.save_anchor_section_report(anchor_report_file, format='csv')
+    print(f"✓ Anchor coverage report saved to: {anchor_report_file}")
     
     # Save optimization report
     report_file = 'optimization_report.json'

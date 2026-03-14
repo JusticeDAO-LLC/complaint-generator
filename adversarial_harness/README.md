@@ -343,6 +343,33 @@ Each HACC-backed seed includes:
 This is useful when you want the critic and optimizer to evaluate question quality
 against real local evidence rather than synthetic fact patterns.
 
+You can also export aggregate anchor-section coverage after a batch:
+
+```python
+harness.save_anchor_section_report("anchor_section_coverage.csv", format="csv")
+harness.save_anchor_section_report("anchor_section_coverage.md", format="markdown")
+```
+
+For a one-command run that emits the batch JSON, optimizer report, and anchor coverage
+reports together:
+
+```bash
+python scripts/run_hacc_adversarial_report.py \
+  --config config.llm_router.json \
+  --preset core_hacc_policies \
+  --num-sessions 4 \
+  --hacc-count 4
+```
+
+To compare several presets side by side:
+
+```bash
+python scripts/run_hacc_preset_matrix.py \
+  --config config.llm_router.json \
+  --presets core_hacc_policies,accommodation_focus,administrative_plan_retaliation \
+  --num-sessions 3
+```
+
 ### 7. Search Integration (`search_hooks.py`)
 
 **Purpose:** Enrich adversarial testing with legal research and web evidence.

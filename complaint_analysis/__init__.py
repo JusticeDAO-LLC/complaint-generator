@@ -89,6 +89,11 @@ from .response_parsers import (
     ResponseParserFactory,
     ParsedResponse
 )
+from .research_queue_workflow import (
+    build_download_queue,
+    download_queue,
+    filter_download_queue,
+)
 
 # Aliases for backward compatibility
 RiskScorer = ComplaintRiskScorer
@@ -135,6 +140,9 @@ __all__ = [
     'StateFileIngester',
     'ResponseParserFactory',
     'ParsedResponse',
+    'build_download_queue',
+    'download_queue',
+    'filter_download_queue',
     
     # Functions
     'get_keywords',
