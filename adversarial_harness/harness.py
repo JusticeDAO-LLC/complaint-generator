@@ -8,7 +8,7 @@ import logging
 from typing import Dict, Any, List, Callable, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 import os
 import inspect
 
@@ -201,7 +201,7 @@ class AdversarialHarness:
         # Create session specs
         session_specs = []
         for i in range(num_sessions):
-            session_id = f"session_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{i:03d}"
+            session_id = f"session_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}_{i:03d}"
             seed = seed_complaints[i % len(seed_complaints)]
             personality = personalities[i % len(personalities)]
             
@@ -330,7 +330,7 @@ class AdversarialHarness:
             logger.error(f"Error running session {spec['session_id']}: {e}", exc_info=True)
             return SessionResult(
                 session_id=spec['session_id'],
-                timestamp=datetime.utcnow().isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
                 seed_complaint=spec['seed'],
                 initial_complaint_text="",
                 conversation_history=[],
@@ -419,7 +419,7 @@ class AdversarialHarness:
             filepath: Path to save results
         """
         data = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(UTC).isoformat(),
             'statistics': self.get_statistics(),
             'results': [r.to_dict() for r in self.results]
         }

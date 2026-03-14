@@ -4,7 +4,8 @@ Unified Complaint Analyzer
 Provides a high-level interface for analyzing complaints with all components.
 """
 
-from typing import Dict, Optional, Any
+from collections import Counter
+from typing import Dict, Optional, Any, List
 from .legal_patterns import LegalPatternExtractor
 from .risk_scoring import ComplaintRiskScorer
 from .keywords import get_keywords
@@ -88,6 +89,42 @@ class ComplaintAnalyzer:
             Count of analyses in history.
         """
         return len(self._analysis_history)
+
+    def get_analysis_history(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Return recorded analyses, optionally trimmed to the most recent entries."""
+        history = list(self._analysis_history)
+        if limit is None:
+            return history
+        try:
+            count = max(0, int(limit))
+        except Exception:
+            count = 0
+        if count <= 0:
+            return []
+        return history[-count:]
+
+    def get_keyword_frequency(self) -> Dict[str, int]:
+        """Return a copy of aggregate keyword counts across analyses."""
+        return dict(self._keyword_frequency)
+
+    def get_top_keywords(self, top_n: int = 10) -> List[Dict[str, Any]]:
+        """Return the most common tracked keywords ordered by frequency."""
+        try:
+            count = max(0, int(top_n))
+        except Exception:
+            count = 0
+        if count <= 0:
+            return []
+        counter = Counter(self._keyword_frequency)
+        return [
+            {"keyword": keyword, "count": frequency}
+            for keyword, frequency in counter.most_common(count)
+        ]
+
+    def reset_history(self) -> None:
+        """Clear stored analysis history and aggregate keyword counts."""
+        self._analysis_history.clear()
+        self._keyword_frequency.clear()
     
     def analyses_by_risk_level(self, level: str) -> int:
         """Count analyses with a specific risk level.

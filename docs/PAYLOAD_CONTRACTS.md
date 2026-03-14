@@ -2810,10 +2810,32 @@ Representative shape:
       "ipfs_router": "available",
       "optimizers_agentic": "available"
     },
+    "router_usage": {
+      "llm_calls": 3,
+      "critic_calls": 2,
+      "actor_calls": 1,
+      "embedding_requests": 7,
+      "embedding_rankings": 1,
+      "ipfs_store_attempted": true,
+      "ipfs_store_succeeded": true,
+      "llm_providers_used": ["huggingface_router"]
+    },
     "upstream_optimizer": {
       "available": true,
       "selected_provider": "huggingface_router",
       "selected_method": "actor_critic",
+      "stage_provider_selection": {
+        "critic": {
+          "source": "user_config",
+          "resolved_provider": "huggingface_router",
+          "complexity": "complex"
+        },
+        "actor": {
+          "source": "user_config",
+          "resolved_provider": "huggingface_router",
+          "complexity": "medium"
+        }
+      },
       "control_loop": {
         "max_iterations": 2,
         "target_score": 0.9
@@ -2869,6 +2891,7 @@ Interpretation notes:
 - `drafting_readiness.sections[*].warnings[*].severity` distinguishes soft filing warnings from harder blockers so degraded-mode drafting can remain usable.
 - `review_links.dashboard_url` points to the review dashboard for the current user context, while `review_links.claims[*]` and `review_links.sections[*]` provide claim-specific and section-specific review URLs for non-browser consumers, each paired with normalized `review_intent` metadata.
 - `review_intent` is a top-level server-rendered review focus chosen from the current readiness warnings so the browser can restore the most relevant review destination before the operator clicks a follow-up link.
-- `document_optimization` is present only when agentic optimization is enabled. It records the actor/mediator/critic loop outcome, selected backend (`upstream_agentic` when the `ipfs_datasets_py.optimizers.agentic` classes are importable, otherwise `local_fallback`), accepted iteration count, final score, optimized sections, packet-projection render context, section-level support history, router availability, and optional IPFS trace metadata.
+- `document_optimization` is present only when agentic optimization is enabled. It records the actor/mediator/critic loop outcome, selected backend (`upstream_agentic` when the `ipfs_datasets_py.optimizers.agentic` classes are importable, otherwise `local_fallback`), accepted iteration count, final score, optimized sections, packet-projection render context, section-level support history, router availability, concrete router usage diagnostics (`router_usage`), and optional IPFS trace metadata.
+- `document_optimization.upstream_optimizer.stage_provider_selection` shows whether actor/critic provider hints came from explicit request config or the upstream optimizer router, and which normalized llm_router provider name was resolved for each stage.
 - `artifacts.affidavit_docx`, `artifacts.affidavit_pdf`, and `artifacts.affidavit_txt` are companion affidavit exports emitted when the matching complaint formats are requested; they follow the same artifact schema and download URL rules as the primary complaint files.
 - `artifacts[*].download_url` is added by the document API layer only when the generated file path is inside the managed generated-documents directory.

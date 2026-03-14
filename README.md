@@ -173,7 +173,7 @@ Agentic document optimization can also use Hugging Face Inference through the sa
 
 If you want automatic model selection for optimization requests, include `optimization_llm_config.arch_router` with a routing model such as `katanemo/Arch-Router-1.5B` and a route map like `legal_reasoning -> meta-llama/Llama-3.3-70B-Instruct` and `drafting -> Qwen/Qwen3-Coder-480B-A35B-Instruct`.
 
-When `enable_agentic_optimization=true`, the formal complaint response adds a top-level `document_optimization` report summarizing the post-knowledge-graph actor/mediator/critic loop. The current report shape includes the optimization method/backend, initial and final scores, accepted iteration count, optimized section names, router/IPFS status, a compact section history, and an optional trace CID when `optimization_persist_artifacts=true`.
+When `enable_agentic_optimization=true`, the formal complaint response adds a top-level `document_optimization` report summarizing the post-knowledge-graph actor/mediator/critic loop. The current report shape includes the optimization method/backend, initial and final scores, accepted iteration count, optimized section names, router/IPFS status, router usage diagnostics, upstream optimizer selection, stage-level provider selection, packet projection summaries, serialized initial/final critic reviews, a compact section history, and an optional trace CID when `optimization_persist_artifacts=true`. The `/document` preview surfaces those summaries directly after each generation run, including effective provider/model, provider-source, task-complexity, and selected-route details from the critic metadata when routed LLM calls are available.
 
 **Agentic Scraper CLI:**
 ```bash

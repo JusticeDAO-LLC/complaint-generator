@@ -620,6 +620,7 @@ class FormalComplaintDocumentBuilder:
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
         optimizer = AgenticDocumentOptimizer(
             self.mediator,
+            builder=self,
             provider=provider,
             model_name=model_name,
             max_iterations=max_iterations,

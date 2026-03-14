@@ -240,6 +240,15 @@
             line-height: 1.5;
         }
 
+        .input-hint.validation-error {
+            color: var(--accent);
+            display: none;
+        }
+
+        .input-hint.validation-error.visible {
+            display: block;
+        }
+
         .button-row {
             display: flex;
             gap: 12px;
@@ -1024,6 +1033,7 @@
                         <label for="optimizationAdvancedConfig">Advanced Optimization LLM Config (JSON)</label>
                         <textarea id="optimizationAdvancedConfig" name="optimizationAdvancedConfig" rows="6" placeholder='{"arch_router": {"enabled": true, "routes": {"drafting": "Qwen/Qwen3-Coder-480B-A35B-Instruct"}}}'></textarea>
                         <div class="input-hint">Provide an optional JSON object for advanced router settings. Basic fields above override matching keys like <code>base_url</code>, <code>timeout</code>, and <code>headers.X-Title</code>.</div>
+                        <div id="optimizationAdvancedConfigError" class="input-hint validation-error" role="alert"></div>
                     </div>
 
                     <div>
@@ -2116,7 +2126,94 @@
             const sectionHistory = Array.isArray(report.section_history) ? report.section_history : [];
             const routerStatus = report.router_status && typeof report.router_status === 'object' ? report.router_status : {};
             const traceStorage = report.trace_storage && typeof report.trace_storage === 'object' ? report.trace_storage : {};
+            const routerUsage = report.router_usage && typeof report.router_usage === 'object' ? report.router_usage : {};
+            const upstreamOptimizer = report.upstream_optimizer && typeof report.upstream_optimizer === 'object' ? report.upstream_optimizer : {};
+            const controlLoop = upstreamOptimizer.control_loop && typeof upstreamOptimizer.control_loop === 'object' ? upstreamOptimizer.control_loop : {};
+            const stageProviderSelection = upstreamOptimizer.stage_provider_selection && typeof upstreamOptimizer.stage_provider_selection === 'object'
+                ? upstreamOptimizer.stage_provider_selection
+                : {};
+            const packetProjection = report.packet_projection && typeof report.packet_projection === 'object' ? report.packet_projection : {};
+            const packetSectionCounts = packetProjection.section_counts && typeof packetProjection.section_counts === 'object' ? packetProjection.section_counts : {};
+            const packetSectionPresence = packetProjection.section_presence && typeof packetProjection.section_presence === 'object' ? packetProjection.section_presence : {};
+            const initialReview = report.initial_review && typeof report.initial_review === 'object' ? report.initial_review : {};
+            const finalReview = report.final_review && typeof report.final_review === 'object' ? report.final_review : {};
             const routerLines = Object.entries(routerStatus).map(([key, value]) => `${humanizeKey(key)}: ${value}`);
+            const routerUsageLines = [
+                routerUsage.llm_calls != null ? `LLM calls: ${routerUsage.llm_calls}` : '',
+                routerUsage.critic_calls != null ? `Critic calls: ${routerUsage.critic_calls}` : '',
+                routerUsage.actor_calls != null ? `Actor calls: ${routerUsage.actor_calls}` : '',
+                routerUsage.embedding_requests != null ? `Embedding requests: ${routerUsage.embedding_requests}` : '',
+                routerUsage.embedding_cache_hits != null ? `Embedding cache hits: ${routerUsage.embedding_cache_hits}` : '',
+                routerUsage.embedding_rankings != null ? `Embedding rankings: ${routerUsage.embedding_rankings}` : '',
+                routerUsage.ranked_candidate_count != null ? `Ranked candidate count: ${routerUsage.ranked_candidate_count}` : '',
+                routerUsage.ipfs_store_attempted != null ? `IPFS store attempted: ${routerUsage.ipfs_store_attempted ? 'yes' : 'no'}` : '',
+                routerUsage.ipfs_store_succeeded != null ? `IPFS store succeeded: ${routerUsage.ipfs_store_succeeded ? 'yes' : 'no'}` : '',
+                Array.isArray(routerUsage.llm_providers_used) && routerUsage.llm_providers_used.length
+                    ? `LLM providers used: ${routerUsage.llm_providers_used.join(', ')}`
+                    : '',
+            ].filter(Boolean);
+            const upstreamOptimizerLines = [
+                `Available: ${upstreamOptimizer.available ? 'yes' : 'no'}`,
+                upstreamOptimizer.selected_provider ? `Selected provider: ${upstreamOptimizer.selected_provider}` : '',
+                upstreamOptimizer.selected_method ? `Selected method: ${upstreamOptimizer.selected_method}` : '',
+                controlLoop.max_iterations != null ? `Control loop max iterations: ${controlLoop.max_iterations}` : '',
+                controlLoop.target_score != null ? `Control loop target score: ${controlLoop.target_score}` : '',
+            ].filter(Boolean);
+            const stageProviderLines = Object.entries(stageProviderSelection).map(([role, selection]) => {
+                if (!selection || typeof selection !== 'object') {
+                    return '';
+                }
+                const fragments = [
+                    humanizeKey(role),
+                    selection.source ? `source ${selection.source}` : '',
+                    selection.resolved_provider ? `provider ${selection.resolved_provider}` : '',
+                    selection.complexity ? `complexity ${selection.complexity}` : '',
+                    selection.focus_section ? `focus ${humanizeKey(selection.focus_section)}` : '',
+                ].filter(Boolean);
+                return fragments.join(': ').replace(': source', ' source');
+            }).filter(Boolean);
+            const packetProjectionLines = [
+                packetProjection.title ? `Packet title: ${packetProjection.title}` : '',
+                Object.keys(packetSectionCounts).length
+                    ? `Section counts: ${Object.entries(packetSectionCounts).map(([key, value]) => `${humanizeKey(key)} ${value}`).join(', ')}`
+                    : '',
+                Object.keys(packetSectionPresence).length
+                    ? `Section presence: ${Object.entries(packetSectionPresence).map(([key, value]) => `${humanizeKey(key)} ${value ? 'yes' : 'no'}`).join(', ')}`
+                    : '',
+                packetProjection.has_affidavit != null ? `Affidavit included: ${packetProjection.has_affidavit ? 'yes' : 'no'}` : '',
+                packetProjection.has_certificate_of_service != null ? `Certificate of service included: ${packetProjection.has_certificate_of_service ? 'yes' : 'no'}` : '',
+                packetProjection.exhibit_count != null ? `Exhibit count: ${packetProjection.exhibit_count}` : '',
+                packetProjection.checklist_item_count != null ? `Checklist item count: ${packetProjection.checklist_item_count}` : '',
+            ].filter(Boolean);
+            const renderReviewSummary = (title, review) => {
+                if (!review || typeof review !== 'object') {
+                    return '';
+                }
+                const strengths = Array.isArray(review.strengths) ? review.strengths : [];
+                const weaknesses = Array.isArray(review.weaknesses) ? review.weaknesses : [];
+                const suggestions = Array.isArray(review.suggestions) ? review.suggestions : [];
+                const llmMetadata = review.llm_metadata && typeof review.llm_metadata === 'object' ? review.llm_metadata : {};
+                const reviewLines = [
+                    review.overall_score != null ? `Overall score: ${review.overall_score}` : '',
+                    review.recommended_focus ? `Recommended focus: ${humanizeKey(review.recommended_focus)}` : '',
+                    llmMetadata.effective_provider_name ? `Effective provider: ${llmMetadata.effective_provider_name}` : '',
+                    llmMetadata.effective_model_name ? `Effective model: ${llmMetadata.effective_model_name}` : '',
+                    llmMetadata.optimizer_provider_source ? `Provider source: ${llmMetadata.optimizer_provider_source}` : '',
+                    llmMetadata.optimizer_task_complexity ? `Task complexity: ${llmMetadata.optimizer_task_complexity}` : '',
+                    llmMetadata.arch_router_selected_route ? `Selected route: ${llmMetadata.arch_router_selected_route}` : '',
+                    llmMetadata.arch_router_selected_model ? `Selected route model: ${llmMetadata.arch_router_selected_model}` : '',
+                    llmMetadata.arch_router_model_name ? `Router model: ${llmMetadata.arch_router_model_name}` : '',
+                    llmMetadata.hf_bill_to ? `Bill to: ${llmMetadata.hf_bill_to}` : '',
+                    llmMetadata.arch_router_error ? `Router error: ${llmMetadata.arch_router_error}` : '',
+                    strengths.length ? `Strengths: ${strengths.join(' | ')}` : '',
+                    weaknesses.length ? `Weaknesses: ${weaknesses.join(' | ')}` : '',
+                    suggestions.length ? `Suggestions: ${suggestions.join(' | ')}` : '',
+                ].filter(Boolean);
+                if (!reviewLines.length) {
+                    return '';
+                }
+                return `<div class="preview-meta"><strong>${escapeHtml(title)}</strong></div>${renderLines(reviewLines)}`;
+            };
             const historyLines = sectionHistory.map((entry) => {
                 const focusSection = humanizeKey(entry.focus_section || 'section');
                 const accepted = entry.accepted ? 'accepted' : 'rejected';
@@ -2139,6 +2236,12 @@
                         ${optimizedSections.length ? `<div class="preview-meta"><strong>Optimized Sections:</strong> ${escapeHtml(optimizedSections.map(humanizeKey).join(', '))}</div>` : ''}
                         ${routerLines.length ? renderLines(routerLines) : ''}
                         ${traceLines.length ? renderLines(traceLines) : ''}
+                        ${routerUsageLines.length ? `<div class="preview-meta"><strong>Router Usage</strong></div>${renderLines(routerUsageLines)}` : ''}
+                        ${upstreamOptimizerLines.length ? `<div class="preview-meta"><strong>Upstream Optimizer</strong></div>${renderLines(upstreamOptimizerLines)}` : ''}
+                        ${stageProviderLines.length ? `<div class="preview-meta"><strong>Stage Provider Selection</strong></div>${renderLines(stageProviderLines)}` : ''}
+                        ${packetProjectionLines.length ? `<div class="preview-meta"><strong>Packet Projection</strong></div>${renderLines(packetProjectionLines)}` : ''}
+                        ${renderReviewSummary('Initial Review', initialReview)}
+                        ${renderReviewSummary('Final Review', finalReview)}
                         ${historyLines.length ? `<div class="preview-meta"><strong>Section History</strong></div>${renderLines(historyLines)}` : ''}
                     </article>
                 </section>
@@ -2153,20 +2256,55 @@
             });
         }
 
+        function setOptimizationAdvancedConfigError(message) {
+            const errorNode = document.getElementById('optimizationAdvancedConfigError');
+            const field = document.getElementById('optimizationAdvancedConfig');
+            const errorMessage = String(message || '').trim();
+            if (field && typeof field.setCustomValidity === 'function') {
+                field.setCustomValidity(errorMessage);
+            }
+            if (!errorNode) {
+                return;
+            }
+            errorNode.textContent = errorMessage;
+            errorNode.classList.toggle('visible', Boolean(errorMessage));
+        }
+
+        function parseOptimizationAdvancedConfig(rawValue) {
+            const text = String(rawValue || '').trim();
+            if (!text) {
+                return {};
+            }
+            const parsedConfig = safeJsonParse(text);
+            if (!parsedConfig || typeof parsedConfig !== 'object' || Array.isArray(parsedConfig)) {
+                throw new Error('Advanced optimization config must be a valid JSON object.');
+            }
+            return parsedConfig;
+        }
+
+        function validateOptimizationAdvancedConfig() {
+            const field = document.getElementById('optimizationAdvancedConfig');
+            if (!field) {
+                return true;
+            }
+            try {
+                parseOptimizationAdvancedConfig(field.value);
+                setOptimizationAdvancedConfigError('');
+                return true;
+            } catch (error) {
+                setOptimizationAdvancedConfigError(error.message || 'Advanced optimization config must be a valid JSON object.');
+                return false;
+            }
+        }
+
         function buildOptimizationLlmConfig() {
             const optimizationBaseUrl = document.getElementById('optimizationBaseUrl').value.trim();
             const optimizationTimeoutRaw = document.getElementById('optimizationTimeout').value.trim();
             const optimizationTitleHeader = document.getElementById('optimizationTitleHeader').value.trim();
             const optimizationAdvancedConfigRaw = document.getElementById('optimizationAdvancedConfig').value.trim();
 
-            let optimizationLlmConfig = {};
-            if (optimizationAdvancedConfigRaw) {
-                const parsedConfig = safeJsonParse(optimizationAdvancedConfigRaw);
-                if (!parsedConfig || typeof parsedConfig !== 'object' || Array.isArray(parsedConfig)) {
-                    throw new Error('Advanced optimization config must be a valid JSON object.');
-                }
-                optimizationLlmConfig = { ...parsedConfig };
-            }
+            let optimizationLlmConfig = { ...parseOptimizationAdvancedConfig(optimizationAdvancedConfigRaw) };
+            setOptimizationAdvancedConfigError('');
 
             if (optimizationBaseUrl) {
                 optimizationLlmConfig.base_url = optimizationBaseUrl;
@@ -2443,6 +2581,7 @@
         function resetForm() {
             document.getElementById('documentForm').reset();
             setCheckedFormats(['docx', 'pdf']);
+            setOptimizationAdvancedConfigError('');
             clearMessages();
             state.generatedPayload = null;
             document.getElementById('previewRoot').className = 'empty-state';
@@ -2461,12 +2600,14 @@
             restoreReviewIntent();
             restoreDraftState();
             restoreGeneratedPayload();
+            validateOptimizationAdvancedConfig();
             try {
                 const cookies = await fetchCookies();
                 state.userId = cookies.hashed_username || null;
                 const summary = await fetchProfileSummary(cookies.hashed_username, cookies.hashed_password);
                 hydrateFormFromSummary(summary);
                 persistDraftState();
+                validateOptimizationAdvancedConfig();
             } catch (error) {
                 showBox('errorBox', 'Unable to prefill the document form from the current profile. You can still build the document manually.');
             }
@@ -2476,6 +2617,8 @@
         document.getElementById('resetButton').addEventListener('click', resetForm);
         document.getElementById('documentForm').addEventListener('input', persistDraftState);
         document.getElementById('documentForm').addEventListener('change', persistDraftState);
+        document.getElementById('optimizationAdvancedConfig').addEventListener('input', validateOptimizationAdvancedConfig);
+        document.getElementById('optimizationAdvancedConfig').addEventListener('change', validateOptimizationAdvancedConfig);
         bootstrap();
     </script>
 </body>

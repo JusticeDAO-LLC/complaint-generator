@@ -27,6 +27,190 @@ def _live_hf_token() -> str:
     )
 
 
+def _live_hf_bill_to_header() -> dict:
+    bill_to = (
+        os.getenv("IPFS_DATASETS_PY_HF_BILL_TO", "").strip()
+        or os.getenv("HF_BILL_TO", "").strip()
+        or os.getenv("OPENROUTER_HF_BILL_TO", "").strip()
+    )
+    return {"X-HF-Bill-To": bill_to} if bill_to else {}
+
+
+def _is_provider_credit_error(payload_or_message: object) -> bool:
+    text = str(payload_or_message or "")
+    lowered = text.lower()
+    return "402" in lowered and ("payment required" in lowered or "included credits" in lowered or "depleted" in lowered)
+
+
+def _is_upstream_router_error(payload_or_message: object) -> bool:
+    text = str(payload_or_message or "")
+    lowered = text.lower()
+    return (
+        "openrouter http" in lowered
+        or "payment required" in lowered
+        or "included credits" in lowered
+        or "depleted" in lowered
+        or "access denied" in lowered
+        or "browser_signature_banned" in lowered
+        or "error 1010" in lowered
+        or "owner_action_required" in lowered
+    )
+
+
+def _hf_router_smoke_models() -> list[str]:
+    configured_models = [
+        candidate.strip()
+        for candidate in os.getenv("HF_ROUTER_SMOKE_MODELS", "").split(",")
+        if candidate.strip()
+    ]
+    if configured_models:
+        return configured_models
+
+    configured_model = os.getenv("HF_ROUTER_SMOKE_MODEL", "").strip()
+    if configured_model:
+        return [configured_model]
+
+    return [
+        "meta-llama/Llama-3.1-8B-Instruct",
+        "Qwen/Qwen2.5-72B-Instruct",
+        "mistralai/Mistral-7B-Instruct-v0.3",
+        "google/gemma-2-9b-it",
+    ]
+
+
+def _upstream_failure_summary(payload_or_message: object) -> str:
+    if isinstance(payload_or_message, dict):
+        nested_candidates = [
+            payload_or_message.get("error"),
+            payload_or_message.get("arch_router_error"),
+        ]
+        document_optimization = payload_or_message.get("document_optimization") or {}
+        if isinstance(document_optimization, dict):
+            for review_key in ("initial_review", "final_review"):
+                llm_metadata = (document_optimization.get(review_key) or {}).get("llm_metadata") or {}
+                if isinstance(llm_metadata, dict):
+                    nested_candidates.extend([llm_metadata.get("error"), llm_metadata.get("arch_router_error")])
+            for section_entry in document_optimization.get("section_history") or []:
+                if not isinstance(section_entry, dict):
+                    continue
+                for metadata_key in ("critic_llm_metadata", "actor_llm_metadata"):
+                    llm_metadata = section_entry.get(metadata_key) or {}
+                    if isinstance(llm_metadata, dict):
+                        nested_candidates.extend([llm_metadata.get("error"), llm_metadata.get("arch_router_error")])
+        for candidate in nested_candidates:
+            if candidate:
+                text = str(candidate)
+                compact = " ".join(text.split())
+                return compact[:280]
+    text = str(payload_or_message or "")
+    compact = " ".join(text.split())
+    return compact[:280]
+
+
+def _document_page_inline_script(page_html: str) -> str:
+    soup = BeautifulSoup(page_html, 'html.parser')
+    for script in soup.find_all('script'):
+        script_text = script.string or script.get_text() or ''
+        if 'function validateOptimizationAdvancedConfig()' in script_text:
+            return script_text
+    raise AssertionError('Expected inline document page script with optimization validation hooks.')
+
+
+def _build_live_hf_optimization_request(
+    *,
+    model_name: str,
+    output_dir: str,
+    page_title: str,
+    include_arch_router: bool,
+) -> dict:
+    optimization_llm_config = {
+        "base_url": "https://router.huggingface.co/v1",
+        "headers": {"X-Title": page_title, **_live_hf_bill_to_header()},
+        "timeout": 45,
+    }
+    if include_arch_router:
+        reasoning_model_name = os.getenv("HF_ROUTER_ARCH_REASONING_MODEL", "").strip() or model_name
+        optimization_llm_config["arch_router"] = {
+            "enabled": True,
+            "model": os.getenv("HF_ARCH_ROUTER_MODEL", "katanemo/Arch-Router-1.5B"),
+            "context": "Complaint drafting, legal issue spotting, and filing packet generation.",
+            "routes": {
+                "legal_reasoning": reasoning_model_name,
+                "drafting": model_name,
+            },
+        }
+
+    return {
+        "district": "Northern District of California",
+        "county": "San Francisco County",
+        "plaintiff_names": ["Jane Doe"],
+        "defendant_names": ["Acme Corporation"],
+        "enable_agentic_optimization": True,
+        "optimization_max_iterations": 1,
+        "optimization_target_score": 1.1,
+        "optimization_provider": "huggingface_router",
+        "optimization_model_name": model_name,
+        "optimization_llm_config": optimization_llm_config,
+        "output_dir": output_dir,
+        "output_formats": ["txt"],
+    }
+
+
+def _post_live_hf_optimization_request(
+    client: TestClient,
+    *,
+    output_dir: str,
+    page_title: str,
+    include_arch_router: bool,
+) -> tuple[str, object, dict, bool]:
+    def _attempt_models(use_arch_router: bool) -> tuple[str, object, dict, list[str]] | tuple[None, None, None, list[str]]:
+        failures: list[str] = []
+        for model_name in _hf_router_smoke_models():
+            try:
+                response = client.post(
+                    "/api/documents/formal-complaint",
+                    json=_build_live_hf_optimization_request(
+                        model_name=model_name,
+                        output_dir=output_dir,
+                        page_title=page_title,
+                        include_arch_router=use_arch_router,
+                    ),
+                )
+            except RuntimeError as exc:
+                if _is_upstream_router_error(exc):
+                    failures.append(f"{model_name}: {_upstream_failure_summary(exc)}")
+                    continue
+                raise
+
+            payload = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+            if response.status_code == 200 and not _is_upstream_router_error(payload):
+                return model_name, response, payload, failures
+            if _is_upstream_router_error(payload) or _is_upstream_router_error(response.text):
+                failures.append(f"{model_name}: {_upstream_failure_summary(payload or response.text)}")
+                continue
+            return model_name, response, payload, failures
+        return None, None, None, failures
+
+    model_name, response, payload, failures = _attempt_models(include_arch_router)
+    if model_name is not None:
+        return model_name, response, payload, include_arch_router
+
+    attempted_modes = []
+    if failures:
+        attempted_modes.append(
+            ("with arch router" if include_arch_router else "without arch router") + ": " + " | ".join(failures)
+        )
+
+    if include_arch_router:
+        model_name, response, payload, fallback_failures = _attempt_models(False)
+        if model_name is not None:
+            return model_name, response, payload, False
+        if fallback_failures:
+            attempted_modes.append("without arch router: " + " | ".join(fallback_failures))
+
+    pytest.skip("Hugging Face router live smoke unavailable after trying models: " + " ; ".join(attempted_modes))
+
+
 def _build_mediator() -> Mock:
     mediator = Mock()
     mediator.state = SimpleNamespace(
@@ -342,9 +526,12 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     builder = FormalComplaintDocumentBuilder(mediator)
     calls = {"critic": 0, "actor": 0}
     llm_invocations = []
+    embed_calls = []
+    stored_traces = []
 
     class _FakeEmbeddingsRouter:
         def embed_text(self, text: str):
+            embed_calls.append(text)
             lowered = text.lower()
             return [
                 float("retaliation" in lowered),
@@ -428,6 +615,7 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
         }
 
     def _fake_store_bytes(data: bytes, *, pin_content: bool = True):
+        stored_traces.append(json.loads(data.decode("utf-8")))
         return {"status": "available", "cid": "bafy-doc-opt-report", "size": len(data), "pinned": pin_content}
 
     monkeypatch.setattr(document_optimization, "LLM_ROUTER_AVAILABLE", True)
@@ -475,16 +663,29 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     assert report["section_history"][0]["critic_llm_metadata"]["arch_router_selected_route"] == "legal_reasoning"
     assert report["section_history"][0]["actor_llm_metadata"]["arch_router_selected_route"] == "drafting"
     assert report["section_history"][0]["selected_support_context"]["focus_section"] == "factual_allegations"
+    assert report["section_history"][0]["selected_support_context"]["top_support"]
+    assert report["section_history"][0]["selected_support_context"]["top_support"][0]["ranking_method"] == "embeddings_router_hybrid"
     assert report["initial_review"]["llm_metadata"]["effective_model_name"] == "meta-llama/Llama-3.3-70B-Instruct"
     assert report["final_review"]["llm_metadata"]["arch_router_selected_route"] == "legal_reasoning"
     assert "selected_provider" in report["upstream_optimizer"]
+    assert report["router_usage"]["llm_calls"] >= 3
+    assert report["router_usage"]["critic_calls"] >= 2
+    assert report["router_usage"]["actor_calls"] >= 1
+    assert report["router_usage"]["embedding_requests"] >= 1
+    assert report["router_usage"]["embedding_rankings"] >= 1
+    assert report["router_usage"]["ipfs_store_attempted"] is True
+    assert report["router_usage"]["ipfs_store_succeeded"] is True
+    assert report["router_usage"]["llm_providers_used"] == ["test-provider"]
     assert calls["actor"] >= 1
     assert calls["critic"] >= 2
+    assert embed_calls
     assert llm_invocations
     assert all(entry["provider"] == "test-provider" for entry in llm_invocations)
     assert all(entry["model_name"] == "test-model" for entry in llm_invocations)
     assert all(entry["kwargs"].get("base_url") == "https://router.huggingface.co/v1" for entry in llm_invocations)
     assert all(entry["kwargs"].get("headers", {}).get("X-Title") == "Complaint Generator Tests" for entry in llm_invocations)
+    assert stored_traces
+    assert stored_traces[0]["config"]["router_usage"]["llm_calls"] >= 3
     assert any(
         "Plaintiff was fired two days later and lost pay and benefits" in allegation
         for allegation in result["draft"]["factual_allegations"]
@@ -1341,8 +1542,12 @@ def test_review_api_returns_document_optimization_contract_end_to_end(monkeypatc
     assert report["section_history"][0]["critic_llm_metadata"]["arch_router_selected_route"] == "legal_reasoning"
     assert report["section_history"][0]["actor_llm_metadata"]["arch_router_selected_route"] == "drafting"
     assert report["section_history"][0]["selected_support_context"]["focus_section"] == "factual_allegations"
+    assert report["section_history"][0]["selected_support_context"]["top_support"][0]["ranking_method"] == "embeddings_router_hybrid"
     assert report["initial_review"]["llm_metadata"]["effective_provider_name"] == "openrouter"
     assert report["final_review"]["llm_metadata"]["arch_router_model_name"] == "katanemo/Arch-Router-1.5B"
+    assert report["router_usage"]["llm_calls"] >= 3
+    assert report["router_usage"]["embedding_rankings"] >= 1
+    assert report["router_usage"]["ipfs_store_succeeded"] is True
     assert report["draft"]["draft_text"]
     assert "Plaintiff was fired two days later and lost pay and benefits." in report["draft"]["draft_text"]
     assert payload["draft"]["draft_text"] == report["draft"]["draft_text"]
@@ -1370,42 +1575,14 @@ def test_review_api_live_huggingface_router_optimization_smoke(tmp_path):
 
     app = create_review_api_app(mediator)
     client = TestClient(app)
-    model_name = os.getenv("HF_ROUTER_SMOKE_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
-    reasoning_model_name = os.getenv("HF_ROUTER_ARCH_REASONING_MODEL", model_name)
-
-    response = client.post(
-        "/api/documents/formal-complaint",
-        json={
-            "district": "Northern District of California",
-            "county": "San Francisco County",
-            "plaintiff_names": ["Jane Doe"],
-            "defendant_names": ["Acme Corporation"],
-            "enable_agentic_optimization": True,
-            "optimization_max_iterations": 1,
-            "optimization_target_score": 1.1,
-            "optimization_provider": "huggingface_router",
-            "optimization_model_name": model_name,
-            "optimization_llm_config": {
-                "base_url": "https://router.huggingface.co/v1",
-                "headers": {"X-Title": "Complaint Generator API Smoke Test"},
-                "arch_router": {
-                    "enabled": True,
-                    "model": os.getenv("HF_ARCH_ROUTER_MODEL", "katanemo/Arch-Router-1.5B"),
-                    "context": "Complaint drafting, legal issue spotting, and filing packet generation.",
-                    "routes": {
-                        "legal_reasoning": reasoning_model_name,
-                        "drafting": model_name,
-                    },
-                },
-                "timeout": 45,
-            },
-            "output_dir": str(tmp_path),
-            "output_formats": ["txt"],
-        },
+    model_name, response, payload, used_arch_router = _post_live_hf_optimization_request(
+        client,
+        output_dir=str(tmp_path),
+        page_title="Complaint Generator API Smoke Test",
+        include_arch_router=True,
     )
 
     assert response.status_code == 200, response.text
-    payload = response.json()
     assert payload["document_optimization"]["router_status"]["llm_router"] == "available"
     assert payload["document_optimization"]["iteration_count"] == 1
     assert payload["document_optimization"]["initial_score"] >= 0.0
@@ -1414,14 +1591,92 @@ def test_review_api_live_huggingface_router_optimization_smoke(tmp_path):
     assert payload["document_optimization"]["draft"]["draft_text"]
     final_review_metadata = payload["document_optimization"]["final_review"].get("llm_metadata") or {}
     assert final_review_metadata.get("effective_provider_name") == "openrouter"
-    assert final_review_metadata.get("arch_router_model_name") == os.getenv("HF_ARCH_ROUTER_MODEL", "katanemo/Arch-Router-1.5B")
-    assert final_review_metadata.get("arch_router_status") in {"selected", "fallback"}
-    assert final_review_metadata.get("arch_router_selected_route") in {"legal_reasoning", "drafting", "unknown_path", None}
-    selected_model = final_review_metadata.get("arch_router_selected_model")
-    assert selected_model in {model_name, reasoning_model_name, ""}
+    assert final_review_metadata.get("effective_model_name") == model_name
+    if used_arch_router:
+        assert final_review_metadata.get("arch_router_model_name") == os.getenv("HF_ARCH_ROUTER_MODEL", "katanemo/Arch-Router-1.5B")
+        assert final_review_metadata.get("arch_router_status") in {"selected", "fallback"}
+        assert final_review_metadata.get("arch_router_selected_route") in {"legal_reasoning", "drafting", "unknown_path", None}
+        selected_model = final_review_metadata.get("arch_router_selected_model")
+        assert selected_model in {model_name, os.getenv("HF_ROUTER_ARCH_REASONING_MODEL", "").strip() or model_name, ""}
     assert payload["artifacts"]["txt"]["path"]
 
     Path(payload["artifacts"]["txt"]["path"]).unlink(missing_ok=True)
+
+
+def test_agentic_optimizer_uses_upstream_router_provider_selection_when_provider_is_unset(monkeypatch: pytest.MonkeyPatch):
+    mediator = _build_mediator()
+    builder = FormalComplaintDocumentBuilder(mediator)
+    llm_providers = []
+
+    class _FakeOptimizerLLMRouter:
+        def __init__(self, *args, **kwargs):
+            self.calls = []
+
+        def select_provider(self, method, complexity="medium"):
+            self.calls.append((getattr(method, "value", str(method)), complexity))
+            return SimpleNamespace(value="claude")
+
+    class _FakeControlLoopConfig:
+        def __init__(self, max_iterations=10, target_score=0.9, **kwargs):
+            self.max_iterations = max_iterations
+            self.target_score = target_score
+
+    class _FakeOptimizationMethod:
+        ACTOR_CRITIC = SimpleNamespace(value="actor_critic")
+
+    calls = {"critic": 0, "actor": 0}
+
+    def _fake_generate_text(prompt: str, *, provider=None, model_name=None, **kwargs):
+        llm_providers.append(provider)
+        if document_optimization.AgenticDocumentOptimizer.CRITIC_PROMPT_TAG in prompt:
+            calls["critic"] += 1
+            payload = {
+                "overall_score": 0.4 if calls["critic"] == 1 else 0.92,
+                "recommended_focus": "factual_allegations",
+            }
+        else:
+            calls["actor"] += 1
+            payload = {
+                "factual_allegations": [
+                    "Plaintiff reported discrimination to human resources.",
+                    "Defendant terminated Plaintiff two days later.",
+                ]
+            }
+        return {
+            "status": "available",
+            "text": json.dumps(payload),
+            "provider_name": provider,
+            "model_name": model_name,
+        }
+
+    monkeypatch.setattr(document_optimization, "LLM_ROUTER_AVAILABLE", True)
+    monkeypatch.setattr(document_optimization, "UPSTREAM_AGENTIC_AVAILABLE", True)
+    monkeypatch.setattr(document_optimization, "OptimizerLLMRouter", _FakeOptimizerLLMRouter)
+    monkeypatch.setattr(document_optimization, "ControlLoopConfig", _FakeControlLoopConfig)
+    monkeypatch.setattr(document_optimization, "OptimizationMethod", _FakeOptimizationMethod)
+    monkeypatch.setattr(document_optimization, "generate_text_with_metadata", _fake_generate_text)
+
+    result = builder.build_package(
+        district="Northern District of California",
+        county="San Francisco County",
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Acme Corporation"],
+        enable_agentic_optimization=True,
+        optimization_max_iterations=1,
+        optimization_target_score=0.9,
+        optimization_provider=None,
+        optimization_model_name="test-model",
+        output_formats=["txt"],
+    )
+
+    report = result["document_optimization"]
+    assert calls["critic"] >= 2
+    assert calls["actor"] >= 1
+    assert llm_providers
+    assert all(provider == "anthropic" for provider in llm_providers)
+    assert report["router_usage"]["llm_providers_used"] == ["anthropic"]
+    assert report["upstream_optimizer"]["stage_provider_selection"]["critic"]["resolved_provider"] == "anthropic"
+    assert report["upstream_optimizer"]["stage_provider_selection"]["actor"]["resolved_provider"] == "anthropic"
 
 
 def test_review_api_generated_docx_preserves_grouped_factual_headings_end_to_end(tmp_path):
@@ -1755,10 +2010,22 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert 'Optimization Router Base URL' in page_html
         assert 'Optimization Timeout (seconds)' in page_html
         assert 'Advanced Optimization LLM Config (JSON)' in page_html
+        assert 'optimizationAdvancedConfigError' in page_html
+        assert 'Advanced optimization config must be a valid JSON object.' in page_html
         assert 'Persist optimization trace through the IPFS adapter' in page_html
         assert 'Document Optimization' in page_html
         assert 'Optimized Sections' in page_html
         assert 'Trace CID' in page_html
+        assert 'Router Usage' in page_html
+        assert 'Upstream Optimizer' in page_html
+        assert 'Stage Provider Selection' in page_html
+        assert 'Packet Projection' in page_html
+        assert 'Initial Review' in page_html
+        assert 'Final Review' in page_html
+        assert 'Effective provider' in page_html
+        assert 'Provider source' in page_html
+        assert 'Task complexity' in page_html
+        assert 'Selected route' in page_html
         assert 'Section History' in page_html
 
         api_response = client.post(
@@ -1806,6 +2073,35 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert download_response.content.startswith(b'PK\x03\x04')
     finally:
         artifact_path.unlink(missing_ok=True)
+
+
+def test_review_surface_document_builder_serves_runtime_validation_contract():
+    mediator = _build_mediator()
+    app = create_review_surface_app(mediator)
+    client = TestClient(app)
+
+    page_response = client.get('/document')
+
+    assert page_response.status_code == 200
+    script = _document_page_inline_script(page_response.text)
+    generate_document_start = script.index('async function generateDocument(event)')
+    reset_form_start = script.index('function resetForm()')
+    bootstrap_start = script.index('async function bootstrap()')
+    event_binding_start = script.index("document.getElementById('documentForm').addEventListener('submit', generateDocument);")
+
+    assert 'function setOptimizationAdvancedConfigError(message)' in script
+    assert 'field.setCustomValidity(errorMessage);' in script
+    assert "errorNode.classList.toggle('visible', Boolean(errorMessage));" in script
+    assert 'function parseOptimizationAdvancedConfig(rawValue)' in script
+    assert "throw new Error('Advanced optimization config must be a valid JSON object.');" in script
+    assert 'function validateOptimizationAdvancedConfig()' in script
+    assert "setOptimizationAdvancedConfigError(error.message || 'Advanced optimization config must be a valid JSON object.');" in script
+    assert "let optimizationLlmConfig = { ...parseOptimizationAdvancedConfig(optimizationAdvancedConfigRaw) };" in script
+    assert "showBox('errorBox', error.message || 'Invalid optimization configuration.');" in script[generate_document_start:reset_form_start]
+    assert "setOptimizationAdvancedConfigError('');" in script[reset_form_start:bootstrap_start]
+    assert script[bootstrap_start:event_binding_start].count('validateOptimizationAdvancedConfig();') == 2
+    assert "document.getElementById('optimizationAdvancedConfig').addEventListener('input', validateOptimizationAdvancedConfig);" in script[event_binding_start:]
+    assert "document.getElementById('optimizationAdvancedConfig').addEventListener('change', validateOptimizationAdvancedConfig);" in script[event_binding_start:]
 
 
 def test_review_surface_document_builder_supports_affidavit_exhibit_controls_end_to_end(tmp_path):
@@ -2139,44 +2435,27 @@ def test_review_surface_live_huggingface_router_optimization_smoke(tmp_path):
 
     app = create_review_surface_app(mediator)
     client = TestClient(app)
-    model_name = os.getenv('HF_ROUTER_SMOKE_MODEL', 'meta-llama/Llama-3.1-8B-Instruct')
-
     page_response = client.get('/document')
 
     assert page_response.status_code == 200
     assert '/api/documents/formal-complaint' in page_response.text
 
-    api_response = client.post(
-        '/api/documents/formal-complaint',
-        json={
-            'district': 'Northern District of California',
-            'county': 'San Francisco County',
-            'plaintiff_names': ['Jane Doe'],
-            'defendant_names': ['Acme Corporation'],
-            'enable_agentic_optimization': True,
-            'optimization_max_iterations': 1,
-            'optimization_target_score': 1.1,
-            'optimization_provider': 'huggingface_router',
-            'optimization_model_name': model_name,
-            'optimization_llm_config': {
-                'base_url': 'https://router.huggingface.co/v1',
-                'headers': {'X-Title': 'Complaint Generator Review Surface Smoke Test'},
-                'timeout': 45,
-            },
-            'output_dir': str(tmp_path),
-            'output_formats': ['txt'],
-        },
+    _, api_response, payload, _ = _post_live_hf_optimization_request(
+        client,
+        output_dir=str(tmp_path),
+        page_title='Complaint Generator Review Surface Smoke Test',
+        include_arch_router=False,
     )
 
     assert api_response.status_code == 200, api_response.text
-    payload = api_response.json()
     assert payload['document_optimization']['router_status']['llm_router'] == 'available'
     assert payload['document_optimization']['iteration_count'] == 1
     assert payload['document_optimization']['initial_score'] >= 0.0
     assert payload['document_optimization']['final_score'] >= 0.0
     assert payload['document_optimization']['trace_storage']['status'] == 'disabled'
     assert payload['draft']['draft_text']
-    assert payload['artifacts']['txt']['download_url'].startswith('/api/documents/download?path=')
+    assert Path(payload['artifacts']['txt']['path']).exists()
+    assert 'download_url' not in payload['artifacts']['txt']
 
     Path(payload['artifacts']['txt']['path']).unlink(missing_ok=True)
 

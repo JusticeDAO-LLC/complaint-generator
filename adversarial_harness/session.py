@@ -8,7 +8,7 @@ import logging
 import re
 from typing import Dict, Any, List, Set
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 import time
 
 logger = logging.getLogger(__name__)
@@ -903,7 +903,7 @@ class AdversarialSession:
             # Build result
             result = SessionResult(
                 session_id=self.session_id,
-                timestamp=datetime.utcnow().isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
                 seed_complaint=seed_complaint,
                 initial_complaint_text=initial_complaint,
                 conversation_history=conversation_history,
@@ -931,7 +931,7 @@ class AdversarialSession:
             
             return SessionResult(
                 session_id=self.session_id,
-                timestamp=datetime.utcnow().isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
                 seed_complaint=seed_complaint,
                 initial_complaint_text="",
                 conversation_history=[],

@@ -102,6 +102,10 @@ class AgenticDocumentOptimizer:
         self.persist_artifacts = bool(persist_artifacts)
         self.llm_config: Dict[str, Any] = {}
         self._embeddings_router = None
+        self._embedding_cache: Dict[str, List[float]] = {}
+        self._upstream_llm_router = None
+        self._router_usage: Dict[str, Any] = {}
+        self._stage_provider_selection: Dict[str, Dict[str, Any]] = {}
 
     def optimize(self, draft: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         result = self.optimize_draft(draft=draft, user_id=None, drafting_readiness={}, config={})
@@ -115,6 +119,7 @@ class AgenticDocumentOptimizer:
         drafting_readiness: Optional[Dict[str, Any]] = None,
         config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        self._reset_runtime_state()
         self._apply_config(config or {})
         working_draft = self._refresh_dependent_sections(deepcopy(draft))
         readiness = drafting_readiness or {}
@@ -123,7 +128,6 @@ class AgenticDocumentOptimizer:
             draft=working_draft,
             drafting_readiness=readiness,
         )
-        upstream_optimizer = self._build_upstream_optimizer_metadata()
         initial_review = self._run_critic(
             draft=working_draft,
             drafting_readiness=readiness,
@@ -184,6 +188,7 @@ class AgenticDocumentOptimizer:
                 if focus_section not in optimized_sections:
                     optimized_sections.append(focus_section)
 
+        upstream_optimizer = self._build_upstream_optimizer_metadata()
         trace_storage = self._store_trace(
             {
                 "user_id": user_id or "",
@@ -195,6 +200,7 @@ class AgenticDocumentOptimizer:
                     "target_score": self.target_score,
                     "persist_artifacts": self.persist_artifacts,
                     "upstream_optimizer": upstream_optimizer,
+                    "router_usage": self._router_usage_summary(),
                 },
                 "support_context": support_context,
                 "initial_review": initial_review,
@@ -214,6 +220,7 @@ class AgenticDocumentOptimizer:
             "artifact_cid": str(trace_storage.get("cid") or ""),
             "trace_storage": trace_storage,
             "router_status": self._router_status(),
+            "router_usage": self._router_usage_summary(),
             "upstream_optimizer": upstream_optimizer,
             "packet_projection": dict(support_context.get("packet_projection") or {}),
             "section_history": [
@@ -231,6 +238,24 @@ class AgenticDocumentOptimizer:
             "initial_review": self._serialize_review(initial_review),
             "final_review": self._serialize_review(current_review),
             "draft": working_draft,
+        }
+
+    def _reset_runtime_state(self) -> None:
+        self._embeddings_router = None
+        self._embedding_cache = {}
+        self._upstream_llm_router = None
+        self._stage_provider_selection = {}
+        self._router_usage = {
+            "llm_calls": 0,
+            "critic_calls": 0,
+            "actor_calls": 0,
+            "embedding_requests": 0,
+            "embedding_cache_hits": 0,
+            "embedding_rankings": 0,
+            "ranked_candidate_count": 0,
+            "ipfs_store_attempted": False,
+            "ipfs_store_succeeded": False,
+            "llm_providers_used": [],
         }
 
     def _apply_config(self, config: Dict[str, Any]) -> None:
@@ -351,16 +376,26 @@ class AgenticDocumentOptimizer:
         if not LLM_ROUTER_AVAILABLE:
             return heuristic_review
 
-        payload = generate_text_with_metadata(
-            f"{self.CRITIC_PROMPT_TAG}\n{json.dumps({'draft': draft, 'drafting_readiness': drafting_readiness, 'support_context': support_context, 'heuristic_review': heuristic_review}, ensure_ascii=True, default=str)}",
-            provider=self.provider,
-            model_name=self.model_name,
-            **self.llm_config,
+        payload, provider_selection = self._generate_llm_payload(
+            prompt=(
+                f"{self.CRITIC_PROMPT_TAG}\n"
+                f"{json.dumps({'draft': draft, 'drafting_readiness': drafting_readiness, 'support_context': support_context, 'heuristic_review': heuristic_review}, ensure_ascii=True, default=str)}"
+            ),
+            role="critic",
+            focus_section=str(heuristic_review.get("recommended_focus") or "factual_allegations"),
         )
         text = payload.get("text") if isinstance(payload, dict) else payload
         parsed = self._parse_json_payload(text)
         merged = self._merge_review_payload(parsed, heuristic_review)
         llm_metadata = self._extract_llm_metadata(payload)
+        if provider_selection:
+            llm_metadata.update(
+                {
+                    "optimizer_provider_source": provider_selection.get("source") or "",
+                    "optimizer_provider_name": provider_selection.get("resolved_provider") or "",
+                    "optimizer_task_complexity": provider_selection.get("complexity") or "",
+                }
+            )
         if llm_metadata:
             merged["llm_metadata"] = llm_metadata
         return merged
@@ -386,11 +421,13 @@ class AgenticDocumentOptimizer:
         if not LLM_ROUTER_AVAILABLE:
             return fallback_payload
 
-        payload = generate_text_with_metadata(
-            f"{self.ACTOR_PROMPT_TAG}\n{json.dumps({'focus_section': focus_section, 'draft': draft, 'critic_review': critic_review, 'support_context': selected_support_context, 'fallback_payload': fallback_payload}, ensure_ascii=True, default=str)}",
-            provider=self.provider,
-            model_name=self.model_name,
-            **self.llm_config,
+        payload, provider_selection = self._generate_llm_payload(
+            prompt=(
+                f"{self.ACTOR_PROMPT_TAG}\n"
+                f"{json.dumps({'focus_section': focus_section, 'draft': draft, 'critic_review': critic_review, 'support_context': selected_support_context, 'fallback_payload': fallback_payload}, ensure_ascii=True, default=str)}"
+            ),
+            role="actor",
+            focus_section=focus_section,
         )
         text = payload.get("text") if isinstance(payload, dict) else payload
         parsed = self._parse_json_payload(text) or {}
@@ -398,9 +435,130 @@ class AgenticDocumentOptimizer:
             parsed["focus_section"] = focus_section
         merged = {**fallback_payload, **parsed}
         llm_metadata = self._extract_llm_metadata(payload)
+        if provider_selection:
+            llm_metadata.update(
+                {
+                    "optimizer_provider_source": provider_selection.get("source") or "",
+                    "optimizer_provider_name": provider_selection.get("resolved_provider") or "",
+                    "optimizer_task_complexity": provider_selection.get("complexity") or "",
+                }
+            )
         if llm_metadata:
             merged["llm_metadata"] = llm_metadata
         return merged
+
+    def _generate_llm_payload(
+        self,
+        *,
+        prompt: str,
+        role: str,
+        focus_section: str,
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        provider_name, provider_selection = self._resolve_stage_provider(
+            role=role,
+            focus_section=focus_section,
+        )
+        self._router_usage["llm_calls"] = int(self._router_usage.get("llm_calls") or 0) + 1
+        counter_key = f"{role}_calls"
+        self._router_usage[counter_key] = int(self._router_usage.get(counter_key) or 0) + 1
+        providers_used = list(self._router_usage.get("llm_providers_used") or [])
+        if provider_name and provider_name not in providers_used:
+            providers_used.append(provider_name)
+        self._router_usage["llm_providers_used"] = providers_used
+        payload = generate_text_with_metadata(
+            prompt,
+            provider=provider_name,
+            model_name=self.model_name,
+            **self.llm_config,
+        )
+        return payload if isinstance(payload, dict) else {"text": str(payload or "")}, provider_selection
+
+    def _resolve_stage_provider(self, *, role: str, focus_section: str) -> Tuple[Optional[str], Dict[str, Any]]:
+        explicit_provider = str(self.provider or "").strip()
+        complexity = self._stage_complexity(role=role, focus_section=focus_section)
+        if explicit_provider and explicit_provider.lower() not in {"auto", "optimizer_auto", "upstream_agentic"}:
+            selection = {
+                "source": "user_config",
+                "resolved_provider": explicit_provider,
+                "complexity": complexity,
+                "role": role,
+                "focus_section": focus_section,
+            }
+            self._stage_provider_selection[role] = selection
+            return explicit_provider, selection
+
+        router = self._get_upstream_llm_router()
+        method = getattr(OptimizationMethod, "ACTOR_CRITIC", None)
+        if router is None or method is None:
+            selection = {
+                "source": "default",
+                "resolved_provider": explicit_provider,
+                "complexity": complexity,
+                "role": role,
+                "focus_section": focus_section,
+            }
+            self._stage_provider_selection[role] = selection
+            return explicit_provider or None, selection
+
+        try:
+            selected_provider = router.select_provider(method, complexity=complexity)
+        except Exception:
+            selection = {
+                "source": "default",
+                "resolved_provider": explicit_provider,
+                "complexity": complexity,
+                "role": role,
+                "focus_section": focus_section,
+            }
+            self._stage_provider_selection[role] = selection
+            return explicit_provider or None, selection
+
+        resolved_provider = self._normalize_optimizer_provider(getattr(selected_provider, "value", selected_provider))
+        selection = {
+            "source": "upstream_optimizer",
+            "resolved_provider": resolved_provider,
+            "complexity": complexity,
+            "role": role,
+            "focus_section": focus_section,
+        }
+        self._stage_provider_selection[role] = selection
+        return resolved_provider, selection
+
+    def _stage_complexity(self, *, role: str, focus_section: str) -> str:
+        if role == "critic":
+            return "complex"
+        if focus_section in {"claims_for_relief", "affidavit"}:
+            return "complex"
+        if focus_section == "certificate_of_service":
+            return "simple"
+        return "medium"
+
+    def _normalize_optimizer_provider(self, value: Any) -> Optional[str]:
+        text = str(value or "").strip().lower()
+        if not text:
+            return None
+        mapping = {
+            "claude": "anthropic",
+            "gpt4": "openai",
+            "codex": "codex",
+            "copilot": "copilot",
+            "gemini": "gemini",
+            "local": "accelerate",
+            "accelerate": "accelerate",
+            "openai": "openai",
+            "anthropic": "anthropic",
+        }
+        return mapping.get(text, text)
+
+    def _get_upstream_llm_router(self) -> Any:
+        if not UPSTREAM_AGENTIC_AVAILABLE or OptimizerLLMRouter is None:
+            return None
+        if self._upstream_llm_router is None:
+            try:
+                self._upstream_llm_router = OptimizerLLMRouter(enable_tracking=False, enable_caching=True)
+            except Exception:
+                self._upstream_llm_router = None
+        return self._upstream_llm_router
 
     def _apply_actor_payload(
         self,
@@ -660,10 +818,12 @@ class AgenticDocumentOptimizer:
             "effective_provider_name",
             "effective_model_name",
             "router_base_url",
+            "hf_bill_to",
             "arch_router_status",
             "arch_router_selected_route",
             "arch_router_selected_model",
             "arch_router_model_name",
+            "arch_router_error",
             "error",
         )
         metadata = {}
@@ -795,23 +955,35 @@ class AgenticDocumentOptimizer:
     def _rank_candidates(self, *, query: str, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if not candidates:
             return []
+        self._router_usage["ranked_candidate_count"] = int(self._router_usage.get("ranked_candidate_count") or 0) + len(candidates)
+        query_terms = set(query.lower().split())
         router = self._get_embeddings_router()
         if router is None:
-            query_terms = set(query.lower().split())
             ranked = []
             for row in candidates:
                 text = str(row.get("text") or "")
-                score = len(query_terms & set(text.lower().split()))
-                ranked.append({**row, "score": float(score), "ranking_method": "lexical_fallback"})
+                lexical_score = self._lexical_overlap_score(query_terms, text)
+                ranked.append({**row, "score": lexical_score, "lexical_score": lexical_score, "ranking_method": "lexical_fallback"})
             return sorted(ranked, key=lambda row: row.get("score", 0.0), reverse=True)
 
         query_vector = self._embed_text(router, query)
+        self._router_usage["embedding_rankings"] = int(self._router_usage.get("embedding_rankings") or 0) + 1
         ranked = []
         for row in candidates:
             text = str(row.get("text") or "")
             candidate_vector = self._embed_text(router, text)
-            score = self._cosine_similarity(query_vector, candidate_vector)
-            ranked.append({**row, "score": score, "ranking_method": "embeddings_router"})
+            semantic_score = self._cosine_similarity(query_vector, candidate_vector)
+            lexical_score = self._lexical_overlap_score(query_terms, text)
+            score = _clamp((semantic_score * 0.8) + (lexical_score * 0.2), 0.0, 1.0)
+            ranked.append(
+                {
+                    **row,
+                    "score": score,
+                    "semantic_score": semantic_score,
+                    "lexical_score": lexical_score,
+                    "ranking_method": "embeddings_router_hybrid",
+                }
+            )
         return sorted(ranked, key=lambda row: row.get("score", 0.0), reverse=True)
 
     def _get_embeddings_router(self) -> Any:
@@ -819,24 +991,51 @@ class AgenticDocumentOptimizer:
             return None
         if self._embeddings_router is None:
             try:
-                self._embeddings_router = get_embeddings_router()
+                embeddings_config = self.llm_config.get("embeddings") if isinstance(self.llm_config.get("embeddings"), dict) else None
+                if embeddings_config is None and isinstance(self.llm_config.get("embeddings_config"), dict):
+                    embeddings_config = self.llm_config.get("embeddings_config")
+                if embeddings_config:
+                    self._embeddings_router = get_embeddings_router(**dict(embeddings_config))
+                else:
+                    self._embeddings_router = get_embeddings_router()
             except Exception:
                 self._embeddings_router = None
         return self._embeddings_router
 
     def _embed_text(self, router: Any, text: str) -> List[float]:
+        cache_key = str(text or "")
+        cached = self._embedding_cache.get(cache_key)
+        if cached is not None:
+            self._router_usage["embedding_cache_hits"] = int(self._router_usage.get("embedding_cache_hits") or 0) + 1
+            return list(cached)
         for method_name in ("embed_text", "encode", "embed"):
             method = getattr(router, method_name, None)
             if callable(method):
                 try:
+                    self._router_usage["embedding_requests"] = int(self._router_usage.get("embedding_requests") or 0) + 1
                     vector = method(text)
                 except Exception:
                     continue
+                if isinstance(vector, dict):
+                    for key in ("embedding", "vector", "values"):
+                        if isinstance(vector.get(key), (list, tuple)):
+                            vector = vector.get(key)
+                            break
                 if isinstance(vector, list):
-                    return [float(value) for value in vector]
+                    normalized = [float(value) for value in vector]
+                    self._embedding_cache[cache_key] = normalized
+                    return list(normalized)
                 if isinstance(vector, tuple):
-                    return [float(value) for value in vector]
+                    normalized = [float(value) for value in vector]
+                    self._embedding_cache[cache_key] = normalized
+                    return list(normalized)
         return []
+
+    def _lexical_overlap_score(self, query_terms: set[str], text: str) -> float:
+        text_terms = set(str(text or "").lower().split())
+        if not query_terms or not text_terms:
+            return 0.0
+        return len(query_terms & text_terms) / max(len(query_terms), 1)
 
     def _cosine_similarity(self, left: List[float], right: List[float]) -> float:
         if not left or not right:
@@ -868,6 +1067,20 @@ class AgenticDocumentOptimizer:
             "embeddings_router": "available" if EMBEDDINGS_AVAILABLE else "unavailable",
             "ipfs_router": "available" if IPFS_AVAILABLE else "unavailable",
             "optimizers_agentic": "available" if UPSTREAM_AGENTIC_AVAILABLE else "unavailable",
+        }
+
+    def _router_usage_summary(self) -> Dict[str, Any]:
+        return {
+            "llm_calls": int(self._router_usage.get("llm_calls") or 0),
+            "critic_calls": int(self._router_usage.get("critic_calls") or 0),
+            "actor_calls": int(self._router_usage.get("actor_calls") or 0),
+            "embedding_requests": int(self._router_usage.get("embedding_requests") or 0),
+            "embedding_cache_hits": int(self._router_usage.get("embedding_cache_hits") or 0),
+            "embedding_rankings": int(self._router_usage.get("embedding_rankings") or 0),
+            "ranked_candidate_count": int(self._router_usage.get("ranked_candidate_count") or 0),
+            "ipfs_store_attempted": bool(self._router_usage.get("ipfs_store_attempted")),
+            "ipfs_store_succeeded": bool(self._router_usage.get("ipfs_store_succeeded")),
+            "llm_providers_used": list(self._router_usage.get("llm_providers_used") or []),
         }
 
     def _build_packet_projection(self, draft: Dict[str, Any]) -> Dict[str, Any]:
@@ -936,6 +1149,11 @@ class AgenticDocumentOptimizer:
         }
         if not UPSTREAM_AGENTIC_AVAILABLE:
             return metadata
+        metadata["stage_provider_selection"] = {
+            role: dict(selection)
+            for role, selection in self._stage_provider_selection.items()
+            if isinstance(selection, dict)
+        }
         try:
             method_name = "ACTOR_CRITIC"
             selected_method = getattr(OptimizationMethod, method_name, None)
@@ -958,10 +1176,12 @@ class AgenticDocumentOptimizer:
         return metadata
 
     def _store_trace(self, trace_payload: Dict[str, Any]) -> Dict[str, Any]:
+        self._router_usage["ipfs_store_attempted"] = bool(self.persist_artifacts)
         if not self.persist_artifacts or not IPFS_AVAILABLE:
             return {"status": "disabled", "cid": "", "size": 0, "pinned": False}
         encoded = json.dumps(trace_payload, ensure_ascii=True, sort_keys=True, default=str).encode("utf-8")
         result = store_bytes(encoded, pin_content=True)
+        self._router_usage["ipfs_store_succeeded"] = str(result.get("status") or "") == "available" and bool(result.get("cid"))
         return {
             "status": result.get("status") or "",
             "cid": result.get("cid") or "",

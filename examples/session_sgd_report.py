@@ -2,7 +2,7 @@ import argparse
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -215,7 +215,7 @@ def _avg(values: List[float]) -> Optional[float]:
 
 def _write_report(state_dir: str, out_dir: str, sessions: List[SessionSummary]) -> str:
 	os.makedirs(out_dir, exist_ok=True)
-	report_path = os.path.join(out_dir, f"report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json")
+	report_path = os.path.join(out_dir, f"report_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.json")
 
 	ended_counts: Dict[str, int] = {}
 	for s in sessions:
@@ -266,7 +266,7 @@ def _write_report(state_dir: str, out_dir: str, sessions: List[SessionSummary]) 
 		)
 
 	report = {
-		"generated_at": datetime.utcnow().isoformat(),
+		"generated_at": datetime.now(UTC).isoformat(),
 		"state_dir": os.path.abspath(state_dir),
 		"num_sessions": len(sessions),
 		"ended_reason_counts": ended_counts,

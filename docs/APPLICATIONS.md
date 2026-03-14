@@ -322,6 +322,8 @@ Optimization controls:
 - `optimization_llm_config`: optional provider-specific router overrides such as `base_url`, headers, timeouts, or nested routing settings. In the `/document` UI, the advanced JSON editor is merged with the simple router fields, and the simple fields win on conflicts.
 - `optimization_persist_artifacts`: stores the optimization trace through the IPFS adapter and surfaces the resulting CID in the response.
 
+When the `/document` UI is used, the generated preview also renders a compact optimization summary with router availability, router usage diagnostics, upstream optimizer metadata, stage-level provider selection, packet projection counts, initial/final critic review summaries, routed provider/model/source details, trace status, and section-history lines so operators can review the refinement loop without opening the raw JSON payload.
+
 Minimal TXT-only optimization request:
 
 ```json
@@ -442,7 +444,7 @@ Example response fields:
 - `artifacts.txt.path`: filesystem path to the generated plain-text pleading when requested.
 - `artifacts.affidavit_docx.path`, `artifacts.affidavit_pdf.path`, `artifacts.affidavit_txt.path`: filesystem paths to the generated affidavit companion documents when the matching output formats are requested.
 - `artifacts.checklist.path`: filesystem path to the generated plain-text pre-filing checklist artifact when requested, including embedded review URLs for direct remediation follow-up.
-- `document_optimization`: present only when optimization is enabled. The current payload includes `status`, `method`, `optimizer_backend`, `initial_score`, `final_score`, `iteration_count`, `accepted_iterations`, `optimized_sections`, `artifact_cid`, `trace_storage`, `router_status`, `upstream_optimizer`, `packet_projection`, and `section_history`.
+- `document_optimization`: present only when optimization is enabled. The current payload includes `status`, `method`, `optimizer_backend`, `initial_score`, `final_score`, `iteration_count`, `accepted_iterations`, `optimized_sections`, `artifact_cid`, `trace_storage`, `router_status`, `router_usage`, `upstream_optimizer`, `packet_projection`, and `section_history`.
 - `artifacts.*.download_url`: application route for downloading generated artifacts when they were written under the managed output directory.
 - `output_formats`: formats rendered for the request.
 - `generated_at`: UTC timestamp for the export operation.

@@ -8,7 +8,7 @@ import os
 import socket
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -278,7 +278,7 @@ def execute_command(args: argparse.Namespace, mediator: Mediator) -> Dict[str, A
         )
     if args.command == 'enqueue':
         mediator.state.username = args.user_id
-        available_at = datetime.utcnow() + timedelta(seconds=max(float(args.ready_in_seconds), 0.0))
+        available_at = datetime.now(UTC) + timedelta(seconds=max(float(args.ready_in_seconds), 0.0))
         return mediator.enqueue_agentic_scraper_job(
             keywords=args.keywords,
             domains=args.domains,

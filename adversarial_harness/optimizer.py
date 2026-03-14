@@ -7,7 +7,7 @@ Analyzes critic feedback and provides optimization recommendations.
 import logging
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -378,7 +378,7 @@ class Optimizer:
         trend = self._determine_trend(scores)
         
         report = OptimizationReport(
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             num_sessions_analyzed=len(successful),
             average_score=avg_score,
             score_trend=trend,
@@ -589,7 +589,7 @@ class Optimizer:
     def _empty_report(self, num_sessions: int) -> OptimizationReport:
         """Create empty report when no successful sessions."""
         return OptimizationReport(
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             num_sessions_analyzed=0,
             average_score=0.0,
             score_trend="no_data",

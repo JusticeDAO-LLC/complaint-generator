@@ -299,21 +299,35 @@ def _build_huggingface_router_request(
 	)
 	referer = _pop_first_string(call_options, "http_referer", "referer") or headers.pop("HTTP-Referer", "") or headers.pop("Referer", "")
 	app_title = _pop_first_string(call_options, "app_title") or headers.pop("X-Title", "")
+	bill_to = _pop_first_string(call_options, "bill_to", "hf_bill_to") or headers.pop("X-HF-Bill-To", "") or _coalesce_env(
+		"IPFS_DATASETS_PY_HF_BILL_TO",
+		"HF_BILL_TO",
+		"OPENROUTER_HF_BILL_TO",
+	)
 
 	effective_model_name = model_name or _pop_first_string(call_options, "route_model", "fallback_model") or _coalesce_env(
 		"LLM_ROUTER_FALLBACK_MODEL",
 		"IPFS_DATASETS_PY_OPENROUTER_MODEL",
 		"IPFS_DATASETS_PY_LLM_MODEL",
 	) or None
-	route_selection = _select_huggingface_arch_route(
-		prompt,
-		base_url=base_url,
-		api_key=api_key,
-		referer=referer,
-		app_title=app_title,
-		arch_router_config=arch_router_config,
-		fallback_model_name=effective_model_name,
-	)
+	try:
+		route_selection = _select_huggingface_arch_route(
+			prompt,
+			base_url=base_url,
+			api_key=api_key,
+			referer=referer,
+			app_title=app_title,
+			arch_router_config=arch_router_config,
+			fallback_model_name=effective_model_name,
+		)
+	except Exception as exc:
+		route_selection = {
+			"arch_router_status": "fallback_error",
+			"arch_router_selected_route": "",
+			"arch_router_selected_model": str(effective_model_name or ""),
+			"arch_router_model_name": str(arch_router_config.get("model") or HF_ARCH_ROUTER_MODEL),
+			"arch_router_error": str(exc),
+		}
 	selected_model_name = str(route_selection.get("arch_router_selected_model") or "").strip()
 	if selected_model_name:
 		effective_model_name = selected_model_name
@@ -329,12 +343,15 @@ def _build_huggingface_router_request(
 		env_overrides["OPENROUTER_HTTP_REFERER"] = referer
 	if app_title:
 		env_overrides["OPENROUTER_APP_TITLE"] = app_title
+	if bill_to:
+		env_overrides["OPENROUTER_HF_BILL_TO"] = bill_to
 
 	metadata = {
 		"requested_provider_name": provider or "",
 		"effective_provider_name": "openrouter",
 		"effective_model_name": str(effective_model_name or ""),
 		"router_base_url": base_url.rstrip("/"),
+		"hf_bill_to": bill_to,
 		**route_selection,
 	}
 	return "openrouter", effective_model_name, call_options, env_overrides, metadata
