@@ -5,6 +5,7 @@ Iteratively asks questions to fill gaps in the knowledge graph and reduce
 noise/ambiguity in the complaint information.
 """
 
+import hashlib
 import logging
 import re
 from typing import Dict, List, Any, Optional, Tuple, Set
@@ -605,6 +606,170 @@ class ComplaintDenoiser:
         combined = questions + added
         combined.sort(key=lambda q: priority_order.get(q.get('priority', 'low'), 3))
         return combined[:max_questions]
+
+    def _make_question_recommendation_id(
+        self,
+        claim_type: str,
+        lane: str,
+        target_claim_element_id: str,
+        question_text: str,
+    ) -> str:
+        normalized_claim = re.sub(r'[^a-z0-9]+', '_', (claim_type or 'claim').lower()).strip('_') or 'claim'
+        digest = hashlib.sha1(
+            f"{normalized_claim}|{lane}|{target_claim_element_id}|{question_text}".encode('utf-8')
+        ).hexdigest()[:12]
+        return f"question:{normalized_claim}:{digest}"
+
+    def _build_review_question_recommendation(
+        self,
+        *,
+        claim_type: str,
+        lane: str,
+        target_claim_element_id: str,
+        target_claim_element_text: str,
+        question_text: str,
+        question_reason: str,
+        expected_proof_gain: str,
+        supporting_evidence_summary: str,
+        current_status: str,
+        missing_support_kinds: Optional[List[str]] = None,
+        contradiction_fact_ids: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        normalized_text = self._with_empathy(question_text, lane)
+        return {
+            'question_id': self._make_question_recommendation_id(
+                claim_type,
+                lane,
+                target_claim_element_id,
+                normalized_text,
+            ),
+            'question_text': normalized_text,
+            'target_claim_type': claim_type,
+            'target_claim_element_id': target_claim_element_id,
+            'target_claim_element_text': target_claim_element_text,
+            'question_lane': lane,
+            'question_reason': question_reason,
+            'expected_proof_gain': expected_proof_gain,
+            'supporting_evidence_summary': supporting_evidence_summary,
+            'current_status': current_status,
+            'missing_support_kinds': list(missing_support_kinds or []),
+            'contradiction_fact_ids': list(contradiction_fact_ids or []),
+            'suppression_key': self._normalize_question_text(normalized_text),
+        }
+
+    def generate_review_question_recommendations(
+        self,
+        claim_type: str,
+        gap_claim: Optional[Dict[str, Any]] = None,
+        contradiction_claim: Optional[Dict[str, Any]] = None,
+        max_questions: int = 6,
+    ) -> List[Dict[str, Any]]:
+        recommendations: List[Dict[str, Any]] = []
+        seen_keys: Set[str] = set()
+        normalized_claim_type = (claim_type or 'claim').strip() or 'claim'
+
+        contradiction_candidates = []
+        if isinstance(contradiction_claim, dict):
+            contradiction_candidates = contradiction_claim.get('candidates', []) or []
+        for candidate in contradiction_candidates:
+            if not isinstance(candidate, dict):
+                continue
+            element_id = str(candidate.get('claim_element_id') or '')
+            element_text = str(candidate.get('claim_element_text') or element_id or 'this element')
+            overlap_terms = list(candidate.get('overlap_terms', []) or [])
+            overlap_snippet = ', '.join(overlap_terms[:3]) if overlap_terms else 'the current support record'
+            recommendation = self._build_review_question_recommendation(
+                claim_type=normalized_claim_type,
+                lane='contradiction_resolution',
+                target_claim_element_id=element_id,
+                target_claim_element_text=element_text,
+                question_text=(
+                    f"The current support for {element_text} conflicts. Which version is correct, "
+                    "and what source best supports it?"
+                ),
+                question_reason=(
+                    f"Resolve a contradiction before collecting more support for {element_text}. "
+                    f"The conflicting records overlap on {overlap_snippet}."
+                ),
+                expected_proof_gain='high',
+                supporting_evidence_summary=(
+                    f"Conflicting facts: {len(candidate.get('fact_ids', []) or [])}"
+                ),
+                current_status='contradicted',
+                contradiction_fact_ids=candidate.get('fact_ids', []),
+            )
+            if recommendation['suppression_key'] in seen_keys:
+                continue
+            seen_keys.add(recommendation['suppression_key'])
+            recommendations.append(recommendation)
+            if len(recommendations) >= max_questions:
+                return recommendations[:max_questions]
+
+        unresolved_elements = []
+        if isinstance(gap_claim, dict):
+            unresolved_elements = gap_claim.get('unresolved_elements', []) or []
+        for element in unresolved_elements:
+            if not isinstance(element, dict):
+                continue
+            element_id = str(element.get('element_id') or '')
+            element_text = str(element.get('element_text') or element_id or 'this element')
+            status = str(element.get('status') or 'missing')
+            missing_support_kinds = [
+                str(kind) for kind in (element.get('missing_support_kinds', []) or []) if kind
+            ]
+            total_links = int(element.get('total_links', 0) or 0)
+            fact_count = int(element.get('fact_count', 0) or 0)
+            recommended_action = str(element.get('recommended_action') or '')
+
+            lane = 'testimony'
+            if recommended_action == 'improve_parse_quality':
+                lane = 'document_request'
+            elif missing_support_kinds == ['authority']:
+                lane = 'authority_clarification'
+            elif 'evidence' in missing_support_kinds or total_links == 0 or fact_count == 0:
+                lane = 'testimony'
+            elif 'authority' in missing_support_kinds:
+                lane = 'authority_clarification'
+
+            if lane == 'document_request':
+                question_text = f"Do you have a document, message, timeline, or record that supports {element_text}?"
+                question_reason = (
+                    f"{element_text} has some support, but the current records indicate a parse or source-quality gap."
+                )
+            elif lane == 'authority_clarification':
+                question_text = f"Is there a rule, policy, statute, or case that clearly supports {element_text}?"
+                question_reason = (
+                    f"{element_text} is still missing authority support needed for legal review."
+                )
+            else:
+                question_text = f"What specific facts can you provide to support {element_text}?"
+                question_reason = (
+                    f"{element_text} is unresolved and needs clearer testimony or factual detail."
+                )
+
+            recommendation = self._build_review_question_recommendation(
+                claim_type=normalized_claim_type,
+                lane=lane,
+                target_claim_element_id=element_id,
+                target_claim_element_text=element_text,
+                question_text=question_text,
+                question_reason=question_reason,
+                expected_proof_gain='high' if status == 'missing' else 'medium',
+                supporting_evidence_summary=(
+                    f"Current support: {total_links} links, {fact_count} facts"
+                    + (f"; missing {', '.join(missing_support_kinds)}" if missing_support_kinds else '')
+                ),
+                current_status=status,
+                missing_support_kinds=missing_support_kinds,
+            )
+            if recommendation['suppression_key'] in seen_keys:
+                continue
+            seen_keys.add(recommendation['suppression_key'])
+            recommendations.append(recommendation)
+            if len(recommendations) >= max_questions:
+                break
+
+        return recommendations[:max_questions]
     
     def generate_questions(self, 
                           knowledge_graph: KnowledgeGraph,

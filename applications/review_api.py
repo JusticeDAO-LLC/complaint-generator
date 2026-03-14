@@ -2,12 +2,16 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, FastAPI, Response
 from claim_support_review import (
+    ClaimSupportDocumentSaveRequest,
     ClaimSupportFollowUpExecuteRequest,
     ClaimSupportManualReviewResolveRequest,
     ClaimSupportReviewRequest,
+    ClaimSupportTestimonySaveRequest,
+    build_claim_support_document_payload,
     build_claim_support_follow_up_execution_payload,
     build_claim_support_manual_review_resolution_payload,
     build_claim_support_review_payload,
+    build_claim_support_testimony_payload,
 )
 from .document_api import attach_document_routes
 
@@ -66,6 +70,18 @@ def create_claim_support_review_router(mediator: Any) -> APIRouter:
         request: ClaimSupportManualReviewResolveRequest,
     ) -> Dict[str, Any]:
         return build_claim_support_manual_review_resolution_payload(mediator, request)
+
+    @router.post("/api/claim-support/save-testimony")
+    async def claim_support_save_testimony(
+        request: ClaimSupportTestimonySaveRequest,
+    ) -> Dict[str, Any]:
+        return build_claim_support_testimony_payload(mediator, request)
+
+    @router.post("/api/claim-support/save-document")
+    async def claim_support_save_document(
+        request: ClaimSupportDocumentSaveRequest,
+    ) -> Dict[str, Any]:
+        return build_claim_support_document_payload(mediator, request)
 
     return router
 

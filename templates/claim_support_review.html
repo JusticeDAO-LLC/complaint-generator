@@ -402,7 +402,9 @@
         }
 
         .element-list,
-        .task-list {
+        .task-list,
+        .question-list,
+        .testimony-list {
             display: grid;
             gap: 12px;
         }
@@ -878,6 +880,108 @@
                             <div class="chip-row" id="signal-follow-up-source-context-chips"></div>
                         </div>
                     </div>
+                </div>
+
+                <div class="focus-block" data-section-focus-target="claims_for_relief requested_relief">
+                    <h2 style="margin-top: 18px;">Question Queue</h2>
+                    <div class="question-list" id="question-list"></div>
+                </div>
+
+                <div class="focus-block" data-section-focus-target="summary_of_facts claims_for_relief requested_relief">
+                    <h2 style="margin-top: 18px;">Testimony Intake</h2>
+                    <div class="chip-row" id="testimony-summary-chips"></div>
+                    <div class="control-grid" style="margin-top: 12px;">
+                        <div>
+                            <label for="testimony-element-id">Claim Element ID</label>
+                            <input id="testimony-element-id" type="text" placeholder="retaliation:2">
+                        </div>
+                        <div>
+                            <label for="testimony-element-text">Claim Element</label>
+                            <input id="testimony-element-text" type="text" placeholder="Adverse action">
+                        </div>
+                        <div>
+                            <label for="testimony-event-date">Event Date</label>
+                            <input id="testimony-event-date" type="text" placeholder="2026-03-14 or March 14, 2026">
+                        </div>
+                        <div>
+                            <label for="testimony-actor">Actor</label>
+                            <input id="testimony-actor" type="text" placeholder="Manager or employer name">
+                        </div>
+                        <div>
+                            <label for="testimony-act">Act</label>
+                            <input id="testimony-act" type="text" placeholder="Termination, threat, denial, report">
+                        </div>
+                        <div>
+                            <label for="testimony-target">Target</label>
+                            <input id="testimony-target" type="text" placeholder="Employee, complaint, leave request">
+                        </div>
+                        <div>
+                            <label for="testimony-harm">Harm</label>
+                            <input id="testimony-harm" type="text" placeholder="Lost pay, retaliation, distress">
+                        </div>
+                        <div>
+                            <label for="testimony-confidence">Source Confidence</label>
+                            <input id="testimony-confidence" type="number" min="0" max="1" step="0.05" placeholder="0.85">
+                        </div>
+                        <div>
+                            <label for="testimony-firsthand-status">Firsthand Status</label>
+                            <select id="testimony-firsthand-status">
+                                <option value="firsthand">firsthand</option>
+                                <option value="hearsay">hearsay</option>
+                                <option value="uncertain">uncertain</option>
+                                <option value="unknown">unknown</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="margin-top: 12px;">
+                        <label for="testimony-narrative">Raw Narrative</label>
+                        <textarea id="testimony-narrative" placeholder="Describe the event in the witness or claimant's own words."></textarea>
+                    </div>
+                    <div class="button-row" style="margin-top: 14px;">
+                        <button class="button-secondary" id="save-testimony-button" type="button">Save Testimony</button>
+                        <button class="button-tertiary" id="clear-testimony-button" type="button">Clear Testimony Form</button>
+                    </div>
+                    <div class="testimony-list" id="testimony-list"></div>
+                </div>
+
+                <div class="focus-block" data-section-focus-target="summary_of_facts exhibits claims_for_relief">
+                    <h2 style="margin-top: 18px;">Document Intake</h2>
+                    <div class="chip-row" id="document-summary-chips"></div>
+                    <div class="control-grid" style="margin-top: 12px;">
+                        <div>
+                            <label for="document-element-id">Claim Element ID</label>
+                            <input id="document-element-id" type="text" placeholder="retaliation:2">
+                        </div>
+                        <div>
+                            <label for="document-element-text">Claim Element</label>
+                            <input id="document-element-text" type="text" placeholder="Adverse action">
+                        </div>
+                        <div>
+                            <label for="document-label">Document Label</label>
+                            <input id="document-label" type="text" placeholder="Termination email or HR complaint">
+                        </div>
+                        <div>
+                            <label for="document-filename">Filename</label>
+                            <input id="document-filename" type="text" placeholder="termination-email.txt">
+                        </div>
+                        <div>
+                            <label for="document-source-url">Source URL</label>
+                            <input id="document-source-url" type="text" placeholder="https://example.com/record.pdf">
+                        </div>
+                        <div>
+                            <label for="document-mime-type">MIME Type</label>
+                            <input id="document-mime-type" type="text" placeholder="text/plain or application/pdf">
+                        </div>
+                    </div>
+                    <div style="margin-top: 12px;">
+                        <label for="document-text">Document Text</label>
+                        <textarea id="document-text" placeholder="Paste the document text here. The dashboard will parse, chunk, and graph it through the shared evidence pipeline."></textarea>
+                    </div>
+                    <div class="button-row" style="margin-top: 14px;">
+                        <button class="button-secondary" id="save-document-button" type="button">Save Document</button>
+                        <button class="button-tertiary" id="clear-document-button" type="button">Clear Document Form</button>
+                    </div>
+                    <div class="testimony-list" id="document-list"></div>
                 </div>
 
                 <div class="focus-block" data-section-focus-target="claims_for_relief requested_relief">
@@ -1969,6 +2073,284 @@
             }).join('');
         }
 
+        function renderQuestionRecommendations(recommendations) {
+            const container = document.getElementById('question-list');
+            const items = Array.isArray(recommendations) ? recommendations : [];
+            if (!items.length) {
+                container.innerHTML = '<div class="task-card">No targeted questions are available yet.</div>';
+                return;
+            }
+
+            container.innerHTML = items.map((recommendation) => `
+                <article class="task-card">
+                    <div class="row-head">
+                        <div>
+                            <div class="row-title">${recommendation.target_claim_element_text || recommendation.target_claim_element_id || 'Claim element'}</div>
+                            <div class="meta">lane=${recommendation.question_lane || 'testimony'} proof_gain=${recommendation.expected_proof_gain || 'medium'}</div>
+                        </div>
+                        <span class="badge ${recommendation.current_status || 'missing'}">${recommendation.current_status || 'open'}</span>
+                    </div>
+                    <div>${recommendation.question_text || ''}</div>
+                    <div class="chip-row" style="margin-top: 10px;">
+                        <span class="chip">${recommendation.question_reason || 'Clarify unresolved support.'}</span>
+                        ${recommendation.supporting_evidence_summary ? `<span class="chip">${recommendation.supporting_evidence_summary}</span>` : ''}
+                        ${(recommendation.missing_support_kinds || []).map((kind) => `<span class="chip">missing ${kind}</span>`).join('')}
+                    </div>
+                    <div class="button-row" style="margin-top: 12px;">
+                        <button
+                            class="button-tertiary prefill-testimony-button"
+                            type="button"
+                            data-claim-element-id="${recommendation.target_claim_element_id || ''}"
+                            data-claim-element-text="${recommendation.target_claim_element_text || ''}"
+                            data-question-text="${(recommendation.question_text || '').replace(/"/g, '&quot;')}"
+                        >Load Into Testimony Form</button>
+                    </div>
+                </article>
+            `).join('');
+        }
+
+        function renderTestimonyRecords(records, summary) {
+            const summaryChips = document.getElementById('testimony-summary-chips');
+            const list = document.getElementById('testimony-list');
+            const summaryLabels = [];
+            if (summary && typeof summary === 'object') {
+                summaryLabels.push(`Records: ${Number(summary.record_count || 0)}`);
+                summaryLabels.push(`Linked elements: ${Number(summary.linked_element_count || 0)}`);
+                Object.entries(summary.firsthand_status_counts || {}).forEach(([label, count]) => {
+                    summaryLabels.push(`${label}: ${count}`);
+                });
+                Object.entries(summary.confidence_bucket_counts || {}).forEach(([label, count]) => {
+                    summaryLabels.push(`confidence ${label}: ${count}`);
+                });
+            }
+            summaryChips.innerHTML = summaryLabels.length
+                ? summaryLabels.map((label) => `<span class="chip">${label}</span>`).join('')
+                : '<span class="chip">No testimony saved yet.</span>';
+
+            const items = Array.isArray(records) ? records : [];
+            if (!items.length) {
+                list.innerHTML = '<div class="history-card">No testimony records saved yet.</div>';
+                return;
+            }
+
+            list.innerHTML = items.map((record) => `
+                <article class="history-card">
+                    <div class="row-head">
+                        <div>
+                            <div class="row-title">${record.claim_element_text || record.claim_element_id || 'Unlinked testimony'}</div>
+                            <div class="meta">${record.timestamp || 'no timestamp'}${record.event_date ? ` · event ${record.event_date}` : ''}</div>
+                        </div>
+                    </div>
+                    <div class="chip-row">
+                        ${record.firsthand_status ? `<span class="chip">${record.firsthand_status}</span>` : ''}
+                        ${record.actor ? `<span class="chip">actor: ${record.actor}</span>` : ''}
+                        ${record.act ? `<span class="chip">act: ${record.act}</span>` : ''}
+                        ${record.target ? `<span class="chip">target: ${record.target}</span>` : ''}
+                        ${record.harm ? `<span class="chip">harm: ${record.harm}</span>` : ''}
+                        ${record.source_confidence !== null && record.source_confidence !== undefined ? `<span class="chip">confidence: ${record.source_confidence}</span>` : ''}
+                    </div>
+                    <div style="margin-top: 10px;">${record.raw_narrative || 'No narrative recorded.'}</div>
+                </article>
+            `).join('');
+        }
+
+        function clearTestimonyForm() {
+            document.getElementById('testimony-element-id').value = '';
+            document.getElementById('testimony-element-text').value = '';
+            document.getElementById('testimony-event-date').value = '';
+            document.getElementById('testimony-actor').value = '';
+            document.getElementById('testimony-act').value = '';
+            document.getElementById('testimony-target').value = '';
+            document.getElementById('testimony-harm').value = '';
+            document.getElementById('testimony-confidence').value = '';
+            document.getElementById('testimony-firsthand-status').value = 'firsthand';
+            document.getElementById('testimony-narrative').value = '';
+        }
+
+        function prefillTestimonyForm(values) {
+            if (values.claimElementId) {
+                document.getElementById('testimony-element-id').value = values.claimElementId;
+            }
+            if (values.claimElementText) {
+                document.getElementById('testimony-element-text').value = values.claimElementText;
+            }
+            if (values.questionText) {
+                const narrative = document.getElementById('testimony-narrative');
+                if (!narrative.value.trim()) {
+                    narrative.value = values.questionText;
+                }
+            }
+        }
+
+        function buildTestimonyRequest() {
+            const confidenceValue = document.getElementById('testimony-confidence').value;
+            const parsedConfidence = confidenceValue === '' ? null : Number(confidenceValue);
+            return {
+                claim_type: document.getElementById('claim-type').value.trim() || null,
+                user_id: document.getElementById('user-id').value.trim() || null,
+                claim_element_id: document.getElementById('testimony-element-id').value.trim() || null,
+                claim_element: document.getElementById('testimony-element-text').value.trim() || null,
+                raw_narrative: document.getElementById('testimony-narrative').value.trim() || null,
+                event_date: document.getElementById('testimony-event-date').value.trim() || null,
+                actor: document.getElementById('testimony-actor').value.trim() || null,
+                act: document.getElementById('testimony-act').value.trim() || null,
+                target: document.getElementById('testimony-target').value.trim() || null,
+                harm: document.getElementById('testimony-harm').value.trim() || null,
+                firsthand_status: document.getElementById('testimony-firsthand-status').value || 'unknown',
+                source_confidence: Number.isFinite(parsedConfidence) ? parsedConfidence : null,
+                required_support_kinds: parseRequiredSupportKinds(),
+                include_support_summary: document.getElementById('include-support').checked,
+                include_overview: document.getElementById('include-overview').checked,
+                include_follow_up_plan: document.getElementById('include-plan').checked,
+                include_post_save_review: true,
+            };
+        }
+
+        async function saveTestimony() {
+            const payload = buildTestimonyRequest();
+            const hasContent = [
+                payload.raw_narrative,
+                payload.event_date,
+                payload.actor,
+                payload.act,
+                payload.target,
+                payload.harm,
+            ].some((value) => Boolean(value));
+            if (!hasContent) {
+                setStatus('Add narrative or structured testimony details before saving.');
+                return;
+            }
+            syncReviewIntentUrl(persistReviewIntent(payload));
+            setStatus('Saving testimony...');
+            try {
+                const result = await postJson('/api/claim-support/save-testimony', payload);
+                renderPayload(result.post_save_review || result);
+                document.getElementById('raw-output').textContent = JSON.stringify(result, null, 2);
+                if (result && result.recorded) {
+                    clearTestimonyForm();
+                    setStatus('Testimony saved and review payload refreshed.');
+                } else {
+                    const error = (result && result.testimony_result && result.testimony_result.error) || result.error || 'unknown error';
+                    setStatus(`Testimony was not saved: ${error}`);
+                }
+            } catch (error) {
+                setStatus(`Testimony save failed: ${error.message}`);
+            }
+        }
+
+        function renderDocumentArtifacts(records, summary) {
+            const summaryChips = document.getElementById('document-summary-chips');
+            const list = document.getElementById('document-list');
+            const summaryLabels = [];
+            if (summary && typeof summary === 'object') {
+                summaryLabels.push(`Documents: ${Number(summary.record_count || 0)}`);
+                summaryLabels.push(`Linked elements: ${Number(summary.linked_element_count || 0)}`);
+                summaryLabels.push(`Chunks: ${Number(summary.total_chunk_count || 0)}`);
+                summaryLabels.push(`Low quality: ${Number(summary.low_quality_record_count || 0)}`);
+                Object.entries(summary.parse_status_counts || {}).forEach(([label, count]) => {
+                    summaryLabels.push(`${label}: ${count}`);
+                });
+            }
+            summaryChips.innerHTML = summaryLabels.length
+                ? summaryLabels.map((label) => `<span class="chip">${label}</span>`).join('')
+                : '<span class="chip">No documents saved yet.</span>';
+
+            const items = Array.isArray(records) ? records : [];
+            if (!items.length) {
+                list.innerHTML = '<div class="history-card">No document artifacts saved yet.</div>';
+                return;
+            }
+
+            list.innerHTML = items.map((record) => {
+                const parseMetadata = record.parse_metadata || {};
+                const chunkPreviews = Array.isArray(record.chunk_previews) ? record.chunk_previews : [];
+                return `
+                    <article class="history-card">
+                        <div class="row-head">
+                            <div>
+                                <div class="row-title">${record.description || record.filename || record.source_url || record.cid || 'Document artifact'}</div>
+                                <div class="meta">${record.timestamp || 'no timestamp'} · parse ${record.parse_status || 'unknown'} · chunks ${record.chunk_count || 0}</div>
+                            </div>
+                        </div>
+                        <div class="chip-row">
+                            ${record.claim_element_text ? `<span class="chip">${record.claim_element_text}</span>` : ''}
+                            ${record.evidence_type ? `<span class="chip">type: ${record.evidence_type}</span>` : ''}
+                            ${parseMetadata.quality_tier ? `<span class="chip">quality: ${parseMetadata.quality_tier}</span>` : ''}
+                            ${record.graph_status ? `<span class="chip">graph: ${record.graph_status}</span>` : ''}
+                            ${record.fact_count !== null && record.fact_count !== undefined ? `<span class="chip">facts: ${record.fact_count}</span>` : ''}
+                        </div>
+                        <div style="margin-top: 10px;">${record.parsed_text_preview || 'No parsed preview available.'}</div>
+                        ${chunkPreviews.length ? `
+                            <details class="packet-details" style="margin-top: 12px;">
+                                <summary>Chunk previews (${chunkPreviews.length})</summary>
+                                <div class="packet-list">
+                                    ${chunkPreviews.map((chunk) => `
+                                        <div class="packet-card">
+                                            <div class="packet-card-title">${chunk.chunk_id || `chunk-${chunk.index || 0}`}</div>
+                                            <div class="packet-card-meta">${chunk.text || ''}</div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </details>
+                        ` : ''}
+                    </article>
+                `;
+            }).join('');
+        }
+
+        function clearDocumentForm() {
+            document.getElementById('document-element-id').value = '';
+            document.getElementById('document-element-text').value = '';
+            document.getElementById('document-label').value = '';
+            document.getElementById('document-filename').value = '';
+            document.getElementById('document-source-url').value = '';
+            document.getElementById('document-mime-type').value = '';
+            document.getElementById('document-text').value = '';
+        }
+
+        function buildDocumentRequest() {
+            return {
+                claim_type: document.getElementById('claim-type').value.trim() || null,
+                user_id: document.getElementById('user-id').value.trim() || null,
+                claim_element_id: document.getElementById('document-element-id').value.trim() || null,
+                claim_element: document.getElementById('document-element-text').value.trim() || null,
+                document_label: document.getElementById('document-label').value.trim() || null,
+                filename: document.getElementById('document-filename').value.trim() || null,
+                source_url: document.getElementById('document-source-url').value.trim() || null,
+                mime_type: document.getElementById('document-mime-type').value.trim() || null,
+                document_text: document.getElementById('document-text').value.trim() || null,
+                required_support_kinds: parseRequiredSupportKinds(),
+                include_support_summary: document.getElementById('include-support').checked,
+                include_overview: document.getElementById('include-overview').checked,
+                include_follow_up_plan: document.getElementById('include-plan').checked,
+                include_post_save_review: true,
+            };
+        }
+
+        async function saveDocument() {
+            const payload = buildDocumentRequest();
+            if (!payload.document_text) {
+                setStatus('Paste document text before saving.');
+                return;
+            }
+            syncReviewIntentUrl(persistReviewIntent(payload));
+            setStatus('Saving document...');
+            try {
+                const result = await postJson('/api/claim-support/save-document', payload);
+                renderPayload(result.post_save_review || result);
+                document.getElementById('raw-output').textContent = JSON.stringify(result, null, 2);
+                if (result && result.recorded) {
+                    clearDocumentForm();
+                    setStatus('Document saved and review payload refreshed.');
+                } else {
+                    const error = (result && result.document_result && result.document_result.error) || result.error || 'unknown error';
+                    setStatus(`Document was not saved: ${error}`);
+                }
+            } catch (error) {
+                setStatus(`Document save failed: ${error.message}`);
+            }
+        }
+
         function extractPrimaryClaim(payload) {
             const claimType = document.getElementById('claim-type').value.trim();
             const coverageClaims = payload.claim_coverage_summary || {};
@@ -1996,9 +2378,17 @@
             const planSummary = primary.planSummaryClaims[claimType] || null;
             const historyEntries = primary.historyClaims[claimType] || [];
             const historySummary = primary.historySummaryClaims[claimType] || null;
+            const questionRecommendations = ((payload.question_recommendations || {})[claimType]) || [];
+            const testimonyRecords = ((payload.testimony_records || {})[claimType]) || [];
+            const testimonySummary = ((payload.testimony_summary || {})[claimType]) || null;
+            const documentArtifacts = ((payload.document_artifacts || {})[claimType]) || [];
+            const documentSummary = ((payload.document_summary || {})[claimType]) || null;
 
             setSummary(summary, planSummary);
             setFollowUpSignals(planSummary, historySummary);
+            renderQuestionRecommendations(questionRecommendations);
+            renderTestimonyRecords(testimonyRecords, testimonySummary);
+            renderDocumentArtifacts(documentArtifacts, documentSummary);
             renderElements(matrix.elements || []);
             renderTasks(plan, planSummary);
             renderHistory(historyEntries, historySummary);
@@ -2072,6 +2462,10 @@
         document.getElementById('execute-button').addEventListener('click', executeFollowUp);
         document.getElementById('resolve-button').addEventListener('click', resolveManualReview);
         document.getElementById('clear-resolution-button').addEventListener('click', clearResolutionForm);
+        document.getElementById('save-testimony-button').addEventListener('click', saveTestimony);
+        document.getElementById('clear-testimony-button').addEventListener('click', clearTestimonyForm);
+        document.getElementById('save-document-button').addEventListener('click', saveDocument);
+        document.getElementById('clear-document-button').addEventListener('click', clearDocumentForm);
         document.addEventListener('click', (event) => {
             const urlActionButton = event.target.closest('[data-packet-url-action]');
             if (urlActionButton) {
@@ -2101,14 +2495,24 @@
                 return;
             }
             const button = event.target.closest('.prefill-resolution-button');
-            if (!button) return;
-            prefillResolutionForm({
-                claimElementId: button.dataset.claimElementId || '',
-                claimElementText: button.dataset.claimElementText || '',
-                relatedExecutionId: button.dataset.relatedExecutionId || '',
-                resolutionStatus: button.dataset.resolutionStatus || '',
+            if (button) {
+                prefillResolutionForm({
+                    claimElementId: button.dataset.claimElementId || '',
+                    claimElementText: button.dataset.claimElementText || '',
+                    relatedExecutionId: button.dataset.relatedExecutionId || '',
+                    resolutionStatus: button.dataset.resolutionStatus || '',
+                });
+                setStatus('Resolution form prefilled from selected follow-up item.');
+                return;
+            }
+            const testimonyButton = event.target.closest('.prefill-testimony-button');
+            if (!testimonyButton) return;
+            prefillTestimonyForm({
+                claimElementId: testimonyButton.dataset.claimElementId || '',
+                claimElementText: testimonyButton.dataset.claimElementText || '',
+                questionText: testimonyButton.dataset.questionText || '',
             });
-            setStatus('Resolution form prefilled from selected follow-up item.');
+            setStatus('Testimony form prefilled from selected question.');
         });
         if (applyQueryPrefill()) {
             setStatus('Review prefilled from document workflow.');

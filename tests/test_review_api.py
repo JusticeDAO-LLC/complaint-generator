@@ -5,14 +5,18 @@ from datetime import datetime, timezone
 
 from fastapi import Response
 from claim_support_review import (
+    ClaimSupportDocumentSaveRequest,
     ClaimSupportFollowUpExecuteRequest,
     ClaimSupportManualReviewResolveRequest,
     ClaimSupportReviewRequest,
+    ClaimSupportTestimonySaveRequest,
     _summarize_follow_up_execution_claim,
     _summarize_follow_up_plan_claim,
+    build_claim_support_document_payload,
     build_claim_support_follow_up_execution_payload,
     build_claim_support_manual_review_resolution_payload,
     build_claim_support_review_payload,
+    build_claim_support_testimony_payload,
 )
 from applications.review_api import (
     REVIEW_EXECUTION_SUNSET,
@@ -292,6 +296,64 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 ]
             }
         }
+        mediator.get_claim_testimony_records.return_value = {
+            "claims": {
+                "retaliation": [
+                    {
+                        "testimony_id": "testimony:retaliation:001",
+                        "claim_type": "retaliation",
+                        "claim_element_id": "retaliation:1",
+                        "claim_element_text": "Protected activity",
+                        "raw_narrative": "I reported discrimination to HR before my supervisor retaliated.",
+                        "event_date": "2026-03-10",
+                        "actor": "HR",
+                        "act": "received complaint",
+                        "target": "discrimination report",
+                        "harm": "retaliation followed",
+                        "firsthand_status": "firsthand",
+                        "source_confidence": 0.92,
+                        "timestamp": "2026-03-12T11:00:00+00:00",
+                    }
+                ]
+            },
+            "summary": {
+                "retaliation": {
+                    "record_count": 1,
+                    "linked_element_count": 1,
+                    "firsthand_status_counts": {"firsthand": 1},
+                    "confidence_bucket_counts": {"high": 1},
+                    "latest_timestamp": "2026-03-12T11:00:00+00:00",
+                }
+            },
+        }
+        mediator.get_user_evidence.return_value = [
+            {
+                "id": 81,
+                "cid": "QmDashboardDoc1",
+                "type": "document",
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:1",
+                "claim_element": "Protected activity",
+                "description": "HR complaint memo",
+                "timestamp": "2026-03-12T11:45:00+00:00",
+                "source_url": "https://example.com/hr-memo",
+                "parse_status": "parsed",
+                "chunk_count": 3,
+                "fact_count": 2,
+                "parsed_text_preview": "Employee reported discrimination to HR in writing.",
+                "parse_metadata": {
+                    "quality_tier": "high",
+                    "quality_score": 94.0,
+                },
+                "graph_status": "ready",
+                "graph_entity_count": 4,
+                "graph_relationship_count": 2,
+            }
+        ]
+        mediator.get_evidence_chunks.return_value = [
+            {"chunk_id": "chunk-0", "index": 0, "text": "Employee reported discrimination to HR."},
+            {"chunk_id": "chunk-1", "index": 1, "text": "The memo was sent the same day."},
+        ]
         mediator.summarize_claim_support.return_value = {
             "claims": {
                 "retaliation": {
@@ -509,6 +571,14 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "retention_limits": [],
             "total_pruned_snapshot_count": 0,
         }
+        assert payload["question_recommendations"]["retaliation"][0]["question_lane"] == "contradiction_resolution"
+        assert payload["testimony_summary"]["retaliation"]["record_count"] == 1
+        assert payload["document_summary"]["retaliation"]["record_count"] == 1
+        assert payload["document_summary"]["retaliation"]["total_chunk_count"] == 3
+        assert payload["claim_coverage_summary"]["retaliation"]["testimony_record_count"] == 1
+        assert payload["claim_coverage_summary"]["retaliation"]["document_record_count"] == 1
+        assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["testimony_record_count"] == 1
+        assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["document_record_count"] == 1
         assert payload["follow_up_history"]["retaliation"][0]["support_kind"] == "manual_review"
         assert payload["follow_up_history_summary"]["retaliation"] == {
             "total_entry_count": 2,
@@ -1613,6 +1683,18 @@ def test_claim_support_review_endpoint_is_registered_on_app():
         if hasattr(route, "methods")
     )
     assert any(
+        route.path == "/api/claim-support/save-testimony"
+        and "POST" in route.methods
+        for route in app.routes
+        if hasattr(route, "methods")
+    )
+    assert any(
+        route.path == "/api/claim-support/save-document"
+        and "POST" in route.methods
+        for route in app.routes
+        if hasattr(route, "methods")
+    )
+    assert any(
         route.path == "/api/documents/formal-complaint"
         and "POST" in route.methods
         for route in app.routes
@@ -1623,6 +1705,157 @@ def test_claim_support_review_endpoint_is_registered_on_app():
         and "GET" in route.methods
         for route in app.routes
         if hasattr(route, "methods")
+    )
+
+
+def test_claim_support_testimony_payload_persists_and_refreshes_review():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.save_claim_testimony_record.return_value = {
+        "recorded": True,
+        "testimony_id": "testimony:retaliation:abc123",
+    }
+    mediator.get_claim_coverage_matrix.return_value = {
+        "claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}
+    }
+    mediator.get_claim_overview.return_value = {"claims": {"retaliation": {}}}
+    mediator.get_claim_support_diagnostic_snapshots.return_value = {"claims": {}}
+    mediator.get_claim_support_gaps.return_value = {"claims": {"retaliation": {"unresolved_elements": []}}}
+    mediator.get_claim_contradiction_candidates.return_value = {"claims": {"retaliation": {"candidates": []}}}
+    mediator.get_claim_support_validation.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_recent_claim_follow_up_execution.return_value = {"claims": {"retaliation": []}}
+    mediator.get_claim_follow_up_plan.return_value = {"claims": {"retaliation": {"tasks": []}}}
+    mediator.get_claim_testimony_records.return_value = {
+        "claims": {
+            "retaliation": [
+                {
+                    "testimony_id": "testimony:retaliation:abc123",
+                    "claim_type": "retaliation",
+                    "claim_element_id": "retaliation:2",
+                    "claim_element_text": "Adverse action",
+                    "raw_narrative": "My supervisor cut my hours after I complained.",
+                    "firsthand_status": "firsthand",
+                    "source_confidence": 0.9,
+                    "timestamp": "2026-03-14T12:00:00+00:00",
+                }
+            ]
+        },
+        "summary": {
+            "retaliation": {
+                "record_count": 1,
+                "linked_element_count": 1,
+                "firsthand_status_counts": {"firsthand": 1},
+                "confidence_bucket_counts": {"high": 1},
+            }
+        },
+    }
+    mediator.get_user_evidence.return_value = []
+    mediator.summarize_claim_support.return_value = {"claims": {"retaliation": {}}}
+
+    payload = build_claim_support_testimony_payload(
+        mediator,
+        ClaimSupportTestimonySaveRequest(
+            claim_type="retaliation",
+            claim_element_id="retaliation:2",
+            claim_element="Adverse action",
+            raw_narrative="My supervisor cut my hours after I complained.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        ),
+    )
+
+    assert payload["recorded"] is True
+    assert payload["testimony_result"]["testimony_id"] == "testimony:retaliation:abc123"
+    assert payload["post_save_review"]["testimony_summary"]["retaliation"]["record_count"] == 1
+    mediator.save_claim_testimony_record.assert_called_once_with(
+        claim_type="retaliation",
+        user_id="state-user",
+        claim_element_id="retaliation:2",
+        claim_element_text="Adverse action",
+        raw_narrative="My supervisor cut my hours after I complained.",
+        event_date=None,
+        actor=None,
+        act=None,
+        target=None,
+        harm=None,
+        firsthand_status="firsthand",
+        source_confidence=0.9,
+        metadata={},
+    )
+
+
+def test_claim_support_document_payload_persists_and_refreshes_review():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.save_claim_support_document.return_value = {
+        "record_id": 81,
+        "cid": "QmDashboardDoc1",
+        "recorded": True,
+    }
+    mediator.get_claim_coverage_matrix.return_value = {
+        "claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}
+    }
+    mediator.get_claim_overview.return_value = {"claims": {"retaliation": {}}}
+    mediator.get_claim_support_diagnostic_snapshots.return_value = {"claims": {}}
+    mediator.get_claim_support_gaps.return_value = {"claims": {"retaliation": {"unresolved_elements": []}}}
+    mediator.get_claim_contradiction_candidates.return_value = {"claims": {"retaliation": {"candidates": []}}}
+    mediator.get_claim_support_validation.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_recent_claim_follow_up_execution.return_value = {"claims": {"retaliation": []}}
+    mediator.get_claim_follow_up_plan.return_value = {"claims": {"retaliation": {"tasks": []}}}
+    mediator.get_claim_testimony_records.return_value = {"claims": {}, "summary": {}}
+    mediator.get_user_evidence.return_value = [
+        {
+            "id": 81,
+            "cid": "QmDashboardDoc1",
+            "type": "document",
+            "claim_type": "retaliation",
+            "claim_element_id": "retaliation:2",
+            "claim_element": "Adverse action",
+            "description": "Termination memo",
+            "timestamp": "2026-03-14T12:00:00+00:00",
+            "source_url": "https://example.com/termination-memo",
+            "parse_status": "parsed",
+            "chunk_count": 2,
+            "fact_count": 1,
+            "parsed_text_preview": "The memo describes a termination after the complaint.",
+            "parse_metadata": {"quality_tier": "high", "quality_score": 92.0},
+            "graph_status": "ready",
+            "graph_entity_count": 3,
+            "graph_relationship_count": 1,
+        }
+    ]
+    mediator.get_evidence_chunks.return_value = [
+        {"chunk_id": "chunk-0", "index": 0, "text": "Termination followed the complaint."},
+    ]
+    mediator.summarize_claim_support.return_value = {"claims": {"retaliation": {}}}
+
+    payload = build_claim_support_document_payload(
+        mediator,
+        ClaimSupportDocumentSaveRequest(
+            claim_type="retaliation",
+            claim_element_id="retaliation:2",
+            claim_element="Adverse action",
+            document_label="Termination memo",
+            source_url="https://example.com/termination-memo",
+            document_text="Termination followed the complaint.",
+        ),
+    )
+
+    assert payload["recorded"] is True
+    assert payload["document_result"]["cid"] == "QmDashboardDoc1"
+    assert payload["post_save_review"]["document_summary"]["retaliation"]["record_count"] == 1
+    mediator.save_claim_support_document.assert_called_once_with(
+        claim_type="retaliation",
+        user_id="state-user",
+        claim_element_id="retaliation:2",
+        claim_element_text="Adverse action",
+        document_text="Termination followed the complaint.",
+        document_label="Termination memo",
+        source_url="https://example.com/termination-memo",
+        filename=None,
+        mime_type=None,
+        evidence_type="document",
+        metadata={},
     )
 
 

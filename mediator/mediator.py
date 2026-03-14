@@ -379,6 +379,10 @@ class Mediator:
 		"""Get stored graph entities and relationships for an evidence record."""
 		return self.evidence_state.get_evidence_graph(evidence_id)
 
+	def get_evidence_chunks(self, evidence_id: int):
+		"""Get stored chunk rows for an evidence record."""
+		return self.evidence_state.get_evidence_chunks(evidence_id)
+
 	def get_evidence_facts(self, evidence_id: int):
 		"""Get stored fact records for an evidence record."""
 		return self.evidence_state.get_evidence_facts(evidence_id)
@@ -798,6 +802,114 @@ class Mediator:
 			claim_type=claim_type,
 			required_support_kinds=required_support_kinds,
 		)
+
+	def save_claim_testimony_record(
+		self,
+		claim_type: str = None,
+		user_id: str = None,
+		claim_element_id: str = None,
+		claim_element_text: str = None,
+		raw_narrative: str = None,
+		event_date: str = None,
+		actor: str = None,
+		act: str = None,
+		target: str = None,
+		harm: str = None,
+		firsthand_status: str = None,
+		source_confidence: float = None,
+		metadata: Dict[str, Any] = None,
+	):
+		"""Persist a testimony record linked to claim-support review."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		return self.claim_support.save_testimony_record(
+			user_id,
+			claim_type=claim_type or '',
+			claim_element_id=claim_element_id,
+			claim_element_text=claim_element_text,
+			raw_narrative=raw_narrative,
+			event_date=event_date,
+			actor=actor,
+			act=act,
+			target=target,
+			harm=harm,
+			firsthand_status=firsthand_status,
+			source_confidence=source_confidence,
+			metadata=metadata,
+		)
+
+	def get_claim_testimony_records(
+		self,
+		claim_type: str = None,
+		user_id: str = None,
+		claim_element_id: str = None,
+		limit: int = 50,
+	):
+		"""Return persisted testimony records for claim-support review."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		return self.claim_support.get_claim_testimony_records(
+			user_id,
+			claim_type=claim_type,
+			claim_element_id=claim_element_id,
+			limit=limit,
+		)
+
+	def save_claim_support_document(
+		self,
+		claim_type: str = None,
+		user_id: str = None,
+		claim_element_id: str = None,
+		claim_element_text: str = None,
+		document_text: str = None,
+		document_label: str = None,
+		source_url: str = None,
+		filename: str = None,
+		mime_type: str = None,
+		evidence_type: str = 'document',
+		metadata: Dict[str, Any] = None,
+	):
+		"""Persist a dashboard-provided document through the shared evidence pipeline."""
+		if user_id is None:
+			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+
+		normalized_text = str(document_text or '').strip()
+		if not normalized_text:
+			return {
+				'recorded': False,
+				'error': 'empty_document_text',
+				'claim_type': claim_type,
+				'user_id': user_id,
+			}
+
+		storage_metadata = dict(metadata or {})
+		storage_metadata['parse_document'] = True
+		if filename:
+			storage_metadata['filename'] = filename
+		if mime_type:
+			storage_metadata['mime_type'] = mime_type
+		if source_url:
+			storage_metadata['source_url'] = source_url
+			provenance = dict(storage_metadata.get('provenance') or {})
+			provenance.setdefault('source_url', source_url)
+			provenance.setdefault('acquisition_method', 'claim_support_dashboard')
+			storage_metadata['provenance'] = provenance
+
+		result = self.submit_evidence(
+			data=normalized_text.encode('utf-8'),
+			evidence_type=evidence_type or 'document',
+			user_id=user_id,
+			description=document_label or filename or source_url or 'Claim support document',
+			claim_type=claim_type,
+			claim_element=claim_element_text,
+			metadata=storage_metadata,
+		)
+		return {
+			**result,
+			'recorded': bool(result.get('record_id')),
+			'claim_element_id': claim_element_id or result.get('claim_element_id'),
+			'claim_element_text': claim_element_text or result.get('claim_element_text'),
+		}
 
 	def get_claim_contradiction_candidates(
 		self,

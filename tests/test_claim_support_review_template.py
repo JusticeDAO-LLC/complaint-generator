@@ -14,8 +14,30 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "/api/claim-support/review" in content
     assert "/api/claim-support/execute-follow-up" in content
     assert "/api/claim-support/resolve-manual-review" in content
+    assert "/api/claim-support/save-testimony" in content
+    assert "/api/claim-support/save-document" in content
     assert "Load Review" in content
     assert "Execute Follow-Up" in content
+    assert "Question Queue" in content
+    assert "Testimony Intake" in content
+    assert "Document Intake" in content
+    assert "Save Testimony" in content
+    assert "Save Document" in content
+    assert "question-list" in content
+    assert "testimony-list" in content
+    assert "document-list" in content
+    assert "save-testimony-button" in content
+    assert "save-document-button" in content
+    assert "testimony-summary-chips" in content
+    assert "document-summary-chips" in content
+    assert "prefill-testimony-button" in content
+    assert "renderQuestionRecommendations" in content
+    assert "renderTestimonyRecords" in content
+    assert "renderDocumentArtifacts" in content
+    assert "buildTestimonyRequest" in content
+    assert "saveTestimony" in content
+    assert "buildDocumentRequest" in content
+    assert "saveDocument" in content
     assert "resolution-result-card" in content
     assert "signal-archive-captures" in content
     assert "signal-fallback-authorities" in content
@@ -250,6 +272,16 @@ def test_review_surface_app_registers_dashboard_and_api_routes():
     )
     assert any(
         route.path == "/api/claim-support/execute-follow-up" and "POST" in route.methods
+        for route in app.routes
+        if hasattr(route, "methods")
+    )
+    assert any(
+        route.path == "/api/claim-support/save-testimony" and "POST" in route.methods
+        for route in app.routes
+        if hasattr(route, "methods")
+    )
+    assert any(
+        route.path == "/api/claim-support/save-document" and "POST" in route.methods
         for route in app.routes
         if hasattr(route, "methods")
     )

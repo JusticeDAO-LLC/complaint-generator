@@ -2612,3 +2612,213 @@ class TestClaimSupportHook:
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)
+
+    def test_testimony_records_contribute_to_support_summary_facts_and_traces(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements('testuser', {'employment': ['Protected activity']})
+            saved = hook.save_testimony_record(
+                'testuser',
+                'employment',
+                claim_element_id='employment:1',
+                claim_element_text='Protected activity',
+                raw_narrative='Employee reported discrimination to HR.',
+                event_date='2026-03-10',
+                actor='Employee',
+                act='reported discrimination',
+                target='HR',
+                firsthand_status='firsthand',
+                source_confidence=0.85,
+                metadata={'source': 'dashboard'},
+            )
+
+            summary = hook.summarize_claim_support('testuser', 'employment')
+            claim_summary = summary['claims']['employment']
+            element = claim_summary['elements'][0]
+
+            assert claim_summary['total_links'] == 1
+            assert claim_summary['total_facts'] == 1
+            assert claim_summary['support_by_kind'] == {'testimony': 1}
+            assert element['fact_count'] == 1
+            assert element['support_by_kind'] == {'testimony': 1}
+            assert element['links'][0]['source_table'] == 'claim_testimony'
+            assert element['links'][0]['testimony_record_id'] == saved['record_id']
+
+            facts = hook.get_claim_support_facts(
+                'testuser',
+                'employment',
+                claim_element_text='Protected activity',
+            )
+
+            assert len(facts) == 1
+            assert facts[0]['support_kind'] == 'testimony'
+            assert facts[0]['source_table'] == 'claim_testimony'
+            assert facts[0]['source_family'] == 'claim_testimony'
+            assert facts[0]['source_record_id'] == saved['record_id']
+            assert facts[0]['source_ref'] == saved['testimony_id']
+            assert facts[0]['record_scope'] == 'claim_testimony'
+            assert facts[0]['artifact_family'] == 'testimony_statement'
+            assert facts[0]['corpus_family'] == 'claim_testimony'
+            assert facts[0]['content_origin'] == 'operator_testimony_intake'
+            assert facts[0]['parse_source'] == 'claim_testimony'
+            assert facts[0]['input_format'] == 'structured_testimony'
+            assert facts[0]['quality_tier'] == 'high'
+            assert facts[0]['testimony_record_id'] == saved['record_id']
+            assert facts[0]['text'] == 'Employee reported discrimination to HR.'
+
+            traces = hook.get_claim_support_traces(
+                'testuser',
+                'employment',
+                claim_element_text='Protected activity',
+            )
+
+            assert len(traces) == 1
+            assert traces[0]['trace_kind'] == 'fact'
+            assert traces[0]['source_family'] == 'claim_testimony'
+            assert traces[0]['source_record_id'] == saved['record_id']
+            assert traces[0]['source_ref'] == saved['testimony_id']
+            assert traces[0]['record_scope'] == 'claim_testimony'
+            assert traces[0]['parse_source'] == 'claim_testimony'
+            assert traces[0]['input_format'] == 'structured_testimony'
+            assert traces[0]['quality_tier'] == 'high'
+            assert traces[0]['record_id'] == saved['record_id']
+            assert traces[0]['testimony_record_id'] == saved['record_id']
+            assert traces[0]['graph_summary']['status'] == 'not_available'
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_claim_contradiction_candidates_detects_testimony_conflicts(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.evidence_state = Mock()
+        mock_mediator.evidence_state.get_evidence_by_cid = Mock(return_value={
+            'id': 61,
+            'cid': 'QmEvidenceConflict2',
+            'fact_count': 1,
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:evidence-61',
+                    'created': True,
+                    'reused': False,
+                }
+            },
+        })
+        mock_mediator.evidence_state.get_evidence_facts = Mock(return_value=[
+            {'fact_id': 'fact:pos-2', 'text': 'Discrimination complaint email to HR exists.'},
+        ])
+        mock_mediator.evidence_state.get_evidence_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:1'}],
+            'relationships': [{'id': 'rel:1'}],
+        })
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements('testuser', {'employment': ['Protected activity']})
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidenceConflict2',
+                support_label='HR complaint email',
+                source_table='evidence',
+            )
+            hook.save_testimony_record(
+                'testuser',
+                'employment',
+                claim_element_id='employment:1',
+                claim_element_text='Protected activity',
+                raw_narrative='Discrimination complaint email to HR does not exist.',
+                firsthand_status='firsthand',
+                source_confidence=0.9,
+                metadata={'source': 'dashboard'},
+            )
+
+            contradictions = hook.get_claim_contradiction_candidates('testuser', 'employment')
+            candidate = contradictions['claims']['employment']['candidates'][0]
+
+            assert contradictions['claims']['employment']['candidate_count'] == 1
+            assert sorted(candidate['support_kinds']) == ['evidence', 'testimony']
+            assert sorted(candidate['source_tables']) == ['claim_testimony', 'evidence']
+            assert sorted(candidate['polarity']) == ['affirmative', 'negative']
+            assert 'complaint' in candidate['overlap_terms']
+            assert candidate['graph_trace_summary']['traced_link_count'] == 2
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_claim_testimony_records_persist_and_summarize(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            saved = hook.save_testimony_record(
+                'testuser',
+                'employment discrimination',
+                claim_element_id='employment_discrimination:1',
+                claim_element_text='Protected activity',
+                raw_narrative='I reported discrimination to HR and my supervisor reduced my shifts two days later.',
+                event_date='2026-03-10',
+                actor='Supervisor',
+                act='reduced shifts',
+                target='work schedule',
+                harm='lost pay',
+                firsthand_status='firsthand',
+                source_confidence=0.9,
+                metadata={'source': 'dashboard'},
+            )
+
+            assert saved['recorded'] is True
+            assert saved['testimony_id'].startswith('testimony:employment_discrimination:')
+
+            records = hook.get_claim_testimony_records('testuser', 'employment discrimination')
+
+            assert records['available'] is True
+            assert len(records['claims']['employment discrimination']) == 1
+            record = records['claims']['employment discrimination'][0]
+            assert record['claim_element_id'] == 'employment_discrimination:1'
+            assert record['claim_element_text'] == 'Protected activity'
+            assert record['actor'] == 'Supervisor'
+            assert record['harm'] == 'lost pay'
+            assert record['metadata']['source'] == 'dashboard'
+            assert records['summary']['employment discrimination']['record_count'] == 1
+            assert records['summary']['employment discrimination']['linked_element_count'] == 1
+            assert records['summary']['employment discrimination']['firsthand_status_counts'] == {
+                'firsthand': 1,
+            }
+            assert records['summary']['employment discrimination']['confidence_bucket_counts'] == {
+                'high': 1,
+            }
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)

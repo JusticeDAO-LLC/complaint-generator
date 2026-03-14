@@ -3,6 +3,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from complaint_phases.denoiser import ComplaintDenoiser
+
 
 DEFAULT_REQUIRED_SUPPORT_KINDS = ["evidence", "authority"]
 
@@ -92,6 +94,50 @@ class ClaimSupportManualReviewResolveRequest(BaseModel):
         default_factory=lambda: list(DEFAULT_REQUIRED_SUPPORT_KINDS)
     )
     include_post_resolution_review: bool = True
+    include_support_summary: bool = True
+    include_overview: bool = True
+    include_follow_up_plan: bool = True
+
+
+class ClaimSupportTestimonySaveRequest(BaseModel):
+    user_id: Optional[str] = None
+    claim_type: Optional[str] = None
+    claim_element_id: Optional[str] = None
+    claim_element: Optional[str] = None
+    raw_narrative: Optional[str] = None
+    event_date: Optional[str] = None
+    actor: Optional[str] = None
+    act: Optional[str] = None
+    target: Optional[str] = None
+    harm: Optional[str] = None
+    firsthand_status: str = "unknown"
+    source_confidence: Optional[float] = None
+    testimony_metadata: Dict[str, Any] = Field(default_factory=dict)
+    required_support_kinds: List[str] = Field(
+        default_factory=lambda: list(DEFAULT_REQUIRED_SUPPORT_KINDS)
+    )
+    include_post_save_review: bool = True
+    include_support_summary: bool = True
+    include_overview: bool = True
+    include_follow_up_plan: bool = True
+
+
+class ClaimSupportDocumentSaveRequest(BaseModel):
+    user_id: Optional[str] = None
+    claim_type: Optional[str] = None
+    claim_element_id: Optional[str] = None
+    claim_element: Optional[str] = None
+    document_text: Optional[str] = None
+    document_label: Optional[str] = None
+    source_url: Optional[str] = None
+    filename: Optional[str] = None
+    mime_type: Optional[str] = None
+    evidence_type: str = "document"
+    document_metadata: Dict[str, Any] = Field(default_factory=dict)
+    required_support_kinds: List[str] = Field(
+        default_factory=lambda: list(DEFAULT_REQUIRED_SUPPORT_KINDS)
+    )
+    include_post_save_review: bool = True
     include_support_summary: bool = True
     include_overview: bool = True
     include_follow_up_plan: bool = True
@@ -394,6 +440,227 @@ def summarize_follow_up_history_claim(
             else None
         ),
     }
+
+
+def summarize_claim_testimony_claim(
+    records: Optional[List[Dict[str, Any]]],
+) -> Dict[str, Any]:
+    normalized_records = [record for record in (records or []) if isinstance(record, dict)]
+    firsthand_status_counts: Dict[str, int] = {}
+    confidence_bucket_counts: Dict[str, int] = {}
+    linked_element_ids = set()
+
+    for record in normalized_records:
+        firsthand_status = str(record.get("firsthand_status") or "unknown")
+        firsthand_status_counts[firsthand_status] = firsthand_status_counts.get(firsthand_status, 0) + 1
+        claim_element_id = str(record.get("claim_element_id") or "")
+        if claim_element_id:
+            linked_element_ids.add(claim_element_id)
+        confidence_value = record.get("source_confidence")
+        if confidence_value is None:
+            bucket = "unknown"
+        else:
+            try:
+                numeric_confidence = float(confidence_value)
+            except (TypeError, ValueError):
+                bucket = "unknown"
+            else:
+                if numeric_confidence >= 0.75:
+                    bucket = "high"
+                elif numeric_confidence >= 0.4:
+                    bucket = "medium"
+                else:
+                    bucket = "low"
+        confidence_bucket_counts[bucket] = confidence_bucket_counts.get(bucket, 0) + 1
+
+    return {
+        "record_count": len(normalized_records),
+        "linked_element_count": len(linked_element_ids),
+        "firsthand_status_counts": firsthand_status_counts,
+        "confidence_bucket_counts": confidence_bucket_counts,
+        "latest_timestamp": str(normalized_records[0].get("timestamp") or "") if normalized_records else "",
+    }
+
+
+def _attach_testimony_to_claim_matrix(
+    claim_matrix: Dict[str, Any],
+    testimony_records: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    if not isinstance(claim_matrix, dict):
+        return claim_matrix
+
+    normalized_records = [record for record in (testimony_records or []) if isinstance(record, dict)]
+    for element in claim_matrix.get("elements", []) or []:
+        if not isinstance(element, dict):
+            continue
+        element_id = str(element.get("element_id") or "")
+        element_text = str(element.get("element_text") or "")
+        matching_records = []
+        for record in normalized_records:
+            record_element_id = str(record.get("claim_element_id") or "")
+            record_element_text = str(record.get("claim_element_text") or "")
+            if record_element_id and record_element_id == element_id:
+                matching_records.append(record)
+                continue
+            if element_text and record_element_text and record_element_text == element_text:
+                matching_records.append(record)
+        element["testimony_records"] = matching_records
+        element["testimony_record_count"] = len(matching_records)
+
+    claim_matrix["testimony_record_count"] = len(normalized_records)
+    return claim_matrix
+
+
+def summarize_claim_document_artifacts_claim(
+    document_records: Optional[List[Dict[str, Any]]],
+) -> Dict[str, Any]:
+    normalized_records = [record for record in (document_records or []) if isinstance(record, dict)]
+    parse_status_counts: Dict[str, int] = {}
+    quality_tier_counts: Dict[str, int] = {}
+    graph_status_counts: Dict[str, int] = {}
+    linked_element_ids = set()
+    total_chunks = 0
+    low_quality_count = 0
+
+    for record in normalized_records:
+        parse_status = str(record.get("parse_status") or "unknown")
+        parse_status_counts[parse_status] = parse_status_counts.get(parse_status, 0) + 1
+
+        parse_metadata = record.get("parse_metadata", {}) if isinstance(record.get("parse_metadata"), dict) else {}
+        quality_tier = str(parse_metadata.get("quality_tier") or "unknown")
+        quality_tier_counts[quality_tier] = quality_tier_counts.get(quality_tier, 0) + 1
+        if quality_tier in {"low", "empty"}:
+            low_quality_count += 1
+
+        graph_status = str(record.get("graph_status") or "unknown")
+        graph_status_counts[graph_status] = graph_status_counts.get(graph_status, 0) + 1
+
+        claim_element_id = str(record.get("claim_element_id") or "")
+        if claim_element_id:
+            linked_element_ids.add(claim_element_id)
+
+        total_chunks += int(record.get("chunk_count", 0) or 0)
+
+    return {
+        "record_count": len(normalized_records),
+        "linked_element_count": len(linked_element_ids),
+        "total_chunk_count": total_chunks,
+        "low_quality_record_count": low_quality_count,
+        "parse_status_counts": parse_status_counts,
+        "quality_tier_counts": quality_tier_counts,
+        "graph_status_counts": graph_status_counts,
+        "latest_timestamp": str(normalized_records[0].get("timestamp") or "") if normalized_records else "",
+    }
+
+
+def _attach_documents_to_claim_matrix(
+    claim_matrix: Dict[str, Any],
+    document_records: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    if not isinstance(claim_matrix, dict):
+        return claim_matrix
+
+    normalized_records = [record for record in (document_records or []) if isinstance(record, dict)]
+    for element in claim_matrix.get("elements", []) or []:
+        if not isinstance(element, dict):
+            continue
+        element_id = str(element.get("element_id") or "")
+        element_text = str(element.get("element_text") or "")
+        matching_records = []
+        for record in normalized_records:
+            record_element_id = str(record.get("claim_element_id") or "")
+            record_element_text = str(record.get("claim_element_text") or "")
+            if record_element_id and record_element_id == element_id:
+                matching_records.append(record)
+                continue
+            if element_text and record_element_text and record_element_text == element_text:
+                matching_records.append(record)
+        element["document_records"] = matching_records
+        element["document_record_count"] = len(matching_records)
+
+    claim_matrix["document_record_count"] = len(normalized_records)
+    return claim_matrix
+
+
+def _collect_claim_document_records(
+    mediator: Any,
+    user_id: str,
+    claim_type: Optional[str] = None,
+    *,
+    limit: int = 25,
+    preview_chunk_limit: int = 3,
+) -> Dict[str, List[Dict[str, Any]]]:
+    get_user_evidence = getattr(mediator, "get_user_evidence", None)
+    if not callable(get_user_evidence):
+        return {}
+
+    evidence_records = get_user_evidence(user_id=user_id)
+    if not isinstance(evidence_records, list):
+        return {}
+
+    get_evidence_chunks = getattr(mediator, "get_evidence_chunks", None)
+    filtered_records = []
+    for record in evidence_records:
+        if not isinstance(record, dict):
+            continue
+        record_claim_type = str(record.get("claim_type") or "")
+        if claim_type and record_claim_type != claim_type:
+            continue
+        filtered_records.append(record)
+        if len(filtered_records) >= limit:
+            break
+
+    claim_entries: Dict[str, List[Dict[str, Any]]] = {}
+    for record in filtered_records:
+        record_id = record.get("id")
+        chunk_previews: List[Dict[str, Any]] = []
+        if callable(get_evidence_chunks) and record_id is not None:
+            chunks = get_evidence_chunks(int(record_id))
+            if isinstance(chunks, list):
+                chunk_previews = [
+                    chunk for chunk in chunks[:preview_chunk_limit] if isinstance(chunk, dict)
+                ]
+
+        entry = {
+            "record_id": record_id,
+            "cid": record.get("cid"),
+            "evidence_type": record.get("type"),
+            "claim_type": record.get("claim_type"),
+            "claim_element_id": record.get("claim_element_id"),
+            "claim_element_text": record.get("claim_element"),
+            "description": record.get("description"),
+            "timestamp": record.get("timestamp"),
+            "source_url": record.get("source_url"),
+            "parse_status": record.get("parse_status"),
+            "chunk_count": int(record.get("chunk_count", 0) or 0),
+            "fact_count": int(record.get("fact_count", 0) or 0),
+            "parsed_text_preview": record.get("parsed_text_preview") or "",
+            "parse_metadata": dict(record.get("parse_metadata") or {}),
+            "graph_status": record.get("graph_status"),
+            "graph_entity_count": int(record.get("graph_entity_count", 0) or 0),
+            "graph_relationship_count": int(record.get("graph_relationship_count", 0) or 0),
+            "chunk_previews": chunk_previews,
+        }
+        current_claim = str(record.get("claim_type") or "")
+        claim_entries.setdefault(current_claim, []).append(entry)
+
+    return claim_entries
+
+
+def _build_claim_question_recommendations(
+    claim_name: str,
+    gap_claim: Optional[Dict[str, Any]],
+    contradiction_claim: Optional[Dict[str, Any]],
+    *,
+    max_questions: int = 6,
+) -> List[Dict[str, Any]]:
+    denoiser = ComplaintDenoiser()
+    return denoiser.generate_review_question_recommendations(
+        claim_name,
+        gap_claim=gap_claim if isinstance(gap_claim, dict) else {},
+        contradiction_claim=contradiction_claim if isinstance(contradiction_claim, dict) else {},
+        max_questions=max_questions,
+    )
 
 
 def _summarize_claim_coverage_claim(
@@ -1288,6 +1555,38 @@ def build_claim_support_review_payload(
         required_support_kinds=required_support_kinds,
     )
     validation_claims = validation.get("claims", {}) if isinstance(validation, dict) else {}
+
+    testimony_payload: Dict[str, Any] = {}
+    get_claim_testimony_records = getattr(mediator, "get_claim_testimony_records", None)
+    if callable(get_claim_testimony_records):
+        candidate_payload = get_claim_testimony_records(
+            claim_type=request.claim_type,
+            user_id=resolved_user_id,
+            limit=25,
+        )
+        if isinstance(candidate_payload, dict):
+            testimony_payload = candidate_payload
+    testimony_claims = testimony_payload.get("claims", {}) if isinstance(testimony_payload, dict) else {}
+    testimony_summary = testimony_payload.get("summary", {}) if isinstance(testimony_payload, dict) else {}
+    document_claims = _collect_claim_document_records(
+        mediator,
+        resolved_user_id,
+        request.claim_type,
+        limit=25,
+        preview_chunk_limit=3,
+    )
+
+    for claim_name, claim_matrix in coverage_claims.items():
+        if isinstance(claim_matrix, dict):
+            _attach_testimony_to_claim_matrix(
+                claim_matrix,
+                testimony_claims.get(claim_name, []),
+            )
+            _attach_documents_to_claim_matrix(
+                claim_matrix,
+                document_claims.get(claim_name, []),
+            )
+
     coverage_summary = {
         claim_name: _summarize_claim_coverage_claim(
             claim_name,
@@ -1300,6 +1599,22 @@ def build_claim_support_review_payload(
         for claim_name, claim_matrix in coverage_claims.items()
         if isinstance(claim_matrix, dict)
     }
+    for claim_name, summary in coverage_summary.items():
+        if not isinstance(summary, dict):
+            continue
+        claim_testimony_summary = testimony_summary.get(claim_name, {}) if isinstance(testimony_summary, dict) else {}
+        summary["testimony_record_count"] = int(claim_testimony_summary.get("record_count", 0) or 0)
+        summary["testimony_linked_element_count"] = int(claim_testimony_summary.get("linked_element_count", 0) or 0)
+        summary["testimony_firsthand_status_counts"] = dict(
+            claim_testimony_summary.get("firsthand_status_counts", {}) or {}
+        )
+        claim_document_summary = summarize_claim_document_artifacts_claim(
+            document_claims.get(claim_name, [])
+        )
+        summary["document_record_count"] = int(claim_document_summary.get("record_count", 0) or 0)
+        summary["document_linked_element_count"] = int(claim_document_summary.get("linked_element_count", 0) or 0)
+        summary["document_total_chunk_count"] = int(claim_document_summary.get("total_chunk_count", 0) or 0)
+        summary["document_low_quality_record_count"] = int(claim_document_summary.get("low_quality_record_count", 0) or 0)
 
     payload: Dict[str, Any] = {
         "user_id": resolved_user_id,
@@ -1324,6 +1639,28 @@ def build_claim_support_review_payload(
         "claim_reasoning_review": {
             claim_name: summarize_claim_reasoning_review(
                 validation_claims.get(claim_name, {})
+            )
+            for claim_name in coverage_claims.keys()
+        },
+        "question_recommendations": {
+            claim_name: _build_claim_question_recommendations(
+                claim_name,
+                gap_claims.get(claim_name, {}),
+                contradiction_claims.get(claim_name, {}),
+            )
+            for claim_name in coverage_claims.keys()
+        },
+        "testimony_records": testimony_claims,
+        "testimony_summary": {
+            claim_name: summarize_claim_testimony_claim(
+                testimony_claims.get(claim_name, [])
+            )
+            for claim_name in coverage_claims.keys()
+        },
+        "document_artifacts": document_claims,
+        "document_summary": {
+            claim_name: summarize_claim_document_artifacts_claim(
+                document_claims.get(claim_name, [])
             )
             for claim_name in coverage_claims.keys()
         },
@@ -1395,6 +1732,118 @@ def build_claim_support_review_payload(
 
     if request.include_overview:
         payload["claim_overview"] = overview_claims
+
+    return payload
+
+
+def build_claim_support_testimony_payload(
+    mediator: Any,
+    request: ClaimSupportTestimonySaveRequest,
+) -> Dict[str, Any]:
+    resolved_user_id = _resolve_user_id(mediator, request.user_id)
+    required_support_kinds = (
+        request.required_support_kinds or list(DEFAULT_REQUIRED_SUPPORT_KINDS)
+    )
+
+    save_claim_testimony_record = getattr(mediator, "save_claim_testimony_record", None)
+    if not callable(save_claim_testimony_record):
+        payload: Dict[str, Any] = {
+            "user_id": resolved_user_id,
+            "claim_type": request.claim_type,
+            "recorded": False,
+            "error": "testimony_persistence_unavailable",
+        }
+    else:
+        testimony_result = save_claim_testimony_record(
+            claim_type=request.claim_type,
+            user_id=resolved_user_id,
+            claim_element_id=request.claim_element_id,
+            claim_element_text=request.claim_element,
+            raw_narrative=request.raw_narrative,
+            event_date=request.event_date,
+            actor=request.actor,
+            act=request.act,
+            target=request.target,
+            harm=request.harm,
+            firsthand_status=request.firsthand_status,
+            source_confidence=request.source_confidence,
+            metadata=request.testimony_metadata,
+        )
+        payload = {
+            "user_id": resolved_user_id,
+            "claim_type": request.claim_type,
+            "testimony_result": testimony_result,
+            "recorded": bool((testimony_result or {}).get("recorded", False)),
+        }
+
+    if request.include_post_save_review:
+        payload["post_save_review"] = build_claim_support_review_payload(
+            mediator,
+            ClaimSupportReviewRequest(
+                user_id=resolved_user_id,
+                claim_type=request.claim_type,
+                required_support_kinds=required_support_kinds,
+                include_support_summary=request.include_support_summary,
+                include_overview=request.include_overview,
+                include_follow_up_plan=request.include_follow_up_plan,
+                execute_follow_up=False,
+            ),
+        )
+
+    return payload
+
+
+def build_claim_support_document_payload(
+    mediator: Any,
+    request: ClaimSupportDocumentSaveRequest,
+) -> Dict[str, Any]:
+    resolved_user_id = _resolve_user_id(mediator, request.user_id)
+    required_support_kinds = (
+        request.required_support_kinds or list(DEFAULT_REQUIRED_SUPPORT_KINDS)
+    )
+
+    save_claim_support_document = getattr(mediator, "save_claim_support_document", None)
+    if not callable(save_claim_support_document):
+        payload: Dict[str, Any] = {
+            "user_id": resolved_user_id,
+            "claim_type": request.claim_type,
+            "recorded": False,
+            "error": "document_intake_unavailable",
+        }
+    else:
+        document_result = save_claim_support_document(
+            claim_type=request.claim_type,
+            user_id=resolved_user_id,
+            claim_element_id=request.claim_element_id,
+            claim_element_text=request.claim_element,
+            document_text=request.document_text,
+            document_label=request.document_label,
+            source_url=request.source_url,
+            filename=request.filename,
+            mime_type=request.mime_type,
+            evidence_type=request.evidence_type,
+            metadata=request.document_metadata,
+        )
+        payload = {
+            "user_id": resolved_user_id,
+            "claim_type": request.claim_type,
+            "document_result": document_result,
+            "recorded": bool((document_result or {}).get("record_id")),
+        }
+
+    if request.include_post_save_review:
+        payload["post_save_review"] = build_claim_support_review_payload(
+            mediator,
+            ClaimSupportReviewRequest(
+                user_id=resolved_user_id,
+                claim_type=request.claim_type,
+                required_support_kinds=required_support_kinds,
+                include_support_summary=request.include_support_summary,
+                include_overview=request.include_overview,
+                include_follow_up_plan=request.include_follow_up_plan,
+                execute_follow_up=False,
+            ),
+        )
 
     return payload
 

@@ -9,9 +9,11 @@ from fastapi import Response
 from applications.review_api import attach_claim_support_review_routes
 from applications.review_ui import attach_claim_support_review_ui_routes
 from claim_support_review import (
+    ClaimSupportDocumentSaveRequest,
     ClaimSupportFollowUpExecuteRequest,
     ClaimSupportManualReviewResolveRequest,
     ClaimSupportReviewRequest,
+    ClaimSupportTestimonySaveRequest,
 )
 
 
@@ -170,6 +172,48 @@ def _build_dashboard_mediator() -> Mock:
             }
         }
     }
+    mediator.get_claim_support_diagnostic_snapshots.return_value = {"claims": {}}
+    mediator.get_claim_support_gaps.return_value = {
+        "claims": {
+            "retaliation": {
+                "unresolved_count": 1,
+                "unresolved_elements": [
+                    {
+                        "element_id": "retaliation:2",
+                        "element_text": "Causal connection",
+                        "status": "missing",
+                        "missing_support_kinds": ["authority"],
+                        "total_links": 0,
+                        "fact_count": 0,
+                        "recommended_action": "collect_initial_support",
+                    }
+                ],
+            }
+        }
+    }
+    mediator.get_claim_contradiction_candidates.return_value = {
+        "claims": {
+            "retaliation": {
+                "candidate_count": 1,
+                "candidates": [
+                    {
+                        "claim_element_id": "retaliation:2",
+                        "claim_element_text": "Causal connection",
+                        "fact_ids": ["fact:1", "fact:2"],
+                        "overlap_terms": ["complaint", "schedule"],
+                    }
+                ],
+            }
+        }
+    }
+    mediator.get_claim_support_validation.return_value = {
+        "claims": {
+            "retaliation": {
+                "claim_type": "retaliation",
+                "elements": [],
+            }
+        }
+    }
     mediator.get_recent_claim_follow_up_execution.return_value = {
         "claims": {
             "retaliation": [
@@ -217,6 +261,68 @@ def _build_dashboard_mediator() -> Mock:
         "status": "resolved_manual_review",
         "execution_id": 91,
     }
+    mediator.save_claim_testimony_record.return_value = {
+        "recorded": True,
+        "testimony_id": "testimony:retaliation:dash-1",
+    }
+    mediator.save_claim_support_document.return_value = {
+        "record_id": 81,
+        "cid": "QmDashboardDoc1",
+        "recorded": True,
+    }
+    mediator.get_claim_testimony_records.return_value = {
+        "claims": {
+            "retaliation": [
+                {
+                    "testimony_id": "testimony:retaliation:dash-1",
+                    "claim_type": "retaliation",
+                    "claim_element_id": "retaliation:2",
+                    "claim_element_text": "Causal connection",
+                    "raw_narrative": "I complained on Monday and my schedule was cut on Wednesday.",
+                    "event_date": "2026-03-10",
+                    "actor": "Supervisor",
+                    "act": "cut schedule",
+                    "target": "work hours",
+                    "harm": "lost pay",
+                    "firsthand_status": "firsthand",
+                    "source_confidence": 0.88,
+                    "timestamp": "2026-03-14T12:00:00+00:00",
+                }
+            ]
+        },
+        "summary": {
+            "retaliation": {
+                "record_count": 1,
+                "linked_element_count": 1,
+                "firsthand_status_counts": {"firsthand": 1},
+                "confidence_bucket_counts": {"high": 1},
+            }
+        },
+    }
+    mediator.get_user_evidence.return_value = [
+        {
+            "id": 81,
+            "cid": "QmDashboardDoc1",
+            "type": "document",
+            "claim_type": "retaliation",
+            "claim_element_id": "retaliation:2",
+            "claim_element": "Causal connection",
+            "description": "Schedule reduction memo",
+            "timestamp": "2026-03-14T12:05:00+00:00",
+            "source_url": "https://example.com/schedule-memo",
+            "parse_status": "parsed",
+            "chunk_count": 2,
+            "fact_count": 1,
+            "parsed_text_preview": "The memo describes a schedule reduction after the complaint.",
+            "parse_metadata": {"quality_tier": "high", "quality_score": 93.0},
+            "graph_status": "ready",
+            "graph_entity_count": 3,
+            "graph_relationship_count": 1,
+        }
+    ]
+    mediator.get_evidence_chunks.return_value = [
+        {"chunk_id": "chunk-0", "index": 0, "text": "Schedule reduction followed the complaint."},
+    ]
     mediator.get_claim_follow_up_plan.return_value = {
         "claims": {
             "retaliation": {
@@ -333,6 +439,16 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
         for route in app.routes
         if getattr(route, "path", None) == "/api/claim-support/resolve-manual-review"
     )
+    testimony_route = next(
+        route
+        for route in app.routes
+        if getattr(route, "path", None) == "/api/claim-support/save-testimony"
+    )
+    document_route = next(
+        route
+        for route in app.routes
+        if getattr(route, "path", None) == "/api/claim-support/save-document"
+    )
 
     page_html = await page_route.endpoint()
 
@@ -342,6 +458,13 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert soup.find(id="review-button") is not None
     assert soup.find(id="execute-button") is not None
     assert soup.find(id="resolve-button") is not None
+    assert soup.find(id="save-testimony-button") is not None
+    assert soup.find(id="save-document-button") is not None
+    assert soup.find(id="question-list") is not None
+    assert soup.find(id="testimony-list") is not None
+    assert soup.find(id="testimony-summary-chips") is not None
+    assert soup.find(id="document-list") is not None
+    assert soup.find(id="document-summary-chips") is not None
     assert soup.find(id="clear-resolution-button") is not None
     assert soup.find(id="resolution-element-id") is not None
     assert soup.find(id="resolution-notes") is not None
@@ -396,6 +519,12 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert "setPacketActionFeedback" in page_html
     assert "packetSortRank" in page_html
     assert "sortSupportPackets" in page_html
+    assert "Save Testimony" in page_html
+    assert "Save Document" in page_html
+    assert "renderQuestionRecommendations" in page_html
+    assert "renderTestimonyRecords" in page_html
+    assert "renderDocumentArtifacts" in page_html
+    assert "prefill-testimony-button" in page_html
 
     review_payload = await review_route.endpoint(
         ClaimSupportReviewRequest(
@@ -459,6 +588,36 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert review_payload["follow_up_plan_summary"]["retaliation"]["authority_search_program_type_counts"] == {
         "element_definition_search": 1,
     }
+    assert review_payload["question_recommendations"]["retaliation"]
+    assert review_payload["testimony_summary"]["retaliation"]["record_count"] == 1
+    assert review_payload["document_summary"]["retaliation"]["record_count"] == 1
+    assert review_payload["claim_coverage_summary"]["retaliation"]["document_record_count"] == 1
+
+    testimony_payload = await testimony_route.endpoint(
+        ClaimSupportTestimonySaveRequest(
+            claim_type="retaliation",
+            claim_element_id="retaliation:2",
+            claim_element="Causal connection",
+            raw_narrative="I complained on Monday and my schedule was cut on Wednesday.",
+            firsthand_status="firsthand",
+            source_confidence=0.88,
+        )
+    )
+    assert testimony_payload["recorded"] is True
+    assert testimony_payload["post_save_review"]["testimony_summary"]["retaliation"]["record_count"] == 1
+
+    document_payload = await document_route.endpoint(
+        ClaimSupportDocumentSaveRequest(
+            claim_type="retaliation",
+            claim_element_id="retaliation:2",
+            claim_element="Causal connection",
+            document_label="Schedule reduction memo",
+            source_url="https://example.com/schedule-memo",
+            document_text="Schedule reduction followed the complaint.",
+        )
+    )
+    assert document_payload["recorded"] is True
+    assert document_payload["post_save_review"]["document_summary"]["retaliation"]["record_count"] == 1
     assert review_payload["follow_up_plan_summary"]["retaliation"]["primary_authority_program_bias_counts"] == {
         "uncertain": 1,
     }

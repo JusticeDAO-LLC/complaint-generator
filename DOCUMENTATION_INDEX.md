@@ -70,6 +70,9 @@ Complete index of all documentation in the complaint-generator repository.
 - [docs/EVIDENCE_MANAGEMENT.md](docs/EVIDENCE_MANAGEMENT.md) - IPFS storage and DuckDB metadata
 - [docs/WEB_EVIDENCE_DISCOVERY.md](docs/WEB_EVIDENCE_DISCOVERY.md) - Automated web evidence discovery
 - [docs/PAYLOAD_CONTRACTS.md](docs/PAYLOAD_CONTRACTS.md) - Central reference for evidence, authority, follow-up, graph projection, and formal complaint document package payloads, including agentic document optimization
+- [docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_IMPROVEMENT_PLAN.md](docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_IMPROVEMENT_PLAN.md) - Strategic roadmap for evolving `/claim-support-review` into a testimony, document, graph, retrieval, and legal-proof workflow
+- [docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md](docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md) - Milestone-based execution backlog with acceptance criteria, degraded-mode expectations, and validation guidance
+- [docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_FILE_WORKLIST.md](docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_FILE_WORKLIST.md) - File-by-file worklist for the earliest dashboard implementation slices
 
 ### Search Integration
 - [docs/SEARCH_HOOKS.md](docs/SEARCH_HOOKS.md) - Legal corpus RAG and search integration
@@ -220,6 +223,7 @@ See [docs/EXAMPLES.md](docs/EXAMPLES.md) for detailed documentation of all 21 ex
 - **Plan `ipfs_datasets_py` integration work** → docs/IPFS_DATASETS_PY_INTEGRATION.md, docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md, docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md, docs/IPFS_DATASETS_PY_BATCH1_IMPLEMENTATION_PLAN.md, docs/IPFS_DATASETS_PY_DIRECT_IMPORT_AUDIT.md, docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md, docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md, docs/IPFS_DATASETS_PY_FILE_WORKLIST.md, docs/DOCUMENT_GENERATION_AGENTIC_OPTIMIZATION_PLAN.md
 - **Perform legal research** → docs/LEGAL_AUTHORITY_RESEARCH.md
 - **Manage evidence** → docs/EVIDENCE_MANAGEMENT.md
+- **Plan `/claim-support-review` improvement work** → docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_IMPROVEMENT_PLAN.md, docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md, docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_FILE_WORKLIST.md
 - **Use search/RAG** → docs/SEARCH_HOOKS.md
 
 ## Navigation Tips
@@ -251,5 +255,5 @@ Found an issue with documentation? Please:
 
 ---
 
-**Last Updated**: 2026-03-13
+**Last Updated**: 2026-03-14
 **Total Documentation**: 42+ markdown files, 250+ pages
