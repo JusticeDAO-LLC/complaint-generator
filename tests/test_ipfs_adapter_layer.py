@@ -2,6 +2,8 @@
 
 from io import BytesIO
 import integrations.ipfs_datasets.vector_store as vector_store_module
+import integrations.ipfs_datasets as adapter
+from pathlib import Path
 import tempfile
 from unittest.mock import Mock, patch
 import zipfile
@@ -45,6 +47,7 @@ from integrations.ipfs_datasets.search import (
     search_multi_engine_web,
 )
 from integrations.ipfs_datasets.storage import pin_cid, retrieve_bytes, storage_backend_status, store_bytes
+from integrations.ipfs_datasets import vector_store as vector_store_module
 from integrations.ipfs_datasets.vector_store import create_vector_index, search_vector_index
 
 
@@ -63,6 +66,14 @@ def test_capability_registry_has_expected_keys():
         'vector_store',
         'mcp_gateway',
     }.issubset(capabilities.keys())
+
+
+def test_adapter_root_exports_search_and_vector_entrypoints():
+    assert callable(adapter.search_brave_web)
+    assert callable(adapter.search_multi_engine_web)
+    assert callable(adapter.scrape_web_content)
+    assert callable(adapter.create_vector_index)
+    assert callable(adapter.search_vector_index)
 
 
 def test_capability_summary_returns_strings():
@@ -232,6 +243,77 @@ def test_search_multi_engine_web_normalizes_orchestrated_results():
     assert results[0]['provider'] == 'ipfs_datasets_py'
     assert results[0]['metadata']['details']['operation'] == 'search_multi_engine_search'
     assert results[0]['metadata']['details']['query'] == 'agency guidance'
+
+
+def test_vector_functions_return_unavailable_without_optional_backends():
+    original_np = vector_store_module.np
+    original_embed = vector_store_module.embed_texts_batched
+    original_error = vector_store_module.VECTOR_STORE_ERROR
+    try:
+        vector_store_module.np = None
+        vector_store_module.embed_texts_batched = None
+        vector_store_module.VECTOR_STORE_ERROR = "numpy unavailable"
+
+        create_payload = create_vector_index([{"id": "doc-1", "text": "test document"}], output_dir="/tmp")
+        search_payload = search_vector_index("test query", index_dir="/tmp")
+    finally:
+        vector_store_module.np = original_np
+        vector_store_module.embed_texts_batched = original_embed
+        vector_store_module.VECTOR_STORE_ERROR = original_error
+
+    assert create_payload["status"] == "unavailable"
+    assert search_payload["status"] == "unavailable"
+    assert create_payload["metadata"]["operation"] == "create_vector_index"
+    assert search_payload["metadata"]["operation"] == "search_vector_index"
+
+
+def test_vector_index_can_write_and_search_local_payloads(tmp_path):
+    original_embed = vector_store_module.embed_texts_batched
+    try:
+        def fake_embed_texts_batched(texts, **kwargs):
+            vectors = []
+            for text in texts:
+                lowered = text.lower()
+                if "rent" in lowered:
+                    vectors.append([1.0, 0.0, 0.0])
+                elif "inspection" in lowered:
+                    vectors.append([0.0, 1.0, 0.0])
+                else:
+                    vectors.append([0.0, 0.0, 1.0])
+            return vectors
+
+        vector_store_module.embed_texts_batched = fake_embed_texts_batched
+
+        output_dir = tmp_path / "vectors"
+        create_payload = create_vector_index(
+            [
+                {"id": "rule-1", "text": "Rent contribution policy rule", "metadata": {"kind": "rule"}},
+                {"id": "section-1", "text": "Inspection standards overview", "metadata": {"kind": "section"}},
+            ],
+            index_name="test-index",
+            output_dir=str(output_dir),
+            batch_size=2,
+        )
+
+        search_payload = search_vector_index(
+            "rent policy",
+            index_name="test-index",
+            index_dir=str(output_dir),
+            top_k=2,
+        )
+    finally:
+        vector_store_module.embed_texts_batched = original_embed
+
+    assert create_payload["status"] == "success"
+    assert create_payload["dimension"] == 3
+    assert Path(create_payload["files"]["vectors_path"]).exists()
+    assert Path(create_payload["files"]["records_path"]).exists()
+    assert Path(create_payload["files"]["manifest_path"]).exists()
+
+    assert search_payload["status"] == "success"
+    assert len(search_payload["results"]) == 2
+    assert search_payload["results"][0]["id"] == "rule-1"
+    assert search_payload["results"][0]["metadata"]["kind"] == "rule"
 
 
 def test_scrape_web_content_normalizes_scraper_result():

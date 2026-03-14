@@ -15,6 +15,14 @@ else:
 from .loader import import_attr_optional, import_module_optional
 from .types import with_adapter_metadata
 
+try:
+    import numpy as np
+except Exception as exc:  # pragma: no cover - depends on optional install state
+    np = None
+    _numpy_error = str(exc)
+else:
+    _numpy_error = None
+
 
 EmbeddingsRouter, _embeddings_error = import_attr_optional(
     "ipfs_datasets_py.embeddings_router",
@@ -120,7 +128,7 @@ def create_vector_index(
     document_list = _normalize_documents(documents)
     resolved_index_name = index_name or "vector_index"
 
-    if embed_texts_batched is None:
+    if np is None or embed_texts_batched is None:
         return with_adapter_metadata(
             {
                 "status": "unavailable",
@@ -213,7 +221,7 @@ def search_vector_index(
     model_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     resolved_index_name = index_name or "vector_index"
-    if embed_texts_batched is None:
+    if np is None or embed_texts_batched is None:
         return with_adapter_metadata(
             {
                 "status": "unavailable",

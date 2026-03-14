@@ -52,6 +52,14 @@ from .policy_rules import (
 	extract_policy_rules_from_pdf,
 )
 from .storage import pin_cid, retrieve_bytes, storage_backend_status, store_bytes
+from .vector_store import (
+	EMBEDDINGS_AVAILABLE,
+	VECTOR_STORE_AVAILABLE,
+	VECTOR_STORE_ERROR,
+	create_vector_index,
+	get_embeddings_router,
+	search_vector_index,
+)
 
 __all__ = [
 	"CapabilityStatus",
@@ -101,4 +109,10 @@ __all__ = [
 	"scrape_web_content",
 	"search_brave_web",
 	"search_multi_engine_web",
+	"EMBEDDINGS_AVAILABLE",
+	"VECTOR_STORE_AVAILABLE",
+	"VECTOR_STORE_ERROR",
+	"create_vector_index",
+	"search_vector_index",
+	"get_embeddings_router",
 ]
