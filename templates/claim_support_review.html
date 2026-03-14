@@ -1828,6 +1828,12 @@
             container.innerHTML = orderedElements.map((element) => {
                 const focusScore = scoreElementForSectionFocus(element);
                 const supportPackets = sortSupportPackets(element.support_packets || []);
+                const supportFactPackets = Array.isArray(element.support_fact_packets) ? element.support_fact_packets : [];
+                const documentFactPackets = Array.isArray(element.document_fact_packets) ? element.document_fact_packets : [];
+                const supportFactStatusCounts = element.support_fact_status_counts || {};
+                const documentFactStatusCounts = element.document_fact_status_counts || {};
+                const proofGaps = Array.isArray(element.proof_gaps) ? element.proof_gaps : [];
+                const proofDecisionTrace = element.proof_decision_trace || {};
                 const archivedPacketCount = supportPackets.filter(
                     (packet) => Boolean(packet?.lineage_summary?.historical_capture),
                 ).length;
@@ -1928,6 +1934,79 @@
                 const missingKinds = (element.missing_support_kinds || []).length
                     ? `<div class="chip-row">${element.missing_support_kinds.map((kind) => `<span class="chip">Missing ${kind}</span>`).join('')}</div>`
                     : '';
+                const proofChips = [
+                    element.validation_status ? `<span class="chip">proof ${element.validation_status}</span>` : '',
+                    element.recommended_action ? `<span class="chip">next ${element.recommended_action}</span>` : '',
+                    proofDecisionTrace.decision_source ? `<span class="chip">decision ${proofDecisionTrace.decision_source}</span>` : '',
+                    element.proof_gap_count !== null && element.proof_gap_count !== undefined ? `<span class="chip">proof gaps ${element.proof_gap_count}</span>` : '',
+                    element.document_fact_packet_count !== null && element.document_fact_packet_count !== undefined ? `<span class="chip">document facts ${element.document_fact_packet_count}</span>` : '',
+                    Number(documentFactStatusCounts.supporting || 0) ? `<span class="chip">document supporting ${documentFactStatusCounts.supporting}</span>` : '',
+                    Number(documentFactStatusCounts.contradicting || 0) ? `<span class="chip">document contradicting ${documentFactStatusCounts.contradicting}</span>` : '',
+                    Number(documentFactStatusCounts.unresolved || 0) ? `<span class="chip">document unresolved ${documentFactStatusCounts.unresolved}</span>` : '',
+                ].filter(Boolean);
+                const documentProofFacts = documentFactPackets.length
+                    ? `
+                        <details class="packet-details document-proof-facts" style="margin-top: 12px;">
+                            <summary>Document proof facts (${documentFactPackets.length})</summary>
+                            <div class="packet-list">
+                                ${documentFactPackets.map((fact) => `
+                                    <div class="packet-card">
+                                        <div class="packet-card-title">${fact.fact_id || fact.source_ref || 'document fact'}</div>
+                                        <div class="packet-card-meta">${fact.text || 'No fact text available.'}</div>
+                                        <div class="chip-row">
+                                            ${fact.proof_status ? `<span class="chip">${fact.proof_status}</span>` : ''}
+                                            ${fact.support_kind ? `<span class="chip">${fact.support_kind}</span>` : ''}
+                                            ${fact.quality_tier ? `<span class="chip">quality ${fact.quality_tier}</span>` : ''}
+                                            ${fact.artifact_family ? `<span class="chip">artifact ${fact.artifact_family}</span>` : ''}
+                                            ${fact.content_origin ? `<span class="chip">origin ${fact.content_origin}</span>` : ''}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </details>
+                    `
+                    : '';
+                const supportProofFacts = supportFactPackets.length
+                    ? `
+                        <details class="packet-details support-proof-facts" style="margin-top: 12px;">
+                            <summary>All proof facts (${supportFactPackets.length})</summary>
+                            <div class="chip-row" style="margin-top: 10px;">
+                                ${Number(supportFactStatusCounts.supporting || 0) ? `<span class="chip">supporting ${supportFactStatusCounts.supporting}</span>` : ''}
+                                ${Number(supportFactStatusCounts.contradicting || 0) ? `<span class="chip">contradicting ${supportFactStatusCounts.contradicting}</span>` : ''}
+                                ${Number(supportFactStatusCounts.unresolved || 0) ? `<span class="chip">unresolved ${supportFactStatusCounts.unresolved}</span>` : ''}
+                            </div>
+                            <div class="packet-list">
+                                ${supportFactPackets.map((fact) => `
+                                    <div class="packet-card">
+                                        <div class="packet-card-title">${fact.fact_id || fact.source_ref || 'support fact'}</div>
+                                        <div class="packet-card-meta">${fact.text || 'No fact text available.'}</div>
+                                        <div class="chip-row">
+                                            ${fact.proof_status ? `<span class="chip">${fact.proof_status}</span>` : ''}
+                                            ${fact.support_kind ? `<span class="chip">${fact.support_kind}</span>` : ''}
+                                            ${fact.source_table ? `<span class="chip">table ${fact.source_table}</span>` : ''}
+                                            ${fact.quality_tier ? `<span class="chip">quality ${fact.quality_tier}</span>` : ''}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </details>
+                    `
+                    : '';
+                const proofGapDetails = proofGaps.length
+                    ? `
+                        <details class="packet-details proof-gap-details" style="margin-top: 12px;">
+                            <summary>Proof gaps (${proofGaps.length})</summary>
+                            <div class="packet-list">
+                                ${proofGaps.map((gap) => `
+                                    <div class="packet-card">
+                                        <div class="packet-card-title">${gap.gap_type || 'proof gap'}</div>
+                                        <div class="packet-card-meta">${gap.message || gap.description || gap.summary || 'No proof-gap detail available.'}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </details>
+                    `
+                    : '';
                 return `
                     <article class="element-card">
                         <div class="row-head">
@@ -1941,7 +2020,11 @@
                         ${missingKinds}
                         ${lineageChips.length ? `<div class="chip-row">${lineageChips.join('')}</div>` : ''}
                         ${authorityChips.length ? `<div class="chip-row">${authorityChips.join('')}</div>` : ''}
+                        ${proofChips.length ? `<div class="chip-row">${proofChips.join('')}</div>` : ''}
                         ${packetDetails}
+                        ${documentProofFacts}
+                        ${supportProofFacts}
+                        ${proofGapDetails}
                         <div class="link-groups">${linkGroups || '<div class="link-group">No linked support records.</div>'}</div>
                     </article>
                 `;
@@ -2262,7 +2345,9 @@
                 summaryLabels.push(`Documents: ${Number(summary.record_count || 0)}`);
                 summaryLabels.push(`Linked elements: ${Number(summary.linked_element_count || 0)}`);
                 summaryLabels.push(`Chunks: ${Number(summary.total_chunk_count || 0)}`);
+                summaryLabels.push(`Facts: ${Number(summary.total_fact_count || 0)}`);
                 summaryLabels.push(`Low quality: ${Number(summary.low_quality_record_count || 0)}`);
+                summaryLabels.push(`Graph ready: ${Number(summary.graph_ready_record_count || 0)}`);
                 Object.entries(summary.parse_status_counts || {}).forEach(([label, count]) => {
                     summaryLabels.push(`${label}: ${count}`);
                 });
@@ -2280,6 +2365,10 @@
             list.innerHTML = items.map((record) => {
                 const parseMetadata = record.parse_metadata || {};
                 const chunkPreviews = Array.isArray(record.chunk_previews) ? record.chunk_previews : [];
+                const factPreviews = Array.isArray(record.fact_previews) ? record.fact_previews : [];
+                const graphPreview = record.graph_preview || {};
+                const graphEntities = Array.isArray(graphPreview.entities) ? graphPreview.entities : [];
+                const graphRelationships = Array.isArray(graphPreview.relationships) ? graphPreview.relationships : [];
                 return `
                     <article class="history-card">
                         <div class="row-head">
@@ -2304,6 +2393,43 @@
                                         <div class="packet-card">
                                             <div class="packet-card-title">${chunk.chunk_id || `chunk-${chunk.index || 0}`}</div>
                                             <div class="packet-card-meta">${chunk.text || ''}</div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </details>
+                        ` : ''}
+                        ${factPreviews.length ? `
+                            <details class="packet-details document-fact-preview" style="margin-top: 12px;">
+                                <summary>Fact previews (${factPreviews.length})</summary>
+                                <div class="packet-list">
+                                    ${factPreviews.map((fact) => `
+                                        <div class="packet-card">
+                                            <div class="packet-card-title">${fact.fact_id || 'fact'}</div>
+                                            <div class="packet-card-meta">${fact.text || 'No fact text available.'}</div>
+                                            <div class="chip-row">
+                                                ${fact.quality_tier ? `<span class="chip">quality: ${fact.quality_tier}</span>` : ''}
+                                                ${fact.confidence !== null && fact.confidence !== undefined ? `<span class="chip">confidence: ${Number(fact.confidence).toFixed(2)}</span>` : ''}
+                                                ${Array.isArray(fact.source_chunk_ids) && fact.source_chunk_ids.length ? `<span class="chip">chunks: ${fact.source_chunk_ids.join(', ')}</span>` : ''}
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </details>
+                        ` : ''}
+                        ${(graphEntities.length || graphRelationships.length) ? `
+                            <details class="packet-details document-graph-preview" style="margin-top: 12px;">
+                                <summary>Graph preview (${Number(graphPreview.entity_count || 0)} entities, ${Number(graphPreview.relationship_count || 0)} relationships)</summary>
+                                <div class="packet-list">
+                                    ${graphEntities.map((entity) => `
+                                        <div class="packet-card">
+                                            <div class="packet-card-title">${entity.name || entity.id || 'entity'}</div>
+                                            <div class="packet-card-meta">${entity.type || 'unknown type'}</div>
+                                        </div>
+                                    `).join('')}
+                                    ${graphRelationships.map((relationship) => `
+                                        <div class="packet-card">
+                                            <div class="packet-card-title">${relationship.relation_type || relationship.id || 'relationship'}</div>
+                                            <div class="packet-card-meta">${relationship.source_id || 'source'} -> ${relationship.target_id || 'target'}</div>
                                         </div>
                                     `).join('')}
                                 </div>

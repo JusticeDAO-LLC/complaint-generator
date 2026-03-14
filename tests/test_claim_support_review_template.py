@@ -36,6 +36,13 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "renderQuestionRecommendations" in content
     assert "renderTestimonyRecords" in content
     assert "renderDocumentArtifacts" in content
+    assert "Fact previews" in content
+    assert "Graph preview" in content
+    assert "document-fact-preview" in content
+    assert "document-graph-preview" in content
+    assert "Document proof facts" in content
+    assert "All proof facts" in content
+    assert "proof-gap-details" in content
     assert "buildTestimonyRequest" in content
     assert "saveTestimony" in content
     assert "buildDocumentRequest" in content

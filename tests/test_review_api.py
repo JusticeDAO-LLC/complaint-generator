@@ -218,9 +218,18 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                     },
                     "elements": [
                         {
-                            "element_id": "retaliation:2",
-                            "element_text": "Adverse action",
-                            "validation_status": "contradicted",
+                            "element_id": "retaliation:1",
+                            "element_text": "Protected activity",
+                            "validation_status": "supported",
+                            "recommended_action": "review_existing_support",
+                            "proof_gap_count": 0,
+                            "proof_gaps": [],
+                            "proof_decision_trace": {
+                                "decision_source": "logic_proof_supported",
+                            },
+                            "proof_diagnostics": {
+                                "decision_source": "logic_proof_supported",
+                            },
                             "reasoning_diagnostics": {
                                 "predicate_count": 4,
                                 "used_fallback_ontology": True,
@@ -249,6 +258,32 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 }
             }
         }
+        mediator.get_claim_support_facts.side_effect = lambda **kwargs: [
+            {
+                "fact_id": "fact:dashboard:1",
+                "fact_text": "Employee reported discrimination to HR in writing.",
+                "support_kind": "evidence",
+                "source_table": "evidence",
+                "source_family": "evidence",
+                "source_ref": "QmDashboardDoc1",
+                "artifact_family": "document",
+                "content_origin": "operator_document_intake",
+                "quality_tier": "high",
+                "record_id": 81,
+            },
+            {
+                "fact_id": "fact:authority:1",
+                "fact_text": "Protected activity is covered by retaliation doctrine.",
+                "support_kind": "authority",
+                "source_table": "legal_authorities",
+                "source_family": "legal_authority",
+                "source_ref": "42 U.S.C. § 2000e-3",
+                "artifact_family": "legal_authority_reference",
+                "content_origin": "authority_reference_fallback",
+                "quality_tier": "high",
+                "record_id": 41,
+            },
+        ] if kwargs.get("claim_element_id") == "retaliation:1" else []
         mediator.get_recent_claim_follow_up_execution.return_value = {
             "claims": {
                 "retaliation": [
@@ -355,6 +390,29 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             {"chunk_id": "chunk-0", "index": 0, "text": "Employee reported discrimination to HR."},
             {"chunk_id": "chunk-1", "index": 1, "text": "The memo was sent the same day."},
         ]
+        mediator.get_evidence_facts.return_value = [
+            {
+                "fact_id": "fact:dashboard:1",
+                "text": "Employee reported discrimination to HR in writing.",
+                "confidence": 0.97,
+                "quality_tier": "high",
+            }
+        ]
+        mediator.get_evidence_graph.return_value = {
+            "status": "ready",
+            "entities": [
+                {"id": "entity:employee", "type": "person", "name": "Employee"},
+                {"id": "entity:hr", "type": "organization", "name": "HR"},
+            ],
+            "relationships": [
+                {
+                    "id": "rel:reported_to",
+                    "source_id": "entity:employee",
+                    "target_id": "entity:hr",
+                    "relation_type": "reported_to",
+                }
+            ],
+        }
         mediator.summarize_claim_support.return_value = {
             "claims": {
                 "retaliation": {
@@ -576,10 +634,22 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert payload["testimony_summary"]["retaliation"]["record_count"] == 1
         assert payload["document_summary"]["retaliation"]["record_count"] == 1
         assert payload["document_summary"]["retaliation"]["total_chunk_count"] == 3
+        assert payload["document_summary"]["retaliation"]["total_fact_count"] == 2
+        assert payload["document_summary"]["retaliation"]["graph_ready_record_count"] == 1
         assert payload["claim_coverage_summary"]["retaliation"]["testimony_record_count"] == 1
         assert payload["claim_coverage_summary"]["retaliation"]["document_record_count"] == 1
+        assert payload["claim_coverage_summary"]["retaliation"]["document_total_fact_count"] == 2
+        assert payload["claim_coverage_summary"]["retaliation"]["document_graph_ready_record_count"] == 1
         assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["testimony_record_count"] == 1
         assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["document_record_count"] == 1
+        assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["document_fact_count"] == 2
+        assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["validation_status"] == "supported"
+        assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["proof_decision_trace"]["decision_source"] == "logic_proof_supported"
+        assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_fact_packet_count"] == 2
+        assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["document_fact_packet_count"] == 1
+        assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["document_fact_packets"][0]["fact_id"] == "fact:dashboard:1"
+        assert payload["document_artifacts"]["retaliation"][0]["fact_previews"][0]["fact_id"] == "fact:dashboard:1"
+        assert payload["document_artifacts"]["retaliation"][0]["graph_preview"]["entity_count"] == 2
         assert payload["follow_up_history"]["retaliation"][0]["support_kind"] == "manual_review"
         assert payload["follow_up_history_summary"]["retaliation"] == {
             "total_entry_count": 2,
@@ -662,9 +732,9 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "degraded_adapter_element_count": 1,
             "flagged_elements": [
                 {
-                    "element_id": "retaliation:2",
-                    "element_text": "Adverse action",
-                    "validation_status": "contradicted",
+                    "element_id": "retaliation:1",
+                    "element_text": "Protected activity",
+                    "validation_status": "supported",
                     "predicate_count": 4,
                     "used_fallback_ontology": True,
                     "backend_available_count": 3,

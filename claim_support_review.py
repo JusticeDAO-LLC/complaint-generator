@@ -520,7 +520,9 @@ def summarize_claim_document_artifacts_claim(
     graph_status_counts: Dict[str, int] = {}
     linked_element_ids = set()
     total_chunks = 0
+    total_facts = 0
     low_quality_count = 0
+    graph_ready_count = 0
 
     for record in normalized_records:
         parse_status = str(record.get("parse_status") or "unknown")
@@ -534,23 +536,321 @@ def summarize_claim_document_artifacts_claim(
 
         graph_status = str(record.get("graph_status") or "unknown")
         graph_status_counts[graph_status] = graph_status_counts.get(graph_status, 0) + 1
+        if graph_status in {"ready", "available"}:
+            graph_ready_count += 1
 
         claim_element_id = str(record.get("claim_element_id") or "")
         if claim_element_id:
             linked_element_ids.add(claim_element_id)
 
         total_chunks += int(record.get("chunk_count", 0) or 0)
+        total_facts += int(record.get("fact_count", 0) or 0)
 
     return {
         "record_count": len(normalized_records),
         "linked_element_count": len(linked_element_ids),
         "total_chunk_count": total_chunks,
+        "total_fact_count": total_facts,
         "low_quality_record_count": low_quality_count,
+        "graph_ready_record_count": graph_ready_count,
         "parse_status_counts": parse_status_counts,
         "quality_tier_counts": quality_tier_counts,
         "graph_status_counts": graph_status_counts,
         "latest_timestamp": str(normalized_records[0].get("timestamp") or "") if normalized_records else "",
     }
+
+
+def _build_document_fact_previews(
+    facts: Any,
+    *,
+    preview_fact_limit: int,
+) -> List[Dict[str, Any]]:
+    if not isinstance(facts, list):
+        return []
+
+    previews: List[Dict[str, Any]] = []
+    for fact in facts[:preview_fact_limit]:
+        if not isinstance(fact, dict):
+            continue
+        metadata = fact.get("metadata", {}) if isinstance(fact.get("metadata"), dict) else {}
+        provenance = fact.get("provenance", {}) if isinstance(fact.get("provenance"), dict) else {}
+        parse_lineage = (
+            metadata.get("parse_lineage", {})
+            if isinstance(metadata.get("parse_lineage"), dict)
+            else {}
+        )
+        provenance_metadata = (
+            provenance.get("metadata", {})
+            if isinstance(provenance.get("metadata"), dict)
+            else {}
+        )
+        source_chunk_ids = fact.get("source_chunk_ids")
+        if not isinstance(source_chunk_ids, list):
+            source_chunk_ids = provenance_metadata.get("source_chunks")
+        if not isinstance(source_chunk_ids, list):
+            source_chunk_ids = []
+
+        previews.append(
+            {
+                "fact_id": str(fact.get("fact_id") or ""),
+                "text": str(fact.get("text") or ""),
+                "confidence": fact.get("confidence"),
+                "quality_tier": str(
+                    fact.get("quality_tier")
+                    or parse_lineage.get("quality_tier")
+                    or ""
+                ),
+                "source_ref": str(fact.get("source_ref") or fact.get("source_artifact_id") or ""),
+                "source_chunk_ids": [str(chunk_id) for chunk_id in source_chunk_ids if chunk_id],
+            }
+        )
+    return previews
+
+
+def _build_document_graph_preview(
+    graph_payload: Any,
+    *,
+    preview_graph_limit: int,
+) -> Dict[str, Any]:
+    if not isinstance(graph_payload, dict):
+        return {
+            "status": "unknown",
+            "entity_count": 0,
+            "relationship_count": 0,
+            "entities": [],
+            "relationships": [],
+        }
+
+    entities = graph_payload.get("entities", [])
+    if not isinstance(entities, list):
+        entities = []
+    relationships = graph_payload.get("relationships", [])
+    if not isinstance(relationships, list):
+        relationships = []
+
+    return {
+        "status": str(graph_payload.get("status") or "unknown"),
+        "entity_count": len([entity for entity in entities if isinstance(entity, dict)]),
+        "relationship_count": len(
+            [relationship for relationship in relationships if isinstance(relationship, dict)]
+        ),
+        "entities": [
+            {
+                "id": str(entity.get("id") or ""),
+                "type": str(entity.get("type") or ""),
+                "name": str(entity.get("name") or ""),
+                "confidence": entity.get("confidence"),
+            }
+            for entity in entities[:preview_graph_limit]
+            if isinstance(entity, dict)
+        ],
+        "relationships": [
+            {
+                "id": str(relationship.get("id") or ""),
+                "source_id": str(relationship.get("source_id") or ""),
+                "target_id": str(relationship.get("target_id") or ""),
+                "relation_type": str(relationship.get("relation_type") or ""),
+                "confidence": relationship.get("confidence"),
+            }
+            for relationship in relationships[:preview_graph_limit]
+            if isinstance(relationship, dict)
+        ],
+    }
+
+
+def _build_support_fact_preview(fact: Any) -> Dict[str, Any]:
+    payload = fact if isinstance(fact, dict) else {}
+    return {
+        "fact_id": str(payload.get("fact_id") or ""),
+        "text": str(payload.get("fact_text") or payload.get("text") or ""),
+        "support_kind": str(payload.get("support_kind") or ""),
+        "source_table": str(payload.get("source_table") or ""),
+        "source_family": str(payload.get("source_family") or ""),
+        "source_ref": str(payload.get("source_ref") or payload.get("support_ref") or ""),
+        "record_scope": str(payload.get("record_scope") or ""),
+        "artifact_family": str(payload.get("artifact_family") or ""),
+        "corpus_family": str(payload.get("corpus_family") or ""),
+        "content_origin": str(payload.get("content_origin") or ""),
+        "quality_tier": str(payload.get("quality_tier") or ""),
+        "quality_score": float(payload.get("quality_score", 0.0) or 0.0),
+        "confidence": payload.get("confidence"),
+        "record_id": payload.get("record_id") or payload.get("source_record_id"),
+    }
+
+
+def _classify_fact_proof_status(
+    fact: Dict[str, Any],
+    *,
+    validation_status: str,
+    decision_source: str,
+    contradiction_fact_ids: set[str],
+) -> str:
+    fact_id = str(fact.get("fact_id") or "")
+    if fact_id and fact_id in contradiction_fact_ids:
+        return "contradicting"
+
+    if validation_status == "supported" and decision_source in {
+        "logic_proof_supported",
+        "ontology_validation_supported",
+        "covered_support",
+    }:
+        return "supporting"
+
+    if validation_status == "missing":
+        return "unresolved"
+
+    if validation_status == "contradicted":
+        return "unresolved"
+
+    if decision_source in {
+        "partial_support",
+        "logic_proof_partial",
+        "logic_unprovable",
+        "ontology_validation_failed",
+        "low_quality_parse",
+        "missing_support",
+    }:
+        return "unresolved"
+
+    if validation_status == "supported":
+        return "supporting"
+
+    return "unresolved"
+
+
+def _summarize_fact_proof_statuses(facts: List[Dict[str, Any]]) -> Dict[str, int]:
+    counts = {
+        "supporting": 0,
+        "contradicting": 0,
+        "unresolved": 0,
+    }
+    for fact in facts:
+        if not isinstance(fact, dict):
+            continue
+        status = str(fact.get("proof_status") or "unresolved")
+        if status not in counts:
+            counts[status] = 0
+        counts[status] += 1
+    return counts
+
+
+def _attach_validation_to_claim_matrix(
+    mediator: Any,
+    user_id: str,
+    claim_type: str,
+    claim_matrix: Dict[str, Any],
+    validation_claim: Dict[str, Any],
+    document_records: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    if not isinstance(claim_matrix, dict):
+        return claim_matrix
+
+    validation_elements = (
+        validation_claim.get("elements", [])
+        if isinstance(validation_claim, dict) and isinstance(validation_claim.get("elements"), list)
+        else []
+    )
+    validation_by_key: Dict[str, Dict[str, Any]] = {}
+    for validation_element in validation_elements:
+        if not isinstance(validation_element, dict):
+            continue
+        element_id = str(validation_element.get("element_id") or "")
+        element_text = str(validation_element.get("element_text") or "")
+        if element_id:
+            validation_by_key[element_id] = validation_element
+        if element_text:
+            validation_by_key.setdefault(element_text, validation_element)
+
+    get_claim_support_facts = getattr(mediator, "get_claim_support_facts", None)
+
+    for element in claim_matrix.get("elements", []) or []:
+        if not isinstance(element, dict):
+            continue
+        element_id = str(element.get("element_id") or "")
+        element_text = str(element.get("element_text") or "")
+        validation_element = validation_by_key.get(element_id) or validation_by_key.get(element_text) or {}
+        contradiction_candidates = (
+            validation_element.get("contradiction_candidates", [])
+            if isinstance(validation_element.get("contradiction_candidates"), list)
+            else []
+        )
+        contradiction_fact_ids: set[str] = {
+            str(fact_id)
+            for candidate in contradiction_candidates
+            if isinstance(candidate, dict)
+            for fact_id in (candidate.get("fact_ids") or [])
+            if fact_id
+        }
+        validation_status = str(validation_element.get("validation_status") or "")
+        decision_source = str(
+            ((validation_element.get("proof_decision_trace") or {}).get("decision_source") or "")
+        )
+
+        support_fact_packets: List[Dict[str, Any]] = []
+        if callable(get_claim_support_facts):
+            support_fact_packets = [
+                _build_support_fact_preview(fact)
+                for fact in get_claim_support_facts(
+                    user_id=user_id,
+                    claim_type=claim_type,
+                    claim_element_id=element_id or None,
+                    claim_element_text=element_text or None,
+                )
+                if isinstance(fact, dict)
+            ]
+        support_fact_packets = [
+            {
+                **fact,
+                "proof_status": _classify_fact_proof_status(
+                    fact,
+                    validation_status=validation_status,
+                    decision_source=decision_source,
+                    contradiction_fact_ids=contradiction_fact_ids,
+                ),
+            }
+            for fact in support_fact_packets
+        ]
+
+        document_record_keys = {
+            str(record.get("cid") or "")
+            for record in document_records
+            if isinstance(record, dict) and str(record.get("cid") or "")
+        }
+        document_record_ids = {
+            str(record.get("record_id"))
+            for record in document_records
+            if isinstance(record, dict) and record.get("record_id") is not None
+        }
+        document_fact_packets = [
+            fact
+            for fact in support_fact_packets
+            if (
+                fact.get("source_table") == "evidence"
+                or fact.get("source_family") == "evidence"
+                or str(fact.get("source_ref") or "") in document_record_keys
+                or str(fact.get("record_id") or "") in document_record_ids
+            )
+        ]
+        support_fact_status_counts = _summarize_fact_proof_statuses(support_fact_packets)
+        document_fact_status_counts = _summarize_fact_proof_statuses(document_fact_packets)
+
+        element["validation_status"] = validation_status
+        element["recommended_action"] = str(validation_element.get("recommended_action") or "")
+        element["proof_gap_count"] = int(validation_element.get("proof_gap_count", 0) or 0)
+        element["proof_gaps"] = list(validation_element.get("proof_gaps", []) or [])
+        element["proof_decision_trace"] = dict(validation_element.get("proof_decision_trace", {}) or {})
+        element["proof_diagnostics"] = dict(validation_element.get("proof_diagnostics", {}) or {})
+        element["contradiction_candidate_count"] = int(
+            validation_element.get("contradiction_candidate_count", 0) or 0
+        )
+        element["support_fact_packets"] = support_fact_packets
+        element["support_fact_packet_count"] = len(support_fact_packets)
+        element["support_fact_status_counts"] = support_fact_status_counts
+        element["document_fact_packets"] = document_fact_packets
+        element["document_fact_packet_count"] = len(document_fact_packets)
+        element["document_fact_status_counts"] = document_fact_status_counts
+
+    return claim_matrix
 
 
 def _attach_documents_to_claim_matrix(
@@ -577,8 +877,18 @@ def _attach_documents_to_claim_matrix(
                 matching_records.append(record)
         element["document_records"] = matching_records
         element["document_record_count"] = len(matching_records)
+        element["document_fact_count"] = sum(
+            int(record.get("fact_count", 0) or 0)
+            for record in matching_records
+            if isinstance(record, dict)
+        )
 
     claim_matrix["document_record_count"] = len(normalized_records)
+    claim_matrix["document_fact_count"] = sum(
+        int(record.get("fact_count", 0) or 0)
+        for record in normalized_records
+        if isinstance(record, dict)
+    )
     return claim_matrix
 
 
@@ -589,6 +899,8 @@ def _collect_claim_document_records(
     *,
     limit: int = 25,
     preview_chunk_limit: int = 3,
+    preview_fact_limit: int = 5,
+    preview_graph_limit: int = 5,
 ) -> Dict[str, List[Dict[str, Any]]]:
     get_user_evidence = getattr(mediator, "get_user_evidence", None)
     if not callable(get_user_evidence):
@@ -599,6 +911,8 @@ def _collect_claim_document_records(
         return {}
 
     get_evidence_chunks = getattr(mediator, "get_evidence_chunks", None)
+    get_evidence_facts = getattr(mediator, "get_evidence_facts", None)
+    get_evidence_graph = getattr(mediator, "get_evidence_graph", None)
     filtered_records = []
     for record in evidence_records:
         if not isinstance(record, dict):
@@ -614,12 +928,31 @@ def _collect_claim_document_records(
     for record in filtered_records:
         record_id = record.get("id")
         chunk_previews: List[Dict[str, Any]] = []
+        fact_previews: List[Dict[str, Any]] = []
+        graph_preview: Dict[str, Any] = {
+            "status": str(record.get("graph_status") or "unknown"),
+            "entity_count": int(record.get("graph_entity_count", 0) or 0),
+            "relationship_count": int(record.get("graph_relationship_count", 0) or 0),
+            "entities": [],
+            "relationships": [],
+        }
         if callable(get_evidence_chunks) and record_id is not None:
             chunks = get_evidence_chunks(int(record_id))
             if isinstance(chunks, list):
                 chunk_previews = [
                     chunk for chunk in chunks[:preview_chunk_limit] if isinstance(chunk, dict)
                 ]
+        if callable(get_evidence_facts) and record_id is not None:
+            facts = get_evidence_facts(int(record_id))
+            fact_previews = _build_document_fact_previews(
+                facts,
+                preview_fact_limit=preview_fact_limit,
+            )
+        if callable(get_evidence_graph) and record_id is not None:
+            graph_preview = _build_document_graph_preview(
+                get_evidence_graph(int(record_id)),
+                preview_graph_limit=preview_graph_limit,
+            )
 
         entry = {
             "record_id": record_id,
@@ -646,6 +979,8 @@ def _collect_claim_document_records(
             "graph_entity_count": int(record.get("graph_entity_count", 0) or 0),
             "graph_relationship_count": int(record.get("graph_relationship_count", 0) or 0),
             "chunk_previews": chunk_previews,
+            "fact_previews": fact_previews,
+            "graph_preview": graph_preview,
         }
         current_claim = str(record.get("claim_type") or "")
         claim_entries.setdefault(current_claim, []).append(entry)
@@ -1592,6 +1927,14 @@ def build_claim_support_review_payload(
                 claim_matrix,
                 document_claims.get(claim_name, []),
             )
+            _attach_validation_to_claim_matrix(
+                mediator,
+                resolved_user_id,
+                claim_name,
+                claim_matrix,
+                validation_claims.get(claim_name, {}),
+                document_claims.get(claim_name, []),
+            )
 
     coverage_summary = {
         claim_name: _summarize_claim_coverage_claim(
@@ -1620,7 +1963,11 @@ def build_claim_support_review_payload(
         summary["document_record_count"] = int(claim_document_summary.get("record_count", 0) or 0)
         summary["document_linked_element_count"] = int(claim_document_summary.get("linked_element_count", 0) or 0)
         summary["document_total_chunk_count"] = int(claim_document_summary.get("total_chunk_count", 0) or 0)
+        summary["document_total_fact_count"] = int(claim_document_summary.get("total_fact_count", 0) or 0)
         summary["document_low_quality_record_count"] = int(claim_document_summary.get("low_quality_record_count", 0) or 0)
+        summary["document_graph_ready_record_count"] = int(
+            claim_document_summary.get("graph_ready_record_count", 0) or 0
+        )
 
     payload: Dict[str, Any] = {
         "user_id": resolved_user_id,

@@ -210,10 +210,50 @@ def _build_dashboard_mediator() -> Mock:
         "claims": {
             "retaliation": {
                 "claim_type": "retaliation",
-                "elements": [],
+                "elements": [
+                    {
+                        "element_text": "Protected activity",
+                        "validation_status": "supported",
+                        "recommended_action": "review_existing_support",
+                        "proof_gap_count": 0,
+                        "proof_gaps": [],
+                        "proof_decision_trace": {
+                            "decision_source": "logic_proof_supported",
+                        },
+                        "proof_diagnostics": {
+                            "decision_source": "logic_proof_supported",
+                        },
+                    }
+                ],
             }
         }
     }
+    mediator.get_claim_support_facts.side_effect = lambda **kwargs: [
+        {
+            "fact_id": "fact:timeline-email",
+            "fact_text": "Employee preserved the retaliation timeline in an archived email.",
+            "support_kind": "evidence",
+            "source_table": "evidence",
+            "source_family": "evidence",
+            "source_ref": "QmDashboardDoc1",
+            "artifact_family": "document",
+            "content_origin": "operator_document_intake",
+            "quality_tier": "high",
+            "record_id": 81,
+        },
+        {
+            "fact_id": "fact:retaliation-citation",
+            "fact_text": "Title and citation fallback preserved the retaliation authority reference.",
+            "support_kind": "authority",
+            "source_table": "legal_authorities",
+            "source_family": "legal_authority",
+            "source_ref": "42 U.S.C. § 2000e-3",
+            "artifact_family": "legal_authority_reference",
+            "content_origin": "authority_reference_fallback",
+            "quality_tier": "high",
+            "record_id": 44,
+        },
+    ] if kwargs.get("claim_element_text") == "Protected activity" else []
     mediator.get_recent_claim_follow_up_execution.return_value = {
         "claims": {
             "retaliation": [
@@ -323,6 +363,29 @@ def _build_dashboard_mediator() -> Mock:
     mediator.get_evidence_chunks.return_value = [
         {"chunk_id": "chunk-0", "index": 0, "text": "Schedule reduction followed the complaint."},
     ]
+    mediator.get_evidence_facts.return_value = [
+        {
+            "fact_id": "fact:schedule-memo:1",
+            "text": "The schedule reduction followed the complaint.",
+            "confidence": 0.89,
+            "quality_tier": "high",
+        }
+    ]
+    mediator.get_evidence_graph.return_value = {
+        "status": "ready",
+        "entities": [
+            {"id": "entity:complaint", "type": "event", "name": "Complaint"},
+            {"id": "entity:schedule", "type": "employment_action", "name": "Schedule reduction"},
+        ],
+        "relationships": [
+            {
+                "id": "rel:after",
+                "source_id": "entity:schedule",
+                "target_id": "entity:complaint",
+                "relation_type": "after",
+            }
+        ],
+    }
     mediator.get_claim_follow_up_plan.return_value = {
         "claims": {
             "retaliation": {
@@ -594,7 +657,15 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert review_payload["question_recommendations"]["retaliation"]
     assert review_payload["testimony_summary"]["retaliation"]["record_count"] == 1
     assert review_payload["document_summary"]["retaliation"]["record_count"] == 1
+    assert review_payload["document_summary"]["retaliation"]["total_fact_count"] == 1
     assert review_payload["claim_coverage_summary"]["retaliation"]["document_record_count"] == 1
+    assert review_payload["claim_coverage_summary"]["retaliation"]["document_total_fact_count"] == 1
+    assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["validation_status"] == "supported"
+    assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_fact_packet_count"] == 2
+    assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["document_fact_packet_count"] == 1
+    assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["document_fact_packets"][0]["fact_id"] == "fact:timeline-email"
+    assert review_payload["document_artifacts"]["retaliation"][0]["fact_previews"][0]["fact_id"] == "fact:schedule-memo:1"
+    assert review_payload["document_artifacts"]["retaliation"][0]["graph_preview"]["relationship_count"] == 1
 
     testimony_payload = await testimony_route.endpoint(
         ClaimSupportTestimonySaveRequest(

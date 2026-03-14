@@ -1962,6 +1962,9 @@ Interpretation notes:
 - `follow_up_max_tasks_per_claim` limits side-effecting execution only; it does not truncate `follow_up_plan`.
 - `claim_support_gaps` and `claim_contradiction_candidates` are the richer operator-facing review sections for unresolved support and possible support conflicts.
 - `question_recommendations` is the compact dashboard-facing intake surface for the same review state. Each recommendation includes `question_id`, `question_text`, `target_claim_element_id`, `target_claim_element_text`, `question_lane`, `question_reason`, `expected_proof_gain`, and compact support context so operators can move directly from unresolved proof state into targeted testimony or document collection.
+- `document_artifacts` is the persisted operator-facing document ledger keyed by claim type. Each entry includes the stored evidence `record_id`, `cid`, `evidence_type`, `claim_element_id`, `claim_element_text`, `description`, `source_url`, `parse_status`, `chunk_count`, `fact_count`, `parsed_text_preview`, `parse_metadata`, `graph_status`, graph counts, compact `chunk_previews`, persisted `fact_previews`, and a compact `graph_preview` for dashboard drilldowns.
+- `document_summary` is the compact operator-facing summary for those artifacts, exposing `record_count`, `linked_element_count`, `total_chunk_count`, `total_fact_count`, `low_quality_record_count`, `graph_ready_record_count`, `parse_status_counts`, `quality_tier_counts`, and `graph_status_counts`.
+- `claim_coverage_matrix[claim_type].elements[*]` now carries merged proof-review fields from `claim_support_validation`, including `validation_status`, `recommended_action`, `proof_gap_count`, `proof_gaps`, `proof_decision_trace`, `proof_diagnostics`, plus `support_fact_packets` and `document_fact_packets` so the dashboard can show which persisted propositions are supporting the element and which ones came from saved documents.
 - `claim_support_validation` is the first-class proof-status surface for the review API. Follow-up planning uses the same normalized validation statuses, so contradiction-heavy elements can be prioritized and are not auto-suppressed.
 - `claim_support_snapshots` exposes any persisted diagnostic snapshot ids reused by the review payload; when a stored snapshot no longer matches current support state it is marked with `is_stale=true` and the payload falls back to recomputation for that claim.
 - `claim_support_snapshot_summary` is the compact review-facing lifecycle view for those persisted diagnostics, so dashboard consumers can see freshness and pruning at a glance without iterating the raw snapshot entries.
@@ -1973,13 +1976,65 @@ Interpretation notes:
 - `claim_coverage_summary[claim_type].authority_treatment_summary` is the canonical compact authority-reliability field for operator surfaces; it summarizes supportive, adverse, and uncertain authority links plus treatment-type counts such as `questioned`, `limits`, `superseded`, or `good_law_unconfirmed`.
 - `claim_coverage_summary[claim_type].authority_rule_candidate_summary` is the canonical compact authority-rule field for operator surfaces; it summarizes extracted rule statements, aligned rule counts for the current claim element, and rule-type mixes such as `element`, `exception`, or `procedural_prerequisite`.
 - `claim_coverage_summary[claim_type]` now also carries `testimony_record_count`, `testimony_linked_element_count`, and `testimony_firsthand_status_counts` so review dashboards can show testimony coverage without reopening the testimony ledger.
+- `claim_coverage_summary[claim_type]` also carries `document_record_count`, `document_linked_element_count`, `document_total_chunk_count`, and `document_low_quality_record_count` so review dashboards can show document-intake coverage and parse pressure without reopening the artifact ledger.
 - `testimony_records` exposes persisted testimony rows keyed by claim type, including `claim_element_id`, `claim_element_text`, `raw_narrative`, `event_date`, `actor`, `act`, `target`, `harm`, `firsthand_status`, `source_confidence`, and `timestamp`.
 - `testimony_summary` is the compact operator-facing ledger summary for those rows, exposing `record_count`, `linked_element_count`, `firsthand_status_counts`, and `confidence_bucket_counts`.
+- Each element in `claim_coverage_matrix[*].elements[*]` may now expose `document_records` and `document_record_count` alongside the existing testimony linkage, allowing the dashboard to show which parsed artifacts are attached to a legal element.
 - `follow_up_plan_summary` and `follow_up_execution_summary` now include `parse_quality_task_count` plus `quality_gap_targeted_task_count`, allowing review surfaces to distinguish parse-remediation work from ordinary support-gap or contradiction follow-up.
 - `follow_up_plan_summary` and `follow_up_execution_summary` also include compact authority search-program metrics: `authority_search_program_task_count`, `authority_search_program_count`, `authority_search_program_type_counts`, `authority_search_intent_counts`, `primary_authority_program_type_counts`, `primary_authority_program_bias_counts`, and `primary_authority_program_rule_bias_counts`.
 - `claim_coverage_summary`, `follow_up_plan_summary`, and `follow_up_execution_summary` are the compact operator-facing surfaces intended for dashboards and review tools; `resolution_applied_counts` highlights tasks that are still active only because unresolved support gaps remain after manual review.
 - When `execute_follow_up=true`, the response adds `compatibility_notice` and emits `Deprecation`, `Sunset`, `Link`, and `Warning` headers so clients can migrate off the compatibility path.
 - New clients should prefer `POST /api/claim-support/execute-follow-up` for side effects and treat `execute_follow_up` on the review endpoint as a compatibility path.
+
+## Claim Support Document Intake APIs
+
+The review surface now provides two document-intake routes that both reuse the shared evidence ingestion path.
+
+### `POST /api/claim-support/save-document`
+
+Use this route when the dashboard or an external caller already has normalized text and wants the review surface to persist it as evidence.
+
+Representative request shape:
+
+```json
+{
+  "claim_type": "retaliation",
+  "claim_element_id": "retaliation:2",
+  "claim_element": "Adverse action",
+  "document_label": "Termination memo",
+  "source_url": "https://example.com/termination-memo",
+  "filename": "termination-memo.txt",
+  "mime_type": "text/plain",
+  "document_text": "Termination followed the complaint.",
+  "required_support_kinds": ["evidence", "authority"],
+  "include_post_save_review": true
+}
+```
+
+Representative response fields:
+
+- `document_result`: the persisted evidence submission payload, including the stored `cid`, `record_id`, any claim-support link ids, and parse or graph metadata returned by the evidence pipeline.
+- `recorded`: `true` when the artifact was persisted or matched a reusable stored record.
+- `post_save_review`: optional refreshed review payload using the same contract as `POST /api/claim-support/review`.
+
+### `POST /api/claim-support/upload-document`
+
+Use this route when the dashboard submits a real file upload. The request is multipart and accepts the uploaded `file` plus the same contextual fields as the JSON route.
+
+Representative multipart fields:
+
+- `file`
+- `claim_type`
+- `claim_element_id`
+- `claim_element`
+- `document_label`
+- `source_url`
+- `mime_type`
+- `evidence_type`
+- `required_support_kinds` as a comma-separated string such as `evidence,authority`
+- `include_post_save_review`
+
+Response semantics match `POST /api/claim-support/save-document`.
 
 ## Claim Support Follow-Up Execution API
 
