@@ -326,6 +326,15 @@ The seed also stores `key_facts["anchor_sections"]` and per-passage `section_lab
 such as `grievance_hearing`, `appeal_rights`, and `reasonable_accommodation`. That
 gives the adversarial loop a more structured bridge into decision-tree design.
 
+When you pass those HACC-backed sessions through `Optimizer.analyze(...)`, the report
+now also includes:
+- `recommended_hacc_preset`
+- `hacc_preset_performance`
+- `anchor_section_performance`
+
+That makes it easier to see which local evidence strategy is producing the strongest
+critic scores and which anchored sections still need better mediator branches.
+
 Each HACC-backed seed includes:
 - `key_facts["evidence_summary"]` for a short narrative grounding
 - `hacc_evidence` with top supporting snippets and source paths

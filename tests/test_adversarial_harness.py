@@ -494,6 +494,42 @@ SUGGESTIONS:
         assert result.session_id == "test_run"
         assert result.num_questions >= 0
 
+    def test_fallback_probe_prioritizes_missing_anchor_section(self):
+        session = AdversarialSession(
+            "test_session",
+            Complainant(MockLLMBackend()),
+            MockMediator(),
+            Critic(MockLLMBackend()),
+            max_turns=3,
+        )
+
+        probe = session._build_fallback_probe(
+            asked_question_counts={},
+            asked_intent_counts={},
+            need_timeline=False,
+            need_harm_remedy=False,
+            need_actor_decisionmaker=False,
+            need_documentary_evidence=False,
+            need_witness=False,
+            last_question_key=None,
+            last_question_intent_key=None,
+            recent_intent_keys=set(),
+            missing_anchor_sections={'reasonable_accommodation'},
+        )
+
+        assert probe is not None
+        assert 'reasonable accommodation' in probe['question'].lower()
+
+    def test_covered_anchor_sections_from_questions(self):
+        covered = AdversarialSession._covered_anchor_sections_from_questions(
+            ['did you request a reasonable accommodation', 'were you given any appeal rights'],
+            {'reasonable_accommodation', 'appeal_rights', 'grievance_hearing'},
+        )
+
+        assert 'reasonable_accommodation' in covered
+        assert 'appeal_rights' in covered
+        assert 'grievance_hearing' not in covered
+
 
 class TestAdversarialHarness:
     """Tests for AdversarialHarness."""

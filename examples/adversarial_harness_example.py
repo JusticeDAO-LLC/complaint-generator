@@ -77,6 +77,26 @@ SUGGESTIONS:
         return "I understand your question and will provide relevant information."
 
 
+def _print_ranked_summary(title, summary_map):
+    if not summary_map:
+        return
+    print(title)
+    for name, payload in sorted(
+        summary_map.items(),
+        key=lambda item: (
+            -float(item[1].get('average_score', 0.0)),
+            -int(item[1].get('count', 0)),
+            item[0],
+        ),
+    ):
+        print(
+            f"  - {name}: avg={payload.get('average_score', 0.0):.3f}, "
+            f"count={payload.get('count', 0)}, "
+            f"range={payload.get('min_score', 0.0):.3f}-{payload.get('max_score', 0.0):.3f}"
+        )
+    print()
+
+
 def main():
     print("=" * 80)
     print("ADVERSARIAL TEST HARNESS EXAMPLE")
@@ -176,6 +196,14 @@ def main():
     print(f"  Efficiency:            {report.efficiency_avg:.3f}")
     print(f"  Coverage:              {report.coverage_avg:.3f}")
     print()
+
+    if report.recommended_hacc_preset:
+        print("HACC strategy:")
+        print(f"  Recommended preset:   {report.recommended_hacc_preset}")
+        print()
+
+    _print_ranked_summary("HACC preset performance:", report.hacc_preset_performance or {})
+    _print_ranked_summary("Anchor section performance:", report.anchor_section_performance or {})
     
     if report.common_strengths:
         print("Common strengths:")

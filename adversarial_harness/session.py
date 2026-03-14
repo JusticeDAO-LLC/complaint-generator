@@ -6,7 +6,7 @@ Manages a single adversarial training session between complainant and mediator.
 
 import logging
 import re
-from typing import Dict, Any, List, Set
+from typing import Dict, Any, List, Set, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import time
@@ -422,7 +422,13 @@ class AdversarialSession:
         need_actor_decisionmaker: bool,
         need_documentary_evidence: bool,
         need_witness: bool,
+        missing_anchor_sections: Set[str] | None = None,
     ) -> int:
+        if missing_anchor_sections and AdversarialSession._question_targets_missing_anchor_section(
+            question_text,
+            missing_anchor_sections,
+        ):
+            return -1
         if need_harm_remedy and AdversarialSession._is_harm_or_remedy_question(question_text):
             return 0
         if need_timeline and AdversarialSession._is_timeline_question(question_text):
@@ -434,6 +440,46 @@ class AdversarialSession:
         if need_witness and AdversarialSession._is_witness_question(question_text):
             return 4
         return 5
+
+    @staticmethod
+    def _question_targets_anchor_section(question_text: str, section: str) -> bool:
+        text = question_text.lower()
+        section_terms = {
+            'grievance_hearing': ('grievance', 'hearing', 'impartial', 'informal hearing'),
+            'appeal_rights': ('appeal', 'review', 'due process', 'rights'),
+            'reasonable_accommodation': ('reasonable accommodation', 'accommodation', 'disability'),
+            'adverse_action': ('termination', 'denial', 'adverse', 'admission', 'occupancy'),
+            'selection_criteria': ('selection', 'screening', 'criteria', 'evaluation', 'priority'),
+        }
+        return any(term in text for term in section_terms.get(section, (section.replace('_', ' '),)))
+
+    @classmethod
+    def _question_targets_missing_anchor_section(
+        cls,
+        question_text: str,
+        missing_anchor_sections: Set[str],
+    ) -> bool:
+        return any(cls._question_targets_anchor_section(question_text, section) for section in missing_anchor_sections)
+
+    @staticmethod
+    def _extract_anchor_sections(seed_complaint: Dict[str, Any]) -> Set[str]:
+        key_facts = seed_complaint.get('key_facts') if isinstance(seed_complaint.get('key_facts'), dict) else {}
+        return {
+            str(value) for value in list(key_facts.get('anchor_sections') or []) if str(value)
+        }
+
+    @classmethod
+    def _covered_anchor_sections_from_questions(
+        cls,
+        question_keys: Sequence[str],
+        expected_anchor_sections: Set[str],
+    ) -> Set[str]:
+        covered: Set[str] = set()
+        for key in question_keys:
+            for section in expected_anchor_sections:
+                if cls._question_targets_anchor_section(key, section):
+                    covered.add(section)
+        return covered
 
     def _build_fallback_probe(
         self,
@@ -447,8 +493,35 @@ class AdversarialSession:
         last_question_key: str | None,
         last_question_intent_key: str | None,
         recent_intent_keys: Set[str],
+        missing_anchor_sections: Set[str],
     ) -> Dict[str, Any] | None:
         probe_candidates: List[tuple[str, str]] = []
+        anchor_probe_map = {
+            'grievance_hearing': (
+                "What grievance or hearing process were you told was available, and who was supposed to handle it?",
+                "anchor_grievance_hearing",
+            ),
+            'appeal_rights': (
+                "Were you given any appeal, review, or due-process rights, and did you try to use them?",
+                "anchor_appeal_rights",
+            ),
+            'reasonable_accommodation': (
+                "Did you request a reasonable accommodation or raise a disability-related need, and how did HACC respond?",
+                "anchor_reasonable_accommodation",
+            ),
+            'adverse_action': (
+                "What adverse action happened to you exactly, such as a denial, termination, or other loss of housing benefits?",
+                "anchor_adverse_action",
+            ),
+            'selection_criteria': (
+                "What screening, selection, or evaluation criteria were you told were being used in your case?",
+                "anchor_selection_criteria",
+            ),
+        }
+        for section in sorted(missing_anchor_sections):
+            probe = anchor_probe_map.get(section)
+            if probe:
+                probe_candidates.append(probe)
         if need_timeline:
             probe_candidates.append((
                 "What are the most precise dates or date ranges for each key event, starting with the first incident?",
@@ -547,6 +620,7 @@ class AdversarialSession:
         last_question_key: str | None,
         last_question_intent_key: str | None,
         recent_intent_keys: Set[str],
+        missing_anchor_sections: Set[str],
     ) -> Any:
         if not questions:
             return None
@@ -621,6 +695,7 @@ class AdversarialSession:
                     need_actor_decisionmaker=need_actor_decisionmaker,
                     need_documentary_evidence=need_documentary_evidence,
                     need_witness=need_witness,
+                    missing_anchor_sections=missing_anchor_sections,
                 ),
                 c[5],
                 c[4],
@@ -753,11 +828,17 @@ class AdversarialSession:
             has_actor_or_decisionmaker_question = False
             has_documentary_evidence_question = False
             has_witness_question = False
+            expected_anchor_sections = self._extract_anchor_sections(seed_complaint)
             
             while turns < self.max_turns:
                 # Get questions from mediator
                 questions = result.get('initial_questions', []) if turns == 0 else \
                            result.get('next_questions', [])
+                covered_anchor_sections = self._covered_anchor_sections_from_questions(
+                    asked_question_keys,
+                    expected_anchor_sections,
+                )
+                missing_anchor_sections = expected_anchor_sections - covered_anchor_sections
 
                 need_timeline = not has_timeline_question
                 need_harm_remedy = not has_harm_remedy_question
@@ -780,6 +861,7 @@ class AdversarialSession:
                         last_question_key=last_question_key,
                         last_question_intent_key=last_question_intent_key,
                         recent_intent_keys=set(recent_intent_keys),
+                        missing_anchor_sections=missing_anchor_sections,
                     )
 
                 if question is None:
@@ -794,6 +876,7 @@ class AdversarialSession:
                         last_question_key=last_question_key,
                         last_question_intent_key=last_question_intent_key,
                         recent_intent_keys=set(recent_intent_keys),
+                        missing_anchor_sections=missing_anchor_sections,
                     )
                     if question is not None:
                         logger.debug("Using harness fallback probe for missing coverage")
