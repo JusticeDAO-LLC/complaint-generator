@@ -1,6 +1,9 @@
+from pathlib import Path
+
 from applications.launcher import (
     canonicalize_application_type,
     create_uvicorn_app_for_type,
+    launch_application,
     normalize_application_types,
 )
 
@@ -51,3 +54,30 @@ def test_create_uvicorn_app_for_review_surface_registers_ui_and_api_routes():
         for route in app.routes
         if hasattr(route, "methods")
     )
+
+
+def test_launch_application_uses_uvicorn_runner_for_review_surface(monkeypatch):
+    observed = {}
+
+    def _fake_run_uvicorn_app(app, application_config):
+        observed["app"] = app
+        observed["application_config"] = dict(application_config)
+
+    monkeypatch.setattr("applications.launcher._run_uvicorn_app", _fake_run_uvicorn_app)
+
+    launch_application(
+        "review-surface",
+        mediator=object(),
+        application_config={"host": "127.0.0.1", "port": 8765, "reload": False},
+        background=False,
+    )
+
+    assert observed["app"].title == "Complaint Generator Review Surface"
+    assert observed["application_config"] == {"host": "127.0.0.1", "port": 8765, "reload": False}
+
+
+def test_requirements_declare_uvicorn_for_web_applications():
+    requirements_path = Path(__file__).resolve().parent.parent / "requirements.txt"
+    requirements_text = requirements_path.read_text(encoding="utf-8")
+
+    assert "uvicorn" in requirements_text

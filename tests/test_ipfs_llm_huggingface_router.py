@@ -17,6 +17,19 @@ def _live_hf_token() -> str:
     )
 
 
+def _clear_hf_router_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for key in (
+        "HF_TOKEN",
+        "HUGGINGFACE_HUB_TOKEN",
+        "HUGGINGFACE_API_KEY",
+        "HF_API_TOKEN",
+        "IPFS_DATASETS_PY_HF_BILL_TO",
+        "HF_BILL_TO",
+        "OPENROUTER_HF_BILL_TO",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+
 def _is_provider_credit_error(payload_or_message: object) -> bool:
     text = str(payload_or_message or "")
     lowered = text.lower()
@@ -100,6 +113,7 @@ def _run_live_hf_router_smoke(prompt: str, *, headers: dict[str, str], **kwargs)
 
 def test_generate_text_via_router_normalizes_huggingface_router(monkeypatch):
     observed = {}
+    _clear_hf_router_env(monkeypatch)
 
     def _fake_generate_text(prompt: str, *, provider=None, model_name=None, **kwargs):
         observed["prompt"] = prompt
@@ -137,6 +151,7 @@ def test_generate_text_via_router_normalizes_huggingface_router(monkeypatch):
 
 def test_generate_text_with_metadata_propagates_hf_bill_to(monkeypatch):
     observed = {}
+    _clear_hf_router_env(monkeypatch)
 
     def _fake_generate_text(prompt: str, *, provider=None, model_name=None, **kwargs):
         observed["provider"] = provider
@@ -163,6 +178,7 @@ def test_generate_text_with_metadata_propagates_hf_bill_to(monkeypatch):
 
 def test_generate_text_with_metadata_treats_huggingface_base_url_as_remote(monkeypatch):
     observed = {}
+    _clear_hf_router_env(monkeypatch)
 
     def _fake_generate_text(prompt: str, *, provider=None, model_name=None, **kwargs):
         observed["provider"] = provider
@@ -195,6 +211,7 @@ def test_generate_text_with_metadata_treats_huggingface_base_url_as_remote(monke
 
 def test_generate_text_with_metadata_uses_arch_router_to_select_model(monkeypatch):
     observed_calls = []
+    _clear_hf_router_env(monkeypatch)
 
     def _fake_generate_text(prompt: str, *, provider=None, model_name=None, **kwargs):
         observed_calls.append(
@@ -257,6 +274,7 @@ def test_generate_text_with_metadata_uses_arch_router_to_select_model(monkeypatc
 
 def test_generate_text_via_router_falls_back_when_arch_router_returns_unknown_route(monkeypatch):
     observed_calls = []
+    _clear_hf_router_env(monkeypatch)
 
     def _fake_generate_text(prompt: str, *, provider=None, model_name=None, **kwargs):
         observed_calls.append({
