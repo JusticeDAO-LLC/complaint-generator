@@ -4,10 +4,16 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-import numpy as np
-
 from .loader import import_attr_optional, import_module_optional
 from .types import with_adapter_metadata
+
+try:
+    import numpy as np
+except Exception as exc:  # pragma: no cover - depends on optional install state
+    np = None
+    _numpy_error = str(exc)
+else:
+    _numpy_error = None
 
 
 EmbeddingsRouter, _embeddings_error = import_attr_optional(
@@ -23,8 +29,8 @@ _vector_stores_module, _vector_stores_error = import_module_optional(
 )
 
 EMBEDDINGS_AVAILABLE = embed_texts_batched is not None or EmbeddingsRouter is not None
-VECTOR_STORE_AVAILABLE = EMBEDDINGS_AVAILABLE or _vector_stores_module is not None
-VECTOR_STORE_ERROR = _embeddings_error or _embed_texts_batched_error or _vector_stores_error
+VECTOR_STORE_AVAILABLE = np is not None and (EMBEDDINGS_AVAILABLE or _vector_stores_module is not None)
+VECTOR_STORE_ERROR = _numpy_error or _embeddings_error or _embed_texts_batched_error or _vector_stores_error
 
 
 def get_embeddings_router(*args: Any, **kwargs: Any) -> Any:
@@ -98,7 +104,7 @@ def create_vector_index(
     document_list = _normalize_documents(documents)
     resolved_index_name = index_name or "vector_index"
 
-    if embed_texts_batched is None:
+    if np is None or embed_texts_batched is None:
         return with_adapter_metadata(
             {
                 "status": "unavailable",
@@ -182,7 +188,7 @@ def search_vector_index(
     model_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     resolved_index_name = index_name or "vector_index"
-    if embed_texts_batched is None:
+    if np is None or embed_texts_batched is None:
         return with_adapter_metadata(
             {
                 "status": "unavailable",
