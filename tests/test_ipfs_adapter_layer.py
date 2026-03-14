@@ -17,7 +17,17 @@ from integrations.ipfs_datasets.documents import (
     should_parse_document_input,
 )
 from integrations.ipfs_datasets.graphs import extract_graph_from_text, persist_graph_snapshot, query_graph_support
-from integrations.ipfs_datasets.graphrag import build_ontology, run_refinement_cycle, validate_ontology
+from integrations.ipfs_datasets.graphrag import (
+    analyze_pdf_relationships,
+    batch_process_pdfs,
+    build_ontology,
+    cross_analyze_pdf_documents,
+    extract_pdf_entities,
+    ingest_pdf_to_graphrag,
+    query_pdf_knowledge_graph,
+    run_refinement_cycle,
+    validate_ontology,
+)
 from integrations.ipfs_datasets.legal import (
     search_federal_register,
     search_recap_documents,
@@ -483,6 +493,77 @@ def test_extract_graph_from_text_returns_normalized_shape():
     assert any(entity['type'] == 'fact' for entity in result['entities'])
     assert any(relationship['relation_type'] == 'has_fact' for relationship in result['relationships'])
     assert result['metadata']['operation'] == 'extract_graph_from_text'
+
+
+def test_ingest_pdf_to_graphrag_delegates_to_upstream_pdf_tool():
+    payload = {"status": "success", "document_id": "doc-1", "entities_added": 7}
+
+    with patch('integrations.ipfs_datasets.graphrag._pdf_ingest_to_graphrag_async', new=Mock(return_value=object())):
+        with patch('integrations.ipfs_datasets.graphrag.run_async_compat', return_value=payload):
+            result = ingest_pdf_to_graphrag("/tmp/policy.pdf", target_llm="gpt-4o-mini")
+
+    assert result["status"] == "success"
+    assert result["document_id"] == "doc-1"
+    assert result["provider"] == "ipfs_datasets_py"
+    assert result["metadata"]["details"]["operation"] == "ingest_pdf_to_graphrag"
+    assert result["metadata"]["details"]["pdf_source"] == "/tmp/policy.pdf"
+
+
+def test_extract_pdf_entities_degrades_cleanly_when_unavailable():
+    with patch('integrations.ipfs_datasets.graphrag._pdf_extract_entities_async', None):
+        result = extract_pdf_entities("/tmp/policy.pdf")
+
+    assert result["status"] == "unavailable"
+    assert result["provider"] == "ipfs_datasets_py"
+    assert result["metadata"]["details"]["operation"] == "extract_pdf_entities"
+    assert result["metadata"]["details"]["backend_available"] is False
+
+
+def test_batch_process_pdfs_delegates_to_upstream_pdf_tool():
+    payload = {"status": "success", "documents_processed": 3}
+
+    with patch('integrations.ipfs_datasets.graphrag._pdf_batch_process_async', new=Mock(return_value=object())):
+        with patch('integrations.ipfs_datasets.graphrag.run_async_compat', return_value=payload):
+            result = batch_process_pdfs(["a.pdf", "b.pdf", "c.pdf"], batch_size=2, parallel_workers=4)
+
+    assert result["status"] == "success"
+    assert result["documents_processed"] == 3
+    assert result["metadata"]["details"]["operation"] == "batch_process_pdfs"
+    assert result["metadata"]["details"]["pdf_count"] == 3
+    assert result["metadata"]["details"]["parallel_workers"] == 4
+
+
+def test_query_pdf_knowledge_graph_delegates_to_upstream_pdf_tool():
+    payload = {"status": "success", "results": [{"id": "entity-1"}]}
+
+    with patch('integrations.ipfs_datasets.graphrag._pdf_query_knowledge_graph_async', new=Mock(return_value=object())):
+        with patch('integrations.ipfs_datasets.graphrag.run_async_compat', return_value=payload):
+            result = query_pdf_knowledge_graph("housing-rules", "eligibility", query_type="natural_language")
+
+    assert result["status"] == "success"
+    assert result["results"][0]["id"] == "entity-1"
+    assert result["metadata"]["details"]["operation"] == "query_pdf_knowledge_graph"
+    assert result["metadata"]["details"]["graph_id"] == "housing-rules"
+    assert result["metadata"]["details"]["query_type"] == "natural_language"
+
+
+def test_analyze_pdf_relationships_and_cross_document_delegate_to_upstream_tools():
+    rel_payload = {"status": "success", "relationships": [{"type": "references"}]}
+    cross_payload = {"status": "success", "connections": [{"source": "doc-1", "target": "doc-2"}]}
+
+    with patch('integrations.ipfs_datasets.graphrag._pdf_analyze_relationships_async', new=Mock(return_value=object())):
+        with patch('integrations.ipfs_datasets.graphrag.run_async_compat', return_value=rel_payload):
+            rel_result = analyze_pdf_relationships("doc-1", analysis_type="rules")
+
+    with patch('integrations.ipfs_datasets.graphrag._pdf_cross_document_analysis_async', new=Mock(return_value=object())):
+        with patch('integrations.ipfs_datasets.graphrag.run_async_compat', return_value=cross_payload):
+            cross_result = cross_analyze_pdf_documents(["doc-1", "doc-2"], output_format="summary")
+
+    assert rel_result["status"] == "success"
+    assert rel_result["metadata"]["details"]["analysis_type"] == "rules"
+    assert cross_result["status"] == "success"
+    assert cross_result["metadata"]["details"]["document_count"] == 2
+    assert cross_result["metadata"]["details"]["output_format"] == "summary"
 
 
 def test_persist_graph_snapshot_returns_stable_contract():
