@@ -63,6 +63,34 @@ pytest -m unit
 pytest -m integration
 ```
 
+### Optional Browser Smoke
+The claim-support dashboard now includes an optional real-browser smoke test for the legacy testimony-link repair path:
+
+```bash
+# Install Playwright into the project venv
+.venv/bin/pip install playwright
+
+# Install a browser runtime once per machine
+.venv/bin/python -m playwright install chromium
+
+# Run the dashboard smoke test
+.venv/bin/pytest -q tests/test_claim_support_review_playwright_smoke.py
+```
+
+The smoke test starts a local FastAPI review surface, seeds one saved testimony row plus one proactively repaired legacy row in a temporary DuckDB, opens the real `/claim-support-review` page in Chromium, clicks `Load Review`, and verifies the rendered testimony summary and cards show both rows linked to `Protected activity`.
+
+If Playwright is not installed, the test is collected and skipped cleanly.
+
+For the full focused claim-support regression slice, use the repo-local runner:
+
+```bash
+.venv/bin/python scripts/run_claim_support_review_regression.py
+```
+
+That command auto-includes the Playwright smoke when both the Playwright package and Chromium runtime are installed. Use `--browser off` to force the non-browser slice or `--browser on` to require the browser smoke explicitly.
+
+VS Code also exposes this runner through the workspace tasks `Claim Support Regression`, `Claim Support Regression (No Browser)`, and `Claim Support Regression (Require Browser)`.
+
 ### Current Test Status
 - ✅ **6 tests passing**
 - ⏭️ **8 tests skipped** (require optional backend dependencies)

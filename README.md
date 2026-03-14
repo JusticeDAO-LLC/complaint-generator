@@ -1,3 +1,17 @@
+Adversarial autopatch can now be run non-interactively through the standard launcher using [config.adversarial_autopatch_demo.json](/home/barberb/complaint-generator/config.adversarial_autopatch_demo.json):
+
+```bash
+./.venv/bin/python run.py --config config.adversarial_autopatch_demo.json
+```
+
+That emits a summary JSON payload to stdout and writes patch artifacts under [tmp/run_py_adversarial_autopatch](/home/barberb/complaint-generator/tmp/run_py_adversarial_autopatch) by default.
+
+If the live `llm_router` stack is available, the same launcher path can prefer real configured backends with [config.adversarial_autopatch_live.json](/home/barberb/complaint-generator/config.adversarial_autopatch_live.json). The demo config sets `demo_backend=true`; the live config leaves demo mode off and uses the configured mediator backends.
+
+For repeatable multi-session live runs, use [config.adversarial_autopatch_live_batch.json](/home/barberb/complaint-generator/config.adversarial_autopatch_live_batch.json), which sets `num_sessions=4` and `max_parallel=2` for a small batch benchmark through the standard launcher.
+
+For environments with several possible routed providers, [config.adversarial_autopatch_live_multibackend.json](/home/barberb/complaint-generator/config.adversarial_autopatch_live_multibackend.json) lists multiple `MEDIATOR.backends`. The live runner now probes those backends in order and records `runtime.selected_backend_id` plus `runtime.probe_attempts` in the output payload.
+
 # Complaint Generator
 ### by JusticeDAO
 
@@ -130,6 +144,19 @@ python run.py --config config.review_surface.json
 # Access the operator dashboard at http://localhost:8000/claim-support-review
 # Access the formal complaint builder at http://localhost:8000/document
 ```
+
+If you need to proactively normalize older claim-support testimony rows after upgrading the review workflow, run:
+
+```bash
+.venv/bin/python scripts/backfill_claim_testimony_links.py \
+    --db-path statefiles/claim_support.duckdb \
+    --dry-run
+
+.venv/bin/python scripts/backfill_claim_testimony_links.py \
+    --db-path statefiles/claim_support.duckdb
+```
+
+The dry run reports legacy testimony rows that can be canonically linked to registered claim elements without updating the database. The non-dry-run invocation applies those repairs in place.
 
 **Hugging Face Router Quick Start:**
 ```bash

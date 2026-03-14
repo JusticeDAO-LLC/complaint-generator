@@ -310,6 +310,37 @@ def test_generate_text_via_router_falls_back_when_arch_router_returns_unknown_ro
     assert observed_calls[1]["model_name"] == "Qwen/Qwen3-Coder-480B-A35B-Instruct"
 
 
+def test_generate_text_via_router_reports_missing_hf_token_before_router_call(monkeypatch):
+    _clear_hf_router_env(monkeypatch)
+
+    def _unexpected_generate_text(*args, **kwargs):
+        raise AssertionError("router generate_text should not be called without an HF token")
+
+    monkeypatch.setattr(llm, "generate_text", _unexpected_generate_text)
+
+    with pytest.raises(RuntimeError, match="Hugging Face router unavailable: missing token"):
+        llm.generate_text_via_router(
+            "Test prompt",
+            provider="huggingface_router",
+            model_name="meta-llama/Llama-3.3-70B-Instruct",
+            base_url=llm.HF_ROUTER_DEFAULT_BASE_URL,
+        )
+
+
+def test_generate_text_with_metadata_reports_missing_codex_binary(monkeypatch):
+    monkeypatch.setattr(llm.shutil, "which", lambda name: None)
+
+    payload = llm.generate_text_with_metadata(
+        "Draft a patch summary.",
+        provider="codex_cli",
+        model_name="gpt-5.1-codex-mini",
+    )
+
+    assert payload["status"] == "error"
+    assert payload["error"] == "Codex CLI unavailable: codex binary not found on PATH."
+    assert payload["availability_hint"] == payload["error"]
+
+
 @pytest.mark.llm
 @pytest.mark.network
 def test_generate_text_with_metadata_live_huggingface_router_smoke():

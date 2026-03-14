@@ -1,5 +1,8 @@
+import json
 from threading import Thread
 from typing import Any, Dict, List
+
+from adversarial_harness.demo_autopatch import run_adversarial_autopatch_batch
 
 from .cli import CLI
 from .review_api import create_review_api_app
@@ -30,7 +33,7 @@ def normalize_application_types(type_config: Any) -> List[str]:
 
 def canonicalize_application_type(app_type: Any) -> str:
     normalized = str(app_type or "").strip().lower().replace("_", "-")
-    if normalized in {"cli", "server", "review-api", "review-dashboard", "review-surface"}:
+    if normalized in {"cli", "server", "review-api", "review-dashboard", "review-surface", "adversarial-autopatch"}:
         return normalized
     raise ValueError(f"unknown application type: {app_type}")
 
@@ -57,6 +60,30 @@ def _run_uvicorn_app(app: Any, application_config: Dict[str, Any]) -> None:
     )
 
 
+def _run_adversarial_autopatch_app(mediator: Any, application_config: Dict[str, Any]) -> None:
+    project_root = application_config.get("project_root")
+    if not project_root:
+        project_root = str(__import__("pathlib").Path(__file__).resolve().parent.parent)
+
+    output_dir = application_config.get("output_dir")
+    if not output_dir:
+        output_dir = str(__import__("pathlib").Path(project_root) / "tmp" / "launched_adversarial_autopatch")
+
+    payload = run_adversarial_autopatch_batch(
+        project_root=project_root,
+        output_dir=output_dir,
+        target_file=application_config.get("target_file", "adversarial_harness/session.py"),
+        num_sessions=int(application_config.get("num_sessions", 1) or 1),
+        max_turns=int(application_config.get("max_turns", 2) or 2),
+        max_parallel=int(application_config.get("max_parallel", 1) or 1),
+        session_state_dir=application_config.get("session_state_dir"),
+        marker_prefix=str(application_config.get("marker_prefix", "Launcher autopatch recommendation")),
+        demo_backend=bool(application_config.get("demo_backend", False)),
+        backends=getattr(mediator, "backends", None),
+    )
+    print(json.dumps(payload, indent=2))
+
+
 def launch_application(
     app_type: str,
     mediator: Any,
@@ -69,6 +96,12 @@ def launch_application(
         if background:
             raise ValueError("cli cannot be launched in background mode")
         CLI(mediator)
+        return
+
+    if canonical == "adversarial-autopatch":
+        if background:
+            raise ValueError("adversarial-autopatch cannot be launched in background mode")
+        _run_adversarial_autopatch_app(mediator, application_config)
         return
 
     if canonical == "server":

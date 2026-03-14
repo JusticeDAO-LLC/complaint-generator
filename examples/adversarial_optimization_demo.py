@@ -4,7 +4,8 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Dict
 
 # Allow running via: python examples/adversarial_optimization_demo.py
@@ -13,6 +14,7 @@ if PROJECT_ROOT not in sys.path:
 	sys.path.insert(0, PROJECT_ROOT)
 
 from adversarial_harness import AdversarialHarness, Critic, Optimizer
+from adversarial_harness.demo_autopatch import DemoPatchOptimizer, run_demo_autopatch_batch
 from adversarial_harness.session import SessionResult
 from backends import LLMRouterBackend
 from mediator import Mediator
@@ -106,15 +108,55 @@ def main() -> int:
 	)
 	parser.add_argument("--num-sessions", type=int, default=3, help="(batch mode) number of sessions")
 	parser.add_argument("--max-parallel", type=int, default=1, help="(batch mode) parallel sessions")
+	parser.add_argument(
+		"--emit-autopatch",
+		action="store_true",
+		help="(batch mode) generate a demo patch artifact from the optimization report",
+	)
+	parser.add_argument(
+		"--autopatch-target-file",
+		default="adversarial_harness/session.py",
+		help="(batch mode) repository file to target when generating the demo patch",
+	)
+	parser.add_argument(
+		"--autopatch-output-dir",
+		default=None,
+		help="(batch mode) directory for demo autopatch artifacts; defaults to tmp/adversarial_optimization_demo",
+	)
+	parser.add_argument(
+		"--demo-backend",
+		action="store_true",
+		help="(batch mode) use mock complainant, critic, and mediator components instead of llm_router",
+	)
 	args = parser.parse_args()
 
 	logging.basicConfig(level=logging.INFO)
 
-	config = _load_config(args.config)
-	backend_kwargs = _get_llm_router_backend_config(config, args.backend_id)
+	backend_kwargs: Dict[str, Any] = {}
+	if not (args.mode == "batch" and args.demo_backend):
+		config = _load_config(args.config)
+		backend_kwargs = _get_llm_router_backend_config(config, args.backend_id)
 
 	if args.mode == "batch":
 		state_dir = os.path.join(PROJECT_ROOT, "statefiles")
+
+		if args.demo_backend:
+			output_dir = Path(args.autopatch_output_dir) if args.autopatch_output_dir else Path(PROJECT_ROOT) / "tmp" / "adversarial_optimization_demo"
+			payload = run_demo_autopatch_batch(
+				project_root=PROJECT_ROOT,
+				output_dir=output_dir,
+				target_file=args.autopatch_target_file,
+				num_sessions=args.num_sessions,
+				max_turns=args.max_turns,
+				max_parallel=args.max_parallel,
+				session_state_dir=state_dir,
+				marker_prefix="Batch autopatch recommendation",
+			)
+			if not args.emit_autopatch:
+				print(json.dumps(payload["report"], indent=2))
+				return 0
+			print(json.dumps(payload, indent=2))
+			return 0
 
 		def _make_session_backend(*, role: str, session_id: str, session_dir: str | None) -> LLMRouterBackend:
 			per_call_kwargs: Dict[str, Any] = dict(backend_kwargs)
@@ -158,12 +200,43 @@ def main() -> int:
 			llm_backend_critic_factory=critic_factory,
 		)
 		results = harness.run_batch(num_sessions=args.num_sessions, max_turns_per_session=args.max_turns)
-		report = Optimizer().analyze(results)
-		print(json.dumps(report.to_dict(), indent=2))
+		optimizer = Optimizer()
+		report = optimizer.analyze(results)
+		if not args.emit_autopatch:
+			print(json.dumps(report.to_dict(), indent=2))
+			return 0
+
+		output_dir = Path(args.autopatch_output_dir) if args.autopatch_output_dir else Path(PROJECT_ROOT) / "tmp" / "adversarial_optimization_demo"
+		autopatch_result = optimizer.run_agentic_autopatch(
+			results,
+			target_files=[args.autopatch_target_file],
+			method="actor_critic",
+			llm_router=object(),
+			optimizer=DemoPatchOptimizer(
+				project_root=Path(PROJECT_ROOT),
+				output_dir=output_dir,
+				marker_prefix="Batch autopatch recommendation",
+			),
+			report=report,
+		)
+		payload = {
+			"num_results": len(results),
+			"report": report.to_dict(),
+			"autopatch": {
+				"success": bool(getattr(autopatch_result, "success", False)),
+				"patch_path": str(getattr(autopatch_result, "patch_path", "")),
+				"patch_cid": str(getattr(autopatch_result, "patch_cid", "")),
+				"metadata": dict(getattr(autopatch_result, "metadata", {}) or {}),
+			},
+		}
+		summary_path = output_dir / "summary.json"
+		summary_path.parent.mkdir(parents=True, exist_ok=True)
+		summary_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+		print(json.dumps(payload, indent=2))
 		return 0
 
 	# interactive mode
-	session_id = args.session_id or f"session_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+	session_id = args.session_id or f"session_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
 	session_id = _safe_session_id(session_id)
 	session_dir = os.path.join(PROJECT_ROOT, "statefiles", session_id)
 	os.makedirs(session_dir, exist_ok=True)

@@ -4,6 +4,7 @@ from contextlib import contextmanager
 import json
 import os
 import re
+import shutil
 import threading
 from typing import Any, Dict, Mapping, Optional
 
@@ -32,6 +33,54 @@ def _coalesce_env(*names: str) -> str:
 		value = os.getenv(name, "").strip()
 		if value:
 			return value
+	return ""
+
+
+def _env_value(name: str, overrides: Optional[Mapping[str, str]] = None) -> str:
+	if overrides is not None:
+		value = str(overrides.get(name, "") or "").strip()
+		if value:
+			return value
+	return os.getenv(name, "").strip()
+
+
+def _provider_preflight_error(
+	*,
+	effective_provider: str,
+	metadata: Mapping[str, Any],
+	env_overrides: Mapping[str, str],
+) -> str:
+	provider_key = str(effective_provider or "").strip().lower()
+	requested_provider = str(metadata.get("requested_provider_name") or "").strip().lower()
+	router_base_url = str(metadata.get("router_base_url") or "").strip().lower()
+
+	if provider_key == "openrouter":
+		is_hf_router_request = requested_provider in HF_ROUTER_PROVIDER_ALIASES or (
+			requested_provider in {"hf", "huggingface"} and "huggingface.co" in router_base_url
+		)
+		if is_hf_router_request:
+			hf_token = (
+				_env_value("IPFS_DATASETS_PY_OPENROUTER_API_KEY", env_overrides)
+				or _env_value("HF_TOKEN")
+				or _env_value("HUGGINGFACE_HUB_TOKEN")
+				or _env_value("HUGGINGFACE_API_KEY")
+				or _env_value("HF_API_TOKEN")
+			)
+			if not hf_token:
+				return (
+					"Hugging Face router unavailable: missing token. "
+					"Set HF_TOKEN, HUGGINGFACE_HUB_TOKEN, HUGGINGFACE_API_KEY, or HF_API_TOKEN."
+				)
+		openrouter_key = _env_value("IPFS_DATASETS_PY_OPENROUTER_API_KEY", env_overrides) or _env_value("OPENROUTER_API_KEY")
+		if not openrouter_key:
+			return (
+				"OpenRouter unavailable: missing API key. "
+				"Set OPENROUTER_API_KEY or IPFS_DATASETS_PY_OPENROUTER_API_KEY."
+			)
+
+	if provider_key in {"codex", "codex_cli"} and shutil.which("codex") is None:
+		return "Codex CLI unavailable: codex binary not found on PATH."
+
 	return ""
 
 
@@ -410,6 +459,13 @@ def generate_text_via_router(
 		model_name=model_name,
 		**kwargs,
 	)
+	preflight_error = _provider_preflight_error(
+		effective_provider=effective_provider,
+		metadata=_,
+		env_overrides=env_overrides,
+	)
+	if preflight_error:
+		raise RuntimeError(preflight_error)
 	with _temporary_env(env_overrides):
 		return generate_text(
 			prompt=prompt,
@@ -447,6 +503,27 @@ def generate_text_with_metadata(
 		model_name=model_name,
 		**kwargs,
 	)
+	preflight_error = _provider_preflight_error(
+		effective_provider=effective_provider,
+		metadata=metadata,
+		env_overrides=env_overrides,
+	)
+	if preflight_error:
+		return with_adapter_metadata(
+			{
+				"status": "error",
+				"text": "",
+				"prompt": prompt,
+				"provider_name": provider or "",
+				"model_name": model_name or "",
+				**metadata,
+				"error": preflight_error,
+				"availability_hint": preflight_error,
+			},
+			operation="generate_text",
+			backend_available=True,
+			implementation_status="available",
+		)
 
 	try:
 		with _temporary_env(env_overrides):

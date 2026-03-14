@@ -1,7 +1,10 @@
-"""
-Tests for adversarial harness system
-"""
+"""Tests for adversarial harness system."""
 
+import importlib.util
+import json
+from pathlib import Path
+from types import SimpleNamespace
+import sys
 import pytest
 from adversarial_harness import (
     Complainant,
@@ -17,6 +20,11 @@ from adversarial_harness import (
     ComplaintTemplate,
     HACC_QUERY_PRESETS,
     get_hacc_query_specs,
+)
+from adversarial_harness.demo_autopatch import (
+    DemoBatchLLMBackend,
+    DemoBatchMediator,
+    run_adversarial_autopatch_batch,
 )
 from adversarial_harness.hacc_evidence import build_hacc_evidence_seed
 import adversarial_harness.seed_complaints as seed_complaints_module
@@ -83,6 +91,24 @@ class MockDependencyGraph:
     """Mock dependency graph."""
     def summary(self):
         return {'total_nodes': 4, 'total_dependencies': 2}
+
+
+class FakeAgenticOptimizationMethod:
+    ACTOR_CRITIC = 'ACTOR_CRITIC'
+    ADVERSARIAL = 'ADVERSARIAL'
+    TEST_DRIVEN = 'TEST_DRIVEN'
+    CHAOS = 'CHAOS'
+
+
+class FakeOptimizationTask:
+    def __init__(self, task_id, description, target_files, method, priority, constraints, metadata):
+        self.task_id = task_id
+        self.description = description
+        self.target_files = target_files
+        self.method = method
+        self.priority = priority
+        self.constraints = constraints
+        self.metadata = metadata
 
 
 class TestComplainant:
@@ -670,7 +696,13 @@ class TestAdversarialHarness:
             SessionResult(
                 session_id='session_1',
                 timestamp='2024-01-01',
-                seed_complaint={},
+                seed_complaint={
+                    '_meta': {
+                        'include_hacc_evidence': True,
+                        'hacc_preset': 'retaliation_focus',
+                        'use_hacc_vector_search': True,
+                    }
+                },
                 initial_complaint_text='Test',
                 conversation_history=[],
                 num_questions=2,
@@ -995,6 +1027,375 @@ class TestOptimizer:
         report = optimizer.analyze([result])
 
         assert any('grievance_hearing' in rec for rec in report.recommendations)
+
+    def test_build_agentic_patch_task_uses_report_recommendations(self, monkeypatch):
+        optimizer = Optimizer()
+
+        monkeypatch.setattr(
+            Optimizer,
+            '_load_agentic_optimizer_components',
+            staticmethod(
+                lambda: {
+                    'OptimizationTask': FakeOptimizationTask,
+                    'OptimizationMethod': FakeAgenticOptimizationMethod,
+                    'OptimizerLLMRouter': object,
+                    'optimizer_classes': {},
+                }
+            ),
+        )
+
+        score = CriticScore(
+            overall_score=0.61,
+            question_quality=0.55,
+            information_extraction=0.58,
+            empathy=0.65,
+            efficiency=0.54,
+            coverage=0.52,
+            feedback='Needs work',
+            strengths=[],
+            weaknesses=['Repetitive questioning'],
+            suggestions=['Ask more targeted follow-ups'],
+        )
+        result = SessionResult(
+            session_id='session_task',
+            timestamp='2024-01-01',
+            seed_complaint={},
+            initial_complaint_text='Test',
+            conversation_history=[],
+            num_questions=3,
+            num_turns=2,
+            final_state={},
+            critic_score=score,
+            success=True,
+        )
+
+        task, report = optimizer.build_agentic_patch_task(
+            [result],
+            target_files=['adversarial_harness/session.py'],
+            method='actor_critic',
+        )
+
+        assert report.average_score == pytest.approx(0.61)
+        assert task.method == 'ACTOR_CRITIC'
+        assert task.target_files == [Path('adversarial_harness/session.py')]
+        assert 'adversarial complainant/mediator loop' in task.description
+        assert task.metadata['report_summary']['average_score'] == pytest.approx(0.61)
+        assert 'recommendations' in task.metadata['report_summary']
+
+    def test_run_agentic_autopatch_invokes_upstream_optimizer_and_attaches_report(self, monkeypatch):
+        optimizer = Optimizer()
+        captured = {}
+
+        class FakeAgenticOptimizer:
+            def __init__(self, agent_id, llm_router):
+                captured['agent_id'] = agent_id
+                captured['llm_router'] = llm_router
+
+            def optimize(self, task):
+                captured['task'] = task
+                return SimpleNamespace(success=True, patch_path=Path('patches/fake.patch'), patch_cid='bafytest', metadata={})
+
+        monkeypatch.setattr(
+            Optimizer,
+            '_load_agentic_optimizer_components',
+            staticmethod(
+                lambda: {
+                    'OptimizationTask': FakeOptimizationTask,
+                    'OptimizationMethod': FakeAgenticOptimizationMethod,
+                    'OptimizerLLMRouter': object,
+                    'optimizer_classes': {
+                        'actor_critic': FakeAgenticOptimizer,
+                    },
+                }
+            ),
+        )
+
+        score = CriticScore(
+            overall_score=0.72,
+            question_quality=0.7,
+            information_extraction=0.71,
+            empathy=0.73,
+            efficiency=0.68,
+            coverage=0.74,
+            feedback='Solid',
+            strengths=['Good coverage'],
+            weaknesses=['Mediator could be more specific'],
+            suggestions=['Improve targeted follow-ups'],
+        )
+        result = SessionResult(
+            session_id='session_patch',
+            timestamp='2024-01-01',
+            seed_complaint={},
+            initial_complaint_text='Test',
+            conversation_history=[],
+            num_questions=4,
+            num_turns=3,
+            final_state={},
+            critic_score=score,
+            success=True,
+        )
+        sentinel_router = object()
+
+        autopatch_result = optimizer.run_agentic_autopatch(
+            [result],
+            target_files=['adversarial_harness/session.py', 'adversarial_harness/harness.py'],
+            llm_router=sentinel_router,
+            method='actor_critic',
+        )
+
+        assert autopatch_result.success is True
+        assert captured['agent_id'] == 'adversarial-harness-optimizer'
+        assert captured['llm_router'] is sentinel_router
+        assert captured['task'].target_files == [
+            Path('adversarial_harness/session.py'),
+            Path('adversarial_harness/harness.py'),
+        ]
+        assert autopatch_result.metadata['agentic_method'] == 'actor_critic'
+        assert autopatch_result.metadata['adversarial_report']['average_score'] == pytest.approx(0.72)
+        assert autopatch_result.metadata['target_files'] == [
+            'adversarial_harness/session.py',
+            'adversarial_harness/harness.py',
+        ]
+
+    def test_harness_batch_can_flow_into_agentic_autopatch(self, monkeypatch):
+        harness = AdversarialHarness(
+            MockLLMBackend("I reported discrimination to HR."),
+            MockLLMBackend(
+                """SCORES:
+question_quality: 0.7
+information_extraction: 0.72
+empathy: 0.68
+efficiency: 0.66
+coverage: 0.71
+
+FEEDBACK: Good session
+STRENGTHS:
+- Good coverage
+WEAKNESSES:
+- More specificity needed
+SUGGESTIONS:
+- Improve targeted follow-ups
+"""
+            ),
+            MockMediator,
+            max_parallel=1,
+        )
+
+        captured = {}
+
+        class FakeAgenticOptimizer:
+            def __init__(self, agent_id, llm_router):
+                captured['agent_id'] = agent_id
+                captured['llm_router'] = llm_router
+
+            def optimize(self, task):
+                captured['task'] = task
+                return SimpleNamespace(success=True, patch_path=Path('patches/harness-flow.patch'), patch_cid='bafy-harness-flow', metadata={})
+
+        monkeypatch.setattr(
+            Optimizer,
+            '_load_agentic_optimizer_components',
+            staticmethod(
+                lambda: {
+                    'OptimizationTask': FakeOptimizationTask,
+                    'OptimizationMethod': FakeAgenticOptimizationMethod,
+                    'OptimizerLLMRouter': object,
+                    'optimizer_classes': {
+                        'actor_critic': FakeAgenticOptimizer,
+                    },
+                }
+            ),
+        )
+
+        results = harness.run_batch(
+            num_sessions=1,
+            seed_complaints=[{
+                'type': 'employment_discrimination',
+                'summary': 'Retaliation after reporting discrimination',
+                'key_facts': {'employer': 'Acme Corp'},
+            }],
+            max_turns_per_session=1,
+            personalities=['cooperative'],
+        )
+        autopatch_result = Optimizer().run_agentic_autopatch(
+            results,
+            target_files=['adversarial_harness/session.py'],
+            llm_router=object(),
+            method='actor_critic',
+        )
+
+        assert len(results) == 1
+        assert results[0].success is True
+        assert autopatch_result.success is True
+        assert captured['task'].target_files == [Path('adversarial_harness/session.py')]
+        assert captured['task'].metadata['source'] == 'adversarial_harness'
+        assert autopatch_result.metadata['adversarial_report']['num_sessions_analyzed'] == 1
+        assert autopatch_result.patch_cid == 'bafy-harness-flow'
+
+    def test_batch_demo_can_emit_autopatch_summary(self, monkeypatch, tmp_path):
+        module_path = Path(__file__).resolve().parents[1] / 'examples' / 'adversarial_optimization_demo.py'
+        spec = importlib.util.spec_from_file_location('adversarial_optimization_demo_test', module_path)
+        assert spec is not None and spec.loader is not None
+        demo_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(demo_module)
+
+        captured = {}
+
+        class FakeHarness:
+            def __init__(self, *args, **kwargs):
+                captured['harness_init'] = kwargs
+
+            def run_batch(self, num_sessions, max_turns_per_session):
+                captured['run_batch'] = {
+                    'num_sessions': num_sessions,
+                    'max_turns_per_session': max_turns_per_session,
+                }
+                return [SimpleNamespace(session_id='session_cli')]
+
+        class FakeOptimizer:
+            def analyze(self, results):
+                captured['analyze_results'] = list(results)
+                return SimpleNamespace(
+                    to_dict=lambda: {
+                        'average_score': 0.75,
+                        'num_sessions_analyzed': len(results),
+                    }
+                )
+
+            def run_agentic_autopatch(self, results, **kwargs):
+                captured['autopatch_kwargs'] = kwargs
+                patch_path = tmp_path / 'cli-autopatch.patch'
+                patch_path.write_text('demo patch', encoding='utf-8')
+                return SimpleNamespace(
+                    success=True,
+                    patch_path=patch_path,
+                    patch_cid='demo-cli-cid',
+                    metadata={'demo': True},
+                )
+
+        monkeypatch.setattr(
+            demo_module,
+            '_load_config',
+            lambda path: {
+                'MEDIATOR': {'backends': ['router']},
+                'BACKENDS': [{'id': 'router', 'type': 'llm_router'}],
+            },
+        )
+        monkeypatch.setattr(demo_module, 'LLMRouterBackend', lambda **kwargs: SimpleNamespace())
+        monkeypatch.setattr(demo_module, 'AdversarialHarness', FakeHarness)
+        monkeypatch.setattr(demo_module, 'Optimizer', FakeOptimizer)
+        monkeypatch.setattr(
+            sys,
+            'argv',
+            [
+                'adversarial_optimization_demo.py',
+                '--mode',
+                'batch',
+                '--emit-autopatch',
+                '--num-sessions',
+                '2',
+                '--max-turns',
+                '4',
+                '--autopatch-target-file',
+                'adversarial_harness/session.py',
+                '--autopatch-output-dir',
+                str(tmp_path),
+            ],
+        )
+
+        exit_code = demo_module.main()
+
+        assert exit_code == 0
+        assert captured['run_batch'] == {'num_sessions': 2, 'max_turns_per_session': 4}
+        assert captured['autopatch_kwargs']['target_files'] == ['adversarial_harness/session.py']
+        summary = json.loads((tmp_path / 'summary.json').read_text(encoding='utf-8'))
+        assert summary['num_results'] == 1
+        assert summary['autopatch']['success'] is True
+        assert summary['autopatch']['patch_cid'] == 'demo-cli-cid'
+
+    def test_run_adversarial_autopatch_batch_live_mode_with_mock_backends(self, tmp_path):
+        payload = run_adversarial_autopatch_batch(
+            project_root=Path(__file__).resolve().parents[1],
+            output_dir=tmp_path,
+            target_file='adversarial_harness/session.py',
+            num_sessions=1,
+            max_turns=2,
+            max_parallel=1,
+            demo_backend=False,
+            backends=[DemoBatchLLMBackend()],
+            mediator_factory=DemoBatchMediator,
+        )
+
+        assert payload['num_results'] == 1
+        assert payload['runtime']['mode'] == 'live'
+        assert payload['runtime']['backend_count'] == 1
+        assert payload['runtime']['backend_type'] == 'DemoBatchLLMBackend'
+        assert payload['runtime']['selected_backend_id'] == 'DemoBatchLLMBackend'
+        assert payload['runtime']['selected_backend_healthy'] is True
+        assert payload['runtime']['probe_attempts'][0]['ok'] is True
+        assert payload['runtime']['degraded'] is False
+        assert payload['runtime']['critic_fallback_sessions'] == 0
+        assert payload['autopatch']['success'] is True
+        assert Path(payload['autopatch']['patch_path']).is_file()
+        summary_path = tmp_path / 'summary.json'
+        assert summary_path.is_file()
+        summary = json.loads(summary_path.read_text(encoding='utf-8'))
+        assert summary['runtime']['mode'] == 'live'
+        assert summary['runtime']['degraded'] is False
+        assert summary['autopatch']['patch_cid'].startswith('demo-')
+
+    def test_run_adversarial_autopatch_batch_live_mode_probes_multiple_backends(self, tmp_path):
+        class FailingBackend:
+            id = 'failing-backend'
+
+            def __call__(self, prompt: str) -> str:
+                raise Exception('probe failed')
+
+        payload = run_adversarial_autopatch_batch(
+            project_root=Path(__file__).resolve().parents[1],
+            output_dir=tmp_path,
+            target_file='adversarial_harness/session.py',
+            num_sessions=1,
+            max_turns=2,
+            max_parallel=1,
+            demo_backend=False,
+            backends=[FailingBackend(), DemoBatchLLMBackend()],
+            mediator_factory=DemoBatchMediator,
+        )
+
+        assert payload['runtime']['mode'] == 'live'
+        assert payload['runtime']['selected_backend_id'] == 'DemoBatchLLMBackend'
+        assert payload['runtime']['selected_backend_healthy'] is True
+        assert payload['runtime']['probe_attempts'][0]['backend_id'] == 'failing-backend'
+        assert payload['runtime']['probe_attempts'][0]['ok'] is False
+        assert payload['runtime']['probe_attempts'][1]['backend_id'] == 'DemoBatchLLMBackend'
+        assert payload['runtime']['probe_attempts'][1]['ok'] is True
+        assert payload['autopatch']['success'] is True
+
+    def test_run_adversarial_autopatch_batch_marks_probe_failure_when_all_live_backends_fail(self, tmp_path):
+        class FailingBackend:
+            def __init__(self, backend_id):
+                self.id = backend_id
+
+            def __call__(self, prompt: str) -> str:
+                raise Exception(f'{self.id} failed')
+
+        payload = run_adversarial_autopatch_batch(
+            project_root=Path(__file__).resolve().parents[1],
+            output_dir=tmp_path,
+            target_file='adversarial_harness/session.py',
+            num_sessions=1,
+            max_turns=2,
+            max_parallel=1,
+            demo_backend=False,
+            backends=[FailingBackend('backend-a'), FailingBackend('backend-b')],
+            mediator_factory=DemoBatchMediator,
+        )
+
+        assert payload['runtime']['selected_backend_id'] == 'backend-a'
+        assert payload['runtime']['selected_backend_healthy'] is False
+        assert payload['runtime']['degraded'] is True
+        assert 'backend_probe_failed' in payload['runtime']['degraded_reasons']
 
 
 if __name__ == '__main__':

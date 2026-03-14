@@ -2236,6 +2236,222 @@ def test_claim_support_review_route_backfills_legacy_unlinked_testimony_rows():
             os.unlink(db_path)
 
 
+def test_claim_support_review_route_surfaces_proactively_repaired_legacy_testimony_rows():
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, hook = _build_hook_backed_review_api_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="state-user",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="The HR complaint email does not exist.",
+            firsthand_status="firsthand",
+            source_confidence=0.92,
+        )
+
+        conn = duckdb.connect(db_path)
+        conn.execute(
+            """
+            INSERT INTO claim_testimony (
+                testimony_id,
+                user_id,
+                claim_type,
+                claim_element_id,
+                claim_element_text,
+                raw_narrative,
+                firsthand_status,
+                source_confidence,
+                metadata
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                "testimony:retaliation:legacy-ui",
+                "state-user",
+                "retaliation",
+                None,
+                "Protected activity",
+                "The HR complaint email does not exist.",
+                "firsthand",
+                0.92,
+                json.dumps({"source": "legacy-ui"}),
+            ],
+        )
+        conn.close()
+
+        backfill_result = hook.backfill_claim_testimony_links("state-user", "retaliation")
+        assert backfill_result["updated_count"] == 1
+        assert backfill_result["records"][0]["claim_element_id"] == "retaliation:1"
+
+        def _coverage_matrix(*, claim_type=None, user_id=None, required_support_kinds=None):
+            records_payload = mediator.get_claim_testimony_records(
+                user_id or "state-user",
+                claim_type or "retaliation",
+            )
+            records = records_payload["claims"]["retaliation"]
+            testimony_links = [
+                {
+                    "claim_type": "retaliation",
+                    "claim_element_id": record["claim_element_id"],
+                    "claim_element_text": record["claim_element_text"],
+                    "support_kind": "testimony",
+                    "support_ref": record["testimony_id"],
+                    "support_label": f"Testimony for {record['claim_element_text']}",
+                    "source_table": "claim_testimony",
+                    "support_strength": record["source_confidence"],
+                    "timestamp": record["timestamp"],
+                    "testimony_record_id": record["record_id"],
+                }
+                for record in records
+            ]
+            return {
+                "claims": {
+                    "retaliation": {
+                        "claim_type": "retaliation",
+                        "required_support_kinds": required_support_kinds or ["evidence", "authority"],
+                        "total_elements": 3,
+                        "status_counts": {"covered": 0, "partially_supported": 1, "missing": 2},
+                        "total_links": len(testimony_links),
+                        "total_facts": len(testimony_links),
+                        "support_by_kind": {"testimony": len(testimony_links)},
+                        "support_trace_summary": {},
+                        "support_packet_summary": {},
+                        "elements": [
+                            {
+                                "element_id": "retaliation:1",
+                                "element_text": "Protected activity",
+                                "status": "partially_supported",
+                                "total_links": len(testimony_links),
+                                "fact_count": len(testimony_links),
+                                "support_by_kind": {"testimony": len(testimony_links)},
+                                "missing_support_kinds": ["evidence", "authority"],
+                                "links": testimony_links,
+                            },
+                            {
+                                "element_id": "retaliation:2",
+                                "element_text": "Adverse action",
+                                "status": "missing",
+                                "total_links": 0,
+                                "fact_count": 0,
+                                "support_by_kind": {},
+                                "missing_support_kinds": ["evidence", "authority"],
+                                "links": [],
+                            },
+                            {
+                                "element_id": "retaliation:3",
+                                "element_text": "Causal connection",
+                                "status": "missing",
+                                "total_links": 0,
+                                "fact_count": 0,
+                                "support_by_kind": {},
+                                "missing_support_kinds": ["evidence", "authority"],
+                                "links": [],
+                            },
+                        ],
+                    }
+                }
+            }
+
+        mediator.get_claim_coverage_matrix.side_effect = _coverage_matrix
+        mediator.get_claim_overview.side_effect = lambda **kwargs: {
+            "claims": {
+                "retaliation": {
+                    "covered": [],
+                    "partially_supported": [{"element_text": "Protected activity"}],
+                    "missing": [
+                        {"element_text": "Adverse action"},
+                        {"element_text": "Causal connection"},
+                    ],
+                }
+            }
+        }
+        mediator.get_claim_support_gaps.side_effect = lambda **kwargs: {
+            "claims": {
+                "retaliation": {
+                    "claim_type": "retaliation",
+                    "unresolved_count": 3,
+                    "unresolved_elements": [
+                        {"element_text": "Protected activity", "recommended_action": "collect_missing_support_kind"},
+                        {"element_text": "Adverse action", "recommended_action": "collect_initial_support"},
+                        {"element_text": "Causal connection", "recommended_action": "collect_initial_support"},
+                    ],
+                }
+            }
+        }
+        mediator.get_claim_contradiction_candidates.side_effect = lambda **kwargs: {
+            "claims": {"retaliation": {"claim_type": "retaliation", "candidate_count": 0, "candidates": []}}
+        }
+        mediator.get_claim_support_validation.side_effect = lambda **kwargs: {
+            "claims": {
+                "retaliation": {
+                    "claim_type": "retaliation",
+                    "validation_status": "incomplete",
+                    "validation_status_counts": {
+                        "supported": 0,
+                        "incomplete": 1,
+                        "missing": 2,
+                        "contradicted": 0,
+                    },
+                    "proof_gap_count": 6,
+                    "elements_requiring_follow_up": [
+                        "Protected activity",
+                        "Adverse action",
+                        "Causal connection",
+                    ],
+                    "elements": [],
+                }
+            }
+        }
+        mediator.get_claim_support_facts.side_effect = lambda **kwargs: []
+
+        app = create_review_api_app(mediator)
+        client = TestClient(app)
+
+        response = client.post(
+            "/api/claim-support/review",
+            json={
+                "claim_type": "retaliation",
+                "include_support_summary": True,
+                "include_overview": True,
+                "include_follow_up_plan": False,
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["claim_coverage_summary"]["retaliation"]["status_counts"] == {
+            "covered": 0,
+            "partially_supported": 1,
+            "missing": 2,
+        }
+        assert payload["testimony_summary"]["retaliation"]["record_count"] == 2
+        assert payload["testimony_summary"]["retaliation"]["linked_element_count"] == 1
+        assert payload["testimony_summary"]["retaliation"]["firsthand_status_counts"] == {
+            "firsthand": 2,
+        }
+        assert payload["claim_coverage_summary"]["retaliation"]["testimony_record_count"] == 2
+        assert payload["claim_coverage_summary"]["retaliation"]["testimony_linked_element_count"] == 1
+        assert payload["claim_overview"]["retaliation"]["partially_supported"] == [
+            {"element_text": "Protected activity"}
+        ]
+        assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["testimony_record_count"] == 2
+        assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["element_text"] == "Protected activity"
+        assert payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["status"] == "partially_supported"
+        assert all(
+            record["claim_element_id"] == "retaliation:1"
+            for record in payload["testimony_records"]["retaliation"]
+        )
+        assert all(
+            record["claim_element_text"] == "Protected activity"
+            for record in payload["testimony_records"]["retaliation"]
+        )
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
 def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
     plan_summary = _summarize_follow_up_plan_claim(
         {

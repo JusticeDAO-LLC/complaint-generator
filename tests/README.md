@@ -58,6 +58,25 @@ pytest tests/test_log.py
 pytest tests/test_mediator.py
 ```
 
+For the claim-support review workflow, the focused regression slice is:
+
+```bash
+.venv/bin/pytest -q \
+    tests/test_claim_support_hooks.py \
+    tests/test_review_api.py \
+    tests/test_claim_support_review_dashboard_flow.py \
+    tests/test_backfill_claim_testimony_links_cli.py \
+    tests/test_claim_support_review_playwright_smoke.py
+```
+
+The equivalent repo-local helper auto-detects whether the browser smoke should be included:
+
+```bash
+.venv/bin/python scripts/run_claim_support_review_regression.py
+```
+
+In VS Code, the same runner is available from the workspace task list as `Claim Support Regression`, with explicit `No Browser` and `Require Browser` variants.
+
 ### Run Tests with Coverage
 
 ```bash
@@ -79,6 +98,22 @@ Run tests excluding integration tests (faster, unit-only tests):
 ```bash
 pytest -m "not integration"
 ```
+
+### Optional Browser Smoke
+
+The claim-support dashboard includes an optional real-browser smoke test that validates the legacy testimony-link repair path end to end in Chromium.
+
+```bash
+.venv/bin/pip install playwright
+.venv/bin/python -m playwright install chromium
+.venv/bin/pytest -q tests/test_claim_support_review_playwright_smoke.py
+```
+
+That smoke test starts a local FastAPI review surface, seeds one saved testimony row plus one proactively repaired legacy row in a temporary DuckDB, loads `/claim-support-review`, and verifies the rendered UI shows both testimony records under `Protected activity`.
+
+If Playwright is not installed, the test skips cleanly at runtime.
+
+Use `.venv/bin/python scripts/run_claim_support_review_regression.py --browser off` when you want the same focused slice without the browser-backed smoke, or `--browser on` when you want the command to require it.
 
 ### Verbose Output
 

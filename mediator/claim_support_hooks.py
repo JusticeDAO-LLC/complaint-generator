@@ -3936,6 +3936,171 @@ class ClaimSupportHook:
             **normalized_payload,
         }
 
+    def _resolve_testimony_claim_element(
+        self,
+        *,
+        record_id: Optional[int],
+        row_user_id: Optional[str],
+        claim_type: Optional[str],
+        claim_element_id: Optional[str],
+        claim_element_text: Optional[str],
+        raw_narrative: Optional[str],
+        entry_metadata: Optional[Dict[str, Any]],
+        conn=None,
+        persist_updates: bool = False,
+    ) -> Dict[str, Any]:
+        resolved_claim_element_id = claim_element_id
+        resolved_claim_element_text = claim_element_text
+        backfilled = False
+
+        if not str(resolved_claim_element_id or '').strip() and str(claim_type or '').strip():
+            resolved_element = self.resolve_claim_element(
+                str(row_user_id or ''),
+                str(claim_type or ''),
+                claim_element_text=str(claim_element_text or '').strip() or None,
+                support_label=str(raw_narrative or '').strip() or None,
+                metadata=entry_metadata,
+            )
+            candidate_element_id = str(resolved_element.get('claim_element_id') or '').strip()
+            if candidate_element_id:
+                resolved_claim_element_id = candidate_element_id
+                resolved_claim_element_text = (
+                    resolved_element.get('claim_element_text')
+                    or resolved_claim_element_text
+                )
+                backfilled = True
+                if persist_updates and conn is not None and record_id is not None:
+                    conn.execute(
+                        """
+                        UPDATE claim_testimony
+                        SET claim_element_id = ?, claim_element_text = ?
+                        WHERE id = ?
+                        """,
+                        [
+                            resolved_claim_element_id,
+                            resolved_claim_element_text or None,
+                            record_id,
+                        ],
+                    )
+
+        return {
+            'claim_element_id': resolved_claim_element_id,
+            'claim_element_text': resolved_claim_element_text,
+            'backfilled': backfilled,
+        }
+
+    def backfill_claim_testimony_links(
+        self,
+        user_id: Optional[str] = None,
+        claim_type: Optional[str] = None,
+        *,
+        limit: int = 0,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        normalized_limit = max(0, int(limit or 0))
+        if not DUCKDB_AVAILABLE:
+            return {
+                'available': False,
+                'user_id': user_id,
+                'claim_type': claim_type,
+                'limit': normalized_limit,
+                'dry_run': bool(dry_run),
+                'scanned_count': 0,
+                'candidate_count': 0,
+                'updated_count': 0,
+                'records': [],
+            }
+
+        where_clauses = ["(claim_element_id IS NULL OR TRIM(claim_element_id) = '')"]
+        parameters: List[Any] = []
+        if user_id:
+            where_clauses.append('user_id = ?')
+            parameters.append(user_id)
+        if claim_type:
+            where_clauses.append('claim_type = ?')
+            parameters.append(claim_type)
+
+        limit_clause = ''
+        if normalized_limit:
+            limit_clause = 'LIMIT ?'
+            parameters.append(normalized_limit)
+
+        try:
+            conn = duckdb.connect(self.db_path)
+            rows = conn.execute(
+                f"""
+                SELECT
+                    id,
+                    user_id,
+                    testimony_id,
+                    claim_type,
+                    claim_element_id,
+                    claim_element_text,
+                    raw_narrative,
+                    metadata,
+                    timestamp
+                FROM claim_testimony
+                WHERE {' AND '.join(where_clauses)}
+                ORDER BY timestamp DESC, id DESC
+                {limit_clause}
+                """,
+                parameters,
+            ).fetchall()
+        except Exception as exc:
+            self.mediator.log('claim_testimony_backfill_error', error=str(exc), claim_type=claim_type)
+            return {
+                'available': False,
+                'user_id': user_id,
+                'claim_type': claim_type,
+                'limit': normalized_limit,
+                'dry_run': bool(dry_run),
+                'scanned_count': 0,
+                'candidate_count': 0,
+                'updated_count': 0,
+                'records': [],
+                'error': str(exc),
+            }
+
+        updated_records: List[Dict[str, Any]] = []
+        for row in rows:
+            entry_metadata = json.loads(row[7]) if row[7] else {}
+            resolved = self._resolve_testimony_claim_element(
+                record_id=row[0],
+                row_user_id=row[1],
+                claim_type=row[3],
+                claim_element_id=row[4],
+                claim_element_text=row[5],
+                raw_narrative=row[6],
+                entry_metadata=entry_metadata,
+                conn=conn,
+                persist_updates=not dry_run,
+            )
+            if not resolved['backfilled']:
+                continue
+            updated_records.append({
+                'record_id': row[0],
+                'user_id': row[1],
+                'testimony_id': row[2],
+                'claim_type': row[3],
+                'claim_element_id': resolved['claim_element_id'],
+                'claim_element_text': resolved['claim_element_text'],
+                'timestamp': row[8].isoformat() if hasattr(row[8], 'isoformat') else row[8],
+            })
+
+        conn.close()
+
+        return {
+            'available': True,
+            'user_id': user_id,
+            'claim_type': claim_type,
+            'limit': normalized_limit,
+            'dry_run': bool(dry_run),
+            'scanned_count': len(rows),
+            'candidate_count': len(updated_records),
+            'updated_count': 0 if dry_run else len(updated_records),
+            'records': updated_records,
+        }
+
     def get_claim_testimony_records(
         self,
         user_id: str,
@@ -4006,42 +4171,24 @@ class ClaimSupportHook:
         claim_entries: Dict[str, List[Dict[str, Any]]] = {}
         for row in rows:
             entry_metadata = json.loads(row[13]) if row[13] else {}
-            resolved_claim_element_id = row[3]
-            resolved_claim_element_text = row[4]
-            if not str(resolved_claim_element_id or '').strip() and str(row[2] or '').strip():
-                resolved_element = self.resolve_claim_element(
-                    user_id,
-                    str(row[2] or ''),
-                    claim_element_text=str(row[4] or '').strip() or None,
-                    support_label=str(row[5] or '').strip() or None,
-                    metadata=entry_metadata,
-                )
-                candidate_element_id = str(resolved_element.get('claim_element_id') or '').strip()
-                if candidate_element_id:
-                    resolved_claim_element_id = candidate_element_id
-                    resolved_claim_element_text = (
-                        resolved_element.get('claim_element_text')
-                        or resolved_claim_element_text
-                    )
-                    conn.execute(
-                        """
-                        UPDATE claim_testimony
-                        SET claim_element_id = ?, claim_element_text = ?
-                        WHERE id = ?
-                        """,
-                        [
-                            resolved_claim_element_id,
-                            resolved_claim_element_text or None,
-                            row[0],
-                        ],
-                    )
+            resolved = self._resolve_testimony_claim_element(
+                record_id=row[0],
+                row_user_id=user_id,
+                claim_type=row[2],
+                claim_element_id=row[3],
+                claim_element_text=row[4],
+                raw_narrative=row[5],
+                entry_metadata=entry_metadata,
+                conn=conn,
+                persist_updates=True,
+            )
 
             entry = {
                 'record_id': row[0],
                 'testimony_id': row[1],
                 'claim_type': row[2],
-                'claim_element_id': resolved_claim_element_id,
-                'claim_element_text': resolved_claim_element_text,
+                'claim_element_id': resolved['claim_element_id'],
+                'claim_element_text': resolved['claim_element_text'],
                 'raw_narrative': row[5] or '',
                 'event_date': row[6] or '',
                 'actor': row[7] or '',

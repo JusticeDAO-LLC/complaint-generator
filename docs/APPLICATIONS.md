@@ -190,6 +190,19 @@ This mode serves:
 
 The formal complaint endpoint also accepts agentic optimization controls, including `optimization_provider`, `optimization_model_name`, and `optimization_llm_config`, so the browser builder or external callers can route optimization traffic through the same Hugging Face router endpoint when needed. The `/document` builder exposes both simple router fields and an advanced JSON editor for `optimization_llm_config`, with the simple fields overriding matching top-level keys for quick experimentation.
 
+Legacy claim-support testimony rows can be normalized proactively with the standalone maintenance command:
+
+```bash
+.venv/bin/python scripts/backfill_claim_testimony_links.py \
+  --db-path statefiles/claim_support.duckdb \
+  --dry-run
+
+.venv/bin/python scripts/backfill_claim_testimony_links.py \
+  --db-path statefiles/claim_support.duckdb
+```
+
+Use `--user-id` and `--claim-type` to scope the repair when you only want to update one operator or one claim family.
+
 ### API Endpoints
 
 #### GET Endpoints
@@ -212,7 +225,7 @@ The formal complaint endpoint also accepts agentic optimization controls, includ
 |----------|-------------|---------|
 | `/api/claim-support/review` | Claim-element review packet for operator or UI workflows | JSON payload with `claim_coverage_matrix`, `claim_coverage_summary`, `claim_support_gaps`, `claim_contradiction_candidates`, optional `support_summary`, `claim_overview`, `follow_up_plan`, compact `follow_up_plan_summary`, and persisted `follow_up_history` or `follow_up_history_summary`; coverage payloads include compact support-lineage packet summaries for archived captures and authority fallbacks; `follow_up_execution` remains compatibility-only |
 | `/api/claim-support/execute-follow-up` | Explicit side-effecting follow-up execution endpoint | JSON payload with `follow_up_execution`, lineage-aware `follow_up_execution_summary`, optional `execution_quality_summary`, and optional `post_execution_review` with refreshed `follow_up_history_summary` |
-| `/api/claim-support/save-testimony` | Persist a structured testimony record for the current claim-support review context | JSON payload with `testimony_result`, `recorded`, and optional `post_save_review` using the standard review contract |
+| `/api/claim-support/save-testimony` | Persist a structured testimony record for the current claim-support review context | JSON payload with `testimony_result`, `recorded`, and optional `post_save_review` using the standard review contract; save-time canonicalization resolves text-only claim elements to registered `claim_element_id` values when the match is unambiguous |
 | `/api/claim-support/save-document` | Persist pasted document text for the current claim-support review context through the shared evidence parse, chunk, and graph pipeline | JSON payload with `document_result`, `recorded`, and optional `post_save_review` using the standard review contract |
 | `/api/claim-support/upload-document` | Persist an uploaded file for the current claim-support review context through the shared evidence parse, chunk, and graph pipeline | Multipart form response with `document_result`, `recorded`, and optional `post_save_review` using the standard review contract |
 | `/api/documents/formal-complaint` | Formal complaint export endpoint for court-style pleading drafts | JSON payload with the structured draft, generated artifact paths, selected output formats, generation timestamp, and claim-level drafting-readiness or support-summary context used by the builder preview |
@@ -248,7 +261,7 @@ Example response fields:
 - `claim_support_gaps`: unresolved-element diagnostics keyed by claim type.
 - `claim_contradiction_candidates`: heuristic contradiction candidates keyed by claim type.
 - `question_recommendations`: targeted operator-facing question packets keyed by claim type, grouped around contradiction resolution, testimony clarification, document requests, or authority clarification.
-- `testimony_records`: persisted testimony rows keyed by claim type.
+- `testimony_records`: persisted testimony rows keyed by claim type. Legacy rows missing `claim_element_id` are lazily repaired on read when the registered claim-element match is unambiguous.
 - `testimony_summary`: compact testimony counts keyed by claim type, including linked-element counts plus firsthand and confidence buckets.
 - `document_artifacts`: persisted dashboard-ingested evidence artifacts keyed by claim type, including parse, chunk, fact, and graph previews for uploaded or pasted materials.
 - `document_summary`: compact document-artifact counts keyed by claim type, including linked-element counts, total chunks, total facts, graph-ready counts, low-quality parse counts, and parse-status mix.

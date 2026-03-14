@@ -1,6 +1,8 @@
 import json
 import shlex
+from pathlib import Path
 from urllib import request
+from adversarial_harness.demo_autopatch import run_adversarial_autopatch_batch
 from lib.log import make_logger
 from mediator.exceptions import UserPresentableException
 from datetime import datetime
@@ -86,6 +88,8 @@ class CLI:
 			self.execute_follow_up(parts[1:])
 		elif command == 'export-complaint':
 			self.export_complaint(parts[1:])
+		elif command == 'adversarial-autopatch':
+			self.adversarial_autopatch(parts[1:])
 		else:
 			self.print_error('command unknown, available commands are:')
 			self.print_commands()
@@ -476,6 +480,42 @@ class CLI:
 		lines.append(json.dumps(payload, indent=2, default=str))
 		return '\n'.join(lines)
 
+	def adversarial_autopatch(self, args):
+		positionals, options = self._parse_command_options(args)
+		output_dir = options.get('output_dir')
+		if output_dir is None and positionals:
+			output_dir = positionals[0]
+		if output_dir is None:
+			output_dir = str(Path(__file__).resolve().parent.parent / 'tmp' / 'cli_adversarial_autopatch')
+		payload = run_adversarial_autopatch_batch(
+			project_root=Path(__file__).resolve().parent.parent,
+			output_dir=output_dir,
+			target_file=options.get('target_file', 'adversarial_harness/session.py'),
+			num_sessions=options.get('num_sessions', 1),
+			max_turns=options.get('max_turns', 2),
+			max_parallel=options.get('max_parallel', 1),
+			session_state_dir=options.get('session_state_dir'),
+			marker_prefix='CLI autopatch recommendation',
+			demo_backend=options.get('demo_backend', True),
+			backends=getattr(self.mediator, 'backends', None),
+		)
+		self.print_response(self._format_adversarial_autopatch_output(payload))
+
+	def _format_adversarial_autopatch_output(self, payload):
+		report = payload.get('report', {}) if isinstance(payload, dict) else {}
+		autopatch = payload.get('autopatch', {}) if isinstance(payload, dict) else {}
+		lines = ['adversarial autopatch:']
+		lines.append(f"sessions: {payload.get('num_results', 0)}")
+		if isinstance(report, dict) and report:
+			lines.append(f"average_score: {float(report.get('average_score', 0.0) or 0.0):.4f}")
+			lines.append(f"score_trend: {report.get('score_trend', 'unknown')}")
+		if isinstance(autopatch, dict) and autopatch:
+			lines.append(f"success: {bool(autopatch.get('success', False))}")
+			lines.append(f"patch_path: {autopatch.get('patch_path', '')}")
+			lines.append(f"patch_cid: {autopatch.get('patch_cid', '')}")
+		lines.append(json.dumps(payload, indent=2, default=str))
+		return '\n'.join(lines)
+
 
 	def save(self):
 		request = dict({"username": self.mediator.state.username, "password": self.mediator.state.password})
@@ -510,3 +550,4 @@ class CLI:
 		print('!claim-review [claim_type] [key=value]')
 		print('!execute-follow-up [claim_type] [key=value]')
 		print('!export-complaint [output_dir] [key=value]')
+		print('!adversarial-autopatch [output_dir] [key=value]')

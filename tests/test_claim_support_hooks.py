@@ -2933,3 +2933,87 @@ class TestClaimSupportHook:
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)
+
+    def test_backfill_claim_testimony_links_updates_legacy_rows_proactively(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'retaliation': ['Protected activity', 'Adverse action']},
+            )
+
+            conn = duckdb.connect(db_path)
+            conn.execute(
+                """
+                INSERT INTO claim_testimony (
+                    testimony_id,
+                    user_id,
+                    claim_type,
+                    claim_element_id,
+                    claim_element_text,
+                    raw_narrative,
+                    firsthand_status,
+                    source_confidence,
+                    metadata
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    'testimony:retaliation:legacy-proactive',
+                    'testuser',
+                    'retaliation',
+                    None,
+                    'Protected activity',
+                    'Discrimination complaint email to HR does not exist.',
+                    'firsthand',
+                    0.9,
+                    json.dumps({'source': 'legacy-proactive'}),
+                    'testimony:retaliation:legacy-unmatched',
+                    'testuser',
+                    'retaliation',
+                    None,
+                    'Unknown element',
+                    'A narrative that does not match a registered element.',
+                    'firsthand',
+                    0.6,
+                    json.dumps({'source': 'legacy-unmatched'}),
+                ],
+            )
+            conn.close()
+
+            dry_run = hook.backfill_claim_testimony_links('testuser', 'retaliation', dry_run=True)
+            assert dry_run['scanned_count'] == 2
+            assert dry_run['candidate_count'] == 1
+            assert dry_run['updated_count'] == 0
+            assert dry_run['records'][0]['claim_element_id'] == 'retaliation:1'
+
+            result = hook.backfill_claim_testimony_links('testuser', 'retaliation')
+            assert result['scanned_count'] == 2
+            assert result['candidate_count'] == 1
+            assert result['updated_count'] == 1
+            assert result['records'][0]['testimony_id'] == 'testimony:retaliation:legacy-proactive'
+
+            conn = duckdb.connect(db_path)
+            persisted = conn.execute(
+                "SELECT testimony_id, claim_element_id, claim_element_text FROM claim_testimony ORDER BY testimony_id"
+            ).fetchall()
+            conn.close()
+
+            assert persisted == [
+                ('testimony:retaliation:legacy-proactive', 'retaliation:1', 'Protected activity'),
+                ('testimony:retaliation:legacy-unmatched', None, 'Unknown element'),
+            ]
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)

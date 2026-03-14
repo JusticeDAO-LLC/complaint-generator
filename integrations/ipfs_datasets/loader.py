@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import importlib.util
 import sys
 import threading
 from dataclasses import dataclass
@@ -44,6 +45,53 @@ def _matches_package_root(module_name: str, package_root: str) -> bool:
     return module_name == package_root or module_name.startswith(f"{package_root}.")
 
 
+def _package_dir_for_root(package_root: str) -> Path | None:
+    paths = get_repo_paths()
+    if package_root == "ipfs_datasets_py":
+        return paths.ipfs_datasets_repo / "ipfs_datasets_py"
+    if package_root == "ipfs_accelerate_py":
+        return paths.ipfs_accelerate_repo / "ipfs_accelerate_py"
+    return None
+
+
+def _loaded_package_matches(package_root: str, package_dir: Path) -> bool:
+    loaded = sys.modules.get(package_root)
+    if loaded is None:
+        return False
+    loaded_file = str(getattr(loaded, "__file__", "") or "")
+    if loaded_file and Path(loaded_file).resolve() == (package_dir / "__init__.py").resolve():
+        return True
+    loaded_paths = [str(Path(path).resolve()) for path in getattr(loaded, "__path__", [])]
+    return str(package_dir.resolve()) in loaded_paths
+
+
+def _prime_repo_package(package_root: str) -> None:
+    package_dir = _package_dir_for_root(package_root)
+    if package_dir is None:
+        return
+    init_file = package_dir / "__init__.py"
+    if not init_file.exists():
+        return
+
+    if _loaded_package_matches(package_root, package_dir):
+        return
+
+    for module_name in list(sys.modules):
+        if _matches_package_root(module_name, package_root):
+            sys.modules.pop(module_name, None)
+
+    spec = importlib.util.spec_from_file_location(
+        package_root,
+        init_file,
+        submodule_search_locations=[str(package_dir)],
+    )
+    if spec is None or spec.loader is None:
+        return
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[package_root] = module
+    spec.loader.exec_module(module)
+
+
 def ensure_import_paths(module_name: str = "", missing_module_name: str = "") -> RepoPaths:
     paths = get_repo_paths()
     candidate_paths: list[Path] = []
@@ -63,6 +111,10 @@ def ensure_import_paths(module_name: str = "", missing_module_name: str = "") ->
             path_str = str(path)
             if path_str not in sys.path:
                 sys.path.insert(0, path_str)
+
+    for package_root in ("ipfs_datasets_py", "ipfs_accelerate_py"):
+        if _matches_package_root(module_name, package_root) or _matches_package_root(missing_module_name, package_root):
+            _prime_repo_package(package_root)
     return paths
 
 

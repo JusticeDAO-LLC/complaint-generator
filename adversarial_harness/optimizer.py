@@ -5,6 +5,8 @@ Analyzes critic feedback and provides optimization recommendations.
 """
 
 import logging
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -116,6 +118,211 @@ class Optimizer:
     def __init__(self):
         """Initialize optimizer."""
         self.history = []
+
+    @staticmethod
+    def _load_agentic_optimizer_components() -> Dict[str, Any]:
+        try:
+            import sys
+
+            from integrations.ipfs_datasets.loader import ensure_import_paths, get_repo_paths
+
+            ensure_import_paths(module_name="ipfs_datasets_py.optimizers.agentic")
+
+            repo_paths = get_repo_paths()
+            expected_package_root = repo_paths.ipfs_datasets_repo / "ipfs_datasets_py"
+            cached_module = sys.modules.get("ipfs_datasets_py")
+            cached_paths = [str(path) for path in getattr(cached_module, "__path__", [])]
+            if cached_module is not None and str(expected_package_root) not in cached_paths:
+                for module_name in list(sys.modules):
+                    if module_name == "ipfs_datasets_py" or module_name.startswith("ipfs_datasets_py."):
+                        sys.modules.pop(module_name, None)
+        except Exception:
+            pass
+
+        from ipfs_datasets_py.optimizers.agentic.base import OptimizationTask, OptimizationMethod
+        from ipfs_datasets_py.optimizers.agentic.llm_integration import OptimizerLLMRouter
+        from ipfs_datasets_py.optimizers.agentic.methods.actor_critic import ActorCriticOptimizer
+        from ipfs_datasets_py.optimizers.agentic.methods.adversarial import AdversarialOptimizer
+        from ipfs_datasets_py.optimizers.agentic.methods.chaos import ChaosOptimizer
+        from ipfs_datasets_py.optimizers.agentic.methods.test_driven import TestDrivenOptimizer
+
+        return {
+            "OptimizationTask": OptimizationTask,
+            "OptimizationMethod": OptimizationMethod,
+            "OptimizerLLMRouter": OptimizerLLMRouter,
+            "optimizer_classes": {
+                "actor_critic": ActorCriticOptimizer,
+                "adversarial": AdversarialOptimizer,
+                "test_driven": TestDrivenOptimizer,
+                "chaos": ChaosOptimizer,
+            },
+        }
+
+    @staticmethod
+    def _fallback_agentic_optimizer_components() -> Dict[str, Any]:
+        class FallbackOptimizationTask:
+            def __init__(
+                self,
+                task_id: str,
+                description: str,
+                target_files: List[Path],
+                method: Any,
+                priority: int,
+                constraints: Dict[str, Any],
+                metadata: Dict[str, Any],
+            ) -> None:
+                self.task_id = task_id
+                self.description = description
+                self.target_files = target_files
+                self.method = method
+                self.priority = priority
+                self.constraints = constraints
+                self.metadata = metadata
+
+        fallback_method = SimpleNamespace(
+            ACTOR_CRITIC="ACTOR_CRITIC",
+            ADVERSARIAL="ADVERSARIAL",
+            TEST_DRIVEN="TEST_DRIVEN",
+            CHAOS="CHAOS",
+        )
+        return {
+            "OptimizationTask": FallbackOptimizationTask,
+            "OptimizationMethod": fallback_method,
+            "OptimizerLLMRouter": None,
+            "optimizer_classes": {},
+        }
+
+    def _build_agentic_patch_description(
+        self,
+        report: OptimizationReport,
+        *,
+        method: str,
+        target_files: List[Path],
+    ) -> str:
+        focus_items = list(report.priority_improvements or [])[:3]
+        if not focus_items:
+            focus_items = list(report.common_weaknesses or [])[:3]
+        if not focus_items:
+            focus_items = ["stabilize adversarial mediator questioning flow"]
+
+        target_labels = ", ".join(str(path) for path in target_files) or "target files auto-detected"
+        focus_text = "; ".join(focus_items)
+        return (
+            f"Use the {method} optimizer to improve the complaint-generator adversarial complainant/mediator loop. "
+            f"Target files: {target_labels}. Priorities from the latest adversarial batch: {focus_text}. "
+            f"Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability."
+        )
+
+    def build_agentic_patch_task(
+        self,
+        results: List[Any],
+        *,
+        target_files: List[str | Path],
+        method: str = "actor_critic",
+        priority: int = 70,
+        description: Optional[str] = None,
+        constraints: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        report: Optional[OptimizationReport] = None,
+        components: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Any, OptimizationReport]:
+        components = components or self._load_agentic_optimizer_components()
+        task_cls = components["OptimizationTask"]
+        method_enum = components["OptimizationMethod"]
+
+        normalized_method = str(method or "actor_critic").strip().lower().replace("-", "_")
+        if normalized_method not in {"actor_critic", "adversarial", "test_driven", "chaos"}:
+            raise ValueError(f"Unsupported agentic optimization method: {method}")
+
+        report = report or self.analyze(results)
+        resolved_targets = [Path(path) for path in target_files]
+        resolved_description = description or self._build_agentic_patch_description(
+            report,
+            method=normalized_method,
+            target_files=resolved_targets,
+        )
+
+        task = task_cls(
+            task_id=f"adversarial_autopatch_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}",
+            description=resolved_description,
+            target_files=resolved_targets,
+            method=getattr(method_enum, normalized_method.upper()),
+            priority=int(priority),
+            constraints=dict(constraints or {}),
+            metadata={
+                "source": "adversarial_harness",
+                "report_summary": {
+                    "average_score": report.average_score,
+                    "score_trend": report.score_trend,
+                    "priority_improvements": list(report.priority_improvements or []),
+                    "recommendations": list(report.recommendations or [])[:5],
+                    "common_weaknesses": list(report.common_weaknesses or []),
+                },
+                **dict(metadata or {}),
+            },
+        )
+        return task, report
+
+    def run_agentic_autopatch(
+        self,
+        results: List[Any],
+        *,
+        target_files: List[str | Path],
+        method: str = "actor_critic",
+        priority: int = 70,
+        description: Optional[str] = None,
+        constraints: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        report: Optional[OptimizationReport] = None,
+        llm_router: Any = None,
+        optimizer: Any = None,
+        agent_id: str = "adversarial-harness-optimizer",
+    ) -> Any:
+        if optimizer is not None:
+            try:
+                components = self._load_agentic_optimizer_components()
+            except Exception:
+                components = self._fallback_agentic_optimizer_components()
+        else:
+            components = self._load_agentic_optimizer_components()
+        optimizer_classes = components["optimizer_classes"]
+        router_cls = components["OptimizerLLMRouter"]
+
+        normalized_method = str(method or "actor_critic").strip().lower().replace("-", "_")
+        if optimizer is None and normalized_method not in optimizer_classes:
+            raise ValueError(f"Unsupported agentic optimization method: {method}")
+
+        task, report = self.build_agentic_patch_task(
+            results,
+            target_files=target_files,
+            method=normalized_method,
+            priority=priority,
+            description=description,
+            constraints=constraints,
+            metadata=metadata,
+            report=report,
+            components=components,
+        )
+
+        resolved_router = llm_router
+        if resolved_router is None and router_cls is not None:
+            resolved_router = router_cls(enable_tracking=False, enable_caching=True)
+
+        resolved_optimizer = optimizer
+        if resolved_optimizer is None:
+            resolved_optimizer = optimizer_classes[normalized_method](
+                agent_id=agent_id,
+                llm_router=resolved_router,
+            )
+        result = resolved_optimizer.optimize(task)
+        result_metadata = getattr(result, "metadata", None)
+        if not isinstance(result_metadata, dict):
+            result_metadata = {}
+            setattr(result, "metadata", result_metadata)
+        result_metadata.setdefault("adversarial_report", report.to_dict())
+        result_metadata.setdefault("target_files", [str(path) for path in task.target_files])
+        result_metadata.setdefault("agentic_method", normalized_method)
+        return result
 
     @staticmethod
     def _safe_float(value: Any) -> Optional[float]:

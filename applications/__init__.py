@@ -4,6 +4,7 @@ from .launcher import (
 	create_uvicorn_app_for_type,
 	launch_application,
 	normalize_application_types,
+	_run_adversarial_autopatch_app,
 	start_configured_applications,
 )
 from .review_api import create_review_api_app

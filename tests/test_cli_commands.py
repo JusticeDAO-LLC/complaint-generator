@@ -1,5 +1,7 @@
 from unittest.mock import Mock
 
+import json
+
 from applications.cli import CLI
 
 
@@ -464,10 +466,12 @@ def test_interpret_command_routes_new_commands():
     cli.claim_review = Mock()
     cli.execute_follow_up = Mock()
     cli.export_complaint = Mock()
+    cli.adversarial_autopatch = Mock()
 
     cli.interpret_command('claim-review claim_type=retaliation')
     cli.interpret_command('execute-follow-up claim_type=retaliation follow_up_force=true')
     cli.interpret_command('export-complaint /tmp/out district="District of Columbia"')
+    cli.interpret_command('adversarial-autopatch /tmp/patches num_sessions=2 max_turns=3')
 
     cli.claim_review.assert_called_once_with(['claim_type=retaliation'])
     cli.execute_follow_up.assert_called_once_with([
@@ -478,3 +482,55 @@ def test_interpret_command_routes_new_commands():
         '/tmp/out',
         'district=District of Columbia',
     ])
+    cli.adversarial_autopatch.assert_called_once_with([
+        '/tmp/patches',
+        'num_sessions=2',
+        'max_turns=3',
+    ])
+
+
+def test_adversarial_autopatch_command_runs_demo_batch(monkeypatch, tmp_path):
+    cli = _make_cli()
+    captured = {}
+
+    def fake_runner(**kwargs):
+        captured.update(kwargs)
+        patch_path = tmp_path / 'autopatch.patch'
+        summary_path = tmp_path / 'summary.json'
+        patch_path.write_text('patch', encoding='utf-8')
+        payload = {
+            'num_results': 1,
+            'report': {
+                'average_score': 0.8,
+                'score_trend': 'stable',
+            },
+            'autopatch': {
+                'success': True,
+                'patch_path': str(patch_path),
+                'patch_cid': 'demo-cli-cid',
+                'metadata': {'demo': True},
+            },
+        }
+        summary_path.write_text(json.dumps(payload), encoding='utf-8')
+        return payload
+
+    monkeypatch.setattr('applications.cli.run_adversarial_autopatch_batch', fake_runner)
+
+    cli.adversarial_autopatch([
+        str(tmp_path),
+        'target_file=adversarial_harness/session.py',
+        'num_sessions=2',
+        'max_turns=4',
+        'max_parallel=1',
+    ])
+
+    assert captured['output_dir'] == str(tmp_path)
+    assert captured['target_file'] == 'adversarial_harness/session.py'
+    assert captured['num_sessions'] == 2
+    assert captured['max_turns'] == 4
+    assert captured['max_parallel'] == 1
+    assert captured['demo_backend'] is True
+    rendered = cli.print_response.call_args[0][0]
+    assert 'adversarial autopatch:' in rendered
+    assert 'average_score: 0.8000' in rendered
+    assert 'patch_cid: demo-cli-cid' in rendered
