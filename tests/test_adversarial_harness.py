@@ -14,8 +14,11 @@ from adversarial_harness import (
     Optimizer,
     OptimizationReport,
     SeedComplaintLibrary,
-    ComplaintTemplate
+    ComplaintTemplate,
+    HACC_QUERY_PRESETS,
+    get_hacc_query_specs,
 )
+from adversarial_harness.hacc_evidence import build_hacc_evidence_seed
 import adversarial_harness.seed_complaints as seed_complaints_module
 
 
@@ -166,6 +169,14 @@ class TestComplainant:
             'summary': 'The evidence points to a policy problem.',
             'key_facts': {
                 'evidence_summary': 'The policy text points to a policy problem.',
+                'anchor_sections': ['grievance_hearing', 'appeal_rights'],
+                'anchor_passages': [
+                    {
+                        'title': 'HACC Policy',
+                        'snippet': 'A grievance hearing will be conducted by a single impartial person appointed by HACC.',
+                        'section_labels': ['grievance_hearing'],
+                    }
+                ],
             },
             'hacc_evidence': [
                 {
@@ -183,6 +194,8 @@ class TestComplainant:
         assert any('Evidence grounding:' in prompt for prompt in prompts)
         assert any('Evidence you can draw from:' in prompt for prompt in prompts)
         assert any('HACC Policy' in prompt for prompt in prompts)
+        assert any('Decision-tree sections: grievance_hearing, appeal_rights' in prompt for prompt in prompts)
+        assert any('Passage 1 [grievance_hearing] from HACC Policy' in prompt for prompt in prompts)
 
 
 class TestCritic:
@@ -228,6 +241,41 @@ SUGGESTIONS:
         assert isinstance(score, CriticScore)
         assert 0.0 <= score.overall_score <= 1.0
         assert score.question_quality == 0.8
+
+    def test_evaluate_session_tracks_anchor_sections(self):
+        backend = MockLLMBackend("""SCORES:
+question_quality: 0.8
+information_extraction: 0.8
+empathy: 0.7
+efficiency: 0.7
+coverage: 0.8
+
+FEEDBACK:
+Good session.
+
+STRENGTHS:
+- Covered major issues
+
+WEAKNESSES:
+- Could ask more
+
+SUGGESTIONS:
+- Add follow-up
+""")
+        critic = Critic(backend)
+
+        score = critic.evaluate_session(
+            "Initial complaint",
+            [
+                {'role': 'mediator', 'type': 'question', 'content': 'Did you request a reasonable accommodation?'},
+                {'role': 'complainant', 'type': 'response', 'content': 'Yes, I asked for an accommodation because of my disability.'},
+            ],
+            {'status': 'complete'},
+            context={'key_facts': {'anchor_sections': ['reasonable_accommodation', 'grievance_hearing']}},
+        )
+
+        assert 'reasonable_accommodation' in score.anchor_sections_covered
+        assert 'grievance_hearing' in score.anchor_sections_missing
     
     def test_fallback_score(self):
         """Test fallback when evaluation fails."""
@@ -313,6 +361,68 @@ class TestSeedComplaintLibrary:
 
         assert len(seeds) == 3
         assert seeds[0]['key_facts']['evidence_summary'] == 'Mocked evidence'
+
+    def test_get_hacc_query_specs_uses_preset(self):
+        specs = get_hacc_query_specs(preset='retaliation_focus')
+
+        assert len(specs) > 0
+        assert specs == HACC_QUERY_PRESETS['retaliation_focus']
+
+    def test_build_hacc_evidence_seed_prefers_anchor_titles(self):
+        payload = {
+            'results': [
+                {'document_id': 'doc-1', 'title': 'Unrelated Policy', 'source_path': '/tmp/unrelated', 'score': 10, 'snippet': 'low value'},
+                {'document_id': 'doc-2', 'title': 'ADMINISTRATIVE PLAN', 'source_path': '/tmp/admin-plan', 'score': 5, 'snippet': 'important grievance text'},
+            ]
+        }
+
+        seed = build_hacc_evidence_seed(
+            payload,
+            query='retaliation grievance hearing',
+            complaint_type='housing_discrimination',
+            category='housing',
+            description='Anchored complaint',
+            anchor_titles=['ADMINISTRATIVE PLAN'],
+        )
+
+        assert seed is not None
+        assert seed['hacc_evidence'][0]['title'] == 'ADMINISTRATIVE PLAN'
+        assert seed['key_facts']['anchor_titles'] == ['ADMINISTRATIVE PLAN']
+
+    def test_build_hacc_evidence_seed_collects_anchor_passages(self):
+        payload = {
+            'results': [
+                {
+                    'document_id': 'doc-1',
+                    'title': 'ADMISSIONS AND CONTINUED OCCUPANCY POLICY',
+                    'source_path': '/tmp/acop',
+                    'score': 10,
+                    'snippet': 'A grievance hearing will be conducted by a single impartial person appointed by HACC.',
+                },
+                {
+                    'document_id': 'doc-2',
+                    'title': 'ADMINISTRATIVE PLAN',
+                    'source_path': '/tmp/admin-plan',
+                    'score': 5,
+                    'snippet': 'An applicant as a reasonable accommodation for a person with a disability may request review.',
+                },
+            ]
+        }
+
+        seed = build_hacc_evidence_seed(
+            payload,
+            query='hearing reasonable accommodation',
+            complaint_type='housing_discrimination',
+            category='housing',
+            description='Anchored complaint',
+            anchor_terms=['impartial person', 'reasonable accommodation'],
+        )
+
+        assert seed is not None
+        assert len(seed['key_facts']['anchor_passages']) == 2
+        assert 'impartial person' in seed['key_facts']['anchor_passages'][0]['snippet'].lower()
+        assert 'grievance_hearing' in seed['key_facts']['anchor_passages'][0]['section_labels']
+        assert 'reasonable_accommodation' in seed['key_facts']['anchor_sections']
 
 
 class TestAdversarialSession:
@@ -537,6 +647,40 @@ class TestOptimizer:
         assert report.num_sessions_analyzed == 3
         assert 0.0 <= report.average_score <= 1.0
         assert len(report.recommendations) > 0
+
+    def test_optimizer_recommends_missing_anchor_sections(self):
+        optimizer = Optimizer()
+        score = CriticScore(
+            overall_score=0.6,
+            question_quality=0.6,
+            information_extraction=0.6,
+            empathy=0.6,
+            efficiency=0.6,
+            coverage=0.5,
+            feedback="Test",
+            strengths=[],
+            weaknesses=[],
+            suggestions=[],
+            anchor_sections_expected=['grievance_hearing', 'reasonable_accommodation'],
+            anchor_sections_covered=['reasonable_accommodation'],
+            anchor_sections_missing=['grievance_hearing'],
+        )
+        result = SessionResult(
+            session_id="session_anchor",
+            timestamp="2024-01-01",
+            seed_complaint={},
+            initial_complaint_text="Test",
+            conversation_history=[],
+            num_questions=3,
+            num_turns=2,
+            final_state={},
+            critic_score=score,
+            success=True,
+        )
+
+        report = optimizer.analyze([result])
+
+        assert any('grievance_hearing' in rec for rec in report.recommendations)
 
 
 if __name__ == '__main__':

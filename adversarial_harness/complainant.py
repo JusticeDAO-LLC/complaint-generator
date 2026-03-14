@@ -305,18 +305,44 @@ Response:"""
         key_facts = seed_data.get("key_facts") if isinstance(seed_data.get("key_facts"), dict) else {}
         summary = str(key_facts.get("evidence_summary") or seed_data.get("summary") or "").strip()
         evidence_items = list(seed_data.get("hacc_evidence") or key_facts.get("hacc_evidence") or [])
-        return self._format_evidence_block(summary, evidence_items)
+        anchor_passages = list(key_facts.get("anchor_passages") or [])
+        anchor_sections = list(key_facts.get("anchor_sections") or [])
+        return self._format_evidence_block(summary, evidence_items, anchor_passages, anchor_sections)
 
     def _format_context_evidence(self) -> str:
+        anchor_passages = []
+        anchor_sections = []
+        if isinstance(self.context.key_facts, dict):
+            anchor_passages = list(self.context.key_facts.get("anchor_passages") or [])
+            anchor_sections = list(self.context.key_facts.get("anchor_sections") or [])
         return self._format_evidence_block(
             self.context.evidence_summary,
             self.context.evidence_items,
+            anchor_passages,
+            anchor_sections,
         )
 
-    def _format_evidence_block(self, summary: str, evidence_items: List[Dict[str, Any]]) -> str:
+    def _format_evidence_block(
+        self,
+        summary: str,
+        evidence_items: List[Dict[str, Any]],
+        anchor_passages: List[Dict[str, Any]],
+        anchor_sections: List[str],
+    ) -> str:
         lines: List[str] = []
         if summary:
             lines.append(f"Summary: {summary}")
+        if anchor_sections:
+            lines.append(f"Decision-tree sections: {', '.join(anchor_sections)}")
+        for index, passage in enumerate(anchor_passages[:3], start=1):
+            title = str(passage.get("title") or f"anchor_{index}")
+            snippet = str(passage.get("snippet") or "").strip()
+            section_labels = ", ".join(list(passage.get("section_labels") or []))
+            if snippet:
+                if section_labels:
+                    lines.append(f"Passage {index} [{section_labels}] from {title}: {snippet}")
+                else:
+                    lines.append(f"Passage {index} from {title}: {snippet}")
         for index, item in enumerate(evidence_items[:3], start=1):
             title = str(item.get("title") or item.get("document_id") or f"evidence_{index}")
             snippet = str(item.get("snippet") or "").strip()

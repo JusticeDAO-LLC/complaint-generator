@@ -8,6 +8,7 @@ import logging
 from typing import Dict, Any, List
 from dataclasses import dataclass, field
 import json
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,9 @@ class CriticScore:
     strengths: List[str] = field(default_factory=list)
     weaknesses: List[str] = field(default_factory=list)
     suggestions: List[str] = field(default_factory=list)
+    anchor_sections_expected: List[str] = field(default_factory=list)
+    anchor_sections_covered: List[str] = field(default_factory=list)
+    anchor_sections_missing: List[str] = field(default_factory=list)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -39,7 +43,10 @@ class CriticScore:
             'feedback': self.feedback,
             'strengths': self.strengths,
             'weaknesses': self.weaknesses,
-            'suggestions': self.suggestions
+            'suggestions': self.suggestions,
+            'anchor_sections_expected': self.anchor_sections_expected,
+            'anchor_sections_covered': self.anchor_sections_covered,
+            'anchor_sections_missing': self.anchor_sections_missing,
         }
 
 
@@ -89,20 +96,23 @@ class Critic:
         Returns:
             CriticScore with detailed evaluation
         """
+        anchor_coverage = self._analyze_anchor_section_coverage(conversation_history, context)
         prompt = self._build_evaluation_prompt(
             initial_complaint,
             conversation_history,
             final_state,
-            context
+            context,
+            anchor_coverage,
         )
         
         try:
             response = self.llm_backend(prompt)
             score = self._parse_evaluation(response)
+            self._apply_anchor_coverage(score, anchor_coverage)
             return score
         except Exception as e:
             logger.error(f"Error evaluating session: {e}")
-            return self._fallback_score(conversation_history)
+            return self._fallback_score(conversation_history, context=context)
     
     def evaluate_question(self, 
                          question: str,
@@ -150,7 +160,8 @@ Score:"""
                                  initial_complaint: str,
                                  conversation_history: List[Dict[str, Any]],
                                  final_state: Dict[str, Any],
-                                 context: Dict[str, Any] = None) -> str:
+                                 context: Dict[str, Any] = None,
+                                 anchor_coverage: Dict[str, List[str]] | None = None) -> str:
         """Build comprehensive evaluation prompt."""
         
         # Format conversation
@@ -165,6 +176,8 @@ Score:"""
 5. Coverage (0-1): How comprehensively were important topics covered?
 """
         
+        anchor_text = self._format_anchor_coverage(anchor_coverage or {})
+
         prompt = f"""You are an expert evaluator assessing a legal complaint intake session between a mediator and a complainant.
 
 INITIAL COMPLAINT:
@@ -177,6 +190,7 @@ FINAL STATE:
 {json.dumps(final_state, indent=2)}
 
 {f'GROUND TRUTH CONTEXT:\n{json.dumps(context, indent=2)}\n' if context else ''}
+{anchor_text}
 
 Evaluate the mediator's performance on these criteria:
 {criteria_text}
@@ -305,13 +319,13 @@ Evaluation:"""
         """Format context messages."""
         return self._format_conversation(context)
     
-    def _fallback_score(self, conversation_history: List[Dict[str, Any]]) -> CriticScore:
+    def _fallback_score(self, conversation_history: List[Dict[str, Any]], context: Dict[str, Any] = None) -> CriticScore:
         """Fallback score if evaluation fails."""
         # Simple heuristic: more questions = potentially better
         num_questions = sum(1 for msg in conversation_history if msg.get('type') == 'question')
         score = min(0.5 + (num_questions * 0.05), 0.9)
         
-        return CriticScore(
+        result = CriticScore(
             overall_score=score,
             question_quality=score,
             information_extraction=score,
@@ -323,3 +337,59 @@ Evaluation:"""
             weaknesses=["Could not perform detailed evaluation"],
             suggestions=["Review LLM backend configuration"]
         )
+        self._apply_anchor_coverage(result, self._analyze_anchor_section_coverage(conversation_history, context))
+        return result
+
+    def _analyze_anchor_section_coverage(
+        self,
+        conversation_history: List[Dict[str, Any]],
+        context: Dict[str, Any] = None,
+    ) -> Dict[str, List[str]]:
+        key_facts = context.get('key_facts') if isinstance(context, dict) and isinstance(context.get('key_facts'), dict) else {}
+        expected = [str(value) for value in list(key_facts.get('anchor_sections') or []) if str(value)]
+        if not expected:
+            return {'expected': [], 'covered': [], 'missing': []}
+
+        transcript = " ".join(str(msg.get('content') or '') for msg in conversation_history).lower()
+        label_patterns = {
+            'grievance_hearing': ('grievance', 'hearing', 'impartial person', 'informal hearing'),
+            'appeal_rights': ('appeal', 'review', 'due process', 'right'),
+            'reasonable_accommodation': ('reasonable accommodation', 'disability', 'accommodation'),
+            'adverse_action': ('termination', 'denial', 'adverse action', 'admission'),
+            'selection_criteria': ('selection', 'screening', 'criteria', 'evaluation', 'priority'),
+        }
+        covered: List[str] = []
+        for label in expected:
+            patterns = label_patterns.get(label, (label.replace('_', ' '),))
+            if any(re.search(rf"\b{re.escape(pattern)}\b", transcript) for pattern in patterns):
+                covered.append(label)
+        missing = [label for label in expected if label not in covered]
+        return {'expected': expected, 'covered': covered, 'missing': missing}
+
+    def _format_anchor_coverage(self, coverage: Dict[str, List[str]]) -> str:
+        expected = list(coverage.get('expected') or [])
+        if not expected:
+            return ''
+        covered = list(coverage.get('covered') or [])
+        missing = list(coverage.get('missing') or [])
+        return (
+            "ANCHOR SECTION COVERAGE:\n"
+            f"Expected sections: {', '.join(expected)}\n"
+            f"Already covered in conversation: {', '.join(covered) if covered else 'none'}\n"
+            f"Still missing from conversation: {', '.join(missing) if missing else 'none'}\n"
+        )
+
+    def _apply_anchor_coverage(self, score: CriticScore, coverage: Dict[str, List[str]]) -> None:
+        expected = list(coverage.get('expected') or [])
+        covered = list(coverage.get('covered') or [])
+        missing = list(coverage.get('missing') or [])
+        score.anchor_sections_expected = expected
+        score.anchor_sections_covered = covered
+        score.anchor_sections_missing = missing
+        if missing:
+            missing_text = ", ".join(missing)
+            if f"Missed anchor sections: {missing_text}" not in score.weaknesses:
+                score.weaknesses = list(score.weaknesses) + [f"Missed anchor sections: {missing_text}"]
+            suggestion = f"Add questions covering: {missing_text}"
+            if suggestion not in score.suggestions:
+                score.suggestions = list(score.suggestions) + [suggestion]

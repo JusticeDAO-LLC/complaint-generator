@@ -29,11 +29,20 @@ from .types import (
 	with_adapter_metadata,
 )
 from .search import (
+	download_url,
+	download_with_recovery,
 	evaluate_scraped_content,
+	recover_manifest_downloads,
 	scrape_archived_domain,
 	scrape_web_content,
 	search_brave_web,
 	search_multi_engine_web,
+)
+from .documents import (
+	extract_text_content,
+	ingest_download_manifest,
+	ingest_local_document,
+	parse_pdf_to_record,
 )
 from .llm import generate_text_with_metadata
 from .graphrag import (
@@ -89,6 +98,8 @@ __all__ = [
 	"normalize_degraded_reason",
 	"with_adapter_metadata",
 	"evaluate_scraped_content",
+	"download_url",
+	"download_with_recovery",
 	"generate_text_with_metadata",
 	"build_ontology",
 	"validate_ontology",
@@ -107,8 +118,13 @@ __all__ = [
 	"storage_backend_status",
 	"scrape_archived_domain",
 	"scrape_web_content",
+	"recover_manifest_downloads",
 	"search_brave_web",
 	"search_multi_engine_web",
+	"extract_text_content",
+	"ingest_download_manifest",
+	"ingest_local_document",
+	"parse_pdf_to_record",
 	"EMBEDDINGS_AVAILABLE",
 	"VECTOR_STORE_AVAILABLE",
 	"VECTOR_STORE_ERROR",

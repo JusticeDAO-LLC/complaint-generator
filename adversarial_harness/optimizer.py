@@ -327,11 +327,15 @@ class Optimizer:
         all_strengths = []
         all_weaknesses = []
         all_suggestions = []
+        all_anchor_missing = []
+        all_anchor_covered = []
         
         for result in successful:
             all_strengths.extend(result.critic_score.strengths)
             all_weaknesses.extend(result.critic_score.weaknesses)
             all_suggestions.extend(result.critic_score.suggestions)
+            all_anchor_missing.extend(getattr(result.critic_score, 'anchor_sections_missing', []) or [])
+            all_anchor_covered.extend(getattr(result.critic_score, 'anchor_sections_covered', []) or [])
         
         # Find most common
         common_strengths = self._most_common(all_strengths, top_n=5)
@@ -347,6 +351,10 @@ class Optimizer:
             coverage_scores,
             common_weaknesses,
             all_suggestions,
+            anchor_summary={
+                "missing": self._most_common(all_anchor_missing, top_n=5),
+                "covered": self._most_common(all_anchor_covered, top_n=5),
+            },
             graph_summary={
                 "kg_sessions_with_data": kg_with,
                 "dg_sessions_with_data": dg_with,
@@ -434,6 +442,7 @@ class Optimizer:
                                   coverage: List[float],
                                   weaknesses: List[str],
                               suggestions: List[str],
+                              anchor_summary: Optional[Dict[str, Any]] = None,
                               graph_summary: Optional[Dict[str, Any]] = None) -> List[str]:
         """Generate actionable recommendations."""
         recommendations = []
@@ -466,6 +475,20 @@ class Optimizer:
         avg_coverage = sum(coverage) / len(coverage)
         if avg_coverage < 0.6:
             recommendations.append("Expand topic coverage: ensure all important aspects are addressed.")
+
+        if isinstance(anchor_summary, dict):
+            missing_sections = list(anchor_summary.get("missing") or [])
+            covered_sections = list(anchor_summary.get("covered") or [])
+            if missing_sections:
+                recommendations.append(
+                    "Decision-tree coverage is incomplete for seeded evidence sections. Add explicit probes for: "
+                    + ", ".join(missing_sections) + "."
+                )
+            elif covered_sections:
+                recommendations.append(
+                    "Evidence-section coverage is improving. Preserve explicit questioning around: "
+                    + ", ".join(covered_sections) + "."
+                )
 
         # Graph-aware recommendations (to steer improvements in KG/DG population/reduction).
         if isinstance(graph_summary, dict):

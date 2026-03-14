@@ -2,10 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
+import os
+import re
+import time
 
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 from urllib.parse import urlparse
+
+import requests
 
 from .loader import import_attr_optional, run_async_compat
 from .types import with_adapter_metadata
@@ -71,6 +78,257 @@ SEARCH_ERROR = (
     or _scraper_validator_error
     or _scraper_domain_error
 )
+
+
+def _looks_like_pdf_bytes(data: bytes) -> bool:
+    return bytes(data[:5]) == b"%PDF-"
+
+
+def _write_bytes(dest: Path, data: bytes) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(data)
+
+
+def _default_download_path(url: str, output_dir: Optional[str | Path]) -> Path:
+    target_dir = Path(output_dir) if output_dir else Path("research_results/documents/raw")
+    target_dir.mkdir(parents=True, exist_ok=True)
+    suffix = ".pdf" if ".pdf" in str(url or "").lower() else ".bin"
+    filename = f"{abs(hash(url))}{suffix}"
+    return target_dir / filename
+
+
+def _build_pdf_search_query(url: str) -> str:
+    filename = re.sub(r"[?#].*$", "", str(url or "").split("/")[-1])
+    if filename:
+        return f"\"{filename}\" filetype:pdf"
+    domain = _normalize_domain(url)
+    return f"site:{domain} filetype:pdf" if domain else "filetype:pdf"
+
+
+def _try_playwright_download(url: str, dest: Path, timeout_ms: int = 90000) -> Dict[str, Any]:
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception:
+        return {"status": "unavailable", "saved": False, "note": "playwright not available"}
+
+    user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(user_agent=user_agent)
+            page = context.new_page()
+            try:
+                response = page.goto(url, wait_until="networkidle", timeout=timeout_ms)
+            except Exception as exc:
+                context.close()
+                browser.close()
+                return {"status": "error", "saved": False, "note": f"goto failed: {exc}"}
+
+            try:
+                body = response.body() if response else b""
+            except Exception:
+                body = b""
+
+            content_type = (response.headers.get("content-type") if response else "") or ""
+            if ("application/pdf" in content_type.lower()) or _looks_like_pdf_bytes(body):
+                _write_bytes(dest, body)
+                context.close()
+                browser.close()
+                return {"status": "success", "saved": True, "note": "saved from playwright response", "content_type": content_type}
+
+            try:
+                locator = page.locator("a[href$='.pdf'], a[href*='.pdf']").first
+                if locator.count() > 0:
+                    href = locator.get_attribute("href")
+                    if href:
+                        pdf_url = page.url.rstrip("/") + href if href.startswith("/") else href
+                        response = page.goto(pdf_url, wait_until="networkidle", timeout=timeout_ms)
+                        body = response.body() if response else b""
+                        content_type = (response.headers.get("content-type") if response else "") or ""
+                        if ("application/pdf" in content_type.lower()) or _looks_like_pdf_bytes(body):
+                            _write_bytes(dest, body)
+                            context.close()
+                            browser.close()
+                            return {"status": "success", "saved": True, "note": f"followed pdf link {pdf_url}", "content_type": content_type, "final_url": pdf_url}
+            except Exception:
+                pass
+
+            if body:
+                _write_bytes(dest, body)
+            context.close()
+            browser.close()
+            return {"status": "non_pdf", "saved": False, "note": f"not a PDF ({content_type or 'unknown'})", "content_type": content_type}
+    except Exception as exc:
+        return {"status": "error", "saved": False, "note": f"playwright error: {exc}"}
+
+
+def download_url(
+    url: str,
+    *,
+    output_path: Optional[str | Path] = None,
+    timeout: int = 30,
+) -> Dict[str, Any]:
+    destination = Path(output_path) if output_path else _default_download_path(url, None)
+    try:
+        response = requests.get(url, timeout=timeout, allow_redirects=True)
+        response.raise_for_status()
+        data = response.content
+        _write_bytes(destination, data)
+        content_type = (response.headers.get("content-type") or "").lower()
+        is_pdf = ("application/pdf" in content_type) or _looks_like_pdf_bytes(data)
+        return with_adapter_metadata(
+            {
+                "url": url,
+                "final_url": response.url,
+                "saved_path": str(destination),
+                "content_type": content_type or "unknown",
+                "file_size": len(data),
+                "status": "success" if is_pdf else "non_pdf",
+                "recovery_strategy": "direct",
+                "error": "",
+                "is_pdf": is_pdf,
+            },
+            operation="download_url",
+            backend_available=True,
+            implementation_status="implemented",
+        )
+    except Exception as exc:
+        return with_adapter_metadata(
+            {
+                "url": url,
+                "final_url": url,
+                "saved_path": str(destination),
+                "content_type": "",
+                "file_size": 0,
+                "status": "error",
+                "recovery_strategy": "direct",
+                "error": str(exc),
+                "is_pdf": False,
+            },
+            operation="download_url",
+            backend_available=True,
+            implementation_status="error",
+        )
+
+
+def download_with_recovery(
+    url: str,
+    *,
+    output_path: Optional[str | Path] = None,
+    timeout: int = 30,
+    use_playwright: bool = True,
+    use_search_fallback: bool = True,
+) -> Dict[str, Any]:
+    destination = Path(output_path) if output_path else _default_download_path(url, None)
+    direct = download_url(url, output_path=destination, timeout=timeout)
+    if direct.get("status") == "success" and direct.get("is_pdf"):
+        return direct
+
+    if use_playwright:
+        playwright_result = _try_playwright_download(url, destination)
+        if playwright_result.get("saved"):
+            payload = {
+                **direct,
+                "saved_path": str(destination),
+                "status": "success",
+                "recovery_strategy": "playwright",
+                "content_type": playwright_result.get("content_type") or direct.get("content_type") or "application/pdf",
+                "file_size": destination.stat().st_size if destination.exists() else 0,
+                "error": "",
+            }
+            return with_adapter_metadata(payload, operation="download_with_recovery", backend_available=True, implementation_status="implemented")
+
+    if use_search_fallback:
+        query = _build_pdf_search_query(url)
+        candidates = search_brave_web(query, max_results=10)
+        rate_limit_delay = float(os.environ.get("BRAVE_RATE_LIMIT_DELAY", "0.5"))
+        for candidate in candidates[:6]:
+            candidate_url = str(candidate.get("url") or "")
+            if not candidate_url:
+                continue
+            recovered = download_url(candidate_url, output_path=destination, timeout=timeout)
+            if recovered.get("status") == "success" and recovered.get("is_pdf"):
+                payload = {
+                    **recovered,
+                    "url": url,
+                    "recovery_strategy": "search_fallback",
+                }
+                return with_adapter_metadata(payload, operation="download_with_recovery", backend_available=True, implementation_status="implemented")
+            try:
+                time.sleep(rate_limit_delay)
+            except Exception:
+                pass
+
+    payload = {
+        **direct,
+        "saved_path": str(destination),
+        "status": "error" if direct.get("status") == "error" else "unrecovered",
+        "recovery_strategy": "none",
+    }
+    return with_adapter_metadata(payload, operation="download_with_recovery", backend_available=True, implementation_status="implemented")
+
+
+def recover_manifest_downloads(
+    manifest_path: str | Path,
+    *,
+    min_pdf_size: int = 512,
+    output_dir: Optional[str | Path] = None,
+    timeout: int = 30,
+) -> Dict[str, Any]:
+    path = Path(manifest_path)
+    if not path.exists():
+        return with_adapter_metadata(
+            {"status": "error", "error": "manifest_not_found", "manifest_path": str(path), "recovered": 0, "results": []},
+            operation="recover_manifest_downloads",
+            backend_available=True,
+            implementation_status="error",
+        )
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    downloads = payload.get("downloads", []) if isinstance(payload, dict) else []
+    results: List[Dict[str, Any]] = []
+    recovered = 0
+    raw_output_dir = Path(output_dir) if output_dir else path.parent / "raw"
+    raw_output_dir.mkdir(parents=True, exist_ok=True)
+
+    for item in downloads:
+        if not isinstance(item, dict):
+            continue
+        filepath = item.get("filepath") or item.get("saved_path")
+        url = str(item.get("url") or "")
+        content_type = str(item.get("content_type") or "").lower()
+        file_size = int(item.get("file_size") or 0)
+        file_exists = bool(filepath) and Path(str(filepath)).exists()
+        needs_recovery = (not file_exists) or ("pdf" not in content_type) or file_size < min_pdf_size
+        if not needs_recovery or not url:
+            continue
+
+        dest = Path(str(filepath)) if filepath else _default_download_path(url, raw_output_dir)
+        result = download_with_recovery(url, output_path=dest, timeout=timeout)
+        results.append(result)
+        if result.get("status") == "success":
+            item["filepath"] = str(dest)
+            item["saved_path"] = str(dest)
+            item["download_date"] = datetime.now().isoformat()
+            item["file_size"] = dest.stat().st_size if dest.exists() else 0
+            item["content_type"] = str(result.get("content_type") or "application/pdf")
+            recovered += 1
+
+    if isinstance(payload, dict):
+        payload["downloads"] = downloads
+        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    return with_adapter_metadata(
+        {
+            "status": "success",
+            "manifest_path": str(path),
+            "recovered": recovered,
+            "results": results,
+        },
+        operation="recover_manifest_downloads",
+        backend_available=True,
+        implementation_status="implemented",
+    )
 
 
 def _coerce_value(item: Any, key: str, default: Any = "") -> Any:

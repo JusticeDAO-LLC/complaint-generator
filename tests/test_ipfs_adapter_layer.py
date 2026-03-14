@@ -1,6 +1,7 @@
 """Tests for the complaint-generator ipfs_datasets adapter layer."""
 
 from io import BytesIO
+import json
 import integrations.ipfs_datasets.vector_store as vector_store_module
 import integrations.ipfs_datasets as adapter
 from pathlib import Path
@@ -15,8 +16,11 @@ from integrations.ipfs_datasets.capabilities import (
     summarize_ipfs_datasets_startup_payload,
 )
 from integrations.ipfs_datasets.documents import (
+    ingest_download_manifest,
+    ingest_local_document,
     parse_document_bytes,
     parse_document_file,
+    parse_pdf_to_record,
     should_parse_document_input,
 )
 from integrations.ipfs_datasets.graphs import extract_graph_from_text, persist_graph_snapshot, query_graph_support
@@ -41,7 +45,10 @@ from integrations.ipfs_datasets.logic import check_contradictions, prove_claim_e
 from integrations.ipfs_datasets.mcp_gateway import execute_gateway_tool, list_gateway_tools
 from integrations.ipfs_datasets.scraper_daemon import ScraperDaemon, ScraperDaemonConfig
 from integrations.ipfs_datasets.search import (
+    download_url,
+    download_with_recovery,
     evaluate_scraped_content,
+    recover_manifest_downloads,
     scrape_web_content,
     search_brave_web,
     search_multi_engine_web,
@@ -72,6 +79,8 @@ def test_adapter_root_exports_search_and_vector_entrypoints():
     assert callable(adapter.search_brave_web)
     assert callable(adapter.search_multi_engine_web)
     assert callable(adapter.scrape_web_content)
+    assert callable(adapter.download_with_recovery)
+    assert callable(adapter.parse_pdf_to_record)
     assert callable(adapter.create_vector_index)
     assert callable(adapter.search_vector_index)
 
@@ -243,6 +252,106 @@ def test_search_multi_engine_web_normalizes_orchestrated_results():
     assert results[0]['provider'] == 'ipfs_datasets_py'
     assert results[0]['metadata']['details']['operation'] == 'search_multi_engine_search'
     assert results[0]['metadata']['details']['query'] == 'agency guidance'
+
+
+def test_download_url_persists_bytes_and_normalizes_metadata():
+    response = Mock()
+    response.content = b"%PDF-1.7 fake pdf"
+    response.url = "https://example.com/final.pdf"
+    response.headers = {"content-type": "application/pdf"}
+    response.raise_for_status = Mock()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        destination = Path(tmpdir) / "download.pdf"
+        with patch("integrations.ipfs_datasets.search.requests.get", return_value=response):
+            payload = download_url("https://example.com/file.pdf", output_path=destination)
+
+        assert payload["status"] == "success"
+        assert payload["is_pdf"] is True
+        assert destination.exists()
+        assert payload["saved_path"] == str(destination)
+
+
+def test_download_with_recovery_uses_search_fallback_when_direct_download_is_not_pdf():
+    direct_payload = {"status": "non_pdf", "is_pdf": False, "content_type": "text/html", "saved_path": "/tmp/fake.pdf"}
+    recovered_payload = {"status": "success", "is_pdf": True, "content_type": "application/pdf", "saved_path": "/tmp/fake.pdf"}
+
+    with patch("integrations.ipfs_datasets.search.download_url", side_effect=[direct_payload, recovered_payload]):
+        with patch("integrations.ipfs_datasets.search.search_brave_web", return_value=[{"url": "https://example.com/recovered.pdf"}]):
+            payload = download_with_recovery("https://example.com/file", use_playwright=False)
+
+    assert payload["status"] == "success"
+    assert payload["recovery_strategy"] == "search_fallback"
+
+
+def test_recover_manifest_downloads_updates_problematic_entries():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        manifest_path = Path(tmpdir) / "download_manifest.json"
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "downloads": [
+                        {
+                            "url": "https://example.com/file.pdf",
+                            "filepath": str(Path(tmpdir) / "missing.pdf"),
+                            "content_type": "text/html",
+                            "file_size": 20,
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        recovered_path = Path(tmpdir) / "recovered.pdf"
+        recovered_path.write_bytes(b"%PDF-1.7 recovered")
+        with patch(
+            "integrations.ipfs_datasets.search.download_with_recovery",
+            return_value={"status": "success", "content_type": "application/pdf", "saved_path": str(recovered_path)},
+        ):
+            payload = recover_manifest_downloads(manifest_path, output_dir=tmpdir)
+
+        persisted = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert payload["status"] == "success"
+        assert payload["recovered"] == 1
+        assert persisted["downloads"][0]["content_type"] == "application/pdf"
+
+
+def test_parse_pdf_to_record_writes_text_and_metadata_paths():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        pdf_path = Path(tmpdir) / "sample.pdf"
+        pdf_path.write_bytes(b"%PDF-1.7 sample")
+        output_dir = Path(tmpdir) / "parsed"
+        with patch("integrations.ipfs_datasets.documents.parse_document_file") as parse_file:
+            parse_file.return_value = {
+                "status": "available-fallback",
+                "text": "Example PDF text",
+                "metadata": {
+                    "mime_type": "application/pdf",
+                    "extraction_method": "pdf_text_fallback",
+                    "parse_quality": {"quality_flags": []},
+                },
+            }
+            payload = parse_pdf_to_record(pdf_path, output_dir=output_dir, enable_ocr=False)
+
+        assert payload["status"] == "success"
+        assert Path(payload["parsed_text_path"]).exists()
+        assert Path(payload["metadata_path"]).exists()
+
+
+def test_ingest_download_manifest_processes_ok_rows():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        html_path = Path(tmpdir) / "example.html"
+        html_path.write_text("<html><body>Hello world</body></html>", encoding="utf-8")
+        manifest_path = Path(tmpdir) / "manifest.json"
+        manifest_path.write_text(
+            json.dumps([{"status": "ok", "saved_path": str(html_path), "content_type": "text/html"}]),
+            encoding="utf-8",
+        )
+        payload = ingest_download_manifest(manifest_path, output_dir=Path(tmpdir) / "parsed")
+
+        assert payload["status"] == "success"
+        assert payload["record_count"] == 1
+        assert payload["records"][0]["status"] == "success"
 
 
 def test_vector_functions_return_unavailable_without_optional_backends():

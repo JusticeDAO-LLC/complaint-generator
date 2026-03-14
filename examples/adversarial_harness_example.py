@@ -126,7 +126,7 @@ def main():
         max_turns_per_session=5,
         include_hacc_evidence=True,
         hacc_count=3,
-        hacc_preset='retaliation_focus',
+        hacc_preset='core_hacc_policies',
     )
     
     print()

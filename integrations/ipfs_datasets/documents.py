@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import email.policy
+import hashlib
+import json
 import mimetypes
 import re
+import shutil
+import subprocess
+import tempfile
 import zipfile
 from email.parser import BytesParser
 from html import unescape
@@ -693,6 +698,313 @@ def parse_document_file(
     )
 
 
+def _stable_record_id(source_path: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+    seed_parts = [str(source_path or "").strip()]
+    if isinstance(metadata, dict):
+        seed_parts.extend(
+            str(metadata.get(key) or "").strip()
+            for key in ("url", "source_url", "title", "source")
+            if metadata.get(key)
+        )
+    seed = "|".join(part for part in seed_parts if part)
+    return hashlib.md5(seed.encode("utf-8", errors="ignore")).hexdigest()
+
+
+def _ensure_output_dir(output_dir: Optional[str | Path]) -> Path:
+    target = Path(output_dir) if output_dir else Path("research_results/documents/parsed")
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def _materialize_parse_record(
+    parsed: Dict[str, Any],
+    *,
+    source_path: str,
+    metadata: Optional[Dict[str, Any]] = None,
+    output_dir: Optional[str | Path] = None,
+    record_id: Optional[str] = None,
+    ocr_attempted: bool = False,
+    ocr_used: bool = False,
+    error: Optional[str] = None,
+) -> Dict[str, Any]:
+    metadata = dict(metadata or {})
+    target_dir = _ensure_output_dir(output_dir)
+    resolved_id = record_id or _stable_record_id(source_path, metadata)
+    text = str(parsed.get("text") or "")
+    parsed_text_path = target_dir / f"{resolved_id}.txt"
+    metadata_path = parsed_text_path.with_suffix(".json")
+    if text:
+        parsed_text_path.write_text(text, encoding="utf-8")
+
+    parse_metadata = dict(parsed.get("metadata") or {})
+    content_type = str(
+        metadata.get("content_type")
+        or metadata.get("mime_type")
+        or parse_metadata.get("mime_type")
+        or _guess_mime_type(Path(source_path).name, "")
+    )
+    extraction_method = str(parse_metadata.get("extraction_method") or "")
+    parse_quality = dict(parse_metadata.get("parse_quality") or {})
+    needs_ocr = bool("requires_ocr_or_binary_pdf" in list(parse_quality.get("quality_flags") or []))
+    checksum = hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest() if text else ""
+
+    record = {
+        "id": resolved_id,
+        "status": "success" if text and not error else ("error" if error else "empty"),
+        "source_path": str(source_path),
+        "parsed_text_path": str(parsed_text_path),
+        "metadata_path": str(metadata_path),
+        "text": text,
+        "text_length": len(text),
+        "checksum": checksum,
+        "content_type": content_type,
+        "extraction_method": extraction_method,
+        "ocr_attempted": bool(ocr_attempted),
+        "ocr_used": bool(ocr_used),
+        "needs_ocr": needs_ocr,
+        "error": error or "",
+        "metadata": {
+            **metadata,
+            **parse_metadata,
+            "record_id": resolved_id,
+            "checksum": checksum,
+            "text_length": len(text),
+            "source_path": str(source_path),
+            "parsed_text_path": str(parsed_text_path),
+            "content_type": content_type,
+            "ocr_attempted": bool(ocr_attempted),
+            "ocr_used": bool(ocr_used),
+            "needs_ocr": needs_ocr,
+        },
+        "parse": parsed,
+    }
+    metadata_path.write_text(json.dumps(record["metadata"], indent=2), encoding="utf-8")
+    return with_adapter_metadata(
+        record,
+        operation="document_record",
+        backend_available=DOCUMENTS_AVAILABLE,
+        degraded_reason=DOCUMENTS_ERROR if not DOCUMENTS_AVAILABLE else None,
+        implementation_status="implemented" if text else ("error" if error else "empty"),
+    )
+
+
+def extract_text_content(
+    path_or_bytes: str | Path | bytes,
+    *,
+    mime_type: Optional[str] = None,
+    filename: Optional[str] = None,
+    chunk_size: int = 1000,
+    overlap: int = 100,
+) -> Dict[str, Any]:
+    if isinstance(path_or_bytes, (bytes, bytearray)):
+        parsed = parse_document_bytes(
+            bytes(path_or_bytes),
+            filename=filename,
+            mime_type=mime_type,
+            source="bytes",
+            chunk_size=chunk_size,
+            overlap=overlap,
+        )
+        return with_adapter_metadata(
+            {
+                "status": parsed.get("status", ""),
+                "text": parsed.get("text", ""),
+                "text_length": len(str(parsed.get("text") or "")),
+                "content_type": _guess_mime_type(filename or "", mime_type or ""),
+                "extraction_method": ((parsed.get("metadata") or {}).get("extraction_method") or ""),
+                "parse": parsed,
+            },
+            operation="extract_text_content",
+            backend_available=DOCUMENTS_AVAILABLE,
+            degraded_reason=DOCUMENTS_ERROR if not DOCUMENTS_AVAILABLE else None,
+            implementation_status="implemented",
+        )
+
+    path = Path(path_or_bytes)
+    parsed = parse_document_file(
+        str(path),
+        mime_type=mime_type,
+        chunk_size=chunk_size,
+        overlap=overlap,
+    )
+    return with_adapter_metadata(
+        {
+            "status": parsed.get("status", ""),
+            "text": parsed.get("text", ""),
+            "text_length": len(str(parsed.get("text") or "")),
+            "content_type": _guess_mime_type(path.name, mime_type or ""),
+            "extraction_method": ((parsed.get("metadata") or {}).get("extraction_method") or ""),
+            "parse": parsed,
+        },
+        operation="extract_text_content",
+        backend_available=DOCUMENTS_AVAILABLE,
+        degraded_reason=DOCUMENTS_ERROR if not DOCUMENTS_AVAILABLE else None,
+        implementation_status="implemented",
+    )
+
+
+def parse_pdf_to_record(
+    pdf_path: str | Path,
+    *,
+    metadata: Optional[Dict[str, Any]] = None,
+    enable_ocr: bool = True,
+    output_dir: Optional[str | Path] = None,
+    chunk_size: int = 1000,
+    overlap: int = 100,
+) -> Dict[str, Any]:
+    path = Path(pdf_path)
+    if not path.exists():
+        return _materialize_parse_record(
+            {"text": "", "metadata": {"mime_type": "application/pdf"}},
+            source_path=str(path),
+            metadata=metadata,
+            output_dir=output_dir,
+            error="file_not_found",
+        )
+
+    parsed = parse_document_file(
+        str(path),
+        mime_type="application/pdf",
+        chunk_size=chunk_size,
+        overlap=overlap,
+    )
+    text = str(parsed.get("text") or "")
+    ocr_attempted = False
+    ocr_used = False
+
+    if enable_ocr and len(text.strip()) < 100 and shutil.which("ocrmypdf") is not None:
+        ocr_attempted = True
+        temp_dir = tempfile.mkdtemp(prefix="ipfs-doc-ocr-")
+        try:
+            ocr_path = Path(temp_dir) / f"{path.stem}_ocr.pdf"
+            result = subprocess.run(
+                ["ocrmypdf", "--skip-text", str(path), str(ocr_path)],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            if result.returncode == 0 and ocr_path.exists():
+                ocr_parsed = parse_document_file(
+                    str(ocr_path),
+                    mime_type="application/pdf",
+                    chunk_size=chunk_size,
+                    overlap=overlap,
+                )
+                if len(str(ocr_parsed.get("text") or "").strip()) > len(text.strip()):
+                    parsed = ocr_parsed
+                    ocr_used = True
+                    parsed_metadata = dict(parsed.get("metadata") or {})
+                    parsed_metadata["extraction_method"] = "ocrmypdf+pdftotext"
+                    parse_quality = dict(parsed_metadata.get("parse_quality") or {})
+                    parse_quality["ocr_used"] = True
+                    parsed_metadata["parse_quality"] = parse_quality
+                    parsed["metadata"] = parsed_metadata
+        except Exception:
+            pass
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    return _materialize_parse_record(
+        parsed,
+        source_path=str(path),
+        metadata=metadata,
+        output_dir=output_dir,
+        ocr_attempted=ocr_attempted,
+        ocr_used=ocr_used,
+    )
+
+
+def ingest_local_document(
+    path: str | Path,
+    *,
+    metadata: Optional[Dict[str, Any]] = None,
+    output_dir: Optional[str | Path] = None,
+    enable_ocr: bool = True,
+    chunk_size: int = 1000,
+    overlap: int = 100,
+) -> Dict[str, Any]:
+    file_path = Path(path)
+    mime_type = str(metadata.get("content_type") or metadata.get("mime_type") or "") if isinstance(metadata, dict) else ""
+    if detect_document_input_format(filename=file_path.name, mime_type=mime_type) == "pdf":
+        return parse_pdf_to_record(
+            file_path,
+            metadata=metadata,
+            enable_ocr=enable_ocr,
+            output_dir=output_dir,
+            chunk_size=chunk_size,
+            overlap=overlap,
+        )
+
+    parsed = parse_document_file(
+        str(file_path),
+        mime_type=mime_type or None,
+        chunk_size=chunk_size,
+        overlap=overlap,
+    )
+    return _materialize_parse_record(
+        parsed,
+        source_path=str(file_path),
+        metadata=metadata,
+        output_dir=output_dir,
+    )
+
+
+def ingest_download_manifest(
+    manifest_path: str | Path,
+    *,
+    output_dir: Optional[str | Path] = None,
+    enable_ocr: bool = True,
+    chunk_size: int = 1000,
+    overlap: int = 100,
+) -> Dict[str, Any]:
+    path = Path(manifest_path)
+    if not path.exists():
+        return with_adapter_metadata(
+            {"status": "error", "error": "manifest_not_found", "manifest_path": str(path), "records": []},
+            operation="ingest_download_manifest",
+            backend_available=DOCUMENTS_AVAILABLE,
+            degraded_reason=DOCUMENTS_ERROR if not DOCUMENTS_AVAILABLE else None,
+            implementation_status="error",
+        )
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    rows = payload.get("downloads", payload) if isinstance(payload, dict) else payload
+    records: List[Dict[str, Any]] = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        status = str(row.get("status") or "ok")
+        saved_path = row.get("saved_path") or row.get("filepath")
+        if status not in {"ok", "success", ""} or not saved_path:
+            continue
+        saved = Path(str(saved_path))
+        if not saved.exists():
+            continue
+        records.append(
+            ingest_local_document(
+                saved,
+                metadata=row,
+                output_dir=output_dir,
+                enable_ocr=enable_ocr,
+                chunk_size=chunk_size,
+                overlap=overlap,
+            )
+        )
+
+    return with_adapter_metadata(
+        {
+            "status": "success",
+            "manifest_path": str(path),
+            "record_count": len(records),
+            "records": records,
+        },
+        operation="ingest_download_manifest",
+        backend_available=DOCUMENTS_AVAILABLE,
+        degraded_reason=DOCUMENTS_ERROR if not DOCUMENTS_AVAILABLE else None,
+        implementation_status="implemented",
+    )
+
+
 def summarize_document_parse(document_parse: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(document_parse, dict):
         return {
@@ -734,9 +1046,13 @@ __all__ = [
     "PARSER_VERSION",
     "chunk_text",
     "detect_document_input_format",
+    "extract_text_content",
+    "ingest_download_manifest",
+    "ingest_local_document",
     "parse_document_text",
     "parse_document_bytes",
     "parse_document_file",
+    "parse_pdf_to_record",
     "should_parse_document_input",
     "summarize_document_parse",
 ]

@@ -12,6 +12,15 @@ from typing import Any, Dict, List, Optional, Sequence
 logger = logging.getLogger(__name__)
 
 
+ANCHOR_SECTION_PATTERNS: Dict[str, Sequence[str]] = {
+    "grievance_hearing": ("grievance hearing", "informal hearing", "impartial person", "hearing process"),
+    "appeal_rights": ("appeal", "review", "right", "due process"),
+    "reasonable_accommodation": ("reasonable accommodation", "person with a disability", "disability", "accommodation"),
+    "adverse_action": ("termination", "denial", "adverse action", "admission", "occupancy"),
+    "selection_criteria": ("selection", "screening", "criteria", "evaluation", "prioritization"),
+}
+
+
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
@@ -95,6 +104,61 @@ HACC_QUERY_PRESETS: Dict[str, List[Dict[str, Any]]] = {
         DEFAULT_HACC_QUERY_SPECS[3],
         DEFAULT_HACC_QUERY_SPECS[4],
     ],
+    "administrative_plan_retaliation": [
+        {
+            "query": "retaliation grievance complaint appeal hearing due process tenant policy adverse action",
+            "type": "housing_discrimination",
+            "category": "housing",
+            "description": "Retaliation and grievance complaint anchored to the HACC Administrative Plan",
+            "anchor_titles": ["ADMINISTRATIVE PLAN"],
+            "anchor_terms": ["grievance", "hearing", "appeal", "informal hearing", "due process"],
+        },
+    ],
+    "acop_due_process": [
+        {
+            "query": "admissions occupancy policy informal hearing due process denial termination tenant complaint",
+            "type": "housing_discrimination",
+            "category": "housing",
+            "description": "Admissions and due-process complaint anchored to the Admissions and Continued Occupancy Policy",
+            "anchor_titles": ["ADMISSIONS AND CONTINUED OCCUPANCY POLICY"],
+            "anchor_terms": ["informal hearing", "grievance hearing", "impartial person", "due process"],
+        },
+    ],
+    "accommodation_focus": [
+        {
+            "query": "reasonable accommodation disability interactive process denial housing authority",
+            "type": "housing_discrimination",
+            "category": "housing",
+            "description": "Reasonable-accommodation complaint anchored to HACC policy language",
+            "anchor_titles": ["ADMINISTRATIVE PLAN", "ADMISSIONS AND CONTINUED OCCUPANCY POLICY"],
+            "anchor_terms": ["reasonable accommodation", "disability", "applicant", "accommodation"],
+        },
+    ],
+    "core_hacc_policies": [
+        {
+            "query": "retaliation grievance complaint appeal hearing due process tenant policy adverse action",
+            "type": "housing_discrimination",
+            "category": "housing",
+            "description": "Retaliation complaint anchored to HACC core housing policies",
+            "anchor_titles": ["ADMINISTRATIVE PLAN", "ADMISSIONS AND CONTINUED OCCUPANCY POLICY"],
+            "anchor_terms": ["grievance", "hearing", "appeal", "informal hearing", "due process"],
+        },
+        {
+            "query": "proxy language DEI equity inclusion housing policy admissions occupancy tenant selection",
+            "type": "housing_discrimination",
+            "category": "housing",
+            "description": "Proxy-language complaint anchored to HACC core housing policies",
+            "anchor_titles": ["ADMINISTRATIVE PLAN", "ADMISSIONS AND CONTINUED OCCUPANCY POLICY"],
+        },
+        {
+            "query": "reasonable accommodation disability interactive process denial housing authority",
+            "type": "housing_discrimination",
+            "category": "housing",
+            "description": "Accommodation complaint anchored to HACC core housing policies",
+            "anchor_titles": ["ADMINISTRATIVE PLAN", "ADMISSIONS AND CONTINUED OCCUPANCY POLICY"],
+            "anchor_terms": ["reasonable accommodation", "disability", "applicant", "accommodation"],
+        },
+    ],
 }
 
 
@@ -125,6 +189,95 @@ def _summarize_hit(hit: Dict[str, Any], max_snippet_chars: int = 240) -> Dict[st
     }
 
 
+def _filter_hits(
+    hits: Sequence[Dict[str, Any]],
+    *,
+    anchor_titles: Optional[Sequence[str]] = None,
+    anchor_source_paths: Optional[Sequence[str]] = None,
+) -> List[Dict[str, Any]]:
+    normalized_titles = {str(value).strip().lower() for value in (anchor_titles or []) if str(value).strip()}
+    normalized_paths = {str(value).strip().lower() for value in (anchor_source_paths or []) if str(value).strip()}
+    if not normalized_titles and not normalized_paths:
+        return list(hits)
+
+    filtered: List[Dict[str, Any]] = []
+    for hit in hits:
+        title = str(hit.get("title") or "").strip().lower()
+        source_path = str(hit.get("source_path") or "").strip().lower()
+        title_match = title in normalized_titles if normalized_titles else False
+        path_match = any(path and path in source_path for path in normalized_paths)
+        if title_match or path_match:
+            filtered.append(hit)
+    return filtered
+
+
+def _extract_anchor_passages(
+    hits: Sequence[Dict[str, Any]],
+    *,
+    anchor_terms: Optional[Sequence[str]] = None,
+    max_passages: int = 3,
+) -> List[Dict[str, Any]]:
+    normalized_terms = [str(value).strip().lower() for value in (anchor_terms or []) if str(value).strip()]
+    passages: List[Dict[str, Any]] = []
+
+    for hit in hits:
+        snippet = str(hit.get("snippet") or "").strip()
+        snippet_lower = snippet.lower()
+        if normalized_terms and not any(term in snippet_lower for term in normalized_terms):
+            continue
+        if not snippet:
+            continue
+        section_labels = _classify_anchor_sections(snippet)
+        passages.append(
+            {
+                "title": str(hit.get("title") or ""),
+                "source_path": str(hit.get("source_path") or ""),
+                "snippet": snippet,
+                "section_labels": section_labels,
+            }
+        )
+        if len(passages) >= max_passages:
+            break
+
+    if passages or not hits:
+        return passages
+
+    for hit in hits[:max_passages]:
+        snippet = str(hit.get("snippet") or "").strip()
+        if not snippet:
+            continue
+        section_labels = _classify_anchor_sections(snippet)
+        passages.append(
+            {
+                "title": str(hit.get("title") or ""),
+                "source_path": str(hit.get("source_path") or ""),
+                "snippet": snippet,
+                "section_labels": section_labels,
+            }
+        )
+    return passages
+
+
+def _classify_anchor_sections(snippet: str) -> List[str]:
+    normalized = str(snippet or "").strip().lower()
+    labels: List[str] = []
+    for label, patterns in ANCHOR_SECTION_PATTERNS.items():
+        if any(pattern in normalized for pattern in patterns):
+            labels.append(label)
+    return labels or ["general_policy"]
+
+
+def _summarize_section_labels(anchor_passages: Sequence[Dict[str, Any]]) -> List[str]:
+    labels: List[str] = []
+    seen = set()
+    for passage in anchor_passages:
+        for label in list(passage.get("section_labels") or []):
+            if label not in seen:
+                seen.add(label)
+                labels.append(label)
+    return labels
+
+
 def build_hacc_evidence_seed(
     search_payload: Dict[str, Any],
     *,
@@ -132,8 +285,16 @@ def build_hacc_evidence_seed(
     complaint_type: str,
     category: str,
     description: str,
+    anchor_titles: Optional[Sequence[str]] = None,
+    anchor_source_paths: Optional[Sequence[str]] = None,
+    anchor_terms: Optional[Sequence[str]] = None,
 ) -> Optional[Dict[str, Any]]:
-    hits = [_summarize_hit(hit) for hit in list(search_payload.get("results", []) or [])]
+    raw_hits = [_summarize_hit(hit) for hit in list(search_payload.get("results", []) or [])]
+    hits = _filter_hits(
+        raw_hits,
+        anchor_titles=anchor_titles,
+        anchor_source_paths=anchor_source_paths,
+    ) or raw_hits
     if not hits:
         return None
 
@@ -148,6 +309,8 @@ def build_hacc_evidence_seed(
     ).strip()
     source_paths = [hit["source_path"] for hit in hits if hit.get("source_path")]
     evidence_titles = [hit["title"] for hit in hits if hit.get("title")]
+    anchor_passages = _extract_anchor_passages(hits, anchor_terms=anchor_terms)
+    anchor_sections = _summarize_section_labels(anchor_passages)
 
     return {
         "template_id": f"hacc::{complaint_type}::{query[:40]}",
@@ -161,6 +324,11 @@ def build_hacc_evidence_seed(
             "evidence_summary": evidence_summary,
             "evidence_documents": evidence_titles,
             "source_paths": source_paths,
+            "anchor_titles": list(anchor_titles or []),
+            "anchor_source_paths": list(anchor_source_paths or []),
+            "anchor_terms": list(anchor_terms or []),
+            "anchor_passages": anchor_passages,
+            "anchor_sections": anchor_sections,
             "grounding_note": "Use the evidence as factual grounding and identify missing case-specific facts during questioning.",
         },
         "keywords": [],
@@ -200,6 +368,9 @@ def build_hacc_evidence_seeds(
             complaint_type=str(spec.get("type") or "civil_rights_violation"),
             category=str(spec.get("category") or "civil_rights"),
             description=str(spec.get("description") or "Evidence-backed complaint seed from HACC corpus"),
+            anchor_titles=spec.get("anchor_titles"),
+            anchor_source_paths=spec.get("anchor_source_paths"),
+            anchor_terms=spec.get("anchor_terms"),
         )
         if seed:
             seeds.append(seed)

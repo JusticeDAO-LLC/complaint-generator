@@ -303,9 +303,28 @@ Available presets include:
 - `proxy_focus`
 - `retaliation_focus`
 - `contracting_focus`
+- `administrative_plan_retaliation`
+- `acop_due_process`
+- `accommodation_focus`
+- `core_hacc_policies`
 
 You can still bypass presets and pass `hacc_query_specs=DEFAULT_HACC_QUERY_SPECS`
 or your own custom list of query specs when you want tighter case-specific control.
+
+The source-anchored presets are especially useful when you want the complainant to
+draw from HACC's core policy artifacts directly:
+- `administrative_plan_retaliation` emphasizes the `ADMINISTRATIVE PLAN`
+- `acop_due_process` emphasizes the `ADMISSIONS AND CONTINUED OCCUPANCY POLICY`
+- `accommodation_focus` emphasizes disability-accommodation passages in the core policies
+- `core_hacc_policies` blends both documents into a single seed strategy
+
+When anchor terms are present, the generated seed also stores `key_facts["anchor_passages"]`
+so the complainant can cite concrete grievance, hearing, or accommodation snippets rather
+than speaking only at the document-title level.
+
+The seed also stores `key_facts["anchor_sections"]` and per-passage `section_labels`
+such as `grievance_hearing`, `appeal_rights`, and `reasonable_accommodation`. That
+gives the adversarial loop a more structured bridge into decision-tree design.
 
 Each HACC-backed seed includes:
 - `key_facts["evidence_summary"]` for a short narrative grounding
