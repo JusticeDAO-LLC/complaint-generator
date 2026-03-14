@@ -36,6 +36,21 @@ from .search import (
 	search_multi_engine_web,
 )
 from .llm import generate_text_with_metadata
+from .graphrag import (
+	build_ontology,
+	validate_ontology,
+	run_refinement_cycle,
+	ingest_pdf_to_graphrag,
+	extract_pdf_entities,
+	analyze_pdf_relationships,
+	cross_analyze_pdf_documents,
+	batch_process_pdfs,
+	query_pdf_knowledge_graph,
+)
+from .policy_rules import (
+	build_policy_rule_corpus,
+	extract_policy_rules_from_pdf,
+)
 from .storage import pin_cid, retrieve_bytes, storage_backend_status, store_bytes
 
 __all__ = [
@@ -67,6 +82,17 @@ __all__ = [
 	"with_adapter_metadata",
 	"evaluate_scraped_content",
 	"generate_text_with_metadata",
+	"build_ontology",
+	"validate_ontology",
+	"run_refinement_cycle",
+	"ingest_pdf_to_graphrag",
+	"extract_pdf_entities",
+	"analyze_pdf_relationships",
+	"cross_analyze_pdf_documents",
+	"batch_process_pdfs",
+	"query_pdf_knowledge_graph",
+	"extract_policy_rules_from_pdf",
+	"build_policy_rule_corpus",
 	"store_bytes",
 	"retrieve_bytes",
 	"pin_cid",
