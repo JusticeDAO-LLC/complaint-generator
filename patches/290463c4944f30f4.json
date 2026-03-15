@@ -1,0 +1,32 @@
+{
+  "patch_id": "290463c4944f30f4",
+  "agent_id": "adversarial-harness-optimizer",
+  "task_id": "adversarial_autopatch_20260315_214000",
+  "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/denoiser.py. Priorities from the latest adversarial batch: Improve information extraction: current avg 0.38; Improve question quality: current avg 0.42; Improve empathy: current avg 0.58. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability.",
+  "diff_content": "--- a/complaint_phases/denoiser.py\n+++ b/complaint_phases/denoiser.py\n@@ -1098,6 +1098,25 @@\n         if not normalized_candidates or max_questions <= 0:\n             return []\n \n+        def _finalize(items: Any, *, dedupe: bool) -> List[Dict[str, Any]]:\n+            normalized_items = [candidate for candidate in (items or []) if isinstance(candidate, dict)]\n+            if not dedupe:\n+                return normalized_items[:max_questions]\n+            seen_keys = set()\n+            finalized: List[Dict[str, Any]] = []\n+            for candidate in normalized_items:\n+                candidate_key = (\n+                    self._normalize_question_text(str(candidate.get('question', ''))),\n+                    str(candidate.get('type', '')).strip().lower(),\n+                )\n+                if candidate_key in seen_keys:\n+                    continue\n+                seen_keys.add(candidate_key)\n+                finalized.append(candidate)\n+                if len(finalized) >= max_questions:\n+                    break\n+            return finalized\n+\n         selected: Any = None\n         if callable(selector):\n             try:\n@@ -1108,12 +1127,12 @@\n                 selected = None\n \n         if isinstance(selected, list):\n-            normalized_selected = [candidate for candidate in selected if isinstance(candidate, dict)]\n+            normalized_selected = _finalize(selected, dedupe=True)\n             if normalized_selected:\n-                return normalized_selected[:max_questions]\n+                return normalized_selected\n \n         normalized_candidates.sort(key=self._default_candidate_sort_key)\n-        return normalized_candidates[:max_questions]\n+        return _finalize(normalized_candidates, dedupe=True)\n \n     def _ensure_standard_intake_questions(self, questions: List[Dict[str, Any]], max_questions: int) -> List[Dict[str, Any]]:\n         if len(questions) >= max_questions:\n",
+  "target_files": [
+    "complaint_phases/denoiser.py"
+  ],
+  "created_at": "2026-03-15T21:41:00.473630",
+  "parent_patches": [],
+  "ipfs_cid": null,
+  "worktree_path": "",
+  "validated": false,
+  "applied": false,
+  "metadata": {
+    "patch_mode": "direct_diff",
+    "repo_root": "/home/barberb/HACC/complaint-generator",
+    "generation_diagnostics": [
+      {
+        "file": "/home/barberb/HACC/complaint-generator/complaint_phases/denoiser.py",
+        "status": "optimized",
+        "mode": "symbol_level",
+        "target_symbols": [
+          "select_question_candidates"
+        ],
+        "response_length": 86507,
+        "changed": true
+      }
+    ]
+  }
+}
