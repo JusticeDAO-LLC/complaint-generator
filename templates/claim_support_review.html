@@ -894,6 +894,7 @@
                     <div class="chip-row" id="intake-section-chips" style="margin-top: 10px;"></div>
                     <div class="question-list" id="intake-canonical-fact-list"></div>
                     <div class="chip-row" id="intake-proof-lead-chips" style="margin-top: 10px;"></div>
+                    <div class="question-list" id="intake-matching-summary-list"></div>
                 </div>
 
                 <div class="focus-block" data-section-focus-target="claims_for_relief requested_relief">
@@ -1524,6 +1525,7 @@
             const sectionContainer = document.getElementById('intake-section-chips');
             const factContainer = document.getElementById('intake-canonical-fact-list');
             const proofLeadContainer = document.getElementById('intake-proof-lead-chips');
+            const intakeMatchingContainer = document.getElementById('intake-matching-summary-list');
             const packetContainer = document.getElementById('claim-support-packet-summary-chips');
             const intakeCaseSummary = summary && typeof summary === 'object' ? summary : {};
             const candidateClaims = Array.isArray(intakeCaseSummary.candidate_claims) ? intakeCaseSummary.candidate_claims : [];
@@ -1535,6 +1537,12 @@
                 : {};
             const proofLeadSummary = intakeCaseSummary.proof_lead_summary && typeof intakeCaseSummary.proof_lead_summary === 'object'
                 ? intakeCaseSummary.proof_lead_summary
+                : {};
+            const intakeMatchingSummary = intakeCaseSummary.intake_matching_summary && typeof intakeCaseSummary.intake_matching_summary === 'object'
+                ? intakeCaseSummary.intake_matching_summary
+                : {};
+            const questionCandidateSummary = intakeCaseSummary.question_candidate_summary && typeof intakeCaseSummary.question_candidate_summary === 'object'
+                ? intakeCaseSummary.question_candidate_summary
                 : {};
             const claimSupportPacketSummary = intakeCaseSummary.claim_support_packet_summary && typeof intakeCaseSummary.claim_support_packet_summary === 'object'
                 ? intakeCaseSummary.claim_support_packet_summary
@@ -1570,6 +1578,59 @@
             proofLeadContainer.innerHTML = proofLeads.length
                 ? proofLeads.map((lead) => `<span class="chip">proof lead: ${lead.description || lead.lead_type || 'support'}</span>`).join('')
                 : '<span class="chip">No proof leads captured.</span>';
+
+            const matchingClaims = intakeMatchingSummary.claims && typeof intakeMatchingSummary.claims === 'object'
+                ? intakeMatchingSummary.claims
+                : {};
+            const questionCandidates = Array.isArray(questionCandidateSummary.candidates)
+                ? questionCandidateSummary.candidates
+                : [];
+            const matchingEntries = Object.entries(matchingClaims);
+            if (!matchingEntries.length) {
+                intakeMatchingContainer.innerHTML = '<div class="task-card">Unresolved legal elements: no intake matching diagnostics available.</div>';
+            } else {
+                intakeMatchingContainer.innerHTML = matchingEntries.map(([claimType, claim]) => {
+                    const missingNames = Array.isArray(claim.missing_requirement_names) ? claim.missing_requirement_names : [];
+                    const missingElementIds = Array.isArray(claim.missing_requirement_element_ids) ? claim.missing_requirement_element_ids : [];
+                    const matchingQuestionChips = questionCandidates
+                        .filter((candidate) => {
+                            const selectorSignals = candidate && typeof candidate === 'object' && candidate.selector_signals && typeof candidate.selector_signals === 'object'
+                                ? candidate.selector_signals
+                                : {};
+                            const targetElementId = String(candidate && candidate.target_element_id || '').trim();
+                            return (
+                                selectorSignals.direct_legal_target_match
+                                || (targetElementId && missingElementIds.includes(targetElementId))
+                            );
+                        })
+                        .slice(0, 4)
+                        .map((candidate) => `<span class="chip">question target: ${candidate.target_element_id || candidate.question_goal || candidate.type || 'candidate'}</span>`);
+
+                    const detailChips = [
+                        `<span class="chip">matcher confidence: ${Number(claim.matcher_confidence || 0).toFixed(2)}</span>`,
+                        `<span class="chip">missing legal elements: ${Number(claim.missing_requirement_count || 0)}</span>`,
+                    ];
+                    missingNames.forEach((item) => detailChips.push(`<span class="chip">missing: ${item}</span>`));
+                    missingElementIds.forEach((item) => detailChips.push(`<span class="chip">element id: ${item}</span>`));
+                    return `
+                        <article class="task-card">
+                            <div class="row-head">
+                                <div>
+                                    <div class="row-title">Unresolved legal elements for ${claimType}</div>
+                                    <div class="meta">Intake matching summary</div>
+                                </div>
+                                <span class="badge">${Number(claim.missing_requirement_count || 0)} open</span>
+                            </div>
+                            <div class="chip-row" style="margin-top: 10px;">
+                                ${detailChips.join('')}
+                            </div>
+                            <div class="chip-row" style="margin-top: 10px;">
+                                ${matchingQuestionChips.length ? matchingQuestionChips.join('') : '<span class="chip">No question candidates mapped to these legal elements yet.</span>'}
+                            </div>
+                        </article>
+                    `;
+                }).join('');
+            }
 
             const packetStatusCounts = claimSupportPacketSummary.status_counts && typeof claimSupportPacketSummary.status_counts === 'object'
                 ? claimSupportPacketSummary.status_counts
@@ -1795,21 +1856,22 @@
             const claimType = params.get('claim_type') || storedIntent.claim_type;
             const userId = params.get('user_id') || storedIntent.user_id;
             const section = params.get('section') || storedIntent.section;
+            const supportKind = params.get('follow_up_support_kind') || storedIntent.follow_up_support_kind || null;
             if (claimType) {
                 document.getElementById('claim-type').value = claimType;
             }
             if (userId) {
                 document.getElementById('user-id').value = userId;
             }
-            if (!params.get('section') && storedIntent.follow_up_support_kind) {
-                document.getElementById('support-kind').value = storedIntent.follow_up_support_kind;
-            }
             const sectionConfig = applySectionFocus(section);
+            if (supportKind) {
+                document.getElementById('support-kind').value = supportKind;
+            }
             setPrefillContext(section, sectionConfig);
             const intent = persistReviewIntent({ claim_type: claimType, user_id: userId, section, follow_up_support_kind: document.getElementById('support-kind').value || null });
             syncReviewIntentUrl(intent);
             finalizeSectionFocus();
-            return Boolean(claimType || userId || section);
+            return Boolean(claimType || userId || section || supportKind);
         }
 
         function prefillResolutionForm(values) {

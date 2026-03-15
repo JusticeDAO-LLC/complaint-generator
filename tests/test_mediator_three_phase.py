@@ -696,6 +696,7 @@ class TestMediatorThreePhaseIntegration:
         assert first_question['selector_signals']['proof_priority'] == first_question['proof_priority']
         assert 'matcher_missing_requirement_count' in first_question['selector_signals']
         assert 'matcher_confidence' in first_question['selector_signals']
+        assert 'matcher_missing_requirement_element_ids' in first_question['selector_signals']
         assert result['intake_matching_summary']['claim_count'] >= 1
 
     def test_default_selector_prioritizes_contradiction_candidates(self):
@@ -734,6 +735,33 @@ class TestMediatorThreePhaseIntegration:
         assert questions[0]['type'] == 'contradiction'
         assert questions[0]['selector_signals']['candidate_source'] == 'dependency_graph_contradiction'
         assert 'matcher_missing_requirement_count' in questions[0]['selector_signals']
+
+    def test_default_selector_marks_direct_legal_target_match_for_missing_element_question(self):
+        """A question that targets an unresolved legal element should carry a direct-match selector signal."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        result = mediator.start_three_phase_process(
+            "My employer discriminated against me."
+        )
+
+        matching_summary = result['intake_matching_summary']
+        employment_summary = matching_summary['claims'].get('employment_discrimination', {})
+        assert employment_summary['missing_requirement_element_ids']
+
+        direct_match_questions = [
+            question for question in result['initial_questions']
+            if question.get('selector_signals', {}).get('direct_legal_target_match')
+        ]
+
+        assert direct_match_questions
+        assert direct_match_questions[0]['target_element_id'] in employment_summary['missing_requirement_element_ids']
     
     def test_graph_serialization(self):
         """Test that graphs can be serialized for storage."""

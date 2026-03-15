@@ -763,6 +763,7 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 "proof_leads": [{"lead_id": "lead_001"}],
             },
             "question_candidate_summary": {},
+            "intake_matching_summary": {},
             "claim_support_packet_summary": {
                 "claim_count": 1,
                 "element_count": 3,

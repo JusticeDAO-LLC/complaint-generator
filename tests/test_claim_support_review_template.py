@@ -25,6 +25,11 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Save Testimony" in content
     assert "Save Document" in content
     assert "question-list" in content
+    assert "Intake Case Summary" in content
+    assert "Intake matching summary" in content
+    assert "Unresolved legal elements for" in content
+    assert "intake-matching-summary-list" in content
+    assert "question target:" in content
     assert "testimony-list" in content
     assert "document-list" in content
     assert "save-testimony-button" in content
@@ -87,6 +92,7 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "section-focus-chip-row" in content
     assert "Opened from document workflow:" in content
     assert "params.get('section')" in content
+    assert "params.get('follow_up_support_kind')" in content
     assert "SECTION_FOCUS_CONFIG" in content
     assert "applySectionFocus" in content
     assert "clearSectionFocus" in content
@@ -285,6 +291,9 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Question Blocking Levels" in content
     assert "Question Review Targets" in content
     assert "Question Review (" in content
+    assert "defaultSupportKindForSection" in content
+    assert "inferQuestionSupportKind" in content
+    assert "appendSupportKindToReviewUrl" in content
     assert "Intake Claim Review" in content
     assert "Intake Section Review" in content
     assert "Packet next steps:" in content
@@ -435,6 +444,9 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "triage-chip" in content
     assert "Question Review Targets" in content
     assert "Question Review (" in content
+    assert "defaultSupportKindForSection" in content
+    assert "inferQuestionSupportKind" in content
+    assert "appendSupportKindToReviewUrl" in content
     assert "traceEvidenceLinks" in content
     assert "buildTraceClaimReviewUrl" in content
     assert "buildTraceSectionReviewUrl" in content

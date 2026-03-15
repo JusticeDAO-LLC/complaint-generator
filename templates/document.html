@@ -1355,7 +1355,7 @@
             const claimType = String(value.claim_type || value.claimType || parsedUrl.searchParams.get('claim_type') || '').trim() || null;
             const sectionKey = String(value.section || value.section_key || value.sectionKey || parsedUrl.searchParams.get('section') || '').trim() || null;
             const userId = String(value.user_id || value.userId || parsedUrl.searchParams.get('user_id') || '').trim() || null;
-            const followUpSupportKind = String(value.follow_up_support_kind || value.followUpSupportKind || '').trim() || null;
+            const followUpSupportKind = String(value.follow_up_support_kind || value.followUpSupportKind || parsedUrl.searchParams.get('follow_up_support_kind') || '').trim() || null;
             return {
                 review_url: `${parsedUrl.pathname}${parsedUrl.search}`,
                 claim_type: claimType,
@@ -2024,6 +2024,54 @@
             return query ? `/claim-support-review?${query}` : '/claim-support-review';
         }
 
+        function appendSupportKindToReviewUrl(reviewUrl, supportKind) {
+            const normalizedUrl = String(reviewUrl || '').trim();
+            const normalizedSupportKind = String(supportKind || '').trim();
+            if (!normalizedUrl || !normalizedSupportKind) {
+                return normalizedUrl;
+            }
+            const parsedUrl = new URL(normalizedUrl, window.location.origin);
+            parsedUrl.searchParams.set('follow_up_support_kind', normalizedSupportKind);
+            return `${parsedUrl.pathname}${parsedUrl.search}`;
+        }
+
+        function defaultSupportKindForSection(sectionKey) {
+            const normalizedSectionKey = String(sectionKey || '').trim().toLowerCase();
+            if (!normalizedSectionKey) {
+                return '';
+            }
+            if (['summary_of_facts', 'chronology', 'proof_leads', 'exhibits'].includes(normalizedSectionKey)) {
+                return 'evidence';
+            }
+            if (['jurisdiction_and_venue', 'claims_for_relief'].includes(normalizedSectionKey)) {
+                return 'authority';
+            }
+            return '';
+        }
+
+        function inferQuestionSupportKind(sectionKey, questionGoalCounts) {
+            const counts = questionGoalCounts && typeof questionGoalCounts === 'object' ? questionGoalCounts : {};
+            const evidenceCount = Number(counts.identify_supporting_proof || 0);
+            const authorityCount = Number(counts.establish_element || 0);
+            if (evidenceCount > 0 && authorityCount === 0) {
+                return 'evidence';
+            }
+            if (authorityCount > 0 && evidenceCount === 0) {
+                return 'authority';
+            }
+            const defaultSupportKind = defaultSupportKindForSection(sectionKey);
+            if (defaultSupportKind) {
+                return defaultSupportKind;
+            }
+            if (evidenceCount > 0) {
+                return 'evidence';
+            }
+            if (authorityCount > 0) {
+                return 'authority';
+            }
+            return '';
+        }
+
         function renderSectionClaimLinks(sectionKey, section, reviewLinks) {
             const sectionEntry = resolveSectionReviewEntry(sectionKey, section, reviewLinks);
             const claimLinks = Array.isArray(sectionEntry && sectionEntry.claim_links)
@@ -2562,7 +2610,10 @@
                 renderTriageChipRow('Question Blocking Levels', questionBlockingChips, (item) => item.tone),
             ].filter(Boolean).join('');
             const questionSectionLinks = Object.keys(questionSectionCounts).map((sectionKey) => {
-                const reviewUrl = resolveSectionReviewUrl(sectionKey, intakeSections[sectionKey] || {}, reviewLinks);
+                const reviewUrl = appendSupportKindToReviewUrl(
+                    resolveSectionReviewUrl(sectionKey, intakeSections[sectionKey] || {}, reviewLinks),
+                    inferQuestionSupportKind(sectionKey, questionGoalCounts),
+                );
                 const label = humanizeKey(sectionKey);
                 const count = questionSectionCounts[sectionKey];
                 if (!reviewUrl || !label) {

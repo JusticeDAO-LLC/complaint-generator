@@ -237,11 +237,25 @@ class Mediator:
 			if not claim_type:
 				continue
 			missing_requirements = claim_result.get('missing_requirements', [])
+			missing_requirement_names = [
+				str(item.get('requirement_name') or '').strip()
+				for item in missing_requirements
+				if isinstance(item, dict) and item.get('requirement_name')
+			]
+			missing_requirement_element_ids: List[str] = []
+			for legal_requirement in legal_graph.get_requirements_for_claim_type(claim_type):
+				if legal_requirement.name not in missing_requirement_names:
+					continue
+				element_id = str((legal_requirement.attributes or {}).get('element_id') or '').strip()
+				if element_id and element_id not in missing_requirement_element_ids:
+					missing_requirement_element_ids.append(element_id)
 			pressure_map[claim_type] = {
 				'missing_requirement_count': len(missing_requirements) if isinstance(missing_requirements, list) else 0,
 				'matcher_confidence': float(claim_result.get('confidence', 0.0) or 0.0),
 				'legal_requirements': int(claim_result.get('legal_requirements', 0) or 0),
 				'satisfied_requirements': int(claim_result.get('satisfied_requirements', 0) or 0),
+				'missing_requirement_names': missing_requirement_names,
+				'missing_requirement_element_ids': missing_requirement_element_ids,
 			}
 		return pressure_map
 
@@ -264,10 +278,21 @@ class Mediator:
 		satisfaction_ratio = float(claim_state.get('satisfaction_ratio', 0.0) or 0.0)
 		matcher_missing_requirement_count = int(matching_state.get('missing_requirement_count', 0) or 0)
 		matcher_confidence = float(matching_state.get('matcher_confidence', 0.0) or 0.0)
+		missing_requirement_element_ids = [
+			str(item).strip().lower()
+			for item in (matching_state.get('missing_requirement_element_ids') or [])
+			if item
+		]
 		blocking_level = str(explanation.get('blocking_level') or candidate.get('blocking_level') or '').strip().lower()
 		question_goal = str(explanation.get('question_goal') or candidate.get('question_goal') or '').strip().lower()
 		candidate_source = str(explanation.get('candidate_source') or candidate.get('candidate_source') or '').strip().lower()
 		proof_priority = int(candidate.get('proof_priority', 99) or 99)
+		target_element_id = str(
+			explanation.get('target_element_id')
+			or candidate.get('target_element_id')
+			or ''
+		).strip().lower()
+		direct_legal_target_match = bool(target_element_id and target_element_id in missing_requirement_element_ids)
 
 		score = 0.0
 		score += max(0, 10 - proof_priority) * 2.0
@@ -292,6 +317,8 @@ class Mediator:
 		score += max(0.0, 1.0 - satisfaction_ratio) * 5.0
 		score += min(matcher_missing_requirement_count, 5) * 3.0
 		score += max(0.0, 1.0 - matcher_confidence) * 4.0
+		if direct_legal_target_match:
+			score += 15.0
 
 		selector_signals = {
 			'candidate_source': candidate_source,
@@ -302,6 +329,8 @@ class Mediator:
 			'claim_satisfaction_ratio': satisfaction_ratio,
 			'matcher_missing_requirement_count': matcher_missing_requirement_count,
 			'matcher_confidence': matcher_confidence,
+			'matcher_missing_requirement_element_ids': missing_requirement_element_ids,
+			'direct_legal_target_match': direct_legal_target_match,
 		}
 		annotated['selector_score'] = score
 		annotated['selector_signals'] = selector_signals
@@ -4079,6 +4108,8 @@ class Mediator:
 				'matcher_confidence': matcher_confidence,
 				'legal_requirements': int(claim_data.get('legal_requirements', 0) or 0),
 				'satisfied_requirements': int(claim_data.get('satisfied_requirements', 0) or 0),
+				'missing_requirement_names': list(claim_data.get('missing_requirement_names') or []),
+				'missing_requirement_element_ids': list(claim_data.get('missing_requirement_element_ids') or []),
 			}
 		if confidences:
 			summary['average_matcher_confidence'] = sum(confidences) / len(confidences)
