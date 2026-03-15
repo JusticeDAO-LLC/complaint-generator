@@ -400,11 +400,67 @@ def _extract_source_window(
                 continue
             start = max(0, idx - (window_chars // 3))
             end = min(len(normalized_source), idx + window_chars)
+            if start > 0:
+                sentence_start = max(
+                    normalized_source.rfind(". ", max(0, start - 200), start),
+                    normalized_source.rfind("! ", max(0, start - 200), start),
+                    normalized_source.rfind("? ", max(0, start - 200), start),
+                )
+                if sentence_start >= 0:
+                    start = sentence_start + 2
+                elif normalized_source[start - 1].isalnum():
+                    next_space = normalized_source.find(" ", start)
+                    if next_space > start:
+                        start = next_space + 1
+            if end < len(normalized_source):
+                sentence_end_candidates = [
+                    pos for pos in (
+                        normalized_source.find(". ", end, min(len(normalized_source), end + 200)),
+                        normalized_source.find("! ", end, min(len(normalized_source), end + 200)),
+                        normalized_source.find("? ", end, min(len(normalized_source), end + 200)),
+                    )
+                    if pos >= 0
+                ]
+                if sentence_end_candidates:
+                    end = min(sentence_end_candidates) + 1
+                elif normalized_source[end - 1].isalnum():
+                    last_space = normalized_source.rfind(" ", start, end)
+                    if last_space > start:
+                        end = last_space
             excerpt = normalized_source[start:end].strip()
             if excerpt:
                 return excerpt
 
     return normalized_fallback
+
+
+def _expand_hit_with_source_window(
+    hit: Dict[str, Any],
+    *,
+    anchor_terms: Optional[Sequence[str]] = None,
+) -> Dict[str, Any]:
+    expanded_hit = dict(hit)
+    snippet = str(hit.get("snippet") or "").strip()
+    if not snippet:
+        return expanded_hit
+
+    expanded_hit["snippet"] = _extract_source_window(
+        source_path=str(hit.get("source_path") or ""),
+        anchor_terms=[str(term).strip().lower() for term in (anchor_terms or []) if str(term).strip()],
+        fallback_snippet=snippet,
+    )
+    return expanded_hit
+
+
+def _expand_hits_with_source_windows(
+    hits: Sequence[Dict[str, Any]],
+    *,
+    anchor_terms: Optional[Sequence[str]] = None,
+) -> List[Dict[str, Any]]:
+    return [
+        _expand_hit_with_source_window(hit, anchor_terms=anchor_terms)
+        for hit in hits
+    ]
 
 
 def _classify_anchor_sections(snippet: str) -> List[str]:
@@ -444,6 +500,7 @@ def build_hacc_evidence_seed(
         anchor_titles=anchor_titles,
         anchor_source_paths=anchor_source_paths,
     ) or raw_hits
+    hits = _expand_hits_with_source_windows(hits, anchor_terms=anchor_terms)
     if not hits:
         return None
 
@@ -578,6 +635,7 @@ def resolve_hacc_question_evidence(
         anchor_titles=facts.get("anchor_titles"),
         anchor_source_paths=facts.get("anchor_source_paths"),
     ) or raw_hits
+    hits = _expand_hits_with_source_windows(hits, anchor_terms=anchor_terms)
 
     merged_hits: List[Dict[str, Any]] = []
     seen_keys: set[str] = set()
