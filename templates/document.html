@@ -360,6 +360,45 @@
             margin-bottom: 4px;
         }
 
+        .triage-chip-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .triage-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(22, 33, 38, 0.12);
+            background: rgba(255,255,255,0.82);
+            color: var(--ink);
+            font-size: 0.84rem;
+            font-weight: 600;
+        }
+
+        .triage-chip[data-tone="important"],
+        .triage-chip[data-tone="high"] {
+            border-color: rgba(143, 45, 30, 0.24);
+            background: rgba(143, 45, 30, 0.12);
+            color: var(--accent-deep);
+        }
+
+        .triage-chip[data-tone="critical"] {
+            border-color: rgba(91, 29, 21, 0.32);
+            background: rgba(91, 29, 21, 0.16);
+            color: var(--accent-deep);
+        }
+
+        .triage-chip[data-tone="medium"] {
+            border-color: rgba(180, 83, 9, 0.2);
+            background: rgba(255, 247, 237, 0.92);
+            color: #9a3412;
+        }
+
         .status-pill {
             display: inline-flex;
             align-items: center;
@@ -1630,6 +1669,26 @@
             `;
         }
 
+        function renderTriageChipRow(title, items, toneResolver = null) {
+            const normalizedItems = Array.isArray(items) ? items.filter((item) => item && typeof item === 'object') : [];
+            if (!normalizedItems.length) {
+                return '';
+            }
+            const chips = normalizedItems.map((item) => {
+                const label = String(item.label || '').trim();
+                const value = item.value == null ? '' : String(item.value).trim();
+                if (!label || !value) {
+                    return '';
+                }
+                const tone = typeof toneResolver === 'function' ? String(toneResolver(item) || '').trim().toLowerCase() : '';
+                return `<span class="triage-chip"${tone ? ` data-tone="${escapeHtml(tone)}"` : ''}><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</span>`;
+            }).filter(Boolean);
+            if (!chips.length) {
+                return '';
+            }
+            return `<div class="preview-meta"><strong>${escapeHtml(title)}</strong></div><div class="triage-chip-row">${chips.join('')}</div>`;
+        }
+
         function renderPleadingParagraphs(lines, startNumber = 1) {
             if (!Array.isArray(lines) || lines.length === 0) {
                 return '<div class="preview-meta">No content available.</div>';
@@ -2484,6 +2543,24 @@
                 finalReview.recommended_focus ? `Final recommended focus: ${humanizeKey(finalReview.recommended_focus)}` : '',
                 `Relief-targeted optimization: ${reliefTargeted ? 'yes' : 'no'}`,
             ].filter(Boolean);
+            const questionGoalChips = Object.entries(questionGoalCounts).map(([goal, count]) => ({
+                label: humanizeKey(goal),
+                value: count,
+            }));
+            const questionSectionChips = Object.entries(questionSectionCounts).map(([sectionName, count]) => ({
+                label: humanizeKey(sectionName),
+                value: count,
+            }));
+            const questionBlockingChips = Object.entries(questionBlockingCounts).map(([level, count]) => ({
+                label: humanizeKey(level),
+                value: count,
+                tone: level,
+            }));
+            const intakeEvidenceTriage = [
+                renderTriageChipRow('Question Goals', questionGoalChips),
+                renderTriageChipRow('Question Target Sections', questionSectionChips),
+                renderTriageChipRow('Question Blocking Levels', questionBlockingChips, (item) => item.tone),
+            ].filter(Boolean).join('');
             const intakeEvidenceLinks = (() => {
                 const claimLinks = intakeCandidateClaims.map((claim) => {
                     const reviewUrl = resolveClaimReviewUrl(claim, reviewLinks);
@@ -2525,7 +2602,7 @@
                         ${renderChangeGroup('Rejected Changes', rejectedChangeLines, 'rejected')}
                         ${routerUsageLines.length ? `<div class="preview-meta"><strong>Router Usage</strong></div>${renderLines(routerUsageLines)}` : ''}
                         ${intakeConstraintLines.length ? `<div class="preview-meta"><strong>Intake Constraints</strong></div>${renderLines(intakeConstraintLines)}` : ''}
-                        ${intakeEvidenceLines.length ? `<div class="preview-meta"><strong>Intake Evidence Snapshot</strong></div>${renderLines(intakeEvidenceLines)}${intakeEvidenceLinks}` : ''}
+                        ${intakeEvidenceLines.length ? `<div class="preview-meta"><strong>Intake Evidence Snapshot</strong></div>${renderLines(intakeEvidenceLines)}${intakeEvidenceTriage}${intakeEvidenceLinks}` : ''}
                         ${upstreamOptimizerLines.length ? `<div class="preview-meta"><strong>Upstream Optimizer</strong></div>${renderLines(upstreamOptimizerLines)}` : ''}
                         ${stageProviderLines.length ? `<div class="preview-meta"><strong>Stage Provider Selection</strong></div>${renderLines(stageProviderLines)}` : ''}
                         ${packetProjectionLines.length ? `<div class="preview-meta"><strong>Packet Projection</strong></div>${renderLines(packetProjectionLines)}` : ''}

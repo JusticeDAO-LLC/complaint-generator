@@ -47,6 +47,7 @@ from document_pipeline import FormalComplaintDocumentBuilder
 
 # Import three-phase complaint processing
 from complaint_phases import (
+	CLAIM_INTAKE_REQUIREMENTS,
 	PhaseManager,
 	ComplaintPhase,
 	KnowledgeGraphBuilder,
@@ -56,6 +57,8 @@ from complaint_phases import (
 	match_required_element_id,
 	refresh_intake_sections,
 	LegalGraphBuilder,
+	LegalGraph,
+	LegalElement,
 	NeurosymbolicMatcher,
 	NodeType
 )
@@ -138,9 +141,12 @@ class Mediator:
 		if not normalized_candidates:
 			return []
 		dg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'dependency_graph')
+		kg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
+		intake_case_file = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
 		claim_pressure = self._build_intake_claim_pressure_map(dg)
+		matching_pressure = self._build_intake_matching_pressure_map(kg, dg, intake_case_file)
 		scored_candidates = [
-			self._annotate_intake_question_candidate(candidate, claim_pressure)
+			self._annotate_intake_question_candidate(candidate, claim_pressure, matching_pressure)
 			for candidate in normalized_candidates
 		]
 		scored_candidates.sort(
@@ -172,10 +178,78 @@ class Mediator:
 			}
 		return pressure_map
 
+	def _build_intake_selector_legal_graph(self, intake_case_file: Dict[str, Any]) -> LegalGraph:
+		legal_graph = LegalGraph()
+		candidate_claims = intake_case_file.get('candidate_claims', []) if isinstance(intake_case_file, dict) else []
+		for claim in candidate_claims:
+			if not isinstance(claim, dict):
+				continue
+			claim_type = str(claim.get('claim_type') or '').strip().lower()
+			if not claim_type:
+				continue
+			registry = CLAIM_INTAKE_REQUIREMENTS.get(claim_type, {})
+			elements = registry.get('elements', []) if isinstance(registry, dict) else []
+			for element in elements:
+				if not isinstance(element, dict):
+					continue
+				element_id = str(element.get('element_id') or '').strip()
+				if not element_id:
+					continue
+				legal_graph.add_element(
+					LegalElement(
+						id=f"intake_req:{claim_type}:{element_id}",
+						element_type='requirement',
+						name=str(element.get('label') or element_id),
+						description=f"Intake ontology requirement for {claim_type}: {element_id}",
+						citation='intake_ontology',
+						jurisdiction='intake',
+						required=bool(element.get('blocking', True)),
+						attributes={
+							'applicable_claim_types': [claim_type],
+							'element_id': element_id,
+							'source': 'intake_claim_registry',
+						},
+					)
+				)
+		return legal_graph
+
+	def _build_intake_matching_pressure_map(
+		self,
+		knowledge_graph,
+		dependency_graph,
+		intake_case_file: Dict[str, Any],
+	) -> Dict[str, Dict[str, Any]]:
+		pressure_map: Dict[str, Dict[str, Any]] = {}
+		if knowledge_graph is None or dependency_graph is None or not isinstance(intake_case_file, dict):
+			return pressure_map
+		try:
+			legal_graph = self._build_intake_selector_legal_graph(intake_case_file)
+			if not getattr(legal_graph, 'elements', {}):
+				return pressure_map
+			matching = self.neurosymbolic_matcher.match_claims_to_law(knowledge_graph, dependency_graph, legal_graph)
+		except Exception:
+			return pressure_map
+
+		for claim_result in matching.get('claims', []) if isinstance(matching, dict) else []:
+			if not isinstance(claim_result, dict):
+				continue
+			claim_type = str(claim_result.get('claim_type') or '').strip().lower()
+			if not claim_type:
+				continue
+			missing_requirements = claim_result.get('missing_requirements', [])
+			pressure_map[claim_type] = {
+				'missing_requirement_count': len(missing_requirements) if isinstance(missing_requirements, list) else 0,
+				'matcher_confidence': float(claim_result.get('confidence', 0.0) or 0.0),
+				'legal_requirements': int(claim_result.get('legal_requirements', 0) or 0),
+				'satisfied_requirements': int(claim_result.get('satisfied_requirements', 0) or 0),
+			}
+		return pressure_map
+
 	def _annotate_intake_question_candidate(
 		self,
 		candidate: Dict[str, Any],
 		claim_pressure: Dict[str, Dict[str, Any]],
+		matching_pressure: Dict[str, Dict[str, Any]],
 	) -> Dict[str, Any]:
 		annotated = dict(candidate)
 		explanation = dict(candidate.get('ranking_explanation', {}) if isinstance(candidate.get('ranking_explanation'), dict) else {})
@@ -185,8 +259,11 @@ class Mediator:
 			or ''
 		).strip().lower()
 		claim_state = claim_pressure.get(target_claim_type, {})
+		matching_state = matching_pressure.get(target_claim_type, {})
 		missing_count = int(claim_state.get('missing_count', 0) or 0)
 		satisfaction_ratio = float(claim_state.get('satisfaction_ratio', 0.0) or 0.0)
+		matcher_missing_requirement_count = int(matching_state.get('missing_requirement_count', 0) or 0)
+		matcher_confidence = float(matching_state.get('matcher_confidence', 0.0) or 0.0)
 		blocking_level = str(explanation.get('blocking_level') or candidate.get('blocking_level') or '').strip().lower()
 		question_goal = str(explanation.get('question_goal') or candidate.get('question_goal') or '').strip().lower()
 		candidate_source = str(explanation.get('candidate_source') or candidate.get('candidate_source') or '').strip().lower()
@@ -213,6 +290,8 @@ class Mediator:
 		}.get(question_goal, 0.0)
 		score += min(missing_count, 5) * 2.0
 		score += max(0.0, 1.0 - satisfaction_ratio) * 5.0
+		score += min(matcher_missing_requirement_count, 5) * 3.0
+		score += max(0.0, 1.0 - matcher_confidence) * 4.0
 
 		selector_signals = {
 			'candidate_source': candidate_source,
@@ -221,6 +300,8 @@ class Mediator:
 			'proof_priority': proof_priority,
 			'claim_missing_dependency_count': missing_count,
 			'claim_satisfaction_ratio': satisfaction_ratio,
+			'matcher_missing_requirement_count': matcher_missing_requirement_count,
+			'matcher_confidence': matcher_confidence,
 		}
 		annotated['selector_score'] = score
 		annotated['selector_signals'] = selector_signals

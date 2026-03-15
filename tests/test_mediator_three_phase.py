@@ -693,6 +693,8 @@ class TestMediatorThreePhaseIntegration:
         assert 'selector_signals' in first_question
         assert 'selector_score' in first_question['ranking_explanation']
         assert first_question['selector_signals']['proof_priority'] == first_question['proof_priority']
+        assert 'matcher_missing_requirement_count' in first_question['selector_signals']
+        assert 'matcher_confidence' in first_question['selector_signals']
 
     def test_default_selector_prioritizes_contradiction_candidates(self):
         """Reasoning-backed selection should keep contradiction resolution ahead of lower-pressure prompts."""
@@ -729,6 +731,7 @@ class TestMediatorThreePhaseIntegration:
         assert questions
         assert questions[0]['type'] == 'contradiction'
         assert questions[0]['selector_signals']['candidate_source'] == 'dependency_graph_contradiction'
+        assert 'matcher_missing_requirement_count' in questions[0]['selector_signals']
     
     def test_graph_serialization(self):
         """Test that graphs can be serialized for storage."""

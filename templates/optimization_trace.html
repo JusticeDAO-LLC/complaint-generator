@@ -204,6 +204,44 @@
             border: 1px solid var(--border);
         }
 
+        .triage-chip-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .triage-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 10px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.92);
+            border: 1px solid var(--border);
+            font-size: 0.84rem;
+            font-weight: 600;
+        }
+
+        .triage-chip[data-tone="important"],
+        .triage-chip[data-tone="high"] {
+            color: var(--warning);
+            background: rgba(180, 83, 9, 0.12);
+            border-color: rgba(180, 83, 9, 0.22);
+        }
+
+        .triage-chip[data-tone="critical"] {
+            color: var(--danger);
+            background: rgba(185, 28, 28, 0.12);
+            border-color: rgba(185, 28, 28, 0.22);
+        }
+
+        .triage-chip[data-tone="medium"] {
+            color: var(--accent);
+            background: rgba(154, 52, 18, 0.08);
+            border-color: rgba(154, 52, 18, 0.16);
+        }
+
         .chip {
             padding: 6px 10px;
             border-radius: 999px;
@@ -287,6 +325,7 @@
             <section class="panel">
                 <h2>Intake Evidence Snapshot</h2>
                 <ul id="traceEvidenceList"><li class="muted">No trace loaded.</li></ul>
+                <div id="traceEvidenceTriage"></div>
                 <div id="traceEvidenceLinks" class="inline-link-row"></div>
             </section>
             <section class="panel">
@@ -344,6 +383,26 @@
                     </li>
                 `;
             }).join('');
+        }
+
+        function renderTriageChipRow(title, items, toneResolver = null) {
+            const normalizedItems = Array.isArray(items) ? items.filter((item) => item && typeof item === 'object') : [];
+            if (!normalizedItems.length) {
+                return '';
+            }
+            const chips = normalizedItems.map((item) => {
+                const label = String(item.label || '').trim();
+                const value = item.value == null ? '' : String(item.value).trim();
+                if (!label || !value) {
+                    return '';
+                }
+                const tone = typeof toneResolver === 'function' ? String(toneResolver(item) || '').trim().toLowerCase() : '';
+                return `<span class="triage-chip"${tone ? ` data-tone="${escapeHtml(tone)}"` : ''}><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</span>`;
+            }).filter(Boolean);
+            if (!chips.length) {
+                return '';
+            }
+            return `<div class="muted"><strong>${escapeHtml(title)}</strong></div><div class="triage-chip-row">${chips.join('')}</div>`;
         }
 
         function summarizeArrayPreview(items, limit = 2) {
@@ -584,6 +643,19 @@
                 .map((entry) => entry && typeof entry.focus_section === 'string' ? entry.focus_section : '')
                 .filter(Boolean)));
             const reliefTargeted = focusSections.includes('requested_relief');
+            const questionGoalChips = Object.entries(questionGoalCounts).map(([goal, count]) => ({
+                label: humanizeKey(goal),
+                value: count,
+            }));
+            const questionSectionChips = Object.entries(questionSectionCounts).map(([sectionName, count]) => ({
+                label: humanizeKey(sectionName),
+                value: count,
+            }));
+            const questionBlockingChips = Object.entries(questionBlockingCounts).map(([level, count]) => ({
+                label: humanizeKey(level),
+                value: count,
+                tone: level,
+            }));
 
             document.getElementById('traceJsonViewer').textContent = JSON.stringify(trace, null, 2);
 
@@ -687,6 +759,11 @@
                         : '',
                 ].filter(Boolean),
             );
+            document.getElementById('traceEvidenceTriage').innerHTML = [
+                renderTriageChipRow('Question Goals', questionGoalChips),
+                renderTriageChipRow('Question Target Sections', questionSectionChips),
+                renderTriageChipRow('Question Blocking Levels', questionBlockingChips, (item) => item.tone),
+            ].filter(Boolean).join('');
 
             const evidenceLinks = [
                 ...candidateClaims.map((claim) => {
