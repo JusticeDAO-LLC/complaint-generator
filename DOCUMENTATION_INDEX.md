@@ -72,6 +72,8 @@ Complete index of all documentation in the complaint-generator repository.
 - [docs/EVIDENCE_MANAGEMENT.md](docs/EVIDENCE_MANAGEMENT.md) - IPFS storage and DuckDB metadata
 - [docs/WEB_EVIDENCE_DISCOVERY.md](docs/WEB_EVIDENCE_DISCOVERY.md) - Automated web evidence discovery
 - [docs/PAYLOAD_CONTRACTS.md](docs/PAYLOAD_CONTRACTS.md) - Central reference for evidence, authority, follow-up, graph projection, and formal complaint document package payloads, including agentic document optimization
+- [docs/INTAKE_EVIDENCE_IMPROVEMENT_PLAN.md](docs/INTAKE_EVIDENCE_IMPROVEMENT_PLAN.md) - Comprehensive roadmap for improving Phase 1 intake questioning and Phase 2 evidence organization around claim-element proof readiness
+- [docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md](docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md) - Milestone-based execution backlog for intake readiness, question planning, chronology, evidence matrices, and proof-readiness scoring
 - [docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_IMPROVEMENT_PLAN.md](docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_IMPROVEMENT_PLAN.md) - Strategic roadmap for evolving `/claim-support-review` into a testimony, document, graph, retrieval, and legal-proof workflow
 - [docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md](docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md) - Milestone-based execution backlog with acceptance criteria, degraded-mode expectations, and validation guidance
 - [docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_FILE_WORKLIST.md](docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_FILE_WORKLIST.md) - File-by-file worklist for the earliest dashboard implementation slices

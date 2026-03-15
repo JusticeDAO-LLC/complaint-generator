@@ -7,6 +7,7 @@ Manages the three-phase complaint process and transitions between phases.
 import logging
 from enum import Enum
 from typing import Dict, Any, Callable
+from typing import Dict, Any, List
 from datetime import datetime, UTC
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,100 @@ class PhaseManager:
             ComplaintPhase.INTAKE: self._is_intake_complete,
             ComplaintPhase.EVIDENCE: self._is_evidence_complete,
             ComplaintPhase.FORMALIZATION: self._is_formalization_complete,
+
+    def _extract_intake_gap_types(self, data: Dict[str, Any]) -> List[str]:
+        """Collect normalized intake gap types from stored phase state."""
+        gap_types: List[str] = []
+
+        explicit_gap_types = data.get('intake_gap_types') or []
+        for gap_type in explicit_gap_types:
+            normalized = str(gap_type or '').strip()
+            if normalized and normalized not in gap_types:
+                gap_types.append(normalized)
+
+        current_gaps = data.get('current_gaps') or []
+        for gap in current_gaps:
+            if not isinstance(gap, dict):
+                continue
+            normalized = str(gap.get('type') or '').strip()
+            if normalized and normalized not in gap_types:
+                gap_types.append(normalized)
+
+        return gap_types
+
+    def _build_intake_readiness(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Derive intake readiness metrics and blockers from intake state."""
+        has_knowledge_graph = 'knowledge_graph' in data
+        has_dependency_graph = 'dependency_graph' in data
+        gaps_addressed = data.get('remaining_gaps', float('inf')) <= 3
+        converged = data.get('denoising_converged', False)
+        gap_types = self._extract_intake_gap_types(data)
+        has_contradictions = bool(data.get('contradictions_unresolved') or data.get('intake_contradictions'))
+
+        criteria: Dict[str, bool] = {
+            'knowledge_graph_ready': has_knowledge_graph,
+            'dependency_graph_ready': has_dependency_graph,
+            'gaps_within_threshold': gaps_addressed,
+            'denoising_converged': converged,
+        }
+        if gap_types:
+            criteria['timeline_captured'] = 'missing_timeline' not in gap_types
+            criteria['responsible_party_identified'] = 'missing_responsible_party' not in gap_types
+            criteria['impact_or_remedy_captured'] = 'missing_impact_remedy' not in gap_types
+            criteria['proof_leads_present'] = 'unsupported_claim' not in gap_types
+        if has_contradictions or 'contradictions_resolved' in data:
+            criteria['contradictions_resolved'] = not has_contradictions
+
+        blockers: List[str] = []
+        if not has_knowledge_graph:
+            blockers.append('missing_knowledge_graph')
+        if not has_dependency_graph:
+            blockers.append('missing_dependency_graph')
+        if not gaps_addressed:
+            blockers.append('unresolved_gaps')
+        if not converged:
+            blockers.append('denoising_not_converged')
+        if 'missing_timeline' in gap_types:
+            blockers.append('missing_timeline')
+        if 'missing_responsible_party' in gap_types:
+            blockers.append('missing_actor')
+        if 'missing_impact_remedy' in gap_types:
+            blockers.append('missing_impact_or_remedy')
+        if 'unsupported_claim' in gap_types:
+            blockers.append('missing_proof_leads')
+        if has_contradictions:
+            blockers.append('contradiction_unresolved')
+
+        for blocker in data.get('intake_blockers', []) or []:
+            normalized = str(blocker or '').strip()
+            if normalized and normalized not in blockers:
+                blockers.append(normalized)
+
+        total_criteria = len(criteria)
+        satisfied_criteria = sum(1 for satisfied in criteria.values() if satisfied)
+        readiness_score = round(satisfied_criteria / total_criteria, 3) if total_criteria else 0.0
+
+        return {
+            'intake_readiness_score': readiness_score,
+            'intake_readiness_blockers': blockers,
+            'intake_readiness_criteria': criteria,
+            'intake_ready': len(blockers) == 0,
+        }
+
+    def _refresh_phase_derived_state(self, phase: ComplaintPhase):
+        """Refresh derived readiness state after phase data changes."""
+        if phase == ComplaintPhase.INTAKE:
+            self.phase_data[phase].update(self._build_intake_readiness(self.phase_data[phase]))
+
+    def get_intake_readiness(self) -> Dict[str, Any]:
+        """Return derived intake readiness state."""
+        self._refresh_phase_derived_state(ComplaintPhase.INTAKE)
+        data = self.phase_data[ComplaintPhase.INTAKE]
+        return {
+            'score': data.get('intake_readiness_score', 0.0),
+            'blockers': list(data.get('intake_readiness_blockers', [])),
+            'criteria': dict(data.get('intake_readiness_criteria', {})),
+            'ready': bool(data.get('intake_ready', False)),
         }
     
     def get_current_phase(self) -> ComplaintPhase:
@@ -256,21 +351,56 @@ class PhaseManager:
     def _get_intake_action(self) -> Dict[str, Any]:
         """Get next action for intake phase."""
         data = self.phase_data[ComplaintPhase.INTAKE]
+        readiness = self.get_intake_readiness()
         
-        if not data.get('knowledge_graph'):
-            return {'action': 'build_knowledge_graph'}
+        if 'knowledge_graph' not in data:
+            return {
+                'action': 'build_knowledge_graph',
+                'intake_readiness_score': readiness['score'],
+                'intake_blockers': readiness['blockers'],
+            }
         
-        if not data.get('dependency_graph'):
-            return {'action': 'build_dependency_graph'}
+        if 'dependency_graph' not in data:
+            return {
+                'action': 'build_dependency_graph',
+                'intake_readiness_score': readiness['score'],
+                'intake_blockers': readiness['blockers'],
+            }
         
         gaps = data.get('current_gaps', [])
         if gaps and len(gaps) > 0:
-            return {'action': 'address_gaps', 'gaps': gaps}
+            return {
+                'action': 'address_gaps',
+                'gaps': gaps,
+                'intake_readiness_score': readiness['score'],
+                'intake_blockers': readiness['blockers'],
+            }
+
+        semantic_blockers = [
+            blocker for blocker in readiness['blockers']
+            if blocker not in {
+                'missing_knowledge_graph',
+                'missing_dependency_graph',
+                'unresolved_gaps',
+                'denoising_not_converged',
+            }
+        ]
+        if semantic_blockers:
+            return {
+                'action': 'address_gaps',
+                'gaps': gaps,
+                'intake_readiness_score': readiness['score'],
+                'intake_blockers': readiness['blockers'],
+            }
         
         if not data.get('denoising_converged', False) and self.iteration_count < _DENOISING_MAX_ITERATIONS:
             return {'action': 'continue_denoising'}
         
-        return {'action': 'complete_intake'}
+        return {
+            'action': 'complete_intake',
+            'intake_readiness_score': readiness['score'],
+            'intake_blockers': readiness['blockers'],
+        }
     
     def _get_evidence_action(self) -> Dict[str, Any]:
         """Get next action for evidence phase."""

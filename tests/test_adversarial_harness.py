@@ -669,6 +669,60 @@ SUGGESTIONS:
 
         assert probe is not None
         assert 'reasonable accommodation' in probe['question'].lower()
+        assert probe['question_reason'] == 'Harness fallback probe to cover a missing intake objective.'
+
+    def test_select_next_question_uses_question_objective_metadata(self):
+        session = AdversarialSession(
+            "test_session",
+            Complainant(MockLLMBackend()),
+            MockMediator(),
+            Critic(MockLLMBackend()),
+            max_turns=3,
+        )
+
+        questions = [
+            {
+                'question': 'Please walk through the events in order from the beginning.',
+                'type': 'clarification',
+                'question_objective': 'establish_chronology',
+                'context': {},
+            },
+            {
+                'question': 'Can you clarify one point about your employer?',
+                'type': 'clarification',
+                'context': {},
+            },
+        ]
+
+        selected = session._select_next_question(
+            questions=questions,
+            asked_question_counts={},
+            asked_intent_counts={},
+            need_timeline=True,
+            need_harm_remedy=False,
+            need_actor_decisionmaker=False,
+            need_documentary_evidence=False,
+            need_witness=False,
+            last_question_key=None,
+            last_question_intent_key=None,
+            recent_intent_keys=set(),
+            missing_anchor_sections=set(),
+        )
+
+        assert selected is not None
+        assert selected['question_objective'] == 'establish_chronology'
+
+    def test_question_intent_key_prefers_question_objective(self):
+        question = {
+            'question': 'Who handled the issue?',
+            'type': 'responsible_party',
+            'question_objective': 'identify_responsible_party',
+            'context': {'claim_id': 'claim-1'},
+        }
+
+        intent_key = AdversarialSession._question_intent_key(question['question'], question)
+
+        assert intent_key == 'identify_responsible_party:responsible_party:claim-1'
 
     def test_covered_anchor_sections_from_questions(self):
         covered = AdversarialSession._covered_anchor_sections_from_questions(

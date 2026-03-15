@@ -3203,6 +3203,14 @@ class Mediator:
 		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', dg)
 		
 		# Generate initial denoising questions
+		kg_gaps = kg.find_gaps()
+		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'current_gaps', kg_gaps)
+		self.phase_manager.update_phase_data(
+			ComplaintPhase.INTAKE,
+			'intake_gap_types',
+			[gap.get('type') for gap in kg_gaps if isinstance(gap, dict) and gap.get('type')],
+		)
+		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', len(kg_gaps))
 		questions = self.denoiser.generate_questions(kg, dg, max_questions=10)
 		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'current_questions', questions)
 		
@@ -3220,6 +3228,7 @@ class Mediator:
 			'dependency_graph_summary': dg.summary(),
 			'initial_questions': questions,
 			'initial_noise_level': noise,
+			'intake_readiness': self.phase_manager.get_intake_readiness(),
 			'next_action': self.phase_manager.get_next_action()
 		}
 	
@@ -3256,7 +3265,14 @@ class Mediator:
 		
 		# Calculate new noise level
 		noise = self.denoiser.calculate_noise_level(kg, dg)
-		gaps = len(kg.find_gaps())
+		kg_gaps = kg.find_gaps()
+		gaps = len(kg_gaps)
+		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'current_gaps', kg_gaps)
+		self.phase_manager.update_phase_data(
+			ComplaintPhase.INTAKE,
+			'intake_gap_types',
+			[gap.get('type') for gap in kg_gaps if isinstance(gap, dict) and gap.get('type')],
+		)
 		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', gaps)
 		
 		# Record iteration
@@ -3278,7 +3294,9 @@ class Mediator:
 			'gaps_remaining': gaps,
 			'converged': converged,
 			'next_questions': questions,
-			'iteration': self.phase_manager.iteration_count
+			'iteration': self.phase_manager.iteration_count,
+			'intake_readiness': self.phase_manager.get_intake_readiness(),
+			'next_action': self.phase_manager.get_next_action(),
 		}
 		
 		# Check if ready to advance to Phase 2

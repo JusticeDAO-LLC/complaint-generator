@@ -563,6 +563,105 @@ class ComplaintDenoiser:
             return prefix + text[0].lower() + text[1:] if len(text) > 1 else prefix + text.lower()
         return text
 
+    def _phase1_proof_priority(self, question_type: str) -> int:
+        objective_order = {
+            'timeline': 0,
+            'responsible_party': 1,
+            'impact': 2,
+            'requirement': 3,
+            'evidence': 4,
+            'clarification': 5,
+            'relationship': 6,
+        }
+        return objective_order.get((question_type or '').strip().lower(), 7)
+
+    def _phase1_question_metadata(
+        self,
+        question_type: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        context = context or {}
+        qtype = (question_type or '').strip().lower()
+
+        if qtype == 'timeline':
+            return {
+                'question_objective': 'establish_chronology',
+                'question_reason': 'Chronology is necessary to determine sequence, notice, and causation.',
+                'expected_proof_gain': 'high',
+                'proof_priority': self._phase1_proof_priority(qtype),
+            }
+        if qtype == 'responsible_party':
+            return {
+                'question_objective': 'identify_responsible_party',
+                'question_reason': 'The complaint needs a concrete actor or organization tied to the alleged conduct.',
+                'expected_proof_gain': 'high',
+                'proof_priority': self._phase1_proof_priority(qtype),
+            }
+        if qtype == 'impact':
+            return {
+                'question_objective': 'capture_harm_and_requested_remedy',
+                'question_reason': 'The intake record should state both the harm suffered and the outcome being sought.',
+                'expected_proof_gain': 'high',
+                'proof_priority': self._phase1_proof_priority(qtype),
+            }
+        if qtype == 'requirement':
+            requirement_name = str(context.get('requirement_name') or 'this claim element')
+            claim_name = str(context.get('claim_name') or 'the claim')
+            return {
+                'question_objective': 'satisfy_claim_requirement',
+                'question_reason': f"{requirement_name} is still missing for {claim_name}.",
+                'expected_proof_gain': 'high',
+                'proof_priority': self._phase1_proof_priority(qtype),
+            }
+        if qtype == 'evidence':
+            claim_name = str(context.get('claim_name') or 'the claim')
+            return {
+                'question_objective': 'identify_supporting_evidence',
+                'question_reason': f"{claim_name} still needs supporting proof leads or corroborating evidence.",
+                'expected_proof_gain': 'high',
+                'proof_priority': self._phase1_proof_priority(qtype),
+            }
+        if qtype == 'clarification':
+            entity_name = str(context.get('entity_name') or 'this fact')
+            return {
+                'question_objective': 'clarify_low_confidence_fact',
+                'question_reason': f"The current record about {entity_name} is too uncertain to rely on safely.",
+                'expected_proof_gain': 'medium',
+                'proof_priority': self._phase1_proof_priority(qtype),
+            }
+        if qtype == 'relationship':
+            entity_name = str(context.get('entity_name') or 'this entity')
+            return {
+                'question_objective': 'connect_parties_and_facts',
+                'question_reason': f"{entity_name} needs clearer linkage to the complaint narrative.",
+                'expected_proof_gain': 'medium',
+                'proof_priority': self._phase1_proof_priority(qtype),
+            }
+
+        return {
+            'question_objective': 'general_intake_clarification',
+            'question_reason': 'This question helps fill a remaining intake gap.',
+            'expected_proof_gain': 'medium',
+            'proof_priority': self._phase1_proof_priority(qtype),
+        }
+
+    def _build_phase1_question(
+        self,
+        *,
+        question_type: str,
+        question_text: str,
+        context: Optional[Dict[str, Any]] = None,
+        priority: str = 'medium',
+    ) -> Dict[str, Any]:
+        payload = {
+            'type': question_type,
+            'question': question_text,
+            'context': context or {},
+            'priority': priority,
+        }
+        payload.update(self._phase1_question_metadata(question_type, payload['context']))
+        return payload
+
     def _ensure_standard_intake_questions(self, questions: List[Dict[str, Any]], max_questions: int) -> List[Dict[str, Any]]:
         if len(questions) >= max_questions:
             return questions
@@ -577,12 +676,12 @@ class ComplaintDenoiser:
         if len(questions) + len(added) < max_questions:
             if not any(q.get('type') == 'timeline' for q in questions) and not any(k in existing_text for k in ['timeline', 'when did', 'what date', 'dates']):
                 if not self._already_asked(timeline_text):
-                    added.append({
-                        'type': 'timeline',
-                        'question': timeline_text,
-                        'context': {},
-                        'priority': 'high'
-                    })
+                    added.append(self._build_phase1_question(
+                        question_type='timeline',
+                        question_text=timeline_text,
+                        context={},
+                        priority='high',
+                    ))
 
         # Harms/remedy question
         impact_text = (
@@ -591,12 +690,12 @@ class ComplaintDenoiser:
         if len(questions) + len(added) < max_questions:
             if not any(q.get('type') in {'impact', 'remedy'} for q in questions) and not any(k in existing_text for k in ['harm', 'damages', 'remedy', 'seeking']):
                 if not self._already_asked(impact_text):
-                    added.append({
-                        'type': 'impact',
-                        'question': impact_text,
-                        'context': {},
-                        'priority': 'high'
-                    })
+                    added.append(self._build_phase1_question(
+                        question_type='impact',
+                        question_text=impact_text,
+                        context={},
+                        priority='high',
+                    ))
 
         if not added:
             return questions
@@ -604,7 +703,12 @@ class ComplaintDenoiser:
         # Add to front (high priority) but keep stable ordering otherwise.
         priority_order = {'high': 0, 'medium': 1, 'low': 2}
         combined = questions + added
-        combined.sort(key=lambda q: priority_order.get(q.get('priority', 'low'), 3))
+        combined.sort(
+            key=lambda q: (
+                int(q.get('proof_priority', self._phase1_proof_priority(q.get('type', '')))),
+                priority_order.get(q.get('priority', 'low'), 3),
+            )
+        )
         return combined[:max_questions]
 
     def _make_question_recommendation_id(
@@ -792,81 +896,86 @@ class ComplaintDenoiser:
         kg_gaps = knowledge_graph.find_gaps()
         for gap in kg_gaps[:max_questions]:
             if gap['type'] == 'low_confidence_entity':
-                questions.append({
-                    'type': 'clarification',
-                    'question': gap['suggested_question'],
-                    'context': {
+                questions.append(self._build_phase1_question(
+                    question_type='clarification',
+                    question_text=gap['suggested_question'],
+                    context={
                         'entity_id': gap['entity_id'],
                         'entity_name': gap['entity_name'],
                         'confidence': gap['confidence']
                     },
-                    'priority': 'medium'
-                })
+                    priority='medium',
+                ))
             elif gap['type'] == 'unsupported_claim':
-                questions.append({
-                    'type': 'evidence',
-                    'question': gap['suggested_question'],
-                    'context': {
+                questions.append(self._build_phase1_question(
+                    question_type='evidence',
+                    question_text=gap['suggested_question'],
+                    context={
                         'claim_id': gap['entity_id'],
                         'claim_name': gap['claim_name']
                     },
-                    'priority': 'high'
-                })
+                    priority='high',
+                ))
             elif gap['type'] == 'isolated_entity':
-                questions.append({
-                    'type': 'relationship',
-                    'question': gap['suggested_question'],
-                    'context': {
+                questions.append(self._build_phase1_question(
+                    question_type='relationship',
+                    question_text=gap['suggested_question'],
+                    context={
                         'entity_id': gap['entity_id'],
                         'entity_name': gap['entity_name']
                     },
-                    'priority': 'low'
-                })
+                    priority='low',
+                ))
             elif gap['type'] == 'missing_timeline':
-                questions.append({
-                    'type': 'timeline',
-                    'question': gap['suggested_question'],
-                    'context': {},
-                    'priority': 'high'
-                })
+                questions.append(self._build_phase1_question(
+                    question_type='timeline',
+                    question_text=gap['suggested_question'],
+                    context={},
+                    priority='high',
+                ))
             elif gap['type'] == 'missing_responsible_party':
-                questions.append({
-                    'type': 'responsible_party',
-                    'question': gap['suggested_question'],
-                    'context': {},
-                    'priority': 'high'
-                })
+                questions.append(self._build_phase1_question(
+                    question_type='responsible_party',
+                    question_text=gap['suggested_question'],
+                    context={},
+                    priority='high',
+                ))
             elif gap['type'] == 'missing_impact_remedy':
-                questions.append({
-                    'type': 'impact',
-                    'question': gap['suggested_question'],
-                    'context': {
+                questions.append(self._build_phase1_question(
+                    question_type='impact',
+                    question_text=gap['suggested_question'],
+                    context={
                         'missing_impact': gap.get('missing_impact'),
                         'missing_remedy': gap.get('missing_remedy'),
                     },
-                    'priority': 'high'
-                })
+                    priority='high',
+                ))
         
         # Get dependency graph unsatisfied requirements
         unsatisfied = dependency_graph.find_unsatisfied_requirements()
         for req in unsatisfied[:max_questions - len(questions)]:
             missing_deps = req.get('missing_dependencies', [])
             for dep in missing_deps[:2]:  # Ask about first 2 missing deps
-                questions.append({
-                    'type': 'requirement',
-                    'question': f"To support the claim '{req['node_name']}', can you provide information about: {dep['source_name']}?",
-                    'context': {
+                questions.append(self._build_phase1_question(
+                    question_type='requirement',
+                    question_text=f"To support the claim '{req['node_name']}', can you provide information about: {dep['source_name']}?",
+                    context={
                         'claim_id': req['node_id'],
                         'claim_name': req['node_name'],
                         'requirement_id': dep['source_node_id'],
                         'requirement_name': dep['source_name']
                     },
-                    'priority': 'high'
-                })
+                    priority='high',
+                ))
         
-        # Sort by priority (baseline ordering)
+        # Sort by proof objective first, then by priority within the objective.
         priority_order = {'high': 0, 'medium': 1, 'low': 2}
-        questions.sort(key=lambda q: priority_order.get(q.get('priority', 'low'), 3))
+        questions.sort(
+            key=lambda q: (
+                int(q.get('proof_priority', self._phase1_proof_priority(q.get('type', '')))),
+                priority_order.get(q.get('priority', 'low'), 3),
+            )
+        )
 
         # Ensure we cover basic intake dimensions beyond evidence-only prompts.
         questions = self._ensure_standard_intake_questions(questions, max_questions)

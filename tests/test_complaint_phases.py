@@ -225,6 +225,48 @@ class TestComplaintDenoiser:
         assert len(questions) > 0
         assert 'question' in questions[0]
         assert 'type' in questions[0]
+        assert 'question_reason' in questions[0]
+        assert 'question_objective' in questions[0]
+        assert 'expected_proof_gain' in questions[0]
+
+    def test_generate_questions_prioritizes_timeline_before_clarification(self):
+        """Test proof-directed ranking prefers chronology questions over lower-value clarification."""
+        denoiser = ComplaintDenoiser()
+
+        kg = KnowledgeGraph()
+        kg.add_entity(Entity("e1", "person", "John", confidence=0.5))
+
+        dg = DependencyGraph()
+        claim = DependencyNode("n1", NodeType.CLAIM, "Claim1")
+        dg.add_node(claim)
+
+        questions = denoiser.generate_questions(kg, dg, max_questions=5)
+
+        assert questions[0]['type'] == 'timeline'
+        assert questions[0]['question_objective'] == 'establish_chronology'
+        assert questions[0]['expected_proof_gain'] == 'high'
+
+    def test_requirement_questions_include_proof_objective_metadata(self):
+        """Test requirement-driven questions explain the proof objective they serve."""
+        denoiser = ComplaintDenoiser()
+
+        kg = KnowledgeGraph()
+        claim_entity = Entity("c1", "claim", "Discrimination")
+        kg.add_entity(claim_entity)
+
+        dg = DependencyGraph()
+        claim = DependencyNode("n1", NodeType.CLAIM, "Discrimination Claim")
+        requirement = DependencyNode("n2", NodeType.REQUIREMENT, "Protected Class")
+        dg.add_node(claim)
+        dg.add_node(requirement)
+        dg.add_dependency(Dependency("d1", "n2", "n1", DependencyType.REQUIRES))
+
+        questions = denoiser.generate_questions(kg, dg, max_questions=10)
+        requirement_questions = [q for q in questions if q['type'] == 'requirement']
+
+        assert requirement_questions
+        assert requirement_questions[0]['question_objective'] == 'satisfy_claim_requirement'
+        assert 'Protected Class' in requirement_questions[0]['question_reason']
     
     def test_calculate_noise_level(self):
         """Test noise level calculation."""
@@ -288,6 +330,50 @@ class TestPhaseManager:
         action = pm.get_next_action()
         assert 'action' in action
         assert action['action'] == 'build_knowledge_graph'
+
+    def test_intake_readiness_reports_semantic_blockers(self):
+        """Test semantic blockers are included in intake readiness."""
+        pm = PhaseManager()
+
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', {})
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', {})
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', 0)
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'denoising_converged', True)
+        pm.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'current_gaps',
+            [
+                {'type': 'missing_timeline'},
+                {'type': 'unsupported_claim'},
+            ],
+        )
+
+        readiness = pm.get_intake_readiness()
+        action = pm.get_next_action()
+
+        assert readiness['ready'] is False
+        assert 'missing_timeline' in readiness['blockers']
+        assert 'missing_proof_leads' in readiness['blockers']
+        assert action['action'] == 'address_gaps'
+        assert action['intake_blockers'] == readiness['blockers']
+
+    def test_intake_readiness_allows_completion_without_blockers(self):
+        """Test intake can complete when readiness blockers are absent."""
+        pm = PhaseManager()
+
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', {})
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', {})
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', 0)
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'denoising_converged', True)
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'current_gaps', [])
+
+        readiness = pm.get_intake_readiness()
+        action = pm.get_next_action()
+
+        assert readiness['ready'] is True
+        assert readiness['score'] == 1.0
+        assert pm.is_phase_complete(ComplaintPhase.INTAKE)
+        assert action['action'] == 'complete_intake'
 
 
 class TestLegalGraph:

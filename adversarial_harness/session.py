@@ -132,6 +132,34 @@ class AdversarialSession:
         return str(question)
 
     @staticmethod
+    def _extract_question_objective(question: Any) -> str:
+        if not isinstance(question, dict):
+            return ''
+        objective = question.get('question_objective')
+        if isinstance(objective, str) and objective.strip():
+            return objective.strip().lower()
+        nested_question = question.get('question')
+        if isinstance(nested_question, dict):
+            nested_objective = nested_question.get('question_objective')
+            if isinstance(nested_objective, str) and nested_objective.strip():
+                return nested_objective.strip().lower()
+        return ''
+
+    @staticmethod
+    def _extract_question_type(question: Any) -> str:
+        if not isinstance(question, dict):
+            return ''
+        question_type = question.get('type')
+        if isinstance(question_type, str) and question_type.strip():
+            return question_type.strip().lower()
+        nested_question = question.get('question')
+        if isinstance(nested_question, dict):
+            nested_type = nested_question.get('type')
+            if isinstance(nested_type, str) and nested_type.strip():
+                return nested_type.strip().lower()
+        return ''
+
+    @staticmethod
     def _normalize_question(question_text: str) -> str:
         return " ".join(question_text.lower().strip().split())
 
@@ -214,7 +242,20 @@ class AdversarialSession:
         return len(overlap) / len(union)
 
     @staticmethod
-    def _question_intent_key(question_text: str) -> str:
+    def _question_intent_key(question_text: str, question: Any = None) -> str:
+        objective = AdversarialSession._extract_question_objective(question)
+        if objective:
+            context = question.get('context', {}) if isinstance(question, dict) and isinstance(question.get('context'), dict) else {}
+            context_segments = []
+            for key in ('requirement_id', 'claim_id', 'entity_id'):
+                value = context.get(key)
+                if value:
+                    context_segments.append(str(value))
+            question_type = AdversarialSession._extract_question_type(question)
+            base = objective if not question_type else f"{objective}:{question_type}"
+            if context_segments:
+                return base + ':' + ':'.join(context_segments)
+            return base
         normalized = AdversarialSession._question_dedupe_key(question_text)
         stop_words = {
             'a', 'an', 'and', 'are', 'can', 'could', 'did', 'do', 'for', 'from',
@@ -273,8 +314,12 @@ class AdversarialSession:
         return False
 
     @staticmethod
-    def _is_timeline_question(question_text: str) -> bool:
-        text = question_text.lower()
+    def _is_timeline_question(question: Any) -> bool:
+        objective = AdversarialSession._extract_question_objective(question)
+        question_type = AdversarialSession._extract_question_type(question)
+        if objective == 'establish_chronology' or question_type == 'timeline':
+            return True
+        text = AdversarialSession._extract_question_text(question).lower()
         timeline_terms = (
             'when',
             'date',
@@ -296,8 +341,12 @@ class AdversarialSession:
         return any(term in text for term in timeline_terms)
 
     @staticmethod
-    def _is_harm_or_remedy_question(question_text: str) -> bool:
-        text = question_text.lower()
+    def _is_harm_or_remedy_question(question: Any) -> bool:
+        objective = AdversarialSession._extract_question_objective(question)
+        question_type = AdversarialSession._extract_question_type(question)
+        if objective == 'capture_harm_and_requested_remedy' or question_type in {'impact', 'remedy'}:
+            return True
+        text = AdversarialSession._extract_question_text(question).lower()
         harm_remedy_terms = (
             'harm',
             'impact',
@@ -328,8 +377,12 @@ class AdversarialSession:
         return any(term in text for term in harm_remedy_terms)
 
     @staticmethod
-    def _is_actor_or_decisionmaker_question(question_text: str) -> bool:
-        text = question_text.lower()
+    def _is_actor_or_decisionmaker_question(question: Any) -> bool:
+        objective = AdversarialSession._extract_question_objective(question)
+        question_type = AdversarialSession._extract_question_type(question)
+        if objective == 'identify_responsible_party' or question_type == 'responsible_party':
+            return True
+        text = AdversarialSession._extract_question_text(question).lower()
         actor_terms = (
             'who',
             'manager',
@@ -355,8 +408,12 @@ class AdversarialSession:
         return any(term in text for term in actor_terms)
 
     @staticmethod
-    def _is_documentary_evidence_question(question_text: str) -> bool:
-        text = question_text.lower()
+    def _is_documentary_evidence_question(question: Any) -> bool:
+        objective = AdversarialSession._extract_question_objective(question)
+        question_type = AdversarialSession._extract_question_type(question)
+        text = AdversarialSession._extract_question_text(question).lower()
+        if objective == 'identify_supporting_evidence' and question_type == 'evidence':
+            return True
         document_terms = (
             'document',
             'email',
@@ -402,8 +459,8 @@ class AdversarialSession:
         return any(term in text for term in document_terms)
 
     @staticmethod
-    def _is_witness_question(question_text: str) -> bool:
-        text = question_text.lower()
+    def _is_witness_question(question: Any) -> bool:
+        text = AdversarialSession._extract_question_text(question).lower()
         witness_terms = (
             'witness',
             'anyone else',
@@ -422,7 +479,7 @@ class AdversarialSession:
 
     @staticmethod
     def _coverage_gap_rank(
-        question_text: str,
+        question: Any,
         need_timeline: bool,
         need_harm_remedy: bool,
         need_actor_decisionmaker: bool,
@@ -430,20 +487,21 @@ class AdversarialSession:
         need_witness: bool,
         missing_anchor_sections: Set[str] | None = None,
     ) -> int:
+        question_text = AdversarialSession._extract_question_text(question)
         if missing_anchor_sections and AdversarialSession._question_targets_missing_anchor_section(
             question_text,
             missing_anchor_sections,
         ):
             return -1
-        if need_harm_remedy and AdversarialSession._is_harm_or_remedy_question(question_text):
+        if need_harm_remedy and AdversarialSession._is_harm_or_remedy_question(question):
             return 0
-        if need_timeline and AdversarialSession._is_timeline_question(question_text):
+        if need_timeline and AdversarialSession._is_timeline_question(question):
             return 1
-        if need_actor_decisionmaker and AdversarialSession._is_actor_or_decisionmaker_question(question_text):
+        if need_actor_decisionmaker and AdversarialSession._is_actor_or_decisionmaker_question(question):
             return 2
-        if need_documentary_evidence and AdversarialSession._is_documentary_evidence_question(question_text):
+        if need_documentary_evidence and AdversarialSession._is_documentary_evidence_question(question):
             return 3
-        if need_witness and AdversarialSession._is_witness_question(question_text):
+        if need_witness and AdversarialSession._is_witness_question(question):
             return 4
         return 5
 
@@ -583,6 +641,8 @@ class AdversarialSession:
             return {
                 "question": probe_text,
                 "type": probe_type,
+                "question_objective": probe_type,
+                "question_reason": "Harness fallback probe to cover a missing intake objective.",
                 "source": "harness_fallback",
             }
         return None
@@ -643,7 +703,7 @@ class AdversarialSession:
                 # Skip empty and duplicate prompts emitted in the same mediator step.
                 continue
             candidate_keys_in_turn.add(key)
-            intent_key = self._question_intent_key(text)
+            intent_key = self._question_intent_key(text, q)
             asked_count = asked_question_counts.get(key, 0)
             intent_count = asked_intent_counts.get(intent_key, 0)
             similarity_to_seen = 0.0
@@ -680,14 +740,14 @@ class AdversarialSession:
         ]
         if need_timeline:
             has_timeline_candidate = any(
-                self._is_timeline_question(c[1]) for c in non_redundant_candidates
+                self._is_timeline_question(c[0]) for c in non_redundant_candidates
             )
             if not has_timeline_candidate:
                 return None
 
         if need_documentary_evidence:
             has_document_candidate = any(
-                self._is_documentary_evidence_question(c[1]) for c in non_redundant_candidates
+                self._is_documentary_evidence_question(c[0]) for c in non_redundant_candidates
             )
             if not has_document_candidate:
                 return None
@@ -695,7 +755,7 @@ class AdversarialSession:
         non_redundant_candidates.sort(
             key=lambda c: (
                 self._coverage_gap_rank(
-                    c[1],
+                    c[0],
                     need_timeline=need_timeline,
                     need_harm_remedy=need_harm_remedy,
                     need_actor_decisionmaker=need_actor_decisionmaker,
@@ -715,7 +775,7 @@ class AdversarialSession:
                     asked_count == 0
                     and intent_count == 0
                     and similarity_to_seen < novel_similarity_threshold
-                    and self._is_harm_or_remedy_question(text)
+                    and self._is_harm_or_remedy_question(q)
                 ):
                     return q
 
@@ -725,7 +785,7 @@ class AdversarialSession:
                     asked_count == 0
                     and intent_count == 0
                     and similarity_to_seen < novel_similarity_threshold
-                    and self._is_timeline_question(text)
+                    and self._is_timeline_question(q)
                 ):
                     return q
 
@@ -735,7 +795,7 @@ class AdversarialSession:
                     asked_count == 0
                     and intent_count == 0
                     and similarity_to_seen < novel_similarity_threshold
-                    and self._is_actor_or_decisionmaker_question(text)
+                    and self._is_actor_or_decisionmaker_question(q)
                 ):
                     return q
 
@@ -745,7 +805,7 @@ class AdversarialSession:
                     asked_count == 0
                     and intent_count == 0
                     and similarity_to_seen < novel_similarity_threshold
-                    and self._is_documentary_evidence_question(text)
+                    and self._is_documentary_evidence_question(q)
                 ):
                     return q
 
@@ -755,7 +815,7 @@ class AdversarialSession:
                     asked_count == 0
                     and intent_count == 0
                     and similarity_to_seen < novel_similarity_threshold
-                    and self._is_witness_question(text)
+                    and self._is_witness_question(q)
                 ):
                     return q
 
@@ -776,9 +836,9 @@ class AdversarialSession:
             for q, text, key, _, asked_count, _, _ in candidates:
                 if asked_count > 0 or key == last_question_key:
                     continue
-                if need_timeline and self._is_timeline_question(text):
+                if need_timeline and self._is_timeline_question(q):
                     return q
-                if need_harm_remedy and self._is_harm_or_remedy_question(text):
+                if need_harm_remedy and self._is_harm_or_remedy_question(q):
                     return q
 
         # As a last resort, allow one rephrase on a covered intent only if we still
@@ -790,8 +850,8 @@ class AdversarialSession:
                 and key != last_question_key
                 and similarity_to_seen < rephrase_similarity_threshold
                 and (
-                    (need_timeline and self._is_timeline_question(text))
-                    or (need_harm_remedy and self._is_harm_or_remedy_question(text))
+                    (need_timeline and self._is_timeline_question(q))
+                    or (need_harm_remedy and self._is_harm_or_remedy_question(q))
                 )
             ):
                 return q
@@ -898,7 +958,7 @@ class AdversarialSession:
                     break
                 question_text = self._extract_question_text(question)
                 question_key = self._question_dedupe_key(question_text)
-                question_intent_key = self._question_intent_key(question_text)
+                question_intent_key = self._question_intent_key(question_text, question)
                 if question_key in asked_question_keys:
                     logger.debug("Mediator repeated question (no non-repeated alternative available)")
                 logger.debug(f"Mediator asks: {question_text}")
@@ -924,15 +984,15 @@ class AdversarialSession:
                     recent_intent_keys.append(question_intent_key)
                     if len(recent_intent_keys) > recent_intent_window:
                         recent_intent_keys = recent_intent_keys[-recent_intent_window:]
-                if self._is_timeline_question(question_text):
+                if self._is_timeline_question(question):
                     has_timeline_question = True
-                if self._is_harm_or_remedy_question(question_text):
+                if self._is_harm_or_remedy_question(question):
                     has_harm_remedy_question = True
-                if self._is_actor_or_decisionmaker_question(question_text):
+                if self._is_actor_or_decisionmaker_question(question):
                     has_actor_or_decisionmaker_question = True
-                if self._is_documentary_evidence_question(question_text):
+                if self._is_documentary_evidence_question(question):
                     has_documentary_evidence_question = True
-                if self._is_witness_question(question_text):
+                if self._is_witness_question(question):
                     has_witness_question = True
                 
                 questions_asked += 1
