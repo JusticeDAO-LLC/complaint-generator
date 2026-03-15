@@ -4065,6 +4065,162 @@ class Mediator:
 	def _current_user_id(self) -> str:
 		return getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
 
+	def _claim_element_registry_entry(
+		self,
+		intake_case_file: Dict[str, Any],
+		claim_type: str,
+		element_id: str,
+	) -> Dict[str, Any]:
+		candidate_claims = intake_case_file.get('candidate_claims', []) if isinstance(intake_case_file, dict) else []
+		for claim in candidate_claims if isinstance(candidate_claims, list) else []:
+			if not isinstance(claim, dict):
+				continue
+			if str(claim.get('claim_type') or '').strip().lower() != str(claim_type or '').strip().lower():
+				continue
+			for element in claim.get('required_elements', []) or []:
+				if not isinstance(element, dict):
+					continue
+				if str(element.get('element_id') or '').strip().lower() == str(element_id or '').strip().lower():
+					return element
+		registry = CLAIM_INTAKE_REQUIREMENTS.get(str(claim_type or '').strip().lower(), {})
+		for element in registry.get('elements', []) if isinstance(registry, dict) else []:
+			if not isinstance(element, dict):
+				continue
+			if str(element.get('element_id') or '').strip().lower() == str(element_id or '').strip().lower():
+				return element
+		return {}
+
+	def _required_fact_bundle_for_element(
+		self,
+		claim_type: str,
+		element_id: str,
+		element_text: str,
+	) -> List[str]:
+		normalized_element_id = str(element_id or '').strip().lower()
+		normalized_claim_type = str(claim_type or '').strip().lower()
+		bundle_map = {
+			'protected_activity': [
+				'What protected activity occurred',
+				'When the protected activity occurred',
+				'Who received or observed the protected activity',
+				'How the protected activity was documented or can be corroborated',
+			],
+			'adverse_action': [
+				'What adverse action or harmful conduct occurred',
+				'When the adverse action occurred',
+				'Who made or carried out the decision',
+				'What concrete harm, status change, or loss resulted',
+			],
+			'causation': [
+				'The timing between the protected activity and the adverse action',
+				'Facts showing the decision-maker knew about the protected activity',
+				'Statements, sequence, or pattern facts linking the activity to the action',
+			],
+			'protected_trait': [
+				'What protected trait or class applies to the complainant',
+				'Facts showing the protected trait is relevant to the alleged conduct',
+			],
+			'discriminatory_motive': [
+				'Facts suggesting bias, differential treatment, or discriminatory intent',
+				'Who made biased statements or decisions',
+				'Comparator, pattern, or context facts supporting discriminatory motive',
+			],
+			'employment_relationship': [
+				'The employer or workplace relationship',
+				'The complainant role, position, or workplace context',
+			],
+			'housing_context': [
+				'The landlord, housing provider, or tenancy relationship',
+				'The application, lease, or housing context',
+			],
+			'accommodation_request': [
+				'What accommodation was requested',
+				'When the request was made',
+				'Who received the request',
+			],
+			'disability_or_need': [
+				'The disability, limitation, or need for accommodation',
+				'How that need was communicated or documented',
+			],
+			'denial_or_failure': [
+				'How the request was denied, ignored, or only partially addressed',
+				'Who denied or failed to act',
+				'When the denial or failure occurred',
+			],
+			'termination_event': [
+				'The termination or dismissal event',
+				'When the termination occurred',
+				'Who communicated or executed the termination',
+			],
+			'request_or_application': [
+				'What request or application was made',
+				'When it was submitted',
+				'Who received it',
+			],
+			'denial_event': [
+				'The denial or refusal event',
+				'When the denial occurred',
+				'Who made the decision',
+			],
+			'context_or_reason': [
+				'The stated reason, criteria, or context around the denial',
+				'Facts undermining or explaining that reason',
+			],
+		}
+		bundle = bundle_map.get(normalized_element_id, [])
+		if not bundle and normalized_claim_type == 'retaliation' and normalized_element_id == 'causation':
+			bundle = bundle_map['causation']
+		if bundle:
+			return bundle
+		fallback_label = str(element_text or normalized_element_id or 'claim element').strip()
+		return [f'Facts establishing {fallback_label}']
+
+	def _summarize_supported_fact_bundle(self, support_facts: Any) -> List[str]:
+		supported: List[str] = []
+		for fact in support_facts if isinstance(support_facts, list) else []:
+			if not isinstance(fact, dict):
+				continue
+			text = self._normalize_intake_text(fact.get('text'))
+			if text and text not in supported:
+				supported.append(text)
+		return supported[:4]
+
+	def _resolve_task_preferred_support_kind(self, missing_support_kinds: List[str], evidence_classes: List[str]) -> str:
+		normalized_missing = [str(kind or '').strip().lower() for kind in (missing_support_kinds or []) if str(kind or '').strip()]
+		if 'evidence' in normalized_missing:
+			return 'evidence'
+		if 'authority' in normalized_missing:
+			return 'authority'
+		if any('testimony' in str(item or '').lower() for item in (evidence_classes or [])):
+			return 'testimony'
+		return normalized_missing[0] if normalized_missing else 'evidence'
+
+	def _resolve_task_fallback_support_kinds(self, preferred_support_kind: str, evidence_classes: List[str]) -> List[str]:
+		fallbacks: List[str] = []
+		if preferred_support_kind != 'testimony' and any('testimony' in str(item or '').lower() for item in (evidence_classes or [])):
+			fallbacks.append('testimony')
+		if preferred_support_kind != 'evidence':
+			fallbacks.append('evidence')
+		if preferred_support_kind != 'authority':
+			fallbacks.append('authority')
+		return list(dict.fromkeys(fallbacks))
+
+	def _recommended_task_queries(
+		self,
+		claim_type: str,
+		element_label: str,
+		missing_fact_bundle: List[str],
+	) -> List[str]:
+		queries: List[str] = []
+		claim_phrase = str(claim_type or '').replace('_', ' ').strip()
+		element_phrase = str(element_label or '').strip()
+		if missing_fact_bundle:
+			queries.append(f'"{claim_phrase}" "{element_phrase}" {missing_fact_bundle[0]}')
+		if len(missing_fact_bundle) > 1:
+			queries.append(f'"{element_phrase}" {missing_fact_bundle[1]} {claim_phrase}')
+		queries.append(f'"{claim_phrase}" "{element_phrase}" supporting evidence')
+		return [query for query in queries if query]
+
 	def _build_claim_support_packets(
 		self,
 		user_id: str = None,
@@ -4110,10 +4266,18 @@ class Mediator:
 					gap_context = element.get('gap_context', {}) if isinstance(element.get('gap_context'), dict) else {}
 					support_facts = gap_context.get('support_facts', []) if isinstance(gap_context, dict) else []
 					support_traces = gap_context.get('support_traces', []) if isinstance(gap_context, dict) else []
+					element_id = element.get('element_id')
+					element_text = element.get('element_text')
+					registry_entry = self._claim_element_registry_entry(intake_case_file, claim_type, element_id)
+					evidence_classes = list(registry_entry.get('evidence_classes', []) or [])
+					required_fact_bundle = self._required_fact_bundle_for_element(claim_type, element_id, element_text)
+					satisfied_fact_bundle = self._summarize_supported_fact_bundle(support_facts)
+					support_status = self._normalize_support_status(element.get('validation_status'))
+					missing_fact_bundle = [] if support_status == 'supported' else list(required_fact_bundle)
 					elements.append({
-						'element_id': element.get('element_id'),
-						'element_text': element.get('element_text'),
-						'support_status': self._normalize_support_status(element.get('validation_status')),
+						'element_id': element_id,
+						'element_text': element_text,
+						'support_status': support_status,
 						'canonical_fact_ids': [
 							fact.get('fact_id') for fact in support_facts
 							if isinstance(fact, dict) and fact.get('fact_id')
@@ -4140,6 +4304,10 @@ class Mediator:
 							if fact_id
 						],
 						'missing_support_kinds': list(element.get('missing_support_kinds', []) or []),
+						'preferred_evidence_classes': evidence_classes,
+						'required_fact_bundle': required_fact_bundle,
+						'satisfied_fact_bundle': satisfied_fact_bundle,
+						'missing_fact_bundle': missing_fact_bundle,
 						'parse_quality_flags': self._extract_parse_quality_flags(element),
 						'recommended_next_step': str(element.get('recommended_action') or ''),
 						'contradiction_count': int(element.get('contradiction_candidate_count', 0) or 0),
@@ -4148,9 +4316,14 @@ class Mediator:
 				for gap_element in gap_claim.get('unresolved_elements', []) if isinstance(gap_claim, dict) else []:
 					if not isinstance(gap_element, dict):
 						continue
+					element_id = gap_element.get('element_id')
+					element_text = gap_element.get('element_text')
+					registry_entry = self._claim_element_registry_entry(intake_case_file, claim_type, element_id)
+					evidence_classes = list(registry_entry.get('evidence_classes', []) or [])
+					required_fact_bundle = self._required_fact_bundle_for_element(claim_type, element_id, element_text)
 					elements.append({
-						'element_id': gap_element.get('element_id'),
-						'element_text': gap_element.get('element_text'),
+						'element_id': element_id,
+						'element_text': element_text,
 						'support_status': 'unsupported',
 						'canonical_fact_ids': [
 							fact.get('fact_id') for fact in (gap_element.get('support_facts', []) or [])
@@ -4161,6 +4334,10 @@ class Mediator:
 						'supporting_authority_ids': [],
 						'contrary_fact_ids': [],
 						'missing_support_kinds': list(gap_element.get('missing_support_kinds', []) or []),
+						'preferred_evidence_classes': evidence_classes,
+						'required_fact_bundle': required_fact_bundle,
+						'satisfied_fact_bundle': [],
+						'missing_fact_bundle': list(required_fact_bundle),
 						'parse_quality_flags': [],
 						'recommended_next_step': str(gap_element.get('recommended_action') or ''),
 						'contradiction_count': 0,
@@ -4405,6 +4582,8 @@ class Mediator:
 		intake_case = intake_case_file if isinstance(intake_case_file, dict) else {}
 		packets = claim_support_packets if isinstance(claim_support_packets, dict) else {}
 		candidate_claims = intake_case.get('candidate_claims', []) if isinstance(intake_case.get('candidate_claims'), list) else []
+		proof_leads = intake_case.get('proof_leads', []) if isinstance(intake_case.get('proof_leads'), list) else []
+		open_items = intake_case.get('open_items', []) if isinstance(intake_case.get('open_items'), list) else []
 
 		claim_types = set(packets.keys())
 		for claim in candidate_claims:
@@ -4432,6 +4611,7 @@ class Mediator:
 						'element_id': element_id,
 						'label': str(element.get('label') or element_id).strip(),
 						'blocking': bool(element.get('blocking', True)),
+						'evidence_classes': list(element.get('evidence_classes', []) or []),
 					}
 				)
 			intake_element_ids = [item['element_id'] for item in intake_elements]
@@ -4439,6 +4619,7 @@ class Mediator:
 			packet = packets.get(claim_type, {}) if isinstance(packets, dict) else {}
 			packet_elements = packet.get('elements', []) if isinstance(packet, dict) else []
 			packet_status_by_element: Dict[str, str] = {}
+			packet_element_map: Dict[str, Dict[str, Any]] = {}
 			for element in packet_elements if isinstance(packet_elements, list) else []:
 				if not isinstance(element, dict):
 					continue
@@ -4446,6 +4627,7 @@ class Mediator:
 				if not element_id:
 					continue
 				packet_status_by_element[element_id] = str(element.get('support_status') or '').strip().lower()
+				packet_element_map[element_id] = element
 
 			shared_elements = []
 			for intake_element in intake_elements:
@@ -4453,12 +4635,36 @@ class Mediator:
 				if element_id not in packet_status_by_element:
 					continue
 				support_status = packet_status_by_element[element_id]
+				packet_element = packet_element_map.get(element_id, {}) if isinstance(packet_element_map.get(element_id), dict) else {}
+				matching_open_item_ids = [
+					str(item.get('open_item_id') or '')
+					for item in open_items
+					if isinstance(item, dict)
+					and str(item.get('target_claim_type') or '').strip().lower() == str(claim_type).strip().lower()
+					and str(item.get('target_element_id') or '').strip().lower() == element_id.lower()
+				]
+				matching_proof_lead_ids = [
+					str(lead.get('lead_id') or '')
+					for lead in proof_leads
+					if isinstance(lead, dict)
+					and (
+						element_id.lower() in [str(item).strip().lower() for item in (lead.get('element_targets') or []) if str(item).strip()]
+					)
+				]
 				shared_elements.append(
 					{
 						'element_id': element_id,
 						'label': intake_element['label'],
 						'blocking': intake_element['blocking'],
 						'support_status': support_status,
+						'preferred_evidence_classes': list(packet_element.get('preferred_evidence_classes', []) or intake_element.get('evidence_classes', []) or []),
+						'required_fact_bundle': list(packet_element.get('required_fact_bundle', []) or []),
+						'satisfied_fact_bundle': list(packet_element.get('satisfied_fact_bundle', []) or []),
+						'missing_fact_bundle': list(packet_element.get('missing_fact_bundle', []) or []),
+						'missing_support_kinds': list(packet_element.get('missing_support_kinds', []) or []),
+						'recommended_next_step': str(packet_element.get('recommended_next_step') or '').strip(),
+						'intake_open_item_ids': [item_id for item_id in matching_open_item_ids if item_id],
+						'intake_proof_lead_ids': [lead_id for lead_id in matching_proof_lead_ids if lead_id],
 					}
 				)
 				summary['aligned_element_count'] += 1
@@ -4503,14 +4709,47 @@ class Mediator:
 				if support_status not in {'unsupported', 'partially_supported', 'contradicted'}:
 					continue
 				action = 'resolve_support_conflicts' if support_status == 'contradicted' else 'fill_evidence_gaps'
+				claim_element_id = str(element.get('element_id') or '').strip()
+				claim_element_label = str(element.get('label') or element.get('element_id') or '').strip()
+				preferred_evidence_classes = list(element.get('preferred_evidence_classes', []) or [])
+				missing_fact_bundle = list(element.get('missing_fact_bundle', []) or [])
+				satisfied_fact_bundle = list(element.get('satisfied_fact_bundle', []) or [])
+				missing_support_kinds = list(element.get('missing_support_kinds', []) or [])
+				preferred_support_kind = self._resolve_task_preferred_support_kind(missing_support_kinds, preferred_evidence_classes)
+				fallback_support_kinds = self._resolve_task_fallback_support_kinds(preferred_support_kind, preferred_evidence_classes)
+				success_criteria = [
+					f'Element {claim_element_label} reaches supported status',
+				]
+				if missing_fact_bundle:
+					success_criteria.append(f'Collect support addressing: {missing_fact_bundle[0]}')
 				tasks.append(
 					{
+						'task_id': f'{claim_type}:{claim_element_id}:{action}',
 						'action': action,
 						'claim_type': str(claim_type),
-						'claim_element_id': str(element.get('element_id') or '').strip(),
-						'claim_element_label': str(element.get('label') or element.get('element_id') or '').strip(),
+						'claim_element_id': claim_element_id,
+						'claim_element_label': claim_element_label,
 						'support_status': support_status,
 						'blocking': bool(element.get('blocking', False)),
+						'preferred_support_kind': preferred_support_kind,
+						'preferred_evidence_classes': preferred_evidence_classes,
+						'fallback_support_kinds': fallback_support_kinds,
+						'missing_fact_bundle': missing_fact_bundle,
+						'satisfied_fact_bundle': satisfied_fact_bundle,
+						'intake_origin_refs': [
+							f'open_item:{item_id}'
+							for item_id in (element.get('intake_open_item_ids', []) or [])
+						] + [
+							f'proof_lead:{lead_id}'
+							for lead_id in (element.get('intake_proof_lead_ids', []) or [])
+						],
+						'recommended_queries': self._recommended_task_queries(
+							str(claim_type),
+							claim_element_label,
+							missing_fact_bundle,
+						),
+						'success_criteria': success_criteria,
+						'resolution_status': 'queued',
 					}
 				)
 

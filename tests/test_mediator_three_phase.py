@@ -516,8 +516,20 @@ class TestMediatorThreePhaseIntegration:
                     }
                 ],
                 'canonical_facts': [{'fact_id': 'fact_001'}],
-                'proof_leads': [{'lead_id': 'lead_001'}],
+                'proof_leads': [
+                    {
+                        'lead_id': 'lead_001',
+                        'element_targets': ['causation'],
+                    }
+                ],
                 'contradiction_queue': [],
+                'open_items': [
+                    {
+                        'open_item_id': 'element:employment_discrimination:causation',
+                        'target_claim_type': 'employment_discrimination',
+                        'target_element_id': 'causation',
+                    }
+                ],
                 'intake_sections': {
                     'chronology': {'status': 'complete', 'missing_items': []},
                     'actors': {'status': 'complete', 'missing_items': []},
@@ -588,7 +600,15 @@ class TestMediatorThreePhaseIntegration:
         assert 'employment_discrimination' in packets
         assert packets['employment_discrimination']['elements'][0]['support_status'] == 'supported'
         assert packets['employment_discrimination']['elements'][1]['support_status'] == 'unsupported'
+        assert packets['employment_discrimination']['elements'][1]['missing_fact_bundle']
+        assert packets['employment_discrimination']['elements'][1]['preferred_evidence_classes'] == []
         assert result['alignment_evidence_tasks']
+        assert result['alignment_evidence_tasks'][0]['preferred_support_kind'] == 'evidence'
+        assert result['alignment_evidence_tasks'][0]['missing_fact_bundle']
+        assert 'open_item:element:employment_discrimination:causation' in result['alignment_evidence_tasks'][0]['intake_origin_refs']
+        assert 'proof_lead:lead_001' in result['alignment_evidence_tasks'][0]['intake_origin_refs']
+        assert result['alignment_evidence_tasks'][0]['recommended_queries']
+        assert result['alignment_evidence_tasks'][0]['success_criteria']
         assert result['next_action']['action'] == 'fill_evidence_gaps'
         assert result['next_action']['claim_element_id'] == 'causation'
         status = mediator.get_three_phase_status()
