@@ -361,6 +361,63 @@ def _build_hook_backed_browser_mediator(db_path: str):
     return mediator, hook
 
 
+def _build_real_browser_upload_mediator(
+    *,
+    evidence_db_path: str,
+    claim_support_db_path: str,
+    legal_authority_db_path: str,
+):
+    try:
+        from mediator import Mediator
+    except ImportError as exc:
+        pytest.skip(f"Mediator requires dependencies: {exc}")
+
+    mock_backend = Mock()
+    mock_backend.id = "browser-upload-backend"
+
+    mediator = Mediator(
+        backends=[mock_backend],
+        evidence_db_path=evidence_db_path,
+        claim_support_db_path=claim_support_db_path,
+        legal_authority_db_path=legal_authority_db_path,
+    )
+    mediator.state.username = "browser-upload-user"
+    mediator.claim_support.register_claim_requirements(
+        "browser-upload-user",
+        {"retaliation": ["Protected activity", "Adverse action", "Causal connection"]},
+    )
+    mediator.get_three_phase_status = Mock(
+        return_value={
+            "current_phase": "intake",
+            "iteration_count": 1,
+            "intake_readiness": {
+                "score": 0.52,
+                "ready_to_advance": False,
+                "remaining_gap_count": 2,
+                "contradiction_count": 0,
+                "blockers": ["collect_missing_support"],
+            },
+            "candidate_claims": [
+                {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.89},
+            ],
+            "intake_sections": {
+                "proof_leads": {"status": "partial", "missing_items": ["documents"]},
+            },
+            "canonical_fact_summary": {
+                "count": 1,
+                "facts": [{"fact_id": "fact_001", "text": "Protected activity already recorded."}],
+            },
+            "proof_lead_summary": {
+                "count": 1,
+                "proof_leads": [{"lead_id": "lead_001", "description": "Upload documentary evidence"}],
+            },
+            "question_candidate_summary": {},
+            "claim_support_packet_summary": {},
+        }
+    )
+    return mediator
+
+
 @contextmanager
 def _serve_app(app: FastAPI):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -691,6 +748,91 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
+
+
+def test_claim_support_review_dashboard_smoke_uploads_document_via_playwright_and_persists_evidence():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as evidence_handle:
+        evidence_db_path = evidence_handle.name
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as claim_support_handle:
+        claim_support_db_path = claim_support_handle.name
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as legal_handle:
+        legal_authority_db_path = legal_handle.name
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as upload_handle:
+        upload_handle.write(
+            b"The schedule reduction memo confirms the adverse action happened two days after the complaint."
+        )
+        upload_path = upload_handle.name
+
+    try:
+        mediator = _build_real_browser_upload_mediator(
+            evidence_db_path=evidence_db_path,
+            claim_support_db_path=claim_support_db_path,
+            legal_authority_db_path=legal_authority_db_path,
+        )
+
+        app = _build_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(
+                    f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-upload-user"
+                )
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                page.fill("#document-element-text", "Adverse action")
+                page.fill("#document-label", "Schedule reduction memo")
+                page.fill("#document-source-url", "https://example.com/schedule-memo")
+                page.set_input_files("#document-file-input", upload_path)
+                page.click("#save-document-button")
+
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Document uploaded and review payload refreshed.')"
+                )
+                page.wait_for_function(
+                    "() => document.getElementById('document-list').textContent.includes('Schedule reduction memo')"
+                )
+
+                document_list_text = page.locator("#document-list").inner_text()
+                browser.close()
+
+        assert "Schedule reduction memo" in document_list_text
+        assert "Adverse action" in document_list_text
+
+        evidence_conn = duckdb.connect(evidence_db_path, read_only=True)
+        try:
+            evidence_count = evidence_conn.execute(
+                "SELECT COUNT(*) FROM evidence WHERE user_id = ?",
+                ["browser-upload-user"],
+            ).fetchone()[0]
+        finally:
+            evidence_conn.close()
+
+        claim_support_conn = duckdb.connect(claim_support_db_path, read_only=True)
+        try:
+            support_count = claim_support_conn.execute(
+                "SELECT COUNT(*) FROM claim_support WHERE user_id = ?",
+                ["browser-upload-user"],
+            ).fetchone()[0]
+        finally:
+            claim_support_conn.close()
+
+        assert evidence_count >= 1
+        assert support_count >= 1
+    finally:
+        for path in (
+            evidence_db_path,
+            claim_support_db_path,
+            legal_authority_db_path,
+            upload_path,
+        ):
+            if os.path.exists(path):
+                os.unlink(path)
 
 
 def test_optimization_trace_smoke_renders_question_review_links_with_support_kind():
