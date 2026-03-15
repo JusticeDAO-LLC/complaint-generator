@@ -6,10 +6,14 @@ Manages the three-phase complaint process and transitions between phases.
 
 import logging
 from enum import Enum
-from typing import Dict, Any
+from typing import Dict, Any, Callable
 from datetime import datetime, UTC
 
 logger = logging.getLogger(__name__)
+
+_INTAKE_GAPS_THRESHOLD = 3
+_EVIDENCE_GAP_RATIO_THRESHOLD = 0.3
+_DENOISING_MAX_ITERATIONS = 20
 
 
 def _utc_now_isoformat() -> str:
@@ -30,6 +34,18 @@ class PhaseManager:
     Tracks which phase the complaint is in, completion criteria for each phase,
     and orchestrates transitions between phases.
     """
+
+    _PHASE_ACTION_GETTERS = {
+        ComplaintPhase.INTAKE: '_get_intake_action',
+        ComplaintPhase.EVIDENCE: '_get_evidence_action',
+        ComplaintPhase.FORMALIZATION: '_get_formalization_action',
+    }
+
+    _PHASE_COMPLETION_CHECKS = {
+        ComplaintPhase.INTAKE: '_is_intake_complete',
+        ComplaintPhase.EVIDENCE: '_is_evidence_complete',
+        ComplaintPhase.FORMALIZATION: '_is_formalization_complete',
+    }
     
     def __init__(self, mediator=None):
         self.mediator = mediator
@@ -42,6 +58,16 @@ class PhaseManager:
         }
         self.iteration_count = 0
         self.loss_history = []  # Track loss/noise over iterations
+        self._phase_action_getters: Dict[ComplaintPhase, Callable[[], Dict[str, Any]]] = {
+            ComplaintPhase.INTAKE: self._get_intake_action,
+            ComplaintPhase.EVIDENCE: self._get_evidence_action,
+            ComplaintPhase.FORMALIZATION: self._get_formalization_action,
+        }
+        self._phase_completion_checks: Dict[ComplaintPhase, Callable[[], bool]] = {
+            ComplaintPhase.INTAKE: self._is_intake_complete,
+            ComplaintPhase.EVIDENCE: self._is_evidence_complete,
+            ComplaintPhase.FORMALIZATION: self._is_formalization_complete,
+        }
     
     def get_current_phase(self) -> ComplaintPhase:
         """Get the current phase."""
@@ -65,10 +91,10 @@ class PhaseManager:
                 'iteration': self.iteration_count
             })
             self.current_phase = phase
-            logger.info(f"Advanced to phase: {phase.value}")
+            logger.info("Advanced to phase: %s", phase.value)
             return True
         else:
-            logger.warning(f"Cannot advance to phase {phase.value} - requirements not met")
+            logger.warning("Cannot advance to phase %s - requirements not met", phase.value)
             return False
     
     def _can_advance_to(self, phase: ComplaintPhase) -> bool:
@@ -96,13 +122,13 @@ class PhaseManager:
         Returns:
             True if phase is complete, False otherwise
         """
-        if phase == ComplaintPhase.INTAKE:
-            return self._is_intake_complete()
-        elif phase == ComplaintPhase.EVIDENCE:
-            return self._is_evidence_complete()
-        elif phase == ComplaintPhase.FORMALIZATION:
-            return self._is_formalization_complete()
-        return False
+        completion_check = self._phase_completion_checks.get(phase)
+        if completion_check is not None:
+            return completion_check()
+        method_name = self._PHASE_COMPLETION_CHECKS.get(phase)
+        if method_name is None:
+            return False
+        return getattr(self, method_name)()
     
     def _is_intake_complete(self) -> bool:
         """
@@ -118,7 +144,7 @@ class PhaseManager:
         
         has_knowledge_graph = 'knowledge_graph' in data
         has_dependency_graph = 'dependency_graph' in data
-        gaps_addressed = data.get('remaining_gaps', float('inf')) <= 3
+        gaps_addressed = data.get('remaining_gaps', float('inf')) <= _INTAKE_GAPS_THRESHOLD
         converged = data.get('denoising_converged', False)
         
         # Require both gaps to be addressed AND convergence
@@ -139,7 +165,7 @@ class PhaseManager:
         kg_enhanced = data.get('knowledge_graph_enhanced', False)
         gap_ratio = data.get('evidence_gap_ratio', 1.0)
         
-        return evidence_gathered and kg_enhanced and gap_ratio < 0.3
+        return evidence_gathered and kg_enhanced and gap_ratio < _EVIDENCE_GAP_RATIO_THRESHOLD
     
     def _is_formalization_complete(self) -> bool:
         """
@@ -161,13 +187,14 @@ class PhaseManager:
     def update_phase_data(self, phase: ComplaintPhase, key: str, value: Any):
         """Update data for a specific phase."""
         self.phase_data[phase][key] = value
-        logger.debug(f"Updated {phase.value} data: {key} = {value}")
+        logger.debug("Updated %s data: %s = %s", phase.value, key, value)
     
     def get_phase_data(self, phase: ComplaintPhase, key: str = None) -> Any:
         """Get data for a specific phase."""
+        data = self.phase_data[phase]
         if key:
-            return self.phase_data[phase].get(key)
-        return self.phase_data[phase]
+            return data.get(key)
+        return data
     
     def record_iteration(self, loss: float, metrics: Dict[str, Any]):
         """
@@ -178,14 +205,20 @@ class PhaseManager:
             metrics: Additional metrics for this iteration
         """
         self.iteration_count += 1
+        phase_value = self.current_phase.value
         self.loss_history.append({
             'iteration': self.iteration_count,
             'loss': loss,
-            'phase': self.current_phase.value,
+            'phase': phase_value,
             'metrics': metrics,
             'timestamp': _utc_now_isoformat()
         })
-        logger.info(f"Iteration {self.iteration_count}: loss={loss:.4f}, phase={self.current_phase.value}")
+        logger.info(
+            "Iteration %s: loss=%.4f, phase=%s",
+            self.iteration_count,
+            loss,
+            phase_value,
+        )
     
     def has_converged(self, window: int = 5, threshold: float = 0.01) -> bool:
         """
@@ -201,12 +234,9 @@ class PhaseManager:
         if len(self.loss_history) < window:
             return False
         
-        recent_losses = [h['loss'] for h in self.loss_history[-window:]]
-        max_loss = max(recent_losses)
-        min_loss = min(recent_losses)
-        change = max_loss - min_loss
-        
-        return change < threshold
+        recent = self.loss_history[-window:]
+        losses = [entry.get('loss', 0.0) for entry in recent]
+        return (max(losses) - min(losses)) < threshold
     
     def get_next_action(self) -> Dict[str, Any]:
         """
@@ -215,14 +245,13 @@ class PhaseManager:
         Returns:
             Dictionary with action type and parameters
         """
-        if self.current_phase == ComplaintPhase.INTAKE:
-            return self._get_intake_action()
-        elif self.current_phase == ComplaintPhase.EVIDENCE:
-            return self._get_evidence_action()
-        elif self.current_phase == ComplaintPhase.FORMALIZATION:
-            return self._get_formalization_action()
-        
-        return {'action': 'unknown'}
+        action_getter = self._phase_action_getters.get(self.current_phase)
+        if action_getter is not None:
+            return action_getter()
+        method_name = self._PHASE_ACTION_GETTERS.get(self.current_phase)
+        if method_name is None:
+            return {'action': 'unknown'}
+        return getattr(self, method_name)()
     
     def _get_intake_action(self) -> Dict[str, Any]:
         """Get next action for intake phase."""
@@ -238,7 +267,7 @@ class PhaseManager:
         if gaps and len(gaps) > 0:
             return {'action': 'address_gaps', 'gaps': gaps}
         
-        if not data.get('denoising_converged', False) and self.iteration_count < 20:
+        if not data.get('denoising_converged', False) and self.iteration_count < _DENOISING_MAX_ITERATIONS:
             return {'action': 'continue_denoising'}
         
         return {'action': 'complete_intake'}
@@ -254,7 +283,7 @@ class PhaseManager:
             return {'action': 'enhance_knowledge_graph'}
         
         gap_ratio = data.get('evidence_gap_ratio', 1.0)
-        if gap_ratio > 0.3:
+        if gap_ratio > _EVIDENCE_GAP_RATIO_THRESHOLD:
             return {'action': 'fill_evidence_gaps', 'gap_ratio': gap_ratio}
         
         return {'action': 'complete_evidence'}
@@ -321,7 +350,8 @@ class PhaseManager:
         Returns:
             Number of times transitioned to this phase.
         """
-        return sum(1 for t in self.phase_history if t.get('to_phase') == phase.value)
+        phase_value = phase.value
+        return sum(1 for t in self.phase_history if t.get('to_phase') == phase_value)
     
     def phase_transition_frequency(self) -> Dict[str, int]:
         """Calculate frequency distribution of phase transitions.
@@ -363,7 +393,8 @@ class PhaseManager:
         Returns:
             Number of iterations in this phase.
         """
-        return sum(1 for h in self.loss_history if h.get('phase') == phase.value)
+        phase_value = phase.value
+        return sum(1 for h in self.loss_history if h.get('phase') == phase_value)
     
     def average_loss(self) -> float:
         """Calculate the average loss across all recorded iterations.
@@ -373,7 +404,7 @@ class PhaseManager:
         """
         if not self.loss_history:
             return 0.0
-        total_loss = sum(h.get('loss', 0.0) for h in self.loss_history)
+        total_loss = sum(entry.get('loss', 0.0) for entry in self.loss_history)
         return total_loss / len(self.loss_history)
     
     def minimum_loss(self) -> float:
@@ -384,7 +415,7 @@ class PhaseManager:
         """
         if not self.loss_history:
             return float('inf')
-        return min(h.get('loss', float('inf')) for h in self.loss_history)
+        return min(entry.get('loss', float('inf')) for entry in self.loss_history)
     
     def has_phase_data_key(self, phase: ComplaintPhase, key: str) -> bool:
         """Check if a specific data key exists for a phase.
