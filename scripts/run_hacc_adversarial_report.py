@@ -54,6 +54,7 @@ def main() -> int:
     parser.add_argument("--max-turns", type=int, default=6)
     parser.add_argument("--max-parallel", type=int, default=2)
     parser.add_argument("--use-vector-search", action="store_true")
+    parser.add_argument("--disable-local-ipfs-fallback", action="store_true")
     parser.add_argument("--probe-llm-router", action="store_true")
     parser.add_argument("--probe-embeddings-router", action="store_true")
     parser.add_argument(
@@ -65,7 +66,7 @@ def main() -> int:
 
     from adversarial_harness import AdversarialHarness, HACC_QUERY_PRESETS, Optimizer
     from backends import LLMRouterBackend
-    from integrations.ipfs_datasets import get_router_status_report
+    from integrations.ipfs_datasets import ensure_ipfs_backend, get_router_status_report
     from mediator.mediator import Mediator
 
     if args.preset not in HACC_QUERY_PRESETS:
@@ -77,6 +78,8 @@ def main() -> int:
 
     config = _load_config(args.config)
     backend_kwargs = _get_llm_router_backend_config(config, args.backend_id)
+    if not args.disable_local_ipfs_fallback:
+        ensure_ipfs_backend(prefer_local_fallback=True)
     router_report = get_router_status_report(
         llm_config=backend_kwargs,
         embeddings_config=config.get("EMBEDDINGS") if isinstance(config.get("EMBEDDINGS"), dict) else None,

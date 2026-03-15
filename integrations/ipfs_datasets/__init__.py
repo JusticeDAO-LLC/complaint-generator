@@ -62,7 +62,16 @@ from .policy_rules import (
 	build_policy_rule_corpus,
 	extract_policy_rules_from_pdf,
 )
-from .storage import pin_cid, retrieve_bytes, storage_backend_status, store_bytes
+from .storage import (
+	pin_cid,
+	retrieve_bytes,
+	storage_backend_status,
+	store_bytes,
+	LocalCacheIPFSBackend,
+	clear_ipfs_backend_router_caches,
+	ensure_ipfs_backend,
+	set_default_ipfs_backend,
+)
 from .vector_store import (
 	EMBEDDINGS_AVAILABLE,
 	VECTOR_STORE_AVAILABLE,
@@ -122,6 +131,10 @@ __all__ = [
 	"retrieve_bytes",
 	"pin_cid",
 	"storage_backend_status",
+	"LocalCacheIPFSBackend",
+	"clear_ipfs_backend_router_caches",
+	"ensure_ipfs_backend",
+	"set_default_ipfs_backend",
 	"scrape_archived_domain",
 	"scrape_web_content",
 	"recover_manifest_downloads",

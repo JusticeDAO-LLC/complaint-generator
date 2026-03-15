@@ -126,15 +126,18 @@ def _run_preset_batch(
     use_vector_search: bool,
     probe_llm_router: bool,
     probe_embeddings_router: bool,
+    disable_local_ipfs_fallback: bool,
 ) -> Dict[str, Any]:
     from adversarial_harness import AdversarialHarness, Optimizer
     from backends import LLMRouterBackend
-    from integrations.ipfs_datasets import get_router_status_report
+    from integrations.ipfs_datasets import ensure_ipfs_backend, get_router_status_report
     from mediator.mediator import Mediator
 
     session_state_dir = preset_dir / "sessions"
     preset_dir.mkdir(parents=True, exist_ok=True)
     session_state_dir.mkdir(parents=True, exist_ok=True)
+    if not disable_local_ipfs_fallback:
+        ensure_ipfs_backend(prefer_local_fallback=True)
     router_report = get_router_status_report(
         llm_config=backend_kwargs,
         embeddings_config=embeddings_config,
@@ -216,6 +219,7 @@ def main() -> int:
     parser.add_argument("--hacc-count", type=int, default=3)
     parser.add_argument("--max-turns", type=int, default=6)
     parser.add_argument("--max-parallel", type=int, default=2)
+    parser.add_argument("--disable-local-ipfs-fallback", action="store_true")
     parser.add_argument("--probe-llm-router", action="store_true")
     parser.add_argument("--probe-embeddings-router", action="store_true")
     parser.add_argument(
@@ -274,6 +278,7 @@ def main() -> int:
             use_vector_search=args.use_vector_search,
             probe_llm_router=args.probe_llm_router,
             probe_embeddings_router=args.probe_embeddings_router,
+            disable_local_ipfs_fallback=args.disable_local_ipfs_fallback,
         )
         row = {
             key: batch_result[key]
@@ -327,6 +332,7 @@ def main() -> int:
                 use_vector_search=args.use_vector_search,
                 probe_llm_router=args.probe_llm_router,
                 probe_embeddings_router=args.probe_embeddings_router,
+                disable_local_ipfs_fallback=args.disable_local_ipfs_fallback,
             )
             challenger_rows.append(
                 {

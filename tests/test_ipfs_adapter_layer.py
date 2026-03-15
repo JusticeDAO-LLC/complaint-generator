@@ -61,6 +61,7 @@ from integrations.ipfs_datasets.vector_store import (
     embeddings_backend_status,
     search_vector_index,
 )
+from integrations.ipfs_datasets.storage import LocalCacheIPFSBackend, ensure_ipfs_backend
 
 
 def test_capability_registry_has_expected_keys():
@@ -1112,3 +1113,28 @@ def test_router_status_report_combines_llm_ipfs_and_embeddings():
     assert report["components"]["ipfs_router"]["status"] == "available"
     assert report["components"]["embeddings_router"]["status"] == "degraded"
     assert report["unavailable_components"]["embeddings_router"] == "missing token"
+
+
+def test_local_cache_ipfs_backend_roundtrips_bytes(tmp_path):
+    backend = LocalCacheIPFSBackend(cache_dir=str(tmp_path))
+    cid = backend.add_bytes(b"HACC evidence blob", pin=True)
+
+    assert cid.startswith("bafy")
+    assert backend.cat(cid) == b"HACC evidence blob"
+
+
+def test_ensure_ipfs_backend_uses_local_fallback_when_kubo_missing():
+    fake_backend = type('KuboCLIBackend', (), {'_cmd': 'ipfs'})()
+    with patch('integrations.ipfs_datasets.storage.get_ipfs_backend', return_value=fake_backend), patch(
+        'integrations.ipfs_datasets.storage.shutil.which',
+        return_value=None,
+    ), patch(
+        'integrations.ipfs_datasets.storage.set_default_ipfs_backend',
+    ) as mock_set_default, patch(
+        'integrations.ipfs_datasets.storage.clear_ipfs_backend_router_caches',
+    ) as mock_clear:
+        backend = ensure_ipfs_backend(prefer_local_fallback=True)
+
+    assert isinstance(backend, LocalCacheIPFSBackend)
+    mock_set_default.assert_called_once()
+    mock_clear.assert_called_once()

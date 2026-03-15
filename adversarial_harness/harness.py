@@ -114,6 +114,7 @@ class AdversarialHarness:
         *,
         evidence_db_path: str | None,
         legal_authority_db_path: str | None,
+        claim_support_db_path: str | None,
         session_id: str | None = None,
         session_dir: str | None = None,
     ):
@@ -127,6 +128,8 @@ class AdversarialHarness:
                 kwargs["evidence_db_path"] = evidence_db_path
             if accepts_kwargs or "legal_authority_db_path" in params:
                 kwargs["legal_authority_db_path"] = legal_authority_db_path
+            if accepts_kwargs or "claim_support_db_path" in params:
+                kwargs["claim_support_db_path"] = claim_support_db_path
             if session_id is not None and (accepts_kwargs or "session_id" in params):
                 kwargs["session_id"] = session_id
             if session_dir is not None and (accepts_kwargs or "session_dir" in params):
@@ -165,14 +168,19 @@ class AdversarialHarness:
         artifacts: Dict[str, Any] = {}
         evidence_db = os.path.join(session_dir, "evidence.duckdb")
         legal_db = os.path.join(session_dir, "legal_authorities.duckdb")
+        claim_support_db = os.path.join(session_dir, "claim_support.duckdb")
         artifacts["evidence_duckdb_expected"] = os.path.abspath(evidence_db)
         artifacts["legal_authorities_duckdb_expected"] = os.path.abspath(legal_db)
+        artifacts["claim_support_duckdb_expected"] = os.path.abspath(claim_support_db)
         artifacts["evidence_duckdb_exists"] = os.path.isfile(evidence_db)
         artifacts["legal_authorities_duckdb_exists"] = os.path.isfile(legal_db)
+        artifacts["claim_support_duckdb_exists"] = os.path.isfile(claim_support_db)
         if os.path.isfile(evidence_db):
             artifacts["evidence_duckdb"] = os.path.abspath(evidence_db)
         if os.path.isfile(legal_db):
             artifacts["legal_authorities_duckdb"] = os.path.abspath(legal_db)
+        if os.path.isfile(claim_support_db):
+            artifacts["claim_support_duckdb"] = os.path.abspath(claim_support_db)
         kg_path = os.path.join(session_dir, "knowledge_graph.json")
         dg_path = os.path.join(session_dir, "dependency_graph.json")
         if os.path.isfile(kg_path):
@@ -347,6 +355,7 @@ class AdversarialHarness:
             critic = Critic(critic_backend)
             evidence_db_path = os.path.join(session_dir, "evidence.duckdb") if session_dir else None
             legal_authority_db_path = os.path.join(session_dir, "legal_authorities.duckdb") if session_dir else None
+            claim_support_db_path = os.path.join(session_dir, "claim_support.duckdb") if session_dir else None
 
             # Proactively create valid DuckDB container files so they are always present
             # in the session folder (hooks will still initialize schemas when DuckDB is available).
@@ -358,6 +367,9 @@ class AdversarialHarness:
                 if legal_authority_db_path:
                     conn = duckdb.connect(legal_authority_db_path)
                     conn.close()
+                if claim_support_db_path:
+                    conn = duckdb.connect(claim_support_db_path)
+                    conn.close()
             except Exception:
                 pass
 
@@ -365,6 +377,7 @@ class AdversarialHarness:
             mediator = self._create_mediator_for_session(
                 evidence_db_path=evidence_db_path,
                 legal_authority_db_path=legal_authority_db_path,
+                claim_support_db_path=claim_support_db_path,
                 session_id=spec['session_id'],
                 session_dir=session_dir,
             )

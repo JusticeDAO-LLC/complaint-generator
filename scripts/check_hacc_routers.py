@@ -42,16 +42,19 @@ def main() -> int:
     )
     parser.add_argument("--config", default="config.llm_router.json")
     parser.add_argument("--backend-id", default=None, help="Backend id from config.BACKENDS")
+    parser.add_argument("--disable-local-ipfs-fallback", action="store_true")
     parser.add_argument("--probe-llm-router", action="store_true")
     parser.add_argument("--probe-embeddings-router", action="store_true")
     parser.add_argument("--output", default=None, help="Optional path to write the JSON report")
     args = parser.parse_args()
 
-    from integrations.ipfs_datasets import get_router_status_report
+    from integrations.ipfs_datasets import ensure_ipfs_backend, get_router_status_report
 
     config = _load_config(args.config)
     backend_kwargs = _get_llm_router_backend_config(config, args.backend_id)
     embeddings_config = config.get("EMBEDDINGS") if isinstance(config.get("EMBEDDINGS"), dict) else None
+    if not args.disable_local_ipfs_fallback:
+        ensure_ipfs_backend(prefer_local_fallback=True)
     report = get_router_status_report(
         llm_config=backend_kwargs,
         embeddings_config=embeddings_config,

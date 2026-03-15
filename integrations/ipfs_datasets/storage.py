@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import hashlib
 import shutil
 from pathlib import Path
 from typing import Any
@@ -16,13 +17,114 @@ get_ipfs_backend, _backend_error = import_attr_optional(
     "ipfs_datasets_py.ipfs_backend_router",
     "get_ipfs_backend",
 )
+set_default_ipfs_backend, _set_default_error = import_attr_optional(
+    "ipfs_datasets_py.ipfs_backend_router",
+    "set_default_ipfs_backend",
+)
+clear_ipfs_backend_router_caches, _clear_cache_error = import_attr_optional(
+    "ipfs_datasets_py.ipfs_backend_router",
+    "clear_ipfs_backend_router_caches",
+)
 
 IPFS_AVAILABLE = all(value is not None for value in (add_bytes, cat, pin))
-IPFS_ERROR = _add_error or _cat_error or _pin_error or _backend_error
+IPFS_ERROR = _add_error or _cat_error or _pin_error or _backend_error or _set_default_error or _clear_cache_error
 
 if get_ipfs_backend is None:
     def get_ipfs_backend() -> Any:
         return None
+
+if set_default_ipfs_backend is None:
+    def set_default_ipfs_backend(_backend: Any) -> None:
+        return None
+
+if clear_ipfs_backend_router_caches is None:
+    def clear_ipfs_backend_router_caches() -> None:
+        return None
+
+
+class LocalCacheIPFSBackend:
+    """Content-addressed local fallback for environments without a working IPFS daemon."""
+
+    def __init__(self, cache_dir: str | None = None) -> None:
+        root = cache_dir or os.environ.get("COMPLAINT_GENERATOR_IPFS_CACHE_DIR", "").strip()
+        self.cache_dir = Path(root or (Path.home() / ".cache" / "complaint-generator" / "ipfs_fallback"))
+        self.blobs_dir = self.cache_dir / "blobs"
+        self.pins_dir = self.cache_dir / "pins"
+        self.blobs_dir.mkdir(parents=True, exist_ok=True)
+        self.pins_dir.mkdir(parents=True, exist_ok=True)
+
+    def _blob_path(self, cid: str) -> Path:
+        return self.blobs_dir / cid
+
+    def _pin_path(self, cid: str) -> Path:
+        return self.pins_dir / cid
+
+    def _cid_for_bytes(self, data: bytes) -> str:
+        return f"bafy{hashlib.sha256(data).hexdigest()[:55]}"
+
+    def add_bytes(self, data: bytes, *, pin: bool = True) -> str:
+        cid = self._cid_for_bytes(data)
+        self._blob_path(cid).write_bytes(data)
+        if pin:
+            self.pin(cid)
+        return cid
+
+    def cat(self, cid: str) -> bytes:
+        return self._blob_path(cid).read_bytes()
+
+    def pin(self, cid: str) -> None:
+        if not self._blob_path(cid).exists():
+            raise FileNotFoundError(f"unknown cid: {cid}")
+        self._pin_path(cid).write_text("", encoding="utf-8")
+
+    def unpin(self, cid: str) -> None:
+        self._pin_path(cid).unlink(missing_ok=True)
+
+    def block_put(self, data: bytes, *, codec: str = "raw") -> str:
+        _ = codec
+        return self.add_bytes(data, pin=False)
+
+    def block_get(self, cid: str) -> bytes:
+        return self.cat(cid)
+
+    def add_path(self, path: str, *, recursive: bool = True, pin: bool = True, chunker: str | None = None) -> str:
+        _ = recursive, chunker
+        return self.add_bytes(Path(path).read_bytes(), pin=pin)
+
+    def get_to_path(self, cid: str, *, output_path: str) -> None:
+        Path(output_path).write_bytes(self.cat(cid))
+
+    def ls(self, cid: str) -> list[str]:
+        _ = cid
+        return []
+
+    def dag_export(self, cid: str) -> bytes:
+        return self.cat(cid)
+
+
+def ensure_ipfs_backend(*, prefer_local_fallback: bool = False, cache_dir: str | None = None) -> Any:
+    if not IPFS_AVAILABLE:
+        return None
+
+    try:
+        backend = get_ipfs_backend()
+    except Exception:
+        backend = None
+
+    backend_name = type(backend).__name__ if backend is not None else ""
+    if prefer_local_fallback and (
+        backend is None
+        or (
+            backend_name == "KuboCLIBackend"
+            and not shutil.which(str(getattr(backend, "_cmd", None) or "ipfs"))
+        )
+    ):
+        fallback_backend = LocalCacheIPFSBackend(cache_dir=cache_dir)
+        set_default_ipfs_backend(fallback_backend)
+        clear_ipfs_backend_router_caches()
+        return fallback_backend
+
+    return backend
 
 
 def _repo_local_ipfs_kit_root() -> Path:
@@ -76,6 +178,8 @@ def _ensure_local_kubo_environment() -> str:
 
 def _runtime_backend_probe() -> dict[str, Any]:
     discovered_cmd = _ensure_local_kubo_environment()
+    if os.environ.get("COMPLAINT_GENERATOR_ENABLE_LOCAL_IPFS_FALLBACK", "").strip().lower() in {"1", "true", "yes", "on"}:
+        ensure_ipfs_backend(prefer_local_fallback=True)
     if not IPFS_AVAILABLE:
         return {
             "backend": None,
@@ -290,6 +394,10 @@ __all__ = [
     "cat",
     "pin",
     "get_ipfs_backend",
+    "set_default_ipfs_backend",
+    "clear_ipfs_backend_router_caches",
+    "LocalCacheIPFSBackend",
+    "ensure_ipfs_backend",
     "store_bytes",
     "retrieve_bytes",
     "pin_cid",
