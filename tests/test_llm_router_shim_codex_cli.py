@@ -38,3 +38,36 @@ def test_codex_cli_timeout_raises_helpful_error():
     assert killpg_mock.call_args_list[-1].args == (43210, signal.SIGKILL)
     assert "timed out" in str(exc_info.value).lower()
     assert "12" in str(exc_info.value)
+
+
+def test_codex_cli_can_disable_model_retry():
+    from ipfs_datasets_py.llm_router import LLMRouterError, generate_text
+
+    class FakePopen:
+        def __init__(self, *args, **kwargs):
+            self.pid = 43210
+            self.returncode = None
+
+        def communicate(self, input=None, timeout=None):
+            raise subprocess.TimeoutExpired(cmd=["codex", "exec"], timeout=timeout)
+
+        def kill(self):
+            self.returncode = -9
+
+        def wait(self, timeout=None):
+            self.returncode = -9
+            return self.returncode
+
+    with patch("ipfs_datasets_py.llm_router.shutil.which", return_value="/usr/local/bin/codex"):
+        with patch("ipfs_datasets_py.llm_router.subprocess.Popen", return_value=FakePopen()) as popen_mock:
+            with patch("ipfs_datasets_py.llm_router.os.killpg"):
+                with pytest.raises(LLMRouterError):
+                    generate_text(
+                        prompt="Hello",
+                        provider="codex_cli",
+                        model_name="gpt-5.2-codex",
+                        timeout=12,
+                        disable_model_retry=True,
+                    )
+
+    assert popen_mock.call_count == 1

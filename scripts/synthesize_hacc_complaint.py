@@ -24,6 +24,8 @@ DEFAULT_PARTIES = {
     "defendant": "Housing Authority of Clackamas County (HACC).",
 }
 
+FILING_FORUM_CHOICES = ("court", "hud", "state_agency")
+
 
 def _load_json(path: Path) -> Dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
@@ -105,6 +107,108 @@ def _collect_timeline_points(conversation_history: List[Dict[str, Any]], limit: 
     return timeline_points
 
 
+def _summarize_timeline_fact(fact: str, max_events: int = 4) -> str:
+    cleaned = " ".join(str(fact or "").split()).strip()
+    if not cleaned:
+        return ""
+
+    marker_match = re.search(r"(?:Here(?:'s| is).{0,80}?timeline[^:]*:)\s*", cleaned, flags=re.IGNORECASE)
+    if marker_match:
+        cleaned = cleaned[marker_match.end():].strip()
+
+    events = re.findall(r"(?:^|\s)(\d+)\.\s*(.*?)(?=(?:\s+\d+\.\s)|$)", cleaned)
+    summarized_events: List[str] = []
+    if events:
+        for _, event_text in events[:max_events]:
+            event_text = re.sub(r"\*+", "", event_text).strip(" -:;,.")
+            if not event_text:
+                continue
+            sentences = re.split(r"(?<=[.!?])\s+", event_text)
+            primary = sentences[0].strip() if sentences else event_text
+            if primary:
+                summarized_events.append(primary.rstrip("."))
+    else:
+        sentences = re.split(r"(?<=[.!?])\s+", cleaned)
+        summarized_events = [sentence.strip().rstrip(".") for sentence in sentences[:max_events] if sentence.strip()]
+
+    if not summarized_events:
+        return ""
+
+    compact = "; ".join(summarized_events[:max_events])
+    compact = re.sub(r"\s+", " ", compact).strip(" ;,")
+    return compact
+
+
+def _dedupe_timeline_summaries(items: List[str], limit: int = 2) -> List[str]:
+    deduped: List[str] = []
+    seen = set()
+    for item in items:
+        normalized = re.sub(r"\([^)]*\)", "", item)
+        normalized = re.sub(r"[^a-z0-9]+", " ", normalized.lower()).strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(item)
+        if len(deduped) >= limit:
+            break
+    return deduped
+
+
+def _summarize_intake_fact(fact: str, max_sentences: int = 2) -> str:
+    cleaned = " ".join(str(fact or "").split()).strip()
+    if not cleaned:
+        return ""
+
+    if any(marker in cleaned.lower() for marker in ("timeline", "late 20", "shortly after", "few weeks", "after that")):
+        return _summarize_timeline_fact(cleaned)
+
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", cleaned) if part.strip()]
+    if not sentences:
+        return ""
+
+    selected: List[str] = []
+    priority_patterns = (
+        "retaliat",
+        "written notice",
+        "hearing decision",
+        "informal review",
+        "informal hearing",
+        "appeal rights",
+        "due process",
+        "denying or terminating",
+        "adverse action",
+        "stress",
+        "destabil",
+    )
+    for sentence in sentences:
+        lowered = sentence.lower()
+        if any(pattern in lowered for pattern in priority_patterns):
+            selected.append(sentence.rstrip("."))
+        if len(selected) >= max_sentences:
+            break
+
+    if not selected:
+        selected = [sentence.rstrip(".") for sentence in sentences[:max_sentences]]
+
+    compact = "; ".join(selected[:max_sentences]).strip(" ;,")
+    return re.sub(r"\s+", " ", compact)
+
+
+def _dedupe_fact_summaries(items: List[str], limit: int = 3) -> List[str]:
+    deduped: List[str] = []
+    seen = set()
+    for item in items:
+        normalized = re.sub(r"\([^)]*\)", "", item)
+        normalized = re.sub(r"[^a-z0-9]+", " ", normalized.lower()).strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(item)
+        if len(deduped) >= limit:
+            break
+    return deduped
+
+
 def _dedupe_sentences(items: List[str], limit: int) -> List[str]:
     deduped: List[str] = []
     seen = set()
@@ -155,8 +259,11 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
     key_facts = dict(seed.get("key_facts") or {})
     allegations: List[str] = []
     description = str(seed.get("description") or key_facts.get("incident_summary") or "").strip()
+    protected_bases = [str(item) for item in list(key_facts.get("protected_bases") or []) if str(item)]
     if description:
         allegations.append(f"The complaint centers on {description.rstrip('.')}")
+    if protected_bases:
+        allegations.append(f"The intake and evidence record suggest a dispute implicating protected basis concerns related to {', '.join(protected_bases)}")
 
     for section in [str(item) for item in list(key_facts.get("anchor_sections") or []) if str(item)]:
         if section == "appeal_rights":
@@ -170,8 +277,14 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
         elif section == "selection_criteria":
             allegations.append("The complainant contends that HACC relied on opaque or inconsistently applied criteria")
 
+    timeline_summaries: List[str] = []
     for fact in _collect_timeline_points(list(session.get("conversation_history") or []), limit=3):
-        allegations.append(f"Timeline detail from intake: {fact}")
+        summarized_fact = _summarize_timeline_fact(fact)
+        if summarized_fact:
+            timeline_summaries.append(summarized_fact)
+
+    for summarized_fact in _dedupe_timeline_summaries(timeline_summaries, limit=1):
+        allegations.append(f"Timeline detail from intake: {summarized_fact}")
 
     return _dedupe_sentences(allegations, limit=limit)
 
@@ -179,9 +292,19 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
 def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], limit: int = 6) -> List[str]:
     key_facts = dict(seed.get("key_facts") or {})
     sections = [str(item) for item in list(key_facts.get("anchor_sections") or []) if str(item)]
+    theory_labels = [str(item) for item in list(key_facts.get("theory_labels") or []) if str(item)]
+    protected_bases = [str(item) for item in list(key_facts.get("protected_bases") or []) if str(item)]
     evidence_summary = _clean_policy_text(key_facts.get("evidence_summary") or seed.get("summary") or "")
     claims: List[str] = []
 
+    if "proxy_discrimination" in theory_labels:
+        claims.append("The current evidence suggests a proxy or criteria-based discrimination theory requiring closer review of how HACC framed and applied its policies")
+    if "disparate_treatment" in theory_labels:
+        claims.append("The current evidence suggests potentially unequal treatment in the way HACC applied policy or process requirements")
+    if "reasonable_accommodation" in theory_labels or "disability_discrimination" in theory_labels:
+        claims.append("The current evidence suggests a disability-related accommodation or fair-housing theory connected to the challenged process")
+    if protected_bases:
+        claims.append(f"The available record suggests the dispute may implicate protected basis concerns related to {', '.join(protected_bases)}")
     if "adverse_action" in sections:
         claims.append("HACC appears to have pursued or upheld a denial or termination of assistance without a clearly documented and transparent adverse-action process")
     if "appeal_rights" in sections or "grievance_hearing" in sections:
@@ -217,42 +340,131 @@ def _policy_basis(seed: Dict[str, Any], limit: int = 4) -> List[str]:
     return basis
 
 
-def _draft_caption(seed: Dict[str, Any]) -> Dict[str, str]:
+def _legal_theory_summary(seed: Dict[str, Any]) -> Dict[str, List[str]]:
+    key_facts = dict(seed.get("key_facts") or {})
+    return {
+        "theory_labels": [str(item) for item in list(key_facts.get("theory_labels") or []) if str(item)],
+        "protected_bases": [str(item) for item in list(key_facts.get("protected_bases") or []) if str(item)],
+    }
+
+
+def _draft_caption(seed: Dict[str, Any], filing_forum: str) -> Dict[str, str]:
     complaint_type = str(seed.get("type") or "civil_action").replace("_", " ").title()
     title = str(seed.get("description") or "Evidence-backed complaint draft").strip().rstrip(".")
+    if filing_forum == "hud":
+        return {
+            "court": "U.S. Department of Housing and Urban Development, Office of Fair Housing and Equal Opportunity",
+            "case_title": "Administrative Fair Housing Complaint",
+            "document_title": f"Draft HUD Housing Discrimination Complaint",
+            "caption_note": title or "Draft administrative housing complaint synthesized from HACC evidence",
+        }
+    if filing_forum == "state_agency":
+        return {
+            "court": "State civil rights or fair housing enforcement agency",
+            "case_title": "Administrative Civil Rights Complaint",
+            "document_title": f"Draft State Agency Complaint for {complaint_type}",
+            "caption_note": title or "Draft state-agency complaint synthesized from HACC evidence",
+        }
     return {
-        "court": "Forum to be determined",
+        "court": "Court to be determined",
         "case_title": f"Complainant v. Housing Authority of Clackamas County",
         "document_title": f"Draft Complaint for {complaint_type}",
         "caption_note": title or "Draft complaint synthesized from HACC evidence",
     }
 
 
-def _draft_parties() -> Dict[str, str]:
-    return dict(DEFAULT_PARTIES)
+def _draft_parties(filing_forum: str) -> Dict[str, str]:
+    parties = dict(DEFAULT_PARTIES)
+    if filing_forum in {"hud", "state_agency"}:
+        parties["plaintiff"] = "Aggrieved person / complainant (name to be inserted)."
+        parties["defendant"] = "Housing Authority of Clackamas County (HACC), respondent."
+    return parties
 
 
-def _jurisdiction_and_venue(seed: Dict[str, Any]) -> List[str]:
+def _section_labels_for_forum(filing_forum: str) -> Dict[str, str]:
+    if filing_forum == "hud":
+        return {
+            "parties_plaintiff": "Complainant",
+            "parties_defendant": "Respondent",
+            "jurisdiction": "Administrative Jurisdiction",
+            "claims_theory": "Administrative Theory",
+            "policy_basis": "Administrative Basis",
+            "causes": "Administrative Claims",
+            "proposed_allegations": "Complainant Narrative",
+            "relief": "Requested Administrative Relief",
+        }
+    if filing_forum == "state_agency":
+        return {
+            "parties_plaintiff": "Complainant",
+            "parties_defendant": "Respondent",
+            "jurisdiction": "Agency Jurisdiction",
+            "claims_theory": "Agency Theory",
+            "policy_basis": "Administrative Basis",
+            "causes": "Administrative Claims",
+            "proposed_allegations": "Complainant Narrative",
+            "relief": "Requested Administrative Relief",
+        }
+    return {
+        "parties_plaintiff": "Plaintiff",
+        "parties_defendant": "Defendant",
+        "jurisdiction": "Jurisdiction And Venue",
+        "claims_theory": "Claims Theory",
+        "policy_basis": "Policy Basis",
+        "causes": "Causes Of Action",
+        "proposed_allegations": "Proposed Allegations",
+        "relief": "Requested Relief",
+    }
+
+
+def _jurisdiction_and_venue(seed: Dict[str, Any], filing_forum: str) -> List[str]:
     description = str(seed.get("description") or "").lower()
-    items = [
-        "Jurisdiction and venue should be tailored to the final filing forum and the specific legal claims asserted.",
-        "The current draft is grounded in HACC housing-policy evidence and is intended as a complaint-development scaffold rather than a filed pleading.",
-    ]
+    if filing_forum == "hud":
+        items = [
+            "This draft is structured as an administrative housing-discrimination intake for HUD and should be tailored to the final statutory basis asserted.",
+            "HUD jurisdiction and timeliness should be confirmed against the final incident dates, protected-basis theory, and requested relief.",
+        ]
+    elif filing_forum == "state_agency":
+        items = [
+            "This draft is structured as an administrative civil rights or fair housing complaint for a state enforcement agency.",
+            "State filing deadlines, exhaustion rules, and venue requirements should be tailored to the specific agency and legal theory selected.",
+        ]
+    else:
+        items = [
+            "Jurisdiction and venue should be tailored to the final filing forum and the specific legal claims asserted.",
+            "The current draft is grounded in HACC housing-policy evidence and is intended as a complaint-development scaffold rather than a filed pleading.",
+        ]
     if "housing" in description:
         items.append("The dispute appears to arise from housing-program administration, adverse action, and procedural protections connected to HACC operations.")
     return items
 
 
-def _causes_of_action(seed: Dict[str, Any], session: Dict[str, Any], limit: int = 5) -> List[Dict[str, Any]]:
+def _causes_of_action(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: str, limit: int = 5) -> List[Dict[str, Any]]:
     key_facts = dict(seed.get("key_facts") or {})
     sections = [str(item) for item in list(key_facts.get("anchor_sections") or []) if str(item)]
+    theory_labels = [str(item) for item in list(key_facts.get("theory_labels") or []) if str(item)]
+    protected_bases = [str(item) for item in list(key_facts.get("protected_bases") or []) if str(item)]
     claims_theory = _claims_theory(seed, session, limit=limit)
     causes: List[Dict[str, Any]] = []
+
+    notice_title = "Failure to Provide Required Notice and Process"
+    retaliation_title = "Retaliation for Protected Complaint Activity"
+    accommodation_title = "Failure to Fairly Address Accommodation Rights"
+    fallback_title = "Policy and Process Violations Requiring Further Legal Framing"
+    if filing_forum == "hud":
+        notice_title = "Administrative Fair Housing Process Failure"
+        retaliation_title = "Retaliation for Protected Fair Housing Activity"
+        accommodation_title = "Failure to Reasonably Accommodate Disability-Related Rights"
+        fallback_title = "Administrative Housing Rights Violations Requiring Further Legal Framing"
+    elif filing_forum == "state_agency":
+        notice_title = "State Civil Rights Process Failure"
+        retaliation_title = "Retaliation for Protected Civil Rights Activity"
+        accommodation_title = "Failure to Reasonably Accommodate Disability-Related Rights"
+        fallback_title = "Administrative Civil Rights Violations Requiring Further Legal Framing"
 
     if "adverse_action" in sections or "appeal_rights" in sections or "grievance_hearing" in sections:
         causes.append(
             {
-                "title": "Failure to Provide Required Notice and Process",
+                "title": notice_title,
                 "theory": "The draft facts suggest denial or termination activity without the clear notice, review, or hearing process described by HACC policy.",
                 "support": claims_theory[:2],
             }
@@ -260,7 +472,7 @@ def _causes_of_action(seed: Dict[str, Any], session: Dict[str, Any], limit: int 
     if "retaliat" in str(seed.get("description") or "").lower() or any("retaliation" in item.lower() for item in claims_theory):
         causes.append(
             {
-                "title": "Retaliation for Protected Complaint Activity",
+                "title": retaliation_title,
                 "theory": "The complainant narrative suggests adverse treatment after raising concerns or invoking grievance protections.",
                 "support": [item for item in claims_theory if "retaliation" in item.lower()] or claims_theory[:1],
             }
@@ -268,15 +480,24 @@ def _causes_of_action(seed: Dict[str, Any], session: Dict[str, Any], limit: int 
     if "reasonable_accommodation" in sections:
         causes.append(
             {
-                "title": "Failure to Fairly Address Accommodation Rights",
+                "title": accommodation_title,
                 "theory": "The available record suggests accommodation-related issues may have intersected with adverse-action or review procedures.",
                 "support": [item for item in claims_theory if "accommodation" in item.lower()] or claims_theory[:1],
+            }
+        )
+    if "disparate_treatment" in theory_labels or "proxy_discrimination" in theory_labels or protected_bases:
+        basis_text = f" involving {', '.join(protected_bases)}" if protected_bases else ""
+        causes.append(
+            {
+                "title": "Protected-Basis Discrimination Theory" if filing_forum == "court" else "Protected-Basis Administrative Theory",
+                "theory": f"The current evidence suggests HACC may have applied housing policy or process in a manner that warrants review for protected-basis discrimination{basis_text}.",
+                "support": [item for item in claims_theory if "protected basis" in item.lower() or "unequal treatment" in item.lower() or "proxy" in item.lower()] or claims_theory[:2],
             }
         )
     if not causes:
         causes.append(
             {
-                "title": "Policy and Process Violations Requiring Further Legal Framing",
+                "title": fallback_title,
                 "theory": "The current evidence supports further complaint development, but the final causes of action should be tailored to the filing forum and legal theory.",
                 "support": claims_theory[:2],
             }
@@ -284,19 +505,50 @@ def _causes_of_action(seed: Dict[str, Any], session: Dict[str, Any], limit: int 
     return causes[:limit]
 
 
-def _proposed_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: int = 8) -> List[str]:
+def _requested_relief_for_forum(filing_forum: str) -> List[str]:
+    if filing_forum == "hud":
+        return [
+            "Administrative investigation of the challenged housing practices and adverse-action process.",
+            "Corrective action requiring clear notice, fair review, and non-retaliation safeguards.",
+            "Appropriate administrative remedies, damages, and other relief authorized by fair housing law.",
+            "Any additional relief HUD is authorized to obtain or recommend.",
+        ]
+    if filing_forum == "state_agency":
+        return [
+            "Agency investigation of the challenged housing or civil rights practices.",
+            "Corrective action requiring clear notice, fair review, and non-retaliation safeguards.",
+            "Available administrative damages, penalties, training, or policy changes authorized by state law.",
+            "Any additional relief the agency is authorized to order or recommend.",
+        ]
+    return list(DEFAULT_RELIEF)
+
+
+def _proposed_allegations(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: str, limit: int = 8) -> List[str]:
     allegations: List[str] = []
     key_facts = dict(seed.get("key_facts") or {})
     incident_summary = str(key_facts.get("incident_summary") or seed.get("description") or "").strip()
     evidence_summary = _clean_policy_text(key_facts.get("evidence_summary") or seed.get("summary") or "")
+    complainant_label = "Plaintiff"
+    evidence_label = "The available HACC materials indicate"
+    if filing_forum == "hud":
+        complainant_label = "Complainant"
+        evidence_label = "The available HACC materials suggest"
+    elif filing_forum == "state_agency":
+        complainant_label = "Complainant"
+        evidence_label = "The available HACC materials indicate"
     if incident_summary:
-        allegations.append(f"Plaintiff challenges conduct arising from {incident_summary}.")
+        allegations.append(f"{complainant_label} alleges conduct arising from {incident_summary}.")
     if evidence_summary:
-        allegations.append(f"The available HACC materials indicate that {evidence_summary}")
+        allegations.append(f"{evidence_label} that {evidence_summary}")
     for section in list(key_facts.get("anchor_sections") or []):
         allegations.append(f"The intake record suggests a dispute involving {_humanize_section(section)}.")
-    for fact in _conversation_facts(list(session.get("conversation_history") or []), limit=3):
-        allegations.append(f"During intake, the complainant stated that {fact}")
+    summarized_facts: List[str] = []
+    for fact in _conversation_facts(list(session.get("conversation_history") or []), limit=5):
+        summary = _summarize_intake_fact(fact)
+        if summary:
+            summarized_facts.append(summary)
+    for summary in _dedupe_fact_summaries(summarized_facts, limit=3):
+        allegations.append(f"During intake, the complainant stated that {summary}")
 
     return _dedupe_sentences(allegations, limit=limit)
 
@@ -304,6 +556,7 @@ def _proposed_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: 
 def _render_markdown(package: Dict[str, Any]) -> str:
     caption = dict(package.get("caption") or {})
     parties = dict(package.get("parties") or {})
+    section_labels = _section_labels_for_forum(str(package.get("filing_forum") or "court"))
     lines = [
         "# Draft Complaint Synthesis",
         "",
@@ -325,13 +578,23 @@ def _render_markdown(package: Dict[str, Any]) -> str:
         "",
         "## Parties",
         "",
-        f"- Plaintiff: {parties.get('plaintiff', '')}",
-        f"- Defendant: {parties.get('defendant', '')}",
+        f"- {section_labels['parties_plaintiff']}: {parties.get('plaintiff', '')}",
+        f"- {section_labels['parties_defendant']}: {parties.get('defendant', '')}",
         "",
-        "## Jurisdiction And Venue",
+        f"## {section_labels['jurisdiction']}",
         "",
     ]
     lines.extend(f"- {item}" for item in package["jurisdiction_and_venue"])
+    lines.extend([
+        "",
+        "## Legal Theory Summary",
+        "",
+    ])
+    theory_summary = dict(package.get("legal_theory_summary") or {})
+    theory_labels = list(theory_summary.get("theory_labels") or [])
+    protected_bases = list(theory_summary.get("protected_bases") or [])
+    lines.extend([f"- Theory Labels: {', '.join(theory_labels) if theory_labels else 'None identified'}"])
+    lines.extend([f"- Protected Bases: {', '.join(protected_bases) if protected_bases else 'None identified'}"])
     lines.extend([
         "",
         "## Factual Allegations",
@@ -340,19 +603,19 @@ def _render_markdown(package: Dict[str, Any]) -> str:
     lines.extend(f"- {item}" for item in package["factual_allegations"])
     lines.extend([
         "",
-        "## Claims Theory",
+        f"## {section_labels['claims_theory']}",
         "",
     ])
     lines.extend(f"- {item}" for item in package["claims_theory"])
     lines.extend([
         "",
-        "## Policy Basis",
+        f"## {section_labels['policy_basis']}",
         "",
     ])
     lines.extend(f"- {item}" for item in package["policy_basis"])
     lines.extend([
         "",
-        "## Causes Of Action",
+        f"## {section_labels['causes']}",
         "",
     ])
     for cause in package["causes_of_action"]:
@@ -361,7 +624,7 @@ def _render_markdown(package: Dict[str, Any]) -> str:
             lines.append(f"  - Support: {support}")
     lines.extend([
         "",
-        "## Proposed Allegations",
+        f"## {section_labels['proposed_allegations']}",
         "",
     ])
     lines.extend(f"- {item}" for item in package["proposed_allegations"])
@@ -385,7 +648,7 @@ def _render_markdown(package: Dict[str, Any]) -> str:
     lines.extend(f"- {item}" for item in package["supporting_evidence"])
     lines.extend([
         "",
-        "## Requested Relief",
+        f"## {section_labels['relief']}",
         "",
     ])
     lines.extend(f"- {item}" for item in package["requested_relief"])
@@ -407,6 +670,12 @@ def main() -> int:
         help="Path to adversarial_results.json; required if --matrix-summary is not provided.",
     )
     parser.add_argument("--preset", default=None, help="Optional preset override when selecting the best session.")
+    parser.add_argument(
+        "--filing-forum",
+        default="court",
+        choices=FILING_FORUM_CHOICES,
+        help="Target output style for the synthesized complaint.",
+    )
     parser.add_argument(
         "--output-dir",
         default=None,
@@ -443,21 +712,23 @@ def main() -> int:
     package = {
         "generated_at": datetime.now(UTC).isoformat(),
         "preset": args.preset or ((seed.get("_meta", {}) or {}).get("hacc_preset")) or "unknown",
+        "filing_forum": args.filing_forum,
         "session_id": best_session.get("session_id"),
         "critic_score": float((best_session.get("critic_score") or {}).get("overall_score", 0.0) or 0.0),
         "summary": cleaned_summary,
-        "caption": _draft_caption(seed),
-        "parties": _draft_parties(),
-        "jurisdiction_and_venue": _jurisdiction_and_venue(seed),
+        "caption": _draft_caption(seed, args.filing_forum),
+        "parties": _draft_parties(args.filing_forum),
+        "jurisdiction_and_venue": _jurisdiction_and_venue(seed, args.filing_forum),
+        "legal_theory_summary": _legal_theory_summary(seed),
         "anchor_sections": anchor_sections,
         "factual_allegations": _factual_allegations(seed, best_session),
         "claims_theory": _claims_theory(seed, best_session),
         "policy_basis": _policy_basis(seed),
-        "causes_of_action": _causes_of_action(seed, best_session),
+        "causes_of_action": _causes_of_action(seed, best_session, args.filing_forum),
         "anchor_passages": _anchor_passage_lines(seed),
         "supporting_evidence": _evidence_lines(seed),
-        "proposed_allegations": _proposed_allegations(seed, best_session),
-        "requested_relief": list(DEFAULT_RELIEF),
+        "proposed_allegations": _proposed_allegations(seed, best_session, args.filing_forum),
+        "requested_relief": _requested_relief_for_forum(args.filing_forum),
         "source_artifacts": {
             "results_json": str(results_path),
             "matrix_summary": str(Path(args.matrix_summary).resolve()) if args.matrix_summary else None,
