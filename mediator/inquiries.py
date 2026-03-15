@@ -1,53 +1,83 @@
+import re
+
 from . import strings
+
+
+_QUESTION_RE = re.compile(r"[^?\n]+?\?")
+_WS_RE = re.compile(r"\s+")
 
 
 class Inquiries:
 	def __init__(self, mediator):
-		# self.nlp = spacy.load('en_core_web_sm')
 		self.m = mediator
 
 	def get_next(self):
-		return next((i for i in self.m.state.inquiries if not i['answer']), None)
+		inquiries = getattr(self.m.state, "inquiries", None)
+		if not inquiries:
+			return None
+		for inquiry in inquiries:
+			if not inquiry.get("answer"):
+				return inquiry
+		return None
 
 	def answer(self, text):
-		self.get_next()['answer'] = text
-
+		current = self.get_next()
+		if current is None:
+			return
+		current["answer"] = text
 
 	def generate(self):
+		template = strings.model_prompts.get("generate_questions")
+		if not template:
+			return
+
 		block = self.m.query_backend(
-			model_prompts['generate_questions']
-				.format(complaint=self.m.state.complaint)
+			template.format(complaint=self.m.state.complaint)
 		)
+		if not block:
+			return
 
-		# doc = self.nlp(block)
+		for question in self._extract_questions(block):
+			self.register(question)
 
-		# for sent in doc.sents:
-		# 	sent = [word for word in sent if not word.is_space]
+	def register(self, question):
+		if not question:
+			return
+		inquiries = self.m.state.inquiries
+		for other in inquiries:
+			if self.same_question(question, other.get("question", "")):
+				other.setdefault("alternative_questions", []).append(question)
+				return
+		inquiries.append({
+			"question": question,
+			"alternative_questions": [],
+			"answer": None,
+		})
 
-		# 	if sent[-1].text != '?':
-		# 		continue
+	def _extract_questions(self, block):
+		questions = []
+		for match in _QUESTION_RE.findall(block):
+			question = _WS_RE.sub(" ", match).strip()
+			if question:
+				questions.append(question)
+		return questions
 
-		# 	self.register(' '.join([word.text for word in sent]))
-
-   
-	# def register(self, question):
-	# 	is_unique = True
-
-	# 	for other in self.m.state.inquiries:
-	# 		if self.same_question(question, other['question']):
-	# 			other['alternative_questions'].append(question)
-	# 			is_unique = False
-
-	# 	if is_unique:
-	# 		self.m.state.inquiries.append({
-	# 			'question': question,
-	# 			'alternative_questions': [],
-	# 			'answer': None
-	# 		})
-
-
-	def is_complete():
-		return False
+	def is_complete(self):
+		inquiries = getattr(self.m.state, "inquiries", None)
+		if not inquiries:
+			return True
+		for inquiry in inquiries:
+			if not inquiry.get("answer"):
+				return False
+		return True
 
 	def same_question(self, a, b):
-		return False
+		if not a or not b:
+			return False
+		return self._normalize_question(a) == self._normalize_question(b)
+
+	def _normalize_question(self, text):
+		normalized = text.strip().rstrip("?").lower()
+		normalized = _WS_RE.sub(" ", normalized)
+		normalized = re.sub(r"[^a-z0-9 ]+", "", normalized)
+		return normalized.strip()
