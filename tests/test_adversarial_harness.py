@@ -567,6 +567,7 @@ class TestSeedComplaintLibrary:
             anchor_terms=['impartial person', 'reasonable accommodation'],
             theory_labels=['reasonable_accommodation', 'disability_discrimination'],
             protected_bases=['disability'],
+            authority_hints=['Section 504 of the Rehabilitation Act', 'Americans with Disabilities Act'],
         )
 
         assert seed is not None
@@ -576,6 +577,7 @@ class TestSeedComplaintLibrary:
         assert 'reasonable_accommodation' in seed['key_facts']['anchor_sections']
         assert seed['key_facts']['theory_labels'] == ['reasonable_accommodation', 'disability_discrimination']
         assert seed['key_facts']['protected_bases'] == ['disability']
+        assert seed['key_facts']['authority_hints'] == ['Section 504 of the Rehabilitation Act', 'Americans with Disabilities Act']
 
     def test_build_hacc_evidence_seed_prefers_more_specific_anchor_passages(self):
         payload = {

@@ -126,5 +126,69 @@
         }
       ]
     }
+  },
+  {
+    "patch_id": "8c34d52106da17f3",
+    "agent_id": "adversarial-harness-optimizer",
+    "task_id": "adversarial_autopatch_20260315_090355",
+    "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py. Priorities from the latest adversarial batch: Improve empathy: current avg 0.30; Improve information extraction: current avg 0.40; Improve question quality: current avg 0.45. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability.",
+    "diff_content": "--- a/complaint_phases/phase_manager.py\n+++ b/complaint_phases/phase_manager.py\n@@ -541,33 +541,27 @@\n     def _get_intake_action(self) -> Dict[str, Any]:\n         \"\"\"Get next action for intake phase.\"\"\"\n         data = self.phase_data[ComplaintPhase.INTAKE]\n+\n         readiness = self.get_intake_readiness()\n-        \n+\n         if 'knowledge_graph' not in data:\n             return {\n                 'action': 'build_knowledge_graph',\n                 'intake_readiness_score': readiness['score'],\n                 'intake_blockers': readiness['blockers'],\n             }\n-        \n+\n         if 'dependency_graph' not in data:\n             return {\n                 'action': 'build_dependency_graph',\n                 'intake_readiness_score': readiness['score'],\n                 'intake_blockers': readiness['blockers'],\n             }\n-        \n+\n         gaps = data.get('current_gaps', [])\n-        if gaps and len(gaps) > 0:\n-            return {\n-                'action': 'address_gaps',\n-                'gaps': gaps,\n-                'intake_readiness_score': readiness['score'],\n-                'intake_blockers': readiness['blockers'],\n-            }\n-\n+        gap_threshold = _INTAKE_GAPS_THRESHOLD\n         remaining_gaps = data.get('remaining_gaps', float('inf'))\n-        if remaining_gaps > _INTAKE_GAPS_THRESHOLD:\n+        if (gaps and len(gaps) > 0) or remaining_gaps > gap_threshold:\n             return {\n                 'action': 'address_gaps',\n                 'gaps': gaps,\n@@ -591,14 +585,21 @@\n                 'intake_readiness_score': readiness['score'],\n                 'intake_blockers': readiness['blockers'],\n             }\n-        \n+\n         if not data.get('denoising_converged', False) and self.iteration_count < _DENOISING_MAX_ITERATIONS:\n             return {\n                 'action': 'continue_denoising',\n                 'intake_readiness_score': readiness['score'],\n                 'intake_blockers': readiness['blockers'],\n             }\n-        \n+\n+        if (data.get('denoising_converged', False) and remaining_gaps <= gap_threshold) or self.iteration_count >= _DENOISING_MAX_ITERATIONS:\n+            return {\n+                'action': 'complete_intake',\n+                'intake_readiness_score': readiness['score'],\n+                'intake_blockers': readiness['blockers'],\n+            }\n+\n         return {\n             'action': 'complete_intake',\n             'intake_readiness_score': readiness['score'],\n",
+    "target_files": [
+      "complaint_phases/phase_manager.py"
+    ],
+    "created_at": "2026-03-15T09:04:40.415503",
+    "parent_patches": [],
+    "ipfs_cid": null,
+    "worktree_path": "",
+    "validated": false,
+    "applied": false,
+    "metadata": {
+      "patch_mode": "direct_diff",
+      "repo_root": "/home/barberb/HACC/complaint-generator",
+      "generation_diagnostics": [
+        {
+          "file": "/home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py",
+          "status": "optimized",
+          "mode": "symbol_level",
+          "target_symbols": [
+            "_get_intake_action"
+          ],
+          "response_length": 33988,
+          "changed": true
+        }
+      ]
+    }
+  },
+  {
+    "patch_id": "be80bac00cb8b667",
+    "agent_id": "adversarial-harness-optimizer",
+    "task_id": "adversarial_autopatch_20260315_091443",
+    "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py. Priorities from the latest adversarial batch: Improve empathy: current avg 0.20; Improve information extraction: current avg 0.38; Improve question quality: current avg 0.46. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability.",
+    "diff_content": "--- a/complaint_phases/phase_manager.py\n+++ b/complaint_phases/phase_manager.py\n@@ -541,33 +541,27 @@\n     def _get_intake_action(self) -> Dict[str, Any]:\n         \"\"\"Get next action for intake phase.\"\"\"\n         data = self.phase_data[ComplaintPhase.INTAKE]\n+\n         readiness = self.get_intake_readiness()\n-        \n+\n         if 'knowledge_graph' not in data:\n             return {\n                 'action': 'build_knowledge_graph',\n                 'intake_readiness_score': readiness['score'],\n                 'intake_blockers': readiness['blockers'],\n             }\n-        \n+\n         if 'dependency_graph' not in data:\n             return {\n                 'action': 'build_dependency_graph',\n                 'intake_readiness_score': readiness['score'],\n                 'intake_blockers': readiness['blockers'],\n             }\n-        \n+\n         gaps = data.get('current_gaps', [])\n-        if gaps and len(gaps) > 0:\n-            return {\n-                'action': 'address_gaps',\n-                'gaps': gaps,\n-                'intake_readiness_score': readiness['score'],\n-                'intake_blockers': readiness['blockers'],\n-            }\n-\n+        gap_threshold = _INTAKE_GAPS_THRESHOLD\n         remaining_gaps = data.get('remaining_gaps', float('inf'))\n-        if remaining_gaps > _INTAKE_GAPS_THRESHOLD:\n+        if (gaps and len(gaps) > 0) or remaining_gaps > gap_threshold:\n             return {\n                 'action': 'address_gaps',\n                 'gaps': gaps,\n@@ -591,14 +585,21 @@\n                 'intake_readiness_score': readiness['score'],\n                 'intake_blockers': readiness['blockers'],\n             }\n-        \n+\n         if not data.get('denoising_converged', False) and self.iteration_count < _DENOISING_MAX_ITERATIONS:\n             return {\n                 'action': 'continue_denoising',\n                 'intake_readiness_score': readiness['score'],\n                 'intake_blockers': readiness['blockers'],\n             }\n-        \n+\n+        if (data.get('denoising_converged', False) and remaining_gaps <= gap_threshold) or self.iteration_count >= _DENOISING_MAX_ITERATIONS:\n+            return {\n+                'action': 'complete_intake',\n+                'intake_readiness_score': readiness['score'],\n+                'intake_blockers': readiness['blockers'],\n+            }\n+\n         return {\n             'action': 'complete_intake',\n             'intake_readiness_score': readiness['score'],\n",
+    "target_files": [
+      "complaint_phases/phase_manager.py"
+    ],
+    "created_at": "2026-03-15T09:15:27.497818",
+    "parent_patches": [],
+    "ipfs_cid": null,
+    "worktree_path": "",
+    "validated": false,
+    "applied": false,
+    "metadata": {
+      "patch_mode": "direct_diff",
+      "repo_root": "/home/barberb/HACC/complaint-generator",
+      "generation_diagnostics": [
+        {
+          "file": "/home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py",
+          "status": "optimized",
+          "mode": "symbol_level",
+          "target_symbols": [
+            "_get_intake_action"
+          ],
+          "response_length": 33988,
+          "changed": true
+        }
+      ]
+    }
   }
 ]

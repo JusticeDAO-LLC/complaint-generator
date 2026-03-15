@@ -23,6 +23,7 @@ def test_claims_theory_and_markdown_include_structured_sections():
                 "HACC Policy Written notice and an informal review or hearing are required."
             ),
             "anchor_sections": ["appeal_rights", "adverse_action"],
+            "authority_hints": ["Fair Housing Act, 42 U.S.C. 3604"],
             "anchor_passages": [
                 {
                     "title": "ADMINISTRATIVE PLAN",
@@ -125,13 +126,15 @@ def test_legal_theory_summary_uses_seed_theory_labels_and_protected_bases():
         "key_facts": {
             "theory_labels": ["reasonable_accommodation", "disability_discrimination"],
             "protected_bases": ["disability"],
+            "authority_hints": ["Section 504 of the Rehabilitation Act", "Fair Housing Act reasonable accommodation requirements"],
         }
     }
 
-    summary = MODULE._legal_theory_summary(seed)
+    summary = MODULE._legal_theory_summary(seed, "hud")
 
     assert summary["theory_labels"] == ["reasonable_accommodation", "disability_discrimination"]
     assert summary["protected_bases"] == ["disability"]
+    assert summary["authority_hints"][0] == "Fair Housing Act reasonable accommodation requirements"
 
 
 def test_claims_and_causes_include_protected_basis_theory():
@@ -142,15 +145,40 @@ def test_claims_and_causes_include_protected_basis_theory():
             "anchor_sections": ["reasonable_accommodation", "adverse_action"],
             "theory_labels": ["reasonable_accommodation", "disability_discrimination"],
             "protected_bases": ["disability"],
+            "authority_hints": ["Section 504 of the Rehabilitation Act", "Americans with Disabilities Act"],
         },
     }
     session = {"conversation_history": []}
 
     claims = MODULE._claims_theory(seed, session)
     causes = MODULE._causes_of_action(seed, session, "hud")
+    theory_summary = MODULE._legal_theory_summary(seed, "hud")
 
     assert any("protected basis concerns related to disability" in item.lower() for item in claims)
+    assert any("section 504 of the rehabilitation act" in item.lower() for item in claims)
     assert any("Protected-Basis Administrative Theory" == cause["title"] for cause in causes)
+    assert any("Section 504 of the Rehabilitation Act" in cause["theory"] for cause in causes)
+    assert theory_summary["authority_hints"] == ["Section 504 of the Rehabilitation Act", "Americans with Disabilities Act"]
+
+
+def test_authority_hints_are_prioritized_by_forum():
+    seed = {
+        "key_facts": {
+            "authority_hints": [
+                "Section 504 of the Rehabilitation Act",
+                "Fair Housing Act reasonable accommodation requirements",
+                "24 C.F.R. Part 100",
+            ]
+        }
+    }
+
+    hud_hints = MODULE._authority_hints_for_forum(seed, "hud")
+    court_hints = MODULE._authority_hints_for_forum(seed, "court")
+
+    assert hud_hints[0] == "Fair Housing Act reasonable accommodation requirements"
+    assert hud_hints[1] == "24 C.F.R. Part 100"
+    assert court_hints[0] == "Section 504 of the Rehabilitation Act"
+    assert court_hints[1] == "Fair Housing Act reasonable accommodation requirements"
 
 
 def test_hud_proposed_allegations_use_complainant_language():

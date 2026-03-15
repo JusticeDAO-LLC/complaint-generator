@@ -79,6 +79,7 @@ DEFAULT_HACC_QUERY_SPECS: List[Dict[str, Any]] = [
         "category": "housing",
         "description": "Housing complaint seeded from proxy-language evidence in HACC policy materials",
         "theory_labels": ["disparate_treatment", "proxy_discrimination"],
+        "authority_hints": ["Fair Housing Act, 42 U.S.C. 3604", "24 C.F.R. Part 100"],
     },
     {
         "query": "preferential treatment protected class prioritization scoring preferences housing program admissions",
@@ -86,6 +87,7 @@ DEFAULT_HACC_QUERY_SPECS: List[Dict[str, Any]] = [
         "category": "civil_rights",
         "description": "Preferential-treatment complaint grounded in HACC evidence",
         "theory_labels": ["disparate_treatment", "protected_class_preferences"],
+        "authority_hints": ["Fair Housing Act, 42 U.S.C. 3604", "24 C.F.R. Part 100"],
     },
     {
         "query": "retaliation protections grievance complaint appeal hearing due process tenant policy adverse action",
@@ -93,6 +95,7 @@ DEFAULT_HACC_QUERY_SPECS: List[Dict[str, Any]] = [
         "category": "housing",
         "description": "Retaliation or grievance-process complaint grounded in HACC evidence",
         "theory_labels": ["retaliation", "due_process_failure"],
+        "authority_hints": ["Fair Housing Act anti-retaliation provisions", "24 C.F.R. Part 100"],
     },
     {
         "query": "selection contracting procurement MWESB COBID vendor evaluation criteria equity policy",
@@ -138,6 +141,7 @@ HACC_QUERY_PRESETS: Dict[str, List[Dict[str, Any]]] = {
             "category": "housing",
             "description": "Retaliation complaint focused on grievance handling and post-complaint conduct",
             "theory_labels": ["retaliation", "due_process_failure"],
+            "authority_hints": ["Fair Housing Act anti-retaliation provisions", "24 C.F.R. Part 100"],
         },
     ],
     "contracting_focus": [
@@ -152,6 +156,7 @@ HACC_QUERY_PRESETS: Dict[str, List[Dict[str, Any]]] = {
             "category": "housing",
             "description": "Retaliation and grievance complaint anchored to the HACC Administrative Plan",
             "theory_labels": ["retaliation", "due_process_failure", "adverse_action"],
+            "authority_hints": ["Fair Housing Act anti-retaliation provisions", "24 C.F.R. Part 100"],
             "anchor_titles": ["ADMINISTRATIVE PLAN"],
             "anchor_terms": [
                 "grievance hearing",
@@ -172,6 +177,7 @@ HACC_QUERY_PRESETS: Dict[str, List[Dict[str, Any]]] = {
             "category": "housing",
             "description": "Admissions and due-process complaint anchored to the Admissions and Continued Occupancy Policy",
             "theory_labels": ["due_process_failure", "adverse_action"],
+            "authority_hints": ["Fair Housing Act, 42 U.S.C. 3604", "24 C.F.R. Part 100"],
             "anchor_titles": ["ADMISSIONS AND CONTINUED OCCUPANCY POLICY"],
             "anchor_terms": ["informal hearing", "grievance hearing", "impartial person", "due process"],
         },
@@ -184,6 +190,7 @@ HACC_QUERY_PRESETS: Dict[str, List[Dict[str, Any]]] = {
             "description": "Reasonable-accommodation complaint anchored to HACC policy language",
             "theory_labels": ["reasonable_accommodation", "disability_discrimination"],
             "protected_bases": ["disability"],
+            "authority_hints": ["Fair Housing Act reasonable accommodation requirements", "Section 504 of the Rehabilitation Act", "Americans with Disabilities Act"],
             "anchor_titles": ["ADMINISTRATIVE PLAN", "ADMISSIONS AND CONTINUED OCCUPANCY POLICY"],
             "anchor_terms": [
                 "reasonable accommodation",
@@ -201,6 +208,7 @@ HACC_QUERY_PRESETS: Dict[str, List[Dict[str, Any]]] = {
             "category": "housing",
             "description": "Retaliation complaint anchored to HACC core housing policies",
             "theory_labels": ["retaliation", "due_process_failure"],
+            "authority_hints": ["Fair Housing Act anti-retaliation provisions", "24 C.F.R. Part 100"],
             "anchor_titles": ["ADMINISTRATIVE PLAN", "ADMISSIONS AND CONTINUED OCCUPANCY POLICY"],
             "anchor_terms": ["grievance", "hearing", "appeal", "informal hearing", "due process"],
         },
@@ -210,6 +218,7 @@ HACC_QUERY_PRESETS: Dict[str, List[Dict[str, Any]]] = {
             "category": "housing",
             "description": "Proxy-language complaint anchored to HACC core housing policies",
             "theory_labels": ["proxy_discrimination", "disparate_treatment"],
+            "authority_hints": ["Fair Housing Act, 42 U.S.C. 3604", "24 C.F.R. Part 100"],
             "anchor_titles": ["ADMINISTRATIVE PLAN", "ADMISSIONS AND CONTINUED OCCUPANCY POLICY"],
         },
         {
@@ -219,6 +228,7 @@ HACC_QUERY_PRESETS: Dict[str, List[Dict[str, Any]]] = {
             "description": "Accommodation complaint anchored to HACC core housing policies",
             "theory_labels": ["reasonable_accommodation", "disability_discrimination"],
             "protected_bases": ["disability"],
+            "authority_hints": ["Fair Housing Act reasonable accommodation requirements", "Section 504 of the Rehabilitation Act", "Americans with Disabilities Act"],
             "anchor_titles": ["ADMINISTRATIVE PLAN", "ADMISSIONS AND CONTINUED OCCUPANCY POLICY"],
             "anchor_terms": ["reasonable accommodation", "disability", "applicant", "accommodation"],
         },
@@ -533,6 +543,7 @@ def build_hacc_evidence_seed(
     anchor_terms: Optional[Sequence[str]] = None,
     theory_labels: Optional[Sequence[str]] = None,
     protected_bases: Optional[Sequence[str]] = None,
+    authority_hints: Optional[Sequence[str]] = None,
 ) -> Optional[Dict[str, Any]]:
     raw_hits = [_summarize_hit(hit) for hit in list(search_payload.get("results", []) or [])]
     hits = _filter_hits(
@@ -577,6 +588,7 @@ def build_hacc_evidence_seed(
             "anchor_sections": anchor_sections,
             "theory_labels": [str(item) for item in list(theory_labels or []) if str(item).strip()],
             "protected_bases": [str(item) for item in list(protected_bases or []) if str(item).strip()],
+            "authority_hints": [str(item) for item in list(authority_hints or []) if str(item).strip()],
             "grounding_note": "Use the evidence as factual grounding and identify missing case-specific facts during questioning.",
         },
         "keywords": [],
@@ -621,6 +633,7 @@ def build_hacc_evidence_seeds(
             anchor_terms=spec.get("anchor_terms"),
             theory_labels=spec.get("theory_labels"),
             protected_bases=spec.get("protected_bases"),
+            authority_hints=spec.get("authority_hints"),
         )
         if seed:
             seeds.append(seed)

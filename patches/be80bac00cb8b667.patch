@@ -1,0 +1,66 @@
+--- a/complaint_phases/phase_manager.py
++++ b/complaint_phases/phase_manager.py
+@@ -541,33 +541,27 @@
+     def _get_intake_action(self) -> Dict[str, Any]:
+         """Get next action for intake phase."""
+         data = self.phase_data[ComplaintPhase.INTAKE]
++
+         readiness = self.get_intake_readiness()
+-        
++
+         if 'knowledge_graph' not in data:
+             return {
+                 'action': 'build_knowledge_graph',
+                 'intake_readiness_score': readiness['score'],
+                 'intake_blockers': readiness['blockers'],
+             }
+-        
++
+         if 'dependency_graph' not in data:
+             return {
+                 'action': 'build_dependency_graph',
+                 'intake_readiness_score': readiness['score'],
+                 'intake_blockers': readiness['blockers'],
+             }
+-        
++
+         gaps = data.get('current_gaps', [])
+-        if gaps and len(gaps) > 0:
+-            return {
+-                'action': 'address_gaps',
+-                'gaps': gaps,
+-                'intake_readiness_score': readiness['score'],
+-                'intake_blockers': readiness['blockers'],
+-            }
+-
++        gap_threshold = _INTAKE_GAPS_THRESHOLD
+         remaining_gaps = data.get('remaining_gaps', float('inf'))
+-        if remaining_gaps > _INTAKE_GAPS_THRESHOLD:
++        if (gaps and len(gaps) > 0) or remaining_gaps > gap_threshold:
+             return {
+                 'action': 'address_gaps',
+                 'gaps': gaps,
+@@ -591,14 +585,21 @@
+                 'intake_readiness_score': readiness['score'],
+                 'intake_blockers': readiness['blockers'],
+             }
+-        
++
+         if not data.get('denoising_converged', False) and self.iteration_count < _DENOISING_MAX_ITERATIONS:
+             return {
+                 'action': 'continue_denoising',
+                 'intake_readiness_score': readiness['score'],
+                 'intake_blockers': readiness['blockers'],
+             }
+-        
++
++        if (data.get('denoising_converged', False) and remaining_gaps <= gap_threshold) or self.iteration_count >= _DENOISING_MAX_ITERATIONS:
++            return {
++                'action': 'complete_intake',
++                'intake_readiness_score': readiness['score'],
++                'intake_blockers': readiness['blockers'],
++            }
++
+         return {
+             'action': 'complete_intake',
+             'intake_readiness_score': readiness['score'],

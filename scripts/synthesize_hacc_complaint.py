@@ -289,11 +289,12 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
     return _dedupe_sentences(allegations, limit=limit)
 
 
-def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], limit: int = 6) -> List[str]:
+def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: str = "court", limit: int = 6) -> List[str]:
     key_facts = dict(seed.get("key_facts") or {})
     sections = [str(item) for item in list(key_facts.get("anchor_sections") or []) if str(item)]
     theory_labels = [str(item) for item in list(key_facts.get("theory_labels") or []) if str(item)]
     protected_bases = [str(item) for item in list(key_facts.get("protected_bases") or []) if str(item)]
+    authority_hints = _authority_hints_for_forum(seed, filing_forum)
     evidence_summary = _clean_policy_text(key_facts.get("evidence_summary") or seed.get("summary") or "")
     claims: List[str] = []
 
@@ -305,6 +306,8 @@ def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], limit: int = 6
         claims.append("The current evidence suggests a disability-related accommodation or fair-housing theory connected to the challenged process")
     if protected_bases:
         claims.append(f"The available record suggests the dispute may implicate protected basis concerns related to {', '.join(protected_bases)}")
+    if authority_hints:
+        claims.append(f"Likely authority implicated by the current theory includes {', '.join(authority_hints[:3])}")
     if "adverse_action" in sections:
         claims.append("HACC appears to have pursued or upheld a denial or termination of assistance without a clearly documented and transparent adverse-action process")
     if "appeal_rights" in sections or "grievance_hearing" in sections:
@@ -340,11 +343,40 @@ def _policy_basis(seed: Dict[str, Any], limit: int = 4) -> List[str]:
     return basis
 
 
-def _legal_theory_summary(seed: Dict[str, Any]) -> Dict[str, List[str]]:
+def _authority_hints_for_forum(seed: Dict[str, Any], filing_forum: str, limit: int = 3) -> List[str]:
+    key_facts = dict(seed.get("key_facts") or {})
+    hints = [str(item) for item in list(key_facts.get("authority_hints") or []) if str(item)]
+    if filing_forum == "hud":
+        preferred: List[str] = []
+        remaining: List[str] = []
+        for hint in hints:
+            lowered = hint.lower()
+            if "fair housing act" in lowered or "24 c.f.r." in lowered or "hud" in lowered:
+                preferred.append(hint)
+            else:
+                remaining.append(hint)
+        hints = preferred + remaining
+    elif filing_forum == "court":
+        preferred = []
+        remaining = []
+        for hint in hints:
+            lowered = hint.lower()
+            if "section 504" in lowered or "americans with disabilities act" in lowered or lowered == "ada":
+                preferred.append(hint)
+            elif "fair housing act" in lowered or "24 c.f.r." in lowered or "hud" in lowered:
+                remaining.append(hint)
+            else:
+                preferred.append(hint)
+        hints = preferred + remaining
+    return hints[:limit]
+
+
+def _legal_theory_summary(seed: Dict[str, Any], filing_forum: str = "court") -> Dict[str, List[str]]:
     key_facts = dict(seed.get("key_facts") or {})
     return {
         "theory_labels": [str(item) for item in list(key_facts.get("theory_labels") or []) if str(item)],
         "protected_bases": [str(item) for item in list(key_facts.get("protected_bases") or []) if str(item)],
+        "authority_hints": _authority_hints_for_forum(seed, filing_forum),
     }
 
 
@@ -443,7 +475,8 @@ def _causes_of_action(seed: Dict[str, Any], session: Dict[str, Any], filing_foru
     sections = [str(item) for item in list(key_facts.get("anchor_sections") or []) if str(item)]
     theory_labels = [str(item) for item in list(key_facts.get("theory_labels") or []) if str(item)]
     protected_bases = [str(item) for item in list(key_facts.get("protected_bases") or []) if str(item)]
-    claims_theory = _claims_theory(seed, session, limit=limit)
+    authority_hints = _authority_hints_for_forum(seed, filing_forum)
+    claims_theory = _claims_theory(seed, session, filing_forum, limit=limit)
     causes: List[Dict[str, Any]] = []
 
     notice_title = "Failure to Provide Required Notice and Process"
@@ -487,10 +520,11 @@ def _causes_of_action(seed: Dict[str, Any], session: Dict[str, Any], filing_foru
         )
     if "disparate_treatment" in theory_labels or "proxy_discrimination" in theory_labels or protected_bases:
         basis_text = f" involving {', '.join(protected_bases)}" if protected_bases else ""
+        authority_text = f" Likely authority includes {', '.join(authority_hints[:2])}." if authority_hints else ""
         causes.append(
             {
                 "title": "Protected-Basis Discrimination Theory" if filing_forum == "court" else "Protected-Basis Administrative Theory",
-                "theory": f"The current evidence suggests HACC may have applied housing policy or process in a manner that warrants review for protected-basis discrimination{basis_text}.",
+                "theory": f"The current evidence suggests HACC may have applied housing policy or process in a manner that warrants review for protected-basis discrimination{basis_text}.{authority_text}",
                 "support": [item for item in claims_theory if "protected basis" in item.lower() or "unequal treatment" in item.lower() or "proxy" in item.lower()] or claims_theory[:2],
             }
         )
@@ -593,8 +627,10 @@ def _render_markdown(package: Dict[str, Any]) -> str:
     theory_summary = dict(package.get("legal_theory_summary") or {})
     theory_labels = list(theory_summary.get("theory_labels") or [])
     protected_bases = list(theory_summary.get("protected_bases") or [])
+    authority_hints = list(theory_summary.get("authority_hints") or [])
     lines.extend([f"- Theory Labels: {', '.join(theory_labels) if theory_labels else 'None identified'}"])
     lines.extend([f"- Protected Bases: {', '.join(protected_bases) if protected_bases else 'None identified'}"])
+    lines.extend([f"- Authority Hints: {', '.join(authority_hints) if authority_hints else 'None identified'}"])
     lines.extend([
         "",
         "## Factual Allegations",
@@ -719,10 +755,10 @@ def main() -> int:
         "caption": _draft_caption(seed, args.filing_forum),
         "parties": _draft_parties(args.filing_forum),
         "jurisdiction_and_venue": _jurisdiction_and_venue(seed, args.filing_forum),
-        "legal_theory_summary": _legal_theory_summary(seed),
+        "legal_theory_summary": _legal_theory_summary(seed, args.filing_forum),
         "anchor_sections": anchor_sections,
         "factual_allegations": _factual_allegations(seed, best_session),
-        "claims_theory": _claims_theory(seed, best_session),
+        "claims_theory": _claims_theory(seed, best_session, args.filing_forum),
         "policy_basis": _policy_basis(seed),
         "causes_of_action": _causes_of_action(seed, best_session, args.filing_forum),
         "anchor_passages": _anchor_passage_lines(seed),
