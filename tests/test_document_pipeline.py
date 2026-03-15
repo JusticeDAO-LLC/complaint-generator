@@ -523,6 +523,23 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
 
 def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     mediator = _build_mediator()
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "intake_readiness": {
+            "score": 0.44,
+            "ready_to_advance": False,
+            "remaining_gap_count": 2,
+            "contradiction_count": 1,
+            "blockers": ["resolve_contradictions", "collect_missing_timeline_details"],
+        },
+        "intake_contradictions": [
+            {
+                "summary": "Complaint date conflicts with schedule-cut date",
+                "question": "What were the exact dates for the complaint and schedule change?",
+                "severity": "high",
+            }
+        ],
+    }
     builder = FormalComplaintDocumentBuilder(mediator)
     calls = {"critic": 0, "actor": 0}
     llm_invocations = []
@@ -676,6 +693,41 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     assert report["router_usage"]["ipfs_store_attempted"] is True
     assert report["router_usage"]["ipfs_store_succeeded"] is True
     assert report["router_usage"]["llm_providers_used"] == ["test-provider"]
+    assert report["intake_status"] == {
+        "current_phase": "intake",
+        "ready_to_advance": False,
+        "score": 0.44,
+        "remaining_gap_count": 2,
+        "contradiction_count": 1,
+        "blockers": ["resolve_contradictions", "collect_missing_timeline_details"],
+        "contradictions": [
+            {
+                "summary": "Complaint date conflicts with schedule-cut date",
+                "left_text": "",
+                "right_text": "",
+                "question": "What were the exact dates for the complaint and schedule change?",
+                "severity": "high",
+                "category": "",
+            }
+        ],
+    }
+    assert report["intake_constraints"] == [
+        {
+            "severity": "warning",
+            "code": "intake_blocker",
+            "message": "Intake blocker: resolve_contradictions",
+        },
+        {
+            "severity": "warning",
+            "code": "intake_blocker",
+            "message": "Intake blocker: collect_missing_timeline_details",
+        },
+        {
+            "severity": "warning",
+            "code": "intake_contradiction",
+            "message": "Complaint date conflicts with schedule-cut date. Clarify: What were the exact dates for the complaint and schedule change?",
+        },
+    ]
     assert calls["actor"] >= 1
     assert calls["critic"] >= 2
     assert embed_calls
@@ -686,6 +738,8 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     assert all(entry["kwargs"].get("headers", {}).get("X-Title") == "Complaint Generator Tests" for entry in llm_invocations)
     assert stored_traces
     assert stored_traces[0]["config"]["router_usage"]["llm_calls"] >= 3
+    assert stored_traces[0]["intake_status"] == report["intake_status"]
+    assert stored_traces[0]["intake_constraints"] == report["intake_constraints"]
     assert any(
         "Plaintiff was fired two days later and lost pay and benefits" in allegation
         for allegation in result["draft"]["factual_allegations"]
@@ -1850,6 +1904,28 @@ def test_review_api_multiclaim_section_links_include_targeted_claim_urls():
             "follow_up_support_kind": "authority",
             "review_url": "/claim-support-review?section=claims_for_relief",
         }
+        assert any(
+            warning.get("code") == "intake_blocker"
+            and warning.get("message") == "Intake blocker: resolve_contradictions"
+            for warning in payload["drafting_readiness"]["warnings"]
+        )
+        assert any(
+            warning.get("code") == "intake_contradiction"
+            and "Complaint date conflicts with schedule-cut date" in str(warning.get("message") or "")
+            for warning in payload["drafting_readiness"]["warnings"]
+        )
+        assert any(
+            warning.get("code") == "intake_blocker"
+            for warning in payload["drafting_readiness"]["sections"]["claims_for_relief"]["warnings"]
+        )
+        assert any(
+            warning.get("code") == "intake_blocker"
+            for warning in payload["drafting_readiness"]["claims"][0]["warnings"]
+        )
+        assert any(
+            warning.get("code") == "intake_blocker"
+            for warning in payload["drafting_readiness"]["claims"][1]["warnings"]
+        )
         assert payload["filing_checklist"][0]["review_url"] == "/claim-support-review?section=claims_for_relief"
         assert payload["filing_checklist"][0]["intake_status"] == {
             "score": 0.44,
@@ -2089,6 +2165,7 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert 'Advanced optimization config must be a valid JSON object.' in page_html
         assert 'Persist optimization trace through the IPFS adapter' in page_html
         assert 'Document Optimization' in page_html
+        assert 'Intake Constraints' in page_html
         assert 'Optimized Sections' in page_html
         assert 'Trace CID' in page_html
         assert 'Router Usage' in page_html
@@ -2149,6 +2226,25 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
                 }
             ],
         }
+        assert payload.get('document_optimization') in (None, {})
+        assert any(
+            warning.get('code') == 'intake_blocker'
+            and warning.get('message') == 'Intake blocker: resolve_contradictions'
+            for warning in payload['drafting_readiness']['warnings']
+        )
+        assert any(
+            warning.get('code') == 'intake_contradiction'
+            and 'Complaint date conflicts with schedule-cut date' in str(warning.get('message') or '')
+            for warning in payload['drafting_readiness']['warnings']
+        )
+        assert any(
+            warning.get('code') == 'intake_blocker'
+            for warning in payload['drafting_readiness']['sections']['claims_for_relief']['warnings']
+        )
+        assert any(
+            warning.get('code') == 'intake_blocker'
+            for warning in payload['drafting_readiness']['claims'][0]['warnings']
+        )
         assert payload['review_links']['claims'][0]['review_url'] == '/claim-support-review?claim_type=retaliation'
         assert payload['review_links']['sections'][0]['section_key'] == 'claims_for_relief'
         assert payload['review_links']['sections'][0]['review_url'] == '/claim-support-review?claim_type=retaliation&section=claims_for_relief'
@@ -2489,6 +2585,41 @@ def test_review_surface_returns_document_optimization_contract_end_to_end(monkey
     assert 'selected_provider' in report['upstream_optimizer']
     assert 'selected_method' in report['upstream_optimizer']
     assert 'control_loop' in report['upstream_optimizer']
+    assert report['intake_status'] == {
+        'current_phase': 'intake',
+        'ready_to_advance': False,
+        'score': 0.38,
+        'remaining_gap_count': 2,
+        'contradiction_count': 1,
+        'blockers': ['resolve_contradictions', 'collect_missing_timeline_details'],
+        'contradictions': [
+            {
+                'summary': 'Complaint date conflicts with schedule-cut date',
+                'left_text': '',
+                'right_text': '',
+                'question': 'What were the exact dates for the complaint and schedule change?',
+                'severity': 'high',
+                'category': '',
+            }
+        ],
+    }
+    assert report['intake_constraints'] == [
+        {
+            'severity': 'warning',
+            'code': 'intake_blocker',
+            'message': 'Intake blocker: resolve_contradictions',
+        },
+        {
+            'severity': 'warning',
+            'code': 'intake_blocker',
+            'message': 'Intake blocker: collect_missing_timeline_details',
+        },
+        {
+            'severity': 'warning',
+            'code': 'intake_contradiction',
+            'message': 'Complaint date conflicts with schedule-cut date. Clarify: What were the exact dates for the complaint and schedule change?',
+        },
+    ]
     assert report['packet_projection']['section_presence']['factual_allegations'] is True
     assert report['packet_projection']['has_affidavit'] is True
     assert report['packet_projection']['has_certificate_of_service'] is True

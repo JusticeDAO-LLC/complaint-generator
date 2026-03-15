@@ -5,6 +5,8 @@ import json
 import math
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from intake_status import build_intake_status_summary, build_intake_warning_entries
+
 try:
     from integrations.ipfs_datasets.llm import generate_text_with_metadata
 except Exception:
@@ -189,6 +191,8 @@ class AgenticDocumentOptimizer:
                     optimized_sections.append(focus_section)
 
         upstream_optimizer = self._build_upstream_optimizer_metadata()
+        intake_status = build_intake_status_summary(self.mediator)
+        intake_constraints = build_intake_warning_entries(intake_status)
         trace_storage = self._store_trace(
             {
                 "user_id": user_id or "",
@@ -202,6 +206,8 @@ class AgenticDocumentOptimizer:
                     "upstream_optimizer": upstream_optimizer,
                     "router_usage": self._router_usage_summary(),
                 },
+                "intake_status": intake_status,
+                "intake_constraints": intake_constraints,
                 "support_context": support_context,
                 "initial_review": initial_review,
                 "final_review": current_review,
@@ -222,6 +228,8 @@ class AgenticDocumentOptimizer:
             "router_status": self._router_status(),
             "router_usage": self._router_usage_summary(),
             "upstream_optimizer": upstream_optimizer,
+            "intake_status": intake_status,
+            "intake_constraints": intake_constraints,
             "packet_projection": dict(support_context.get("packet_projection") or {}),
             "section_history": [
                 {

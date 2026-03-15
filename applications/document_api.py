@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from document_pipeline import DEFAULT_OUTPUT_DIR
+from intake_status import build_intake_status_summary, build_intake_warning_entries
 
 
 FORMAL_COMPLAINT_DOCUMENT_REQUEST_EXAMPLE = {
@@ -176,86 +177,6 @@ def _build_review_intent(
     }
 
 
-def _normalize_intake_contradiction(contradiction: Any) -> Dict[str, Any]:
-    candidate = contradiction if isinstance(contradiction, dict) else {}
-    left_text = str(
-        candidate.get("left_text")
-        or candidate.get("left_fact_text")
-        or candidate.get("statement_a")
-        or ""
-    ).strip()
-    right_text = str(
-        candidate.get("right_text")
-        or candidate.get("right_fact_text")
-        or candidate.get("statement_b")
-        or ""
-    ).strip()
-    summary = str(candidate.get("summary") or "").strip()
-    if not summary:
-        if left_text and right_text:
-            summary = f"{left_text} <> {right_text}"
-        else:
-            summary = left_text or right_text or "Unresolved contradiction"
-    return {
-        "summary": summary,
-        "left_text": left_text,
-        "right_text": right_text,
-        "question": str(candidate.get("question") or candidate.get("question_text") or "").strip(),
-        "severity": str(candidate.get("severity") or "").strip(),
-        "category": str(candidate.get("category") or candidate.get("type") or "").strip(),
-    }
-
-
-def _build_intake_status_summary(mediator: Any) -> Dict[str, Any]:
-    get_three_phase_status = getattr(mediator, "get_three_phase_status", None)
-    if not callable(get_three_phase_status):
-        return {}
-
-    raw_status = get_three_phase_status()
-    if not isinstance(raw_status, dict):
-        return {}
-
-    readiness = raw_status.get("intake_readiness")
-    readiness = readiness if isinstance(readiness, dict) else {}
-    contradictions = raw_status.get("intake_contradictions")
-    if not isinstance(contradictions, list):
-        contradictions = (
-            readiness.get("contradictions")
-            if isinstance(readiness.get("contradictions"), list)
-            else []
-        )
-    blockers = readiness.get("blockers")
-    blocker_list = [str(item).strip() for item in blockers] if isinstance(blockers, list) else []
-    normalized_contradictions = [
-        _normalize_intake_contradiction(item)
-        for item in contradictions
-        if isinstance(item, dict)
-    ]
-
-    try:
-        score = float(readiness.get("score"))
-    except (TypeError, ValueError):
-        score = 0.0
-    try:
-        remaining_gap_count = int(readiness.get("remaining_gap_count"))
-    except (TypeError, ValueError):
-        remaining_gap_count = 0
-    try:
-        contradiction_count = int(readiness.get("contradiction_count"))
-    except (TypeError, ValueError):
-        contradiction_count = len(normalized_contradictions)
-
-    return {
-        "current_phase": str(raw_status.get("current_phase") or "").strip(),
-        "ready_to_advance": bool(readiness.get("ready_to_advance", False)),
-        "score": score,
-        "remaining_gap_count": remaining_gap_count,
-        "contradiction_count": contradiction_count,
-        "blockers": blocker_list,
-        "contradictions": normalized_contradictions,
-    }
-
-
 def _build_checklist_intake_status(intake_status: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(intake_status, dict) or not intake_status:
         return {}
@@ -271,41 +192,6 @@ def _build_checklist_intake_status(intake_status: Dict[str, Any]) -> Dict[str, A
         "blockers": blocker_list,
         "contradictions": contradiction_list[:2],
     }
-
-
-def _build_intake_warning_entries(intake_status: Dict[str, Any]) -> List[Dict[str, Any]]:
-    if not isinstance(intake_status, dict) or not intake_status:
-        return []
-    warnings: List[Dict[str, Any]] = []
-    blockers = intake_status.get("blockers")
-    blocker_list = blockers if isinstance(blockers, list) else []
-    for blocker in blocker_list:
-        blocker_text = str(blocker).strip()
-        if not blocker_text:
-            continue
-        warnings.append(
-            {
-                "severity": "warning",
-                "code": "intake_blocker",
-                "message": f"Intake blocker: {blocker_text}",
-            }
-        )
-    contradictions = intake_status.get("contradictions")
-    contradiction_list = contradictions if isinstance(contradictions, list) else []
-    for contradiction in contradiction_list[:2]:
-        if not isinstance(contradiction, dict):
-            continue
-        summary = str(contradiction.get("summary") or "").strip() or "Unresolved intake contradiction"
-        question = str(contradiction.get("question") or "").strip()
-        message = summary if not question else f"{summary}. Clarify: {question}"
-        warnings.append(
-            {
-                "severity": "warning",
-                "code": "intake_contradiction",
-                "message": message,
-            }
-        )
-    return warnings
 
 
 def _merge_warning_entries(existing: Any, additions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -403,7 +289,7 @@ def _annotate_checklist_review_links(
     return payload
 
 
-def _annotate_review_links(payload: Dict[str, Any], *, user_id: Optional[str]) -> Dict[str, Any]:
+def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: Optional[str]) -> Dict[str, Any]:
     if not isinstance(payload, dict):
         return payload
 
@@ -415,8 +301,8 @@ def _annotate_review_links(payload: Dict[str, Any], *, user_id: Optional[str]) -
     section_entries = drafting_readiness.get("sections") if isinstance(drafting_readiness.get("sections"), dict) else {}
     dashboard_url = _build_review_url(user_id=resolved_user_id)
     default_review_intent = _build_review_intent(user_id=resolved_user_id)
-    intake_status = _build_intake_status_summary(mediator)
-    intake_warning_entries = _build_intake_warning_entries(intake_status)
+    intake_status = build_intake_status_summary(mediator)
+    intake_warning_entries = build_intake_warning_entries(intake_status)
 
     claim_links = []
     claim_types = []
@@ -542,6 +428,12 @@ def _annotate_review_links(payload: Dict[str, Any], *, user_id: Optional[str]) -
             intake_warning_entries,
         )
 
+    document_optimization = payload.get("document_optimization")
+    if isinstance(document_optimization, dict):
+        document_optimization["intake_status"] = dict(intake_status)
+        if intake_warning_entries:
+            document_optimization["intake_constraints"] = list(intake_warning_entries)
+
     payload["review_links"] = {
         "dashboard_url": dashboard_url,
         "claims": claim_links,
@@ -625,7 +517,7 @@ def create_document_router(mediator: Any) -> APIRouter:
             build_kwargs["optimization_llm_config"] = request.optimization_llm_config
         payload = mediator.build_formal_complaint_document_package(**build_kwargs)
         payload = _annotate_artifacts_with_download_urls(payload)
-        return _annotate_review_links(payload, user_id=request.user_id)
+        return _annotate_review_links(payload, mediator=mediator, user_id=request.user_id)
 
     @router.get("/api/documents/download")
     async def download_generated_document(path: str = Query(...)) -> FileResponse:

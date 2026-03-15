@@ -40,6 +40,7 @@ except ModuleNotFoundError:
             }
 
 from complaint_phases.denoiser import ComplaintDenoiser
+from intake_status import build_intake_status_summary
 
 
 DEFAULT_REQUIRED_SUPPORT_KINDS = ["evidence", "authority"]
@@ -188,98 +189,6 @@ def _resolve_user_id(mediator: Any, user_id: Optional[str]) -> str:
         or getattr(state, "hashed_username", None)
         or "anonymous"
     )
-
-
-def _normalize_intake_contradiction(contradiction: Any) -> Dict[str, Any]:
-    candidate = contradiction if isinstance(contradiction, dict) else {}
-    left_text = str(
-        candidate.get("left_text")
-        or candidate.get("left_fact_text")
-        or candidate.get("statement_a")
-        or ""
-    ).strip()
-    right_text = str(
-        candidate.get("right_text")
-        or candidate.get("right_fact_text")
-        or candidate.get("statement_b")
-        or ""
-    ).strip()
-    summary = str(candidate.get("summary") or "").strip()
-    if not summary:
-        if left_text and right_text:
-            summary = f"{left_text} <> {right_text}"
-        else:
-            summary = left_text or right_text or "Unresolved contradiction"
-    return {
-        "summary": summary,
-        "left_text": left_text,
-        "right_text": right_text,
-        "category": str(candidate.get("category") or candidate.get("type") or "").strip(),
-        "severity": str(candidate.get("severity") or "").strip(),
-        "question": str(candidate.get("question") or candidate.get("question_text") or "").strip(),
-    }
-
-
-def _build_intake_status_summary(mediator: Any) -> Dict[str, Any]:
-    get_three_phase_status = getattr(mediator, "get_three_phase_status", None)
-    if not callable(get_three_phase_status):
-        return {}
-
-    raw_status = get_three_phase_status()
-    if not isinstance(raw_status, dict):
-        return {}
-
-    readiness = raw_status.get("intake_readiness")
-    readiness = readiness if isinstance(readiness, dict) else {}
-    contradictions = raw_status.get("intake_contradictions")
-    if not isinstance(contradictions, list):
-        contradictions = (
-            readiness.get("contradictions")
-            if isinstance(readiness.get("contradictions"), list)
-            else []
-        )
-    normalized_contradictions = [
-        _normalize_intake_contradiction(item)
-        for item in contradictions
-        if isinstance(item, dict)
-    ]
-    blockers = readiness.get("blockers")
-    blocker_list = [str(item).strip() for item in blockers] if isinstance(blockers, list) else []
-
-    score_value = readiness.get("score")
-    try:
-        score = float(score_value)
-    except (TypeError, ValueError):
-        score = 0.0
-
-    remaining_gap_value = readiness.get("remaining_gap_count")
-    try:
-        remaining_gap_count = int(remaining_gap_value)
-    except (TypeError, ValueError):
-        remaining_gap_count = 0
-
-    contradiction_count_value = readiness.get("contradiction_count")
-    try:
-        contradiction_count = int(contradiction_count_value)
-    except (TypeError, ValueError):
-        contradiction_count = len(normalized_contradictions)
-
-    iteration_value = raw_status.get("iteration_count")
-    try:
-        iteration_count = int(iteration_value)
-    except (TypeError, ValueError):
-        iteration_count = 0
-
-    return {
-        "current_phase": str(raw_status.get("current_phase") or "").strip(),
-        "iteration_count": iteration_count,
-        "ready_to_advance": bool(readiness.get("ready_to_advance", False)),
-        "score": score,
-        "remaining_gap_count": remaining_gap_count,
-        "contradiction_count": contradiction_count,
-        "blockers": blocker_list,
-        "contradictions": normalized_contradictions,
-    }
 
 
 def summarize_claim_support_snapshot_lifecycle(
@@ -2262,7 +2171,7 @@ def build_claim_support_review_payload(
         "user_id": resolved_user_id,
         "claim_type": request.claim_type,
         "required_support_kinds": required_support_kinds,
-        "intake_status": _build_intake_status_summary(mediator),
+        "intake_status": build_intake_status_summary(mediator, include_iteration_count=True),
         "claim_coverage_matrix": coverage_claims,
         "claim_coverage_summary": coverage_summary,
         "claim_support_gaps": gap_claims,

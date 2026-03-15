@@ -251,6 +251,9 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Section Review</a>" in content
     assert "renderReviewLinks" in content
     assert "review_links" in content
+    assert "Intake Constraints" in content
+    assert "Current intake phase:" in content
+    assert "Intake readiness score:" in content
 
 
 def test_chat_and_results_templates_link_to_document_workflow():

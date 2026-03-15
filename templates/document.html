@@ -2190,6 +2190,8 @@
             const packetSectionPresence = packetProjection.section_presence && typeof packetProjection.section_presence === 'object' ? packetProjection.section_presence : {};
             const initialReview = report.initial_review && typeof report.initial_review === 'object' ? report.initial_review : {};
             const finalReview = report.final_review && typeof report.final_review === 'object' ? report.final_review : {};
+            const intakeStatus = report.intake_status && typeof report.intake_status === 'object' ? report.intake_status : {};
+            const intakeConstraints = Array.isArray(report.intake_constraints) ? report.intake_constraints : [];
             const routerLines = Object.entries(routerStatus).map(([key, value]) => `${humanizeKey(key)}: ${value}`);
             const routerUsageLines = [
                 routerUsage.llm_calls != null ? `LLM calls: ${routerUsage.llm_calls}` : '',
@@ -2277,6 +2279,17 @@
                 `Trace status: ${traceStorage.status || 'disabled'}`,
                 traceStorage.cid ? `Trace CID: ${traceStorage.cid}` : '',
             ].filter(Boolean);
+            const intakeConstraintLines = [
+                intakeStatus.current_phase ? `Current intake phase: ${humanizeKey(intakeStatus.current_phase)}` : '',
+                intakeStatus.score != null ? `Intake readiness score: ${Number(intakeStatus.score || 0).toFixed(2)}` : '',
+                intakeStatus.remaining_gap_count != null ? `Remaining intake gaps: ${intakeStatus.remaining_gap_count}` : '',
+                intakeStatus.contradiction_count != null ? `Tracked intake contradictions: ${intakeStatus.contradiction_count}` : '',
+                typeof intakeStatus.ready_to_advance === 'boolean' ? `Ready to advance intake: ${intakeStatus.ready_to_advance ? 'yes' : 'no'}` : '',
+                Array.isArray(intakeStatus.blockers) && intakeStatus.blockers.length
+                    ? `Intake blockers: ${intakeStatus.blockers.join(' | ')}`
+                    : '',
+                ...intakeConstraints.map((warning) => `${humanizeKey(warning.code || 'intake_constraint')}: ${warning.message || 'constraint reported'}`),
+            ].filter(Boolean);
             return `
                 <section>
                     <h2>Document Optimization</h2>
@@ -2290,6 +2303,7 @@
                         ${routerLines.length ? renderLines(routerLines) : ''}
                         ${traceLines.length ? renderLines(traceLines) : ''}
                         ${routerUsageLines.length ? `<div class="preview-meta"><strong>Router Usage</strong></div>${renderLines(routerUsageLines)}` : ''}
+                        ${intakeConstraintLines.length ? `<div class="preview-meta"><strong>Intake Constraints</strong></div>${renderLines(intakeConstraintLines)}` : ''}
                         ${upstreamOptimizerLines.length ? `<div class="preview-meta"><strong>Upstream Optimizer</strong></div>${renderLines(upstreamOptimizerLines)}` : ''}
                         ${stageProviderLines.length ? `<div class="preview-meta"><strong>Stage Provider Selection</strong></div>${renderLines(stageProviderLines)}` : ''}
                         ${packetProjectionLines.length ? `<div class="preview-meta"><strong>Packet Projection</strong></div>${renderLines(packetProjectionLines)}` : ''}
