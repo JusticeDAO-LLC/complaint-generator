@@ -3217,12 +3217,19 @@ class Mediator:
 			[gap.get('type') for gap in kg_gaps if isinstance(gap, dict) and gap.get('type')],
 		)
 		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', len(kg_gaps))
+		question_candidates = self.denoiser.collect_question_candidates(
+			kg,
+			dg,
+			max_questions=10,
+			intake_case_file=intake_case_file,
+		)
 		questions = self.denoiser.generate_questions(
 			kg,
 			dg,
 			max_questions=10,
 			intake_case_file=intake_case_file,
 		)
+		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'question_candidates', question_candidates)
 		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'current_questions', questions)
 		
 		# Calculate initial noise level
@@ -3238,6 +3245,7 @@ class Mediator:
 			'knowledge_graph_summary': kg.summary(),
 			'dependency_graph_summary': dg.summary(),
 			'intake_case_file': intake_case_file,
+			'question_candidates': question_candidates,
 			'initial_questions': questions,
 			'initial_noise_level': noise,
 			'intake_readiness': self.phase_manager.get_intake_readiness(),
@@ -3553,12 +3561,19 @@ class Mediator:
 				max_questions = 8
 		except Exception:
 			max_questions = 5
+		question_candidates = self.denoiser.collect_question_candidates(
+			kg,
+			dg,
+			max_questions=max_questions,
+			intake_case_file=intake_case_file,
+		)
 		questions = self.denoiser.generate_questions(
 			kg,
 			dg,
 			max_questions=max_questions,
 			intake_case_file=intake_case_file,
 		)
+		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'question_candidates', question_candidates)
 		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'current_questions', questions)
 		
 		# Update graphs in phase data
@@ -3595,6 +3610,7 @@ class Mediator:
 			'noise_level': noise,
 			'gaps_remaining': gaps,
 			'converged': converged,
+			'question_candidates': question_candidates,
 			'next_questions': questions,
 			'iteration': self.phase_manager.iteration_count,
 			'intake_readiness': self.phase_manager.get_intake_readiness(),
@@ -4456,6 +4472,7 @@ class Mediator:
 		candidate_claims = intake_case_file.get('candidate_claims', []) if isinstance(intake_case_file, dict) else []
 		canonical_facts = intake_case_file.get('canonical_facts', []) if isinstance(intake_case_file, dict) else []
 		proof_leads = intake_case_file.get('proof_leads', []) if isinstance(intake_case_file, dict) else []
+		question_candidates = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'question_candidates') or []
 		claim_support_packets = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packets') or {}
 		return {
 			'current_phase': self.phase_manager.get_current_phase().value,
@@ -4472,6 +4489,10 @@ class Mediator:
 			'proof_lead_summary': {
 				'count': len(proof_leads),
 				'proof_leads': proof_leads,
+			},
+			'question_candidate_summary': {
+				'count': len(question_candidates) if isinstance(question_candidates, list) else 0,
+				'candidates': question_candidates if isinstance(question_candidates, list) else [],
 			},
 			'claim_support_packet_summary': self._summarize_claim_support_packets(claim_support_packets),
 			'intake_contradictions': {

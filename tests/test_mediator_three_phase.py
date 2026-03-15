@@ -304,12 +304,14 @@ class TestMediatorThreePhaseIntegration:
         assert intake_case_file['candidate_claims']
         assert intake_case_file['canonical_facts']
         assert intake_case_file['proof_leads']
+        assert result['question_candidates']
         assert intake_case_file['intake_sections']['chronology']['status'] == 'complete'
         assert intake_case_file['intake_sections']['proof_leads']['status'] == 'complete'
         status = mediator.get_three_phase_status()
         assert status['candidate_claims'] == intake_case_file['candidate_claims']
         assert status['canonical_fact_summary']['count'] == len(intake_case_file['canonical_facts'])
         assert status['proof_lead_summary']['count'] == len(intake_case_file['proof_leads'])
+        assert status['question_candidate_summary']['count'] >= 1
 
     def test_initialize_intake_case_file_extracts_claims_facts_and_proof_leads(self):
         """The intake case file helper should normalize graph state into structured sections."""
@@ -356,6 +358,8 @@ class TestMediatorThreePhaseIntegration:
         assert any(fact['fact_type'] == 'timeline' for fact in intake_case_file['canonical_facts'])
         assert intake_case_file['intake_sections']['chronology']['status'] == 'complete'
         assert result['intake_readiness']['canonical_fact_count'] >= 1
+        assert result['question_candidates']
+        assert mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'question_candidates')
 
     def test_process_denoising_answer_updates_proof_leads_in_intake_case_file(self):
         """Evidence answers should create proof leads in the structured intake record."""
@@ -608,6 +612,7 @@ class TestMediatorThreePhaseIntegration:
         assert 'adverse job action' in employment_questions[0]['question'].lower()
         assert employment_questions[0]['question_intent']['question_goal'] == 'establish_element'
         assert employment_questions[0]['question_intent']['claim_type'] == 'employment_discrimination'
+        assert any(candidate.get('candidate_source') == 'intake_claim_element_gap' for candidate in result['question_candidates'])
 
     def test_start_three_phase_process_uses_domain_specific_housing_proof_prompt_text(self):
         """Housing discrimination intake should ask for tenancy-specific proof leads."""
@@ -636,6 +641,7 @@ class TestMediatorThreePhaseIntegration:
         assert 'landlord messages' in question_text
         assert housing_evidence_questions[0]['question_intent']['question_goal'] == 'identify_supporting_proof'
         assert housing_evidence_questions[0]['question_intent']['claim_type'] == 'housing_discrimination'
+        assert any(candidate.get('candidate_source') == 'intake_proof_gap' for candidate in result['question_candidates'])
     
     def test_graph_serialization(self):
         """Test that graphs can be serialized for storage."""
