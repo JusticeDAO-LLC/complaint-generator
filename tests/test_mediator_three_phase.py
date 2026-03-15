@@ -311,6 +311,7 @@ class TestMediatorThreePhaseIntegration:
         assert status['candidate_claims'] == intake_case_file['candidate_claims']
         assert status['canonical_fact_summary']['count'] == len(intake_case_file['canonical_facts'])
         assert status['proof_lead_summary']['count'] == len(intake_case_file['proof_leads'])
+        assert status['intake_matching_summary']['claim_count'] >= 1
         assert status['question_candidate_summary']['count'] >= 1
         assert status['question_candidate_summary']['source_counts']
         assert status['question_candidate_summary']['phase1_section_counts']
@@ -695,6 +696,7 @@ class TestMediatorThreePhaseIntegration:
         assert first_question['selector_signals']['proof_priority'] == first_question['proof_priority']
         assert 'matcher_missing_requirement_count' in first_question['selector_signals']
         assert 'matcher_confidence' in first_question['selector_signals']
+        assert result['intake_matching_summary']['claim_count'] >= 1
 
     def test_default_selector_prioritizes_contradiction_candidates(self):
         """Reasoning-backed selection should keep contradiction resolution ahead of lower-pressure prompts."""

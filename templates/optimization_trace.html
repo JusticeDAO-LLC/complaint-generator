@@ -326,6 +326,7 @@
                 <h2>Intake Evidence Snapshot</h2>
                 <ul id="traceEvidenceList"><li class="muted">No trace loaded.</li></ul>
                 <div id="traceEvidenceTriage"></div>
+                <div id="traceEvidenceQuestionTargets"></div>
                 <div id="traceEvidenceLinks" class="inline-link-row"></div>
             </section>
             <section class="panel">
@@ -764,6 +765,18 @@
                 renderTriageChipRow('Question Target Sections', questionSectionChips),
                 renderTriageChipRow('Question Blocking Levels', questionBlockingChips, (item) => item.tone),
             ].filter(Boolean).join('');
+            const questionTargetLinks = Object.keys(questionSectionCounts).map((sectionKey) => {
+                const reviewUrl = buildTraceSectionReviewUrl(sectionKey, traceUserId);
+                const label = humanizeKey(sectionKey);
+                const count = questionSectionCounts[sectionKey];
+                if (!reviewUrl || !label) {
+                    return '';
+                }
+                return `<a class="inline-link" href="${escapeHtml(reviewUrl)}">Open ${escapeHtml(label)} Question Review (${escapeHtml(String(count))})</a>`;
+            }).filter(Boolean);
+            document.getElementById('traceEvidenceQuestionTargets').innerHTML = questionTargetLinks.length
+                ? `<div class="muted"><strong>Question Review Targets</strong></div><div class="inline-link-row">${questionTargetLinks.join('')}</div>`
+                : '';
 
             const evidenceLinks = [
                 ...candidateClaims.map((claim) => {

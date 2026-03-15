@@ -2561,6 +2561,18 @@
                 renderTriageChipRow('Question Target Sections', questionSectionChips),
                 renderTriageChipRow('Question Blocking Levels', questionBlockingChips, (item) => item.tone),
             ].filter(Boolean).join('');
+            const questionSectionLinks = Object.keys(questionSectionCounts).map((sectionKey) => {
+                const reviewUrl = resolveSectionReviewUrl(sectionKey, intakeSections[sectionKey] || {}, reviewLinks);
+                const label = humanizeKey(sectionKey);
+                const count = questionSectionCounts[sectionKey];
+                if (!reviewUrl || !label) {
+                    return '';
+                }
+                return `<a class="inline-link" data-review-intent-link="true" href="${escapeHtml(reviewUrl)}">Open ${escapeHtml(label)} Question Review (${escapeHtml(String(count))})</a>`;
+            }).filter(Boolean);
+            const questionSectionLinkRow = questionSectionLinks.length
+                ? `<div class="preview-meta"><strong>Question Review Targets</strong></div><div class="inline-link-row">${questionSectionLinks.join('')}</div>`
+                : '';
             const intakeEvidenceLinks = (() => {
                 const claimLinks = intakeCandidateClaims.map((claim) => {
                     const reviewUrl = resolveClaimReviewUrl(claim, reviewLinks);
@@ -2602,7 +2614,7 @@
                         ${renderChangeGroup('Rejected Changes', rejectedChangeLines, 'rejected')}
                         ${routerUsageLines.length ? `<div class="preview-meta"><strong>Router Usage</strong></div>${renderLines(routerUsageLines)}` : ''}
                         ${intakeConstraintLines.length ? `<div class="preview-meta"><strong>Intake Constraints</strong></div>${renderLines(intakeConstraintLines)}` : ''}
-                        ${intakeEvidenceLines.length ? `<div class="preview-meta"><strong>Intake Evidence Snapshot</strong></div>${renderLines(intakeEvidenceLines)}${intakeEvidenceTriage}${intakeEvidenceLinks}` : ''}
+                        ${intakeEvidenceLines.length ? `<div class="preview-meta"><strong>Intake Evidence Snapshot</strong></div>${renderLines(intakeEvidenceLines)}${intakeEvidenceTriage}${questionSectionLinkRow}${intakeEvidenceLinks}` : ''}
                         ${upstreamOptimizerLines.length ? `<div class="preview-meta"><strong>Upstream Optimizer</strong></div>${renderLines(upstreamOptimizerLines)}` : ''}
                         ${stageProviderLines.length ? `<div class="preview-meta"><strong>Stage Provider Selection</strong></div>${renderLines(stageProviderLines)}` : ''}
                         ${packetProjectionLines.length ? `<div class="preview-meta"><strong>Packet Projection</strong></div>${renderLines(packetProjectionLines)}` : ''}

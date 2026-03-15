@@ -3400,12 +3400,14 @@ class Mediator:
 			[gap.get('type') for gap in kg_gaps if isinstance(gap, dict) and gap.get('type')],
 		)
 		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', len(kg_gaps))
+		intake_matching_pressure = self._build_intake_matching_pressure_map(kg, dg, intake_case_file)
 		question_candidates = self.denoiser.collect_question_candidates(
 			kg,
 			dg,
 			max_questions=10,
 			intake_case_file=intake_case_file,
 		)
+		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_matching_pressure', intake_matching_pressure)
 		questions = self.denoiser.generate_questions(
 			kg,
 			dg,
@@ -3428,6 +3430,7 @@ class Mediator:
 			'knowledge_graph_summary': kg.summary(),
 			'dependency_graph_summary': dg.summary(),
 			'intake_case_file': intake_case_file,
+			'intake_matching_summary': self._summarize_intake_matching_pressure(intake_matching_pressure),
 			'question_candidates': question_candidates,
 			'initial_questions': questions,
 			'initial_noise_level': noise,
@@ -3750,6 +3753,8 @@ class Mediator:
 			max_questions=max_questions,
 			intake_case_file=intake_case_file,
 		)
+		intake_matching_pressure = self._build_intake_matching_pressure_map(kg, dg, intake_case_file)
+		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_matching_pressure', intake_matching_pressure)
 		questions = self.denoiser.generate_questions(
 			kg,
 			dg,
@@ -3793,6 +3798,7 @@ class Mediator:
 			'noise_level': noise,
 			'gaps_remaining': gaps,
 			'converged': converged,
+			'intake_matching_summary': self._summarize_intake_matching_pressure(intake_matching_pressure),
 			'question_candidates': question_candidates,
 			'next_questions': questions,
 			'iteration': self.phase_manager.iteration_count,
@@ -4045,6 +4051,37 @@ class Mediator:
 				summary['phase1_section_counts'][phase1_section] = summary['phase1_section_counts'].get(phase1_section, 0) + 1
 			if blocking_level:
 				summary['blocking_level_counts'][blocking_level] = summary['blocking_level_counts'].get(blocking_level, 0) + 1
+		return summary
+
+	def _summarize_intake_matching_pressure(self, pressure_map: Any) -> Dict[str, Any]:
+		summary = {
+			'claim_count': 0,
+			'claims': {},
+			'total_missing_requirements': 0,
+			'max_missing_requirements': 0,
+			'average_matcher_confidence': 0.0,
+		}
+		if not isinstance(pressure_map, dict):
+			return summary
+
+		confidences: List[float] = []
+		for claim_type, claim_data in pressure_map.items():
+			if not isinstance(claim_data, dict):
+				continue
+			missing_count = int(claim_data.get('missing_requirement_count', 0) or 0)
+			matcher_confidence = float(claim_data.get('matcher_confidence', 0.0) or 0.0)
+			summary['claim_count'] += 1
+			summary['total_missing_requirements'] += missing_count
+			summary['max_missing_requirements'] = max(summary['max_missing_requirements'], missing_count)
+			confidences.append(matcher_confidence)
+			summary['claims'][str(claim_type)] = {
+				'missing_requirement_count': missing_count,
+				'matcher_confidence': matcher_confidence,
+				'legal_requirements': int(claim_data.get('legal_requirements', 0) or 0),
+				'satisfied_requirements': int(claim_data.get('satisfied_requirements', 0) or 0),
+			}
+		if confidences:
+			summary['average_matcher_confidence'] = sum(confidences) / len(confidences)
 		return summary
 
 	def _classify_evidence_ingestion_outcomes(
@@ -4688,6 +4725,7 @@ class Mediator:
 		canonical_facts = intake_case_file.get('canonical_facts', []) if isinstance(intake_case_file, dict) else []
 		proof_leads = intake_case_file.get('proof_leads', []) if isinstance(intake_case_file, dict) else []
 		question_candidates = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'question_candidates') or []
+		intake_matching_pressure = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_matching_pressure') or {}
 		claim_support_packets = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packets') or {}
 		return {
 			'current_phase': self.phase_manager.get_current_phase().value,
@@ -4705,6 +4743,7 @@ class Mediator:
 				'count': len(proof_leads),
 				'proof_leads': proof_leads,
 			},
+			'intake_matching_summary': self._summarize_intake_matching_pressure(intake_matching_pressure),
 			'question_candidate_summary': self._summarize_question_candidates(question_candidates),
 			'claim_support_packet_summary': self._summarize_claim_support_packets(claim_support_packets),
 			'intake_contradictions': {

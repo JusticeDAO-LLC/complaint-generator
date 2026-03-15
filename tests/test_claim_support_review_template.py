@@ -283,6 +283,8 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "renderTriageChipRow" in content
     assert "triage-chip" in content
     assert "Question Blocking Levels" in content
+    assert "Question Review Targets" in content
+    assert "Question Review (" in content
     assert "Intake Claim Review" in content
     assert "Intake Section Review" in content
     assert "Packet next steps:" in content
@@ -428,8 +430,11 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "Question target sections:" in content
     assert "Question blocking levels:" in content
     assert "traceEvidenceTriage" in content
+    assert "traceEvidenceQuestionTargets" in content
     assert "renderTriageChipRow" in content
     assert "triage-chip" in content
+    assert "Question Review Targets" in content
+    assert "Question Review (" in content
     assert "traceEvidenceLinks" in content
     assert "buildTraceClaimReviewUrl" in content
     assert "buildTraceSectionReviewUrl" in content
