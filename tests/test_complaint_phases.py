@@ -574,6 +574,35 @@ class TestComplaintDenoiser:
         assert "landlord messages" in question_text
         assert evidence_question["question_intent"]["intent_type"] == "proof_lead_question"
         assert "landlord" in evidence_question["question_intent"]["actor_roles"]
+
+    def test_generate_evidence_questions_prioritizes_alignment_tasks(self):
+        """Evidence questions should prioritize shared unresolved claim-element tasks."""
+        denoiser = ComplaintDenoiser()
+
+        kg = KnowledgeGraph()
+        dg = DependencyGraph()
+
+        questions = denoiser.generate_evidence_questions(
+            kg,
+            dg,
+            evidence_gaps=[{'id': 'gap_1', 'name': 'causation evidence', 'related_claim': 'retaliation'}],
+            alignment_evidence_tasks=[
+                {
+                    'action': 'fill_evidence_gaps',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'claim_element_label': 'Protected activity',
+                    'support_status': 'unsupported',
+                    'blocking': True,
+                }
+            ],
+            max_questions=3,
+        )
+
+        assert questions
+        assert questions[0]['context']['alignment_task'] is True
+        assert questions[0]['context']['claim_element_id'] == 'protected_activity'
+        assert 'Protected activity' in questions[0]['question']
     
     def test_calculate_noise_level(self):
         """Test noise level calculation."""

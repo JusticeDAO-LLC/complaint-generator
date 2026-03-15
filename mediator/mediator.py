@@ -4723,7 +4723,14 @@ class Mediator:
 		
 		# Generate next evidence questions
 		evidence_gaps = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'evidence_gaps') or []
-		questions = self.denoiser.generate_evidence_questions(kg, dg, evidence_gaps, max_questions=3)
+		alignment_evidence_tasks = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks') or []
+		questions = self.denoiser.generate_evidence_questions(
+			kg,
+			dg,
+			evidence_gaps,
+			alignment_evidence_tasks=alignment_evidence_tasks,
+			max_questions=3,
+		)
 		
 		# Calculate evidence noise level
 		evidence_count = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'evidence_count') or 0
@@ -4740,6 +4747,7 @@ class Mediator:
 			'phase': ComplaintPhase.EVIDENCE.value,
 			'updates': updates,
 			'next_questions': questions,
+			'alignment_evidence_tasks': alignment_evidence_tasks,
 			'noise_level': noise,
 			'ready_for_formalization': self.phase_manager.is_phase_complete(ComplaintPhase.EVIDENCE)
 		}

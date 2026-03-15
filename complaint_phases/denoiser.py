@@ -1663,6 +1663,7 @@ class ComplaintDenoiser:
                                    knowledge_graph: KnowledgeGraph,
                                    dependency_graph: DependencyGraph,
                                    evidence_gaps: List[Dict[str, Any]],
+                                   alignment_evidence_tasks: Optional[List[Dict[str, Any]]] = None,
                                    max_questions: int = 5) -> List[Dict[str, Any]]:
         """
         Generate denoising questions for evidence phase.
@@ -1671,15 +1672,62 @@ class ComplaintDenoiser:
             knowledge_graph: Current knowledge graph
             dependency_graph: Current dependency graph
             evidence_gaps: Identified evidence gaps
+            alignment_evidence_tasks: Shared intake/evidence element tasks to prioritize
             max_questions: Maximum questions to generate
             
         Returns:
             List of evidence-focused denoising questions
         """
         questions = []
-        
+
+        prioritized_tasks = (
+            alignment_evidence_tasks
+            if isinstance(alignment_evidence_tasks, list)
+            else []
+        )
+
+        for task in prioritized_tasks[:max_questions]:
+            if not isinstance(task, dict):
+                continue
+            claim_type = str(task.get('claim_type') or 'this claim').strip()
+            claim_element_id = str(task.get('claim_element_id') or '').strip()
+            claim_element_label = str(
+                task.get('claim_element_label')
+                or claim_element_id
+                or 'this issue'
+            ).strip()
+            support_status = str(task.get('support_status') or '').strip().lower()
+            action = str(task.get('action') or 'fill_evidence_gaps').strip().lower()
+            if support_status == 'contradicted' or action == 'resolve_support_conflicts':
+                question_text = (
+                    f"What evidence best resolves the conflict around {claim_element_label} "
+                    f"for {claim_type}?"
+                )
+                question_type = 'evidence_conflict'
+                priority = 'high'
+            else:
+                question_text = (
+                    f"What evidence do you have to support {claim_element_label} "
+                    f"for {claim_type}?"
+                )
+                question_type = 'evidence_clarification'
+                priority = 'high' if bool(task.get('blocking')) else 'medium'
+            questions.append({
+                'type': question_type,
+                'question': question_text,
+                'context': {
+                    'claim_type': claim_type,
+                    'claim_element_id': claim_element_id,
+                    'claim_element_label': claim_element_label,
+                    'support_status': support_status,
+                    'alignment_task': True,
+                },
+                'priority': priority,
+            })
+
         # Questions about missing evidence
-        for gap in evidence_gaps[:max_questions]:
+        remaining_slots = max(0, max_questions - len(questions))
+        for gap in evidence_gaps[:remaining_slots]:
             questions.append({
                 'type': 'evidence_clarification',
                 'question': f"Do you have evidence to support: {gap.get('name', 'this claim')}?",

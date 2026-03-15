@@ -527,6 +527,46 @@ class TestMediatorThreePhaseIntegration:
         assert 'adverse_action' in alignment['packet_element_statuses']
         assert isinstance(alignment['shared_elements'], list)
 
+    def test_process_evidence_denoising_prioritizes_alignment_tasks_in_next_questions(self):
+        """Evidence denoising should ask about unresolved shared ontology elements first."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', mediator.kg_builder.build_from_text("I was fired after I complained to HR."))
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', mediator.dg_builder.build_from_claims([{'name': 'Retaliation', 'type': 'retaliation'}], {}))
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_evidence_tasks',
+            [
+                {
+                    'action': 'fill_evidence_gaps',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'claim_element_label': 'Protected activity',
+                    'support_status': 'unsupported',
+                    'blocking': True,
+                }
+            ],
+        )
+        mediator.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_gaps', [])
+
+        result = mediator.process_evidence_denoising(
+            {'type': 'evidence_clarification', 'question': 'What evidence do you have?', 'context': {}},
+            'HR email.',
+        )
+
+        assert result['alignment_evidence_tasks'][0]['claim_element_id'] == 'protected_activity'
+        assert result['next_questions']
+        assert result['next_questions'][0]['context']['alignment_task'] is True
+        assert result['next_questions'][0]['context']['claim_element_id'] == 'protected_activity'
+
     def test_requirement_answer_can_satisfy_registry_backed_claim_element(self):
         """Requirement answers should tag and satisfy registry-backed claim elements when the requirement name is recognizable."""
         from mediator.mediator import Mediator
