@@ -622,5 +622,37 @@
         }
       ]
     }
+  },
+  {
+    "patch_id": "e0a186b0a6b1de09",
+    "agent_id": "adversarial-harness-optimizer",
+    "task_id": "adversarial_autopatch_20260315_203724",
+    "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/denoiser.py. Priorities from the latest adversarial batch: Improve information extraction: current avg 0.47; Improve question quality: current avg 0.55. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability.",
+    "diff_content": "--- a/complaint_phases/denoiser.py\n+++ b/complaint_phases/denoiser.py\n@@ -1122,12 +1122,11 @@\n         existing_text = \" \".join([q.get('question', '') for q in questions]).lower()\n         added: List[Dict[str, Any]] = []\n \n-        # Timeline question\n         timeline_text = (\n-            \"What is the timeline of key events (dates, who was involved, what was said or done, and when you requested help/accommodation)?\"\n+            'What is the timeline of key events, including dates, who made each decision, what notice or communication you received, and when you requested help or accommodation?'\n         )\n         if len(questions) + len(added) < max_questions:\n-            if not any(q.get('type') == 'timeline' for q in questions) and not any(k in existing_text for k in ['timeline', 'when did', 'what date', 'dates']):\n+            if not any(q.get('type') == 'timeline' for q in questions) and not any(k in existing_text for k in ['timeline', 'when did', 'what date', 'dates', 'notice', 'who made']):\n                 if not self._already_asked(timeline_text):\n                     added.append(self._build_phase1_question(\n                         question_type='timeline',\n@@ -1136,12 +1135,11 @@\n                         priority='high',\n                     ))\n \n-        # Harms/remedy question\n         impact_text = (\n-            \"What harm did you experience (financial, emotional, professional), and what outcome or remedy are you seeking?\"\n+            'What harm did you experience (financial, emotional, professional), what outcome or remedy are you seeking, and what notices, letters, or messages document that harm?'\n         )\n         if len(questions) + len(added) < max_questions:\n-            if not any(q.get('type') in {'impact', 'remedy'} for q in questions) and not any(k in existing_text for k in ['harm', 'damages', 'remedy', 'seeking']):\n+            if not any(q.get('type') in {'impact', 'remedy'} for q in questions) and not any(k in existing_text for k in ['harm', 'damages', 'remedy', 'seeking', 'notice', 'letter', 'message']):\n                 if not self._already_asked(impact_text):\n                     added.append(self._build_phase1_question(\n                         question_type='impact',\n@@ -1150,10 +1148,22 @@\n                         priority='high',\n                     ))\n \n+            notice_text = (\n+                \"What exact notice, letter, email, or message did you receive, on what date, and who sent it?\"\n+            )\n+            if len(questions) + len(added) < max_questions:\n+                if not any(q.get('type') == 'evidence' for q in questions) and not any(k in existing_text for k in ['notice', 'letter', 'email', 'message', 'sent it']):\n+                    if not self._already_asked(notice_text):\n+                        added.append(self._build_phase1_question(\n+                            question_type='evidence',\n+                            question_text=notice_text,\n+                            context={},\n+                            priority='high',\n+                        ))\n+\n         if not added:\n             return questions\n \n-        # Add to front (high priority) but keep stable ordering otherwise.\n         priority_order = {'high': 0, 'medium': 1, 'low': 2}\n         combined = questions + added\n         combined.sort(\n",
+    "target_files": [
+      "complaint_phases/denoiser.py"
+    ],
+    "created_at": "2026-03-15T20:39:29.528190",
+    "parent_patches": [],
+    "ipfs_cid": null,
+    "worktree_path": "",
+    "validated": false,
+    "applied": false,
+    "metadata": {
+      "patch_mode": "direct_diff",
+      "repo_root": "/home/barberb/HACC/complaint-generator",
+      "generation_diagnostics": [
+        {
+          "file": "/home/barberb/HACC/complaint-generator/complaint_phases/denoiser.py",
+          "status": "optimized",
+          "mode": "symbol_level",
+          "target_symbols": [
+            "_ensure_standard_intake_questions"
+          ],
+          "response_length": 85681,
+          "changed": true
+        }
+      ]
+    }
   }
 ]

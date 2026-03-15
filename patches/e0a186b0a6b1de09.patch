@@ -1,0 +1,56 @@
+--- a/complaint_phases/denoiser.py
++++ b/complaint_phases/denoiser.py
+@@ -1122,12 +1122,11 @@
+         existing_text = " ".join([q.get('question', '') for q in questions]).lower()
+         added: List[Dict[str, Any]] = []
+ 
+-        # Timeline question
+         timeline_text = (
+-            "What is the timeline of key events (dates, who was involved, what was said or done, and when you requested help/accommodation)?"
++            'What is the timeline of key events, including dates, who made each decision, what notice or communication you received, and when you requested help or accommodation?'
+         )
+         if len(questions) + len(added) < max_questions:
+-            if not any(q.get('type') == 'timeline' for q in questions) and not any(k in existing_text for k in ['timeline', 'when did', 'what date', 'dates']):
++            if not any(q.get('type') == 'timeline' for q in questions) and not any(k in existing_text for k in ['timeline', 'when did', 'what date', 'dates', 'notice', 'who made']):
+                 if not self._already_asked(timeline_text):
+                     added.append(self._build_phase1_question(
+                         question_type='timeline',
+@@ -1136,12 +1135,11 @@
+                         priority='high',
+                     ))
+ 
+-        # Harms/remedy question
+         impact_text = (
+-            "What harm did you experience (financial, emotional, professional), and what outcome or remedy are you seeking?"
++            'What harm did you experience (financial, emotional, professional), what outcome or remedy are you seeking, and what notices, letters, or messages document that harm?'
+         )
+         if len(questions) + len(added) < max_questions:
+-            if not any(q.get('type') in {'impact', 'remedy'} for q in questions) and not any(k in existing_text for k in ['harm', 'damages', 'remedy', 'seeking']):
++            if not any(q.get('type') in {'impact', 'remedy'} for q in questions) and not any(k in existing_text for k in ['harm', 'damages', 'remedy', 'seeking', 'notice', 'letter', 'message']):
+                 if not self._already_asked(impact_text):
+                     added.append(self._build_phase1_question(
+                         question_type='impact',
+@@ -1150,10 +1148,22 @@
+                         priority='high',
+                     ))
+ 
++            notice_text = (
++                "What exact notice, letter, email, or message did you receive, on what date, and who sent it?"
++            )
++            if len(questions) + len(added) < max_questions:
++                if not any(q.get('type') == 'evidence' for q in questions) and not any(k in existing_text for k in ['notice', 'letter', 'email', 'message', 'sent it']):
++                    if not self._already_asked(notice_text):
++                        added.append(self._build_phase1_question(
++                            question_type='evidence',
++                            question_text=notice_text,
++                            context={},
++                            priority='high',
++                        ))
++
+         if not added:
+             return questions
+ 
+-        # Add to front (high priority) but keep stable ordering otherwise.
+         priority_order = {'high': 0, 'medium': 1, 'low': 2}
+         combined = questions + added
+         combined.sort(
