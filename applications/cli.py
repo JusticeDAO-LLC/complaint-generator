@@ -504,11 +504,19 @@ class CLI:
 	def _format_adversarial_autopatch_output(self, payload):
 		report = payload.get('report', {}) if isinstance(payload, dict) else {}
 		autopatch = payload.get('autopatch', {}) if isinstance(payload, dict) else {}
+		runtime = payload.get('runtime', {}) if isinstance(payload, dict) else {}
 		lines = ['adversarial autopatch:']
 		lines.append(f"sessions: {payload.get('num_results', 0)}")
 		if isinstance(report, dict) and report:
 			lines.append(f"average_score: {float(report.get('average_score', 0.0) or 0.0):.4f}")
 			lines.append(f"score_trend: {report.get('score_trend', 'unknown')}")
+		if isinstance(runtime, dict) and runtime:
+			lines.append(f"runtime_mode: {runtime.get('mode', 'unknown')}")
+			preflight_warnings = runtime.get('preflight_warnings', []) if isinstance(runtime.get('preflight_warnings'), list) else []
+			if preflight_warnings:
+				lines.append('preflight_warnings:')
+				for warning in preflight_warnings:
+					lines.append(f"- {warning}")
 		if isinstance(autopatch, dict) and autopatch:
 			lines.append(f"success: {bool(autopatch.get('success', False))}")
 			lines.append(f"patch_path: {autopatch.get('patch_path', '')}")

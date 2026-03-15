@@ -504,6 +504,12 @@ def test_adversarial_autopatch_command_runs_demo_batch(monkeypatch, tmp_path):
                 'average_score': 0.8,
                 'score_trend': 'stable',
             },
+            'runtime': {
+                'mode': 'live',
+                'preflight_warnings': [
+                    'hf-router: Hugging Face router requires HF_TOKEN or HUGGINGFACE_HUB_TOKEN in the environment.',
+                ],
+            },
             'autopatch': {
                 'success': True,
                 'patch_path': str(patch_path),
@@ -533,4 +539,7 @@ def test_adversarial_autopatch_command_runs_demo_batch(monkeypatch, tmp_path):
     rendered = cli.print_response.call_args[0][0]
     assert 'adversarial autopatch:' in rendered
     assert 'average_score: 0.8000' in rendered
+    assert 'runtime_mode: live' in rendered
+    assert 'preflight_warnings:' in rendered
+    assert 'HF_TOKEN or HUGGINGFACE_HUB_TOKEN' in rendered
     assert 'patch_cid: demo-cli-cid' in rendered

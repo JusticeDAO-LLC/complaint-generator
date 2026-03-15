@@ -1,4 +1,5 @@
 import json
+import sys
 from threading import Thread
 from typing import Any, Dict, List
 
@@ -81,6 +82,11 @@ def _run_adversarial_autopatch_app(mediator: Any, application_config: Dict[str, 
         demo_backend=bool(application_config.get("demo_backend", False)),
         backends=getattr(mediator, "backends", None),
     )
+    warnings = list(((payload.get("runtime") or {}).get("preflight_warnings") or []))
+    if warnings:
+        print("adversarial-autopatch preflight warnings:", file=sys.stderr)
+        for warning in warnings:
+            print(f"- {warning}", file=sys.stderr)
     print(json.dumps(payload, indent=2))
 
 

@@ -5,8 +5,10 @@ from __future__ import annotations
 import difflib
 import hashlib
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
+import shutil
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, Sequence
 
@@ -207,6 +209,40 @@ def _select_live_backend(backends: Sequence[Any], probe_prompt: str) -> tuple[An
     return backends[0], attempts, False
 
 
+def _collect_live_preflight_warnings(backends: Sequence[Any]) -> list[str]:
+    warnings: list[str] = []
+    seen: set[str] = set()
+
+    def _add(message: str) -> None:
+        text = str(message or '').strip()
+        if text and text not in seen:
+            seen.add(text)
+            warnings.append(text)
+
+    hf_token = (
+        os.getenv('HF_TOKEN', '').strip()
+        or os.getenv('HUGGINGFACE_HUB_TOKEN', '').strip()
+        or os.getenv('HUGGINGFACE_API_KEY', '').strip()
+        or os.getenv('HF_API_TOKEN', '').strip()
+    )
+
+    for backend in backends:
+        provider = str(getattr(backend, 'provider', '') or '').strip().lower()
+        backend_id = _backend_label(backend)
+        if provider in {'hf_inference', 'hf_router', 'huggingface_inference', 'huggingface_router'} and not hf_token:
+            _add(
+                f"{backend_id}: Hugging Face router requires HF_TOKEN or HUGGINGFACE_HUB_TOKEN in the environment."
+            )
+        elif provider in {'codex', 'codex_cli'} and shutil.which('codex') is None:
+            _add(f"{backend_id}: Codex CLI backend requires a codex binary on PATH.")
+        elif provider in {'accelerate', 'ipfs_accelerate_py'}:
+            _add(
+                f"{backend_id}: accelerate is best-effort and may degrade to local_fallback when distributed inference is unavailable."
+            )
+
+    return warnings
+
+
 def run_demo_autopatch_batch(
     *,
     project_root: str | Path,
@@ -310,6 +346,7 @@ def run_adversarial_autopatch_batch(
     resolved_output_dir = Path(output_dir)
     resolved_session_state_dir = Path(session_state_dir) if session_state_dir is not None else resolved_output_dir / "sessions"
     resolved_backends = list(backends)
+    preflight_warnings = _collect_live_preflight_warnings(resolved_backends)
     shared_backend, probe_attempts, selected_backend_healthy = _select_live_backend(resolved_backends, probe_prompt)
 
     def _default_mediator_factory(**kwargs: Any) -> Mediator:
@@ -366,6 +403,7 @@ def run_adversarial_autopatch_batch(
             "backend_type": type(shared_backend).__name__,
             "selected_backend_id": _backend_label(shared_backend),
             "selected_backend_healthy": selected_backend_healthy,
+            "preflight_warnings": preflight_warnings,
             "probe_attempts": probe_attempts,
             **_summarize_runtime_health(results),
         },

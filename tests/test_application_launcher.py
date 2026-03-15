@@ -108,6 +108,7 @@ def test_run_adversarial_autopatch_app_prints_payload(monkeypatch, capsys):
         lambda **kwargs: {
             "num_results": 1,
             "report": {"average_score": 0.7},
+            "runtime": {"preflight_warnings": []},
             "autopatch": {"success": True, "patch_path": "/tmp/demo.patch", "patch_cid": "cid"},
         },
     )
@@ -117,6 +118,30 @@ def test_run_adversarial_autopatch_app_prints_payload(monkeypatch, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["num_results"] == 1
     assert payload["autopatch"]["success"] is True
+
+
+def test_run_adversarial_autopatch_app_prints_preflight_warnings_to_stderr(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "applications.launcher.run_adversarial_autopatch_batch",
+        lambda **kwargs: {
+            "num_results": 1,
+            "report": {"average_score": 0.7},
+            "runtime": {
+                "preflight_warnings": [
+                    "hf-router: Hugging Face router requires HF_TOKEN or HUGGINGFACE_HUB_TOKEN in the environment.",
+                ]
+            },
+            "autopatch": {"success": True, "patch_path": "/tmp/demo.patch", "patch_cid": "cid"},
+        },
+    )
+
+    _run_adversarial_autopatch_app(object(), {"output_dir": "/tmp/autopatch", "demo_backend": False})
+
+    captured = capsys.readouterr()
+    assert 'adversarial-autopatch preflight warnings:' in captured.err
+    assert 'HF_TOKEN or HUGGINGFACE_HUB_TOKEN' in captured.err
+    payload = json.loads(captured.out)
+    assert payload['autopatch']['success'] is True
 
 
 def test_requirements_declare_uvicorn_for_web_applications():

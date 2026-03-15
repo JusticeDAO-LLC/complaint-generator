@@ -1472,6 +1472,7 @@ SUGGESTIONS:
         assert payload['runtime']['backend_type'] == 'DemoBatchLLMBackend'
         assert payload['runtime']['selected_backend_id'] == 'DemoBatchLLMBackend'
         assert payload['runtime']['selected_backend_healthy'] is True
+        assert payload['runtime']['preflight_warnings'] == []
         assert payload['runtime']['probe_attempts'][0]['ok'] is True
         assert payload['runtime']['degraded'] is False
         assert payload['runtime']['critic_fallback_sessions'] == 0
@@ -1536,6 +1537,42 @@ SUGGESTIONS:
         assert payload['runtime']['selected_backend_healthy'] is False
         assert payload['runtime']['degraded'] is True
         assert 'backend_probe_failed' in payload['runtime']['degraded_reasons']
+
+    def test_run_adversarial_autopatch_batch_collects_live_preflight_warnings(self, tmp_path, monkeypatch):
+        monkeypatch.delenv('HF_TOKEN', raising=False)
+        monkeypatch.delenv('HUGGINGFACE_HUB_TOKEN', raising=False)
+        monkeypatch.delenv('HUGGINGFACE_API_KEY', raising=False)
+        monkeypatch.delenv('HF_API_TOKEN', raising=False)
+        monkeypatch.setattr(demo_module.shutil, 'which', lambda name: None)
+
+        class FailingBackend:
+            def __init__(self, backend_id, provider):
+                self.id = backend_id
+                self.provider = provider
+
+            def __call__(self, prompt: str) -> str:
+                raise Exception(f'{self.id} failed')
+
+        payload = run_adversarial_autopatch_batch(
+            project_root=Path(__file__).resolve().parents[1],
+            output_dir=tmp_path,
+            target_file='adversarial_harness/session.py',
+            num_sessions=1,
+            max_turns=2,
+            max_parallel=1,
+            demo_backend=False,
+            backends=[
+                FailingBackend('hf-router', 'huggingface_router'),
+                FailingBackend('llm-router-codex', 'codex_cli'),
+                FailingBackend('llm-router', 'accelerate'),
+            ],
+            mediator_factory=DemoBatchMediator,
+        )
+
+        warnings = payload['runtime']['preflight_warnings']
+        assert any('hf-router: Hugging Face router requires HF_TOKEN or HUGGINGFACE_HUB_TOKEN' in warning for warning in warnings)
+        assert any('llm-router-codex: Codex CLI backend requires a codex binary on PATH.' == warning for warning in warnings)
+        assert any('llm-router: accelerate is best-effort and may degrade to local_fallback' in warning for warning in warnings)
 
 
 if __name__ == '__main__':
