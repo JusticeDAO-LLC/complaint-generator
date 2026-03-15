@@ -260,6 +260,11 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Optimization Focus" in content
     assert "Relief-targeted optimization:" in content
     assert "Final recommended focus:" in content
+    assert "Changed Claims" in content
+    assert "added claims:" in content
+    assert "changed claims:" in content
+    assert "Changed Remedies" in content
+    assert "added remedies:" in content
     assert "Intake Constraints" in content
     assert "Current intake phase:" in content
     assert "Intake readiness score:" in content
@@ -377,6 +382,7 @@ def test_review_surface_optimization_trace_route_serves_trace_template():
     assert "Load Trace" in response.text
     assert "Export Trace Bundle" in response.text
     assert "Iteration Changes" in response.text
+    assert "Review Snapshot" in response.text
     assert "Accepted Only" in response.text
     assert "Rejected Only" in response.text
 
@@ -398,6 +404,9 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "changed_items" in content
     assert "added_items" in content
     assert "removed_items" in content
+    assert "Focus trajectory:" in content
+    assert "Relief-targeted optimization:" in content
+    assert "Final recommended focus:" in content
     assert "summarizeStructuredArrayField" in content
     assert "summarizeStructuredObjectField" in content
     assert "buildIterationDiffLines" in content

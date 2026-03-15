@@ -2198,6 +2198,62 @@
                 .map((entry) => entry && typeof entry.focus_section === 'string' ? entry.focus_section : '')
                 .filter(Boolean)));
             const reliefTargeted = optimizedSections.includes('requested_relief') || focusSections.includes('requested_relief');
+            const changedRemedyLines = sectionHistory.flatMap((entry) => {
+                const manifestEntries = Array.isArray(entry && entry.change_manifest) ? entry.change_manifest : [];
+                const requestedReliefEntry = manifestEntries.find((manifestEntry) => manifestEntry && manifestEntry.field === 'requested_relief');
+                if (!requestedReliefEntry) {
+                    return [];
+                }
+                const iterationLabel = `Iteration ${entry && entry.iteration != null ? entry.iteration : '?'}`;
+                const acceptedLabel = entry && entry.accepted ? 'accepted' : 'rejected';
+                const lines = [`${iterationLabel} ${acceptedLabel}: requested relief ${requestedReliefEntry.change_type || 'updated'} (${requestedReliefEntry.before_count || 0} -> ${requestedReliefEntry.after_count || 0})`];
+                const addedItems = Array.isArray(requestedReliefEntry.added_items) ? requestedReliefEntry.added_items.filter(Boolean).slice(0, 2) : [];
+                const changedItems = Array.isArray(requestedReliefEntry.changed_items) ? requestedReliefEntry.changed_items.filter(Boolean).slice(0, 2) : [];
+                const removedItems = Array.isArray(requestedReliefEntry.removed_items) ? requestedReliefEntry.removed_items.filter(Boolean).slice(0, 2) : [];
+                if (addedItems.length) {
+                    lines.push(`${iterationLabel} added remedies: ${addedItems.join(' | ')}`);
+                }
+                if (changedItems.length) {
+                    lines.push(`${iterationLabel} changed remedies: ${changedItems.join(' | ')}`);
+                }
+                if (removedItems.length) {
+                    lines.push(`${iterationLabel} removed remedies: ${removedItems.join(' | ')}`);
+                }
+                return lines;
+            });
+            const changedClaimLines = sectionHistory.flatMap((entry) => {
+                const manifestEntries = Array.isArray(entry && entry.change_manifest) ? entry.change_manifest : [];
+                const claimEntry = manifestEntries.find((manifestEntry) => manifestEntry && manifestEntry.field === 'claims_for_relief');
+                const claimFactsEntry = manifestEntries.find((manifestEntry) => manifestEntry && manifestEntry.field === 'claim_supporting_facts');
+                if (!claimEntry && !claimFactsEntry) {
+                    return [];
+                }
+                const iterationLabel = `Iteration ${entry && entry.iteration != null ? entry.iteration : '?'}`;
+                const acceptedLabel = entry && entry.accepted ? 'accepted' : 'rejected';
+                const lines = [];
+                if (claimEntry) {
+                    lines.push(`${iterationLabel} ${acceptedLabel}: claims for relief ${claimEntry.change_type || 'updated'} (${claimEntry.before_count || 0} -> ${claimEntry.after_count || 0})`);
+                    const addedItems = Array.isArray(claimEntry.added_items) ? claimEntry.added_items.filter(Boolean).slice(0, 2) : [];
+                    const changedItems = Array.isArray(claimEntry.changed_items) ? claimEntry.changed_items.filter(Boolean).slice(0, 2) : [];
+                    const removedItems = Array.isArray(claimEntry.removed_items) ? claimEntry.removed_items.filter(Boolean).slice(0, 2) : [];
+                    if (addedItems.length) {
+                        lines.push(`${iterationLabel} added claims: ${addedItems.join(' | ')}`);
+                    }
+                    if (changedItems.length) {
+                        lines.push(`${iterationLabel} changed claims: ${changedItems.join(' | ')}`);
+                    }
+                    if (removedItems.length) {
+                        lines.push(`${iterationLabel} removed claims: ${removedItems.join(' | ')}`);
+                    }
+                }
+                if (claimFactsEntry) {
+                    const changedItems = Array.isArray(claimFactsEntry.changed_items) ? claimFactsEntry.changed_items.filter(Boolean).slice(0, 2) : [];
+                    if (changedItems.length) {
+                        lines.push(`${iterationLabel} changed claim facts: ${changedItems.join(' | ')}`);
+                    }
+                }
+                return lines;
+            });
             const routerLines = Object.entries(routerStatus).map(([key, value]) => `${humanizeKey(key)}: ${value}`);
             const routerUsageLines = [
                 routerUsage.llm_calls != null ? `LLM calls: ${routerUsage.llm_calls}` : '',
@@ -2327,6 +2383,8 @@
                         ${traceViewUrl ? `<div class="preview-meta"><a href="${escapeHtml(traceViewUrl)}" target="_blank" rel="noopener">Open Persisted Trace</a></div>` : ''}
                         ${traceSnapshotLines.length ? `<div class="preview-meta"><strong>Persisted Trace Snapshot</strong></div>${renderLines(traceSnapshotLines)}` : ''}
                         ${optimizationFocusLines.length ? `<div class="preview-meta"><strong>Optimization Focus</strong></div>${renderLines(optimizationFocusLines)}` : ''}
+                        ${changedClaimLines.length ? `<div class="preview-meta"><strong>Changed Claims</strong></div>${renderLines(changedClaimLines)}` : ''}
+                        ${changedRemedyLines.length ? `<div class="preview-meta"><strong>Changed Remedies</strong></div>${renderLines(changedRemedyLines)}` : ''}
                         ${routerUsageLines.length ? `<div class="preview-meta"><strong>Router Usage</strong></div>${renderLines(routerUsageLines)}` : ''}
                         ${intakeConstraintLines.length ? `<div class="preview-meta"><strong>Intake Constraints</strong></div>${renderLines(intakeConstraintLines)}` : ''}
                         ${upstreamOptimizerLines.length ? `<div class="preview-meta"><strong>Upstream Optimizer</strong></div>${renderLines(upstreamOptimizerLines)}` : ''}

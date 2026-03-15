@@ -796,6 +796,56 @@ class ComplaintDenoiser:
 
         return questions
 
+    def _build_claim_element_questions(
+        self,
+        intake_case_file: Optional[Dict[str, Any]],
+        max_questions: int,
+    ) -> List[Dict[str, Any]]:
+        """Build questions from missing registry-backed claim elements in the intake case file."""
+        if not isinstance(intake_case_file, dict):
+            return []
+
+        questions: List[Dict[str, Any]] = []
+        seen_keys: Set[str] = set()
+        candidate_claims = intake_case_file.get('candidate_claims', [])
+        if not isinstance(candidate_claims, list):
+            return []
+
+        for claim in candidate_claims:
+            if not isinstance(claim, dict):
+                continue
+            claim_type = str(claim.get('claim_type') or '').strip()
+            claim_label = str(claim.get('label') or claim_type or 'this claim').strip()
+            for element in claim.get('required_elements', []) or []:
+                if not isinstance(element, dict):
+                    continue
+                if str(element.get('status') or '').strip().lower() == 'present':
+                    continue
+                element_id = str(element.get('element_id') or '').strip()
+                element_label = str(element.get('label') or element_id or 'this missing element').strip()
+                question_key = f"{claim_type}:{element_id}:{element_label}".lower()
+                if question_key in seen_keys:
+                    continue
+                seen_keys.add(question_key)
+                question_text = f"For {claim_label}, what facts show {element_label.lower()}?"
+                if not self._already_asked(question_text):
+                    questions.append(self._build_phase1_question(
+                        question_type='requirement',
+                        question_text=question_text,
+                        context={
+                            'claim_type': claim_type,
+                            'claim_name': claim_label,
+                            'requirement_id': element_id,
+                            'requirement_name': element_label,
+                            'target_element_id': element_id,
+                        },
+                        priority='high' if bool(element.get('blocking', False)) else 'medium',
+                    ))
+                if len(questions) >= max_questions:
+                    return questions[:max_questions]
+
+        return questions
+
     def _ensure_standard_intake_questions(self, questions: List[Dict[str, Any]], max_questions: int) -> List[Dict[str, Any]]:
         if len(questions) >= max_questions:
             return questions
@@ -1012,7 +1062,8 @@ class ComplaintDenoiser:
     def generate_questions(self, 
                           knowledge_graph: KnowledgeGraph,
                           dependency_graph: DependencyGraph,
-                          max_questions: int = 10) -> List[Dict[str, Any]]:
+                          max_questions: int = 10,
+                          intake_case_file: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
         Generate questions to denoise the complaint.
         
@@ -1028,6 +1079,12 @@ class ComplaintDenoiser:
 
         contradiction_questions = self._build_contradiction_questions(dependency_graph, max_questions)
         questions.extend(contradiction_questions)
+
+        claim_element_questions = self._build_claim_element_questions(
+            intake_case_file,
+            max(0, max_questions - len(questions)),
+        )
+        questions.extend(claim_element_questions[:max(0, max_questions - len(questions))])
         
         # Get knowledge graph gaps
         kg_gaps = knowledge_graph.find_gaps()

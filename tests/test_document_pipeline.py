@@ -2395,6 +2395,8 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert 'Persisted Trace Snapshot' in page_html
         assert 'Optimization Focus' in page_html
         assert 'Relief-targeted optimization' in page_html
+        assert 'Changed Claims' in page_html
+        assert 'Changed Remedies' in page_html
         assert 'Intake Constraints' in page_html
         assert 'Optimized Sections' in page_html
         assert 'Trace CID' in page_html

@@ -15,7 +15,7 @@ CLAIM_INTAKE_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
                 "element_id": "protected_trait",
                 "label": "Protected trait or class",
                 "blocking": True,
-                "keywords": ["race", "sex", "gender", "disability", "religion", "pregnan", "national origin", "age"],
+                "keywords": ["race", "sex", "gender", "disability", "religion", "pregnan", "national origin", "age", "black", "white", "latino", "hispanic", "asian"],
                 "fact_types": [],
             },
             {
@@ -184,7 +184,15 @@ def refresh_required_elements(candidate_claim: Dict[str, Any], canonical_facts: 
     for element in registry.get("elements", []):
         keywords = [str(keyword).lower() for keyword in (element.get("keywords") or []) if keyword]
         fact_types = [str(fact_type).lower() for fact_type in (element.get("fact_types") or []) if fact_type]
-        present = any(keyword in combined_text for keyword in keywords) or _has_fact_type(canonical_facts, fact_types)
+        tagged_present = any(
+            str(element.get("element_id") or "").strip().lower() in {
+                str(tag).strip().lower()
+                for tag in (fact.get("element_tags") or [])
+            }
+            for fact in canonical_facts
+            if isinstance(fact, dict)
+        )
+        present = tagged_present or any(keyword in combined_text for keyword in keywords) or _has_fact_type(canonical_facts, fact_types)
         required_elements.append(
             {
                 "element_id": element.get("element_id"),
@@ -194,3 +202,21 @@ def refresh_required_elements(candidate_claim: Dict[str, Any], canonical_facts: 
             }
         )
     return required_elements
+
+
+def match_required_element_id(claim_type: Any, text: Any) -> str:
+    registry = registry_for_claim_type(claim_type)
+    normalized_text = str(text or "").strip().lower()
+    if not normalized_text:
+        return ""
+    for element in registry.get("elements", []):
+        element_id = str(element.get("element_id") or "").strip()
+        label = str(element.get("label") or "").strip().lower()
+        if not element_id:
+            continue
+        if element_id.lower() in normalized_text or label in normalized_text:
+            return element_id
+        label_terms = [term for term in label.replace("/", " ").split() if len(term) > 3]
+        if label_terms and any(term in normalized_text for term in label_terms):
+            return element_id
+    return ""

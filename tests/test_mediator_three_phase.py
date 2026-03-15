@@ -330,6 +330,7 @@ class TestMediatorThreePhaseIntegration:
 
         assert intake_case_file['source_complaint_text'] == 'Initial complaint text'
         assert any(claim['claim_type'] == 'discrimination' for claim in intake_case_file['candidate_claims'])
+        assert any(claim['required_elements'] for claim in intake_case_file['candidate_claims'])
         assert any(fact['fact_type'] == 'impact' for fact in intake_case_file['canonical_facts'])
         assert any(lead['lead_type'] == 'email communication' for lead in intake_case_file['proof_leads'])
 
@@ -501,6 +502,67 @@ class TestMediatorThreePhaseIntegration:
         status = mediator.get_three_phase_status()
         assert status['claim_support_packet_summary']['claim_count'] == 1
         assert status['claim_support_packet_summary']['status_counts']['unsupported'] == 1
+
+    def test_requirement_answer_can_satisfy_registry_backed_claim_element(self):
+        """Requirement answers should tag and satisfy registry-backed claim elements when the requirement name is recognizable."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process("My employer engaged in discrimination against me because of my race.")
+
+        result = mediator.process_denoising_answer(
+            {
+                'type': 'requirement',
+                'question': 'What protected class are you in?',
+                'context': {
+                    'requirement_id': 'req_protected_class',
+                    'requirement_name': 'Protected trait or class',
+                },
+            },
+            'I am Black.',
+        )
+        intake_case_file = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file')
+        discrimination_claim = next(
+            claim for claim in intake_case_file['candidate_claims']
+            if claim['claim_type'] == 'discrimination'
+        )
+        protected_trait = next(
+            element for element in discrimination_claim['required_elements']
+            if element['element_id'] == 'protected_trait'
+        )
+
+        assert protected_trait['status'] == 'present'
+        assert any('protected_trait' in (fact.get('element_tags') or []) for fact in intake_case_file['canonical_facts'])
+        assert result['intake_readiness']['intake_sections']['claim_elements']['status'] in {'partial', 'complete'}
+
+    def test_start_three_phase_process_includes_registry_backed_claim_element_question(self):
+        """Initial intake questions should include prompts for missing registry-backed claim elements."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        result = mediator.start_three_phase_process(
+            "My employer engaged in discrimination against me after I was fired."
+        )
+
+        requirement_questions = [
+            question for question in result['initial_questions']
+            if question.get('type') == 'requirement'
+        ]
+
+        assert requirement_questions
+        assert any(question.get('phase1_section') == 'claim_elements' for question in requirement_questions)
     
     def test_graph_serialization(self):
         """Test that graphs can be serialized for storage."""

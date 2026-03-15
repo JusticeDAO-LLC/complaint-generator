@@ -423,6 +423,10 @@
             const filteredIterations = filterIterations(iterations);
             const initialReview = trace.initial_review && typeof trace.initial_review === 'object' ? trace.initial_review : {};
             const finalReview = trace.final_review && typeof trace.final_review === 'object' ? trace.final_review : {};
+            const focusSections = Array.from(new Set(iterations
+                .map((entry) => entry && typeof entry.focus_section === 'string' ? entry.focus_section : '')
+                .filter(Boolean)));
+            const reliefTargeted = focusSections.includes('requested_relief');
 
             document.getElementById('traceJsonViewer').textContent = JSON.stringify(trace, null, 2);
 
@@ -480,7 +484,9 @@
                 [
                     initialReview.overall_score != null ? `Initial review score: ${initialReview.overall_score}` : '',
                     finalReview.overall_score != null ? `Final review score: ${finalReview.overall_score}` : '',
+                    focusSections.length ? `Focus trajectory: ${focusSections.map(humanizeKey).join(' -> ')}` : '',
                     finalReview.recommended_focus ? `Final recommended focus: ${humanizeKey(finalReview.recommended_focus)}` : '',
+                    `Relief-targeted optimization: ${reliefTargeted ? 'yes' : 'no'}`,
                 ].filter(Boolean),
             );
         }

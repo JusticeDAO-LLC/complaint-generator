@@ -299,6 +299,46 @@ class TestComplaintDenoiser:
         assert 'conflicting information' in questions[0]['question'].lower()
         assert questions[0]['phase1_section'] == 'contradictions'
         assert questions[0]['expected_update_kind'] == 'resolve_contradiction'
+
+    def test_generate_questions_uses_missing_registry_claim_elements(self):
+        """Missing required elements in the intake case file should generate requirement questions."""
+        denoiser = ComplaintDenoiser()
+
+        kg = KnowledgeGraph()
+        kg.add_entity(Entity("claim1", "claim", "Discrimination Claim", attributes={"claim_type": "discrimination"}))
+
+        dg = DependencyGraph()
+        claim = DependencyNode("n1", NodeType.CLAIM, "Discrimination Claim")
+        dg.add_node(claim)
+
+        intake_case_file = {
+            "candidate_claims": [
+                {
+                    "claim_id": "claim1",
+                    "claim_type": "discrimination",
+                    "label": "Discrimination Claim",
+                    "required_elements": [
+                        {
+                            "element_id": "protected_trait",
+                            "label": "Protected trait or class",
+                            "blocking": True,
+                            "status": "missing",
+                        }
+                    ],
+                }
+            ]
+        }
+
+        questions = denoiser.generate_questions(kg, dg, max_questions=5, intake_case_file=intake_case_file)
+        requirement_questions = [
+            q for q in questions
+            if q["type"] == "requirement" and q.get("target_element_id") == "protected_trait"
+        ]
+
+        assert requirement_questions
+        assert "protected trait or class" in requirement_questions[0]["question"].lower()
+        assert requirement_questions[0]["phase1_section"] == "claim_elements"
+        assert requirement_questions[0]["blocking_level"] == "blocking"
     
     def test_calculate_noise_level(self):
         """Test noise level calculation."""

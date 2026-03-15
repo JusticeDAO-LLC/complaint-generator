@@ -23,6 +23,7 @@ from .dependency_graph import (
 )
 from .denoiser import ComplaintDenoiser
 from .intake_case_file import build_intake_case_file, refresh_intake_sections
+from .intake_claim_registry import CLAIM_INTAKE_REQUIREMENTS, match_required_element_id, normalize_claim_type
 from .phase_manager import PhaseManager, ComplaintPhase
 from .legal_graph import (
     LegalGraphBuilder, 
@@ -46,6 +47,9 @@ __all__ = [
     'ComplaintDenoiser',
     'build_intake_case_file',
     'refresh_intake_sections',
+    'CLAIM_INTAKE_REQUIREMENTS',
+    'match_required_element_id',
+    'normalize_claim_type',
     'PhaseManager',
     'ComplaintPhase',
     'LegalGraphBuilder',

@@ -53,6 +53,7 @@ from complaint_phases import (
 	DependencyGraphBuilder,
 	ComplaintDenoiser,
 	build_intake_case_file,
+	match_required_element_id,
 	refresh_intake_sections,
 	LegalGraphBuilder,
 	NeurosymbolicMatcher,
@@ -3216,7 +3217,12 @@ class Mediator:
 			[gap.get('type') for gap in kg_gaps if isinstance(gap, dict) and gap.get('type')],
 		)
 		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', len(kg_gaps))
-		questions = self.denoiser.generate_questions(kg, dg, max_questions=10)
+		questions = self.denoiser.generate_questions(
+			kg,
+			dg,
+			max_questions=10,
+			intake_case_file=intake_case_file,
+		)
 		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'current_questions', questions)
 		
 		# Calculate initial noise level
@@ -3468,8 +3474,21 @@ class Mediator:
 				question_type=question_type,
 			)
 			target_element_id = self._normalize_intake_text(context.get('requirement_id'))
-			if target_element_id:
-				created_fact['element_tags'] = [target_element_id]
+			requirement_name = self._normalize_intake_text(context.get('requirement_name'))
+			candidate_claim_types = [
+				str(claim.get('claim_type') or '').strip().lower()
+				for claim in intake_case_file.get('candidate_claims', [])
+				if isinstance(claim, dict) and claim.get('claim_type')
+			]
+			matched_element_tags = []
+			for claim_type in candidate_claim_types:
+				matched = match_required_element_id(claim_type, requirement_name) or match_required_element_id(claim_type, normalized_answer)
+				if matched and matched not in matched_element_tags:
+					matched_element_tags.append(matched)
+			if target_element_id and target_element_id not in matched_element_tags:
+				matched_element_tags.append(target_element_id)
+			if matched_element_tags:
+				created_fact['element_tags'] = matched_element_tags
 		elif question_type == 'clarification':
 			created_fact = self._append_canonical_fact(
 				intake_case_file,
@@ -3534,7 +3553,12 @@ class Mediator:
 				max_questions = 8
 		except Exception:
 			max_questions = 5
-		questions = self.denoiser.generate_questions(kg, dg, max_questions=max_questions)
+		questions = self.denoiser.generate_questions(
+			kg,
+			dg,
+			max_questions=max_questions,
+			intake_case_file=intake_case_file,
+		)
 		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'current_questions', questions)
 		
 		# Update graphs in phase data
