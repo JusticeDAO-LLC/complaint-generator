@@ -1,7 +1,43 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+try:
+    from pydantic import BaseModel, Field
+except ModuleNotFoundError:
+    print("Info: claim support review pydantic is unavailable; using fallback BaseModel.")
+
+    class _FieldSpec:
+        def __init__(self, default: Any = None, default_factory: Any = None):
+            self.default = default
+            self.default_factory = default_factory
+
+
+    def Field(default: Any = None, default_factory: Any = None, **_: Any) -> Any:
+        return _FieldSpec(default=default, default_factory=default_factory)
+
+
+    class BaseModel:
+        def __init__(self, **kwargs: Any) -> None:
+            annotations = getattr(self.__class__, "__annotations__", {})
+            for name in annotations:
+                if name in kwargs:
+                    value = kwargs[name]
+                else:
+                    class_value = getattr(self.__class__, name, None)
+                    if isinstance(class_value, _FieldSpec):
+                        if class_value.default_factory is not None:
+                            value = class_value.default_factory()
+                        else:
+                            value = class_value.default
+                    else:
+                        value = class_value
+                setattr(self, name, value)
+
+        def dict(self) -> Dict[str, Any]:
+            return {
+                name: getattr(self, name)
+                for name in getattr(self.__class__, "__annotations__", {})
+            }
 
 from complaint_phases.denoiser import ComplaintDenoiser
 

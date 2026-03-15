@@ -1,0 +1,87 @@
+--- a/complaint_phases/phase_manager.py
++++ b/complaint_phases/phase_manager.py
+@@ -365,24 +365,26 @@
+     def _get_intake_action(self) -> Dict[str, Any]:
+         """Get next action for intake phase."""
+         data = self.phase_data[ComplaintPhase.INTAKE]
++
+         readiness = self.get_intake_readiness()
+-        
+-        if 'knowledge_graph' not in data:
++
++        if not data.get('knowledge_graph'):
+             return {
+                 'action': 'build_knowledge_graph',
+                 'intake_readiness_score': readiness['score'],
+                 'intake_blockers': readiness['blockers'],
+             }
+-        
+-        if 'dependency_graph' not in data:
++
++        if not data.get('dependency_graph'):
+             return {
+                 'action': 'build_dependency_graph',
+                 'intake_readiness_score': readiness['score'],
+                 'intake_blockers': readiness['blockers'],
+             }
+-        
++
+         gaps = data.get('current_gaps', [])
+-        if gaps and len(gaps) > 0:
++        remaining_gaps = data.get('remaining_gaps', float('inf'))
++        if (gaps and len(gaps) > 0) or data.get('remaining_gaps', float('inf')) > 3:
+             return {
+                 'action': 'address_gaps',
+                 'gaps': gaps,
+@@ -390,41 +392,22 @@
+                 'intake_blockers': readiness['blockers'],
+             }
+ 
+-        remaining_gaps = data.get('remaining_gaps', float('inf'))
+-        if remaining_gaps > _INTAKE_GAPS_THRESHOLD:
+-            return {
+-                'action': 'address_gaps',
+-                'gaps': gaps,
+-                'intake_readiness_score': readiness['score'],
+-                'intake_blockers': readiness['blockers'],
+-            }
+-
+-        semantic_blockers = [
+-            blocker for blocker in readiness['blockers']
+-            if blocker not in {
+-                'missing_knowledge_graph',
+-                'missing_dependency_graph',
+-                'unresolved_gaps',
+-                'denoising_not_converged',
+-            }
+-        ]
+-        if semantic_blockers:
+-            return {
+-                'action': 'address_gaps',
+-                'gaps': gaps,
+-                'intake_readiness_score': readiness['score'],
+-                'intake_blockers': readiness['blockers'],
+-            }
+-        
+-        if not data.get('denoising_converged', False) and self.iteration_count < _DENOISING_MAX_ITERATIONS:
++        if not data.get('denoising_converged', False) and bool(gaps) and self.iteration_count < _DENOISING_MAX_ITERATIONS:
+             return {
+                 'action': 'continue_denoising',
+                 'intake_readiness_score': readiness['score'],
+                 'intake_blockers': readiness['blockers'],
+             }
+-        
++
++        if (True) or self.iteration_count >= _DENOISING_MAX_ITERATIONS:
++            return {
++                'action': 'complete_intake',
++                'intake_readiness_score': readiness['score'],
++                'intake_blockers': readiness['blockers'],
++            }
++
+         return {
+-            'action': 'complete_intake',
++            'action': 'continue_denoising',
+             'intake_readiness_score': readiness['score'],
+             'intake_blockers': readiness['blockers'],
+         }

@@ -398,6 +398,24 @@ class TestPhaseManager:
         assert pm.is_phase_complete(ComplaintPhase.INTAKE)
         assert action['action'] == 'complete_intake'
 
+    def test_intake_action_addresses_remaining_gap_count_without_explicit_gap_list(self):
+        """Test intake continues gap resolution when remaining gap count is still high."""
+        pm = PhaseManager()
+
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', {})
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', {})
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', 5)
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'denoising_converged', False)
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'current_gaps', [])
+
+        readiness = pm.get_intake_readiness()
+        action = pm.get_next_action()
+
+        assert 'unresolved_gaps' in readiness['blockers']
+        assert action['action'] == 'address_gaps'
+        assert action['gaps'] == []
+        assert action['intake_blockers'] == readiness['blockers']
+
     def test_intake_readiness_includes_contradiction_details(self):
         """Test intake readiness returns concrete contradiction diagnostics."""
         pm = PhaseManager()

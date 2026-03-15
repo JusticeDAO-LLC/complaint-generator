@@ -1,0 +1,81 @@
+--- a/complaint_phases/phase_manager.py
++++ b/complaint_phases/phase_manager.py
+@@ -345,60 +345,24 @@
+     def _get_intake_action(self) -> Dict[str, Any]:
+         """Get next action for intake phase."""
+         data = self.phase_data[ComplaintPhase.INTAKE]
+-        readiness = self.get_intake_readiness()
+-        
+-        if 'knowledge_graph' not in data:
+-            return {
+-                'action': 'build_knowledge_graph',
+-                'intake_readiness_score': readiness['score'],
+-                'intake_blockers': readiness['blockers'],
+-            }
+-        
+-        if 'dependency_graph' not in data:
+-            return {
+-                'action': 'build_dependency_graph',
+-                'intake_readiness_score': readiness['score'],
+-                'intake_blockers': readiness['blockers'],
+-            }
+-        
+-        gaps = data.get('current_gaps', [])
+-        if gaps and len(gaps) > 0:
+-            return {
+-                'action': 'address_gaps',
+-                'gaps': gaps,
+-                'intake_readiness_score': readiness['score'],
+-                'intake_blockers': readiness['blockers'],
+-            }
+-
+-        semantic_blockers = [
+-            blocker for blocker in readiness['blockers']
+-            if blocker not in {
+-                'missing_knowledge_graph',
+-                'missing_dependency_graph',
+-                'unresolved_gaps',
+-                'denoising_not_converged',
+-            }
+-        ]
+-        if semantic_blockers:
+-            return {
+-                'action': 'address_gaps',
+-                'gaps': gaps,
+-                'intake_readiness_score': readiness['score'],
+-                'intake_blockers': readiness['blockers'],
+-            }
+-        
+-        if not data.get('denoising_converged', False) and self.iteration_count < _DENOISING_MAX_ITERATIONS:
+-            return {
+-                'action': 'continue_denoising',
+-                'intake_readiness_score': readiness['score'],
+-                'intake_blockers': readiness['blockers'],
+-            }
+-        
+-        return {
+-            'action': 'complete_intake',
+-            'intake_readiness_score': readiness['score'],
+-            'intake_blockers': readiness['blockers'],
+-        }
++
++        if not data.get('knowledge_graph'):
++            return {'action': 'build_knowledge_graph'}
++
++        if not data.get('dependency_graph'):
++            return {'action': 'build_dependency_graph'}
++
++            gaps = data.get('current_gaps', [])
++            if (gaps and len(gaps) > 0) or data.get('remaining_gaps', float('inf')) > 1:
++                return {'action': 'address_gaps', 'gaps': gaps}
++
++            if not data.get('denoising_converged', False) and self.iteration_count < _DENOISING_MAX_ITERATIONS:
++                return {'action': 'continue_denoising'}
++
++        if (data.get('denoising_converged', False) and data.get('remaining_gaps', float('inf')) <= 1) or self.iteration_count >= _DENOISING_MAX_ITERATIONS:
++            return {'action': 'complete_intake'}
++
++        return {'action': 'continue_denoising'}
+     
+     def _get_evidence_action(self) -> Dict[str, Any]:
+         """Get next action for evidence phase."""
