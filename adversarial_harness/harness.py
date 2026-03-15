@@ -140,6 +140,54 @@ class AdversarialHarness:
             pass
         return self.mediator_factory()
 
+    def _ensure_session_db_paths(
+        self,
+        mediator: Any,
+        *,
+        evidence_db_path: str | None,
+        legal_authority_db_path: str | None,
+        claim_support_db_path: str | None,
+    ) -> Any:
+        """Force storage hooks onto the session-scoped DuckDB paths when available.
+
+        Some mediator factories ignore the per-session DB kwargs and return a
+        Mediator instance still pointed at shared complaint-generator statefiles.
+        Rebinding here keeps the session artifacts production-like and isolates
+        evidence persistence for each adversarial run.
+        """
+
+        hook_targets = [
+            ("evidence_state", evidence_db_path),
+            ("legal_authority_storage", legal_authority_db_path),
+            ("claim_support", claim_support_db_path),
+        ]
+        for attr_name, expected_path in hook_targets:
+            if not expected_path:
+                continue
+            hook = getattr(mediator, attr_name, None)
+            if hook is None:
+                continue
+            current_path = getattr(hook, "db_path", None)
+            if current_path == expected_path:
+                continue
+            hook_cls = hook.__class__
+            try:
+                setattr(mediator, attr_name, hook_cls(mediator, db_path=expected_path))
+                logger.info(
+                    "Rebound mediator %s hook from %s to session DB %s",
+                    attr_name,
+                    current_path,
+                    expected_path,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Unable to rebind mediator %s hook to session DB %s: %s",
+                    attr_name,
+                    expected_path,
+                    exc,
+                )
+        return mediator
+
     def _persist_session(self, result: SessionResult) -> None:
         if not self.session_state_dir:
             return
@@ -380,6 +428,12 @@ class AdversarialHarness:
                 claim_support_db_path=claim_support_db_path,
                 session_id=spec['session_id'],
                 session_dir=session_dir,
+            )
+            mediator = self._ensure_session_db_paths(
+                mediator,
+                evidence_db_path=evidence_db_path,
+                legal_authority_db_path=legal_authority_db_path,
+                claim_support_db_path=claim_support_db_path,
             )
             preloaded_evidence = self._preload_hacc_seed_evidence(
                 mediator,

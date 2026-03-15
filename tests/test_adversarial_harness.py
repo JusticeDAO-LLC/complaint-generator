@@ -1410,6 +1410,37 @@ class TestAdversarialHarness:
         assert captured[0]['claim_type'] == 'housing_discrimination'
         assert 'Full policy text about due process' in captured[0]['document_text']
 
+    def test_ensure_session_db_paths_rebinds_shared_storage_hooks(self):
+        harness = AdversarialHarness(
+            MockLLMBackend(),
+            MockLLMBackend(),
+            MockMediator,
+            max_parallel=1,
+        )
+
+        class Hook:
+            def __init__(self, mediator, db_path=None):
+                self.mediator = mediator
+                self.db_path = db_path
+
+        class MediatorWithSharedHooks:
+            def __init__(self):
+                self.evidence_state = Hook(self, db_path='statefiles/evidence.duckdb')
+                self.legal_authority_storage = Hook(self, db_path='statefiles/legal_authorities.duckdb')
+                self.claim_support = Hook(self, db_path='statefiles/claim_support.duckdb')
+
+        mediator = MediatorWithSharedHooks()
+        rebound = harness._ensure_session_db_paths(
+            mediator,
+            evidence_db_path='/tmp/session/evidence.duckdb',
+            legal_authority_db_path='/tmp/session/legal_authorities.duckdb',
+            claim_support_db_path='/tmp/session/claim_support.duckdb',
+        )
+
+        assert rebound.evidence_state.db_path == '/tmp/session/evidence.duckdb'
+        assert rebound.legal_authority_storage.db_path == '/tmp/session/legal_authorities.duckdb'
+        assert rebound.claim_support.db_path == '/tmp/session/claim_support.duckdb'
+
 
 class TestOptimizer:
     """Tests for Optimizer."""
