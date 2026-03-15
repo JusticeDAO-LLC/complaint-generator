@@ -312,6 +312,7 @@ class TestMediatorThreePhaseIntegration:
         assert status['canonical_fact_summary']['count'] == len(intake_case_file['canonical_facts'])
         assert status['proof_lead_summary']['count'] == len(intake_case_file['proof_leads'])
         assert status['intake_matching_summary']['claim_count'] >= 1
+        assert status['intake_legal_targeting_summary']['claim_count'] >= 1
         assert status['question_candidate_summary']['count'] >= 1
         assert status['question_candidate_summary']['source_counts']
         assert status['question_candidate_summary']['phase1_section_counts']
@@ -762,6 +763,10 @@ class TestMediatorThreePhaseIntegration:
 
         assert direct_match_questions
         assert direct_match_questions[0]['target_element_id'] in employment_summary['missing_requirement_element_ids']
+        legal_targeting_summary = result['intake_legal_targeting_summary']
+        employment_targeting = legal_targeting_summary['claims'].get('employment_discrimination', {})
+        assert employment_targeting['mapped_candidates']
+        assert employment_targeting['mapped_candidates'][0]['target_element_id'] in employment_summary['missing_requirement_element_ids']
     
     def test_graph_serialization(self):
         """Test that graphs can be serialized for storage."""

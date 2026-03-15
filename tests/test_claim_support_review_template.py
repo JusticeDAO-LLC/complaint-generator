@@ -98,6 +98,7 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "clearSectionFocus" in content
     assert "getLocalStorage" in content
     assert "buildReviewIntent" in content
+    assert "params.set('follow_up_support_kind', supportKind)" in content
     assert "persistReviewIntent" in content
     assert "restoreReviewIntent" in content
     assert "syncReviewIntentUrl" in content

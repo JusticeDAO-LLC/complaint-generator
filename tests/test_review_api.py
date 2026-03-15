@@ -764,6 +764,7 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             },
             "question_candidate_summary": {},
             "intake_matching_summary": {},
+            "intake_legal_targeting_summary": {},
             "claim_support_packet_summary": {
                 "claim_count": 1,
                 "element_count": 3,

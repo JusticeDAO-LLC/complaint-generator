@@ -1089,6 +1089,9 @@
             if (sectionKey) {
                 params.set('section', sectionKey);
             }
+            if (supportKind) {
+                params.set('follow_up_support_kind', supportKind);
+            }
             const query = params.toString();
             return {
                 claim_type: claimType,
@@ -1541,6 +1544,9 @@
             const intakeMatchingSummary = intakeCaseSummary.intake_matching_summary && typeof intakeCaseSummary.intake_matching_summary === 'object'
                 ? intakeCaseSummary.intake_matching_summary
                 : {};
+            const intakeLegalTargetingSummary = intakeCaseSummary.intake_legal_targeting_summary && typeof intakeCaseSummary.intake_legal_targeting_summary === 'object'
+                ? intakeCaseSummary.intake_legal_targeting_summary
+                : {};
             const questionCandidateSummary = intakeCaseSummary.question_candidate_summary && typeof intakeCaseSummary.question_candidate_summary === 'object'
                 ? intakeCaseSummary.question_candidate_summary
                 : {};
@@ -1582,27 +1588,34 @@
             const matchingClaims = intakeMatchingSummary.claims && typeof intakeMatchingSummary.claims === 'object'
                 ? intakeMatchingSummary.claims
                 : {};
+            const legalTargetingClaims = intakeLegalTargetingSummary.claims && typeof intakeLegalTargetingSummary.claims === 'object'
+                ? intakeLegalTargetingSummary.claims
+                : {};
             const questionCandidates = Array.isArray(questionCandidateSummary.candidates)
                 ? questionCandidateSummary.candidates
                 : [];
-            const matchingEntries = Object.entries(matchingClaims);
+            const matchingEntries = Object.entries(Object.keys(legalTargetingClaims).length ? legalTargetingClaims : matchingClaims);
             if (!matchingEntries.length) {
                 intakeMatchingContainer.innerHTML = '<div class="task-card">Unresolved legal elements: no intake matching diagnostics available.</div>';
             } else {
                 intakeMatchingContainer.innerHTML = matchingEntries.map(([claimType, claim]) => {
                     const missingNames = Array.isArray(claim.missing_requirement_names) ? claim.missing_requirement_names : [];
                     const missingElementIds = Array.isArray(claim.missing_requirement_element_ids) ? claim.missing_requirement_element_ids : [];
-                    const matchingQuestionChips = questionCandidates
-                        .filter((candidate) => {
-                            const selectorSignals = candidate && typeof candidate === 'object' && candidate.selector_signals && typeof candidate.selector_signals === 'object'
-                                ? candidate.selector_signals
-                                : {};
-                            const targetElementId = String(candidate && candidate.target_element_id || '').trim();
-                            return (
-                                selectorSignals.direct_legal_target_match
-                                || (targetElementId && missingElementIds.includes(targetElementId))
-                            );
-                        })
+                    const precomputedCandidates = Array.isArray(claim.mapped_candidates) ? claim.mapped_candidates : [];
+                    const matchingQuestionChips = (precomputedCandidates.length
+                        ? precomputedCandidates
+                        : questionCandidates
+                            .filter((candidate) => {
+                                const selectorSignals = candidate && typeof candidate === 'object' && candidate.selector_signals && typeof candidate.selector_signals === 'object'
+                                    ? candidate.selector_signals
+                                    : {};
+                                const targetElementId = String(candidate && candidate.target_element_id || '').trim();
+                                return (
+                                    selectorSignals.direct_legal_target_match
+                                    || (targetElementId && missingElementIds.includes(targetElementId))
+                                );
+                            })
+                    )
                         .slice(0, 4)
                         .map((candidate) => `<span class="chip">question target: ${candidate.target_element_id || candidate.question_goal || candidate.type || 'candidate'}</span>`);
 

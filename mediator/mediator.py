@@ -3460,6 +3460,10 @@ class Mediator:
 			'dependency_graph_summary': dg.summary(),
 			'intake_case_file': intake_case_file,
 			'intake_matching_summary': self._summarize_intake_matching_pressure(intake_matching_pressure),
+			'intake_legal_targeting_summary': self._summarize_intake_legal_targeting(
+				intake_matching_pressure,
+				question_candidates,
+			),
 			'question_candidates': question_candidates,
 			'initial_questions': questions,
 			'initial_noise_level': noise,
@@ -3828,6 +3832,10 @@ class Mediator:
 			'gaps_remaining': gaps,
 			'converged': converged,
 			'intake_matching_summary': self._summarize_intake_matching_pressure(intake_matching_pressure),
+			'intake_legal_targeting_summary': self._summarize_intake_legal_targeting(
+				intake_matching_pressure,
+				question_candidates,
+			),
 			'question_candidates': question_candidates,
 			'next_questions': questions,
 			'iteration': self.phase_manager.iteration_count,
@@ -4113,6 +4121,103 @@ class Mediator:
 			}
 		if confidences:
 			summary['average_matcher_confidence'] = sum(confidences) / len(confidences)
+		return summary
+
+	def _summarize_intake_legal_targeting(
+		self,
+		pressure_map: Any,
+		candidates: Any,
+	) -> Dict[str, Any]:
+		summary = {
+			'claim_count': 0,
+			'total_open_elements': 0,
+			'mapped_question_count': 0,
+			'unmapped_claim_count': 0,
+			'claims': {},
+		}
+		if not isinstance(pressure_map, dict):
+			return summary
+
+		normalized_candidates = candidates if isinstance(candidates, list) else []
+		for claim_type, claim_data in pressure_map.items():
+			if not isinstance(claim_data, dict):
+				continue
+			missing_element_ids = [
+				str(item).strip().lower()
+				for item in (claim_data.get('missing_requirement_element_ids') or [])
+				if str(item).strip()
+			]
+			missing_requirement_names = [
+				str(item).strip()
+				for item in (claim_data.get('missing_requirement_names') or [])
+				if str(item).strip()
+			]
+			mapped_candidates: List[Dict[str, Any]] = []
+			mapped_element_ids: List[str] = []
+			for candidate in normalized_candidates:
+				if not isinstance(candidate, dict):
+					continue
+				explanation = candidate.get('ranking_explanation', {}) if isinstance(candidate.get('ranking_explanation'), dict) else {}
+				selector_signals = candidate.get('selector_signals', {}) if isinstance(candidate.get('selector_signals'), dict) else {}
+				target_claim_type = str(
+					explanation.get('target_claim_type')
+					or candidate.get('target_claim_type')
+					or ''
+				).strip().lower()
+				if target_claim_type and target_claim_type != str(claim_type).strip().lower():
+					continue
+				target_element_id = str(
+					explanation.get('target_element_id')
+					or candidate.get('target_element_id')
+					or ''
+				).strip().lower()
+				direct_match = bool(selector_signals.get('direct_legal_target_match'))
+				if not direct_match and target_element_id not in missing_element_ids:
+					continue
+				if target_element_id and target_element_id not in mapped_element_ids:
+					mapped_element_ids.append(target_element_id)
+				mapped_candidates.append(
+					{
+						'question': str(candidate.get('question') or '').strip(),
+						'type': str(candidate.get('type') or '').strip(),
+						'question_goal': str(
+							explanation.get('question_goal')
+							or candidate.get('question_goal')
+							or ''
+						).strip(),
+						'candidate_source': str(
+							explanation.get('candidate_source')
+							or candidate.get('candidate_source')
+							or ''
+						).strip(),
+						'target_element_id': target_element_id,
+						'blocking_level': str(
+							explanation.get('blocking_level')
+							or candidate.get('blocking_level')
+							or ''
+						).strip(),
+						'direct_legal_target_match': direct_match,
+						'selector_score': float(candidate.get('selector_score', 0.0) or 0.0),
+					}
+				)
+			unmapped_element_ids = [
+				element_id
+				for element_id in missing_element_ids
+				if element_id not in mapped_element_ids
+			]
+			summary['claim_count'] += 1
+			summary['total_open_elements'] += len(missing_element_ids)
+			summary['mapped_question_count'] += len(mapped_candidates)
+			if not mapped_candidates:
+				summary['unmapped_claim_count'] += 1
+			summary['claims'][str(claim_type)] = {
+				'missing_requirement_count': int(claim_data.get('missing_requirement_count', 0) or 0),
+				'matcher_confidence': float(claim_data.get('matcher_confidence', 0.0) or 0.0),
+				'missing_requirement_names': missing_requirement_names,
+				'missing_requirement_element_ids': missing_element_ids,
+				'mapped_candidates': mapped_candidates,
+				'unmapped_element_ids': unmapped_element_ids,
+			}
 		return summary
 
 	def _classify_evidence_ingestion_outcomes(
@@ -4775,6 +4880,10 @@ class Mediator:
 				'proof_leads': proof_leads,
 			},
 			'intake_matching_summary': self._summarize_intake_matching_pressure(intake_matching_pressure),
+			'intake_legal_targeting_summary': self._summarize_intake_legal_targeting(
+				intake_matching_pressure,
+				question_candidates,
+			),
 			'question_candidate_summary': self._summarize_question_candidates(question_candidates),
 			'claim_support_packet_summary': self._summarize_claim_support_packets(claim_support_packets),
 			'intake_contradictions': {
