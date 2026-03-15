@@ -257,6 +257,9 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "trace_view_url" in content
     assert "Open Persisted Trace" in content
     assert "Persisted Trace Snapshot" in content
+    assert "Optimization Focus" in content
+    assert "Relief-targeted optimization:" in content
+    assert "Final recommended focus:" in content
     assert "Intake Constraints" in content
     assert "Current intake phase:" in content
     assert "Intake readiness score:" in content

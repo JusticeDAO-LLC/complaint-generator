@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from .intake_claim_registry import normalize_claim_type, refresh_required_elements, registry_for_claim_type
+
 
 def _normalize_text(value: Any) -> str:
     return " ".join(str(value or "").strip().split())
@@ -22,12 +24,13 @@ def build_candidate_claims(knowledge_graph) -> List[Dict[str, Any]]:
 
     candidates: List[Dict[str, Any]] = []
     for entity in knowledge_graph.get_entities_by_type("claim"):
-        claim_type = _normalize_text(entity.attributes.get("claim_type") or "unknown").lower() or "unknown"
+        claim_type = normalize_claim_type(entity.attributes.get("claim_type") or "unknown")
+        registry = registry_for_claim_type(claim_type)
         candidates.append(
             {
                 "claim_id": entity.id,
                 "claim_type": claim_type,
-                "label": _normalize_text(entity.name or claim_type.replace("_", " ").title()),
+                "label": _normalize_text(entity.name or registry.get("label") or claim_type.replace("_", " ").title()),
                 "description": _normalize_text(entity.attributes.get("description") or entity.name),
                 "confidence": float(entity.confidence),
                 "source": entity.source,
@@ -98,6 +101,7 @@ def build_intake_sections(
     candidate_claims: List[Dict[str, Any]],
     canonical_facts: List[Dict[str, Any]],
     proof_leads: List[Dict[str, Any]],
+    source_text: str = "",
 ) -> Dict[str, Dict[str, Any]]:
     """Build a lightweight first-pass section coverage snapshot."""
     has_dates = False
@@ -110,6 +114,21 @@ def build_intake_sections(
 
     has_impact = any(fact.get("fact_type") == "impact" for fact in canonical_facts)
     has_remedy = any(fact.get("fact_type") == "remedy" for fact in canonical_facts)
+    missing_claim_elements: List[str] = []
+    claim_elements_present = False
+    for claim in candidate_claims:
+        if not isinstance(claim, dict):
+            continue
+        required_elements = refresh_required_elements(claim, canonical_facts, source_text)
+        claim["required_elements"] = required_elements
+        if required_elements:
+            if any(str(element.get("status") or "").strip().lower() == "present" for element in required_elements):
+                claim_elements_present = True
+            for element in required_elements:
+                if str(element.get("status") or "").strip().lower() != "present":
+                    label = _normalize_text(element.get("label") or element.get("element_id"))
+                    if label and label not in missing_claim_elements:
+                        missing_claim_elements.append(label)
 
     return {
         "chronology": {
@@ -137,8 +156,8 @@ def build_intake_sections(
             "missing_items": [] if proof_leads else ["documents, witnesses, or other supporting proof leads"],
         },
         "claim_elements": {
-            "status": "missing",
-            "missing_items": ["claim-specific element coverage not initialized"],
+            "status": "complete" if candidate_claims and not missing_claim_elements else ("partial" if claim_elements_present else "missing"),
+            "missing_items": missing_claim_elements if missing_claim_elements else [],
         },
     }
 
@@ -153,6 +172,7 @@ def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[st
         candidate_claims=candidate_claims,
         canonical_facts=canonical_facts,
         proof_leads=proof_leads,
+        source_text=complaint_text,
     )
 
     normalized_complaint_text = _normalize_text(complaint_text)
@@ -173,9 +193,11 @@ def refresh_intake_sections(intake_case_file: Dict[str, Any], knowledge_graph) -
     candidate_claims = intake_case_file.get("candidate_claims", [])
     canonical_facts = intake_case_file.get("canonical_facts", [])
     proof_leads = intake_case_file.get("proof_leads", [])
+    source_text = intake_case_file.get("source_complaint_text", "")
     return build_intake_sections(
         knowledge_graph,
         candidate_claims=candidate_claims if isinstance(candidate_claims, list) else [],
         canonical_facts=canonical_facts if isinstance(canonical_facts, list) else [],
         proof_leads=proof_leads if isinstance(proof_leads, list) else [],
+        source_text=str(source_text or ""),
     )

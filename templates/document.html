@@ -2194,6 +2194,10 @@
             const finalReview = report.final_review && typeof report.final_review === 'object' ? report.final_review : {};
             const intakeStatus = report.intake_status && typeof report.intake_status === 'object' ? report.intake_status : {};
             const intakeConstraints = Array.isArray(report.intake_constraints) ? report.intake_constraints : [];
+            const focusSections = Array.from(new Set(sectionHistory
+                .map((entry) => entry && typeof entry.focus_section === 'string' ? entry.focus_section : '')
+                .filter(Boolean)));
+            const reliefTargeted = optimizedSections.includes('requested_relief') || focusSections.includes('requested_relief');
             const routerLines = Object.entries(routerStatus).map(([key, value]) => `${humanizeKey(key)}: ${value}`);
             const routerUsageLines = [
                 routerUsage.llm_calls != null ? `LLM calls: ${routerUsage.llm_calls}` : '',
@@ -2303,6 +2307,11 @@
                     : '',
                 ...intakeConstraints.map((warning) => `${humanizeKey(warning.code || 'intake_constraint')}: ${warning.message || 'constraint reported'}`),
             ].filter(Boolean);
+            const optimizationFocusLines = [
+                focusSections.length ? `Focus trajectory: ${focusSections.map(humanizeKey).join(' -> ')}` : '',
+                finalReview.recommended_focus ? `Final recommended focus: ${humanizeKey(finalReview.recommended_focus)}` : '',
+                `Relief-targeted optimization: ${reliefTargeted ? 'yes' : 'no'}`,
+            ].filter(Boolean);
             return `
                 <section>
                     <h2>Document Optimization</h2>
@@ -2317,6 +2326,7 @@
                         ${traceLines.length ? renderLines(traceLines) : ''}
                         ${traceViewUrl ? `<div class="preview-meta"><a href="${escapeHtml(traceViewUrl)}" target="_blank" rel="noopener">Open Persisted Trace</a></div>` : ''}
                         ${traceSnapshotLines.length ? `<div class="preview-meta"><strong>Persisted Trace Snapshot</strong></div>${renderLines(traceSnapshotLines)}` : ''}
+                        ${optimizationFocusLines.length ? `<div class="preview-meta"><strong>Optimization Focus</strong></div>${renderLines(optimizationFocusLines)}` : ''}
                         ${routerUsageLines.length ? `<div class="preview-meta"><strong>Router Usage</strong></div>${renderLines(routerUsageLines)}` : ''}
                         ${intakeConstraintLines.length ? `<div class="preview-meta"><strong>Intake Constraints</strong></div>${renderLines(intakeConstraintLines)}` : ''}
                         ${upstreamOptimizerLines.length ? `<div class="preview-meta"><strong>Upstream Optimizer</strong></div>${renderLines(upstreamOptimizerLines)}` : ''}

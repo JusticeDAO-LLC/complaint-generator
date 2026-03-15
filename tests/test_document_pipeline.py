@@ -2393,6 +2393,8 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert 'Persist optimization trace through the IPFS adapter' in page_html
         assert 'Document Optimization' in page_html
         assert 'Persisted Trace Snapshot' in page_html
+        assert 'Optimization Focus' in page_html
+        assert 'Relief-targeted optimization' in page_html
         assert 'Intake Constraints' in page_html
         assert 'Optimized Sections' in page_html
         assert 'Trace CID' in page_html
