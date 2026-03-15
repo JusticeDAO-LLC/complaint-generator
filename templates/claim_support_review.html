@@ -902,6 +902,8 @@
                     <div class="chip-row" id="claim-support-packet-summary-chips"></div>
                     <h2 style="margin-top: 18px;">Intake-Evidence Alignment</h2>
                     <div class="question-list" id="intake-evidence-alignment-summary-list"></div>
+                    <h2 style="margin-top: 18px;">Alignment Evidence Tasks</h2>
+                    <div class="question-list" id="alignment-evidence-task-list"></div>
                 </div>
 
                 <div class="focus-block" data-section-focus-target="claims_for_relief requested_relief">
@@ -1533,6 +1535,7 @@
             const intakeMatchingContainer = document.getElementById('intake-matching-summary-list');
             const packetContainer = document.getElementById('claim-support-packet-summary-chips');
             const alignmentContainer = document.getElementById('intake-evidence-alignment-summary-list');
+            const alignmentTaskContainer = document.getElementById('alignment-evidence-task-list');
             const intakeCaseSummary = summary && typeof summary === 'object' ? summary : {};
             const candidateClaims = Array.isArray(intakeCaseSummary.candidate_claims) ? intakeCaseSummary.candidate_claims : [];
             const intakeSections = intakeCaseSummary.intake_sections && typeof intakeCaseSummary.intake_sections === 'object'
@@ -1553,6 +1556,9 @@
             const intakeEvidenceAlignmentSummary = intakeCaseSummary.intake_evidence_alignment_summary && typeof intakeCaseSummary.intake_evidence_alignment_summary === 'object'
                 ? intakeCaseSummary.intake_evidence_alignment_summary
                 : {};
+            const alignmentEvidenceTasks = Array.isArray(intakeCaseSummary.alignment_evidence_tasks)
+                ? intakeCaseSummary.alignment_evidence_tasks
+                : [];
             const questionCandidateSummary = intakeCaseSummary.question_candidate_summary && typeof intakeCaseSummary.question_candidate_summary === 'object'
                 ? intakeCaseSummary.question_candidate_summary
                 : {};
@@ -1710,6 +1716,27 @@
                         </article>
                     `;
                 }).join('');
+            }
+
+            if (!alignmentEvidenceTasks.length) {
+                alignmentTaskContainer.innerHTML = '<div class="task-card">Alignment evidence tasks: no shared unsupported element tasks available.</div>';
+            } else {
+                alignmentTaskContainer.innerHTML = alignmentEvidenceTasks.map((task) => `
+                    <article class="task-card">
+                        <div class="row-head">
+                            <div>
+                                <div class="row-title">Alignment task for ${task.claim_type || 'claim'}</div>
+                                <div class="meta">evidence action ${task.action || 'fill_evidence_gaps'}</div>
+                            </div>
+                            <span class="badge">${task.support_status || 'unknown'}</span>
+                        </div>
+                        <div class="chip-row" style="margin-top: 10px;">
+                            <span class="chip">element: ${task.claim_element_id || 'unknown'}</span>
+                            <span class="chip">label: ${task.claim_element_label || task.claim_element_id || 'unknown'}</span>
+                            <span class="chip">blocking: ${task.blocking ? 'yes' : 'no'}</span>
+                        </div>
+                    </article>
+                `).join('');
             }
         }
 

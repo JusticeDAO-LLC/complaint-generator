@@ -103,6 +103,16 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
                 }
             },
         },
+        "alignment_evidence_tasks": [
+            {
+                "action": "fill_evidence_gaps",
+                "claim_type": "retaliation",
+                "claim_element_id": "protected_activity",
+                "claim_element_label": "Protected activity",
+                "support_status": "unsupported",
+                "blocking": True,
+            }
+        ],
         "question_candidate_summary": {
             "count": 1,
             "candidates": [{"candidate_source": "intake_proof_gap"}],
@@ -131,6 +141,7 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["intake_legal_targeting_summary"]["claims"]["retaliation"]["mapped_candidates"][0]["target_element_id"] == "protected_activity"
     assert summary["intake_evidence_alignment_summary"]["aligned_element_count"] == 1
     assert summary["intake_evidence_alignment_summary"]["claims"]["retaliation"]["intake_only_element_ids"] == ["causation"]
+    assert summary["alignment_evidence_tasks"][0]["claim_element_id"] == "protected_activity"
     assert summary["question_candidate_summary"]["count"] == 1
     assert summary["question_candidate_summary"]["source_counts"]["intake_proof_gap"] == 1
     assert summary["claim_support_packet_summary"]["claim_count"] == 1

@@ -519,6 +519,8 @@ class TestMediatorThreePhaseIntegration:
         assert result['next_action']['action'] == 'fill_evidence_gaps'
         assert result['next_action']['claim_element_id'] == 'causation'
         status = mediator.get_three_phase_status()
+        assert status['alignment_evidence_tasks']
+        assert status['alignment_evidence_tasks'][0]['claim_element_id'] == 'causation'
         assert status['claim_support_packet_summary']['claim_count'] == 1
         assert status['claim_support_packet_summary']['status_counts']['unsupported'] == 1
         alignment = status['intake_evidence_alignment_summary']['claims']['employment_discrimination']
