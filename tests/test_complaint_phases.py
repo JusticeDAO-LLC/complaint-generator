@@ -228,6 +228,9 @@ class TestComplaintDenoiser:
         assert 'question_reason' in questions[0]
         assert 'question_objective' in questions[0]
         assert 'expected_proof_gain' in questions[0]
+        assert 'phase1_section' in questions[0]
+        assert 'blocking_level' in questions[0]
+        assert 'expected_update_kind' in questions[0]
 
     def test_generate_questions_prioritizes_timeline_before_clarification(self):
         """Test proof-directed ranking prefers chronology questions over lower-value clarification."""
@@ -245,6 +248,8 @@ class TestComplaintDenoiser:
         assert questions[0]['type'] == 'timeline'
         assert questions[0]['question_objective'] == 'establish_chronology'
         assert questions[0]['expected_proof_gain'] == 'high'
+        assert questions[0]['phase1_section'] == 'chronology'
+        assert questions[0]['blocking_level'] == 'blocking'
 
     def test_requirement_questions_include_proof_objective_metadata(self):
         """Test requirement-driven questions explain the proof objective they serve."""
@@ -267,6 +272,8 @@ class TestComplaintDenoiser:
         assert requirement_questions
         assert requirement_questions[0]['question_objective'] == 'satisfy_claim_requirement'
         assert 'Protected Class' in requirement_questions[0]['question_reason']
+        assert requirement_questions[0]['phase1_section'] == 'claim_elements'
+        assert requirement_questions[0]['target_element_id'] == 'n2'
 
     def test_generate_questions_emits_contradiction_resolution_prompt_first(self):
         """Test contradiction edges produce contradiction-resolution questions ahead of other intake prompts."""
@@ -290,6 +297,8 @@ class TestComplaintDenoiser:
         assert questions[0]['type'] == 'contradiction'
         assert questions[0]['question_objective'] == 'resolve_factual_contradiction'
         assert 'conflicting information' in questions[0]['question'].lower()
+        assert questions[0]['phase1_section'] == 'contradictions'
+        assert questions[0]['expected_update_kind'] == 'resolve_contradiction'
     
     def test_calculate_noise_level(self):
         """Test noise level calculation."""
@@ -444,6 +453,81 @@ class TestPhaseManager:
         assert readiness['contradiction_count'] == 1
         assert readiness['contradictions'][0]['left_node_name'] == 'Termination before complaint'
         assert 'contradiction_unresolved' in readiness['blockers']
+
+    def test_intake_readiness_uses_structured_case_file_sections(self):
+        """Structured intake sections should produce additive readiness blockers and counters."""
+        pm = PhaseManager()
+
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', {})
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', {})
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', 0)
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'denoising_converged', True)
+        pm.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'intake_case_file',
+            {
+                'candidate_claims': [{'claim_type': 'employment_discrimination'}],
+                'canonical_facts': [{'fact_id': 'fact_1'}],
+                'proof_leads': [],
+                'contradiction_queue': [],
+                'intake_sections': {
+                    'chronology': {'status': 'missing', 'missing_items': ['event dates']},
+                    'actors': {'status': 'complete', 'missing_items': []},
+                    'conduct': {'status': 'complete', 'missing_items': []},
+                    'harm': {'status': 'complete', 'missing_items': []},
+                    'remedy': {'status': 'missing', 'missing_items': ['requested outcome']},
+                    'proof_leads': {'status': 'missing', 'missing_items': ['documents']},
+                    'claim_elements': {'status': 'missing', 'missing_items': ['protected class']},
+                },
+            },
+        )
+
+        readiness = pm.get_intake_readiness()
+
+        assert readiness['candidate_claim_count'] == 1
+        assert readiness['canonical_fact_count'] == 1
+        assert readiness['proof_lead_count'] == 0
+        assert readiness['intake_sections']['chronology']['status'] == 'missing'
+        assert 'missing_core_chronology' in readiness['blockers']
+        assert 'missing_remedy' in readiness['blockers']
+        assert 'missing_proof_leads' in readiness['blockers']
+        assert 'missing_claim_element_facts' in readiness['blockers']
+
+    def test_intake_readiness_tracks_blocking_contradictions_from_case_file(self):
+        """Blocking contradictions in the case file should appear in readiness output."""
+        pm = PhaseManager()
+
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', {})
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', {})
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', 0)
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'denoising_converged', True)
+        pm.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'intake_case_file',
+            {
+                'candidate_claims': [{'claim_type': 'employment_discrimination'}],
+                'canonical_facts': [{'fact_id': 'fact_1'}],
+                'proof_leads': [{'lead_id': 'lead_1'}],
+                'contradiction_queue': [
+                    {'contradiction_id': 'ctr_1', 'severity': 'blocking', 'status': 'open'}
+                ],
+                'intake_sections': {
+                    'chronology': {'status': 'complete', 'missing_items': []},
+                    'actors': {'status': 'complete', 'missing_items': []},
+                    'conduct': {'status': 'complete', 'missing_items': []},
+                    'harm': {'status': 'complete', 'missing_items': []},
+                    'remedy': {'status': 'complete', 'missing_items': []},
+                    'proof_leads': {'status': 'complete', 'missing_items': []},
+                    'claim_elements': {'status': 'complete', 'missing_items': []},
+                },
+            },
+        )
+
+        readiness = pm.get_intake_readiness()
+
+        assert readiness['blocking_contradictions'][0]['contradiction_id'] == 'ctr_1'
+        assert 'blocking_contradiction' in readiness['blockers']
+        assert readiness['criteria']['blocking_contradictions_resolved'] is False
 
 
 class TestLegalGraph:

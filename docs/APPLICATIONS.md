@@ -465,7 +465,7 @@ Example response fields:
 - `artifacts.txt.path`: filesystem path to the generated plain-text pleading when requested.
 - `artifacts.affidavit_docx.path`, `artifacts.affidavit_pdf.path`, `artifacts.affidavit_txt.path`: filesystem paths to the generated affidavit companion documents when the matching output formats are requested.
 - `artifacts.checklist.path`: filesystem path to the generated plain-text pre-filing checklist artifact when requested, including embedded review URLs for direct remediation follow-up.
-- `document_optimization`: present only when optimization is enabled. The current payload includes `status`, `method`, `optimizer_backend`, `initial_score`, `final_score`, `iteration_count`, `accepted_iterations`, `optimized_sections`, `artifact_cid`, `trace_storage`, `router_status`, `router_usage`, `upstream_optimizer`, `packet_projection`, and `section_history`.
+- `document_optimization`: present only when optimization is enabled. The current payload includes `status`, `method`, `optimizer_backend`, `initial_score`, `final_score`, `iteration_count`, `accepted_iterations`, `optimized_sections`, `artifact_cid`, `trace_storage`, `trace_download_url`, `trace_view_url`, `router_status`, `router_usage`, `upstream_optimizer`, `intake_status`, `intake_constraints`, `packet_projection`, and `section_history`.
 - `artifacts.*.download_url`: application route for downloading generated artifacts when they were written under the managed output directory.
 - `output_formats`: formats rendered for the request.
 - `generated_at`: UTC timestamp for the export operation.
@@ -473,6 +473,14 @@ Example response fields:
 ##### `/api/documents/download` - Generated Artifact Download
 
 GET this endpoint with a `path` query parameter returned from the formal complaint export payload when you want the application to stream a generated artifact back to the browser.
+
+##### `/api/documents/optimization-trace` - Persisted Optimization Trace Replay
+
+GET this endpoint with the `cid` returned in `document_optimization.artifact_cid` or use `document_optimization.trace_download_url` directly when you want the application to fetch the persisted optimization trace through the IPFS adapter and return the decoded JSON payload.
+
+##### `/document/optimization-trace` - Optimization Trace Viewer
+
+GET this page with a `cid` query parameter, or use `document_optimization.trace_view_url`, when you want a browser-friendly audit view that loads the persisted optimization trace and renders intake blockers, contradiction summaries, review scores, iteration history, and the raw JSON trace in one place.
 
 This route only serves files from the managed generated-documents directory and rejects requests outside that boundary.
 

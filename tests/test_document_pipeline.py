@@ -5,6 +5,7 @@ import os
 import json
 import zipfile
 import document_optimization
+from applications import document_api
 
 import pytest
 from bs4 import BeautifulSoup
@@ -2028,6 +2029,58 @@ def test_review_api_downloads_generated_document_artifact():
         artifact_path.unlink(missing_ok=True)
 
 
+def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.MonkeyPatch):
+    mediator = Mock()
+    app = create_review_api_app(mediator)
+    client = TestClient(app)
+
+    def _fake_retrieve_bytes(cid: str):
+        assert cid == 'bafy-doc-opt-report'
+        return {
+            'status': 'available',
+            'cid': cid,
+            'size': 128,
+            'data': json.dumps(
+                {
+                    'user_id': 'state-user',
+                    'intake_status': {
+                        'current_phase': 'intake',
+                        'score': 0.38,
+                        'remaining_gap_count': 2,
+                        'contradiction_count': 1,
+                        'ready_to_advance': False,
+                        'blockers': ['resolve_contradictions'],
+                        'contradictions': [
+                            {
+                                'summary': 'Complaint date conflicts with schedule-cut date',
+                                'question': 'What were the exact dates for the complaint and schedule change?',
+                            }
+                        ],
+                    },
+                    'intake_constraints': [
+                        {
+                            'severity': 'warning',
+                            'code': 'intake_blocker',
+                            'message': 'Intake blocker: resolve_contradictions',
+                        }
+                    ],
+                }
+            ).encode('utf-8'),
+        }
+
+    monkeypatch.setattr(document_api, 'retrieve_bytes', _fake_retrieve_bytes)
+
+    response = client.get('/api/documents/optimization-trace', params={'cid': 'bafy-doc-opt-report'})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['status'] == 'available'
+    assert payload['cid'] == 'bafy-doc-opt-report'
+    assert payload['size'] == 128
+    assert payload['trace']['intake_status']['current_phase'] == 'intake'
+    assert payload['trace']['intake_constraints'][0]['code'] == 'intake_blocker'
+
+
 def test_review_surface_document_builder_flow_serves_page_and_supports_api_round_trip():
     mediator = Mock()
     mediator.get_three_phase_status.return_value = {
@@ -2165,9 +2218,12 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert 'Advanced optimization config must be a valid JSON object.' in page_html
         assert 'Persist optimization trace through the IPFS adapter' in page_html
         assert 'Document Optimization' in page_html
+        assert 'Persisted Trace Snapshot' in page_html
         assert 'Intake Constraints' in page_html
         assert 'Optimized Sections' in page_html
         assert 'Trace CID' in page_html
+        assert 'Persisted intake phase' in page_html
+        assert 'Persisted intake contradictions' in page_html
         assert 'Router Usage' in page_html
         assert 'Upstream Optimizer' in page_html
         assert 'Stage Provider Selection' in page_html
@@ -2568,6 +2624,8 @@ def test_review_surface_returns_document_optimization_contract_end_to_end(monkey
     assert report['accepted_iterations'] >= 1
     assert report['optimized_sections'] == ['factual_allegations']
     assert report['artifact_cid'] == 'bafy-doc-opt-report'
+    assert report['trace_download_url'] == '/api/documents/optimization-trace?cid=bafy-doc-opt-report'
+    assert report['trace_view_url'] == '/document/optimization-trace?cid=bafy-doc-opt-report'
     assert report['trace_storage'] == {
         'status': 'available',
         'cid': 'bafy-doc-opt-report',

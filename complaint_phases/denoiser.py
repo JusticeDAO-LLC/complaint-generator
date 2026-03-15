@@ -654,6 +654,86 @@ class ComplaintDenoiser:
             'proof_priority': self._phase1_proof_priority(qtype),
         }
 
+    def _phase1_question_targeting(
+        self,
+        question_type: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Attach section-aware routing metadata to phase-1 intake questions."""
+        context = context or {}
+        qtype = (question_type or '').strip().lower()
+
+        defaults = {
+            'phase1_section': 'general',
+            'target_claim_type': str(context.get('claim_type') or ''),
+            'target_element_id': str(context.get('requirement_id') or context.get('target_element_id') or ''),
+            'target_fact_type': '',
+            'blocking_level': 'important',
+            'expected_update_kind': 'clarify_record',
+        }
+
+        if qtype == 'contradiction':
+            defaults.update({
+                'phase1_section': 'contradictions',
+                'target_fact_type': 'contradicted_fact',
+                'blocking_level': 'blocking',
+                'expected_update_kind': 'resolve_contradiction',
+            })
+        elif qtype == 'timeline':
+            defaults.update({
+                'phase1_section': 'chronology',
+                'target_fact_type': 'timeline',
+                'blocking_level': 'blocking',
+                'expected_update_kind': 'add_timeline_fact',
+            })
+        elif qtype == 'responsible_party':
+            defaults.update({
+                'phase1_section': 'actors',
+                'target_fact_type': 'responsible_party',
+                'blocking_level': 'blocking',
+                'expected_update_kind': 'identify_actor',
+            })
+        elif qtype == 'impact':
+            defaults.update({
+                'phase1_section': 'harm_remedy',
+                'target_fact_type': 'impact_or_remedy',
+                'blocking_level': 'important',
+                'expected_update_kind': 'capture_harm_or_remedy',
+            })
+        elif qtype == 'requirement':
+            defaults.update({
+                'phase1_section': 'claim_elements',
+                'target_fact_type': 'claim_element',
+                'blocking_level': 'blocking',
+                'expected_update_kind': 'satisfy_claim_element',
+            })
+        elif qtype == 'evidence':
+            defaults.update({
+                'phase1_section': 'proof_leads',
+                'target_fact_type': 'proof_lead',
+                'blocking_level': 'important',
+                'expected_update_kind': 'capture_proof_lead',
+            })
+        elif qtype == 'relationship':
+            defaults.update({
+                'phase1_section': 'actors',
+                'target_fact_type': 'relationship',
+                'blocking_level': 'important',
+                'expected_update_kind': 'link_parties',
+            })
+        elif qtype == 'clarification':
+            defaults.update({
+                'phase1_section': 'general',
+                'target_fact_type': 'uncertain_fact',
+                'blocking_level': 'informational',
+                'expected_update_kind': 'clarify_fact',
+            })
+
+        if not defaults['target_claim_type']:
+            defaults['target_claim_type'] = str(context.get('claim_name') or '')
+
+        return defaults
+
     def _build_phase1_question(
         self,
         *,
@@ -669,6 +749,7 @@ class ComplaintDenoiser:
             'priority': priority,
         }
         payload.update(self._phase1_question_metadata(question_type, payload['context']))
+        payload.update(self._phase1_question_targeting(question_type, payload['context']))
         return payload
 
     def _build_contradiction_questions(

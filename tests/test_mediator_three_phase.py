@@ -280,6 +280,58 @@ class TestMediatorThreePhaseIntegration:
         assert status['intake_contradictions']['candidate_count'] == 1
         assert status['intake_readiness']['contradiction_count'] == 1
         assert status['intake_contradictions']['candidates'][0]['left_node_name'] == 'Complaint before termination'
+
+    def test_start_three_phase_process_persists_intake_case_file(self):
+        """Starting intake should persist a structured intake case file."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        complaint_text = (
+            "My employer fired me on January 20, 2026 after I complained about discrimination. "
+            "I have emails and a termination letter, and I lost wages."
+        )
+
+        result = mediator.start_three_phase_process(complaint_text)
+        intake_case_file = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file')
+
+        assert result['intake_case_file'] == intake_case_file
+        assert intake_case_file['candidate_claims']
+        assert intake_case_file['canonical_facts']
+        assert intake_case_file['proof_leads']
+        assert intake_case_file['intake_sections']['chronology']['status'] == 'complete'
+        assert intake_case_file['intake_sections']['proof_leads']['status'] == 'complete'
+        status = mediator.get_three_phase_status()
+        assert status['candidate_claims'] == intake_case_file['candidate_claims']
+        assert status['canonical_fact_summary']['count'] == len(intake_case_file['canonical_facts'])
+        assert status['proof_lead_summary']['count'] == len(intake_case_file['proof_leads'])
+
+    def test_initialize_intake_case_file_extracts_claims_facts_and_proof_leads(self):
+        """The intake case file helper should normalize graph state into structured sections."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        kg = mediator.kg_builder.build_from_text(
+            "I faced discrimination at work, I have emails, and I am seeking compensation for lost wages."
+        )
+
+        intake_case_file = mediator._initialize_intake_case_file(kg, "Initial complaint text")
+
+        assert intake_case_file['source_complaint_text'] == 'Initial complaint text'
+        assert any(claim['claim_type'] == 'discrimination' for claim in intake_case_file['candidate_claims'])
+        assert any(fact['fact_type'] == 'impact' for fact in intake_case_file['canonical_facts'])
+        assert any(lead['lead_type'] == 'email communication' for lead in intake_case_file['proof_leads'])
     
     def test_graph_serialization(self):
         """Test that graphs can be serialized for storage."""

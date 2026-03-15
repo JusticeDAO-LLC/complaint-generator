@@ -2179,6 +2179,8 @@
             const sectionHistory = Array.isArray(report.section_history) ? report.section_history : [];
             const routerStatus = report.router_status && typeof report.router_status === 'object' ? report.router_status : {};
             const traceStorage = report.trace_storage && typeof report.trace_storage === 'object' ? report.trace_storage : {};
+            const traceDownloadUrl = typeof report.trace_download_url === 'string' ? report.trace_download_url : '';
+            const traceViewUrl = typeof report.trace_view_url === 'string' ? report.trace_view_url : traceDownloadUrl;
             const routerUsage = report.router_usage && typeof report.router_usage === 'object' ? report.router_usage : {};
             const upstreamOptimizer = report.upstream_optimizer && typeof report.upstream_optimizer === 'object' ? report.upstream_optimizer : {};
             const controlLoop = upstreamOptimizer.control_loop && typeof upstreamOptimizer.control_loop === 'object' ? upstreamOptimizer.control_loop : {};
@@ -2279,6 +2281,17 @@
                 `Trace status: ${traceStorage.status || 'disabled'}`,
                 traceStorage.cid ? `Trace CID: ${traceStorage.cid}` : '',
             ].filter(Boolean);
+            const traceSnapshotLines = [
+                traceStorage.cid ? 'Persisted trace captures optimization reviews, section history, support context, and intake constraints for replay.' : '',
+                intakeStatus.current_phase ? `Persisted intake phase: ${humanizeKey(intakeStatus.current_phase)}` : '',
+                Array.isArray(intakeStatus.blockers) ? `Persisted intake blockers: ${intakeStatus.blockers.length}` : '',
+                intakeStatus.contradiction_count != null ? `Persisted intake contradictions: ${intakeStatus.contradiction_count}` : '',
+                Array.isArray(intakeStatus.contradictions) && intakeStatus.contradictions.length
+                    ? `Persisted contradiction summaries: ${intakeStatus.contradictions.map((entry) => entry.summary || 'Unresolved contradiction').join(' | ')}`
+                    : '',
+                traceStorage.size != null ? `Persisted trace size: ${traceStorage.size}` : '',
+                traceStorage.pinned != null ? `Persisted trace pinned: ${traceStorage.pinned ? 'yes' : 'no'}` : '',
+            ].filter(Boolean);
             const intakeConstraintLines = [
                 intakeStatus.current_phase ? `Current intake phase: ${humanizeKey(intakeStatus.current_phase)}` : '',
                 intakeStatus.score != null ? `Intake readiness score: ${Number(intakeStatus.score || 0).toFixed(2)}` : '',
@@ -2302,6 +2315,8 @@
                         ${optimizedSections.length ? `<div class="preview-meta"><strong>Optimized Sections:</strong> ${escapeHtml(optimizedSections.map(humanizeKey).join(', '))}</div>` : ''}
                         ${routerLines.length ? renderLines(routerLines) : ''}
                         ${traceLines.length ? renderLines(traceLines) : ''}
+                        ${traceViewUrl ? `<div class="preview-meta"><a href="${escapeHtml(traceViewUrl)}" target="_blank" rel="noopener">Open Persisted Trace</a></div>` : ''}
+                        ${traceSnapshotLines.length ? `<div class="preview-meta"><strong>Persisted Trace Snapshot</strong></div>${renderLines(traceSnapshotLines)}` : ''}
                         ${routerUsageLines.length ? `<div class="preview-meta"><strong>Router Usage</strong></div>${renderLines(routerUsageLines)}` : ''}
                         ${intakeConstraintLines.length ? `<div class="preview-meta"><strong>Intake Constraints</strong></div>${renderLines(intakeConstraintLines)}` : ''}
                         ${upstreamOptimizerLines.length ? `<div class="preview-meta"><strong>Upstream Optimizer</strong></div>${renderLines(upstreamOptimizerLines)}` : ''}

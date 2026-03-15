@@ -52,6 +52,7 @@ from complaint_phases import (
 	KnowledgeGraphBuilder,
 	DependencyGraphBuilder,
 	ComplaintDenoiser,
+	build_intake_case_file,
 	LegalGraphBuilder,
 	NeurosymbolicMatcher,
 	NodeType
@@ -3202,6 +3203,8 @@ class Mediator:
 		dg = self.dg_builder.build_from_claims(claims)
 		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', dg)
 		self._update_intake_contradiction_state(dg)
+		intake_case_file = self._initialize_intake_case_file(kg, initial_complaint_text)
+		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_case_file', intake_case_file)
 		
 		# Generate initial denoising questions
 		kg_gaps = kg.find_gaps()
@@ -3227,11 +3230,16 @@ class Mediator:
 			'phase': ComplaintPhase.INTAKE.value,
 			'knowledge_graph_summary': kg.summary(),
 			'dependency_graph_summary': dg.summary(),
+			'intake_case_file': intake_case_file,
 			'initial_questions': questions,
 			'initial_noise_level': noise,
 			'intake_readiness': self.phase_manager.get_intake_readiness(),
 			'next_action': self.phase_manager.get_next_action()
 		}
+
+	def _initialize_intake_case_file(self, knowledge_graph, complaint_text: str) -> Dict[str, Any]:
+		"""Build the initial structured intake case file from the current knowledge graph."""
+		return build_intake_case_file(knowledge_graph, complaint_text)
 	
 	def process_denoising_answer(self, question: Dict[str, Any], answer: str) -> Dict[str, Any]:
 		"""
@@ -3925,12 +3933,26 @@ class Mediator:
 	def get_three_phase_status(self) -> Dict[str, Any]:
 		"""Get current status of three-phase process."""
 		intake_readiness = self.phase_manager.get_intake_readiness()
+		intake_case_file = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
+		candidate_claims = intake_case_file.get('candidate_claims', []) if isinstance(intake_case_file, dict) else []
+		canonical_facts = intake_case_file.get('canonical_facts', []) if isinstance(intake_case_file, dict) else []
+		proof_leads = intake_case_file.get('proof_leads', []) if isinstance(intake_case_file, dict) else []
 		return {
 			'current_phase': self.phase_manager.get_current_phase().value,
 			'iteration_count': self.phase_manager.iteration_count,
 			'convergence_history': self.phase_manager.loss_history[-10:] if self.phase_manager.loss_history else [],
 			'loss_history': self.phase_manager.loss_history if self.phase_manager.loss_history else [],
 			'intake_readiness': intake_readiness,
+			'candidate_claims': candidate_claims,
+			'intake_sections': intake_readiness.get('intake_sections', {}),
+			'canonical_fact_summary': {
+				'count': len(canonical_facts),
+				'facts': canonical_facts,
+			},
+			'proof_lead_summary': {
+				'count': len(proof_leads),
+				'proof_leads': proof_leads,
+			},
 			'intake_contradictions': {
 				'candidate_count': intake_readiness.get('contradiction_count', 0),
 				'candidates': intake_readiness.get('contradictions', []),

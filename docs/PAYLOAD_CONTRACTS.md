@@ -2865,6 +2865,8 @@ Representative shape:
     "accepted_iterations": 1,
     "optimized_sections": ["factual_allegations"],
     "artifact_cid": "bafy...",
+    "trace_download_url": "/api/documents/optimization-trace?cid=bafy...",
+    "trace_view_url": "/document/optimization-trace?cid=bafy...",
     "router_status": {
       "llm_router": "available",
       "embeddings_router": "available",
@@ -2902,6 +2904,39 @@ Representative shape:
         "target_score": 0.9
       }
     },
+    "intake_status": {
+      "current_phase": "intake",
+      "ready_to_advance": false,
+      "score": 0.38,
+      "remaining_gap_count": 2,
+      "contradiction_count": 1,
+      "blockers": [
+        "resolve_contradictions",
+        "collect_missing_timeline_details"
+      ],
+      "contradictions": [
+        {
+          "summary": "Complaint date conflicts with schedule-cut date",
+          "left_text": "",
+          "right_text": "",
+          "question": "What were the exact dates for the complaint and schedule change?",
+          "severity": "high",
+          "category": ""
+        }
+      ]
+    },
+    "intake_constraints": [
+      {
+        "severity": "warning",
+        "code": "intake_blocker",
+        "message": "Intake blocker: resolve_contradictions"
+      },
+      {
+        "severity": "warning",
+        "code": "intake_contradiction",
+        "message": "Complaint date conflicts with schedule-cut date. Clarify: What were the exact dates for the complaint and schedule change?"
+      }
+    ],
     "packet_projection": {
       "section_presence": {
         "factual_allegations": true,

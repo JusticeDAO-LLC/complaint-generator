@@ -251,9 +251,15 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Section Review</a>" in content
     assert "renderReviewLinks" in content
     assert "review_links" in content
+    assert "trace_download_url" in content
+    assert "trace_view_url" in content
+    assert "Open Persisted Trace" in content
+    assert "Persisted Trace Snapshot" in content
     assert "Intake Constraints" in content
     assert "Current intake phase:" in content
     assert "Intake readiness score:" in content
+    assert "Persisted intake phase:" in content
+    assert "Persisted intake contradictions:" in content
 
 
 def test_chat_and_results_templates_link_to_document_workflow():
@@ -302,6 +308,16 @@ def test_review_surface_app_registers_dashboard_and_api_routes():
         if hasattr(route, "methods")
     )
     assert any(
+        route.path == "/api/documents/optimization-trace" and "GET" in route.methods
+        for route in app.routes
+        if hasattr(route, "methods")
+    )
+    assert any(
+        route.path == "/document/optimization-trace" and "GET" in route.methods
+        for route in app.routes
+        if hasattr(route, "methods")
+    )
+    assert any(
         route.path == "/api/claim-support/save-testimony" and "POST" in route.methods
         for route in app.routes
         if hasattr(route, "methods")
@@ -342,3 +358,37 @@ def test_review_surface_document_route_serves_builder_template():
 	assert response.status_code == 200
 	assert "Formal Complaint Builder" in response.text
 	assert "/api/documents/formal-complaint" in response.text
+
+
+def test_review_surface_optimization_trace_route_serves_trace_template():
+    app = create_review_surface_app(mediator=object())
+    client = TestClient(app)
+
+    response = client.get("/document/optimization-trace")
+
+    assert response.status_code == 200
+    assert "Optimization Trace Viewer" in response.text
+    assert "/api/documents/optimization-trace?cid=" in response.text
+    assert "Load Trace" in response.text
+    assert "Export Trace Bundle" in response.text
+    assert "Iteration Changes" in response.text
+    assert "Accepted Only" in response.text
+    assert "Rejected Only" in response.text
+
+
+def test_optimization_trace_template_includes_export_and_diff_controls():
+    content = Path("templates/optimization_trace.html").read_text()
+
+    assert "exportTraceButton" in content
+    assert "Export Trace Bundle" in content
+    assert "data-iteration-filter=\"accepted\"" in content
+    assert "data-iteration-filter=\"rejected\"" in content
+    assert "traceDiffList" in content
+    assert "Iteration Changes" in content
+    assert "filterIterations" in content
+    assert "setIterationFilter" in content
+    assert "summarizeActorPayloadChanges" in content
+    assert "summarizeStructuredArrayField" in content
+    assert "summarizeStructuredObjectField" in content
+    assert "buildIterationDiffLines" in content
+    assert "exportActiveTrace" in content

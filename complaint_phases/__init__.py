@@ -22,6 +22,7 @@ from .dependency_graph import (
     DependencyType
 )
 from .denoiser import ComplaintDenoiser
+from .intake_case_file import build_intake_case_file, refresh_intake_sections
 from .phase_manager import PhaseManager, ComplaintPhase
 from .legal_graph import (
     LegalGraphBuilder, 
@@ -43,6 +44,8 @@ __all__ = [
     'NodeType',
     'DependencyType',
     'ComplaintDenoiser',
+    'build_intake_case_file',
+    'refresh_intake_sections',
     'PhaseManager',
     'ComplaintPhase',
     'LegalGraphBuilder',

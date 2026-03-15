@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Optimization Trace Viewer</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f4f1e8;
+            --panel: #fffdf7;
+            --ink: #1f2933;
+            --muted: #52606d;
+            --accent: #9a3412;
+            --accent-soft: #fed7aa;
+            --border: #e5dccf;
+            --warning: #b45309;
+            --danger: #b91c1c;
+            --ok: #166534;
+            font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        }
+
+        body {
+            margin: 0;
+            background: radial-gradient(circle at top, #fff7ed 0%, var(--bg) 48%, #efe7da 100%);
+            color: var(--ink);
+        }
+
+        main {
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 32px 20px 56px;
+        }
+
+        .hero, .panel {
+            background: color-mix(in srgb, var(--panel) 92%, white 8%);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            box-shadow: 0 18px 40px rgba(31, 41, 51, 0.08);
+        }
+
+        .hero {
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+
+        .hero h1 {
+            margin: 0 0 8px;
+            font-size: 2rem;
+        }
+
+        .hero p, .muted {
+            color: var(--muted);
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 18px;
+        }
+
+        .toolbar-secondary {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+
+        .filter-group {
+            display: inline-flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        input[type="text"] {
+            flex: 1 1 360px;
+            min-width: 240px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            font: inherit;
+            background: #fff;
+        }
+
+        button, .link-button {
+            padding: 12px 16px;
+            border-radius: 12px;
+            border: none;
+            background: var(--accent);
+            color: white;
+            font: inherit;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        button[disabled] {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
+
+        .filter-button {
+            background: #f7ede2;
+            color: var(--accent);
+            border: 1px solid var(--border);
+        }
+
+        .filter-button.is-active {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+            margin-top: 20px;
+        }
+
+        .panel {
+            padding: 18px;
+        }
+
+        .panel h2 {
+            margin: 0 0 12px;
+            font-size: 1.05rem;
+        }
+
+        .chip-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .chip {
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            color: var(--accent);
+            font-size: 0.9rem;
+        }
+
+        ul {
+            margin: 0;
+            padding-left: 18px;
+        }
+
+        li + li {
+            margin-top: 8px;
+        }
+
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px;
+            overflow: auto;
+            max-height: 460px;
+        }
+
+        .status-ok { color: var(--ok); }
+        .status-warning { color: var(--warning); }
+        .status-danger { color: var(--danger); }
+    </style>
+</head>
+<body>
+    <main>
+        <section class="hero">
+            <h1>Optimization Trace Viewer</h1>
+            <p>Load a persisted optimization trace by CID and inspect intake blockers, contradictions, review summaries, and iteration history.</p>
+            <div class="toolbar">
+                <input id="traceCidInput" type="text" placeholder="Enter optimization trace CID" aria-label="Optimization trace CID">
+                <button id="loadTraceButton" type="button">Load Trace</button>
+                <a class="link-button" href="/document">Back to Builder</a>
+            </div>
+            <div class="toolbar-secondary">
+                <button id="exportTraceButton" type="button" disabled>Export Trace Bundle</button>
+                <div class="filter-group" aria-label="Iteration filter">
+                    <button class="filter-button is-active" data-iteration-filter="all" type="button">All Iterations</button>
+                    <button class="filter-button" data-iteration-filter="accepted" type="button">Accepted Only</button>
+                    <button class="filter-button" data-iteration-filter="rejected" type="button">Rejected Only</button>
+                </div>
+            </div>
+            <p id="traceStatusMessage" class="muted">Waiting for a trace CID.</p>
+        </section>
+
+        <div class="grid">
+            <section class="panel">
+                <h2>Trace Summary</h2>
+                <div id="traceSummaryChips" class="chip-row"></div>
+            </section>
+            <section class="panel">
+                <h2>Intake Blockers</h2>
+                <ul id="traceBlockerList"><li class="muted">No trace loaded.</li></ul>
+            </section>
+            <section class="panel">
+                <h2>Contradictions</h2>
+                <ul id="traceContradictionList"><li class="muted">No trace loaded.</li></ul>
+            </section>
+            <section class="panel">
+                <h2>Iteration History</h2>
+                <ul id="traceIterationList"><li class="muted">No trace loaded.</li></ul>
+            </section>
+            <section class="panel">
+                <h2>Iteration Changes</h2>
+                <ul id="traceDiffList"><li class="muted">No trace loaded.</li></ul>
+            </section>
+            <section class="panel">
+                <h2>Review Snapshot</h2>
+                <ul id="traceReviewList"><li class="muted">No trace loaded.</li></ul>
+            </section>
+            <section class="panel">
+                <h2>Raw Trace JSON</h2>
+                <pre id="traceJsonViewer">{}</pre>
+            </section>
+        </div>
+    </main>
+    <script>
+        let activeTracePayload = null;
+        let activeIterationFilter = 'all';
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        }
+
+        function humanizeKey(value) {
+            return String(value || '')
+                .replaceAll('_', ' ')
+                .replace(/\b\w/g, (match) => match.toUpperCase());
+        }
+
+        function renderList(node, values) {
+            if (!Array.isArray(values) || !values.length) {
+                node.innerHTML = '<li class="muted">None reported.</li>';
+                return;
+            }
+            node.innerHTML = values.map((value) => `<li>${escapeHtml(value)}</li>`).join('');
+        }
+
+        function summarizeArrayPreview(items, limit = 2) {
+            return items
+                .slice(0, limit)
+                .map((entry) => {
+                    if (entry && typeof entry === 'object') {
+                        return String(entry.title || entry.claim_type || entry.label || entry.summary || entry.text || '').trim();
+                    }
+                    return String(entry || '').trim();
+                })
+                .filter(Boolean);
+        }
+
+        function summarizeStructuredArrayField(key, value) {
+            const preview = summarizeArrayPreview(value);
+            if (key === 'factual_allegations') {
+                return [`Factual allegations: ${value.length} pleading entries${preview.length ? ` (${preview.join(' | ')})` : ''}`];
+            }
+            if (key === 'claims_for_relief') {
+                return [`Claims for relief: ${value.length} claim blocks${preview.length ? ` (${preview.join(' | ')})` : ''}`];
+            }
+            if (key === 'requested_relief') {
+                return [`Requested relief: ${value.length} requested remedies${preview.length ? ` (${preview.join(' | ')})` : ''}`];
+            }
+            return [`${humanizeKey(key)}: ${value.length} entries${preview.length ? ` (${preview.join(' | ')})` : ''}`];
+        }
+
+        function summarizeStructuredObjectField(key, value) {
+            if (key === 'claim_supporting_facts') {
+                const claimLines = Object.entries(value).map(([claimType, facts]) => {
+                    const factCount = Array.isArray(facts) ? facts.length : 0;
+                    return `${humanizeKey(claimType)} ${factCount}`;
+                }).filter(Boolean);
+                return [`Claim supporting facts: ${claimLines.join(', ') || 'updated'}`];
+            }
+            const objectSummaries = Object.entries(value).slice(0, 3).map(([innerKey, innerValue]) => {
+                if (Array.isArray(innerValue)) {
+                    return `${humanizeKey(innerKey)} ${innerValue.length}`;
+                }
+                return `${humanizeKey(innerKey)} updated`;
+            });
+            return [`${humanizeKey(key)}: ${objectSummaries.join(', ') || 'updated'}`];
+        }
+
+        function summarizeActorPayloadChanges(actorPayload) {
+            if (!actorPayload || typeof actorPayload !== 'object') {
+                return ['No actor payload recorded.'];
+            }
+            const lines = [];
+            for (const [key, value] of Object.entries(actorPayload)) {
+                if (key === 'llm_metadata') {
+                    continue;
+                }
+                if (Array.isArray(value)) {
+                    lines.push(...summarizeStructuredArrayField(key, value));
+                    continue;
+                }
+                if (value && typeof value === 'object') {
+                    lines.push(...summarizeStructuredObjectField(key, value));
+                    continue;
+                }
+                if (value != null && String(value).trim()) {
+                    lines.push(`${humanizeKey(key)}: ${String(value).trim()}`);
+                }
+            }
+            return lines.length ? lines : ['Actor payload recorded with no readable field changes.'];
+        }
+
+        function filterIterations(iterations) {
+            if (activeIterationFilter === 'accepted') {
+                return iterations.filter((entry) => Boolean(entry && entry.accepted));
+            }
+            if (activeIterationFilter === 'rejected') {
+                return iterations.filter((entry) => !Boolean(entry && entry.accepted));
+            }
+            return iterations;
+        }
+
+        function buildIterationDiffLines(iterations) {
+            return filterIterations(iterations).flatMap((entry, index) => {
+                const iteration = entry && entry.iteration != null ? entry.iteration : index + 1;
+                const focus = humanizeKey(entry && entry.focus_section ? entry.focus_section : 'section');
+                const prefix = `Iteration ${iteration} (${focus})`;
+                return summarizeActorPayloadChanges(entry && entry.actor_payload ? entry.actor_payload : {}).map((line) => `${prefix}: ${line}`);
+            });
+        }
+
+        function setIterationFilter(filterValue) {
+            activeIterationFilter = filterValue;
+            document.querySelectorAll('[data-iteration-filter]').forEach((node) => {
+                node.classList.toggle('is-active', node.getAttribute('data-iteration-filter') === filterValue);
+            });
+            if (activeTracePayload) {
+                renderTrace(activeTracePayload);
+            }
+        }
+
+        function setExportEnabled(enabled) {
+            const button = document.getElementById('exportTraceButton');
+            button.disabled = !enabled;
+        }
+
+        function exportActiveTrace() {
+            if (!activeTracePayload) {
+                setStatus('Load a trace before exporting.', 'status-warning');
+                return;
+            }
+            const cid = String(activeTracePayload.cid || 'optimization-trace').trim();
+            const blob = new Blob([JSON.stringify(activeTracePayload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = `${cid}.json`;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(url);
+            setStatus(`Exported trace bundle for ${cid}.`, 'status-ok');
+        }
+
+        function setStatus(message, tone) {
+            const node = document.getElementById('traceStatusMessage');
+            node.className = tone || 'muted';
+            node.textContent = message;
+        }
+
+        function renderTrace(payload) {
+            activeTracePayload = payload;
+            setExportEnabled(true);
+            const trace = payload && typeof payload.trace === 'object' ? payload.trace : {};
+            const intakeStatus = trace.intake_status && typeof trace.intake_status === 'object' ? trace.intake_status : {};
+            const intakeConstraints = Array.isArray(trace.intake_constraints) ? trace.intake_constraints : [];
+            const iterations = Array.isArray(trace.iterations) ? trace.iterations : [];
+            const filteredIterations = filterIterations(iterations);
+            const initialReview = trace.initial_review && typeof trace.initial_review === 'object' ? trace.initial_review : {};
+            const finalReview = trace.final_review && typeof trace.final_review === 'object' ? trace.final_review : {};
+
+            document.getElementById('traceJsonViewer').textContent = JSON.stringify(trace, null, 2);
+
+            const summaryChips = [
+                payload.cid ? `CID ${payload.cid}` : '',
+                payload.size != null ? `Size ${payload.size}` : '',
+                intakeStatus.current_phase ? `Phase ${humanizeKey(intakeStatus.current_phase)}` : '',
+                intakeStatus.score != null ? `Score ${Number(intakeStatus.score || 0).toFixed(2)}` : '',
+                intakeStatus.contradiction_count != null ? `Contradictions ${intakeStatus.contradiction_count}` : '',
+                iterations.length ? `Iterations ${iterations.length}` : '',
+                filteredIterations.length !== iterations.length ? `Filtered ${filteredIterations.length}` : '',
+            ].filter(Boolean);
+            const summaryNode = document.getElementById('traceSummaryChips');
+            summaryNode.innerHTML = summaryChips.length
+                ? summaryChips.map((entry) => `<span class="chip">${escapeHtml(entry)}</span>`).join('')
+                : '<span class="muted">No trace metadata available.</span>';
+
+            renderList(
+                document.getElementById('traceBlockerList'),
+                [
+                    ...(Array.isArray(intakeStatus.blockers) ? intakeStatus.blockers : []),
+                    ...intakeConstraints.map((entry) => `${humanizeKey(entry.code || 'constraint')}: ${entry.message || ''}`),
+                ].filter(Boolean),
+            );
+
+            renderList(
+                document.getElementById('traceContradictionList'),
+                (Array.isArray(intakeStatus.contradictions) ? intakeStatus.contradictions : []).map((entry) => {
+                    const summary = entry && entry.summary ? entry.summary : 'Unresolved contradiction';
+                    const question = entry && entry.question ? ` Clarify: ${entry.question}` : '';
+                    return `${summary}${question}`;
+                }),
+            );
+
+            renderList(
+                document.getElementById('traceIterationList'),
+                filteredIterations.map((entry, index) => {
+                    const iteration = entry && entry.iteration != null ? entry.iteration : index + 1;
+                    const focus = humanizeKey(entry && entry.focus_section ? entry.focus_section : 'section');
+                    const accepted = entry && entry.accepted ? 'accepted' : 'rejected';
+                    const score = entry && entry.critic && entry.critic.overall_score != null
+                        ? ` score ${entry.critic.overall_score}`
+                        : '';
+                    return `Iteration ${iteration}: ${focus} ${accepted}${score}`;
+                }),
+            );
+
+            renderList(
+                document.getElementById('traceDiffList'),
+                buildIterationDiffLines(iterations),
+            );
+
+            renderList(
+                document.getElementById('traceReviewList'),
+                [
+                    initialReview.overall_score != null ? `Initial review score: ${initialReview.overall_score}` : '',
+                    finalReview.overall_score != null ? `Final review score: ${finalReview.overall_score}` : '',
+                    finalReview.recommended_focus ? `Final recommended focus: ${humanizeKey(finalReview.recommended_focus)}` : '',
+                ].filter(Boolean),
+            );
+        }
+
+        async function loadTrace(cid) {
+            const normalizedCid = String(cid || '').trim();
+            if (!normalizedCid) {
+                setStatus('Enter a trace CID to continue.', 'status-warning');
+                return;
+            }
+            setStatus(`Loading trace ${normalizedCid}...`, 'muted');
+            const response = await fetch(`/api/documents/optimization-trace?cid=${encodeURIComponent(normalizedCid)}`);
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                const detail = payload && payload.detail ? payload.detail : `Request failed with ${response.status}`;
+                setStatus(detail, 'status-danger');
+                return;
+            }
+            const payload = await response.json();
+            renderTrace(payload);
+            setStatus(`Loaded trace ${normalizedCid}.`, 'status-ok');
+            const url = new URL(window.location.href);
+            url.searchParams.set('cid', normalizedCid);
+            window.history.replaceState({}, '', url.toString());
+        }
+
+        document.getElementById('loadTraceButton').addEventListener('click', () => {
+            loadTrace(document.getElementById('traceCidInput').value);
+        });
+        document.getElementById('exportTraceButton').addEventListener('click', exportActiveTrace);
+        document.querySelectorAll('[data-iteration-filter]').forEach((node) => {
+            node.addEventListener('click', () => {
+                setIterationFilter(node.getAttribute('data-iteration-filter') || 'all');
+            });
+        });
+
+        const initialCid = new URLSearchParams(window.location.search).get('cid') || '';
+        if (initialCid) {
+            document.getElementById('traceCidInput').value = initialCid;
+            loadTrace(initialCid);
+        }
+    </script>
+</body>
+</html>

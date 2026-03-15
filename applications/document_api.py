@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
 
@@ -7,6 +8,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from document_pipeline import DEFAULT_OUTPUT_DIR
+from integrations.ipfs_datasets.storage import retrieve_bytes
 from intake_status import build_intake_status_summary, build_intake_warning_entries
 
 
@@ -131,6 +133,14 @@ def _build_download_url(path: str) -> Optional[str]:
     if not _is_allowed_download_path(resolved):
         return None
     return f"/api/documents/download?path={resolved}"
+
+
+def _build_optimization_trace_url(cid: str) -> str:
+    return f"/api/documents/optimization-trace?cid={cid}"
+
+
+def _build_optimization_trace_view_url(cid: str) -> str:
+    return f"/document/optimization-trace?cid={cid}"
 
 
 def _build_review_url(
@@ -433,6 +443,12 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
         document_optimization["intake_status"] = dict(intake_status)
         if intake_warning_entries:
             document_optimization["intake_constraints"] = list(intake_warning_entries)
+        trace_storage = document_optimization.get("trace_storage")
+        trace_storage = trace_storage if isinstance(trace_storage, dict) else {}
+        trace_cid = str(trace_storage.get("cid") or document_optimization.get("artifact_cid") or "").strip()
+        if trace_cid:
+            document_optimization["trace_download_url"] = _build_optimization_trace_url(trace_cid)
+            document_optimization["trace_view_url"] = _build_optimization_trace_view_url(trace_cid)
 
     payload["review_links"] = {
         "dashboard_url": dashboard_url,
@@ -527,6 +543,34 @@ def create_document_router(mediator: Any) -> APIRouter:
         if not _is_allowed_download_path(file_path):
             raise HTTPException(status_code=403, detail="Requested path is outside the generated documents directory")
         return FileResponse(path=str(file_path), filename=file_path.name)
+
+    @router.get("/api/documents/optimization-trace")
+    async def retrieve_optimization_trace(cid: str = Query(...)) -> Dict[str, Any]:
+        trace_result = retrieve_bytes(cid)
+        status = str(trace_result.get("status") or "")
+        if status == "unavailable":
+            raise HTTPException(
+                status_code=503,
+                detail=trace_result.get("error") or "Optimization trace backend unavailable",
+            )
+        if status != "available":
+            error_text = str(trace_result.get("error") or "Optimization trace could not be retrieved")
+            status_code = 404 if "not found" in error_text.lower() or "unknown cid" in error_text.lower() else 502
+            raise HTTPException(status_code=status_code, detail=error_text)
+
+        data = trace_result.get("data")
+        payload_bytes = data if isinstance(data, (bytes, bytearray)) else bytes(str(data or ""), "utf-8")
+        try:
+            trace_payload = json.loads(payload_bytes.decode("utf-8")) if payload_bytes else {}
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=f"Optimization trace is not valid JSON: {exc}") from exc
+
+        return {
+            "status": "available",
+            "cid": cid,
+            "size": int(trace_result.get("size") or len(payload_bytes)),
+            "trace": trace_payload,
+        }
 
     return router
 

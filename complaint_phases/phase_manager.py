@@ -103,6 +103,89 @@ class PhaseManager:
             return [candidate for candidate in contradictions if isinstance(candidate, dict)]
         return []
 
+    def _extract_intake_case_file(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Return the structured intake case file when present."""
+        intake_case_file = data.get('intake_case_file')
+        if isinstance(intake_case_file, dict):
+            return intake_case_file
+        return {}
+
+    def _collect_intake_section_blockers(self, intake_case_file: Dict[str, Any]) -> Dict[str, Any]:
+        """Derive blockers and counters from structured intake sections."""
+        sections = intake_case_file.get('intake_sections')
+        if not isinstance(sections, dict):
+            sections = {}
+
+        normalized_sections: Dict[str, Dict[str, Any]] = {}
+        blockers: List[str] = []
+
+        section_to_blocker = {
+            'chronology': 'missing_core_chronology',
+            'actors': 'missing_core_actor',
+            'conduct': 'missing_conduct_details',
+            'harm': 'missing_harm',
+            'remedy': 'missing_remedy',
+            'proof_leads': 'missing_proof_leads',
+            'claim_elements': 'missing_claim_element_facts',
+        }
+        for name, raw_section in sections.items():
+            if not isinstance(raw_section, dict):
+                continue
+            status = str(raw_section.get('status') or 'missing').strip().lower() or 'missing'
+            missing_items = raw_section.get('missing_items')
+            normalized_sections[name] = {
+                'status': status,
+                'missing_items': list(missing_items) if isinstance(missing_items, list) else [],
+            }
+            if status == 'missing':
+                blocker = section_to_blocker.get(name)
+                if blocker and blocker not in blockers:
+                    blockers.append(blocker)
+
+        contradiction_queue = intake_case_file.get('contradiction_queue')
+        if not isinstance(contradiction_queue, list):
+            contradiction_queue = []
+        blocking_contradictions = [
+            item for item in contradiction_queue
+            if isinstance(item, dict)
+            and str(item.get('status') or 'open').strip().lower() != 'resolved'
+            and str(item.get('severity') or 'important').strip().lower() == 'blocking'
+        ]
+        if blocking_contradictions:
+            blockers.append('blocking_contradiction')
+
+        candidate_claims = intake_case_file.get('candidate_claims')
+        if not isinstance(candidate_claims, list):
+            candidate_claims = []
+        canonical_facts = intake_case_file.get('canonical_facts')
+        if not isinstance(canonical_facts, list):
+            canonical_facts = []
+        proof_leads = intake_case_file.get('proof_leads')
+        if not isinstance(proof_leads, list):
+            proof_leads = []
+
+        criteria = {
+            'candidate_claim_identified': bool(candidate_claims),
+            'core_chronology_present': normalized_sections.get('chronology', {}).get('status') != 'missing',
+            'core_actors_identified': normalized_sections.get('actors', {}).get('status') != 'missing',
+            'conduct_described': normalized_sections.get('conduct', {}).get('status') != 'missing',
+            'harm_captured': normalized_sections.get('harm', {}).get('status') != 'missing',
+            'remedy_captured': normalized_sections.get('remedy', {}).get('status') != 'missing',
+            'proof_leads_captured': normalized_sections.get('proof_leads', {}).get('status') != 'missing',
+            'claim_elements_captured': normalized_sections.get('claim_elements', {}).get('status') != 'missing',
+            'blocking_contradictions_resolved': not bool(blocking_contradictions),
+        }
+
+        return {
+            'sections': normalized_sections,
+            'blockers': blockers,
+            'criteria': criteria,
+            'candidate_claim_count': len(candidate_claims),
+            'canonical_fact_count': len(canonical_facts),
+            'proof_lead_count': len(proof_leads),
+            'blocking_contradictions': blocking_contradictions,
+        }
+
     def _build_intake_readiness(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Derive intake readiness metrics and blockers from intake state."""
         has_knowledge_graph = 'knowledge_graph' in data
@@ -113,6 +196,8 @@ class PhaseManager:
         contradiction_candidates = self._extract_intake_contradictions(data)
         contradiction_count = len(contradiction_candidates)
         has_contradictions = bool(data.get('contradictions_unresolved') or contradiction_count)
+        intake_case_file = self._extract_intake_case_file(data)
+        structured_readiness = self._collect_intake_section_blockers(intake_case_file) if intake_case_file else None
 
         criteria: Dict[str, bool] = {
             'knowledge_graph_ready': has_knowledge_graph,
@@ -127,6 +212,8 @@ class PhaseManager:
             criteria['proof_leads_present'] = 'unsupported_claim' not in gap_types
         if has_contradictions or 'contradictions_resolved' in data:
             criteria['contradictions_resolved'] = not has_contradictions
+        if structured_readiness:
+            criteria.update(structured_readiness['criteria'])
 
         blockers: List[str] = []
         if not has_knowledge_graph:
@@ -147,6 +234,10 @@ class PhaseManager:
             blockers.append('missing_proof_leads')
         if has_contradictions:
             blockers.append('contradiction_unresolved')
+        if structured_readiness:
+            for blocker in structured_readiness['blockers']:
+                if blocker not in blockers:
+                    blockers.append(blocker)
 
         for blocker in data.get('intake_blockers', []) or []:
             normalized = str(blocker or '').strip()
@@ -164,6 +255,11 @@ class PhaseManager:
             'intake_ready': len(blockers) == 0,
             'intake_contradiction_count': contradiction_count,
             'intake_contradictions': contradiction_candidates,
+            'intake_sections': structured_readiness['sections'] if structured_readiness else {},
+            'candidate_claim_count': structured_readiness['candidate_claim_count'] if structured_readiness else 0,
+            'canonical_fact_count': structured_readiness['canonical_fact_count'] if structured_readiness else 0,
+            'proof_lead_count': structured_readiness['proof_lead_count'] if structured_readiness else 0,
+            'blocking_contradictions': structured_readiness['blocking_contradictions'] if structured_readiness else [],
         }
 
     def _refresh_phase_derived_state(self, phase: ComplaintPhase):
@@ -182,6 +278,11 @@ class PhaseManager:
             'ready': bool(data.get('intake_ready', False)),
             'contradiction_count': int(data.get('intake_contradiction_count', 0) or 0),
             'contradictions': list(data.get('intake_contradictions', [])),
+            'intake_sections': dict(data.get('intake_sections', {})),
+            'candidate_claim_count': int(data.get('candidate_claim_count', 0) or 0),
+            'canonical_fact_count': int(data.get('canonical_fact_count', 0) or 0),
+            'proof_lead_count': int(data.get('proof_lead_count', 0) or 0),
+            'blocking_contradictions': list(data.get('blocking_contradictions', [])),
         }
     
     def get_current_phase(self) -> ComplaintPhase:
