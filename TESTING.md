@@ -91,10 +91,14 @@ That command auto-includes the Playwright smoke when both the Playwright package
 
 VS Code also exposes this runner through the workspace tasks `Claim Support Regression`, `Claim Support Regression (No Browser)`, and `Claim Support Regression (Require Browser)`.
 
-### Current Test Status
-- ✅ **6 tests passing**
-- ⏭️ **8 tests skipped** (require optional backend dependencies)
-- 📊 **100% of core functionality covered**
+The Run and Debug panel now mirrors those entry points with `Claim Support Regression`, `Claim Support Regression (No Browser)`, and `Claim Support Regression (Require Browser)` launch configurations.
+
+GitHub Actions now enforces the same slice in `.github/workflows/claim-support-regression.yml` with separate non-browser and browser-required lanes.
+
+### Current Validation Guidance
+- Use `scripts/run_claim_support_review_regression.py` for review-surface, testimony-linking, and dashboard rendering changes.
+- Use `pytest -m "not integration"` for faster local feedback when you do not need external integrations.
+- Treat the browser smoke as optional for local setup and required in the browser CI lane.
 
 ## TDD Workflow
 

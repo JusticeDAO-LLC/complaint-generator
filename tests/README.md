@@ -4,8 +4,10 @@ This directory contains tests for the complaint-generator application following 
 
 ## Test Structure
 
+This overview is illustrative rather than exhaustive; prefer `pytest --collect-only` or targeted file discovery when you need the exact current suite shape.
+
 ```
-tests/ (22 files, 60+ test classes, 150+ tests)
+tests/ (representative snapshot)
 ├── Complaint Processing Tests
 │   ├── test_complaint_phases.py           # Three-phase system (7 classes, 27 tests)
 │   ├── test_mediator_three_phase.py       # Three-phase integration (1 class, 6 tests)
@@ -76,6 +78,10 @@ The equivalent repo-local helper auto-detects whether the browser smoke should b
 ```
 
 In VS Code, the same runner is available from the workspace task list as `Claim Support Regression`, with explicit `No Browser` and `Require Browser` variants.
+
+The Run and Debug panel exposes the same three variants through matching launch configurations.
+
+GitHub Actions also runs this slice through `.github/workflows/claim-support-regression.yml`, splitting the enforcement into non-browser and browser-required lanes.
 
 ### Run Tests with Coverage
 

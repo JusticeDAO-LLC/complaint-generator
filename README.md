@@ -15,6 +15,8 @@ For environments with several possible routed providers, [config.adversarial_aut
 # Complaint Generator
 ### by JusticeDAO
 
+[![Claim Support Regression](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/claim-support-regression.yml/badge.svg)](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/claim-support-regression.yml)
+
 An AI-powered legal automation system that assists in preparing legal complaints through intelligent question-driven intake, evidence gathering, and formal complaint generation.
 
 ---
@@ -144,6 +146,14 @@ python run.py --config config.review_surface.json
 # Access the operator dashboard at http://localhost:8000/claim-support-review
 # Access the formal complaint builder at http://localhost:8000/document
 ```
+
+**Claim Support Regression:**
+
+```bash
+.venv/bin/python scripts/run_claim_support_review_regression.py
+```
+
+This regression is also available from the VS Code task list and Run and Debug panel under `Claim Support Regression`, with `No Browser` and `Require Browser` variants. GitHub Actions enforces the same slice through `claim-support-regression.yml` with separate non-browser and browser-required lanes.
 
 If you need to proactively normalize older claim-support testimony rows after upgrading the review workflow, run:
 

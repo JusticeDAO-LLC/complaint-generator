@@ -134,6 +134,16 @@ git push origin feature/your-feature-name
 pytest
 ```
 
+### Run Claim-Support Regression
+
+When you change the review surface, testimony-linking flow, or dashboard rendering, run the focused claim-support regression slice:
+
+```bash
+.venv/bin/python scripts/run_claim_support_review_regression.py
+```
+
+Use `--browser off` to force the non-browser slice or `--browser on` to require the Playwright smoke. The same regression is also available in VS Code through the `Claim Support Regression` task and launch configurations, and in GitHub Actions through `.github/workflows/claim-support-regression.yml`.
+
 ### Run Specific Test Files
 
 ```bash
@@ -204,6 +214,7 @@ When adding features or making changes:
 3. **Create/update docs/** for detailed documentation
 4. **Add docstrings** to all public functions and classes
 5. **Update examples/** if demonstrating new features
+6. **Update TESTING.md / tests/README.md / DOCUMENTATION_INDEX.md** when you add or change supported regression entry points
 
 ### Docstring Format
 
