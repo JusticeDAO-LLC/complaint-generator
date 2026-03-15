@@ -390,6 +390,15 @@ class PhaseManager:
                 'intake_blockers': readiness['blockers'],
             }
 
+        remaining_gaps = data.get('remaining_gaps', float('inf'))
+        if remaining_gaps > _INTAKE_GAPS_THRESHOLD:
+            return {
+                'action': 'address_gaps',
+                'gaps': gaps,
+                'intake_readiness_score': readiness['score'],
+                'intake_blockers': readiness['blockers'],
+            }
+
         semantic_blockers = [
             blocker for blocker in readiness['blockers']
             if blocker not in {
