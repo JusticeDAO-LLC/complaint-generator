@@ -1103,6 +1103,7 @@ def test_review_api_registers_formal_complaint_document_route():
         assert response.json()["drafting_readiness"]["status"] == "ready"
         assert response.json()["artifacts"]["docx"]["download_url"].startswith('/api/documents/download?path=')
         assert response.json()["review_links"]["dashboard_url"] == "/claim-support-review"
+        assert response.json()["review_links"]["intake_status"] == {}
         assert response.json()["review_links"]["claims"][0]["review_url"] == "/claim-support-review?claim_type=retaliation"
         assert response.json()["review_links"]["claims"][0]["review_intent"] == {
             "user_id": None,
@@ -1117,6 +1118,7 @@ def test_review_api_registers_formal_complaint_document_route():
             "user_id": None,
             "claim_type": "retaliation",
         }
+        assert response.json()["filing_checklist"][0].get("intake_status") is None
         assert response.json()["filing_checklist"][0]["review_intent"] == {
             "user_id": None,
             "claim_type": "retaliation",
@@ -1745,6 +1747,23 @@ def test_review_api_can_suppress_mirrored_affidavit_exhibits_end_to_end(tmp_path
 
 def test_review_api_multiclaim_section_links_include_targeted_claim_urls():
     mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "intake_readiness": {
+            "score": 0.44,
+            "ready_to_advance": False,
+            "remaining_gap_count": 2,
+            "contradiction_count": 1,
+            "blockers": ["resolve_contradictions", "collect_missing_timeline_details"],
+        },
+        "intake_contradictions": [
+            {
+                "summary": "Complaint date conflicts with schedule-cut date",
+                "question": "What were the exact dates for the complaint and schedule change?",
+                "severity": "high",
+            }
+        ],
+    }
     DEFAULT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     artifact_path = DEFAULT_OUTPUT_DIR / 'multi-claim-formal-complaint.docx'
     artifact_path.write_bytes(b'test artifact')
@@ -1832,6 +1851,23 @@ def test_review_api_multiclaim_section_links_include_targeted_claim_urls():
             "review_url": "/claim-support-review?section=claims_for_relief",
         }
         assert payload["filing_checklist"][0]["review_url"] == "/claim-support-review?section=claims_for_relief"
+        assert payload["filing_checklist"][0]["intake_status"] == {
+            "score": 0.44,
+            "ready_to_advance": False,
+            "remaining_gap_count": 2,
+            "contradiction_count": 1,
+            "blockers": ["resolve_contradictions", "collect_missing_timeline_details"],
+            "contradictions": [
+                {
+                    "summary": "Complaint date conflicts with schedule-cut date",
+                    "left_text": "",
+                    "right_text": "",
+                    "question": "What were the exact dates for the complaint and schedule change?",
+                    "severity": "high",
+                    "category": "",
+                }
+            ],
+        }
         assert payload["filing_checklist"][0]["review_intent"] == {
             "user_id": None,
             "claim_type": None,
@@ -1840,6 +1876,23 @@ def test_review_api_multiclaim_section_links_include_targeted_claim_urls():
             "review_url": "/claim-support-review?section=claims_for_relief",
         }
         assert payload["filing_checklist"][1]["review_url"] == "/claim-support-review?claim_type=retaliation"
+        assert payload["filing_checklist"][1]["intake_status"] == {
+            "score": 0.44,
+            "ready_to_advance": False,
+            "remaining_gap_count": 2,
+            "contradiction_count": 1,
+            "blockers": ["resolve_contradictions", "collect_missing_timeline_details"],
+            "contradictions": [
+                {
+                    "summary": "Complaint date conflicts with schedule-cut date",
+                    "left_text": "",
+                    "right_text": "",
+                    "question": "What were the exact dates for the complaint and schedule change?",
+                    "severity": "high",
+                    "category": "",
+                }
+            ],
+        }
         assert payload["filing_checklist"][1]["review_intent"] == {
             "user_id": None,
             "claim_type": "retaliation",
@@ -1901,6 +1954,23 @@ def test_review_api_downloads_generated_document_artifact():
 
 def test_review_surface_document_builder_flow_serves_page_and_supports_api_round_trip():
     mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        'current_phase': 'intake',
+        'intake_readiness': {
+            'score': 0.38,
+            'ready_to_advance': False,
+            'remaining_gap_count': 2,
+            'contradiction_count': 1,
+            'blockers': ['resolve_contradictions', 'collect_missing_timeline_details'],
+        },
+        'intake_contradictions': [
+            {
+                'summary': 'Complaint date conflicts with schedule-cut date',
+                'question': 'What were the exact dates for the complaint and schedule change?',
+                'severity': 'high',
+            }
+        ],
+    }
     DEFAULT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     artifact_path = DEFAULT_OUTPUT_DIR / 'review-surface-formal-complaint.docx'
     artifact_path.write_bytes(b'PK\x03\x04mock-docx')
@@ -1979,6 +2049,11 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert '/claim-support-review' in page_html
         assert 'Open Claim Support Review' in page_html
         assert 'Open Review Dashboard' in page_html
+        assert 'Intake Review Signals' in page_html
+        assert 'Intake blockers:' in page_html
+        assert 'Tracked intake contradictions:' in page_html
+        assert 'Checklist Intake Signals' in page_html
+        assert 'Checklist intake blockers:' in page_html
         assert 'Open Section Review' in page_html
         assert 'formalComplaintBuilderState' in page_html
         assert 'formalComplaintBuilderPreview' in page_html
@@ -2056,6 +2131,24 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert payload['draft']['case_caption']['jury_demand_notice'] == 'JURY TRIAL DEMANDED'
         assert payload['drafting_readiness']['status'] == 'warning'
         assert payload['review_links']['dashboard_url'] == '/claim-support-review'
+        assert payload['review_links']['intake_status'] == {
+            'current_phase': 'intake',
+            'ready_to_advance': False,
+            'score': 0.38,
+            'remaining_gap_count': 2,
+            'contradiction_count': 1,
+            'blockers': ['resolve_contradictions', 'collect_missing_timeline_details'],
+            'contradictions': [
+                {
+                    'summary': 'Complaint date conflicts with schedule-cut date',
+                    'left_text': '',
+                    'right_text': '',
+                    'question': 'What were the exact dates for the complaint and schedule change?',
+                    'severity': 'high',
+                    'category': '',
+                }
+            ],
+        }
         assert payload['review_links']['claims'][0]['review_url'] == '/claim-support-review?claim_type=retaliation'
         assert payload['review_links']['sections'][0]['section_key'] == 'claims_for_relief'
         assert payload['review_links']['sections'][0]['review_url'] == '/claim-support-review?claim_type=retaliation&section=claims_for_relief'

@@ -176,6 +176,164 @@ def _build_review_intent(
     }
 
 
+def _normalize_intake_contradiction(contradiction: Any) -> Dict[str, Any]:
+    candidate = contradiction if isinstance(contradiction, dict) else {}
+    left_text = str(
+        candidate.get("left_text")
+        or candidate.get("left_fact_text")
+        or candidate.get("statement_a")
+        or ""
+    ).strip()
+    right_text = str(
+        candidate.get("right_text")
+        or candidate.get("right_fact_text")
+        or candidate.get("statement_b")
+        or ""
+    ).strip()
+    summary = str(candidate.get("summary") or "").strip()
+    if not summary:
+        if left_text and right_text:
+            summary = f"{left_text} <> {right_text}"
+        else:
+            summary = left_text or right_text or "Unresolved contradiction"
+    return {
+        "summary": summary,
+        "left_text": left_text,
+        "right_text": right_text,
+        "question": str(candidate.get("question") or candidate.get("question_text") or "").strip(),
+        "severity": str(candidate.get("severity") or "").strip(),
+        "category": str(candidate.get("category") or candidate.get("type") or "").strip(),
+    }
+
+
+def _build_intake_status_summary(mediator: Any) -> Dict[str, Any]:
+    get_three_phase_status = getattr(mediator, "get_three_phase_status", None)
+    if not callable(get_three_phase_status):
+        return {}
+
+    raw_status = get_three_phase_status()
+    if not isinstance(raw_status, dict):
+        return {}
+
+    readiness = raw_status.get("intake_readiness")
+    readiness = readiness if isinstance(readiness, dict) else {}
+    contradictions = raw_status.get("intake_contradictions")
+    if not isinstance(contradictions, list):
+        contradictions = (
+            readiness.get("contradictions")
+            if isinstance(readiness.get("contradictions"), list)
+            else []
+        )
+    blockers = readiness.get("blockers")
+    blocker_list = [str(item).strip() for item in blockers] if isinstance(blockers, list) else []
+    normalized_contradictions = [
+        _normalize_intake_contradiction(item)
+        for item in contradictions
+        if isinstance(item, dict)
+    ]
+
+    try:
+        score = float(readiness.get("score"))
+    except (TypeError, ValueError):
+        score = 0.0
+    try:
+        remaining_gap_count = int(readiness.get("remaining_gap_count"))
+    except (TypeError, ValueError):
+        remaining_gap_count = 0
+    try:
+        contradiction_count = int(readiness.get("contradiction_count"))
+    except (TypeError, ValueError):
+        contradiction_count = len(normalized_contradictions)
+
+    return {
+        "current_phase": str(raw_status.get("current_phase") or "").strip(),
+        "ready_to_advance": bool(readiness.get("ready_to_advance", False)),
+        "score": score,
+        "remaining_gap_count": remaining_gap_count,
+        "contradiction_count": contradiction_count,
+        "blockers": blocker_list,
+        "contradictions": normalized_contradictions,
+    }
+
+
+def _build_checklist_intake_status(intake_status: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(intake_status, dict) or not intake_status:
+        return {}
+    blockers = intake_status.get("blockers")
+    blocker_list = [str(item).strip() for item in blockers] if isinstance(blockers, list) else []
+    contradictions = intake_status.get("contradictions")
+    contradiction_list = contradictions if isinstance(contradictions, list) else []
+    return {
+        "score": float(intake_status.get("score") or 0.0),
+        "ready_to_advance": bool(intake_status.get("ready_to_advance", False)),
+        "remaining_gap_count": int(intake_status.get("remaining_gap_count") or 0),
+        "contradiction_count": int(intake_status.get("contradiction_count") or len(contradiction_list)),
+        "blockers": blocker_list,
+        "contradictions": contradiction_list[:2],
+    }
+
+
+def _build_intake_warning_entries(intake_status: Dict[str, Any]) -> List[Dict[str, Any]]:
+    if not isinstance(intake_status, dict) or not intake_status:
+        return []
+    warnings: List[Dict[str, Any]] = []
+    blockers = intake_status.get("blockers")
+    blocker_list = blockers if isinstance(blockers, list) else []
+    for blocker in blocker_list:
+        blocker_text = str(blocker).strip()
+        if not blocker_text:
+            continue
+        warnings.append(
+            {
+                "severity": "warning",
+                "code": "intake_blocker",
+                "message": f"Intake blocker: {blocker_text}",
+            }
+        )
+    contradictions = intake_status.get("contradictions")
+    contradiction_list = contradictions if isinstance(contradictions, list) else []
+    for contradiction in contradiction_list[:2]:
+        if not isinstance(contradiction, dict):
+            continue
+        summary = str(contradiction.get("summary") or "").strip() or "Unresolved intake contradiction"
+        question = str(contradiction.get("question") or "").strip()
+        message = summary if not question else f"{summary}. Clarify: {question}"
+        warnings.append(
+            {
+                "severity": "warning",
+                "code": "intake_contradiction",
+                "message": message,
+            }
+        )
+    return warnings
+
+
+def _merge_warning_entries(existing: Any, additions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    base = existing if isinstance(existing, list) else []
+    merged: List[Dict[str, Any]] = [item for item in base if isinstance(item, dict)]
+    seen = {
+        (
+            str(item.get("code") or "").strip(),
+            str(item.get("message") or "").strip(),
+            str(item.get("severity") or "").strip(),
+        )
+        for item in merged
+    }
+    for item in additions:
+        if not isinstance(item, dict):
+            continue
+        key = (
+            str(item.get("code") or "").strip(),
+            str(item.get("message") or "").strip(),
+            str(item.get("severity") or "").strip(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(item)
+    return merged
+
+
 def _annotate_artifacts_with_download_urls(payload: Dict[str, Any]) -> Dict[str, Any]:
     artifacts = payload.get("artifacts") if isinstance(payload, dict) else None
     if not isinstance(artifacts, dict):
@@ -208,6 +366,7 @@ def _annotate_checklist_review_links(
     claim_review_map: Dict[str, Dict[str, Any]],
     section_review_map: Dict[str, Dict[str, Any]],
     default_review_intent: Dict[str, Any],
+    intake_status: Dict[str, Any],
 ) -> Dict[str, Any]:
     checklist_targets = []
     top_level = payload.get("filing_checklist") if isinstance(payload.get("filing_checklist"), list) else []
@@ -237,6 +396,10 @@ def _annotate_checklist_review_links(
                 item["review_url"] = dashboard_url
                 item["review_context"] = {"user_id": default_review_intent.get("user_id")}
                 item["review_intent"] = dict(default_review_intent)
+            if str(item.get("status") or "").strip().lower() in {"warning", "blocked"}:
+                checklist_intake_status = _build_checklist_intake_status(intake_status)
+                if checklist_intake_status:
+                    item["intake_status"] = checklist_intake_status
     return payload
 
 
@@ -252,6 +415,8 @@ def _annotate_review_links(payload: Dict[str, Any], *, user_id: Optional[str]) -
     section_entries = drafting_readiness.get("sections") if isinstance(drafting_readiness.get("sections"), dict) else {}
     dashboard_url = _build_review_url(user_id=resolved_user_id)
     default_review_intent = _build_review_intent(user_id=resolved_user_id)
+    intake_status = _build_intake_status_summary(mediator)
+    intake_warning_entries = _build_intake_warning_entries(intake_status)
 
     claim_links = []
     claim_types = []
@@ -274,6 +439,8 @@ def _annotate_review_links(payload: Dict[str, Any], *, user_id: Optional[str]) -
             "claim_type": claim_type,
         }
         claim["review_intent"] = claim_review_intent
+        if str(claim.get("status") or "").strip().lower() in {"warning", "blocked"}:
+            claim["warnings"] = _merge_warning_entries(claim.get("warnings"), intake_warning_entries)
         claim_review_map[claim_type] = {
             "review_url": claim_review_url,
             "review_context": claim["review_context"],
@@ -333,6 +500,8 @@ def _annotate_review_links(payload: Dict[str, Any], *, user_id: Optional[str]) -
         section["review_url"] = section_review_url
         section["review_context"] = review_context
         section["review_intent"] = section_review_intent
+        if str(section.get("status") or "").strip().lower() in {"warning", "blocked"}:
+            section["warnings"] = _merge_warning_entries(section.get("warnings"), intake_warning_entries)
         if section_claim_links:
             section["claim_links"] = section_claim_links
         section_review_map[resolved_section_key] = {
@@ -367,10 +536,17 @@ def _annotate_review_links(payload: Dict[str, Any], *, user_id: Optional[str]) -
             preferred_claim_type = str(claim.get("claim_type") or "").strip() or None
             break
 
+    if str(drafting_readiness.get("status") or "").strip().lower() in {"warning", "blocked"}:
+        drafting_readiness["warnings"] = _merge_warning_entries(
+            drafting_readiness.get("warnings"),
+            intake_warning_entries,
+        )
+
     payload["review_links"] = {
         "dashboard_url": dashboard_url,
         "claims": claim_links,
         "sections": section_links,
+        "intake_status": intake_status,
     }
     payload["review_intent"] = _build_review_intent(
         user_id=resolved_user_id,
@@ -384,6 +560,7 @@ def _annotate_review_links(payload: Dict[str, Any], *, user_id: Optional[str]) -
         claim_review_map=claim_review_map,
         section_review_map=section_review_map,
         default_review_intent=payload["review_intent"],
+        intake_status=payload["review_links"]["intake_status"],
     )
 
 

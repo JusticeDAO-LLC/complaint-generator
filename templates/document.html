@@ -1835,15 +1835,42 @@
 
         function renderReviewLinks(reviewLinks) {
             const dashboardUrl = String((reviewLinks && reviewLinks.dashboard_url) || '').trim() || '/claim-support-review';
+            const intakeStatus = reviewLinks && typeof reviewLinks.intake_status === 'object' ? reviewLinks.intake_status : {};
+            const blockers = Array.isArray(intakeStatus.blockers) ? intakeStatus.blockers : [];
+            const contradictions = Array.isArray(intakeStatus.contradictions) ? intakeStatus.contradictions : [];
             const resumeIntent = normalizeReviewIntent(state.reviewIntent);
             const resumeLink = resumeIntent && resumeIntent.review_url && resumeIntent.review_url !== dashboardUrl
                 ? `<a class="inline-link" data-review-intent-link="true" href="${escapeHtml(resumeIntent.review_url)}">Resume Review Focus</a>`
                 : '';
+            const intakeStatusSummary = (() => {
+                if (!Object.keys(intakeStatus).length) {
+                    return '';
+                }
+                const chips = [];
+                if (intakeStatus.current_phase) chips.push(`<span class="readiness-chip"><strong>Phase:</strong> ${escapeHtml(intakeStatus.current_phase)}</span>`);
+                chips.push(`<span class="readiness-chip"><strong>Intake score:</strong> ${escapeHtml(Number(intakeStatus.score || 0).toFixed(2))}</span>`);
+                chips.push(`<span class="readiness-chip"><strong>Remaining gaps:</strong> ${escapeHtml(String(intakeStatus.remaining_gap_count || 0))}</span>`);
+                chips.push(`<span class="readiness-chip"><strong>Tracked intake contradictions:</strong> ${escapeHtml(String(intakeStatus.contradiction_count || contradictions.length))}</span>`);
+                chips.push(`<span class="readiness-chip"><strong>Ready to advance:</strong> ${intakeStatus.ready_to_advance ? 'yes' : 'no'}</span>`);
+                const blockerSummary = blockers.length
+                    ? `<div class="preview-meta"><strong>Intake blockers:</strong> ${escapeHtml(blockers.join(', '))}</div>`
+                    : '<div class="preview-meta">No current intake blockers reported.</div>';
+                const contradictionSummary = contradictions.length
+                    ? `<ul class="provenance-list">${contradictions.slice(0, 3).map((item) => `<li>${escapeHtml(item.summary || 'Unresolved contradiction')}${item.question ? ` | ask ${escapeHtml(item.question)}` : ''}</li>`).join('')}</ul>`
+                    : '<div class="preview-meta">No intake contradictions are currently tracked.</div>';
+                return `
+                    <div class="readiness-subtitle">Intake Review Signals</div>
+                    <div class="readiness-grid">${chips.join('')}</div>
+                    ${blockerSummary}
+                    ${contradictionSummary}
+                `;
+            })();
             return `
                 <div class="inline-link-row">
                     <a class="inline-link" data-review-intent-link="true" href="${escapeHtml(dashboardUrl)}">Open Review Dashboard</a>
                     ${resumeLink}
                 </div>
+                ${intakeStatusSummary}
             `;
         }
 
@@ -2112,6 +2139,32 @@
                     </div>
                     <div>${escapeHtml(item.summary || '')}</div>
                     ${item.detail ? `<div class="preview-meta" style="margin-top: 8px;">${escapeHtml(item.detail)}</div>` : ''}
+                    ${(() => {
+                        const intakeStatus = item && typeof item.intake_status === 'object' ? item.intake_status : {};
+                        const blockers = Array.isArray(intakeStatus.blockers) ? intakeStatus.blockers : [];
+                        const contradictions = Array.isArray(intakeStatus.contradictions) ? intakeStatus.contradictions : [];
+                        if (!Object.keys(intakeStatus).length) {
+                            return '';
+                        }
+                        const chips = [
+                            `<span class="readiness-chip"><strong>Intake score:</strong> ${escapeHtml(Number(intakeStatus.score || 0).toFixed(2))}</span>`,
+                            `<span class="readiness-chip"><strong>Remaining gaps:</strong> ${escapeHtml(String(intakeStatus.remaining_gap_count || 0))}</span>`,
+                            `<span class="readiness-chip"><strong>Tracked intake contradictions:</strong> ${escapeHtml(String(intakeStatus.contradiction_count || contradictions.length))}</span>`,
+                            `<span class="readiness-chip"><strong>Ready to advance:</strong> ${intakeStatus.ready_to_advance ? 'yes' : 'no'}</span>`,
+                        ];
+                        const blockerSummary = blockers.length
+                            ? `<div class="preview-meta" style="margin-top: 8px;"><strong>Checklist intake blockers:</strong> ${escapeHtml(blockers.join(', '))}</div>`
+                            : '';
+                        const contradictionSummary = contradictions.length
+                            ? `<ul class="provenance-list">${contradictions.map((entry) => `<li>${escapeHtml(entry.summary || 'Unresolved contradiction')}${entry.question ? ` | ask ${escapeHtml(entry.question)}` : ''}</li>`).join('')}</ul>`
+                            : '';
+                        return `
+                            <div class="readiness-subtitle">Checklist Intake Signals</div>
+                            <div class="readiness-grid">${chips.join('')}</div>
+                            ${blockerSummary}
+                            ${contradictionSummary}
+                        `;
+                    })()}
                     ${item.review_url ? `<div class="inline-link-row"><a class="inline-link" data-review-intent-link="true" href="${escapeHtml(item.review_url)}">Open Checklist Review</a></div>` : ''}
                 </article>
             `).join('');

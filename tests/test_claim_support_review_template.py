@@ -228,6 +228,11 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "data-review-intent-link=\"true\"" in content
     assert "persistReviewIntent({ review_url: node.getAttribute('href') || '' })" in content
     assert "payload.review_intent" in content
+    assert "Intake Review Signals" in content
+    assert "Intake blockers:" in content
+    assert "Tracked intake contradictions:" in content
+    assert "Checklist Intake Signals" in content
+    assert "Checklist intake blockers:" in content
     assert "Source Context:" in content
     assert "Source families:" in content
     assert "follow_up_support_kind" in content
