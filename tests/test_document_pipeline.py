@@ -571,6 +571,33 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     mediator = _build_mediator()
     mediator.get_three_phase_status.return_value = {
         "current_phase": "intake",
+        "candidate_claims": [
+            {"claim_type": "employment discrimination", "label": "Employment Discrimination", "confidence": 0.82},
+            {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.8},
+        ],
+        "intake_sections": {
+            "chronology": {"status": "complete", "missing_items": []},
+            "proof_leads": {"status": "partial", "missing_items": ["documents"]},
+        },
+        "canonical_fact_summary": {
+            "count": 2,
+            "facts": [{"fact_id": "fact_001"}, {"fact_id": "fact_002"}],
+        },
+        "proof_lead_summary": {
+            "count": 1,
+            "proof_leads": [{"lead_id": "lead_001"}],
+        },
+        "claim_support_packet_summary": {
+            "claim_count": 2,
+            "element_count": 6,
+            "status_counts": {
+                "supported": 2,
+                "partially_supported": 1,
+                "unsupported": 1,
+                "contradicted": 0,
+            },
+            "recommended_actions": ["collect_missing_support_kind"],
+        },
         "intake_readiness": {
             "score": 0.44,
             "ready_to_advance": False,

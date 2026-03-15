@@ -105,6 +105,7 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
     intake_sections = raw_status.get("intake_sections")
     canonical_fact_summary = raw_status.get("canonical_fact_summary")
     proof_lead_summary = raw_status.get("proof_lead_summary")
+    question_candidate_summary = raw_status.get("question_candidate_summary")
     claim_support_packet_summary = raw_status.get("claim_support_packet_summary")
 
     return {
@@ -115,6 +116,9 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
         ),
         "proof_lead_summary": (
             proof_lead_summary if isinstance(proof_lead_summary, dict) else {}
+        ),
+        "question_candidate_summary": (
+            question_candidate_summary if isinstance(question_candidate_summary, dict) else {}
         ),
         "claim_support_packet_summary": (
             claim_support_packet_summary
