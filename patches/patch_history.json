@@ -1,0 +1,98 @@
+[
+  {
+    "patch_id": "c5b5667b756c64b4",
+    "agent_id": "adversarial-harness-optimizer",
+    "task_id": "adversarial_autopatch_20260315_070640",
+    "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py. Priorities from the latest adversarial batch: Improve coverage: current avg 0.30; Improve empathy: current avg 0.40; Improve information extraction: current avg 0.42. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability.",
+    "diff_content": "--- a/complaint_phases/phase_manager.py\n+++ b/complaint_phases/phase_manager.py\n@@ -345,60 +345,24 @@\n     def _get_intake_action(self) -> Dict[str, Any]:\n         \"\"\"Get next action for intake phase.\"\"\"\n         data = self.phase_data[ComplaintPhase.INTAKE]\n-        readiness = self.get_intake_readiness()\n-        \n-        if 'knowledge_graph' not in data:\n-            return {\n-                'action': 'build_knowledge_graph',\n-                'intake_readiness_score': readiness['score'],\n-                'intake_blockers': readiness['blockers'],\n-            }\n-        \n-        if 'dependency_graph' not in data:\n-            return {\n-                'action': 'build_dependency_graph',\n-                'intake_readiness_score': readiness['score'],\n-                'intake_blockers': readiness['blockers'],\n-            }\n-        \n-        gaps = data.get('current_gaps', [])\n-        if gaps and len(gaps) > 0:\n-            return {\n-                'action': 'address_gaps',\n-                'gaps': gaps,\n-                'intake_readiness_score': readiness['score'],\n-                'intake_blockers': readiness['blockers'],\n-            }\n-\n-        semantic_blockers = [\n-            blocker for blocker in readiness['blockers']\n-            if blocker not in {\n-                'missing_knowledge_graph',\n-                'missing_dependency_graph',\n-                'unresolved_gaps',\n-                'denoising_not_converged',\n-            }\n-        ]\n-        if semantic_blockers:\n-            return {\n-                'action': 'address_gaps',\n-                'gaps': gaps,\n-                'intake_readiness_score': readiness['score'],\n-                'intake_blockers': readiness['blockers'],\n-            }\n-        \n-        if not data.get('denoising_converged', False) and self.iteration_count < _DENOISING_MAX_ITERATIONS:\n-            return {\n-                'action': 'continue_denoising',\n-                'intake_readiness_score': readiness['score'],\n-                'intake_blockers': readiness['blockers'],\n-            }\n-        \n-        return {\n-            'action': 'complete_intake',\n-            'intake_readiness_score': readiness['score'],\n-            'intake_blockers': readiness['blockers'],\n-        }\n+\n+        if not data.get('knowledge_graph'):\n+            return {'action': 'build_knowledge_graph'}\n+\n+        if not data.get('dependency_graph'):\n+            return {'action': 'build_dependency_graph'}\n+\n+            gaps = data.get('current_gaps', [])\n+            if (gaps and len(gaps) > 0) or data.get('remaining_gaps', float('inf')) > 1:\n+                return {'action': 'address_gaps', 'gaps': gaps}\n+\n+            if not data.get('denoising_converged', False) and self.iteration_count < _DENOISING_MAX_ITERATIONS:\n+                return {'action': 'continue_denoising'}\n+\n+        if (data.get('denoising_converged', False) and data.get('remaining_gaps', float('inf')) <= 1) or self.iteration_count >= _DENOISING_MAX_ITERATIONS:\n+            return {'action': 'complete_intake'}\n+\n+        return {'action': 'continue_denoising'}\n     \n     def _get_evidence_action(self) -> Dict[str, Any]:\n         \"\"\"Get next action for evidence phase.\"\"\"\n",
+    "target_files": [
+      "complaint_phases/phase_manager.py"
+    ],
+    "created_at": "2026-03-15T07:08:52.767198",
+    "parent_patches": [],
+    "ipfs_cid": null,
+    "worktree_path": "",
+    "validated": false,
+    "applied": false,
+    "metadata": {
+      "patch_mode": "direct_diff",
+      "repo_root": "/home/barberb/HACC/complaint-generator",
+      "generation_diagnostics": [
+        {
+          "file": "/home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py",
+          "status": "optimized",
+          "mode": "symbol_level",
+          "target_symbols": [
+            "_get_intake_action"
+          ],
+          "response_length": 20422,
+          "changed": true
+        }
+      ]
+    }
+  },
+  {
+    "patch_id": "eb2d6dad0379baeb",
+    "agent_id": "adversarial-harness-optimizer",
+    "task_id": "adversarial_autopatch_20260315_072824",
+    "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py. Priorities from the latest adversarial batch: Improve coverage: current avg 0.30; Improve information extraction: current avg 0.35; Improve empathy: current avg 0.40. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability.",
+    "diff_content": "--- a/complaint_phases/phase_manager.py\n+++ b/complaint_phases/phase_manager.py\n@@ -365,24 +365,26 @@\n     def _get_intake_action(self) -> Dict[str, Any]:\n         \"\"\"Get next action for intake phase.\"\"\"\n         data = self.phase_data[ComplaintPhase.INTAKE]\n+\n         readiness = self.get_intake_readiness()\n-        \n-        if 'knowledge_graph' not in data:\n+\n+        if not data.get('knowledge_graph'):\n             return {\n                 'action': 'build_knowledge_graph',\n                 'intake_readiness_score': readiness['score'],\n                 'intake_blockers': readiness['blockers'],\n             }\n-        \n-        if 'dependency_graph' not in data:\n+\n+        if not data.get('dependency_graph'):\n             return {\n                 'action': 'build_dependency_graph',\n                 'intake_readiness_score': readiness['score'],\n                 'intake_blockers': readiness['blockers'],\n             }\n-        \n+\n         gaps = data.get('current_gaps', [])\n-        if gaps and len(gaps) > 0:\n+        remaining_gaps = data.get('remaining_gaps', float('inf'))\n+        if (gaps and len(gaps) > 0) or data.get('remaining_gaps', float('inf')) > 3:\n             return {\n                 'action': 'address_gaps',\n                 'gaps': gaps,\n@@ -390,41 +392,22 @@\n                 'intake_blockers': readiness['blockers'],\n             }\n \n-        remaining_gaps = data.get('remaining_gaps', float('inf'))\n-        if remaining_gaps > _INTAKE_GAPS_THRESHOLD:\n-            return {\n-                'action': 'address_gaps',\n-                'gaps': gaps,\n-                'intake_readiness_score': readiness['score'],\n-                'intake_blockers': readiness['blockers'],\n-            }\n-\n-        semantic_blockers = [\n-            blocker for blocker in readiness['blockers']\n-            if blocker not in {\n-                'missing_knowledge_graph',\n-                'missing_dependency_graph',\n-                'unresolved_gaps',\n-                'denoising_not_converged',\n-            }\n-        ]\n-        if semantic_blockers:\n-            return {\n-                'action': 'address_gaps',\n-                'gaps': gaps,\n-                'intake_readiness_score': readiness['score'],\n-                'intake_blockers': readiness['blockers'],\n-            }\n-        \n-        if not data.get('denoising_converged', False) and self.iteration_count < _DENOISING_MAX_ITERATIONS:\n+        if not data.get('denoising_converged', False) and bool(gaps) and self.iteration_count < _DENOISING_MAX_ITERATIONS:\n             return {\n                 'action': 'continue_denoising',\n                 'intake_readiness_score': readiness['score'],\n                 'intake_blockers': readiness['blockers'],\n             }\n-        \n+\n+        if (True) or self.iteration_count >= _DENOISING_MAX_ITERATIONS:\n+            return {\n+                'action': 'complete_intake',\n+                'intake_readiness_score': readiness['score'],\n+                'intake_blockers': readiness['blockers'],\n+            }\n+\n         return {\n-            'action': 'complete_intake',\n+            'action': 'continue_denoising',\n             'intake_readiness_score': readiness['score'],\n             'intake_blockers': readiness['blockers'],\n         }\n",
+    "target_files": [
+      "complaint_phases/phase_manager.py"
+    ],
+    "created_at": "2026-03-15T07:30:38.325648",
+    "parent_patches": [],
+    "ipfs_cid": null,
+    "worktree_path": "",
+    "validated": false,
+    "applied": false,
+    "metadata": {
+      "patch_mode": "direct_diff",
+      "repo_root": "/home/barberb/HACC/complaint-generator",
+      "generation_diagnostics": [
+        {
+          "file": "/home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py",
+          "status": "optimized",
+          "mode": "symbol_level",
+          "target_symbols": [
+            "_get_intake_action"
+          ],
+          "response_length": 22497,
+          "changed": true
+        }
+      ]
+    }
+  },
+  {
+    "patch_id": "fc12a1812d71f4c7",
+    "agent_id": "adversarial-harness-optimizer",
+    "task_id": "adversarial_autopatch_20260315_074306",
+    "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py. Priorities from the latest adversarial batch: Improve coverage: current avg 0.24; Improve information extraction: current avg 0.32; Improve question quality: current avg 0.38. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability.",
+    "diff_content": "--- a/complaint_phases/phase_manager.py\n+++ b/complaint_phases/phase_manager.py\n@@ -365,33 +365,26 @@\n     def _get_intake_action(self) -> Dict[str, Any]:\n         \"\"\"Get next action for intake phase.\"\"\"\n         data = self.phase_data[ComplaintPhase.INTAKE]\n+\n         readiness = self.get_intake_readiness()\n-        \n-        if 'knowledge_graph' not in data:\n+\n+        if not data.get('knowledge_graph'):\n             return {\n                 'action': 'build_knowledge_graph',\n                 'intake_readiness_score': readiness['score'],\n                 'intake_blockers': readiness['blockers'],\n             }\n-        \n-        if 'dependency_graph' not in data:\n+\n+        if not data.get('dependency_graph'):\n             return {\n                 'action': 'build_dependency_graph',\n                 'intake_readiness_score': readiness['score'],\n                 'intake_blockers': readiness['blockers'],\n             }\n-        \n+\n         gaps = data.get('current_gaps', [])\n-        if gaps and len(gaps) > 0:\n-            return {\n-                'action': 'address_gaps',\n-                'gaps': gaps,\n-                'intake_readiness_score': readiness['score'],\n-                'intake_blockers': readiness['blockers'],\n-            }\n-\n         remaining_gaps = data.get('remaining_gaps', float('inf'))\n-        if remaining_gaps > _INTAKE_GAPS_THRESHOLD:\n+        if (gaps and len(gaps) > 0) or remaining_gaps > 3:\n             return {\n                 'action': 'address_gaps',\n                 'gaps': gaps,\n@@ -415,16 +408,23 @@\n                 'intake_readiness_score': readiness['score'],\n                 'intake_blockers': readiness['blockers'],\n             }\n-        \n+\n         if not data.get('denoising_converged', False) and self.iteration_count < _DENOISING_MAX_ITERATIONS:\n             return {\n                 'action': 'continue_denoising',\n                 'intake_readiness_score': readiness['score'],\n                 'intake_blockers': readiness['blockers'],\n             }\n-        \n+\n+        if (remaining_gaps <= 3) or self.iteration_count >= _DENOISING_MAX_ITERATIONS:\n+            return {\n+                'action': 'complete_intake',\n+                'intake_readiness_score': readiness['score'],\n+                'intake_blockers': readiness['blockers'],\n+            }\n+\n         return {\n-            'action': 'complete_intake',\n+            'action': 'continue_denoising',\n             'intake_readiness_score': readiness['score'],\n             'intake_blockers': readiness['blockers'],\n         }\n",
+    "target_files": [
+      "complaint_phases/phase_manager.py"
+    ],
+    "created_at": "2026-03-15T07:45:18.929133",
+    "parent_patches": [],
+    "ipfs_cid": null,
+    "worktree_path": "",
+    "validated": false,
+    "applied": false,
+    "metadata": {
+      "patch_mode": "direct_diff",
+      "repo_root": "/home/barberb/HACC/complaint-generator",
+      "generation_diagnostics": [
+        {
+          "file": "/home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py",
+          "status": "optimized",
+          "mode": "symbol_level",
+          "target_symbols": [
+            "_get_intake_action"
+          ],
+          "response_length": 23037,
+          "changed": true
+        }
+      ]
+    }
+  }
+]
