@@ -190,5 +190,437 @@
         }
       ]
     }
+  },
+  {
+    "patch_id": "4fc71fa1da29942a",
+    "agent_id": "adversarial-harness-optimizer",
+    "task_id": "adversarial_autopatch_20260315_092538",
+    "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py, /home/barberb/HACC/complaint-generator/mediator/inquiries.py. Priorities from the latest adversarial batch: Improve empathy: current avg 0.12; Improve information extraction: current avg 0.30; Improve question quality: current avg 0.34. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability.",
+    "diff_content": "--- a/mediator/inquiries.py\n+++ b/mediator/inquiries.py\n@@ -5,9 +5,12 @@\n \n _QUESTION_RE = re.compile(r\"[^?\\n]+?\\?\")\n _WS_RE = re.compile(r\"\\s+\")\n+_NORM_RE = re.compile(r\"[^a-z0-9 ]+\")\n \n \n class Inquiries:\n+\t__slots__ = (\"m\",)\n+\n \tdef __init__(self, mediator):\n \t\tself.m = mediator\n \n@@ -22,9 +25,8 @@\n \n \tdef answer(self, text):\n \t\tcurrent = self.get_next()\n-\t\tif current is None:\n-\t\t\treturn\n-\t\tcurrent[\"answer\"] = text\n+\t\tif current is not None:\n+\t\t\tcurrent[\"answer\"] = text\n \n \tdef generate(self):\n \t\ttemplate = strings.model_prompts.get(\"generate_questions\")\n@@ -37,15 +39,17 @@\n \t\tif not block:\n \t\t\treturn\n \n+\t\tregister = self.register\n \t\tfor question in self._extract_questions(block):\n-\t\t\tself.register(question)\n+\t\t\tregister(question)\n \n \tdef register(self, question):\n \t\tif not question:\n \t\t\treturn\n \t\tinquiries = self.m.state.inquiries\n+\t\tsame_question = self.same_question\n \t\tfor other in inquiries:\n-\t\t\tif self.same_question(question, other.get(\"question\", \"\")):\n+\t\t\tif same_question(question, other.get(\"question\", \"\")):\n \t\t\t\tother.setdefault(\"alternative_questions\", []).append(question)\n \t\t\t\treturn\n \t\tinquiries.append({\n@@ -56,8 +60,9 @@\n \n \tdef _extract_questions(self, block):\n \t\tquestions = []\n+\t\tws_sub = _WS_RE.sub\n \t\tfor match in _QUESTION_RE.findall(block):\n-\t\t\tquestion = _WS_RE.sub(\" \", match).strip()\n+\t\t\tquestion = ws_sub(\" \", match).strip()\n \t\t\tif question:\n \t\t\t\tquestions.append(question)\n \t\treturn questions\n@@ -79,5 +84,5 @@\n \tdef _normalize_question(self, text):\n \t\tnormalized = text.strip().rstrip(\"?\").lower()\n \t\tnormalized = _WS_RE.sub(\" \", normalized)\n-\t\tnormalized = re.sub(r\"[^a-z0-9 ]+\", \"\", normalized)\n+\t\tnormalized = _NORM_RE.sub(\"\", normalized)\n \t\treturn normalized.strip()\n",
+    "target_files": [
+      "mediator/inquiries.py"
+    ],
+    "created_at": "2026-03-15T09:31:21.966313",
+    "parent_patches": [],
+    "ipfs_cid": null,
+    "worktree_path": "",
+    "validated": false,
+    "applied": false,
+    "metadata": {
+      "patch_mode": "direct_diff",
+      "repo_root": "/home/barberb/HACC/complaint-generator",
+      "generation_diagnostics": [
+        {
+          "file": "/home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py",
+          "status": "error",
+          "mode": "full_file",
+          "target_symbols": [],
+          "error_type": "ValueError",
+          "error_message": "Optimization response for /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py is not valid Python: invalid syntax (<unknown>, line 211)",
+          "raw_response_preview": ""
+        },
+        {
+          "file": "/home/barberb/HACC/complaint-generator/mediator/inquiries.py",
+          "status": "optimized",
+          "mode": "full_file",
+          "response_length": 2050,
+          "changed": true
+        }
+      ]
+    }
+  },
+  {
+    "patch_id": "ab3906ceb3c45f53",
+    "agent_id": "adversarial-harness-optimizer",
+    "task_id": "adversarial_autopatch_20260315_193214",
+    "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py, /home/barberb/HACC/complaint-generator/mediator/inquiries.py. Priorities from the latest adversarial batch: Improve empathy: current avg 0.25; Improve information extraction: current avg 0.33; Improve question quality: current avg 0.42. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability.",
+    "diff_content": "--- a/mediator/inquiries.py\n+++ b/mediator/inquiries.py\n@@ -5,6 +5,11 @@\n \n _QUESTION_RE = re.compile(r\"[^?\\n]+?\\?\")\n _WS_RE = re.compile(r\"\\s+\")\n+_NON_ALNUM_RE = re.compile(r\"[^a-z0-9 ]+\")\n+_LEADING_MARKERS_RE = re.compile(\n+\tr\"^(?:\\s*(?:[-*\u2022]|\\d+[\\.)]|(?:q|question)\\s*[:\\-])\\s*)+\",\n+\tre.IGNORECASE,\n+)\n \n \n class Inquiries:\n@@ -31,8 +36,9 @@\n \t\tif not template:\n \t\t\treturn\n \n+\t\tcomplaint = self.m.state.complaint\n \t\tblock = self.m.query_backend(\n-\t\t\ttemplate.format(complaint=self.m.state.complaint)\n+\t\t\ttemplate.format(complaint=complaint)\n \t\t)\n \t\tif not block:\n \t\t\treturn\n@@ -43,24 +49,57 @@\n \tdef register(self, question):\n \t\tif not question:\n \t\t\treturn\n+\t\tnormalized = self._normalize_question(question)\n+\t\tif not normalized:\n+\t\t\treturn\n \t\tinquiries = self.m.state.inquiries\n \t\tfor other in inquiries:\n-\t\t\tif self.same_question(question, other.get(\"question\", \"\")):\n-\t\t\t\tother.setdefault(\"alternative_questions\", []).append(question)\n+\t\t\tother_norm = other.get(\"_normalized_question\")\n+\t\t\tif not other_norm:\n+\t\t\t\tother_norm = self._normalize_question(other.get(\"question\", \"\"))\n+\t\t\t\tif other_norm:\n+\t\t\t\t\tother[\"_normalized_question\"] = other_norm\n+\t\t\tif normalized == other_norm:\n+\t\t\t\talternatives = other.setdefault(\"alternative_questions\", [])\n+\t\t\t\tif question != other.get(\"question\") and not self._question_in_list(question, alternatives):\n+\t\t\t\t\talternatives.append(question)\n \t\t\t\treturn\n \t\tinquiries.append({\n \t\t\t\"question\": question,\n \t\t\t\"alternative_questions\": [],\n \t\t\t\"answer\": None,\n+\t\t\t\"_normalized_question\": normalized,\n \t\t})\n \n \tdef _extract_questions(self, block):\n \t\tquestions = []\n-\t\tfor match in _QUESTION_RE.findall(block):\n-\t\t\tquestion = _WS_RE.sub(\" \", match).strip()\n+\t\tfor match in _QUESTION_RE.finditer(block):\n+\t\t\tquestion = self._clean_question(match.group(0))\n \t\t\tif question:\n \t\t\t\tquestions.append(question)\n \t\treturn questions\n+\n+\tdef _clean_question(self, text):\n+\t\tquestion = _WS_RE.sub(\" \", text).strip()\n+\t\tif not question:\n+\t\t\treturn \"\"\n+\t\tquestion = _LEADING_MARKERS_RE.sub(\"\", question).strip()\n+\t\tif not question:\n+\t\t\treturn \"\"\n+\t\tif question[-1] != \"?\":\n+\t\t\tquestion = f\"{question}?\"\n+\t\treturn question\n+\n+\tdef _question_in_list(self, question, questions):\n+\t\tif not questions:\n+\t\t\treturn False\n+\t\tnormalized = self._normalize_question(question)\n+\t\tif not normalized:\n+\t\t\treturn False\n+\t\tfor existing in questions:\n+\t\t\tif normalized == self._normalize_question(existing):\n+\t\t\t\treturn True\n+\t\treturn False\n \n \tdef is_complete(self):\n \t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n@@ -79,5 +118,5 @@\n \tdef _normalize_question(self, text):\n \t\tnormalized = text.strip().rstrip(\"?\").lower()\n \t\tnormalized = _WS_RE.sub(\" \", normalized)\n-\t\tnormalized = re.sub(r\"[^a-z0-9 ]+\", \"\", normalized)\n+\t\tnormalized = _NON_ALNUM_RE.sub(\"\", normalized)\n \t\treturn normalized.strip()\n",
+    "target_files": [
+      "mediator/inquiries.py"
+    ],
+    "created_at": "2026-03-15T19:39:59.198834",
+    "parent_patches": [],
+    "ipfs_cid": null,
+    "worktree_path": "",
+    "validated": false,
+    "applied": false,
+    "metadata": {
+      "patch_mode": "direct_diff",
+      "repo_root": "/home/barberb/HACC/complaint-generator",
+      "generation_diagnostics": [
+        {
+          "file": "/home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py",
+          "status": "error",
+          "mode": "full_file",
+          "target_symbols": [],
+          "error_type": "ValueError",
+          "error_message": "Optimization response for /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py is not valid Python: invalid syntax (<unknown>, line 199)",
+          "raw_response_preview": ""
+        },
+        {
+          "file": "/home/barberb/HACC/complaint-generator/mediator/inquiries.py",
+          "status": "optimized",
+          "mode": "full_file",
+          "response_length": 3106,
+          "changed": true
+        }
+      ]
+    }
+  },
+  {
+    "patch_id": "ab3906ceb3c45f53-repair1",
+    "agent_id": "adversarial-harness-optimizer",
+    "task_id": "adversarial_autopatch_20260315_193214",
+    "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py, /home/barberb/HACC/complaint-generator/mediator/inquiries.py. Priorities from the latest adversarial batch: Improve empathy: current avg 0.25; Improve information extraction: current avg 0.33; Improve question quality: current avg 0.42. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability. (repair attempt 1)",
+    "diff_content": "--- a/mediator/inquiries.py\n+++ b/mediator/inquiries.py\n@@ -1,83 +1,94 @@\n-import re\n\n-\n\n-from . import strings\n\n-\n\n-\n\n-_QUESTION_RE = re.compile(r\"[^?\\n]+?\\?\")\n\n-_WS_RE = re.compile(r\"\\s+\")\n\n-\n\n-\n\n-class Inquiries:\n\n-\tdef __init__(self, mediator):\n\n-\t\tself.m = mediator\n\n-\n\n-\tdef get_next(self):\n\n-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n\n-\t\tif not inquiries:\n\n-\t\t\treturn None\n\n-\t\tfor inquiry in inquiries:\n\n-\t\t\tif not inquiry.get(\"answer\"):\n\n-\t\t\t\treturn inquiry\n\n-\t\treturn None\n\n-\n\n-\tdef answer(self, text):\n\n-\t\tcurrent = self.get_next()\n\n-\t\tif current is None:\n\n-\t\t\treturn\n\n-\t\tcurrent[\"answer\"] = text\n\n-\n\n-\tdef generate(self):\n\n-\t\ttemplate = strings.model_prompts.get(\"generate_questions\")\n\n-\t\tif not template:\n\n-\t\t\treturn\n\n-\n\n-\t\tblock = self.m.query_backend(\n\n-\t\t\ttemplate.format(complaint=self.m.state.complaint)\n\n-\t\t)\n\n-\t\tif not block:\n\n-\t\t\treturn\n\n-\n\n-\t\tfor question in self._extract_questions(block):\n\n-\t\t\tself.register(question)\n\n-\n\n-\tdef register(self, question):\n\n-\t\tif not question:\n\n-\t\t\treturn\n\n-\t\tinquiries = self.m.state.inquiries\n\n-\t\tfor other in inquiries:\n\n-\t\t\tif self.same_question(question, other.get(\"question\", \"\")):\n\n-\t\t\t\tother.setdefault(\"alternative_questions\", []).append(question)\n\n-\t\t\t\treturn\n\n-\t\tinquiries.append({\n\n-\t\t\t\"question\": question,\n\n-\t\t\t\"alternative_questions\": [],\n\n-\t\t\t\"answer\": None,\n\n-\t\t})\n\n-\n\n-\tdef _extract_questions(self, block):\n\n-\t\tquestions = []\n\n-\t\tfor match in _QUESTION_RE.findall(block):\n\n-\t\t\tquestion = _WS_RE.sub(\" \", match).strip()\n\n-\t\t\tif question:\n\n-\t\t\t\tquestions.append(question)\n\n-\t\treturn questions\n\n-\n\n-\tdef is_complete(self):\n\n-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n\n-\t\tif not inquiries:\n\n-\t\t\treturn True\n\n-\t\tfor inquiry in inquiries:\n\n-\t\t\tif not inquiry.get(\"answer\"):\n\n-\t\t\t\treturn False\n\n-\t\treturn True\n\n-\n\n-\tdef same_question(self, a, b):\n\n-\t\tif not a or not b:\n\n-\t\t\treturn False\n\n-\t\treturn self._normalize_question(a) == self._normalize_question(b)\n\n-\n\n-\tdef _normalize_question(self, text):\n\n-\t\tnormalized = text.strip().rstrip(\"?\").lower()\n\n-\t\tnormalized = _WS_RE.sub(\" \", normalized)\n\n-\t\tnormalized = re.sub(r\"[^a-z0-9 ]+\", \"\", normalized)\n\n-\t\treturn normalized.strip()\n\n+a/mediator/inquiries.py\n\n++++ b/mediator/inquiries.py\n\n+@@ -5,6 +5,11 @@\n\n+ \n\n+ _QUESTION_RE = re.compile(r\"[^?\\n]+?\\?\")\n\n+ _WS_RE = re.compile(r\"\\s+\")\n\n++_NON_ALNUM_RE = re.compile(r\"[^a-z0-9 ]+\")\n\n++_LEADING_MARKERS_RE = re.compile(\n\n++\tr\"^(?:\\s*(?:[-*\u2022]|\\d+[\\.)]|(?:q|question)\\s*[:\\-])\\s*)+\",\n\n++\tre.IGNORECASE,\n\n++)\n\n+ \n\n+ \n\n+ class Inquiries:\n\n+@@ -31,8 +36,9 @@\n\n+ \t\tif not template:\n\n+ \t\t\treturn\n\n+ \n\n++\t\tcomplaint = self.m.state.complaint\n\n+ \t\tblock = self.m.query_backend(\n\n+-\t\t\ttemplate.format(complaint=self.m.state.complaint)\n\n++\t\t\ttemplate.format(complaint=complaint)\n\n+ \t\t)\n\n+ \t\tif not block:\n\n+ \t\t\treturn\n\n+@@ -43,24 +49,57 @@\n\n+ \tdef register(self, question):\n\n+ \t\tif not question:\n\n+ \t\t\treturn\n\n++\t\tnormalized = self._normalize_question(question)\n\n++\t\tif not normalized:\n\n++\t\t\treturn\n\n+ \t\tinquiries = self.m.state.inquiries\n\n+ \t\tfor other in inquiries:\n\n+-\t\t\tif self.same_question(question, other.get(\"question\", \"\")):\n\n+-\t\t\t\tother.setdefault(\"alternative_questions\", []).append(question)\n\n++\t\t\tother_norm = other.get(\"_normalized_question\")\n\n++\t\t\tif not other_norm:\n\n++\t\t\t\tother_norm = self._normalize_question(other.get(\"question\", \"\"))\n\n++\t\t\t\tif other_norm:\n\n++\t\t\t\t\tother[\"_normalized_question\"] = other_norm\n\n++\t\t\tif normalized == other_norm:\n\n++\t\t\t\talternatives = other.setdefault(\"alternative_questions\", [])\n\n++\t\t\t\tif not self._question_in_list(question, alternatives):\n\n++\t\t\t\t\talternatives.append(question)\n\n+ \t\t\t\treturn\n\n+ \t\tinquiries.append({\n\n+ \t\t\t\"question\": question,\n\n+ \t\t\t\"alternative_questions\": [],\n\n+ \t\t\t\"answer\": None,\n\n++\t\t\t\"_normalized_question\": normalized,\n\n+ \t\t})\n\n+ \n\n+ \tdef _extract_questions(self, block):\n\n+ \t\tquestions = []\n\n+-\t\tfor match in _QUESTION_RE.findall(block):\n\n+-\t\t\tquestion = _WS_RE.sub(\" \", match).strip()\n\n++\t\tfor match in _QUESTION_RE.finditer(block):\n\n++\t\t\tquestion = self._clean_question(match.group(0))\n\n+ \t\t\tif question:\n\n+ \t\t\t\tquestions.append(question)\n\n+ \t\treturn questions\n\n++\n\n++\tdef _clean_question(self, text):\n\n++\t\tquestion = _WS_RE.sub(\" \", text).strip()\n\n++\t\tif not question:\n\n++\t\t\treturn \"\"\n\n++\t\tquestion = _LEADING_MARKERS_RE.sub(\"\", question).strip()\n\n++\t\tif not question:\n\n++\t\t\treturn \"\"\n\n++\t\tif question[-1] != \"?\":\n\n++\t\t\tquestion = f\"{question}?\"\n\n++\t\treturn question\n\n++\n\n++\tdef _question_in_list(self, question, questions):\n\n++\t\tif not questions:\n\n++\t\t\treturn False\n\n++\t\tnormalized = self._normalize_question(question)\n\n++\t\tif not normalized:\n\n++\t\t\treturn False\n\n++\t\tfor existing in questions:\n\n++\t\t\tif normalized == self._normalize_question(existing):\n\n++\t\t\t\treturn True\n\n++\t\treturn False\n\n+ \n\n+ \tdef is_complete(self):\n\n+ \t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n\n+@@ -79,5 +118,5 @@\n\n+ \tdef _normalize_question(self, text):\n\n+ \t\tnormalized = text.strip().rstrip(\"?\").lower()\n\n+ \t\tnormalized = _WS_RE.sub(\" \", normalized)\n\n+-\t\tnormalized = re.sub(r\"[^a-z0-9 ]+\", \"\", normalized)\n\n++\t\tnormalized = _NON_ALNUM_RE.sub(\"\", normalized)\n\n+ \t\treturn normalized.strip()\n\n",
+    "target_files": [
+      "mediator/inquiries.py"
+    ],
+    "created_at": "2026-03-15T19:40:33.894063",
+    "parent_patches": [
+      "ab3906ceb3c45f53"
+    ],
+    "ipfs_cid": null,
+    "worktree_path": "",
+    "validated": false,
+    "applied": false,
+    "metadata": {
+      "patch_mode": "direct_diff",
+      "repo_root": "/home/barberb/HACC/complaint-generator",
+      "generation_diagnostics": [
+        {
+          "file": "/home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py",
+          "status": "error",
+          "mode": "full_file",
+          "target_symbols": [],
+          "error_type": "ValueError",
+          "error_message": "Optimization response for /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py is not valid Python: invalid syntax (<unknown>, line 199)",
+          "raw_response_preview": ""
+        },
+        {
+          "file": "/home/barberb/HACC/complaint-generator/mediator/inquiries.py",
+          "status": "optimized",
+          "mode": "full_file",
+          "response_length": 3106,
+          "changed": true
+        }
+      ],
+      "repair_attempt": 1,
+      "repaired_from_patch": "/home/barberb/HACC/complaint-generator/patches/ab3906ceb3c45f53.patch"
+    }
+  },
+  {
+    "patch_id": "6514372c090a926a",
+    "agent_id": "adversarial-harness-optimizer",
+    "task_id": "adversarial_autopatch_20260315_194053",
+    "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py, /home/barberb/HACC/complaint-generator/mediator/inquiries.py. Priorities from the latest adversarial batch: Improve question quality: current avg 0.35; Improve information extraction: current avg 0.42; Improve efficiency: current avg 0.55. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability.",
+    "diff_content": "--- a/mediator/inquiries.py\n+++ b/mediator/inquiries.py\n@@ -1,24 +1,41 @@\n import re\n+from functools import lru_cache\n \n from . import strings\n \n \n _QUESTION_RE = re.compile(r\"[^?\\n]+?\\?\")\n _WS_RE = re.compile(r\"\\s+\")\n+_NORMALIZE_RE = re.compile(r\"[^a-z0-9 ]+\")\n+\n+\n+@lru_cache(maxsize=1024)\n+def _normalize_question_cached(text: str) -> str:\n+\tnormalized = text.strip().rstrip(\"?\").lower()\n+\tnormalized = _WS_RE.sub(\" \", normalized)\n+\tnormalized = _NORMALIZE_RE.sub(\"\", normalized)\n+\treturn normalized.strip()\n \n \n class Inquiries:\n \tdef __init__(self, mediator):\n \t\tself.m = mediator\n \n-\tdef get_next(self):\n-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n-\t\tif not inquiries:\n-\t\t\treturn None\n+\t@staticmethod\n+\tdef _find_unanswered(inquiries):\n \t\tfor inquiry in inquiries:\n \t\t\tif not inquiry.get(\"answer\"):\n \t\t\t\treturn inquiry\n \t\treturn None\n+\n+\tdef _state_inquiries(self):\n+\t\treturn getattr(self.m.state, \"inquiries\", None)\n+\n+\tdef get_next(self):\n+\t\tinquiries = self._state_inquiries()\n+\t\tif not inquiries:\n+\t\t\treturn None\n+\t\treturn self._find_unanswered(inquiries)\n \n \tdef answer(self, text):\n \t\tcurrent = self.get_next()\n@@ -37,39 +54,58 @@\n \t\tif not block:\n \t\t\treturn\n \n+\t\tinquiries = self.m.state.inquiries\n+\t\tindex = self._build_index(inquiries)\n+\n \t\tfor question in self._extract_questions(block):\n-\t\t\tself.register(question)\n+\t\t\tself._register(question, inquiries, index)\n \n \tdef register(self, question):\n \t\tif not question:\n \t\t\treturn\n+\n \t\tinquiries = self.m.state.inquiries\n-\t\tfor other in inquiries:\n-\t\t\tif self.same_question(question, other.get(\"question\", \"\")):\n-\t\t\t\tother.setdefault(\"alternative_questions\", []).append(question)\n-\t\t\t\treturn\n-\t\tinquiries.append({\n+\t\tindex = self._build_index(inquiries)\n+\t\tself._register(question, inquiries, index)\n+\n+\tdef _register(self, question, inquiries, index):\n+\t\tnormalized = self._normalize_question(question)\n+\t\texisting = index.get(normalized)\n+\t\tif existing is not None:\n+\t\t\texisting.setdefault(\"alternative_questions\", []).append(question)\n+\t\t\treturn\n+\n+\t\tinquiry = {\n \t\t\t\"question\": question,\n \t\t\t\"alternative_questions\": [],\n \t\t\t\"answer\": None,\n-\t\t})\n+\t\t}\n+\t\tinquiries.append(inquiry)\n+\t\tindex.setdefault(normalized, inquiry)\n+\n+\tdef _build_index(self, inquiries):\n+\t\tindex = {}\n+\t\tfor inquiry in inquiries:\n+\t\t\tquestion = inquiry.get(\"question\", \"\")\n+\t\t\tif not question:\n+\t\t\t\tcontinue\n+\t\t\tnormalized = self._normalize_question(question)\n+\t\t\tindex.setdefault(normalized, inquiry)\n+\t\treturn index\n \n \tdef _extract_questions(self, block):\n \t\tquestions = []\n-\t\tfor match in _QUESTION_RE.findall(block):\n-\t\t\tquestion = _WS_RE.sub(\" \", match).strip()\n+\t\tfor match in _QUESTION_RE.finditer(block):\n+\t\t\tquestion = _WS_RE.sub(\" \", match.group(0)).strip()\n \t\t\tif question:\n \t\t\t\tquestions.append(question)\n \t\treturn questions\n \n \tdef is_complete(self):\n-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n+\t\tinquiries = self._state_inquiries()\n \t\tif not inquiries:\n \t\t\treturn True\n-\t\tfor inquiry in inquiries:\n-\t\t\tif not inquiry.get(\"answer\"):\n-\t\t\t\treturn False\n-\t\treturn True\n+\t\treturn self._find_unanswered(inquiries) is None\n \n \tdef same_question(self, a, b):\n \t\tif not a or not b:\n@@ -77,7 +113,4 @@\n \t\treturn self._normalize_question(a) == self._normalize_question(b)\n \n \tdef _normalize_question(self, text):\n-\t\tnormalized = text.strip().rstrip(\"?\").lower()\n-\t\tnormalized = _WS_RE.sub(\" \", normalized)\n-\t\tnormalized = re.sub(r\"[^a-z0-9 ]+\", \"\", normalized)\n-\t\treturn normalized.strip()\n+\t\treturn _normalize_question_cached(text)\n",
+    "target_files": [
+      "mediator/inquiries.py"
+    ],
+    "created_at": "2026-03-15T19:43:25.799107",
+    "parent_patches": [],
+    "ipfs_cid": null,
+    "worktree_path": "",
+    "validated": false,
+    "applied": false,
+    "metadata": {
+      "patch_mode": "direct_diff",
+      "repo_root": "/home/barberb/HACC/complaint-generator",
+      "generation_diagnostics": [
+        {
+          "file": "/home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py",
+          "status": "error",
+          "mode": "full_file",
+          "target_symbols": [],
+          "error_type": "ValueError",
+          "error_message": "Optimization response for /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py is not valid Python: invalid syntax (<unknown>, line 224)",
+          "raw_response_preview": ""
+        },
+        {
+          "file": "/home/barberb/HACC/complaint-generator/mediator/inquiries.py",
+          "status": "optimized",
+          "mode": "full_file",
+          "response_length": 2802,
+          "changed": true
+        }
+      ]
+    }
+  },
+  {
+    "patch_id": "6514372c090a926a-repair1",
+    "agent_id": "adversarial-harness-optimizer",
+    "task_id": "adversarial_autopatch_20260315_194053",
+    "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py, /home/barberb/HACC/complaint-generator/mediator/inquiries.py. Priorities from the latest adversarial batch: Improve question quality: current avg 0.35; Improve information extraction: current avg 0.42; Improve efficiency: current avg 0.55. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability. (repair attempt 1)",
+    "diff_content": "--- a/mediator/inquiries.py\n+++ b/mediator/inquiries.py\n@@ -1,83 +1,133 @@\n-import re\n\n-\n\n-from . import strings\n\n-\n\n-\n\n-_QUESTION_RE = re.compile(r\"[^?\\n]+?\\?\")\n\n-_WS_RE = re.compile(r\"\\s+\")\n\n-\n\n-\n\n-class Inquiries:\n\n-\tdef __init__(self, mediator):\n\n-\t\tself.m = mediator\n\n-\n\n-\tdef get_next(self):\n\n-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n\n-\t\tif not inquiries:\n\n-\t\t\treturn None\n\n-\t\tfor inquiry in inquiries:\n\n-\t\t\tif not inquiry.get(\"answer\"):\n\n-\t\t\t\treturn inquiry\n\n-\t\treturn None\n\n-\n\n-\tdef answer(self, text):\n\n-\t\tcurrent = self.get_next()\n\n-\t\tif current is None:\n\n-\t\t\treturn\n\n-\t\tcurrent[\"answer\"] = text\n\n-\n\n-\tdef generate(self):\n\n-\t\ttemplate = strings.model_prompts.get(\"generate_questions\")\n\n-\t\tif not template:\n\n-\t\t\treturn\n\n-\n\n-\t\tblock = self.m.query_backend(\n\n-\t\t\ttemplate.format(complaint=self.m.state.complaint)\n\n-\t\t)\n\n-\t\tif not block:\n\n-\t\t\treturn\n\n-\n\n-\t\tfor question in self._extract_questions(block):\n\n-\t\t\tself.register(question)\n\n-\n\n-\tdef register(self, question):\n\n-\t\tif not question:\n\n-\t\t\treturn\n\n-\t\tinquiries = self.m.state.inquiries\n\n-\t\tfor other in inquiries:\n\n-\t\t\tif self.same_question(question, other.get(\"question\", \"\")):\n\n-\t\t\t\tother.setdefault(\"alternative_questions\", []).append(question)\n\n-\t\t\t\treturn\n\n-\t\tinquiries.append({\n\n-\t\t\t\"question\": question,\n\n-\t\t\t\"alternative_questions\": [],\n\n-\t\t\t\"answer\": None,\n\n-\t\t})\n\n-\n\n-\tdef _extract_questions(self, block):\n\n-\t\tquestions = []\n\n-\t\tfor match in _QUESTION_RE.findall(block):\n\n-\t\t\tquestion = _WS_RE.sub(\" \", match).strip()\n\n-\t\t\tif question:\n\n-\t\t\t\tquestions.append(question)\n\n-\t\treturn questions\n\n-\n\n-\tdef is_complete(self):\n\n-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n\n-\t\tif not inquiries:\n\n-\t\t\treturn True\n\n-\t\tfor inquiry in inquiries:\n\n-\t\t\tif not inquiry.get(\"answer\"):\n\n-\t\t\t\treturn False\n\n-\t\treturn True\n\n-\n\n-\tdef same_question(self, a, b):\n\n-\t\tif not a or not b:\n\n-\t\t\treturn False\n\n-\t\treturn self._normalize_question(a) == self._normalize_question(b)\n\n-\n\n-\tdef _normalize_question(self, text):\n\n-\t\tnormalized = text.strip().rstrip(\"?\").lower()\n\n-\t\tnormalized = _WS_RE.sub(\" \", normalized)\n\n-\t\tnormalized = re.sub(r\"[^a-z0-9 ]+\", \"\", normalized)\n\n-\t\treturn normalized.strip()\n\n+a/mediator/inquiries.py\n\n++++ b/mediator/inquiries.py\n\n+@@ -1,24 +1,50 @@\n\n+ import re\n\n++from functools import lru_cache\n\n+ \n\n+ from . import strings\n\n+ \n\n+ \n\n+ _QUESTION_RE = re.compile(r\"[^?\\n]+?\\?\")\n\n+ _WS_RE = re.compile(r\"\\s+\")\n\n++_NORMALIZE_RE = re.compile(r\"[^a-z0-9 ]+\")\n\n++\n\n++\n\n++@lru_cache(maxsize=1024)\n\n++def _normalize_question_cached(text: str) -> str:\n\n++\tnormalized = text.strip().rstrip(\"?\").lower()\n\n++\tnormalized = _WS_RE.sub(\" \", normalized)\n\n++\tnormalized = _NORMALIZE_RE.sub(\"\", normalized)\n\n++\treturn normalized.strip()\n\n+ \n\n+ \n\n+ class Inquiries:\n\n+ \tdef __init__(self, mediator):\n\n+ \t\tself.m = mediator\n\n+ \n\n+-\tdef get_next(self):\n\n+-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n\n++\t@staticmethod\n\n++\tdef _find_unanswered(inquiries):\n\n++\t\tfor inquiry in inquiries:\n\n++\t\t\tif not inquiry.get(\"answer\"):\n\n++\t\t\t\treturn inquiry\n\n++\t\treturn None\n\n++\n\n++\tdef _state_inquiries(self):\n\n++\t\treturn getattr(self.m.state, \"inquiries\", None)\n\n++\n\n++\tdef get_next(self):\n\n++\t\tinquiries = self._state_inquiries()\n\n+ \t\tif not inquiries:\n\n+ \t\t\treturn None\n\n+-\t\tfor inquiry in inquiries:\n\n+-\t\t\tif not inquiry.get(\"answer\"):\n\n+-\t\t\t\treturn inquiry\n\n+-\t\treturn None\n\n++\t\treturn self._find_unanswered(inquiries)\n\n+@@ -37,39 +63,61 @@\n\n+ \t\tif not block:\n\n+ \t\t\treturn\n\n+ \n\n++\t\tinquiries = self.m.state.inquiries\n\n++\t\tindex = self._build_index(inquiries)\n\n++\n\n+ \t\tfor question in self._extract_questions(block):\n\n+-\t\t\tself.register(question)\n\n++\t\t\tself._register(question, inquiries, index)\n\n+ \n\n+ \tdef register(self, question):\n\n+ \t\tif not question:\n\n+ \t\t\treturn\n\n++\n\n+ \t\tinquiries = self.m.state.inquiries\n\n+-\t\tfor other in inquiries:\n\n+-\t\t\tif self.same_question(question, other.get(\"question\", \"\")):\n\n+-\t\t\t\tother.setdefault(\"alternative_questions\", []).append(question)\n\n+-\t\t\t\treturn\n\n+-\t\tinquiries.append({\n\n++\t\tindex = self._build_index(inquiries)\n\n++\t\tself._register(question, inquiries, index)\n\n++\n\n++\tdef _register(self, question, inquiries, index):\n\n++\t\tnormalized = self._normalize_question(question)\n\n++\t\tif not normalized:\n\n++\t\t\treturn\n\n++\t\texisting = index.get(normalized)\n\n++\t\tif existing is not None:\n\n++\t\t\talternatives = existing.setdefault(\"alternative_questions\", [])\n\n++\t\t\tfor alternative in alternatives:\n\n++\t\t\t\tif self._normalize_question(alternative) == normalized:\n\n++\t\t\t\t\treturn\n\n++\t\t\talternatives.append(question)\n\n++\t\t\treturn\n\n++\n\n++\t\tinquiry = {\n\n+ \t\t\t\"question\": question,\n\n+ \t\t\t\"alternative_questions\": [],\n\n+ \t\t\t\"answer\": None,\n\n+-\t\t})\n\n++\t\t}\n\n++\t\tinquiries.append(inquiry)\n\n++\t\tindex.setdefault(normalized, inquiry)\n\n++\n\n++\tdef _build_index(self, inquiries):\n\n++\t\tindex = {}\n\n++\t\tfor inquiry in inquiries:\n\n++\t\t\tquestion = inquiry.get(\"question\", \"\")\n\n++\t\t\tif not question:\n\n++\t\t\t\tcontinue\n\n++\t\t\tnormalized = self._normalize_question(question)\n\n++\t\t\tif normalized:\n\n++\t\t\t\tindex.setdefault(normalized, inquiry)\n\n++\t\treturn index\n\n+ \n\n+ \tdef _extract_questions(self, block):\n\n+ \t\tquestions = []\n\n+-\t\tfor match in _QUESTION_RE.findall(block):\n\n+-\t\t\tquestion = _WS_RE.sub(\" \", match).strip()\n\n++\t\tfor match in _QUESTION_RE.finditer(block):\n\n++\t\t\tquestion = _WS_RE.sub(\" \", match.group(0)).strip()\n\n+ \t\t\tif question:\n\n+ \t\t\t\tquestions.append(question)\n\n+ \t\treturn questions\n\n+ \n\n+ \tdef is_complete(self):\n\n+-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n\n++\t\tinquiries = self._state_inquiries()\n\n+ \t\tif not inquiries:\n\n+ \t\t\treturn True\n\n+-\t\tfor inquiry in inquiries:\n\n+-\t\t\tif not inquiry.get(\"answer\"):\n\n+-\t\t\t\treturn False\n\n+-\t\treturn True\n\n++\t\treturn self._find_unanswered(inquiries) is None\n\n+@@ -77,7 +125,4 @@\n\n+ \t\treturn self._normalize_question(a) == self._normalize_question(b)\n\n+ \n\n+ \tdef _normalize_question(self, text):\n\n+-\t\tnormalized = text.strip().rstrip(\"?\").lower()\n\n+-\t\tnormalized = _WS_RE.sub(\" \", normalized)\n\n+-\t\tnormalized = re.sub(r\"[^a-z0-9 ]+\", \"\", normalized)\n\n+-\t\treturn normalized.strip()\n\n++\t\treturn _normalize_question_cached(text)\n\n",
+    "target_files": [
+      "mediator/inquiries.py"
+    ],
+    "created_at": "2026-03-15T19:44:15.564007",
+    "parent_patches": [
+      "6514372c090a926a"
+    ],
+    "ipfs_cid": null,
+    "worktree_path": "",
+    "validated": false,
+    "applied": false,
+    "metadata": {
+      "patch_mode": "direct_diff",
+      "repo_root": "/home/barberb/HACC/complaint-generator",
+      "generation_diagnostics": [
+        {
+          "file": "/home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py",
+          "status": "error",
+          "mode": "full_file",
+          "target_symbols": [],
+          "error_type": "ValueError",
+          "error_message": "Optimization response for /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py is not valid Python: invalid syntax (<unknown>, line 224)",
+          "raw_response_preview": ""
+        },
+        {
+          "file": "/home/barberb/HACC/complaint-generator/mediator/inquiries.py",
+          "status": "optimized",
+          "mode": "full_file",
+          "response_length": 2802,
+          "changed": true
+        }
+      ],
+      "repair_attempt": 1,
+      "repaired_from_patch": "/home/barberb/HACC/complaint-generator/patches/6514372c090a926a.patch"
+    }
+  },
+  {
+    "patch_id": "6514372c090a926a-repair2",
+    "agent_id": "adversarial-harness-optimizer",
+    "task_id": "adversarial_autopatch_20260315_194053",
+    "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py, /home/barberb/HACC/complaint-generator/mediator/inquiries.py. Priorities from the latest adversarial batch: Improve question quality: current avg 0.35; Improve information extraction: current avg 0.42; Improve efficiency: current avg 0.55. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability. (repair attempt 2)",
+    "diff_content": "--- a/mediator/inquiries.py\n+++ b/mediator/inquiries.py\n@@ -1,83 +1,135 @@\n-import re\n\n-\n\n-from . import strings\n\n-\n\n-\n\n-_QUESTION_RE = re.compile(r\"[^?\\n]+?\\?\")\n\n-_WS_RE = re.compile(r\"\\s+\")\n\n-\n\n-\n\n-class Inquiries:\n\n-\tdef __init__(self, mediator):\n\n-\t\tself.m = mediator\n\n-\n\n-\tdef get_next(self):\n\n-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n\n-\t\tif not inquiries:\n\n-\t\t\treturn None\n\n-\t\tfor inquiry in inquiries:\n\n-\t\t\tif not inquiry.get(\"answer\"):\n\n-\t\t\t\treturn inquiry\n\n-\t\treturn None\n\n-\n\n-\tdef answer(self, text):\n\n-\t\tcurrent = self.get_next()\n\n-\t\tif current is None:\n\n-\t\t\treturn\n\n-\t\tcurrent[\"answer\"] = text\n\n-\n\n-\tdef generate(self):\n\n-\t\ttemplate = strings.model_prompts.get(\"generate_questions\")\n\n-\t\tif not template:\n\n-\t\t\treturn\n\n-\n\n-\t\tblock = self.m.query_backend(\n\n-\t\t\ttemplate.format(complaint=self.m.state.complaint)\n\n-\t\t)\n\n-\t\tif not block:\n\n-\t\t\treturn\n\n-\n\n-\t\tfor question in self._extract_questions(block):\n\n-\t\t\tself.register(question)\n\n-\n\n-\tdef register(self, question):\n\n-\t\tif not question:\n\n-\t\t\treturn\n\n-\t\tinquiries = self.m.state.inquiries\n\n-\t\tfor other in inquiries:\n\n-\t\t\tif self.same_question(question, other.get(\"question\", \"\")):\n\n-\t\t\t\tother.setdefault(\"alternative_questions\", []).append(question)\n\n-\t\t\t\treturn\n\n-\t\tinquiries.append({\n\n-\t\t\t\"question\": question,\n\n-\t\t\t\"alternative_questions\": [],\n\n-\t\t\t\"answer\": None,\n\n-\t\t})\n\n-\n\n-\tdef _extract_questions(self, block):\n\n-\t\tquestions = []\n\n-\t\tfor match in _QUESTION_RE.findall(block):\n\n-\t\t\tquestion = _WS_RE.sub(\" \", match).strip()\n\n-\t\t\tif question:\n\n-\t\t\t\tquestions.append(question)\n\n-\t\treturn questions\n\n-\n\n-\tdef is_complete(self):\n\n-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n\n-\t\tif not inquiries:\n\n-\t\t\treturn True\n\n-\t\tfor inquiry in inquiries:\n\n-\t\t\tif not inquiry.get(\"answer\"):\n\n-\t\t\t\treturn False\n\n-\t\treturn True\n\n-\n\n-\tdef same_question(self, a, b):\n\n-\t\tif not a or not b:\n\n-\t\t\treturn False\n\n-\t\treturn self._normalize_question(a) == self._normalize_question(b)\n\n-\n\n-\tdef _normalize_question(self, text):\n\n-\t\tnormalized = text.strip().rstrip(\"?\").lower()\n\n-\t\tnormalized = _WS_RE.sub(\" \", normalized)\n\n-\t\tnormalized = re.sub(r\"[^a-z0-9 ]+\", \"\", normalized)\n\n-\t\treturn normalized.strip()\n\n+a/mediator/inquiries.py\n\n++++ b/mediator/inquiries.py\n\n+@@ -1,24 +1,41 @@\n\n+ import re\n\n++from functools import lru_cache\n\n+ \n\n+ from . import strings\n\n+ \n\n+ \n\n+ _QUESTION_RE = re.compile(r\"[^?\\n]+?\\?\")\n\n+ _WS_RE = re.compile(r\"\\s+\")\n\n++_NORMALIZE_RE = re.compile(r\"[^a-z0-9 ]+\")\n\n++\n\n++\n\n++@lru_cache(maxsize=1024)\n\n++def _normalize_question_cached(text: str) -> str:\n\n++\tnormalized = text.strip().rstrip(\"?\").lower()\n\n++\tnormalized = _WS_RE.sub(\" \", normalized)\n\n++\tnormalized = _NORMALIZE_RE.sub(\"\", normalized)\n\n++\treturn normalized.strip()\n\n+ \n\n+ \n\n+ class Inquiries:\n\n+ \tdef __init__(self, mediator):\n\n+ \t\tself.m = mediator\n\n+ \n\n+-\tdef get_next(self):\n\n+-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n\n++\t@staticmethod\n\n++\tdef _find_unanswered(inquiries):\n\n++\t\tfor inquiry in inquiries:\n\n++\t\t\tif not inquiry.get(\"answer\"):\n\n++\t\t\t\treturn inquiry\n\n++\t\treturn None\n\n++\n\n++\tdef _state_inquiries(self):\n\n++\t\treturn getattr(self.m.state, \"inquiries\", None)\n\n++\n\n++\tdef get_next(self):\n\n++\t\tinquiries = self._state_inquiries()\n\n+ \t\tif not inquiries:\n\n+ \t\t\treturn None\n\n+-\t\tfor inquiry in inquiries:\n\n+-\t\t\tif not inquiry.get(\"answer\"):\n\n+-\t\t\t\treturn inquiry\n\n+-\t\treturn None\n\n++\t\treturn self._find_unanswered(inquiries)\n\n+@@ -37,39 +54,59 @@\n\n+ \t\tif not block:\n\n+ \t\t\treturn\n\n+ \n\n++\t\tinquiries = self.m.state.inquiries\n\n++\t\tindex = self._build_index(inquiries)\n\n++\n\n+ \t\tfor question in self._extract_questions(block):\n\n+-\t\t\tself.register(question)\n\n++\t\t\tself._register(question, inquiries, index)\n\n+ \n\n+ \tdef register(self, question):\n\n+ \t\tif not question:\n\n+ \t\t\treturn\n\n++\n\n+ \t\tinquiries = self.m.state.inquiries\n\n+-\t\tfor other in inquiries:\n\n+-\t\t\tif self.same_question(question, other.get(\"question\", \"\")):\n\n+-\t\t\t\tother.setdefault(\"alternative_questions\", []).append(question)\n\n+-\t\t\t\treturn\n\n+-\t\tinquiries.append({\n\n++\t\tindex = self._build_index(inquiries)\n\n++\t\tself._register(question, inquiries, index)\n\n++\n\n++\tdef _register(self, question, inquiries, index):\n\n++\t\tnormalized = self._normalize_question(question)\n\n++\t\tif not normalized:\n\n++\t\t\treturn\n\n++\t\texisting = index.get(normalized)\n\n++\t\tif existing is not None:\n\n++\t\t\talternatives = existing.setdefault(\"alternative_questions\", [])\n\n++\t\t\tif question not in alternatives:\n\n++\t\t\t\talternatives.append(question)\n\n++\t\t\treturn\n\n++\n\n++\t\tinquiry = {\n\n+ \t\t\t\"question\": question,\n\n+ \t\t\t\"alternative_questions\": [],\n\n+ \t\t\t\"answer\": None,\n\n+-\t\t})\n\n++\t\t}\n\n++\t\tinquiries.append(inquiry)\n\n++\t\tindex.setdefault(normalized, inquiry)\n\n++\n\n++\tdef _build_index(self, inquiries):\n\n++\t\tindex = {}\n\n++\t\tfor inquiry in inquiries:\n\n++\t\t\tquestion = inquiry.get(\"question\", \"\")\n\n++\t\t\tif not question:\n\n++\t\t\t\tcontinue\n\n++\t\t\tnormalized = self._normalize_question(question)\n\n++\t\t\tif not normalized:\n\n++\t\t\t\tcontinue\n\n++\t\t\tindex.setdefault(normalized, inquiry)\n\n++\t\treturn index\n\n+ \n\n+ \tdef _extract_questions(self, block):\n\n+ \t\tquestions = []\n\n+-\t\tfor match in _QUESTION_RE.findall(block):\n\n+-\t\t\tquestion = _WS_RE.sub(\" \", match).strip()\n\n++\t\tfor match in _QUESTION_RE.finditer(block):\n\n++\t\t\tquestion = _WS_RE.sub(\" \", match.group(0)).strip()\n\n+ \t\t\tif question:\n\n+ \t\t\t\tquestions.append(question)\n\n+ \t\treturn questions\n\n+ \n\n+ \tdef is_complete(self):\n\n+-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n\n++\t\tinquiries = self._state_inquiries()\n\n+ \t\tif not inquiries:\n\n+ \t\t\treturn True\n\n+-\t\tfor inquiry in inquiries:\n\n+-\t\t\tif not inquiry.get(\"answer\"):\n\n+-\t\t\t\treturn False\n\n+-\t\treturn True\n\n++\t\treturn self._find_unanswered(inquiries) is None\n\n+ \n\n+ \tdef same_question(self, a, b):\n\n+ \t\tif not a or not b:\n\n+@@ -77,7 +114,4 @@\n\n+ \t\treturn self._normalize_question(a) == self._normalize_question(b)\n\n+ \n\n+ \tdef _normalize_question(self, text):\n\n+-\t\tnormalized = text.strip().rstrip(\"?\").lower()\n\n+-\t\tnormalized = _WS_RE.sub(\" \", normalized)\n\n+-\t\tnormalized = re.sub(r\"[^a-z0-9 ]+\", \"\", normalized)\n\n+-\t\treturn normalized.strip()\n\n++\t\treturn _normalize_question_cached(text)\n\n",
+    "target_files": [
+      "mediator/inquiries.py"
+    ],
+    "created_at": "2026-03-15T19:44:54.746198",
+    "parent_patches": [
+      "6514372c090a926a"
+    ],
+    "ipfs_cid": null,
+    "worktree_path": "",
+    "validated": false,
+    "applied": false,
+    "metadata": {
+      "patch_mode": "direct_diff",
+      "repo_root": "/home/barberb/HACC/complaint-generator",
+      "generation_diagnostics": [
+        {
+          "file": "/home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py",
+          "status": "error",
+          "mode": "full_file",
+          "target_symbols": [],
+          "error_type": "ValueError",
+          "error_message": "Optimization response for /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py is not valid Python: invalid syntax (<unknown>, line 224)",
+          "raw_response_preview": ""
+        },
+        {
+          "file": "/home/barberb/HACC/complaint-generator/mediator/inquiries.py",
+          "status": "optimized",
+          "mode": "full_file",
+          "response_length": 2802,
+          "changed": true
+        }
+      ],
+      "repair_attempt": 2,
+      "repaired_from_patch": "/home/barberb/HACC/complaint-generator/patches/6514372c090a926a.patch"
+    }
+  },
+  {
+    "patch_id": "f75ccacd6107c1f9",
+    "agent_id": "adversarial-harness-optimizer",
+    "task_id": "adversarial_autopatch_20260315_194518",
+    "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py, /home/barberb/HACC/complaint-generator/mediator/inquiries.py. Priorities from the latest adversarial batch: Improve empathy: current avg 0.20; Improve information extraction: current avg 0.60; Improve efficiency: current avg 0.60. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability.",
+    "diff_content": "--- a/mediator/inquiries.py\n+++ b/mediator/inquiries.py\n@@ -2,17 +2,20 @@\n \n from . import strings\n \n-\n _QUESTION_RE = re.compile(r\"[^?\\n]+?\\?\")\n _WS_RE = re.compile(r\"\\s+\")\n+_INVALID_CHARS_RE = re.compile(r\"[^a-z0-9 ]+\")\n \n \n class Inquiries:\n \tdef __init__(self, mediator):\n \t\tself.m = mediator\n \n+\tdef _inquiries(self):\n+\t\treturn getattr(self.m.state, \"inquiries\", None)\n+\n \tdef get_next(self):\n-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n+\t\tinquiries = self._inquiries()\n \t\tif not inquiries:\n \t\t\treturn None\n \t\tfor inquiry in inquiries:\n@@ -43,27 +46,33 @@\n \tdef register(self, question):\n \t\tif not question:\n \t\t\treturn\n-\t\tinquiries = self.m.state.inquiries\n+\t\tinquiries = self._inquiries()\n+\t\tif inquiries is None:\n+\t\t\treturn\n+\t\tnormalized = self._normalize_question(question)\n+\t\tif not normalized:\n+\t\t\treturn\n \t\tfor other in inquiries:\n-\t\t\tif self.same_question(question, other.get(\"question\", \"\")):\n+\t\t\tif self._normalize_entry(other) == normalized:\n \t\t\t\tother.setdefault(\"alternative_questions\", []).append(question)\n \t\t\t\treturn\n \t\tinquiries.append({\n \t\t\t\"question\": question,\n \t\t\t\"alternative_questions\": [],\n \t\t\t\"answer\": None,\n+\t\t\t\"_normalized_question\": normalized,\n \t\t})\n \n \tdef _extract_questions(self, block):\n \t\tquestions = []\n-\t\tfor match in _QUESTION_RE.findall(block):\n-\t\t\tquestion = _WS_RE.sub(\" \", match).strip()\n-\t\t\tif question:\n-\t\t\t\tquestions.append(question)\n+\t\tfor match in _QUESTION_RE.finditer(block):\n+\t\t\tclean = _WS_RE.sub(\" \", match.group()).strip()\n+\t\t\tif clean:\n+\t\t\t\tquestions.append(clean)\n \t\treturn questions\n \n \tdef is_complete(self):\n-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n+\t\tinquiries = self._inquiries()\n \t\tif not inquiries:\n \t\t\treturn True\n \t\tfor inquiry in inquiries:\n@@ -76,8 +85,15 @@\n \t\t\treturn False\n \t\treturn self._normalize_question(a) == self._normalize_question(b)\n \n+\tdef _normalize_entry(self, inquiry):\n+\t\tnormalized = inquiry.get(\"_normalized_question\")\n+\t\tif normalized is None:\n+\t\t\tnormalized = self._normalize_question(inquiry.get(\"question\", \"\"))\n+\t\t\tinquiry[\"_normalized_question\"] = normalized\n+\t\treturn normalized\n+\n \tdef _normalize_question(self, text):\n-\t\tnormalized = text.strip().rstrip(\"?\").lower()\n+\t\tnormalized = str(text or \"\").strip().rstrip(\"?\").lower()\n \t\tnormalized = _WS_RE.sub(\" \", normalized)\n-\t\tnormalized = re.sub(r\"[^a-z0-9 ]+\", \"\", normalized)\n+\t\tnormalized = _INVALID_CHARS_RE.sub(\"\", normalized)\n \t\treturn normalized.strip()\n",
+    "target_files": [
+      "mediator/inquiries.py"
+    ],
+    "created_at": "2026-03-15T19:51:16.822681",
+    "parent_patches": [],
+    "ipfs_cid": null,
+    "worktree_path": "",
+    "validated": false,
+    "applied": false,
+    "metadata": {
+      "patch_mode": "direct_diff",
+      "repo_root": "/home/barberb/HACC/complaint-generator",
+      "generation_diagnostics": [
+        {
+          "file": "/home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py",
+          "status": "error",
+          "mode": "full_file",
+          "target_symbols": [],
+          "error_type": "ValueError",
+          "error_message": "Optimization response for /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py is not valid Python: invalid syntax (<unknown>, line 214)",
+          "raw_response_preview": ""
+        },
+        {
+          "file": "/home/barberb/HACC/complaint-generator/mediator/inquiries.py",
+          "status": "optimized",
+          "mode": "full_file",
+          "response_length": 2407,
+          "changed": true
+        }
+      ]
+    }
+  },
+  {
+    "patch_id": "f75ccacd6107c1f9-repair1",
+    "agent_id": "adversarial-harness-optimizer",
+    "task_id": "adversarial_autopatch_20260315_194518",
+    "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py, /home/barberb/HACC/complaint-generator/mediator/inquiries.py. Priorities from the latest adversarial batch: Improve empathy: current avg 0.20; Improve information extraction: current avg 0.60; Improve efficiency: current avg 0.60. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability. (repair attempt 1)",
+    "diff_content": "--- a/mediator/inquiries.py\n+++ b/mediator/inquiries.py\n@@ -1,83 +1,94 @@\n-import re\n\n-\n\n-from . import strings\n\n-\n\n-\n\n-_QUESTION_RE = re.compile(r\"[^?\\n]+?\\?\")\n\n-_WS_RE = re.compile(r\"\\s+\")\n\n-\n\n-\n\n-class Inquiries:\n\n-\tdef __init__(self, mediator):\n\n-\t\tself.m = mediator\n\n-\n\n-\tdef get_next(self):\n\n-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n\n-\t\tif not inquiries:\n\n-\t\t\treturn None\n\n-\t\tfor inquiry in inquiries:\n\n-\t\t\tif not inquiry.get(\"answer\"):\n\n-\t\t\t\treturn inquiry\n\n-\t\treturn None\n\n-\n\n-\tdef answer(self, text):\n\n-\t\tcurrent = self.get_next()\n\n-\t\tif current is None:\n\n-\t\t\treturn\n\n-\t\tcurrent[\"answer\"] = text\n\n-\n\n-\tdef generate(self):\n\n-\t\ttemplate = strings.model_prompts.get(\"generate_questions\")\n\n-\t\tif not template:\n\n-\t\t\treturn\n\n-\n\n-\t\tblock = self.m.query_backend(\n\n-\t\t\ttemplate.format(complaint=self.m.state.complaint)\n\n-\t\t)\n\n-\t\tif not block:\n\n-\t\t\treturn\n\n-\n\n-\t\tfor question in self._extract_questions(block):\n\n-\t\t\tself.register(question)\n\n-\n\n-\tdef register(self, question):\n\n-\t\tif not question:\n\n-\t\t\treturn\n\n-\t\tinquiries = self.m.state.inquiries\n\n-\t\tfor other in inquiries:\n\n-\t\t\tif self.same_question(question, other.get(\"question\", \"\")):\n\n-\t\t\t\tother.setdefault(\"alternative_questions\", []).append(question)\n\n-\t\t\t\treturn\n\n-\t\tinquiries.append({\n\n-\t\t\t\"question\": question,\n\n-\t\t\t\"alternative_questions\": [],\n\n-\t\t\t\"answer\": None,\n\n-\t\t})\n\n-\n\n-\tdef _extract_questions(self, block):\n\n-\t\tquestions = []\n\n-\t\tfor match in _QUESTION_RE.findall(block):\n\n-\t\t\tquestion = _WS_RE.sub(\" \", match).strip()\n\n-\t\t\tif question:\n\n-\t\t\t\tquestions.append(question)\n\n-\t\treturn questions\n\n-\n\n-\tdef is_complete(self):\n\n-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n\n-\t\tif not inquiries:\n\n-\t\t\treturn True\n\n-\t\tfor inquiry in inquiries:\n\n-\t\t\tif not inquiry.get(\"answer\"):\n\n-\t\t\t\treturn False\n\n-\t\treturn True\n\n-\n\n-\tdef same_question(self, a, b):\n\n-\t\tif not a or not b:\n\n-\t\t\treturn False\n\n-\t\treturn self._normalize_question(a) == self._normalize_question(b)\n\n-\n\n-\tdef _normalize_question(self, text):\n\n-\t\tnormalized = text.strip().rstrip(\"?\").lower()\n\n-\t\tnormalized = _WS_RE.sub(\" \", normalized)\n\n-\t\tnormalized = re.sub(r\"[^a-z0-9 ]+\", \"\", normalized)\n\n-\t\treturn normalized.strip()\n\n+a/mediator/inquiries.py\n\n++++ b/mediator/inquiries.py\n\n+@@ -1,17 +1,21 @@\n\n+ import re\n\n+ \n\n+ from . import strings\n\n+ \n\n+ \n\n+ _QUESTION_RE = re.compile(r\"[^?\\n]+?\\?\")\n\n+ _WS_RE = re.compile(r\"\\s+\")\n\n++_INVALID_CHARS_RE = re.compile(r\"[^a-z0-9 ]+\")\n\n+ \n\n+ \n\n+ class Inquiries:\n\n+ \tdef __init__(self, mediator):\n\n+ \t\tself.m = mediator\n\n+ \n\n++\tdef _inquiries(self):\n\n++\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n\n++\t\tif inquiries is None:\n\n++\t\t\tinquiries = []\n\n++\t\t\tself.m.state.inquiries = inquiries\n\n++\t\treturn inquiries\n\n++\n\n+ \tdef get_next(self):\n\n+-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n\n++\t\tinquiries = self._inquiries()\n\n+ \t\tif not inquiries:\n\n+ \t\t\treturn None\n\n+ \t\tfor inquiry in inquiries:\n\n+ \t\t\tif not inquiry.get(\"answer\"):\n\n+ \t\t\t\treturn inquiry\n\n+@@ -36,23 +40,31 @@\n\n+ \tdef register(self, question):\n\n+ \t\tif not question:\n\n+ \t\t\treturn\n\n+-\t\tinquiries = self.m.state.inquiries\n\n++\t\tinquiries = self._inquiries()\n\n++\t\tnormalized = self._normalize_question(question)\n\n++\t\tif not normalized:\n\n++\t\t\treturn\n\n+ \t\tfor other in inquiries:\n\n+-\t\t\tif self.same_question(question, other.get(\"question\", \"\")):\n\n++\t\t\tif self._normalize_entry(other) == normalized:\n\n+ \t\t\t\tother.setdefault(\"alternative_questions\", []).append(question)\n\n+ \t\t\t\treturn\n\n+ \t\tinquiries.append({\n\n+ \t\t\t\"question\": question,\n\n+ \t\t\t\"alternative_questions\": [],\n\n+ \t\t\t\"answer\": None,\n\n++\t\t\t\"_normalized_question\": normalized,\n\n+ \t\t})\n\n+ \n\n+ \tdef _extract_questions(self, block):\n\n+ \t\tquestions = []\n\n+-\t\tfor match in _QUESTION_RE.findall(block):\n\n+-\t\t\tquestion = _WS_RE.sub(\" \", match).strip()\n\n+-\t\t\tif question:\n\n+-\t\t\t\tquestions.append(question)\n\n++\t\tfor match in _QUESTION_RE.finditer(block):\n\n++\t\t\tclean = _WS_RE.sub(\" \", match.group()).strip()\n\n++\t\t\tif clean:\n\n++\t\t\t\tquestions.append(clean)\n\n+ \t\treturn questions\n\n+ \n\n+ \tdef is_complete(self):\n\n+-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n\n++\t\tinquiries = self._inquiries()\n\n+ \t\tif not inquiries:\n\n+ \t\t\treturn True\n\n+ \t\tfor inquiry in inquiries:\n\n+ \t\t\tif not inquiry.get(\"answer\"):\n\n+ \t\t\t\treturn False\n\n+ \t\treturn True\n\n+ \n\n+ \tdef same_question(self, a, b):\n\n+@@ -76,8 +88,17 @@\n\n+ \t\treturn False\n\n+ \t\treturn self._normalize_question(a) == self._normalize_question(b)\n\n+ \n\n++\tdef _normalize_entry(self, inquiry):\n\n++\t\tnormalized = inquiry.get(\"_normalized_question\")\n\n++\t\tif normalized is None:\n\n++\t\t\tnormalized = self._normalize_question(inquiry.get(\"question\", \"\"))\n\n++\t\t\tinquiry[\"_normalized_question\"] = normalized\n\n++\t\treturn normalized\n\n++\n\n+ \tdef _normalize_question(self, text):\n\n+-\t\tnormalized = text.strip().rstrip(\"?\").lower()\n\n++\t\tnormalized = str(text or \"\").strip().rstrip(\"?\").lower()\n\n+ \t\tnormalized = _WS_RE.sub(\" \", normalized)\n\n+-\t\tnormalized = re.sub(r\"[^a-z0-9 ]+\", \"\", normalized)\n\n++\t\tnormalized = _INVALID_CHARS_RE.sub(\"\", normalized)\n\n+ \t\treturn normalized.strip()\n\n",
+    "target_files": [
+      "mediator/inquiries.py"
+    ],
+    "created_at": "2026-03-15T19:54:03.789520",
+    "parent_patches": [
+      "f75ccacd6107c1f9"
+    ],
+    "ipfs_cid": null,
+    "worktree_path": "",
+    "validated": false,
+    "applied": false,
+    "metadata": {
+      "patch_mode": "direct_diff",
+      "repo_root": "/home/barberb/HACC/complaint-generator",
+      "generation_diagnostics": [
+        {
+          "file": "/home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py",
+          "status": "error",
+          "mode": "full_file",
+          "target_symbols": [],
+          "error_type": "ValueError",
+          "error_message": "Optimization response for /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py is not valid Python: invalid syntax (<unknown>, line 214)",
+          "raw_response_preview": ""
+        },
+        {
+          "file": "/home/barberb/HACC/complaint-generator/mediator/inquiries.py",
+          "status": "optimized",
+          "mode": "full_file",
+          "response_length": 2407,
+          "changed": true
+        }
+      ],
+      "repair_attempt": 1,
+      "repaired_from_patch": "/home/barberb/HACC/complaint-generator/patches/f75ccacd6107c1f9.patch"
+    }
+  },
+  {
+    "patch_id": "f75ccacd6107c1f9-repair2",
+    "agent_id": "adversarial-harness-optimizer",
+    "task_id": "adversarial_autopatch_20260315_194518",
+    "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py, /home/barberb/HACC/complaint-generator/mediator/inquiries.py. Priorities from the latest adversarial batch: Improve empathy: current avg 0.20; Improve information extraction: current avg 0.60; Improve efficiency: current avg 0.60. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability. (repair attempt 2)",
+    "diff_content": "--- a/mediator/inquiries.py\n+++ b/mediator/inquiries.py\n@@ -1,116 +1,145 @@\n-import re\n\n-from functools import lru_cache\n\n-\n\n-from . import strings\n\n-\n\n-\n\n-_QUESTION_RE = re.compile(r\"[^?\\n]+?\\?\")\n\n-_WS_RE = re.compile(r\"\\s+\")\n\n-_NORMALIZE_RE = re.compile(r\"[^a-z0-9 ]+\")\n\n-\n\n-\n\n-@lru_cache(maxsize=1024)\n\n-def _normalize_question_cached(text: str) -> str:\n\n-\tnormalized = text.strip().rstrip(\"?\").lower()\n\n-\tnormalized = _WS_RE.sub(\" \", normalized)\n\n-\tnormalized = _NORMALIZE_RE.sub(\"\", normalized)\n\n-\treturn normalized.strip()\n\n-\n\n-\n\n-class Inquiries:\n\n-\tdef __init__(self, mediator):\n\n-\t\tself.m = mediator\n\n-\n\n-\t@staticmethod\n\n-\tdef _find_unanswered(inquiries):\n\n-\t\tfor inquiry in inquiries:\n\n-\t\t\tif not inquiry.get(\"answer\"):\n\n-\t\t\t\treturn inquiry\n\n-\t\treturn None\n\n-\n\n-\tdef _state_inquiries(self):\n\n-\t\treturn getattr(self.m.state, \"inquiries\", None)\n\n-\n\n-\tdef get_next(self):\n\n-\t\tinquiries = self._state_inquiries()\n\n-\t\tif not inquiries:\n\n-\t\t\treturn None\n\n-\t\treturn self._find_unanswered(inquiries)\n\n-\n\n-\tdef answer(self, text):\n\n-\t\tcurrent = self.get_next()\n\n-\t\tif current is None:\n\n-\t\t\treturn\n\n-\t\tcurrent[\"answer\"] = text\n\n-\n\n-\tdef generate(self):\n\n-\t\ttemplate = strings.model_prompts.get(\"generate_questions\")\n\n-\t\tif not template:\n\n-\t\t\treturn\n\n-\n\n-\t\tblock = self.m.query_backend(\n\n-\t\t\ttemplate.format(complaint=self.m.state.complaint)\n\n-\t\t)\n\n-\t\tif not block:\n\n-\t\t\treturn\n\n-\n\n-\t\tinquiries = self.m.state.inquiries\n\n-\t\tindex = self._build_index(inquiries)\n\n-\n\n-\t\tfor question in self._extract_questions(block):\n\n-\t\t\tself._register(question, inquiries, index)\n\n-\n\n-\tdef register(self, question):\n\n-\t\tif not question:\n\n-\t\t\treturn\n\n-\n\n-\t\tinquiries = self.m.state.inquiries\n\n-\t\tindex = self._build_index(inquiries)\n\n-\t\tself._register(question, inquiries, index)\n\n-\n\n-\tdef _register(self, question, inquiries, index):\n\n-\t\tnormalized = self._normalize_question(question)\n\n-\t\texisting = index.get(normalized)\n\n-\t\tif existing is not None:\n\n-\t\t\texisting.setdefault(\"alternative_questions\", []).append(question)\n\n-\t\t\treturn\n\n-\n\n-\t\tinquiry = {\n\n-\t\t\t\"question\": question,\n\n-\t\t\t\"alternative_questions\": [],\n\n-\t\t\t\"answer\": None,\n\n-\t\t}\n\n-\t\tinquiries.append(inquiry)\n\n-\t\tindex.setdefault(normalized, inquiry)\n\n-\n\n-\tdef _build_index(self, inquiries):\n\n-\t\tindex = {}\n\n-\t\tfor inquiry in inquiries:\n\n-\t\t\tquestion = inquiry.get(\"question\", \"\")\n\n-\t\t\tif not question:\n\n-\t\t\t\tcontinue\n\n-\t\t\tnormalized = self._normalize_question(question)\n\n-\t\t\tindex.setdefault(normalized, inquiry)\n\n-\t\treturn index\n\n-\n\n-\tdef _extract_questions(self, block):\n\n-\t\tquestions = []\n\n-\t\tfor match in _QUESTION_RE.finditer(block):\n\n-\t\t\tquestion = _WS_RE.sub(\" \", match.group(0)).strip()\n\n-\t\t\tif question:\n\n-\t\t\t\tquestions.append(question)\n\n-\t\treturn questions\n\n-\n\n-\tdef is_complete(self):\n\n-\t\tinquiries = self._state_inquiries()\n\n-\t\tif not inquiries:\n\n-\t\t\treturn True\n\n-\t\treturn self._find_unanswered(inquiries) is None\n\n-\n\n-\tdef same_question(self, a, b):\n\n-\t\tif not a or not b:\n\n-\t\t\treturn False\n\n-\t\treturn self._normalize_question(a) == self._normalize_question(b)\n\n-\n\n-\tdef _normalize_question(self, text):\n\n-\t\treturn _normalize_question_cached(text)\n\n+a/mediator/inquiries.py\n\n++++ b/mediator/inquiries.py\n\n+@@ -1,25 +1,42 @@\n\n+-import re\n\n++import re\n\n++from functools import lru_cache\n\n+ \n\n+ from . import strings\n\n+ \n\n+ \n\n+ _QUESTION_RE = re.compile(r\"[^?\\n]+?\\?\")\n\n+ _WS_RE = re.compile(r\"\\s+\")\n\n++_NORMALIZE_RE = re.compile(r\"[^a-z0-9 ]+\")\n\n++\n\n++\n\n++@lru_cache(maxsize=1024)\n\n++def _normalize_question_cached(text: str) -> str:\n\n++\tnormalized = text.strip().rstrip(\"?\").lower()\n\n++\tnormalized = _WS_RE.sub(\" \", normalized)\n\n++\tnormalized = _NORMALIZE_RE.sub(\"\", normalized)\n\n++\treturn normalized.strip()\n\n+ \n\n+ \n\n+ class Inquiries:\n\n+ \tdef __init__(self, mediator):\n\n+ \t\tself.m = mediator\n\n+ \n\n+-\tdef get_next(self):\n\n+-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n\n+-\t\tif not inquiries:\n\n+-\t\t\treturn None\n\n++\t@staticmethod\n\n++\tdef _find_unanswered(inquiries):\n\n++\t\tfor inquiry in inquiries:\n\n++\t\t\tif not inquiry.get(\"answer\"):\n\n++\t\t\t\treturn inquiry\n\n++\t\treturn None\n\n++\n\n++\tdef _state_inquiries(self):\n\n++\t\treturn getattr(self.m.state, \"inquiries\", None)\n\n++\n\n++\tdef get_next(self):\n\n++\t\tinquiries = self._state_inquiries()\n\n++\t\tif not inquiries:\n\n++\t\t\treturn None\n\n++\t\treturn self._find_unanswered(inquiries)\n\n+ \n\n+ \tdef answer(self, text):\n\n+ \t\tcurrent = self.get_next()\n\n+ \t\tif current is None:\n\n+ \t\t\treturn\n\n+ \t\tcurrent[\"answer\"] = text\n\n+ \n\n+ \tdef generate(self):\n\n+@@ -37,39 +54,58 @@ class Inquiries:\n\n+ \t\tif not block:\n\n+ \t\t\treturn\n\n+ \n\n++\t\tinquiries = self.m.state.inquiries\n\n++\t\tindex = self._build_index(inquiries)\n\n++\n\n+ \t\tfor question in self._extract_questions(block):\n\n+-\t\t\tself.register(question)\n\n++\t\t\tself._register(question, inquiries, index)\n\n+ \n\n+ \tdef register(self, question):\n\n+ \t\tif not question:\n\n+ \t\t\treturn\n\n+ \n\n+-\t\tinquiries = self.m.state.inquiries\n\n+-\t\tfor other in inquiries:\n\n+-\t\t\tif self.same_question(question, other.get(\"question\", \"\")):\n\n+-\t\t\t\tother.setdefault(\"alternative_questions\", []).append(question)\n\n+-\t\t\t\treturn\n\n+-\t\tinquiries.append({\n\n+-\t\t\t\"question\": question,\n\n+-\t\t\t\"alternative_questions\": [],\n\n+-\t\t\t\"answer\": None,\n\n+-\t\t})\n\n++\t\tinquiries = self.m.state.inquiries\n\n++\t\tindex = self._build_index(inquiries)\n\n++\t\tself._register(question, inquiries, index)\n\n++\n\n++\tdef _register(self, question, inquiries, index):\n\n++\t\tnormalized = self._normalize_question(question)\n\n++\t\texisting = index.get(normalized)\n\n++\t\tif existing is not None:\n\n++\t\t\texisting.setdefault(\"alternative_questions\", []).append(question)\n\n++\t\t\treturn\n\n++\n\n++\t\tinquiry = {\n\n++\t\t\t\"question\": question,\n\n++\t\t\t\"alternative_questions\": [],\n\n++\t\t\t\"answer\": None,\n\n++\t\t}\n\n++\t\tinquiries.append(inquiry)\n\n++\t\tindex.setdefault(normalized, inquiry)\n\n++\n\n++\tdef _build_index(self, inquiries):\n\n++\t\tindex = {}\n\n++\t\tfor inquiry in inquiries:\n\n++\t\t\tquestion = inquiry.get(\"question\", \"\")\n\n++\t\t\tif not question:\n\n++\t\t\t\tcontinue\n\n++\t\t\tnormalized = self._normalize_question(question)\n\n++\t\t\tindex.setdefault(normalized, inquiry)\n\n++\t\treturn index\n\n+ \n\n+ \tdef _extract_questions(self, block):\n\n+ \t\tquestions = []\n\n+-\t\tfor match in _QUESTION_RE.findall(block):\n\n+-\t\t\tquestion = _WS_RE.sub(\" \", match).strip()\n\n+-\t\t\tif question:\n\n+-\t\t\t\tquestions.append(question)\n\n++\t\tfor match in _QUESTION_RE.finditer(block):\n\n++\t\t\tquestion = _WS_RE.sub(\" \", match.group(0)).strip()\n\n++\t\t\tif question:\n\n++\t\t\t\tquestions.append(question)\n\n+ \t\treturn questions\n\n+ \n\n+ \tdef is_complete(self):\n\n+-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n\n+-\t\tif not inquiries:\n\n+-\t\t\treturn True\n\n+-\t\tfor inquiry in inquiries:\n\n+-\t\t\tif not inquiry.get(\"answer\"):\n\n+-\t\t\t\treturn False\n\n+-\t\treturn True\n\n++\t\tinquiries = self._state_inquiries()\n\n++\t\tif not inquiries:\n\n++\t\t\treturn True\n\n++\t\treturn self._find_unanswered(inquiries) is None\n\n+ \n\n+ \tdef same_question(self, a, b):\n\n+ \t\tif not a or not b:\n\n+ \t\t\treturn False\n\n+@@ -77,7 +113,4 @@ class Inquiries:\n\n+ \t\treturn self._normalize_question(a) == self._normalize_question(b)\n\n+ \n\n+ \tdef _normalize_question(self, text):\n\n+-\t\tnormalized = text.strip().rstrip(\"?\").lower()\n\n+-\t\tnormalized = _WS_RE.sub(\" \", normalized)\n\n+-\t\tnormalized = re.sub(r\"[^a-z0-9 ]+\", \"\", normalized)\n\n+-\t\treturn normalized.strip()\n\n++\t\treturn _normalize_question_cached(text)\n\n",
+    "target_files": [
+      "mediator/inquiries.py"
+    ],
+    "created_at": "2026-03-15T19:55:23.889564",
+    "parent_patches": [
+      "f75ccacd6107c1f9"
+    ],
+    "ipfs_cid": null,
+    "worktree_path": "",
+    "validated": false,
+    "applied": false,
+    "metadata": {
+      "patch_mode": "direct_diff",
+      "repo_root": "/home/barberb/HACC/complaint-generator",
+      "generation_diagnostics": [
+        {
+          "file": "/home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py",
+          "status": "error",
+          "mode": "full_file",
+          "target_symbols": [],
+          "error_type": "ValueError",
+          "error_message": "Optimization response for /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py is not valid Python: invalid syntax (<unknown>, line 214)",
+          "raw_response_preview": ""
+        },
+        {
+          "file": "/home/barberb/HACC/complaint-generator/mediator/inquiries.py",
+          "status": "optimized",
+          "mode": "full_file",
+          "response_length": 2407,
+          "changed": true
+        }
+      ],
+      "repair_attempt": 2,
+      "repaired_from_patch": "/home/barberb/HACC/complaint-generator/patches/f75ccacd6107c1f9.patch"
+    }
+  },
+  {
+    "patch_id": "1b8e9b0fdcb781df",
+    "agent_id": "adversarial-harness-optimizer",
+    "task_id": "adversarial_autopatch_20260315_200411",
+    "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py, /home/barberb/HACC/complaint-generator/mediator/inquiries.py. Priorities from the latest adversarial batch: Improve question quality: current avg 0.52; Improve information extraction: current avg 0.58; Improve efficiency: current avg 0.63. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability.",
+    "diff_content": "--- a/mediator/inquiries.py\n+++ b/mediator/inquiries.py\n@@ -1,5 +1,6 @@\n import re\n from functools import lru_cache\n+from typing import Any, Dict, List, Optional, Tuple\n \n from . import strings\n \n@@ -7,11 +8,13 @@\n _QUESTION_RE = re.compile(r\"[^?\\n]+?\\?\")\n _WS_RE = re.compile(r\"\\s+\")\n _NORMALIZE_RE = re.compile(r\"[^a-z0-9 ]+\")\n+_LIST_PREFIX_RE = re.compile(r\"^\\s*(?:\\d+\\s*[.)]|[-*\u2022])\\s+\")\n \n \n-@lru_cache(maxsize=1024)\n+@lru_cache(maxsize=2048)\n def _normalize_question_cached(text: str) -> str:\n \tnormalized = text.strip().rstrip(\"?\").lower()\n+\tnormalized = _LIST_PREFIX_RE.sub(\"\", normalized, count=1)\n \tnormalized = _WS_RE.sub(\" \", normalized)\n \tnormalized = _NORMALIZE_RE.sub(\"\", normalized)\n \treturn normalized.strip()\n@@ -20,6 +23,8 @@\n class Inquiries:\n \tdef __init__(self, mediator):\n \t\tself.m = mediator\n+\t\tself._index: Optional[Dict[str, Dict[str, Any]]] = None\n+\t\tself._index_signature: Tuple[int, int] = (0, 0)\n \n \t@staticmethod\n \tdef _find_unanswered(inquiries):\n@@ -30,6 +35,16 @@\n \n \tdef _state_inquiries(self):\n \t\treturn getattr(self.m.state, \"inquiries\", None)\n+\n+\tdef _index_key(self, inquiries) -> Tuple[int, int]:\n+\t\treturn (id(inquiries), len(inquiries))\n+\n+\tdef _index_for(self, inquiries) -> Dict[str, Dict[str, Any]]:\n+\t\tsignature = self._index_key(inquiries)\n+\t\tif self._index is None or self._index_signature != signature:\n+\t\t\tself._index = self._build_index(inquiries)\n+\t\t\tself._index_signature = signature\n+\t\treturn self._index\n \n \tdef get_next(self):\n \t\tinquiries = self._state_inquiries()\n@@ -48,15 +63,15 @@\n \t\tif not template:\n \t\t\treturn\n \n-\t\tblock = self.m.query_backend(\n-\t\t\ttemplate.format(complaint=self.m.state.complaint)\n-\t\t)\n+\t\tinquiries = self._state_inquiries()\n+\t\tif inquiries is None:\n+\t\t\treturn\n+\n+\t\tblock = self.m.query_backend(template.format(complaint=self.m.state.complaint))\n \t\tif not block:\n \t\t\treturn\n \n-\t\tinquiries = self.m.state.inquiries\n-\t\tindex = self._build_index(inquiries)\n-\n+\t\tindex = self._index_for(inquiries)\n \t\tfor question in self._extract_questions(block):\n \t\t\tself._register(question, inquiries, index)\n \n@@ -64,8 +79,11 @@\n \t\tif not question:\n \t\t\treturn\n \n-\t\tinquiries = self.m.state.inquiries\n-\t\tindex = self._build_index(inquiries)\n+\t\tinquiries = self._state_inquiries()\n+\t\tif inquiries is None:\n+\t\t\treturn\n+\n+\t\tindex = self._index_for(inquiries)\n \t\tself._register(question, inquiries, index)\n \n \tdef _register(self, question, inquiries, index):\n@@ -81,24 +99,55 @@\n \t\t\t\"answer\": None,\n \t\t}\n \t\tinquiries.append(inquiry)\n-\t\tindex.setdefault(normalized, inquiry)\n+\t\tindex[normalized] = inquiry\n+\t\tself._index_signature = (id(inquiries), len(inquiries))\n \n \tdef _build_index(self, inquiries):\n-\t\tindex = {}\n+\t\tindex: Dict[str, Dict[str, Any]] = {}\n \t\tfor inquiry in inquiries:\n-\t\t\tquestion = inquiry.get(\"question\", \"\")\n+\t\t\tquestion = inquiry.get(\"question\")\n \t\t\tif not question:\n \t\t\t\tcontinue\n+\n \t\t\tnormalized = self._normalize_question(question)\n-\t\t\tindex.setdefault(normalized, inquiry)\n+\t\t\tif normalized not in index:\n+\t\t\t\tindex[normalized] = inquiry\n \t\treturn index\n \n+\t@staticmethod\n+\tdef _trim_question_prefix(text: str) -> str:\n+\t\treturn _LIST_PREFIX_RE.sub(\"\", text, count=1).strip()\n+\n+\t@classmethod\n+\tdef _clean_question(cls, raw_question: str) -> str:\n+\t\tquestion = cls._trim_question_prefix(raw_question)\n+\t\tquestion = _WS_RE.sub(\" \", question).strip()\n+\t\tif not question:\n+\t\t\treturn \"\"\n+\t\treturn question\n+\n \tdef _extract_questions(self, block):\n-\t\tquestions = []\n-\t\tfor match in _QUESTION_RE.finditer(block):\n-\t\t\tquestion = _WS_RE.sub(\" \", match.group(0)).strip()\n+\t\ttext = str(block)\n+\t\tquestions: List[str] = []\n+\n+\t\tfor match in _QUESTION_RE.finditer(text):\n+\t\t\tquestion = self._clean_question(match.group(0))\n \t\t\tif question:\n \t\t\t\tquestions.append(question)\n+\n+\t\tif questions:\n+\t\t\treturn questions\n+\n+\t\tfor line in text.splitlines():\n+\t\t\tline = line.strip()\n+\t\t\tif not line or \"?\" not in line:\n+\t\t\t\tcontinue\n+\n+\t\t\tfor match in _QUESTION_RE.finditer(line):\n+\t\t\t\tquestion = self._clean_question(match.group(0))\n+\t\t\t\tif question:\n+\t\t\t\t\tquestions.append(question)\n+\n \t\treturn questions\n \n \tdef is_complete(self):\n",
+    "target_files": [
+      "mediator/inquiries.py"
+    ],
+    "created_at": "2026-03-15T20:06:42.830875",
+    "parent_patches": [],
+    "ipfs_cid": null,
+    "worktree_path": "",
+    "validated": false,
+    "applied": false,
+    "metadata": {
+      "patch_mode": "direct_diff",
+      "repo_root": "/home/barberb/HACC/complaint-generator",
+      "generation_diagnostics": [
+        {
+          "file": "/home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py",
+          "status": "error",
+          "mode": "full_file",
+          "target_symbols": [],
+          "error_type": "ValueError",
+          "error_message": "Optimization response for /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py is not valid Python: invalid syntax (<unknown>, line 224)",
+          "raw_response_preview": ""
+        },
+        {
+          "file": "/home/barberb/HACC/complaint-generator/mediator/inquiries.py",
+          "status": "optimized",
+          "mode": "full_file",
+          "response_length": 4258,
+          "changed": true
+        }
+      ]
+    }
+  },
+  {
+    "patch_id": "75b38ae8a6ee421b",
+    "agent_id": "adversarial-harness-optimizer",
+    "task_id": "adversarial_autopatch_20260315_202410",
+    "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/denoiser.py. Priorities from the latest adversarial batch: Improve information extraction: current avg 0.57; Improve question quality: current avg 0.61; Improve coverage: current avg 0.66. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability.",
+    "diff_content": "--- a/complaint_phases/denoiser.py\n+++ b/complaint_phases/denoiser.py\n@@ -1379,13 +1379,13 @@\n                       dependency_graph: Optional[DependencyGraph] = None) -> Dict[str, Any]:\n         \"\"\"\n         Process an answer to a denoising question.\n-        \n+\n         Args:\n             question: The question that was asked\n             answer: The user's answer\n             knowledge_graph: Knowledge graph to update\n             dependency_graph: Optional dependency graph to update\n-            \n+\n         Returns:\n             Information about what was updated\n         \"\"\"\n@@ -1393,81 +1393,31 @@\n             'question': question,\n             'answer': answer\n         })\n-        \n+\n         updates = {\n             'entities_updated': 0,\n             'relationships_added': 0,\n             'requirements_satisfied': 0\n         }\n-        \n+\n         question_type = question.get('type')\n         context = question.get('context', {})\n-        \n-        if question_type == 'clarification':\n-            # Update entity with clarified information\n-            entity_id = context.get('entity_id')\n-            entity = knowledge_graph.get_entity(entity_id)\n-            if entity:\n-                entity.confidence = min(1.0, entity.confidence + 0.2)\n-                entity.attributes['clarification'] = answer\n-                updates['entities_updated'] += 1\n-        \n-        elif question_type == 'relationship':\n-            # Extract relationships from answer (simplified)\n-            # In production, use LLM to extract structured relationships\n-            entity_id = context.get('entity_id')\n-            if entity_id and len(answer) > 10:\n-                # Mark entity as having relationships described\n-                entity = knowledge_graph.get_entity(entity_id)\n-                if entity:\n-                    entity.attributes['relationship_described'] = True\n-                    updates['entities_updated'] += 1\n-            updates = self._update_responsible_parties_from_answer(answer, knowledge_graph, updates)\n-\n-        elif question_type == 'responsible_party':\n-            updates = self._update_responsible_parties_from_answer(answer, knowledge_graph, updates)\n-        \n-        elif question_type == 'evidence':\n-            # Track evidence description\n-            claim_id = context.get('claim_id')\n-            entity = knowledge_graph.get_entity(claim_id)\n-            if entity:\n-                if 'evidence_descriptions' not in entity.attributes:\n-                    entity.attributes['evidence_descriptions'] = []\n-                entity.attributes['evidence_descriptions'].append(answer)\n-                updates['entities_updated'] += 1\n-            if not claim_id:\n-                claims = knowledge_graph.get_entities_by_type('claim')\n-                if len(claims) == 1:\n-                    claim_id = claims[0].id\n-            if claim_id and len(answer) > 10:\n-                snippet = self._short_description(answer, 120)\n-                evidence_name = f\"Evidence: {self._short_description(answer, 80)}\"\n-                evidence_entity, created = self._add_entity_if_missing(\n-                    knowledge_graph,\n-                    'evidence',\n-                    evidence_name,\n-                    {'description': snippet},\n-                    0.6\n-                )\n-                if created:\n-                    updates['entities_updated'] += 1\n-                if evidence_entity:\n-                    _, rel_created = self._add_relationship_if_missing(\n-                        knowledge_graph,\n-                        claim_id,\n-                        evidence_entity.id,\n-                        'supported_by',\n-                        0.6\n-                    )\n-                    if rel_created:\n-                        updates['relationships_added'] += 1\n-\n-        elif question_type == 'timeline':\n-            dates = self._extract_date_strings(answer)\n+        answer_text = str(answer or '').strip()\n+        timeline_enrichment_types = {'clarification', 'evidence', 'impact', 'relationship', 'remedy', 'requirement', 'responsible_party', 'timeline'}\n+        responsible_party_enrichment_types = {'clarification', 'evidence', 'relationship', 'requirement', 'responsible_party', 'timeline'}\n+        fallback_timeline_fact_types = {'clarification', 'evidence', 'relationship', 'requirement', 'responsible_party', 'timeline'}\n+\n+        def _single_claim_id() -> Optional[str]:\n+            claims = knowledge_graph.get_entities_by_type('claim')\n+            return claims[0].id if len(claims) == 1 else None\n+\n+        def _apply_timeline_enrichment() -> None:\n+            nonlocal updates\n+            if question_type not in timeline_enrichment_types or not answer_text:\n+                return\n+            claim_id = _single_claim_id()\n+            dates = self._extract_date_strings(answer_text)\n             if dates:\n-                claims = knowledge_graph.get_entities_by_type('claim')\n-                claim_id = claims[0].id if len(claims) == 1 else None\n                 for date_str in dates:\n                     date_entity, created = self._add_entity_if_missing(\n                         knowledge_graph,\n@@ -1488,43 +1438,98 @@\n                         )\n                         if rel_created:\n                             updates['relationships_added'] += 1\n-            elif answer and answer.strip():\n-                claims = knowledge_graph.get_entities_by_type('claim')\n-                claim_id = claims[0].id if len(claims) == 1 else None\n-                snippet = self._short_description(answer, 120)\n-                fact_name = f\"Timeline detail: {self._short_description(answer, 60)}\"\n-                fact_entity, created = self._add_entity_if_missing(\n+                return\n+            if question_type not in fallback_timeline_fact_types:\n+                return\n+            claim_id = _single_claim_id()\n+            snippet = self._short_description(answer_text, 120)\n+            fact_name = f\"Timeline detail: {self._short_description(answer_text, 60)}\"\n+            fact_entity, created = self._add_entity_if_missing(\n+                knowledge_graph,\n+                'fact',\n+                fact_name,\n+                {'fact_type': 'timeline', 'description': snippet},\n+                0.6\n+            )\n+            if created:\n+                updates['entities_updated'] += 1\n+            if claim_id and fact_entity:\n+                _, rel_created = self._add_relationship_if_missing(\n                     knowledge_graph,\n-                    'fact',\n-                    fact_name,\n-                    {'fact_type': 'timeline', 'description': snippet},\n+                    claim_id,\n+                    fact_entity.id,\n+                    'has_timeline_detail',\n+                    0.6\n+                )\n+                if rel_created:\n+                    updates['relationships_added'] += 1\n+\n+        if question_type == 'clarification':\n+            entity_id = context.get('entity_id')\n+            entity = knowledge_graph.get_entity(entity_id)\n+            if entity:\n+                entity.confidence = min(1.0, entity.confidence + 0.2)\n+                entity.attributes['clarification'] = answer\n+                updates['entities_updated'] += 1\n+\n+        elif question_type == 'relationship':\n+            entity_id = context.get('entity_id')\n+            if entity_id and len(answer_text) > 10:\n+                entity = knowledge_graph.get_entity(entity_id)\n+                if entity:\n+                    entity.attributes['relationship_described'] = True\n+                    updates['entities_updated'] += 1\n+\n+        elif question_type == 'responsible_party':\n+            pass\n+\n+        elif question_type == 'evidence':\n+            claim_id = context.get('claim_id')\n+            entity = knowledge_graph.get_entity(claim_id)\n+            if entity:\n+                if 'evidence_descriptions' not in entity.attributes:\n+                    entity.attributes['evidence_descriptions'] = []\n+                entity.attributes['evidence_descriptions'].append(answer)\n+                updates['entities_updated'] += 1\n+            if not claim_id:\n+                claim_id = _single_claim_id()\n+            if claim_id and len(answer_text) > 10:\n+                snippet = self._short_description(answer_text, 120)\n+                evidence_name = f\"Evidence: {self._short_description(answer_text, 80)}\"\n+                evidence_entity, created = self._add_entity_if_missing(\n+                    knowledge_graph,\n+                    'evidence',\n+                    evidence_name,\n+                    {'description': snippet},\n                     0.6\n                 )\n                 if created:\n                     updates['entities_updated'] += 1\n-                if claim_id and fact_entity:\n+                if evidence_entity:\n                     _, rel_created = self._add_relationship_if_missing(\n                         knowledge_graph,\n                         claim_id,\n-                        fact_entity.id,\n-                        'has_timeline_detail',\n+                        evidence_entity.id,\n+                        'supported_by',\n                         0.6\n                     )\n                     if rel_created:\n                         updates['relationships_added'] += 1\n \n+        elif question_type == 'timeline':\n+            pass\n+\n         elif question_type in {'impact', 'remedy'}:\n-            if answer and answer.strip():\n-                claims = knowledge_graph.get_entities_by_type('claim')\n-                claim_id = claims[0].id if len(claims) == 1 else None\n-                snippet = self._short_description(answer, 120)\n+            if answer_text:\n+                claim_id = _single_claim_id()\n+                snippet = self._short_description(answer_text, 120)\n                 if question_type == 'remedy':\n                     fact_type = 'remedy'\n-                    fact_name = f\"Requested remedy: {self._short_description(answer, 60)}\"\n+                    fact_name = f\"Requested remedy: {self._short_description(answer_text, 60)}\"\n                     rel_type = 'seeks_remedy'\n                 else:\n                     fact_type = 'impact'\n-                    fact_name = f\"Impact: {self._short_description(answer, 60)}\"\n+                    fact_name = f\"Impact: {self._short_description(answer_text, 60)}\"\n                     rel_type = 'has_impact'\n                 fact_entity, created = self._add_entity_if_missing(\n                     knowledge_graph,\n@@ -1545,8 +1550,8 @@\n                     )\n                     if rel_created:\n                         updates['relationships_added'] += 1\n-                if question_type == 'impact' and self._contains_remedy_cue(answer):\n-                    remedy_name = f\"Requested remedy: {self._short_description(answer, 60)}\"\n+                if question_type == 'impact' and self._contains_remedy_cue(answer_text):\n+                    remedy_name = f\"Requested remedy: {self._short_description(answer_text, 60)}\"\n                     remedy_entity, remedy_created = self._add_entity_if_missing(\n                         knowledge_graph,\n                         'fact',\n@@ -1566,24 +1571,27 @@\n                         )\n                         if rel_created:\n                             updates['relationships_added'] += 1\n-        \n+\n         elif question_type == 'requirement':\n-            # Mark requirement as addressed\n             if dependency_graph:\n                 req_id = context.get('requirement_id')\n                 req_node = dependency_graph.get_node(req_id)\n-                if req_node and len(answer) > 10:\n+                if req_node and len(answer_text) > 10:\n                     req_node.satisfied = True\n                     req_node.confidence = 0.7\n                     updates['requirements_satisfied'] += 1\n-        \n+\n+        if question_type in responsible_party_enrichment_types and answer_text:\n+            updates = self._update_responsible_parties_from_answer(answer_text, knowledge_graph, updates)\n+\n+        if question_type in timeline_enrichment_types and answer_text:\n+            _apply_timeline_enrichment()\n+\n         logger.info(f\"Processed answer: {updates}\")\n \n-        # Update momentum from observed \u201cgain\u201d.\n         try:\n             gain = self._compute_gain(updates)\n             self._recent_gains.append(gain)\n-            # Cap memory.\n             if len(self._recent_gains) > 50:\n                 self._recent_gains = self._recent_gains[-50:]\n             qtype = question.get('type') if isinstance(question, dict) else 'unknown'\n",
+    "target_files": [
+      "complaint_phases/denoiser.py"
+    ],
+    "created_at": "2026-03-15T20:25:19.928157",
+    "parent_patches": [],
+    "ipfs_cid": null,
+    "worktree_path": "",
+    "validated": false,
+    "applied": false,
+    "metadata": {
+      "patch_mode": "direct_diff",
+      "repo_root": "/home/barberb/HACC/complaint-generator",
+      "generation_diagnostics": [
+        {
+          "file": "/home/barberb/HACC/complaint-generator/complaint_phases/denoiser.py",
+          "status": "optimized",
+          "mode": "symbol_level",
+          "target_symbols": [
+            "process_answer"
+          ],
+          "response_length": 84939,
+          "changed": true
+        }
+      ]
+    }
   }
 ]

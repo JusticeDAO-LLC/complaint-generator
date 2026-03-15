@@ -1,0 +1,38 @@
+{
+  "patch_id": "f75ccacd6107c1f9",
+  "agent_id": "adversarial-harness-optimizer",
+  "task_id": "adversarial_autopatch_20260315_194518",
+  "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py, /home/barberb/HACC/complaint-generator/mediator/inquiries.py. Priorities from the latest adversarial batch: Improve empathy: current avg 0.20; Improve information extraction: current avg 0.60; Improve efficiency: current avg 0.60. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability.",
+  "diff_content": "--- a/mediator/inquiries.py\n+++ b/mediator/inquiries.py\n@@ -2,17 +2,20 @@\n \n from . import strings\n \n-\n _QUESTION_RE = re.compile(r\"[^?\\n]+?\\?\")\n _WS_RE = re.compile(r\"\\s+\")\n+_INVALID_CHARS_RE = re.compile(r\"[^a-z0-9 ]+\")\n \n \n class Inquiries:\n \tdef __init__(self, mediator):\n \t\tself.m = mediator\n \n+\tdef _inquiries(self):\n+\t\treturn getattr(self.m.state, \"inquiries\", None)\n+\n \tdef get_next(self):\n-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n+\t\tinquiries = self._inquiries()\n \t\tif not inquiries:\n \t\t\treturn None\n \t\tfor inquiry in inquiries:\n@@ -43,27 +46,33 @@\n \tdef register(self, question):\n \t\tif not question:\n \t\t\treturn\n-\t\tinquiries = self.m.state.inquiries\n+\t\tinquiries = self._inquiries()\n+\t\tif inquiries is None:\n+\t\t\treturn\n+\t\tnormalized = self._normalize_question(question)\n+\t\tif not normalized:\n+\t\t\treturn\n \t\tfor other in inquiries:\n-\t\t\tif self.same_question(question, other.get(\"question\", \"\")):\n+\t\t\tif self._normalize_entry(other) == normalized:\n \t\t\t\tother.setdefault(\"alternative_questions\", []).append(question)\n \t\t\t\treturn\n \t\tinquiries.append({\n \t\t\t\"question\": question,\n \t\t\t\"alternative_questions\": [],\n \t\t\t\"answer\": None,\n+\t\t\t\"_normalized_question\": normalized,\n \t\t})\n \n \tdef _extract_questions(self, block):\n \t\tquestions = []\n-\t\tfor match in _QUESTION_RE.findall(block):\n-\t\t\tquestion = _WS_RE.sub(\" \", match).strip()\n-\t\t\tif question:\n-\t\t\t\tquestions.append(question)\n+\t\tfor match in _QUESTION_RE.finditer(block):\n+\t\t\tclean = _WS_RE.sub(\" \", match.group()).strip()\n+\t\t\tif clean:\n+\t\t\t\tquestions.append(clean)\n \t\treturn questions\n \n \tdef is_complete(self):\n-\t\tinquiries = getattr(self.m.state, \"inquiries\", None)\n+\t\tinquiries = self._inquiries()\n \t\tif not inquiries:\n \t\t\treturn True\n \t\tfor inquiry in inquiries:\n@@ -76,8 +85,15 @@\n \t\t\treturn False\n \t\treturn self._normalize_question(a) == self._normalize_question(b)\n \n+\tdef _normalize_entry(self, inquiry):\n+\t\tnormalized = inquiry.get(\"_normalized_question\")\n+\t\tif normalized is None:\n+\t\t\tnormalized = self._normalize_question(inquiry.get(\"question\", \"\"))\n+\t\t\tinquiry[\"_normalized_question\"] = normalized\n+\t\treturn normalized\n+\n \tdef _normalize_question(self, text):\n-\t\tnormalized = text.strip().rstrip(\"?\").lower()\n+\t\tnormalized = str(text or \"\").strip().rstrip(\"?\").lower()\n \t\tnormalized = _WS_RE.sub(\" \", normalized)\n-\t\tnormalized = re.sub(r\"[^a-z0-9 ]+\", \"\", normalized)\n+\t\tnormalized = _INVALID_CHARS_RE.sub(\"\", normalized)\n \t\treturn normalized.strip()\n",
+  "target_files": [
+    "mediator/inquiries.py"
+  ],
+  "created_at": "2026-03-15T19:51:16.822681",
+  "parent_patches": [],
+  "ipfs_cid": null,
+  "worktree_path": "",
+  "validated": false,
+  "applied": false,
+  "metadata": {
+    "patch_mode": "direct_diff",
+    "repo_root": "/home/barberb/HACC/complaint-generator",
+    "generation_diagnostics": [
+      {
+        "file": "/home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py",
+        "status": "error",
+        "mode": "full_file",
+        "target_symbols": [],
+        "error_type": "ValueError",
+        "error_message": "Optimization response for /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py is not valid Python: invalid syntax (<unknown>, line 214)",
+        "raw_response_preview": ""
+      },
+      {
+        "file": "/home/barberb/HACC/complaint-generator/mediator/inquiries.py",
+        "status": "optimized",
+        "mode": "full_file",
+        "response_length": 2407,
+        "changed": true
+      }
+    ]
+  }
+}

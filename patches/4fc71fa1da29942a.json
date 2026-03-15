@@ -1,0 +1,38 @@
+{
+  "patch_id": "4fc71fa1da29942a",
+  "agent_id": "adversarial-harness-optimizer",
+  "task_id": "adversarial_autopatch_20260315_092538",
+  "description": "Use the test_driven optimizer to improve the complaint-generator adversarial complainant/mediator loop. Target files: /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py, /home/barberb/HACC/complaint-generator/mediator/inquiries.py. Priorities from the latest adversarial batch: Improve empathy: current avg 0.12; Improve information extraction: current avg 0.30; Improve question quality: current avg 0.34. Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability.",
+  "diff_content": "--- a/mediator/inquiries.py\n+++ b/mediator/inquiries.py\n@@ -5,9 +5,12 @@\n \n _QUESTION_RE = re.compile(r\"[^?\\n]+?\\?\")\n _WS_RE = re.compile(r\"\\s+\")\n+_NORM_RE = re.compile(r\"[^a-z0-9 ]+\")\n \n \n class Inquiries:\n+\t__slots__ = (\"m\",)\n+\n \tdef __init__(self, mediator):\n \t\tself.m = mediator\n \n@@ -22,9 +25,8 @@\n \n \tdef answer(self, text):\n \t\tcurrent = self.get_next()\n-\t\tif current is None:\n-\t\t\treturn\n-\t\tcurrent[\"answer\"] = text\n+\t\tif current is not None:\n+\t\t\tcurrent[\"answer\"] = text\n \n \tdef generate(self):\n \t\ttemplate = strings.model_prompts.get(\"generate_questions\")\n@@ -37,15 +39,17 @@\n \t\tif not block:\n \t\t\treturn\n \n+\t\tregister = self.register\n \t\tfor question in self._extract_questions(block):\n-\t\t\tself.register(question)\n+\t\t\tregister(question)\n \n \tdef register(self, question):\n \t\tif not question:\n \t\t\treturn\n \t\tinquiries = self.m.state.inquiries\n+\t\tsame_question = self.same_question\n \t\tfor other in inquiries:\n-\t\t\tif self.same_question(question, other.get(\"question\", \"\")):\n+\t\t\tif same_question(question, other.get(\"question\", \"\")):\n \t\t\t\tother.setdefault(\"alternative_questions\", []).append(question)\n \t\t\t\treturn\n \t\tinquiries.append({\n@@ -56,8 +60,9 @@\n \n \tdef _extract_questions(self, block):\n \t\tquestions = []\n+\t\tws_sub = _WS_RE.sub\n \t\tfor match in _QUESTION_RE.findall(block):\n-\t\t\tquestion = _WS_RE.sub(\" \", match).strip()\n+\t\t\tquestion = ws_sub(\" \", match).strip()\n \t\t\tif question:\n \t\t\t\tquestions.append(question)\n \t\treturn questions\n@@ -79,5 +84,5 @@\n \tdef _normalize_question(self, text):\n \t\tnormalized = text.strip().rstrip(\"?\").lower()\n \t\tnormalized = _WS_RE.sub(\" \", normalized)\n-\t\tnormalized = re.sub(r\"[^a-z0-9 ]+\", \"\", normalized)\n+\t\tnormalized = _NORM_RE.sub(\"\", normalized)\n \t\treturn normalized.strip()\n",
+  "target_files": [
+    "mediator/inquiries.py"
+  ],
+  "created_at": "2026-03-15T09:31:21.966313",
+  "parent_patches": [],
+  "ipfs_cid": null,
+  "worktree_path": "",
+  "validated": false,
+  "applied": false,
+  "metadata": {
+    "patch_mode": "direct_diff",
+    "repo_root": "/home/barberb/HACC/complaint-generator",
+    "generation_diagnostics": [
+      {
+        "file": "/home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py",
+        "status": "error",
+        "mode": "full_file",
+        "target_symbols": [],
+        "error_type": "ValueError",
+        "error_message": "Optimization response for /home/barberb/HACC/complaint-generator/complaint_phases/phase_manager.py is not valid Python: invalid syntax (<unknown>, line 211)",
+        "raw_response_preview": ""
+      },
+      {
+        "file": "/home/barberb/HACC/complaint-generator/mediator/inquiries.py",
+        "status": "optimized",
+        "mode": "full_file",
+        "response_length": 2050,
+        "changed": true
+      }
+    ]
+  }
+}

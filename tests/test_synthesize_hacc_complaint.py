@@ -14,6 +14,52 @@ def test_clean_policy_text_removes_generic_prefixes():
     assert MODULE._clean_policy_text(text) == "Written notice is required."
 
 
+def test_clean_policy_text_removes_inline_policy_wrapper():
+    text = (
+        "This responsibility begins with the first contact by an interested family and continues through every aspect "
+        "of the program. HACC Policy HACC will ask all applicants if they require accommodations in writing."
+    )
+    cleaned = MODULE._clean_policy_text(text)
+
+    assert "HACC Policy" not in cleaned
+    assert cleaned.endswith("HACC will ask all applicants if they require accommodations in writing.")
+
+
+def test_clean_policy_text_keeps_descriptive_policy_phrase():
+    text = "Reasonable-accommodation complaint anchored to HACC policy language."
+
+    assert MODULE._clean_policy_text(text) == text
+
+
+def test_summarize_policy_excerpt_prefers_complaint_grade_sentences():
+    text = (
+        "This responsibility begins with the first contact by an interested family and continues through every aspect "
+        "of the program. HACC will ask all applicants and participants if they require any type of accommodations in "
+        "writing, on the intake application, reexamination documents, and notices of adverse action by HACC. "
+        "A specific name and phone number of designated staff will be provided to process requests for accommodation."
+    )
+
+    summary = MODULE._summarize_policy_excerpt(text)
+
+    assert "first contact by an interested family" not in summary
+    assert "must be asked in writing about accommodation needs" in summary
+    assert "designated staff contact information" in summary
+    assert len(summary) < len(text)
+    assert "..." not in summary
+
+
+def test_evidence_tags_extract_key_policy_topics():
+    tags = MODULE._evidence_tags(
+        "reasonable accommodation, adverse action",
+        "HACC policy says applicants and participants must be asked in writing about accommodation needs on intake, reexamination, and adverse-action notices. HACC policy says designated staff contact information must be provided for accommodation requests.",
+    )
+
+    assert "reasonable_accommodation" in tags
+    assert "notice" in tags
+    assert "contact" in tags
+    assert "adverse_action" in tags
+
+
 def test_claims_theory_and_markdown_include_structured_sections():
     seed = {
         "description": "Retaliation and grievance complaint anchored to the HACC Administrative Plan.",
@@ -93,6 +139,114 @@ def test_claims_theory_and_markdown_include_structured_sections():
     assert "## Causes Of Action" in markdown
 
 
+def test_policy_basis_leads_with_condensed_summary_and_keeps_full_passage():
+    seed = {
+        "key_facts": {
+            "anchor_passages": [
+                {
+                    "title": "ADMINISTRATIVE PLAN",
+                    "snippet": (
+                        "This responsibility begins with the first contact by an interested family and continues through "
+                        "every aspect of the program. HACC will ask all applicants and participants if they require any "
+                        "type of accommodations in writing, on the intake application, reexamination documents, and "
+                        "notices of adverse action by HACC. A specific name and phone number of designated staff will be "
+                        "provided to process requests for accommodation."
+                    ),
+                    "section_labels": ["reasonable_accommodation", "adverse_action"],
+                }
+            ]
+        }
+    }
+
+    basis = MODULE._policy_basis(seed)
+
+    assert len(basis) == 1
+    assert "supports reasonable accommodation, adverse action:" in basis[0]
+    assert "[reasonable_accommodation, notice" in basis[0]
+    assert "must be asked in writing about accommodation needs" in basis[0]
+    assert "Full passage:" in basis[0]
+    assert "first contact by an interested family" in basis[0]
+
+
+def test_policy_basis_normalizes_acop_accommodation_language():
+    seed = {
+        "key_facts": {
+            "anchor_passages": [
+                {
+                    "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+                    "snippet": (
+                        "Information of the availability of reasonable accommodation will be provided to all families at "
+                        "the time of application. HACC will also ask all applicants and participants if they require any "
+                        "type of accommodations, in writing, on the intake application, reexamination documents, and "
+                        "notices of adverse action by HACC by utilizing the following language: \"If you or anyone in "
+                        "your family is a person with disabilities...\""
+                    ),
+                    "section_labels": ["reasonable_accommodation", "adverse_action"],
+                }
+            ]
+        }
+    }
+
+    basis = MODULE._policy_basis(seed)
+
+    assert "[reasonable_accommodation" in basis[0]
+    assert "reasonable accommodation is available" in basis[0]
+    assert "must be asked in writing about accommodation needs" in basis[0]
+    assert "Full passage:" in basis[0]
+
+
+def test_anchor_passages_lead_with_condensed_summary_and_keep_full_passage():
+    seed = {
+        "key_facts": {
+            "anchor_passages": [
+                {
+                    "title": "ADMINISTRATIVE PLAN",
+                    "snippet": (
+                        "This responsibility begins with the first contact by an interested family and continues through "
+                        "every aspect of the program. HACC will ask all applicants and participants if they require any "
+                        "type of accommodations in writing, on the intake application, reexamination documents, and "
+                        "notices of adverse action by HACC. A specific name and phone number of designated staff will be "
+                        "provided to process requests for accommodation."
+                    ),
+                    "section_labels": ["reasonable_accommodation", "adverse_action"],
+                }
+            ]
+        }
+    }
+
+    lines = MODULE._anchor_passage_lines(seed)
+
+    assert "[reasonable_accommodation, notice" in lines[0]
+    assert "must be asked in writing about accommodation needs" in lines[0]
+    assert "Full passage:" in lines[0]
+    assert "first contact by an interested family" in lines[0]
+
+
+def test_supporting_evidence_leads_with_condensed_summary_and_keeps_source_path():
+    seed = {
+        "hacc_evidence": [
+            {
+                "title": "ADMINISTRATIVE PLAN",
+                "snippet": (
+                    "This responsibility begins with the first contact by an interested family and continues through "
+                    "every aspect of the program. HACC will ask all applicants and participants if they require any "
+                    "type of accommodations in writing, on the intake application, reexamination documents, and "
+                    "notices of adverse action by HACC. A specific name and phone number of designated staff will be "
+                    "provided to process requests for accommodation."
+                ),
+                "source_path": "/tmp/admin-plan.txt",
+            }
+        ]
+    }
+
+    lines = MODULE._evidence_lines(seed)
+
+    assert "[reasonable_accommodation, notice" in lines[0]
+    assert "must be asked in writing about accommodation needs" in lines[0]
+    assert "Full passage:" in lines[0]
+    assert lines[0].endswith("(/tmp/admin-plan.txt)")
+
+
 def test_hud_forum_changes_caption_and_relief():
     seed = {
         "type": "housing_discrimination",
@@ -156,7 +310,8 @@ def test_claims_and_causes_include_protected_basis_theory():
 
     assert any("protected basis concerns related to disability" in item.lower() for item in claims)
     assert any("section 504 of the rehabilitation act" in item.lower() for item in claims)
-    assert any("Protected-Basis Administrative Theory" == cause["title"] for cause in causes)
+    assert any("Section 504 / ADA Accommodation Theory" == cause["title"] for cause in causes)
+    assert any("Section 504 Protected-Basis Administrative Theory" == cause["title"] for cause in causes)
     assert any("Section 504 of the Rehabilitation Act" in cause["theory"] for cause in causes)
     assert theory_summary["authority_hints"] == ["Section 504 of the Rehabilitation Act", "Americans with Disabilities Act"]
 
@@ -179,6 +334,23 @@ def test_authority_hints_are_prioritized_by_forum():
     assert hud_hints[1] == "24 C.F.R. Part 100"
     assert court_hints[0] == "Section 504 of the Rehabilitation Act"
     assert court_hints[1] == "Fair Housing Act reasonable accommodation requirements"
+
+
+def test_dominant_authority_family_prefers_forum_priority_order():
+    hints = [
+        "Section 504 of the Rehabilitation Act",
+        "Fair Housing Act reasonable accommodation requirements",
+        "Americans with Disabilities Act",
+    ]
+
+    assert MODULE._dominant_authority_family(hints, "hud") == "504_fha"
+    assert MODULE._dominant_authority_family(hints, "court") == "504_fha"
+
+    hud_ordered = MODULE._authority_hints_for_forum({"key_facts": {"authority_hints": hints}}, "hud")
+    court_ordered = MODULE._authority_hints_for_forum({"key_facts": {"authority_hints": hints}}, "court")
+
+    assert MODULE._dominant_authority_family(hud_ordered, "hud") == "fha_504"
+    assert MODULE._dominant_authority_family(court_ordered, "court") == "504_fha"
 
 
 def test_hud_proposed_allegations_use_complainant_language():
@@ -238,6 +410,57 @@ def test_hud_markdown_uses_administrative_headings():
     assert "## Administrative Claims" in markdown
     assert "## Complainant Narrative" in markdown
     assert "## Requested Administrative Relief" in markdown
+
+
+def test_markdown_groups_tagged_evidence_sections():
+    package = {
+        "generated_at": "2026-03-15T00:00:00+00:00",
+        "preset": "accommodation_focus",
+        "filing_forum": "hud",
+        "session_id": "session_1",
+        "critic_score": 0.5,
+        "summary": "Summary.",
+        "caption": {
+            "court": "HUD",
+            "case_title": "Administrative Fair Housing Complaint",
+            "document_title": "Draft HUD Housing Discrimination Complaint",
+            "caption_note": "Note",
+        },
+        "parties": {
+            "plaintiff": "Aggrieved person / complainant.",
+            "defendant": "HACC, respondent.",
+        },
+        "jurisdiction_and_venue": ["HUD jurisdiction should be confirmed."],
+        "factual_allegations": ["Fact one."],
+        "claims_theory": ["Theory one."],
+        "policy_basis": [
+            "ADMINISTRATIVE PLAN supports reasonable accommodation, adverse action: [reasonable_accommodation, notice, contact, adverse_action] Summary text. Full passage: Source text.",
+        ],
+        "causes_of_action": [{"title": "Administrative Fair Housing Process Failure", "theory": "Theory", "support": ["Support"]}],
+        "proposed_allegations": ["Complainant alleges conduct arising from X."],
+        "anchor_sections": ["reasonable_accommodation", "adverse_action"],
+        "anchor_passages": [
+            "ADMINISTRATIVE PLAN [reasonable_accommodation, adverse_action]: [reasonable_accommodation, notice, contact, adverse_action] Summary text. Full passage: Source text.",
+        ],
+        "supporting_evidence": [
+            "ADMINISTRATIVE PLAN: [reasonable_accommodation, notice, contact, adverse_action] Summary text. Full passage: Source text. (/tmp/source.txt)",
+        ],
+        "requested_relief": ["Administrative investigation."],
+    }
+
+    markdown = MODULE._render_markdown(package)
+
+    assert "## Administrative Basis" in markdown
+    assert "These policy excerpts frame the accommodation theory" in markdown
+    assert "## Anchor Passages" in markdown
+    assert "### Accommodation" in markdown
+    assert "### Notice" in markdown
+    assert "These passages support the accommodation theory" in markdown
+    assert "See also ADMINISTRATIVE PLAN [reasonable_accommodation, adverse_action] under Accommodation." in markdown
+    assert "## Supporting Evidence" in markdown
+    assert "These materials support the notice theory" in markdown
+    assert markdown.count("### Accommodation") >= 2
+    assert markdown.count("### Notice") >= 2
 
 
 def test_summarize_timeline_fact_condenses_numbered_intake_timeline():
@@ -328,3 +551,29 @@ def test_proposed_allegations_summarize_intake_transcript():
     assert any("retaliation" in item.lower() for item in intake_items)
     assert any("written notice" in item.lower() for item in intake_items)
     assert all(len(item) < 260 for item in intake_items)
+
+
+def test_summary_and_narrative_use_condensed_policy_excerpt():
+    seed = {
+        "description": "Reasonable-accommodation complaint anchored to HACC policy language.",
+        "key_facts": {
+            "incident_summary": "Reasonable-accommodation complaint anchored to HACC policy language.",
+            "evidence_summary": (
+                "This responsibility begins with the first contact by an interested family and continues through every "
+                "aspect of the program. HACC will ask all applicants and participants if they require any type of "
+                "accommodations in writing, on the intake application, reexamination documents, and notices of adverse "
+                "action by HACC. A specific name and phone number of designated staff will be provided to process "
+                "requests for accommodation."
+            ),
+            "anchor_sections": ["reasonable_accommodation"],
+        },
+    }
+    session = {"conversation_history": []}
+
+    summary = MODULE._summarize_policy_excerpt(seed["key_facts"]["evidence_summary"])
+    allegations = MODULE._proposed_allegations(seed, session, "hud")
+
+    assert "first contact by an interested family" not in summary
+    assert "must be asked in writing about accommodation needs" in summary
+    assert any("must be asked in writing about accommodation needs" in item for item in allegations)
+    assert not any("first contact by an interested family" in item for item in allegations)

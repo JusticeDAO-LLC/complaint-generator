@@ -1,0 +1,84 @@
+--- a/mediator/inquiries.py
++++ b/mediator/inquiries.py
+@@ -2,17 +2,20 @@
+ 
+ from . import strings
+ 
+-
+ _QUESTION_RE = re.compile(r"[^?\n]+?\?")
+ _WS_RE = re.compile(r"\s+")
++_INVALID_CHARS_RE = re.compile(r"[^a-z0-9 ]+")
+ 
+ 
+ class Inquiries:
+ 	def __init__(self, mediator):
+ 		self.m = mediator
+ 
++	def _inquiries(self):
++		return getattr(self.m.state, "inquiries", None)
++
+ 	def get_next(self):
+-		inquiries = getattr(self.m.state, "inquiries", None)
++		inquiries = self._inquiries()
+ 		if not inquiries:
+ 			return None
+ 		for inquiry in inquiries:
+@@ -43,27 +46,33 @@
+ 	def register(self, question):
+ 		if not question:
+ 			return
+-		inquiries = self.m.state.inquiries
++		inquiries = self._inquiries()
++		if inquiries is None:
++			return
++		normalized = self._normalize_question(question)
++		if not normalized:
++			return
+ 		for other in inquiries:
+-			if self.same_question(question, other.get("question", "")):
++			if self._normalize_entry(other) == normalized:
+ 				other.setdefault("alternative_questions", []).append(question)
+ 				return
+ 		inquiries.append({
+ 			"question": question,
+ 			"alternative_questions": [],
+ 			"answer": None,
++			"_normalized_question": normalized,
+ 		})
+ 
+ 	def _extract_questions(self, block):
+ 		questions = []
+-		for match in _QUESTION_RE.findall(block):
+-			question = _WS_RE.sub(" ", match).strip()
+-			if question:
+-				questions.append(question)
++		for match in _QUESTION_RE.finditer(block):
++			clean = _WS_RE.sub(" ", match.group()).strip()
++			if clean:
++				questions.append(clean)
+ 		return questions
+ 
+ 	def is_complete(self):
+-		inquiries = getattr(self.m.state, "inquiries", None)
++		inquiries = self._inquiries()
+ 		if not inquiries:
+ 			return True
+ 		for inquiry in inquiries:
+@@ -76,8 +85,15 @@
+ 			return False
+ 		return self._normalize_question(a) == self._normalize_question(b)
+ 
++	def _normalize_entry(self, inquiry):
++		normalized = inquiry.get("_normalized_question")
++		if normalized is None:
++			normalized = self._normalize_question(inquiry.get("question", ""))
++			inquiry["_normalized_question"] = normalized
++		return normalized
++
+ 	def _normalize_question(self, text):
+-		normalized = text.strip().rstrip("?").lower()
++		normalized = str(text or "").strip().rstrip("?").lower()
+ 		normalized = _WS_RE.sub(" ", normalized)
+-		normalized = re.sub(r"[^a-z0-9 ]+", "", normalized)
++		normalized = _INVALID_CHARS_RE.sub("", normalized)
+ 		return normalized.strip()

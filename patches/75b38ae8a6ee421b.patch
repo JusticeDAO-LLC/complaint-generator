@@ -1,0 +1,279 @@
+--- a/complaint_phases/denoiser.py
++++ b/complaint_phases/denoiser.py
+@@ -1379,13 +1379,13 @@
+                       dependency_graph: Optional[DependencyGraph] = None) -> Dict[str, Any]:
+         """
+         Process an answer to a denoising question.
+-        
++
+         Args:
+             question: The question that was asked
+             answer: The user's answer
+             knowledge_graph: Knowledge graph to update
+             dependency_graph: Optional dependency graph to update
+-            
++
+         Returns:
+             Information about what was updated
+         """
+@@ -1393,81 +1393,31 @@
+             'question': question,
+             'answer': answer
+         })
+-        
++
+         updates = {
+             'entities_updated': 0,
+             'relationships_added': 0,
+             'requirements_satisfied': 0
+         }
+-        
++
+         question_type = question.get('type')
+         context = question.get('context', {})
+-        
+-        if question_type == 'clarification':
+-            # Update entity with clarified information
+-            entity_id = context.get('entity_id')
+-            entity = knowledge_graph.get_entity(entity_id)
+-            if entity:
+-                entity.confidence = min(1.0, entity.confidence + 0.2)
+-                entity.attributes['clarification'] = answer
+-                updates['entities_updated'] += 1
+-        
+-        elif question_type == 'relationship':
+-            # Extract relationships from answer (simplified)
+-            # In production, use LLM to extract structured relationships
+-            entity_id = context.get('entity_id')
+-            if entity_id and len(answer) > 10:
+-                # Mark entity as having relationships described
+-                entity = knowledge_graph.get_entity(entity_id)
+-                if entity:
+-                    entity.attributes['relationship_described'] = True
+-                    updates['entities_updated'] += 1
+-            updates = self._update_responsible_parties_from_answer(answer, knowledge_graph, updates)
+-
+-        elif question_type == 'responsible_party':
+-            updates = self._update_responsible_parties_from_answer(answer, knowledge_graph, updates)
+-        
+-        elif question_type == 'evidence':
+-            # Track evidence description
+-            claim_id = context.get('claim_id')
+-            entity = knowledge_graph.get_entity(claim_id)
+-            if entity:
+-                if 'evidence_descriptions' not in entity.attributes:
+-                    entity.attributes['evidence_descriptions'] = []
+-                entity.attributes['evidence_descriptions'].append(answer)
+-                updates['entities_updated'] += 1
+-            if not claim_id:
+-                claims = knowledge_graph.get_entities_by_type('claim')
+-                if len(claims) == 1:
+-                    claim_id = claims[0].id
+-            if claim_id and len(answer) > 10:
+-                snippet = self._short_description(answer, 120)
+-                evidence_name = f"Evidence: {self._short_description(answer, 80)}"
+-                evidence_entity, created = self._add_entity_if_missing(
+-                    knowledge_graph,
+-                    'evidence',
+-                    evidence_name,
+-                    {'description': snippet},
+-                    0.6
+-                )
+-                if created:
+-                    updates['entities_updated'] += 1
+-                if evidence_entity:
+-                    _, rel_created = self._add_relationship_if_missing(
+-                        knowledge_graph,
+-                        claim_id,
+-                        evidence_entity.id,
+-                        'supported_by',
+-                        0.6
+-                    )
+-                    if rel_created:
+-                        updates['relationships_added'] += 1
+-
+-        elif question_type == 'timeline':
+-            dates = self._extract_date_strings(answer)
++        answer_text = str(answer or '').strip()
++        timeline_enrichment_types = {'clarification', 'evidence', 'impact', 'relationship', 'remedy', 'requirement', 'responsible_party', 'timeline'}
++        responsible_party_enrichment_types = {'clarification', 'evidence', 'relationship', 'requirement', 'responsible_party', 'timeline'}
++        fallback_timeline_fact_types = {'clarification', 'evidence', 'relationship', 'requirement', 'responsible_party', 'timeline'}
++
++        def _single_claim_id() -> Optional[str]:
++            claims = knowledge_graph.get_entities_by_type('claim')
++            return claims[0].id if len(claims) == 1 else None
++
++        def _apply_timeline_enrichment() -> None:
++            nonlocal updates
++            if question_type not in timeline_enrichment_types or not answer_text:
++                return
++            claim_id = _single_claim_id()
++            dates = self._extract_date_strings(answer_text)
+             if dates:
+-                claims = knowledge_graph.get_entities_by_type('claim')
+-                claim_id = claims[0].id if len(claims) == 1 else None
+                 for date_str in dates:
+                     date_entity, created = self._add_entity_if_missing(
+                         knowledge_graph,
+@@ -1488,43 +1438,98 @@
+                         )
+                         if rel_created:
+                             updates['relationships_added'] += 1
+-            elif answer and answer.strip():
+-                claims = knowledge_graph.get_entities_by_type('claim')
+-                claim_id = claims[0].id if len(claims) == 1 else None
+-                snippet = self._short_description(answer, 120)
+-                fact_name = f"Timeline detail: {self._short_description(answer, 60)}"
+-                fact_entity, created = self._add_entity_if_missing(
++                return
++            if question_type not in fallback_timeline_fact_types:
++                return
++            claim_id = _single_claim_id()
++            snippet = self._short_description(answer_text, 120)
++            fact_name = f"Timeline detail: {self._short_description(answer_text, 60)}"
++            fact_entity, created = self._add_entity_if_missing(
++                knowledge_graph,
++                'fact',
++                fact_name,
++                {'fact_type': 'timeline', 'description': snippet},
++                0.6
++            )
++            if created:
++                updates['entities_updated'] += 1
++            if claim_id and fact_entity:
++                _, rel_created = self._add_relationship_if_missing(
+                     knowledge_graph,
+-                    'fact',
+-                    fact_name,
+-                    {'fact_type': 'timeline', 'description': snippet},
++                    claim_id,
++                    fact_entity.id,
++                    'has_timeline_detail',
++                    0.6
++                )
++                if rel_created:
++                    updates['relationships_added'] += 1
++
++        if question_type == 'clarification':
++            entity_id = context.get('entity_id')
++            entity = knowledge_graph.get_entity(entity_id)
++            if entity:
++                entity.confidence = min(1.0, entity.confidence + 0.2)
++                entity.attributes['clarification'] = answer
++                updates['entities_updated'] += 1
++
++        elif question_type == 'relationship':
++            entity_id = context.get('entity_id')
++            if entity_id and len(answer_text) > 10:
++                entity = knowledge_graph.get_entity(entity_id)
++                if entity:
++                    entity.attributes['relationship_described'] = True
++                    updates['entities_updated'] += 1
++
++        elif question_type == 'responsible_party':
++            pass
++
++        elif question_type == 'evidence':
++            claim_id = context.get('claim_id')
++            entity = knowledge_graph.get_entity(claim_id)
++            if entity:
++                if 'evidence_descriptions' not in entity.attributes:
++                    entity.attributes['evidence_descriptions'] = []
++                entity.attributes['evidence_descriptions'].append(answer)
++                updates['entities_updated'] += 1
++            if not claim_id:
++                claim_id = _single_claim_id()
++            if claim_id and len(answer_text) > 10:
++                snippet = self._short_description(answer_text, 120)
++                evidence_name = f"Evidence: {self._short_description(answer_text, 80)}"
++                evidence_entity, created = self._add_entity_if_missing(
++                    knowledge_graph,
++                    'evidence',
++                    evidence_name,
++                    {'description': snippet},
+                     0.6
+                 )
+                 if created:
+                     updates['entities_updated'] += 1
+-                if claim_id and fact_entity:
++                if evidence_entity:
+                     _, rel_created = self._add_relationship_if_missing(
+                         knowledge_graph,
+                         claim_id,
+-                        fact_entity.id,
+-                        'has_timeline_detail',
++                        evidence_entity.id,
++                        'supported_by',
+                         0.6
+                     )
+                     if rel_created:
+                         updates['relationships_added'] += 1
+ 
++        elif question_type == 'timeline':
++            pass
++
+         elif question_type in {'impact', 'remedy'}:
+-            if answer and answer.strip():
+-                claims = knowledge_graph.get_entities_by_type('claim')
+-                claim_id = claims[0].id if len(claims) == 1 else None
+-                snippet = self._short_description(answer, 120)
++            if answer_text:
++                claim_id = _single_claim_id()
++                snippet = self._short_description(answer_text, 120)
+                 if question_type == 'remedy':
+                     fact_type = 'remedy'
+-                    fact_name = f"Requested remedy: {self._short_description(answer, 60)}"
++                    fact_name = f"Requested remedy: {self._short_description(answer_text, 60)}"
+                     rel_type = 'seeks_remedy'
+                 else:
+                     fact_type = 'impact'
+-                    fact_name = f"Impact: {self._short_description(answer, 60)}"
++                    fact_name = f"Impact: {self._short_description(answer_text, 60)}"
+                     rel_type = 'has_impact'
+                 fact_entity, created = self._add_entity_if_missing(
+                     knowledge_graph,
+@@ -1545,8 +1550,8 @@
+                     )
+                     if rel_created:
+                         updates['relationships_added'] += 1
+-                if question_type == 'impact' and self._contains_remedy_cue(answer):
+-                    remedy_name = f"Requested remedy: {self._short_description(answer, 60)}"
++                if question_type == 'impact' and self._contains_remedy_cue(answer_text):
++                    remedy_name = f"Requested remedy: {self._short_description(answer_text, 60)}"
+                     remedy_entity, remedy_created = self._add_entity_if_missing(
+                         knowledge_graph,
+                         'fact',
+@@ -1566,24 +1571,27 @@
+                         )
+                         if rel_created:
+                             updates['relationships_added'] += 1
+-        
++
+         elif question_type == 'requirement':
+-            # Mark requirement as addressed
+             if dependency_graph:
+                 req_id = context.get('requirement_id')
+                 req_node = dependency_graph.get_node(req_id)
+-                if req_node and len(answer) > 10:
++                if req_node and len(answer_text) > 10:
+                     req_node.satisfied = True
+                     req_node.confidence = 0.7
+                     updates['requirements_satisfied'] += 1
+-        
++
++        if question_type in responsible_party_enrichment_types and answer_text:
++            updates = self._update_responsible_parties_from_answer(answer_text, knowledge_graph, updates)
++
++        if question_type in timeline_enrichment_types and answer_text:
++            _apply_timeline_enrichment()
++
+         logger.info(f"Processed answer: {updates}")
+ 
+-        # Update momentum from observed “gain”.
+         try:
+             gain = self._compute_gain(updates)
+             self._recent_gains.append(gain)
+-            # Cap memory.
+             if len(self._recent_gains) > 50:
+                 self._recent_gains = self._recent_gains[-50:]
+             qtype = question.get('type') if isinstance(question, dict) else 'unknown'

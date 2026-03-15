@@ -1,0 +1,149 @@
+--- a/mediator/inquiries.py
++++ b/mediator/inquiries.py
+@@ -1,5 +1,6 @@
+ import re
+ from functools import lru_cache
++from typing import Any, Dict, List, Optional, Tuple
+ 
+ from . import strings
+ 
+@@ -7,11 +8,13 @@
+ _QUESTION_RE = re.compile(r"[^?\n]+?\?")
+ _WS_RE = re.compile(r"\s+")
+ _NORMALIZE_RE = re.compile(r"[^a-z0-9 ]+")
++_LIST_PREFIX_RE = re.compile(r"^\s*(?:\d+\s*[.)]|[-*•])\s+")
+ 
+ 
+-@lru_cache(maxsize=1024)
++@lru_cache(maxsize=2048)
+ def _normalize_question_cached(text: str) -> str:
+ 	normalized = text.strip().rstrip("?").lower()
++	normalized = _LIST_PREFIX_RE.sub("", normalized, count=1)
+ 	normalized = _WS_RE.sub(" ", normalized)
+ 	normalized = _NORMALIZE_RE.sub("", normalized)
+ 	return normalized.strip()
+@@ -20,6 +23,8 @@
+ class Inquiries:
+ 	def __init__(self, mediator):
+ 		self.m = mediator
++		self._index: Optional[Dict[str, Dict[str, Any]]] = None
++		self._index_signature: Tuple[int, int] = (0, 0)
+ 
+ 	@staticmethod
+ 	def _find_unanswered(inquiries):
+@@ -30,6 +35,16 @@
+ 
+ 	def _state_inquiries(self):
+ 		return getattr(self.m.state, "inquiries", None)
++
++	def _index_key(self, inquiries) -> Tuple[int, int]:
++		return (id(inquiries), len(inquiries))
++
++	def _index_for(self, inquiries) -> Dict[str, Dict[str, Any]]:
++		signature = self._index_key(inquiries)
++		if self._index is None or self._index_signature != signature:
++			self._index = self._build_index(inquiries)
++			self._index_signature = signature
++		return self._index
+ 
+ 	def get_next(self):
+ 		inquiries = self._state_inquiries()
+@@ -48,15 +63,15 @@
+ 		if not template:
+ 			return
+ 
+-		block = self.m.query_backend(
+-			template.format(complaint=self.m.state.complaint)
+-		)
++		inquiries = self._state_inquiries()
++		if inquiries is None:
++			return
++
++		block = self.m.query_backend(template.format(complaint=self.m.state.complaint))
+ 		if not block:
+ 			return
+ 
+-		inquiries = self.m.state.inquiries
+-		index = self._build_index(inquiries)
+-
++		index = self._index_for(inquiries)
+ 		for question in self._extract_questions(block):
+ 			self._register(question, inquiries, index)
+ 
+@@ -64,8 +79,11 @@
+ 		if not question:
+ 			return
+ 
+-		inquiries = self.m.state.inquiries
+-		index = self._build_index(inquiries)
++		inquiries = self._state_inquiries()
++		if inquiries is None:
++			return
++
++		index = self._index_for(inquiries)
+ 		self._register(question, inquiries, index)
+ 
+ 	def _register(self, question, inquiries, index):
+@@ -81,24 +99,55 @@
+ 			"answer": None,
+ 		}
+ 		inquiries.append(inquiry)
+-		index.setdefault(normalized, inquiry)
++		index[normalized] = inquiry
++		self._index_signature = (id(inquiries), len(inquiries))
+ 
+ 	def _build_index(self, inquiries):
+-		index = {}
++		index: Dict[str, Dict[str, Any]] = {}
+ 		for inquiry in inquiries:
+-			question = inquiry.get("question", "")
++			question = inquiry.get("question")
+ 			if not question:
+ 				continue
++
+ 			normalized = self._normalize_question(question)
+-			index.setdefault(normalized, inquiry)
++			if normalized not in index:
++				index[normalized] = inquiry
+ 		return index
+ 
++	@staticmethod
++	def _trim_question_prefix(text: str) -> str:
++		return _LIST_PREFIX_RE.sub("", text, count=1).strip()
++
++	@classmethod
++	def _clean_question(cls, raw_question: str) -> str:
++		question = cls._trim_question_prefix(raw_question)
++		question = _WS_RE.sub(" ", question).strip()
++		if not question:
++			return ""
++		return question
++
+ 	def _extract_questions(self, block):
+-		questions = []
+-		for match in _QUESTION_RE.finditer(block):
+-			question = _WS_RE.sub(" ", match.group(0)).strip()
++		text = str(block)
++		questions: List[str] = []
++
++		for match in _QUESTION_RE.finditer(text):
++			question = self._clean_question(match.group(0))
+ 			if question:
+ 				questions.append(question)
++
++		if questions:
++			return questions
++
++		for line in text.splitlines():
++			line = line.strip()
++			if not line or "?" not in line:
++				continue
++
++			for match in _QUESTION_RE.finditer(line):
++				question = self._clean_question(match.group(0))
++				if question:
++					questions.append(question)
++
+ 		return questions
+ 
+ 	def is_complete(self):

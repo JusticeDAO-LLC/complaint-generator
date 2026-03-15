@@ -1,24 +1,56 @@
 import re
+from functools import lru_cache
+from typing import Any, Dict, List, Optional, Tuple
 
 from . import strings
 
 
 _QUESTION_RE = re.compile(r"[^?\n]+?\?")
 _WS_RE = re.compile(r"\s+")
+_NORMALIZE_RE = re.compile(r"[^a-z0-9 ]+")
+_LIST_PREFIX_RE = re.compile(r"^\s*(?:\d+\s*[.)]|[-*•])\s+")
+
+
+@lru_cache(maxsize=2048)
+def _normalize_question_cached(text: str) -> str:
+	normalized = text.strip().rstrip("?").lower()
+	normalized = _LIST_PREFIX_RE.sub("", normalized, count=1)
+	normalized = _WS_RE.sub(" ", normalized)
+	normalized = _NORMALIZE_RE.sub("", normalized)
+	return normalized.strip()
 
 
 class Inquiries:
 	def __init__(self, mediator):
 		self.m = mediator
+		self._index: Optional[Dict[str, Dict[str, Any]]] = None
+		self._index_signature: Tuple[int, int] = (0, 0)
 
-	def get_next(self):
-		inquiries = getattr(self.m.state, "inquiries", None)
-		if not inquiries:
-			return None
+	@staticmethod
+	def _find_unanswered(inquiries):
 		for inquiry in inquiries:
 			if not inquiry.get("answer"):
 				return inquiry
 		return None
+
+	def _state_inquiries(self):
+		return getattr(self.m.state, "inquiries", None)
+
+	def _index_key(self, inquiries) -> Tuple[int, int]:
+		return (id(inquiries), len(inquiries))
+
+	def _index_for(self, inquiries) -> Dict[str, Dict[str, Any]]:
+		signature = self._index_key(inquiries)
+		if self._index is None or self._index_signature != signature:
+			self._index = self._build_index(inquiries)
+			self._index_signature = signature
+		return self._index
+
+	def get_next(self):
+		inquiries = self._state_inquiries()
+		if not inquiries:
+			return None
+		return self._find_unanswered(inquiries)
 
 	def answer(self, text):
 		current = self.get_next()
@@ -31,45 +63,98 @@ class Inquiries:
 		if not template:
 			return
 
-		block = self.m.query_backend(
-			template.format(complaint=self.m.state.complaint)
-		)
+		inquiries = self._state_inquiries()
+		if inquiries is None:
+			return
+
+		block = self.m.query_backend(template.format(complaint=self.m.state.complaint))
 		if not block:
 			return
 
+		index = self._index_for(inquiries)
 		for question in self._extract_questions(block):
-			self.register(question)
+			self._register(question, inquiries, index)
 
 	def register(self, question):
 		if not question:
 			return
-		inquiries = self.m.state.inquiries
-		for other in inquiries:
-			if self.same_question(question, other.get("question", "")):
-				other.setdefault("alternative_questions", []).append(question)
-				return
-		inquiries.append({
+
+		inquiries = self._state_inquiries()
+		if inquiries is None:
+			return
+
+		index = self._index_for(inquiries)
+		self._register(question, inquiries, index)
+
+	def _register(self, question, inquiries, index):
+		normalized = self._normalize_question(question)
+		existing = index.get(normalized)
+		if existing is not None:
+			existing.setdefault("alternative_questions", []).append(question)
+			return
+
+		inquiry = {
 			"question": question,
 			"alternative_questions": [],
 			"answer": None,
-		})
+		}
+		inquiries.append(inquiry)
+		index[normalized] = inquiry
+		self._index_signature = (id(inquiries), len(inquiries))
+
+	def _build_index(self, inquiries):
+		index: Dict[str, Dict[str, Any]] = {}
+		for inquiry in inquiries:
+			question = inquiry.get("question")
+			if not question:
+				continue
+
+			normalized = self._normalize_question(question)
+			if normalized not in index:
+				index[normalized] = inquiry
+		return index
+
+	@staticmethod
+	def _trim_question_prefix(text: str) -> str:
+		return _LIST_PREFIX_RE.sub("", text, count=1).strip()
+
+	@classmethod
+	def _clean_question(cls, raw_question: str) -> str:
+		question = cls._trim_question_prefix(raw_question)
+		question = _WS_RE.sub(" ", question).strip()
+		if not question:
+			return ""
+		return question
 
 	def _extract_questions(self, block):
-		questions = []
-		for match in _QUESTION_RE.findall(block):
-			question = _WS_RE.sub(" ", match).strip()
+		text = str(block)
+		questions: List[str] = []
+
+		for match in _QUESTION_RE.finditer(text):
+			question = self._clean_question(match.group(0))
 			if question:
 				questions.append(question)
+
+		if questions:
+			return questions
+
+		for line in text.splitlines():
+			line = line.strip()
+			if not line or "?" not in line:
+				continue
+
+			for match in _QUESTION_RE.finditer(line):
+				question = self._clean_question(match.group(0))
+				if question:
+					questions.append(question)
+
 		return questions
 
 	def is_complete(self):
-		inquiries = getattr(self.m.state, "inquiries", None)
+		inquiries = self._state_inquiries()
 		if not inquiries:
 			return True
-		for inquiry in inquiries:
-			if not inquiry.get("answer"):
-				return False
-		return True
+		return self._find_unanswered(inquiries) is None
 
 	def same_question(self, a, b):
 		if not a or not b:
@@ -77,7 +162,4 @@ class Inquiries:
 		return self._normalize_question(a) == self._normalize_question(b)
 
 	def _normalize_question(self, text):
-		normalized = text.strip().rstrip("?").lower()
-		normalized = _WS_RE.sub(" ", normalized)
-		normalized = re.sub(r"[^a-z0-9 ]+", "", normalized)
-		return normalized.strip()
+		return _normalize_question_cached(text)

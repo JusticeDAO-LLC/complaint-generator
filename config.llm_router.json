@@ -11,7 +11,7 @@
             "id": "llm-router-codex",
             "type": "llm_router",
             "provider": "codex_cli",
-            "model": "gpt-5.2-codex",
+            "model": "gpt-5.3-codex-spark",
             "max_tokens": 128
         },
         {

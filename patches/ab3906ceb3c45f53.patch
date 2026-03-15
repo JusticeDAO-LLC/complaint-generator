@@ -1,0 +1,94 @@
+--- a/mediator/inquiries.py
++++ b/mediator/inquiries.py
+@@ -5,6 +5,11 @@
+ 
+ _QUESTION_RE = re.compile(r"[^?\n]+?\?")
+ _WS_RE = re.compile(r"\s+")
++_NON_ALNUM_RE = re.compile(r"[^a-z0-9 ]+")
++_LEADING_MARKERS_RE = re.compile(
++	r"^(?:\s*(?:[-*•]|\d+[\.)]|(?:q|question)\s*[:\-])\s*)+",
++	re.IGNORECASE,
++)
+ 
+ 
+ class Inquiries:
+@@ -31,8 +36,9 @@
+ 		if not template:
+ 			return
+ 
++		complaint = self.m.state.complaint
+ 		block = self.m.query_backend(
+-			template.format(complaint=self.m.state.complaint)
++			template.format(complaint=complaint)
+ 		)
+ 		if not block:
+ 			return
+@@ -43,24 +49,57 @@
+ 	def register(self, question):
+ 		if not question:
+ 			return
++		normalized = self._normalize_question(question)
++		if not normalized:
++			return
+ 		inquiries = self.m.state.inquiries
+ 		for other in inquiries:
+-			if self.same_question(question, other.get("question", "")):
+-				other.setdefault("alternative_questions", []).append(question)
++			other_norm = other.get("_normalized_question")
++			if not other_norm:
++				other_norm = self._normalize_question(other.get("question", ""))
++				if other_norm:
++					other["_normalized_question"] = other_norm
++			if normalized == other_norm:
++				alternatives = other.setdefault("alternative_questions", [])
++				if question != other.get("question") and not self._question_in_list(question, alternatives):
++					alternatives.append(question)
+ 				return
+ 		inquiries.append({
+ 			"question": question,
+ 			"alternative_questions": [],
+ 			"answer": None,
++			"_normalized_question": normalized,
+ 		})
+ 
+ 	def _extract_questions(self, block):
+ 		questions = []
+-		for match in _QUESTION_RE.findall(block):
+-			question = _WS_RE.sub(" ", match).strip()
++		for match in _QUESTION_RE.finditer(block):
++			question = self._clean_question(match.group(0))
+ 			if question:
+ 				questions.append(question)
+ 		return questions
++
++	def _clean_question(self, text):
++		question = _WS_RE.sub(" ", text).strip()
++		if not question:
++			return ""
++		question = _LEADING_MARKERS_RE.sub("", question).strip()
++		if not question:
++			return ""
++		if question[-1] != "?":
++			question = f"{question}?"
++		return question
++
++	def _question_in_list(self, question, questions):
++		if not questions:
++			return False
++		normalized = self._normalize_question(question)
++		if not normalized:
++			return False
++		for existing in questions:
++			if normalized == self._normalize_question(existing):
++				return True
++		return False
+ 
+ 	def is_complete(self):
+ 		inquiries = getattr(self.m.state, "inquiries", None)
+@@ -79,5 +118,5 @@
+ 	def _normalize_question(self, text):
+ 		normalized = text.strip().rstrip("?").lower()
+ 		normalized = _WS_RE.sub(" ", normalized)
+-		normalized = re.sub(r"[^a-z0-9 ]+", "", normalized)
++		normalized = _NON_ALNUM_RE.sub("", normalized)
+ 		return normalized.strip()

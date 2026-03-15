@@ -82,6 +82,8 @@ def _clean_policy_text(text: Any) -> str:
     cleaned = re.sub(r"^The strongest supporting material is '([^']+)'\.\s*", "", cleaned)
     cleaned = re.sub(r"^For this question, the strongest supporting material is '([^']+)'\.\s*", "", cleaned)
     cleaned = re.sub(r"^HACC Policy\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bHACC Policy\b(?=\s+HACC\b)\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
     return cleaned.strip()
 
 
@@ -90,6 +92,97 @@ def _to_sentence(text: Any) -> str:
     if not cleaned:
         return ""
     return cleaned if cleaned.endswith(".") else f"{cleaned}."
+
+
+def _summarize_policy_excerpt(text: Any, max_sentences: int = 2, max_chars: int = 360) -> str:
+    cleaned = _clean_policy_text(text)
+    if not cleaned:
+        return ""
+
+    clause_hits: List[str] = []
+    normalized_clauses = (
+        (
+            r"Information of the availability of reasonable accommodation will be provided to all families at the time of application",
+            "HACC policy says applicants must be informed at application that reasonable accommodation is available.",
+        ),
+        (
+            r"HACC will ask all applicants and participants if they require any type of accommodations in writing",
+            "HACC policy says applicants and participants must be asked in writing about accommodation needs on intake, reexamination, and adverse-action notices.",
+        ),
+        (
+            r"HACC will also ask all applicants and participants if they require any type of accommodations, in writing",
+            "HACC policy says applicants and participants must be asked in writing about accommodation needs on intake, reexamination, and adverse-action notices.",
+        ),
+        (
+            r"A specific name and phone number of designated staff will be provided to process requests for accommodation",
+            "HACC policy says designated staff contact information must be provided for accommodation requests.",
+        ),
+        (
+            r"Written notice",
+            None,
+        ),
+        (
+            r"informal review or hearing",
+            None,
+        ),
+        (
+            r"review decision",
+            None,
+        ),
+    )
+    for pattern, replacement in normalized_clauses:
+        match = re.search(pattern, cleaned, flags=re.IGNORECASE)
+        if not match:
+            continue
+        clause = replacement
+        if clause is None:
+            sentence_match = re.search(rf"([^.]*{pattern}[^.]*\.)", cleaned, flags=re.IGNORECASE)
+            clause = " ".join(sentence_match.group(1).split()).strip() if sentence_match else ""
+        if clause and clause not in clause_hits:
+            clause_hits.append(clause)
+        if len(clause_hits) >= max_sentences:
+            break
+    if clause_hits:
+        summary = " ".join(clause_hits[:max_sentences]).strip()
+        if len(summary) > max_chars:
+            summary = summary[: max_chars - 3].rstrip(" ,;:.") + "..."
+        return summary
+
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", cleaned) if part.strip()]
+    if not sentences:
+        return cleaned[:max_chars].rstrip() + ("..." if len(cleaned) > max_chars else "")
+
+    priority_patterns = (
+        "written notice",
+        "informal review",
+        "informal hearing",
+        "hearing",
+        "review decision",
+        "adverse action",
+        "termination",
+        "reasonable accommodation",
+        "accommodation",
+        "disabilities",
+        "appeal",
+        "grievance",
+    )
+    selected: List[str] = []
+    for sentence in sentences:
+        lowered = sentence.lower()
+        if any(pattern in lowered for pattern in priority_patterns):
+            selected.append(sentence.rstrip("."))
+        if len(selected) >= max_sentences:
+            break
+
+    if not selected:
+        selected = [sentence.rstrip(".") for sentence in sentences[:max_sentences]]
+
+    summary = ". ".join(selected).strip(" .")
+    if summary and not summary.endswith("."):
+        summary += "."
+    if len(summary) > max_chars:
+        summary = summary[: max_chars - 3].rstrip(" ,;:.") + "..."
+    return summary
 
 
 def _humanize_section(label: str) -> str:
@@ -226,6 +319,144 @@ def _dedupe_sentences(items: List[str], limit: int) -> List[str]:
     return deduped
 
 
+def _evidence_tags(*texts: Any, limit: int = 4) -> List[str]:
+    combined = " ".join(str(text or "") for text in texts).lower()
+    tag_patterns = (
+        ("reasonable_accommodation", ("reasonable accommodation", "accommodation", "disabilities")),
+        ("notice", ("written notice", "notice of adverse action", "adverse action notice", "notice")),
+        ("contact", ("contact person", "contact information", "phone number", "designated staff")),
+        ("hearing", ("informal hearing", "informal review", "hearing", "review decision", "appeal", "grievance")),
+        ("adverse_action", ("adverse action", "termination", "denial")),
+        ("selection_criteria", ("selection criteria", "criteria", "preferences", "eligibility")),
+    )
+    tags: List[str] = []
+    for tag, patterns in tag_patterns:
+        if any(pattern in combined for pattern in patterns):
+            tags.append(tag)
+        if len(tags) >= limit:
+            break
+    return tags
+
+
+def _extract_tags_from_line(line: str) -> List[str]:
+    match = re.search(r": \[([^\]]+)\] ", str(line or ""))
+    if not match:
+        return []
+    return [part.strip() for part in match.group(1).split(",") if part.strip()]
+
+
+def _tag_heading(tag: str) -> str:
+    mapping = {
+        "reasonable_accommodation": "Accommodation",
+        "notice": "Notice",
+        "contact": "Contact",
+        "hearing": "Hearing",
+        "adverse_action": "Adverse Action",
+        "selection_criteria": "Selection Criteria",
+    }
+    return mapping.get(tag, _humanize_section(tag).title())
+
+
+def _tag_intro(heading: str, section_kind: str) -> str:
+    intro_map = {
+        "Accommodation": {
+            "basis": "These policy excerpts frame the accommodation theory and summarize what HACC policy appears to require on accommodations.",
+            "anchor": "These passages support the accommodation theory and show what HACC policy says should have been provided or evaluated.",
+            "supporting": "These materials support the accommodation theory and identify the policy language tied to accommodation duties.",
+        },
+        "Notice": {
+            "basis": "These policy excerpts frame the notice theory and summarize what HACC policy appears to require for written notice or adverse-action disclosures.",
+            "anchor": "These passages support the notice theory and show what written notice or adverse-action disclosures HACC policy appears to require.",
+            "supporting": "These materials support the notice theory and identify policy language about written notice and adverse-action disclosures.",
+        },
+        "Contact": {
+            "basis": "These policy excerpts frame the contact-information theory and summarize what HACC policy appears to require for staff contacts.",
+            "anchor": "These passages support the contact-information theory and show what staff contact details HACC policy appears to require.",
+            "supporting": "These materials support the contact-information theory and identify policy language about designated staff contacts.",
+        },
+        "Hearing": {
+            "basis": "These policy excerpts frame the hearing theory and summarize what HACC policy appears to require for reviews, grievances, or hearings.",
+            "anchor": "These passages support the hearing theory and show what review, grievance, or hearing protections HACC policy appears to require.",
+            "supporting": "These materials support the hearing theory and identify policy language about reviews, grievances, and hearings.",
+        },
+        "Adverse Action": {
+            "basis": "These policy excerpts frame the adverse-action theory and summarize what HACC policy appears to require before denial or termination.",
+            "anchor": "These passages support the adverse-action theory and show what process HACC policy appears to require before denial or termination.",
+            "supporting": "These materials support the adverse-action theory and identify policy language tied to denial or termination procedures.",
+        },
+        "Selection Criteria": {
+            "basis": "These policy excerpts frame the selection-criteria theory and summarize what HACC policy appears to require for criteria or eligibility standards.",
+            "anchor": "These passages support the selection-criteria theory and show what criteria or eligibility standards HACC policy appears to use.",
+            "supporting": "These materials support the selection-criteria theory and identify policy language about criteria or eligibility standards.",
+        },
+        "Other Evidence": {
+            "basis": "These policy excerpts provide additional context that does not fit neatly into the primary issue headings.",
+            "anchor": "These passages provide additional source support that does not fit neatly into the primary issue headings.",
+            "supporting": "These materials provide additional source support that does not fit neatly into the primary issue headings.",
+        },
+    }
+    return intro_map.get(heading, {}).get(section_kind, "These materials provide supporting policy context for the current complaint theory.")
+
+
+def _group_lines_by_tag(lines: List[str], max_groups: int = 3, max_repeat_groups: int = 2) -> List[tuple[str, List[str]]]:
+    preferred_order = [
+        "reasonable_accommodation",
+        "notice",
+        "contact",
+        "hearing",
+        "adverse_action",
+        "selection_criteria",
+    ]
+    grouped: List[tuple[str, List[str]]] = []
+    usage_counts = {line: 0 for line in lines}
+
+    for tag in preferred_order:
+        matching = [
+            line
+            for line in lines
+            if tag in _extract_tags_from_line(line) and usage_counts.get(line, 0) < max_repeat_groups
+        ]
+        if not matching:
+            continue
+        grouped.append((_tag_heading(tag), matching))
+        for line in matching:
+            usage_counts[line] = usage_counts.get(line, 0) + 1
+        if len(grouped) >= max_groups:
+            break
+
+    remaining = [line for line in lines if usage_counts.get(line, 0) == 0]
+    if remaining:
+        grouped.append(("Other Evidence", remaining))
+    return grouped
+
+
+def _line_label(line: str) -> str:
+    text = str(line or "")
+    if ":" in text:
+        return text.split(":", 1)[0].strip()
+    return text[:80].strip()
+
+
+def _render_grouped_lines(lines: List[str], section_kind: str) -> List[str]:
+    rendered: List[str] = []
+    grouped = _group_lines_by_tag(lines)
+    first_heading_for_line: Dict[str, str] = {}
+
+    for heading, items in grouped:
+        rendered.append(f"### {heading}")
+        rendered.append("")
+        rendered.append(_tag_intro(heading, section_kind))
+        rendered.append("")
+        for item in items:
+            if item not in first_heading_for_line:
+                first_heading_for_line[item] = heading
+                rendered.append(f"- {item}")
+            else:
+                rendered.append(f"- See also {_line_label(item)} under {first_heading_for_line[item]}.")
+        rendered.append("")
+    return rendered
+
+
 def _anchor_passage_lines(seed: Dict[str, Any], limit: int = 5) -> List[str]:
     key_facts = dict(seed.get("key_facts") or {})
     passages = list(key_facts.get("anchor_passages") or [])
@@ -234,10 +465,19 @@ def _anchor_passage_lines(seed: Dict[str, Any], limit: int = 5) -> List[str]:
         section_labels = ", ".join(list(passage.get("section_labels") or []))
         title = str(passage.get("title") or "Evidence")
         snippet = _clean_policy_text(passage.get("snippet") or "")
+        summary = _summarize_policy_excerpt(snippet)
+        tags = _evidence_tags(section_labels, summary, snippet)
+        tag_prefix = f"[{', '.join(tags)}] " if tags else ""
         if section_labels:
-            lines.append(f"{title} [{section_labels}]: {snippet}")
+            if summary and summary != snippet:
+                lines.append(f"{title} [{section_labels}]: {tag_prefix}{summary} Full passage: {snippet}")
+            else:
+                lines.append(f"{title} [{section_labels}]: {tag_prefix}{snippet}")
         else:
-            lines.append(f"{title}: {snippet}")
+            if summary and summary != snippet:
+                lines.append(f"{title}: {tag_prefix}{summary} Full passage: {snippet}")
+            else:
+                lines.append(f"{title}: {tag_prefix}{snippet}")
     return lines
 
 
@@ -247,8 +487,14 @@ def _evidence_lines(seed: Dict[str, Any], limit: int = 5) -> List[str]:
     for item in evidence[:limit]:
         title = str(item.get("title") or item.get("document_id") or "Evidence")
         snippet = _clean_policy_text(item.get("snippet") or "")
+        summary = _summarize_policy_excerpt(snippet)
+        tags = _evidence_tags(title, summary, snippet)
+        tag_prefix = f"[{', '.join(tags)}] " if tags else ""
         source_path = str(item.get("source_path") or "")
-        line = f"{title}: {snippet}"
+        if summary and summary != snippet:
+            line = f"{title}: {tag_prefix}{summary} Full passage: {snippet}"
+        else:
+            line = f"{title}: {tag_prefix}{snippet}"
         if source_path:
             line += f" ({source_path})"
         lines.append(line)
@@ -295,7 +541,7 @@ def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: 
     theory_labels = [str(item) for item in list(key_facts.get("theory_labels") or []) if str(item)]
     protected_bases = [str(item) for item in list(key_facts.get("protected_bases") or []) if str(item)]
     authority_hints = _authority_hints_for_forum(seed, filing_forum)
-    evidence_summary = _clean_policy_text(key_facts.get("evidence_summary") or seed.get("summary") or "")
+    evidence_summary = _summarize_policy_excerpt(key_facts.get("evidence_summary") or seed.get("summary") or "")
     claims: List[str] = []
 
     if "proxy_discrimination" in theory_labels:
@@ -334,12 +580,21 @@ def _policy_basis(seed: Dict[str, Any], limit: int = 4) -> List[str]:
         title = str(passage.get("title") or "Evidence")
         labels = ", ".join(_humanize_section(label) for label in list(passage.get("section_labels") or []))
         snippet = _clean_policy_text(passage.get("snippet") or "")
+        summary = _summarize_policy_excerpt(snippet)
+        tags = _evidence_tags(labels, summary, snippet)
+        tag_prefix = f"[{', '.join(tags)}] " if tags else ""
         if not snippet:
             continue
         if labels:
-            basis.append(f"{title} supports {labels}: {snippet}")
+            if summary and summary != snippet:
+                basis.append(f"{title} supports {labels}: {tag_prefix}{summary} Full passage: {snippet}")
+            else:
+                basis.append(f"{title} supports {labels}: {tag_prefix}{snippet}")
         else:
-            basis.append(f"{title}: {snippet}")
+            if summary and summary != snippet:
+                basis.append(f"{title}: {tag_prefix}{summary} Full passage: {snippet}")
+            else:
+                basis.append(f"{title}: {tag_prefix}{snippet}")
     return basis
 
 
@@ -369,6 +624,80 @@ def _authority_hints_for_forum(seed: Dict[str, Any], filing_forum: str, limit: i
                 preferred.append(hint)
         hints = preferred + remaining
     return hints[:limit]
+
+
+def _authority_family(authority_hints: List[str]) -> str:
+    normalized = " | ".join(authority_hints).lower()
+    has_fha = "fair housing act" in normalized or "24 c.f.r. part 100" in normalized
+    has_504 = "section 504" in normalized
+    has_ada = "americans with disabilities act" in normalized or normalized == "ada"
+
+    if has_fha and has_504 and has_ada:
+        return "fha_504_ada"
+    if has_fha and has_504:
+        return "fha_504"
+    if has_504 and has_ada:
+        return "504_ada"
+    if has_fha:
+        return "fha"
+    if has_504:
+        return "504"
+    if has_ada:
+        return "ada"
+    return "generic"
+
+
+def _authority_key(authority_hint: str) -> str:
+    lowered = str(authority_hint or "").lower()
+    if "fair housing act" in lowered or "24 c.f.r." in lowered or "hud" in lowered:
+        return "fha"
+    if "section 504" in lowered:
+        return "504"
+    if "americans with disabilities act" in lowered or lowered.strip() == "ada":
+        return "ada"
+    return "generic"
+
+
+def _dominant_authority_family(authority_hints: List[str], filing_forum: str) -> str:
+    ordered = [_authority_key(hint) for hint in authority_hints if _authority_key(hint) != "generic"]
+    if not ordered:
+        return "generic"
+
+    first = ordered[0]
+    second = ordered[1] if len(ordered) > 1 else None
+
+    if filing_forum == "hud":
+        if first == "fha":
+            if second == "504":
+                return "fha_504"
+            return "fha"
+        if first == "504":
+            if second == "ada":
+                return "504_ada"
+            if second == "fha":
+                return "504_fha"
+            return "504"
+        if first == "ada":
+            if second == "504":
+                return "ada_504"
+            return "ada"
+    else:
+        if first == "504":
+            if second == "ada":
+                return "504_ada"
+            if second == "fha":
+                return "504_fha"
+            return "504"
+        if first == "ada":
+            if second == "504":
+                return "ada_504"
+            return "ada"
+        if first == "fha":
+            if second == "504":
+                return "fha_504"
+            return "fha"
+
+    return first
 
 
 def _legal_theory_summary(seed: Dict[str, Any], filing_forum: str = "court") -> Dict[str, List[str]]:
@@ -476,6 +805,8 @@ def _causes_of_action(seed: Dict[str, Any], session: Dict[str, Any], filing_foru
     theory_labels = [str(item) for item in list(key_facts.get("theory_labels") or []) if str(item)]
     protected_bases = [str(item) for item in list(key_facts.get("protected_bases") or []) if str(item)]
     authority_hints = _authority_hints_for_forum(seed, filing_forum)
+    authority_family = _authority_family(authority_hints)
+    dominant_authority_family = _dominant_authority_family(authority_hints, filing_forum)
     claims_theory = _claims_theory(seed, session, filing_forum, limit=limit)
     causes: List[Dict[str, Any]] = []
 
@@ -493,6 +824,38 @@ def _causes_of_action(seed: Dict[str, Any], session: Dict[str, Any], filing_foru
         retaliation_title = "Retaliation for Protected Civil Rights Activity"
         accommodation_title = "Failure to Reasonably Accommodate Disability-Related Rights"
         fallback_title = "Administrative Civil Rights Violations Requiring Further Legal Framing"
+
+    if "reasonable_accommodation" in sections:
+        if filing_forum == "hud":
+            if dominant_authority_family == "fha_504":
+                accommodation_title = "Fair Housing Act / Section 504 Accommodation Theory"
+            elif dominant_authority_family == "504_ada":
+                accommodation_title = "Section 504 / ADA Accommodation Theory"
+            elif dominant_authority_family == "504_fha":
+                accommodation_title = "Section 504 / Fair Housing Accommodation Theory"
+            elif dominant_authority_family == "ada_504":
+                accommodation_title = "ADA / Section 504 Accommodation Theory"
+            elif authority_family == "fha":
+                accommodation_title = "Fair Housing Act Accommodation Theory"
+            elif authority_family == "504":
+                accommodation_title = "Section 504 Accommodation Theory"
+            elif authority_family == "ada":
+                accommodation_title = "ADA Accommodation Theory"
+        else:
+            if dominant_authority_family == "504_ada":
+                accommodation_title = "Section 504 / ADA Accommodation Claim"
+            elif dominant_authority_family == "504_fha":
+                accommodation_title = "Section 504 / Fair Housing Accommodation Claim"
+            elif dominant_authority_family == "fha_504":
+                accommodation_title = "Fair Housing Act / Section 504 Accommodation Claim"
+            elif dominant_authority_family == "ada_504":
+                accommodation_title = "ADA / Section 504 Accommodation Claim"
+            elif authority_family == "fha":
+                accommodation_title = "Fair Housing Act Accommodation Claim"
+            elif authority_family == "504":
+                accommodation_title = "Section 504 Accommodation Claim"
+            elif authority_family == "ada":
+                accommodation_title = "ADA Accommodation Claim"
 
     if "adverse_action" in sections or "appeal_rights" in sections or "grievance_hearing" in sections:
         causes.append(
@@ -521,9 +884,22 @@ def _causes_of_action(seed: Dict[str, Any], session: Dict[str, Any], filing_foru
     if "disparate_treatment" in theory_labels or "proxy_discrimination" in theory_labels or protected_bases:
         basis_text = f" involving {', '.join(protected_bases)}" if protected_bases else ""
         authority_text = f" Likely authority includes {', '.join(authority_hints[:2])}." if authority_hints else ""
+        protected_basis_title = "Protected-Basis Discrimination Theory" if filing_forum == "court" else "Protected-Basis Administrative Theory"
+        if protected_bases and dominant_authority_family in {"fha", "fha_504"}:
+            protected_basis_title = (
+                "Fair Housing Act Protected-Basis Theory"
+                if filing_forum == "court"
+                else "Fair Housing Act Protected-Basis Administrative Theory"
+            )
+        elif protected_bases and dominant_authority_family in {"504", "504_ada", "504_fha", "ada_504", "ada"}:
+            protected_basis_title = (
+                "Section 504 Protected-Basis Theory"
+                if filing_forum == "court"
+                else "Section 504 Protected-Basis Administrative Theory"
+            )
         causes.append(
             {
-                "title": "Protected-Basis Discrimination Theory" if filing_forum == "court" else "Protected-Basis Administrative Theory",
+                "title": protected_basis_title,
                 "theory": f"The current evidence suggests HACC may have applied housing policy or process in a manner that warrants review for protected-basis discrimination{basis_text}.{authority_text}",
                 "support": [item for item in claims_theory if "protected basis" in item.lower() or "unequal treatment" in item.lower() or "proxy" in item.lower()] or claims_theory[:2],
             }
@@ -561,7 +937,7 @@ def _proposed_allegations(seed: Dict[str, Any], session: Dict[str, Any], filing_
     allegations: List[str] = []
     key_facts = dict(seed.get("key_facts") or {})
     incident_summary = str(key_facts.get("incident_summary") or seed.get("description") or "").strip()
-    evidence_summary = _clean_policy_text(key_facts.get("evidence_summary") or seed.get("summary") or "")
+    evidence_summary = _summarize_policy_excerpt(key_facts.get("evidence_summary") or seed.get("summary") or "")
     complainant_label = "Plaintiff"
     evidence_label = "The available HACC materials indicate"
     if filing_forum == "hud":
@@ -648,9 +1024,8 @@ def _render_markdown(package: Dict[str, Any]) -> str:
         f"## {section_labels['policy_basis']}",
         "",
     ])
-    lines.extend(f"- {item}" for item in package["policy_basis"])
+    lines.extend(_render_grouped_lines(list(package["policy_basis"]), "basis"))
     lines.extend([
-        "",
         f"## {section_labels['causes']}",
         "",
     ])
@@ -675,15 +1050,13 @@ def _render_markdown(package: Dict[str, Any]) -> str:
         "## Anchor Passages",
         "",
     ])
-    lines.extend(f"- {item}" for item in package["anchor_passages"])
+    lines.extend(_render_grouped_lines(list(package["anchor_passages"]), "anchor"))
     lines.extend([
-        "",
         "## Supporting Evidence",
         "",
     ])
-    lines.extend(f"- {item}" for item in package["supporting_evidence"])
+    lines.extend(_render_grouped_lines(list(package["supporting_evidence"]), "supporting"))
     lines.extend([
-        "",
         f"## {section_labels['relief']}",
         "",
     ])
@@ -743,7 +1116,9 @@ def main() -> int:
     seed = dict(best_session.get("seed_complaint") or {})
     key_facts = dict(seed.get("key_facts") or {})
     anchor_sections = [str(item) for item in list(key_facts.get("anchor_sections") or []) if str(item)]
-    cleaned_summary = _clean_policy_text(key_facts.get("evidence_summary") or seed.get("summary") or "No summary available.")
+    cleaned_summary = _summarize_policy_excerpt(
+        key_facts.get("evidence_summary") or seed.get("summary") or "No summary available."
+    )
 
     package = {
         "generated_at": datetime.now(UTC).isoformat(),
