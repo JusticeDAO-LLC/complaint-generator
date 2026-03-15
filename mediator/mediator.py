@@ -3201,6 +3201,7 @@ class Mediator:
 		# Build dependency graph
 		dg = self.dg_builder.build_from_claims(claims)
 		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', dg)
+		self._update_intake_contradiction_state(dg)
 		
 		# Generate initial denoising questions
 		kg_gaps = kg.find_gaps()
@@ -3248,6 +3249,7 @@ class Mediator:
 		
 		# Process the answer
 		updates = self.denoiser.process_answer(question, answer, kg, dg)
+		self._update_intake_contradiction_state(dg)
 		
 		# Generate next questions
 		max_questions = 5
@@ -3305,6 +3307,47 @@ class Mediator:
 			result['message'] = 'Initial intake complete. Ready to gather evidence.'
 		
 		return result
+
+	def _collect_intake_contradictions(self, dependency_graph) -> Dict[str, Any]:
+		"""Collect contradiction candidates present in the intake dependency graph."""
+		candidates = []
+		seen_pairs = set()
+		for dependency in getattr(dependency_graph, 'dependencies', {}).values():
+			dependency_type = getattr(dependency, 'dependency_type', None)
+			dependency_type_value = getattr(dependency_type, 'value', str(dependency_type or '')).lower()
+			if dependency_type_value != 'contradicts':
+				continue
+			left_node = dependency_graph.get_node(dependency.source_id)
+			right_node = dependency_graph.get_node(dependency.target_id)
+			left_name = left_node.name if left_node else str(dependency.source_id)
+			right_name = right_node.name if right_node else str(dependency.target_id)
+			pair_key = tuple(sorted((str(left_name), str(right_name))))
+			if pair_key in seen_pairs:
+				continue
+			seen_pairs.add(pair_key)
+			candidates.append({
+				'dependency_id': dependency.id,
+				'left_node_id': dependency.source_id,
+				'right_node_id': dependency.target_id,
+				'left_node_name': left_name,
+				'right_node_name': right_name,
+				'label': f'{left_name} vs {right_name}',
+			})
+		return {
+			'candidate_count': len(candidates),
+			'candidates': candidates,
+		}
+
+	def _update_intake_contradiction_state(self, dependency_graph) -> Dict[str, Any]:
+		"""Persist intake contradiction diagnostics derived from the dependency graph."""
+		contradiction_snapshot = self._collect_intake_contradictions(dependency_graph)
+		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_contradictions', contradiction_snapshot)
+		self.phase_manager.update_phase_data(
+			ComplaintPhase.INTAKE,
+			'contradictions_unresolved',
+			bool(contradiction_snapshot.get('candidate_count', 0)),
+		)
+		return contradiction_snapshot
 	
 	def advance_to_evidence_phase(self) -> Dict[str, Any]:
 		"""
@@ -3881,11 +3924,17 @@ class Mediator:
 	
 	def get_three_phase_status(self) -> Dict[str, Any]:
 		"""Get current status of three-phase process."""
+		intake_readiness = self.phase_manager.get_intake_readiness()
 		return {
 			'current_phase': self.phase_manager.get_current_phase().value,
 			'iteration_count': self.phase_manager.iteration_count,
 			'convergence_history': self.phase_manager.loss_history[-10:] if self.phase_manager.loss_history else [],
 			'loss_history': self.phase_manager.loss_history if self.phase_manager.loss_history else [],
+			'intake_readiness': intake_readiness,
+			'intake_contradictions': {
+				'candidate_count': intake_readiness.get('contradiction_count', 0),
+				'candidates': intake_readiness.get('contradictions', []),
+			},
 			'phase_completion': {
 				'intake': self.phase_manager.is_phase_complete(ComplaintPhase.INTAKE),
 				'evidence': self.phase_manager.is_phase_complete(ComplaintPhase.EVIDENCE),

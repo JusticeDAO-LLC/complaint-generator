@@ -89,6 +89,20 @@ class PhaseManager:
 
         return gap_types
 
+    def _extract_intake_contradictions(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Normalize stored intake contradiction diagnostics into a candidate list."""
+        contradictions = data.get('intake_contradictions')
+        if isinstance(contradictions, dict):
+            candidates = contradictions.get('candidates')
+            if isinstance(candidates, list):
+                return [candidate for candidate in candidates if isinstance(candidate, dict)]
+            if contradictions:
+                return [contradictions]
+            return []
+        if isinstance(contradictions, list):
+            return [candidate for candidate in contradictions if isinstance(candidate, dict)]
+        return []
+
     def _build_intake_readiness(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Derive intake readiness metrics and blockers from intake state."""
         has_knowledge_graph = 'knowledge_graph' in data
@@ -96,7 +110,9 @@ class PhaseManager:
         gaps_addressed = data.get('remaining_gaps', float('inf')) <= 3
         converged = data.get('denoising_converged', False)
         gap_types = self._extract_intake_gap_types(data)
-        has_contradictions = bool(data.get('contradictions_unresolved') or data.get('intake_contradictions'))
+        contradiction_candidates = self._extract_intake_contradictions(data)
+        contradiction_count = len(contradiction_candidates)
+        has_contradictions = bool(data.get('contradictions_unresolved') or contradiction_count)
 
         criteria: Dict[str, bool] = {
             'knowledge_graph_ready': has_knowledge_graph,
@@ -146,6 +162,8 @@ class PhaseManager:
             'intake_readiness_blockers': blockers,
             'intake_readiness_criteria': criteria,
             'intake_ready': len(blockers) == 0,
+            'intake_contradiction_count': contradiction_count,
+            'intake_contradictions': contradiction_candidates,
         }
 
     def _refresh_phase_derived_state(self, phase: ComplaintPhase):
@@ -162,6 +180,8 @@ class PhaseManager:
             'blockers': list(data.get('intake_readiness_blockers', [])),
             'criteria': dict(data.get('intake_readiness_criteria', {})),
             'ready': bool(data.get('intake_ready', False)),
+            'contradiction_count': int(data.get('intake_contradiction_count', 0) or 0),
+            'contradictions': list(data.get('intake_contradictions', [])),
         }
     
     def get_current_phase(self) -> ComplaintPhase:

@@ -37,6 +37,31 @@ def _print_question(question, index):
         print(f"   why: {question_reason}")
 
 
+def _print_intake_status(status):
+    readiness = status.get('intake_readiness') if isinstance(status, dict) else {}
+    readiness = readiness if isinstance(readiness, dict) else {}
+    contradictions = status.get('intake_contradictions') if isinstance(status, dict) else []
+    contradictions = contradictions if isinstance(contradictions, list) else []
+    print(f"Intake readiness score: {float(readiness.get('score', 0.0) or 0.0):.2f}")
+    print(f"Ready to advance: {bool(readiness.get('ready_to_advance', False))}")
+    blockers = readiness.get('blockers') if isinstance(readiness.get('blockers'), list) else []
+    if blockers:
+        print(f"Blockers: {', '.join(str(item) for item in blockers)}")
+    print(f"Tracked contradictions: {len(contradictions)}")
+    for contradiction in contradictions[:3]:
+        if not isinstance(contradiction, dict):
+            continue
+        summary = str(contradiction.get('summary') or '').strip()
+        left_text = str(contradiction.get('left_text') or '').strip()
+        right_text = str(contradiction.get('right_text') or '').strip()
+        question = str(contradiction.get('question') or '').strip()
+        print(f"  - {summary or 'Unresolved contradiction'}")
+        if left_text or right_text:
+            print(f"    statements: {left_text or 'n/a'} <> {right_text or 'n/a'}")
+        if question:
+            print(f"    ask: {question}")
+
+
 def main():
     print("=" * 80)
     print("THREE-PHASE COMPLAINT PROCESSING EXAMPLE")
@@ -90,6 +115,7 @@ def main():
     print()
     status = mediator.get_three_phase_status()
     print(f"Intake phase complete: {status['phase_completion']['intake']}")
+    _print_intake_status(status)
     print()
     
     # ========================================================================
@@ -211,6 +237,7 @@ def main():
     final_status = mediator.get_three_phase_status()
     print(f"Current phase: {final_status['current_phase']}")
     print(f"Total iterations: {final_status['iteration_count']}")
+    _print_intake_status(final_status)
     print("Phase completion:")
     for phase, complete in final_status['phase_completion'].items():
         status_icon = "✓" if complete else "✗"

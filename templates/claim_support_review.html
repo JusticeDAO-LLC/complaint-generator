@@ -882,6 +882,12 @@
                     </div>
                 </div>
 
+                <div class="focus-block" data-section-focus-target="summary_of_facts claims_for_relief requested_relief">
+                    <h2 style="margin-top: 18px;">Intake Status</h2>
+                    <div class="chip-row" id="intake-status-chips"></div>
+                    <div class="question-list" id="intake-contradiction-list"></div>
+                </div>
+
                 <div class="focus-block" data-section-focus-target="claims_for_relief requested_relief">
                     <h2 style="margin-top: 18px;">Question Queue</h2>
                     <div class="question-list" id="question-list"></div>
@@ -1447,6 +1453,57 @@
             container.innerHTML = entries.length
                 ? entries.map(([label, count]) => `<span class="chip">${label}: ${count}</span>`).join('')
                 : `<span class="chip">${emptyLabel}</span>`;
+        }
+
+        function renderIntakeStatus(status) {
+            const chipContainer = document.getElementById('intake-status-chips');
+            const contradictionContainer = document.getElementById('intake-contradiction-list');
+            const intakeStatus = status && typeof status === 'object' ? status : {};
+            const blockers = Array.isArray(intakeStatus.blockers) ? intakeStatus.blockers : [];
+            const contradictions = Array.isArray(intakeStatus.contradictions) ? intakeStatus.contradictions : [];
+            const scoreValue = Number(intakeStatus.score || 0);
+            const scoreLabel = Number.isFinite(scoreValue) ? scoreValue.toFixed(2) : '0.00';
+
+            const chips = [];
+            if (intakeStatus.current_phase) chips.push(`<span class="chip">phase: ${intakeStatus.current_phase}</span>`);
+            chips.push(`<span class="chip">score: ${scoreLabel}</span>`);
+            chips.push(`<span class="chip">remaining gaps: ${Number(intakeStatus.remaining_gap_count || 0)}</span>`);
+            chips.push(`<span class="chip">contradictions: ${Number(intakeStatus.contradiction_count || contradictions.length)}</span>`);
+            if (typeof intakeStatus.ready_to_advance === 'boolean') {
+                chips.push(`<span class="chip">ready: ${intakeStatus.ready_to_advance ? 'yes' : 'no'}</span>`);
+            }
+            blockers.forEach((blocker) => {
+                chips.push(`<span class="chip">blocker: ${blocker}</span>`);
+            });
+            chipContainer.innerHTML = chips.length
+                ? chips.join('')
+                : '<span class="chip">No intake status available.</span>';
+
+            if (!contradictions.length) {
+                contradictionContainer.innerHTML = '<div class="task-card">No intake contradictions are currently tracked.</div>';
+                return;
+            }
+
+            contradictionContainer.innerHTML = contradictions.map((item) => {
+                const detailChips = [];
+                if (item.category) detailChips.push(`<span class="chip">${item.category}</span>`);
+                if (item.severity) detailChips.push(`<span class="chip">severity ${item.severity}</span>`);
+                if (item.question) detailChips.push(`<span class="chip">ask: ${item.question}</span>`);
+                return `
+                    <article class="task-card">
+                        <div class="row-head">
+                            <div>
+                                <div class="row-title">${item.summary || 'Unresolved contradiction'}</div>
+                                <div class="meta">${item.left_text || 'left statement unavailable'}${item.right_text ? ` <> ${item.right_text}` : ''}</div>
+                            </div>
+                            <span class="badge contradicted">open</span>
+                        </div>
+                        <div class="chip-row" style="margin-top: 10px;">
+                            ${detailChips.length ? detailChips.join('') : '<span class="chip">Needs intake clarification.</span>'}
+                        </div>
+                    </article>
+                `;
+            }).join('');
         }
 
         function buildFollowUpSourceSignalCounts(planSummary) {
@@ -2598,6 +2655,7 @@
 
             setSummary(summary, planSummary);
             setFollowUpSignals(planSummary, historySummary);
+            renderIntakeStatus(payload.intake_status || null);
             renderQuestionRecommendations(questionRecommendations);
             renderTestimonyRecords(testimonyRecords, testimonySummary);
             renderDocumentArtifacts(documentArtifacts, documentSummary);

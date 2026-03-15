@@ -398,6 +398,35 @@ class TestPhaseManager:
         assert pm.is_phase_complete(ComplaintPhase.INTAKE)
         assert action['action'] == 'complete_intake'
 
+    def test_intake_readiness_includes_contradiction_details(self):
+        """Test intake readiness returns concrete contradiction diagnostics."""
+        pm = PhaseManager()
+
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', {})
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', {})
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', 0)
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'denoising_converged', True)
+        pm.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'intake_contradictions',
+            {
+                'candidate_count': 1,
+                'candidates': [
+                    {
+                        'left_node_name': 'Termination before complaint',
+                        'right_node_name': 'Complaint before termination',
+                        'label': 'Termination before complaint vs Complaint before termination',
+                    }
+                ],
+            },
+        )
+
+        readiness = pm.get_intake_readiness()
+
+        assert readiness['contradiction_count'] == 1
+        assert readiness['contradictions'][0]['left_node_name'] == 'Termination before complaint'
+        assert 'contradiction_unresolved' in readiness['blockers']
+
 
 class TestLegalGraph:
     """Tests for LegalGraph and LegalGraphBuilder."""

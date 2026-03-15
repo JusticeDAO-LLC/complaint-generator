@@ -16,7 +16,11 @@ from complaint_phases import (
     LegalGraphBuilder,
     LegalGraph,
     LegalElement,
-    NeurosymbolicMatcher
+    NeurosymbolicMatcher,
+    DependencyNode,
+    Dependency,
+    NodeType,
+    DependencyType,
 )
 
 
@@ -249,6 +253,33 @@ class TestMediatorThreePhaseIntegration:
         assert len(phase_manager.loss_history) == 10
         # The change should be very small, so convergence should be detected
         assert phase_manager.has_converged(window=5, threshold=0.01)
+
+    def test_phase_status_exposes_intake_contradiction_details(self):
+        """Mediator status should include concrete intake contradiction diagnostics."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        dg = mediator.dg_builder.build_from_claims([])
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', dg)
+
+        left_fact = DependencyNode('fact_left', NodeType.FACT, 'Complaint before termination')
+        right_fact = DependencyNode('fact_right', NodeType.FACT, 'Termination before complaint')
+        dg.add_node(left_fact)
+        dg.add_node(right_fact)
+        dg.add_dependency(Dependency('dep_contradiction', 'fact_left', 'fact_right', DependencyType.CONTRADICTS, required=False))
+
+        mediator._update_intake_contradiction_state(dg)
+        status = mediator.get_three_phase_status()
+
+        assert status['intake_contradictions']['candidate_count'] == 1
+        assert status['intake_readiness']['contradiction_count'] == 1
+        assert status['intake_contradictions']['candidates'][0]['left_node_name'] == 'Complaint before termination'
     
     def test_graph_serialization(self):
         """Test that graphs can be serialized for storage."""
