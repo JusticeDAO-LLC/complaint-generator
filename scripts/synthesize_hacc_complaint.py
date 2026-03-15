@@ -439,33 +439,139 @@ def _line_label(line: str) -> str:
     return text[:80].strip()
 
 
+def _line_exhibit_key(line: str) -> str:
+    label = _line_label(line)
+    return re.sub(r"\s*\[[^\]]+\]$", "", label).strip()
+
+
 def _exhibit_id(index: int) -> str:
     return f"Exhibit {chr(ord('A') + index)}"
 
 
-def _build_exhibit_index(line_groups: List[List[str]]) -> Dict[str, str]:
+def _build_exhibit_index(lines: List[str]) -> Dict[str, str]:
     exhibit_index: Dict[str, str] = {}
-    ordered_lines: List[str] = []
-    for group in line_groups:
-        for line in group:
-            if line not in ordered_lines:
-                ordered_lines.append(line)
-    for index, line in enumerate(ordered_lines):
-        exhibit_index[line] = _exhibit_id(index)
+    ordered_keys: List[str] = []
+    for line in lines:
+        key = _line_exhibit_key(line)
+        if key and key not in ordered_keys:
+            ordered_keys.append(key)
+    for index, key in enumerate(ordered_keys):
+        exhibit_index[key] = _exhibit_id(index)
     return exhibit_index
 
 
-def _section_exhibit_index(lines: List[str]) -> List[tuple[str, str]]:
-    grouped = _group_lines_by_tag(lines)
-    exhibit_index = _build_exhibit_index([items for _, items in grouped])
+def _ordered_exhibit_index(lines: List[str]) -> List[tuple[str, str]]:
+    exhibit_index = _build_exhibit_index(lines)
     ordered = sorted(exhibit_index.items(), key=lambda item: item[1])
-    return [(exhibit_id, _line_label(line)) for line, exhibit_id in ordered]
+    return [(exhibit_id, label) for label, exhibit_id in ordered]
 
 
-def _render_grouped_lines(lines: List[str], section_kind: str) -> List[str]:
+def _format_exhibit_reference_list(exhibits: List[tuple[str, str]], limit: int = 2) -> str:
+    items = [f"{exhibit_id} ({label})" for exhibit_id, label in exhibits[:limit]]
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return f"{', '.join(items[:-1])}, and {items[-1]}"
+
+
+def _cause_target_tags(cause: Dict[str, Any]) -> List[str]:
+    combined = " ".join(
+        [
+            str(cause.get("title") or ""),
+            str(cause.get("theory") or ""),
+            " ".join(str(item) for item in list(cause.get("support") or [])),
+        ]
+    ).lower()
+    tags: List[str] = []
+    if any(term in combined for term in ("accommodation", "disability", "section 504", "ada")):
+        tags.extend(["reasonable_accommodation", "contact"])
+    if any(term in combined for term in ("notice", "process", "hearing", "review", "appeal", "adverse-action", "adverse action", "termination", "denial")):
+        tags.extend(["notice", "hearing", "adverse_action"])
+    if any(term in combined for term in ("selection", "criteria", "proxy")):
+        tags.append("selection_criteria")
+
+    deduped: List[str] = []
+    for tag in tags:
+        if tag not in deduped:
+            deduped.append(tag)
+    return deduped
+
+
+def _select_exhibit_refs_for_tags(
+    tag_targets: List[str],
+    line_tag_map: Dict[str, List[str]],
+    exhibit_index: Dict[str, str],
+    limit: int = 2,
+) -> List[tuple[str, str]]:
+    matches: List[tuple[str, str]] = []
+    seen = set()
+    for line_key, tags in line_tag_map.items():
+        if tag_targets and not any(tag in tags for tag in tag_targets):
+            continue
+        exhibit_id = exhibit_index.get(line_key)
+        if not exhibit_id or line_key in seen:
+            continue
+        seen.add(line_key)
+        matches.append((exhibit_id, line_key))
+        if len(matches) >= limit:
+            break
+    return matches
+
+
+def _inject_exhibit_references(package: Dict[str, Any]) -> None:
+    all_exhibit_lines = (
+        list(package.get("policy_basis") or [])
+        + list(package.get("anchor_passages") or [])
+        + list(package.get("supporting_evidence") or [])
+    )
+    exhibit_index = _build_exhibit_index(all_exhibit_lines)
+    exhibit_refs = _ordered_exhibit_index(all_exhibit_lines)
+    line_tag_map: Dict[str, List[str]] = {}
+    for line in all_exhibit_lines:
+        key = _line_exhibit_key(line)
+        if key not in line_tag_map:
+            line_tag_map[key] = _extract_tags_from_line(line)
+    reference_text = _format_exhibit_reference_list(exhibit_refs)
+    if not reference_text:
+        return
+
+    claims = list(package.get("claims_theory") or [])
+    updated_claims: List[str] = []
+    inserted_claim_ref = False
+    for item in claims:
+        if not inserted_claim_ref and item.startswith("The strongest policy support for these theories is:"):
+            updated_claims.append(f"{item} That documentary support is reflected in {reference_text}.")
+            inserted_claim_ref = True
+        else:
+            updated_claims.append(item)
+    if not inserted_claim_ref:
+        updated_claims.append(f"The primary documentary support for these theories appears in {reference_text}.")
+    package["claims_theory"] = updated_claims
+
+    allegations = list(package.get("factual_allegations") or [])
+    reference_sentence = f"The core documentary support for these allegations appears in {reference_text}."
+    if reference_sentence not in allegations:
+        allegations.append(reference_sentence)
+    package["factual_allegations"] = allegations
+
+    causes = list(package.get("causes_of_action") or [])
+    for cause in causes:
+        support_items = list(cause.get("support") or [])
+        targeted_refs = _select_exhibit_refs_for_tags(_cause_target_tags(cause), line_tag_map, exhibit_index)
+        cause_reference_text = _format_exhibit_reference_list(targeted_refs) or reference_text
+        cause_support_reference = f"Documentary support: {cause_reference_text}."
+        if cause_support_reference not in support_items:
+            support_items.append(cause_support_reference)
+        cause["support"] = support_items
+    package["causes_of_action"] = causes
+
+
+def _render_grouped_lines(lines: List[str], section_kind: str, exhibit_index: Dict[str, str]) -> List[str]:
     rendered: List[str] = []
     grouped = _group_lines_by_tag(lines)
-    exhibit_index = _build_exhibit_index([items for _, items in grouped])
     first_heading_for_line: Dict[str, str] = {}
 
     for heading, items in grouped:
@@ -476,13 +582,13 @@ def _render_grouped_lines(lines: List[str], section_kind: str) -> List[str]:
         for item in items:
             if item not in first_heading_for_line:
                 first_heading_for_line[item] = heading
-                exhibit_id = exhibit_index.get(item)
+                exhibit_id = exhibit_index.get(_line_exhibit_key(item))
                 if exhibit_id:
                     rendered.append(f"- {exhibit_id}: {item}")
                 else:
                     rendered.append(f"- {item}")
             else:
-                exhibit_id = exhibit_index.get(item)
+                exhibit_id = exhibit_index.get(_line_exhibit_key(item))
                 exhibit_text = f"{exhibit_id} ({_line_label(item)})" if exhibit_id else _line_label(item)
                 rendered.append(f"- See also {exhibit_text} under {first_heading_for_line[item]}.")
         rendered.append("")
@@ -999,6 +1105,12 @@ def _render_markdown(package: Dict[str, Any]) -> str:
     caption = dict(package.get("caption") or {})
     parties = dict(package.get("parties") or {})
     section_labels = _section_labels_for_forum(str(package.get("filing_forum") or "court"))
+    all_exhibit_lines = (
+        list(package["policy_basis"])
+        + list(package["anchor_passages"])
+        + list(package["supporting_evidence"])
+    )
+    exhibit_index = _build_exhibit_index(all_exhibit_lines)
     lines = [
         "# Draft Complaint Synthesis",
         "",
@@ -1039,23 +1151,16 @@ def _render_markdown(package: Dict[str, Any]) -> str:
     lines.extend([f"- Theory Labels: {', '.join(theory_labels) if theory_labels else 'None identified'}"])
     lines.extend([f"- Protected Bases: {', '.join(protected_bases) if protected_bases else 'None identified'}"])
     lines.extend([f"- Authority Hints: {', '.join(authority_hints) if authority_hints else 'None identified'}"])
-    exhibit_sections = [
-        ("Administrative Basis Exhibits", _section_exhibit_index(list(package["policy_basis"]))),
-        ("Anchor Passage Exhibits", _section_exhibit_index(list(package["anchor_passages"]))),
-        ("Supporting Evidence Exhibits", _section_exhibit_index(list(package["supporting_evidence"]))),
-    ]
+    ordered_exhibits = _ordered_exhibit_index(all_exhibit_lines)
     lines.extend([
         "",
         "## Exhibit Index",
         "",
     ])
-    for heading, exhibits in exhibit_sections:
-        if not exhibits:
-            continue
-        lines.append(f"### {heading}")
-        lines.append("")
-        lines.extend(f"- {exhibit_id}: {label}" for exhibit_id, label in exhibits)
-        lines.append("")
+    lines.extend(f"- {exhibit_id}: {label}" for exhibit_id, label in ordered_exhibits)
+    lines.extend([
+        "",
+    ])
     lines.extend([
         "## Factual Allegations",
         "",
@@ -1072,7 +1177,7 @@ def _render_markdown(package: Dict[str, Any]) -> str:
         f"## {section_labels['policy_basis']}",
         "",
     ])
-    lines.extend(_render_grouped_lines(list(package["policy_basis"]), "basis"))
+    lines.extend(_render_grouped_lines(list(package["policy_basis"]), "basis", exhibit_index))
     lines.extend([
         f"## {section_labels['causes']}",
         "",
@@ -1098,12 +1203,12 @@ def _render_markdown(package: Dict[str, Any]) -> str:
         "## Anchor Passages",
         "",
     ])
-    lines.extend(_render_grouped_lines(list(package["anchor_passages"]), "anchor"))
+    lines.extend(_render_grouped_lines(list(package["anchor_passages"]), "anchor", exhibit_index))
     lines.extend([
         "## Supporting Evidence",
         "",
     ])
-    lines.extend(_render_grouped_lines(list(package["supporting_evidence"]), "supporting"))
+    lines.extend(_render_grouped_lines(list(package["supporting_evidence"]), "supporting", exhibit_index))
     lines.extend([
         f"## {section_labels['relief']}",
         "",
@@ -1194,6 +1299,7 @@ def main() -> int:
             "selection_source": selection_source,
         },
     }
+    _inject_exhibit_references(package)
 
     output_dir = Path(args.output_dir).resolve() if args.output_dir else results_path.parent / "complaint_synthesis"
     output_dir.mkdir(parents=True, exist_ok=True)

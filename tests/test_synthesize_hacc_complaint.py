@@ -451,10 +451,7 @@ def test_markdown_groups_tagged_evidence_sections():
     markdown = MODULE._render_markdown(package)
 
     assert "## Exhibit Index" in markdown
-    assert "### Administrative Basis Exhibits" in markdown
     assert "- Exhibit A: ADMINISTRATIVE PLAN" in markdown
-    assert "### Anchor Passage Exhibits" in markdown
-    assert "### Supporting Evidence Exhibits" in markdown
     assert "## Administrative Basis" in markdown
     assert "These policy excerpts frame the accommodation theory" in markdown
     assert "- Exhibit A: ADMINISTRATIVE PLAN supports reasonable accommodation, adverse action:" in markdown
@@ -469,6 +466,46 @@ def test_markdown_groups_tagged_evidence_sections():
     assert "See also Exhibit A (ADMINISTRATIVE PLAN) under Accommodation." in markdown
     assert markdown.count("### Accommodation") >= 2
     assert markdown.count("### Notice") >= 2
+
+
+def test_inject_exhibit_references_adds_citations_to_claims_and_facts():
+    package = {
+        "claims_theory": [
+            "The strongest policy support for these theories is: Written notice and accommodation language are required.",
+        ],
+        "factual_allegations": [
+            "The complainant contends that accommodation-related concerns were not fairly addressed.",
+        ],
+        "causes_of_action": [
+            {
+                "title": "Administrative Fair Housing Process Failure",
+                "theory": "Theory text about notice and adverse-action process.",
+                "support": ["Support text."],
+            },
+            {
+                "title": "Fair Housing Act / Section 504 Accommodation Theory",
+                "theory": "Theory text about accommodation rights.",
+                "support": ["Support text."],
+            }
+        ],
+        "policy_basis": [
+            "ADMINISTRATIVE PLAN supports reasonable accommodation, adverse action: [reasonable_accommodation, notice, contact] Summary. Full passage: Source.",
+            "NOTICE POLICY supports adverse action: [notice, adverse_action, hearing] Summary. Full passage: Source.",
+        ],
+        "anchor_passages": [
+            "ADMINISTRATIVE PLAN [reasonable_accommodation, adverse_action]: [reasonable_accommodation, notice] Summary. Full passage: Source.",
+        ],
+        "supporting_evidence": [
+            "ADMINISTRATIVE PLAN: [reasonable_accommodation, notice] Summary. Full passage: Source. (/tmp/source.txt)",
+        ],
+    }
+
+    MODULE._inject_exhibit_references(package)
+
+    assert "Exhibit A (ADMINISTRATIVE PLAN)" in package["claims_theory"][0]
+    assert any("Exhibit A (ADMINISTRATIVE PLAN)" in item for item in package["factual_allegations"])
+    assert any("NOTICE POLICY" in item for item in package["causes_of_action"][0]["support"])
+    assert any("ADMINISTRATIVE PLAN" in item for item in package["causes_of_action"][1]["support"])
 
 
 def test_summarize_timeline_fact_condenses_numbered_intake_timeline():
