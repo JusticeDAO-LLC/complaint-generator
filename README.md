@@ -6,11 +6,11 @@ Adversarial autopatch can now be run non-interactively through the standard laun
 
 That emits a summary JSON payload to stdout and writes patch artifacts under [tmp/run_py_adversarial_autopatch](/home/barberb/complaint-generator/tmp/run_py_adversarial_autopatch) by default.
 
-If the live `llm_router` stack is available, the same launcher path can prefer real configured backends with [config.adversarial_autopatch_live.json](/home/barberb/complaint-generator/config.adversarial_autopatch_live.json). The demo config sets `demo_backend=true`; the live config leaves demo mode off and uses the configured mediator backends.
+If the live `llm_router` stack is available, the same launcher path can prefer real configured backends with [config.adversarial_autopatch_live.json](/home/barberb/complaint-generator/config.adversarial_autopatch_live.json). The demo config sets `demo_backend=true`; the live config leaves demo mode off and now prefers the Hugging Face router first, which requires `HF_TOKEN` or `HUGGINGFACE_HUB_TOKEN` in the environment.
 
-For repeatable multi-session live runs, use [config.adversarial_autopatch_live_batch.json](/home/barberb/complaint-generator/config.adversarial_autopatch_live_batch.json), which sets `num_sessions=4` and `max_parallel=2` for a small batch benchmark through the standard launcher.
+For repeatable multi-session live runs, use [config.adversarial_autopatch_live_batch.json](/home/barberb/complaint-generator/config.adversarial_autopatch_live_batch.json), which sets `num_sessions=4` and `max_parallel=2` for a small batch benchmark through the standard launcher and uses the same Hugging Face-router-first backend choice.
 
-For environments with several possible routed providers, [config.adversarial_autopatch_live_multibackend.json](/home/barberb/complaint-generator/config.adversarial_autopatch_live_multibackend.json) lists multiple `MEDIATOR.backends`. The live runner now probes those backends in order and records `runtime.selected_backend_id` plus `runtime.probe_attempts` in the output payload.
+For environments with several possible routed providers, [config.adversarial_autopatch_live_multibackend.json](/home/barberb/complaint-generator/config.adversarial_autopatch_live_multibackend.json) lists multiple `MEDIATOR.backends`. It now probes `hf-router` first, then `codex_cli`, and leaves `accelerate` as a last fallback. The live runner records `runtime.selected_backend_id` plus `runtime.probe_attempts` in the output payload so missing tokens, missing CLIs, or accelerate fallback messages are visible directly.
 
 # Complaint Generator
 ### by JusticeDAO

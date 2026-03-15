@@ -1,13 +1,6 @@
 {
   "BACKENDS": [
     {
-      "id": "llm-router",
-      "type": "llm_router",
-      "provider": "accelerate",
-      "model": "gpt2",
-      "max_tokens": 128
-    },
-    {
       "id": "hf-router",
       "type": "llm_router",
       "provider": "huggingface_router",
@@ -22,10 +15,17 @@
       "provider": "codex_cli",
       "model": "gpt-5.2-codex",
       "max_tokens": 128
+    },
+    {
+      "id": "llm-router",
+      "type": "llm_router",
+      "provider": "accelerate",
+      "model": "gpt2",
+      "max_tokens": 128
     }
   ],
   "MEDIATOR": {
-    "backends": ["llm-router", "hf-router", "llm-router-codex"]
+    "backends": ["hf-router", "llm-router-codex", "llm-router"]
   },
   "APPLICATION": {
     "type": "adversarial-autopatch",

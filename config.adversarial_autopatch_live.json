@@ -1,15 +1,17 @@
 {
   "BACKENDS": [
     {
-      "id": "llm-router",
+      "id": "hf-router",
       "type": "llm_router",
-      "provider": "accelerate",
-      "model": "gpt2",
-      "max_tokens": 128
+      "provider": "huggingface_router",
+      "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+      "base_url": "https://router.huggingface.co/v1",
+      "max_tokens": 256,
+      "temperature": 0.2
     }
   ],
   "MEDIATOR": {
-    "backends": ["llm-router"]
+    "backends": ["hf-router"]
   },
   "APPLICATION": {
     "type": "adversarial-autopatch",

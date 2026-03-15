@@ -836,7 +836,13 @@ class TestAdversarialHarness:
             SessionResult(
                 session_id='session_1',
                 timestamp='2024-01-01',
-                seed_complaint={},
+                seed_complaint={
+                    '_meta': {
+                        'include_hacc_evidence': True,
+                        'hacc_preset': 'retaliation_focus',
+                        'use_hacc_vector_search': True,
+                    }
+                },
                 initial_complaint_text='Test',
                 conversation_history=[],
                 num_questions=2,
@@ -880,7 +886,13 @@ class TestAdversarialHarness:
             SessionResult(
                 session_id='session_1',
                 timestamp='2024-01-01',
-                seed_complaint={},
+                seed_complaint={
+                    '_meta': {
+                        'include_hacc_evidence': True,
+                        'hacc_preset': 'retaliation_focus',
+                        'use_hacc_vector_search': True,
+                    }
+                },
                 initial_complaint_text='Test',
                 conversation_history=[],
                 num_questions=2,
@@ -912,9 +924,9 @@ class TestAdversarialHarness:
 
         assert '# Anchor Section Coverage' in text
         assert '| reasonable_accommodation | 1 | 1 | 0 | 1.00 |' in text
-        assert results[0].seed_complaint['_meta']['include_hacc_evidence'] is True
-        assert results[0].seed_complaint['_meta']['hacc_preset'] == 'retaliation_focus'
-        assert results[0].seed_complaint['_meta']['use_hacc_vector_search'] is True
+        assert harness.results[0].seed_complaint['_meta']['include_hacc_evidence'] is True
+        assert harness.results[0].seed_complaint['_meta']['hacc_preset'] == 'retaliation_focus'
+        assert harness.results[0].seed_complaint['_meta']['use_hacc_vector_search'] is True
 
     def test_run_batch_records_anchor_metadata_for_optimizer(self, monkeypatch):
         harness = AdversarialHarness(
