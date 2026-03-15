@@ -5,6 +5,7 @@ HACC evidence-backed seed generation for the adversarial harness.
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
@@ -277,13 +278,18 @@ def _extract_anchor_passages(
             continue
         if not snippet:
             continue
-        section_labels = _classify_anchor_sections(snippet)
+        passage_text = _extract_source_window(
+            source_path=str(hit.get("source_path") or ""),
+            anchor_terms=normalized_terms,
+            fallback_snippet=snippet,
+        )
+        section_labels = _classify_anchor_sections(passage_text)
         matched_terms = [term for term in normalized_terms if term in snippet_lower]
         ranked_passages.append(
             {
                 "title": str(hit.get("title") or ""),
                 "source_path": str(hit.get("source_path") or ""),
-                "snippet": snippet,
+                "snippet": passage_text,
                 "section_labels": section_labels,
                 "_match_count": len(matched_terms),
                 "_specificity": 0 if section_labels == ["general_policy"] else len(section_labels),
@@ -315,16 +321,90 @@ def _extract_anchor_passages(
         snippet = str(hit.get("snippet") or "").strip()
         if not snippet:
             continue
-        section_labels = _classify_anchor_sections(snippet)
+        passage_text = _extract_source_window(
+            source_path=str(hit.get("source_path") or ""),
+            anchor_terms=normalized_terms,
+            fallback_snippet=snippet,
+        )
+        section_labels = _classify_anchor_sections(passage_text)
         passages.append(
             {
                 "title": str(hit.get("title") or ""),
                 "source_path": str(hit.get("source_path") or ""),
-                "snippet": snippet,
+                "snippet": passage_text,
                 "section_labels": section_labels,
             }
         )
     return passages
+
+
+def _normalize_match_text(text: str) -> str:
+    return re.sub(r"\s+", " ", str(text or "")).strip()
+
+
+def _candidate_text_paths(source_path: str) -> List[Path]:
+    path = Path(source_path)
+    candidates: List[Path] = []
+    if source_path:
+        candidates.append(path)
+        candidates.append(Path(f"{source_path}.txt"))
+        knowledge_graph_text = _repo_root() / "hacc_website" / "knowledge_graph" / "texts" / f"{path.name}.txt"
+        candidates.append(knowledge_graph_text)
+
+    deduped: List[Path] = []
+    seen = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key and key not in seen:
+            seen.add(key)
+            deduped.append(candidate)
+    return deduped
+
+
+def _extract_source_window(
+    *,
+    source_path: str,
+    anchor_terms: Sequence[str],
+    fallback_snippet: str,
+    window_chars: int = 520,
+) -> str:
+    normalized_fallback = _normalize_match_text(fallback_snippet)
+    if not source_path:
+        return normalized_fallback
+
+    search_needles = sorted(
+        [term for term in anchor_terms if term],
+        key=len,
+        reverse=True,
+    )
+    fallback_phrase = " ".join(normalized_fallback.split()[:10]).strip()
+    if fallback_phrase:
+        search_needles.append(fallback_phrase)
+
+    for path in _candidate_text_paths(source_path):
+        if not path.exists():
+            continue
+        try:
+            source_text = path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+
+        normalized_source = _normalize_match_text(source_text)
+        if not normalized_source:
+            continue
+
+        normalized_source_lower = normalized_source.lower()
+        for needle in search_needles:
+            idx = normalized_source_lower.find(str(needle).lower())
+            if idx < 0:
+                continue
+            start = max(0, idx - (window_chars // 3))
+            end = min(len(normalized_source), idx + window_chars)
+            excerpt = normalized_source[start:end].strip()
+            if excerpt:
+                return excerpt
+
+    return normalized_fallback
 
 
 def _classify_anchor_sections(snippet: str) -> List[str]:

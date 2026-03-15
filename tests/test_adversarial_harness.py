@@ -568,6 +568,80 @@ class TestSeedComplaintLibrary:
         assert 'appeal_rights' in seed['key_facts']['anchor_passages'][0]['section_labels']
         assert 'grievance_hearing' in seed['key_facts']['anchor_passages'][0]['section_labels']
 
+    def test_build_hacc_evidence_seed_expands_anchor_passage_from_source_file(self, tmp_path):
+        source_path = tmp_path / 'admin-plan.txt'
+        source_path.write_text(
+            'Intro text. HACC will advise the family of the right to appeal HACC decision through an '
+            'informal hearing, provide written notice of the final decision, and preserve due process rights. '
+            'Additional surrounding context appears here.',
+            encoding='utf-8',
+        )
+
+        payload = {
+            'results': [
+                {
+                    'document_id': 'doc-1',
+                    'title': 'ADMINISTRATIVE PLAN',
+                    'source_path': str(source_path),
+                    'score': 9,
+                    'snippet': 'right to appeal HACC decision',
+                },
+            ]
+        }
+
+        seed = build_hacc_evidence_seed(
+            payload,
+            query='appeal due process hearing',
+            complaint_type='housing_discrimination',
+            category='housing',
+            description='Expanded passage complaint',
+            anchor_titles=['ADMINISTRATIVE PLAN'],
+            anchor_terms=['right to appeal', 'informal hearing', 'written notice'],
+        )
+
+        assert seed is not None
+        passage = seed['key_facts']['anchor_passages'][0]['snippet']
+        assert 'informal hearing' in passage
+        assert 'written notice of the final decision' in passage
+        assert len(passage) > len('right to appeal HACC decision')
+
+    def test_build_hacc_evidence_seed_uses_sidecar_text_file_for_anchor_passage(self, tmp_path):
+        source_path = tmp_path / 'admin-plan'
+        sidecar_path = tmp_path / 'admin-plan.txt'
+        source_path.write_text('binary-ish placeholder', encoding='utf-8')
+        sidecar_path.write_text(
+            'Expanded text. HACC will advise the family of the right to appeal through an informal hearing and '
+            'provide written notice of the final decision. More context follows.',
+            encoding='utf-8',
+        )
+
+        payload = {
+            'results': [
+                {
+                    'document_id': 'doc-1',
+                    'title': 'ADMINISTRATIVE PLAN',
+                    'source_path': str(source_path),
+                    'score': 9,
+                    'snippet': 'right to appeal',
+                },
+            ]
+        }
+
+        seed = build_hacc_evidence_seed(
+            payload,
+            query='appeal due process hearing',
+            complaint_type='housing_discrimination',
+            category='housing',
+            description='Sidecar passage complaint',
+            anchor_titles=['ADMINISTRATIVE PLAN'],
+            anchor_terms=['right to appeal', 'informal hearing'],
+        )
+
+        assert seed is not None
+        passage = seed['key_facts']['anchor_passages'][0]['snippet']
+        assert 'informal hearing' in passage
+        assert 'written notice of the final decision' in passage
+
     def test_build_hacc_mediator_evidence_packet_prefers_source_files(self, tmp_path):
         source_path = tmp_path / 'policy.txt'
         source_path.write_text('Full policy text about grievance hearings and impartial review.', encoding='utf-8')
