@@ -53,7 +53,13 @@ class MockMediator:
         return {
             'phase': 'intake',
             'initial_questions': [
-                {'question': 'Can you provide more details?', 'type': 'clarification'}
+                {
+                    'question': 'Can you provide more details?',
+                    'type': 'clarification',
+                    'question_objective': 'clarify_low_confidence_fact',
+                    'question_reason': 'The mediator needs more detail before relying on the current intake record.',
+                    'expected_proof_gain': 'medium',
+                }
             ]
         }
     
@@ -61,7 +67,15 @@ class MockMediator:
         self.questions_asked += 1
         return {
             'converged': self.questions_asked >= 3,
-            'next_questions': [{'question': 'Tell me more', 'type': 'follow_up'}]
+            'next_questions': [
+                {
+                    'question': 'Tell me more',
+                    'type': 'follow_up',
+                    'question_objective': 'general_intake_clarification',
+                    'question_reason': 'A follow-up is needed to complete the intake record.',
+                    'expected_proof_gain': 'medium',
+                }
+            ]
         }
     
     def get_three_phase_status(self):
@@ -610,6 +624,13 @@ SUGGESTIONS:
         assert isinstance(result, SessionResult)
         assert result.session_id == "test_run"
         assert result.num_questions >= 0
+        mediator_questions = [
+            item for item in result.conversation_history
+            if item.get('role') == 'mediator' and item.get('type') == 'question'
+        ]
+        assert mediator_questions
+        assert mediator_questions[0]['question_objective'] == 'clarify_low_confidence_fact'
+        assert 'question_reason' in mediator_questions[0]
 
     def test_session_result_to_dict_includes_anchor_section_summary(self):
         result = SessionResult(

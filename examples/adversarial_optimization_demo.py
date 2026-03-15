@@ -72,6 +72,21 @@ def _write_jsonl_line(fp, obj: Dict[str, Any]) -> None:
 	fp.flush()
 
 
+def _print_question_details(question: Dict[str, Any]) -> None:
+	question_text = str(question.get("question") or "").strip()
+	question_objective = str(question.get("question_objective") or "").strip()
+	question_reason = str(question.get("question_reason") or "").strip()
+	expected_proof_gain = str(question.get("expected_proof_gain") or "").strip()
+
+	print(question_text)
+	if question_objective:
+		print(f"Objective: {question_objective}")
+	if expected_proof_gain:
+		print(f"Expected proof gain: {expected_proof_gain}")
+	if question_reason:
+		print(f"Why this question: {question_reason}")
+
+
 def main() -> int:
 	parser = argparse.ArgumentParser(
 		description="Interactive multi-turn mediator chat; saves JSONL history and prints an optimization report"
@@ -289,24 +304,32 @@ def main() -> int:
 
 			question = questions[0]
 			question_text = question.get("question") if isinstance(question, dict) else str(question)
+			question_objective = question.get("question_objective") if isinstance(question, dict) else None
+			question_reason = question.get("question_reason") if isinstance(question, dict) else None
+			expected_proof_gain = question.get("expected_proof_gain") if isinstance(question, dict) else None
 
 			print("\nMediator question:")
-			print(question_text)
+			if isinstance(question, dict):
+				_print_question_details(question)
+			else:
+				print(question_text)
 
-			conversation_history.append(
-				{
-					"role": "mediator",
-					"type": "question",
-					"content": question_text,
-				}
-			)
+			mediator_turn = {
+				"role": "mediator",
+				"type": "question",
+				"content": question_text,
+			}
+			if question_objective:
+				mediator_turn["question_objective"] = question_objective
+			if question_reason:
+				mediator_turn["question_reason"] = question_reason
+			if expected_proof_gain:
+				mediator_turn["expected_proof_gain"] = expected_proof_gain
+			conversation_history.append(mediator_turn)
 			_write_jsonl_line(
 				chat_fp,
-				{
+				mediator_turn | {
 					"timestamp": datetime.utcnow().isoformat(),
-					"role": "mediator",
-					"type": "question",
-					"content": question_text,
 				},
 			)
 

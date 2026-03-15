@@ -24,6 +24,19 @@ class MockBackend:
         return "Mock response"
 
 
+def _print_question(question, index):
+    print(f"{index}. [{question['type']}] {question['question']}")
+    question_objective = str(question.get('question_objective') or '').strip()
+    question_reason = str(question.get('question_reason') or '').strip()
+    expected_proof_gain = str(question.get('expected_proof_gain') or '').strip()
+    if question_objective:
+        print(f"   objective: {question_objective}")
+    if expected_proof_gain:
+        print(f"   expected_proof_gain: {expected_proof_gain}")
+    if question_reason:
+        print(f"   why: {question_reason}")
+
+
 def main():
     print("=" * 80)
     print("THREE-PHASE COMPLAINT PROCESSING EXAMPLE")
@@ -63,7 +76,7 @@ def main():
     # Show initial questions
     print("Initial denoising questions:")
     for i, q in enumerate(result['initial_questions'][:3], 1):
-        print(f"{i}. [{q['type']}] {q['question']}")
+        _print_question(q, i)
     print()
     
     # Simulate answering some questions

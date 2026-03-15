@@ -957,6 +957,13 @@ class AdversarialSession:
                         )
                     break
                 question_text = self._extract_question_text(question)
+                question_objective = self._extract_question_objective(question)
+                question_reason = ''
+                if isinstance(question, dict):
+                    question_reason = str(question.get('question_reason') or '').strip()
+                expected_proof_gain = ''
+                if isinstance(question, dict):
+                    expected_proof_gain = str(question.get('expected_proof_gain') or '').strip()
                 question_key = self._question_dedupe_key(question_text)
                 question_intent_key = self._question_intent_key(question_text, question)
                 if question_key in asked_question_keys:
@@ -971,6 +978,27 @@ class AdversarialSession:
                     complainant_prompt
                 )
                 logger.debug(f"Complainant answers: {answer[:100]}...")
+
+                mediator_turn = {
+                    'role': 'mediator',
+                    'type': 'question',
+                    'content': question_text,
+                }
+                if question_objective:
+                    mediator_turn['question_objective'] = question_objective
+                if question_reason:
+                    mediator_turn['question_reason'] = question_reason
+                if expected_proof_gain:
+                    mediator_turn['expected_proof_gain'] = expected_proof_gain
+                self.conversation_history.append(mediator_turn)
+
+                self.conversation_history.append(
+                    {
+                        'role': 'complainant',
+                        'type': 'answer',
+                        'content': answer,
+                    }
+                )
                 
                 # Process answer with mediator
                 result = self.mediator.process_denoising_answer(question, answer)

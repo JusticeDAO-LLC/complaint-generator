@@ -6,8 +6,7 @@ Manages the three-phase complaint process and transitions between phases.
 
 import logging
 from enum import Enum
-from typing import Dict, Any, Callable
-from typing import Dict, Any, List
+from typing import Dict, Any, Callable, List
 from datetime import datetime, UTC
 
 logger = logging.getLogger(__name__)
@@ -68,6 +67,7 @@ class PhaseManager:
             ComplaintPhase.INTAKE: self._is_intake_complete,
             ComplaintPhase.EVIDENCE: self._is_evidence_complete,
             ComplaintPhase.FORMALIZATION: self._is_formalization_complete,
+        }
 
     def _extract_intake_gap_types(self, data: Dict[str, Any]) -> List[str]:
         """Collect normalized intake gap types from stored phase state."""
@@ -235,15 +235,8 @@ class PhaseManager:
         - Gaps have been identified and addressed (or exhausted)
         - Denoising iterations have converged
         """
-        data = self.phase_data[ComplaintPhase.INTAKE]
-        
-        has_knowledge_graph = 'knowledge_graph' in data
-        has_dependency_graph = 'dependency_graph' in data
-        gaps_addressed = data.get('remaining_gaps', float('inf')) <= _INTAKE_GAPS_THRESHOLD
-        converged = data.get('denoising_converged', False)
-        
-        # Require both gaps to be addressed AND convergence
-        return has_knowledge_graph and has_dependency_graph and gaps_addressed and converged
+        readiness = self.get_intake_readiness()
+        return readiness['ready']
     
     def _is_evidence_complete(self) -> bool:
         """
@@ -282,6 +275,7 @@ class PhaseManager:
     def update_phase_data(self, phase: ComplaintPhase, key: str, value: Any):
         """Update data for a specific phase."""
         self.phase_data[phase][key] = value
+        self._refresh_phase_derived_state(phase)
         logger.debug("Updated %s data: %s = %s", phase.value, key, value)
     
     def get_phase_data(self, phase: ComplaintPhase, key: str = None) -> Any:
@@ -394,7 +388,11 @@ class PhaseManager:
             }
         
         if not data.get('denoising_converged', False) and self.iteration_count < _DENOISING_MAX_ITERATIONS:
-            return {'action': 'continue_denoising'}
+            return {
+                'action': 'continue_denoising',
+                'intake_readiness_score': readiness['score'],
+                'intake_blockers': readiness['blockers'],
+            }
         
         return {
             'action': 'complete_intake',
