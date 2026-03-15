@@ -386,6 +386,16 @@ Evaluation:"""
         score.anchor_sections_expected = expected
         score.anchor_sections_covered = covered
         score.anchor_sections_missing = missing
+        if expected:
+            coverage_ratio = len(covered) / len(expected)
+            score.coverage = (score.coverage + coverage_ratio) / 2.0
+            score.overall_score = (
+                (score.question_quality * self.criteria_weights.get('question_quality', 0.0))
+                + (score.information_extraction * self.criteria_weights.get('information_extraction', 0.0))
+                + (score.empathy * self.criteria_weights.get('empathy', 0.0))
+                + (score.efficiency * self.criteria_weights.get('efficiency', 0.0))
+                + (score.coverage * self.criteria_weights.get('coverage', 0.0))
+            )
         if missing:
             missing_text = ", ".join(missing)
             if f"Missed anchor sections: {missing_text}" not in score.weaknesses:
@@ -393,3 +403,10 @@ Evaluation:"""
             suggestion = f"Add questions covering: {missing_text}"
             if suggestion not in score.suggestions:
                 score.suggestions = list(score.suggestions) + [suggestion]
+            feedback_note = f"Anchor-section coverage was incomplete ({len(covered)}/{len(expected)} covered)."
+            if feedback_note not in score.feedback:
+                score.feedback = f"{score.feedback} {feedback_note}".strip()
+        elif expected:
+            strength = f"Covered all seeded anchor sections: {', '.join(covered)}"
+            if strength not in score.strengths:
+                score.strengths = list(score.strengths) + [strength]

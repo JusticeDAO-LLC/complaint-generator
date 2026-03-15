@@ -342,6 +342,31 @@ def _normalize_match_text(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
+def _clean_extracted_excerpt(text: str) -> str:
+    cleaned = _normalize_match_text(text)
+    if not cleaned:
+        return cleaned
+
+    boilerplate_patterns = (
+        r"\s*©\s*Copyright\b.*$",
+        r"\s*Copyright\s+\d{4}\b.*$",
+        r"\s*Unlimited copies may be made for internal use\..*$",
+        r"\s*Page\s+\d+(?:-\d+)?\b.*$",
+    )
+    for pattern in boilerplate_patterns:
+        cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE)
+
+    heading_markers = (
+        r"\bAbsorbing a Portable Family\b",
+        r"\bAdminplan\s+\d{1,2}/\d{1,2}/\d{4}\b",
+    )
+    cut_positions = [match.start() for marker in heading_markers for match in [re.search(marker, cleaned, flags=re.IGNORECASE)] if match]
+    if cut_positions:
+        cleaned = cleaned[: min(cut_positions)].rstrip(" ,;:-")
+
+    return _normalize_match_text(cleaned)
+
+
 def _candidate_text_paths(source_path: str) -> List[Path]:
     path = Path(source_path)
     candidates: List[Path] = []
@@ -368,7 +393,7 @@ def _extract_source_window(
     fallback_snippet: str,
     window_chars: int = 520,
 ) -> str:
-    normalized_fallback = _normalize_match_text(fallback_snippet)
+    normalized_fallback = _clean_extracted_excerpt(fallback_snippet)
     if not source_path:
         return normalized_fallback
 
@@ -427,7 +452,7 @@ def _extract_source_window(
                     last_space = normalized_source.rfind(" ", start, end)
                     if last_space > start:
                         end = last_space
-            excerpt = normalized_source[start:end].strip()
+            excerpt = _clean_extracted_excerpt(normalized_source[start:end])
             if excerpt:
                 return excerpt
 

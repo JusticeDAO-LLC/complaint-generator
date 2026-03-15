@@ -385,6 +385,46 @@ SUGGESTIONS:
 
         assert 'reasonable_accommodation' in score.anchor_sections_covered
         assert 'grievance_hearing' in score.anchor_sections_missing
+        assert score.coverage < 0.8
+        assert any('Missed anchor sections: grievance_hearing' == item for item in score.weaknesses)
+        assert any('Add questions covering: grievance_hearing' == item for item in score.suggestions)
+        assert 'Anchor-section coverage was incomplete' in score.feedback
+
+    def test_evaluate_session_rewards_full_anchor_coverage(self):
+        backend = MockLLMBackend("""SCORES:
+question_quality: 0.7
+information_extraction: 0.7
+empathy: 0.7
+efficiency: 0.7
+coverage: 0.6
+
+FEEDBACK:
+Solid session.
+
+STRENGTHS:
+- Stayed on topic
+
+WEAKNESSES:
+- None
+
+SUGGESTIONS:
+- Keep going
+""")
+        critic = Critic(backend)
+
+        score = critic.evaluate_session(
+            "Initial complaint",
+            [
+                {'role': 'mediator', 'type': 'question', 'content': 'Did you request a reasonable accommodation or grievance hearing?'},
+                {'role': 'complainant', 'type': 'response', 'content': 'Yes, I requested a reasonable accommodation and later asked for a grievance hearing.'},
+            ],
+            {'status': 'complete'},
+            context={'key_facts': {'anchor_sections': ['reasonable_accommodation', 'grievance_hearing']}},
+        )
+
+        assert score.anchor_sections_missing == []
+        assert score.coverage > 0.6
+        assert any('Covered all seeded anchor sections' in item for item in score.strengths)
     
     def test_fallback_score(self):
         """Test fallback when evaluation fails."""
@@ -713,6 +753,49 @@ class TestSeedComplaintLibrary:
         assert expanded.startswith('Intro text before the match.')
         assert 'HACC will advise the family' in expanded
         assert expanded.endswith('written notice of the final decision.')
+
+    def test_build_hacc_evidence_seed_removes_policy_footer_boilerplate(self, tmp_path):
+        source_path = tmp_path / 'admin-plan.txt'
+        source_path.write_text(
+            'HACC Policy If HACC elects to deny or terminate assistance for a portable family, HACC will notify '
+            'the initial PHA within 10 business days after the informal review or hearing if the denial or '
+            'termination is upheld. HACC will furnish the initial PHA with a copy of the review or hearing '
+            'decision. © Copyright 2024 Nan McKay & Associates, Inc. Unlimited copies may be made for internal '
+            'use. Page 10-23 Adminplan 7/1/2025 Absorbing a Portable Family The receiving PHA may absorb an '
+            'incoming portable family.',
+            encoding='utf-8',
+        )
+
+        payload = {
+            'results': [
+                {
+                    'document_id': 'doc-1',
+                    'title': 'ADMINISTRATIVE PLAN',
+                    'source_path': str(source_path),
+                    'score': 9,
+                    'snippet': 'informal review or hearing',
+                },
+            ]
+        }
+
+        seed = build_hacc_evidence_seed(
+            payload,
+            query='appeal due process hearing',
+            complaint_type='housing_discrimination',
+            category='housing',
+            description='Footer-trimmed supporting evidence complaint',
+            anchor_titles=['ADMINISTRATIVE PLAN'],
+            anchor_terms=['informal review or hearing', 'copy of the review or hearing decision'],
+        )
+
+        assert seed is not None
+        expanded = seed['hacc_evidence'][0]['snippet']
+        assert 'informal review or hearing' in expanded
+        assert 'copy of the review or hearing decision' in expanded
+        assert 'Nan McKay' not in expanded
+        assert 'Unlimited copies may be made for internal use' not in expanded
+        assert 'Page 10-23' not in expanded
+        assert 'Absorbing a Portable Family' not in expanded
 
     def test_build_hacc_mediator_evidence_packet_prefers_source_files(self, tmp_path):
         source_path = tmp_path / 'policy.txt'
