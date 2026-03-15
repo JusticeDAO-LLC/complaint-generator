@@ -13,7 +13,10 @@ import os
 import random
 from .knowledge_graph import KnowledgeGraph, Entity, Relationship
 from .dependency_graph import DependencyGraph
-from .intake_claim_registry import build_claim_element_question_text
+from .intake_claim_registry import (
+    build_claim_element_question_text,
+    build_proof_lead_question_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -852,6 +855,50 @@ class ComplaintDenoiser:
 
         return questions
 
+    def _build_proof_lead_questions(
+        self,
+        intake_case_file: Optional[Dict[str, Any]],
+        max_questions: int,
+    ) -> List[Dict[str, Any]]:
+        """Build claim-aware proof-lead questions when the intake still lacks support sources."""
+        if not isinstance(intake_case_file, dict) or max_questions <= 0:
+            return []
+
+        proof_leads = intake_case_file.get('proof_leads', [])
+        if isinstance(proof_leads, list) and proof_leads:
+            return []
+
+        questions: List[Dict[str, Any]] = []
+        seen_keys: Set[str] = set()
+        candidate_claims = intake_case_file.get('candidate_claims', [])
+        if not isinstance(candidate_claims, list):
+            return []
+
+        for claim in candidate_claims:
+            if not isinstance(claim, dict):
+                continue
+            claim_type = str(claim.get('claim_type') or '').strip()
+            claim_label = str(claim.get('label') or claim_type or 'this claim').strip()
+            question_key = f"{claim_type}:{claim_label}:proof_leads".lower()
+            if question_key in seen_keys:
+                continue
+            seen_keys.add(question_key)
+            question_text = build_proof_lead_question_text(claim_type, claim_label)
+            if not self._already_asked(question_text):
+                questions.append(self._build_phase1_question(
+                    question_type='evidence',
+                    question_text=question_text,
+                    context={
+                        'claim_type': claim_type,
+                        'claim_name': claim_label,
+                    },
+                    priority='high',
+                ))
+            if len(questions) >= max_questions:
+                return questions[:max_questions]
+
+        return questions
+
     def _ensure_standard_intake_questions(self, questions: List[Dict[str, Any]], max_questions: int) -> List[Dict[str, Any]]:
         if len(questions) >= max_questions:
             return questions
@@ -1091,6 +1138,12 @@ class ComplaintDenoiser:
             max(0, max_questions - len(questions)),
         )
         questions.extend(claim_element_questions[:max(0, max_questions - len(questions))])
+
+        proof_lead_questions = self._build_proof_lead_questions(
+            intake_case_file,
+            max(0, max_questions - len(questions)),
+        )
+        questions.extend(proof_lead_questions[:max(0, max_questions - len(questions))])
         
         # Get knowledge graph gaps
         kg_gaps = knowledge_graph.find_gaps()

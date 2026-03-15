@@ -267,6 +267,9 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "changed claims:" in content
     assert "remedy changes:" in content
     assert "added remedies:" in content
+    assert "change-group ${normalizedTone}" in content
+    assert "renderChangeGroup" in content
+    assert "change-group-badge" in content
     assert "Intake Constraints" in content
     assert "Current intake phase:" in content
     assert "Intake readiness score:" in content
@@ -398,8 +401,9 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "data-iteration-filter=\"rejected\"" in content
     assert "traceDiffList" in content
     assert "Iteration Changes" in content
-    assert "Accepted Changes:" in content
-    assert "Rejected Changes:" in content
+    assert "Accepted Changes" in content
+    assert "Rejected Changes" in content
+    assert "renderGroupedList" in content
     assert "filterIterations" in content
     assert "setIterationFilter" in content
     assert "buildGroupedIterationDiffLines" in content

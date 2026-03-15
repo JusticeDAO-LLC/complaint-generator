@@ -129,6 +129,57 @@
             font-size: 1.05rem;
         }
 
+        .change-group {
+            margin-top: 12px;
+            padding: 12px 14px;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.78);
+        }
+
+        .change-group + .change-group {
+            margin-top: 10px;
+        }
+
+        .change-group.accepted {
+            border-color: rgba(22, 101, 52, 0.22);
+            background: rgba(236, 253, 245, 0.92);
+        }
+
+        .change-group.rejected {
+            border-color: rgba(180, 83, 9, 0.24);
+            background: rgba(255, 247, 237, 0.94);
+        }
+
+        .change-group-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .change-group-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            background: rgba(31, 41, 51, 0.08);
+        }
+
+        .change-group.accepted .change-group-badge {
+            color: var(--ok);
+            background: rgba(22, 101, 52, 0.14);
+        }
+
+        .change-group.rejected .change-group-badge {
+            color: var(--warning);
+            background: rgba(180, 83, 9, 0.14);
+        }
+
         .chip-row {
             display: flex;
             flex-wrap: wrap;
@@ -246,6 +297,30 @@
                 return;
             }
             node.innerHTML = values.map((value) => `<li>${escapeHtml(value)}</li>`).join('');
+        }
+
+        function renderGroupedList(node, groups) {
+            if (!Array.isArray(groups) || !groups.length) {
+                node.innerHTML = '<li class="muted">None reported.</li>';
+                return;
+            }
+            node.innerHTML = groups.map((group) => {
+                const tone = group && group.tone === 'accepted' ? 'accepted' : 'rejected';
+                const title = group && group.title ? group.title : 'Changes';
+                const values = Array.isArray(group && group.values) ? group.values : [];
+                const badge = tone === 'accepted' ? 'Accepted' : 'Rejected';
+                return `
+                    <li>
+                        <div class="change-group ${tone}">
+                            <div class="change-group-title">
+                                <span>${escapeHtml(title)}</span>
+                                <span class="change-group-badge">${escapeHtml(badge)}</span>
+                            </div>
+                            <ul>${values.map((value) => `<li>${escapeHtml(value)}</li>`).join('')}</ul>
+                        </div>
+                    </li>
+                `;
+            }).join('');
         }
 
         function summarizeArrayPreview(items, limit = 2) {
@@ -380,12 +455,18 @@
             const acceptedIterations = filteredIterations.filter((entry) => Boolean(entry && entry.accepted));
             const rejectedIterations = filteredIterations.filter((entry) => !Boolean(entry && entry.accepted));
             if (acceptedIterations.length) {
-                groups.push('Accepted Changes:');
-                groups.push(...buildIterationDiffLines(acceptedIterations));
+                groups.push({
+                    title: 'Accepted Changes',
+                    tone: 'accepted',
+                    values: buildIterationDiffLines(acceptedIterations),
+                });
             }
             if (rejectedIterations.length) {
-                groups.push('Rejected Changes:');
-                groups.push(...buildIterationDiffLines(rejectedIterations));
+                groups.push({
+                    title: 'Rejected Changes',
+                    tone: 'rejected',
+                    values: buildIterationDiffLines(rejectedIterations),
+                });
             }
             return groups;
         }
@@ -490,7 +571,7 @@
                 }),
             );
 
-            renderList(
+            renderGroupedList(
                 document.getElementById('traceDiffList'),
                 buildGroupedIterationDiffLines(iterations),
             );

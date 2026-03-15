@@ -325,3 +325,28 @@ def build_claim_element_question_text(claim_type: Any, claim_label: Any, element
     if template:
         return template.format(claim_label=normalized_claim_label)
     return f"For {normalized_claim_label}, what facts show {normalized_element_label.lower()}?"
+
+
+def build_proof_lead_question_text(claim_type: Any, claim_label: Any) -> str:
+    normalized_claim_type = normalize_claim_type(claim_type)
+    normalized_claim_label = str(claim_label or normalized_claim_type or "this claim").strip() or "this claim"
+
+    prompt_map = {
+        "employment_discrimination": (
+            "For {claim_label}, what proof do you have, such as emails or texts, an HR complaint, a termination or discipline notice, witness names, or comparator records?"
+        ),
+        "housing_discrimination": (
+            "For {claim_label}, what proof do you have, such as a lease, denial notice, accommodation request, landlord messages, inspection records, or witness names?"
+        ),
+        "retaliation": (
+            "For {claim_label}, what proof do you have of the protected complaint and what happened after it, such as emails, reports, timing records, or witness names?"
+        ),
+        "accommodation": (
+            "For {claim_label}, what proof do you have, such as an accommodation request, medical note, denial message, policy, or witness names?"
+        ),
+    }
+
+    template = prompt_map.get(normalized_claim_type)
+    if template:
+        return template.format(claim_label=normalized_claim_label)
+    return f"For {normalized_claim_label}, what documents, messages, witnesses, or other proof leads support your account?"

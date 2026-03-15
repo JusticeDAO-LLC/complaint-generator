@@ -506,6 +506,60 @@
             line-height: 1.5;
         }
 
+        .change-group {
+            margin-top: 14px;
+            padding: 14px 16px;
+            border-radius: 16px;
+            border: 1px solid rgba(22, 33, 38, 0.08);
+            background: rgba(255, 255, 255, 0.7);
+        }
+
+        .change-group + .change-group {
+            margin-top: 12px;
+        }
+
+        .change-group.accepted {
+            border-color: rgba(22, 101, 52, 0.2);
+            background: rgba(236, 253, 245, 0.9);
+        }
+
+        .change-group.rejected {
+            border-color: rgba(180, 83, 9, 0.22);
+            background: rgba(255, 247, 237, 0.92);
+        }
+
+        .change-group-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--ink);
+        }
+
+        .change-group-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 0.74rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            background: rgba(22, 33, 38, 0.08);
+            color: var(--ink);
+        }
+
+        .change-group.accepted .change-group-badge {
+            background: rgba(22, 101, 52, 0.14);
+            color: #166534;
+        }
+
+        .change-group.rejected .change-group-badge {
+            background: rgba(180, 83, 9, 0.14);
+            color: #b45309;
+        }
+
         .artifact-grid,
         .section-stack,
         .claim-stack,
@@ -1559,6 +1613,23 @@
             return `<${tag} class="list-lines">${body}</${tag}>`;
         }
 
+        function renderChangeGroup(title, lines, tone) {
+            if (!Array.isArray(lines) || lines.length === 0) {
+                return '';
+            }
+            const normalizedTone = tone === 'accepted' ? 'accepted' : 'rejected';
+            const toneLabel = normalizedTone === 'accepted' ? 'Accepted' : 'Rejected';
+            return `
+                <div class="change-group ${normalizedTone}">
+                    <div class="change-group-title">
+                        <span>${escapeHtml(title)}</span>
+                        <span class="change-group-badge">${escapeHtml(toneLabel)}</span>
+                    </div>
+                    ${renderLines(lines)}
+                </div>
+            `;
+        }
+
         function renderPleadingParagraphs(lines, startNumber = 1) {
             if (!Array.isArray(lines) || lines.length === 0) {
                 return '<div class="preview-meta">No content available.</div>';
@@ -2380,8 +2451,8 @@
                         ${traceViewUrl ? `<div class="preview-meta"><a href="${escapeHtml(traceViewUrl)}" target="_blank" rel="noopener">Open Persisted Trace</a></div>` : ''}
                         ${traceSnapshotLines.length ? `<div class="preview-meta"><strong>Persisted Trace Snapshot</strong></div>${renderLines(traceSnapshotLines)}` : ''}
                         ${optimizationFocusLines.length ? `<div class="preview-meta"><strong>Optimization Focus</strong></div>${renderLines(optimizationFocusLines)}` : ''}
-                        ${acceptedChangeLines.length ? `<div class="preview-meta"><strong>Accepted Changes</strong></div>${renderLines(acceptedChangeLines)}` : ''}
-                        ${rejectedChangeLines.length ? `<div class="preview-meta"><strong>Rejected Changes</strong></div>${renderLines(rejectedChangeLines)}` : ''}
+                        ${renderChangeGroup('Accepted Changes', acceptedChangeLines, 'accepted')}
+                        ${renderChangeGroup('Rejected Changes', rejectedChangeLines, 'rejected')}
                         ${routerUsageLines.length ? `<div class="preview-meta"><strong>Router Usage</strong></div>${renderLines(routerUsageLines)}` : ''}
                         ${intakeConstraintLines.length ? `<div class="preview-meta"><strong>Intake Constraints</strong></div>${renderLines(intakeConstraintLines)}` : ''}
                         ${upstreamOptimizerLines.length ? `<div class="preview-meta"><strong>Upstream Optimizer</strong></div>${renderLines(upstreamOptimizerLines)}` : ''}

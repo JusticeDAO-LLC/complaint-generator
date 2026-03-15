@@ -601,11 +601,37 @@ class TestMediatorThreePhaseIntegration:
         employment_questions = [
             question for question in result['initial_questions']
             if question.get('type') == 'requirement'
-            and question.get('target_element_id') == 'employment_relationship'
+            and question.get('target_element_id') == 'adverse_action'
         ]
 
         assert employment_questions
-        assert 'employer or supervisor' in employment_questions[0]['question'].lower()
+        assert 'adverse job action' in employment_questions[0]['question'].lower()
+
+    def test_start_three_phase_process_uses_domain_specific_housing_proof_prompt_text(self):
+        """Housing discrimination intake should ask for tenancy-specific proof leads."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        result = mediator.start_three_phase_process(
+            "My landlord discriminated against me because of my disability."
+        )
+
+        housing_evidence_questions = [
+            question for question in result['initial_questions']
+            if question.get('type') == 'evidence'
+            and question.get('target_claim_type') == 'housing_discrimination'
+        ]
+
+        assert housing_evidence_questions
+        question_text = housing_evidence_questions[0]['question'].lower()
+        assert 'lease' in question_text
+        assert 'landlord messages' in question_text
     
     def test_graph_serialization(self):
         """Test that graphs can be serialized for storage."""

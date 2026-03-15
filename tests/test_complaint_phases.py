@@ -440,6 +440,56 @@ class TestComplaintDenoiser:
         question_text = requirement_question["question"].lower()
         assert "landlord" in question_text
         assert "tenancy situation" in question_text
+
+    def test_generate_questions_uses_employment_specific_proof_lead_prompt_text(self):
+        """Employment discrimination proof prompts should ask for workplace-specific evidence."""
+        denoiser = ComplaintDenoiser()
+
+        kg = KnowledgeGraph()
+        dg = DependencyGraph()
+        intake_case_file = {
+            "candidate_claims": [
+                {
+                    "claim_id": "claim1",
+                    "claim_type": "employment_discrimination",
+                    "label": "Employment Discrimination",
+                    "required_elements": [],
+                }
+            ],
+            "proof_leads": [],
+        }
+
+        questions = denoiser.generate_questions(kg, dg, max_questions=5, intake_case_file=intake_case_file)
+        evidence_question = next(question for question in questions if question["type"] == "evidence")
+
+        question_text = evidence_question["question"].lower()
+        assert "hr complaint" in question_text
+        assert "termination or discipline notice" in question_text
+
+    def test_generate_questions_uses_housing_specific_proof_lead_prompt_text(self):
+        """Housing discrimination proof prompts should ask for tenancy-specific evidence."""
+        denoiser = ComplaintDenoiser()
+
+        kg = KnowledgeGraph()
+        dg = DependencyGraph()
+        intake_case_file = {
+            "candidate_claims": [
+                {
+                    "claim_id": "claim1",
+                    "claim_type": "housing_discrimination",
+                    "label": "Housing Discrimination",
+                    "required_elements": [],
+                }
+            ],
+            "proof_leads": [],
+        }
+
+        questions = denoiser.generate_questions(kg, dg, max_questions=5, intake_case_file=intake_case_file)
+        evidence_question = next(question for question in questions if question["type"] == "evidence")
+
+        question_text = evidence_question["question"].lower()
+        assert "lease" in question_text
+        assert "landlord messages" in question_text
     
     def test_calculate_noise_level(self):
         """Test noise level calculation."""
