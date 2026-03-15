@@ -55,6 +55,7 @@ from complaint_phases import (
 	ComplaintDenoiser,
 	build_intake_case_file,
 	match_required_element_id,
+	refresh_intake_case_file,
 	refresh_intake_sections,
 	LegalGraphBuilder,
 	LegalGraph,
@@ -3478,6 +3479,97 @@ class Mediator:
 	def _normalize_intake_text(self, value: Any) -> str:
 		return " ".join(str(value or "").strip().split())
 
+	def _extract_date_or_range_from_text(self, value: str) -> str | None:
+		normalized = self._normalize_intake_text(value)
+		if not normalized:
+			return None
+		date_match = re.search(
+			r'(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}',
+			normalized,
+			re.IGNORECASE,
+		)
+		if date_match:
+			return date_match.group(0)
+		year_match = re.search(r'\b(19|20)\d{2}\b', normalized)
+		if year_match:
+			return year_match.group(0)
+		return None
+
+	def _question_materiality(self, question_type: str) -> str:
+		if question_type in {'timeline', 'responsible_party', 'requirement', 'contradiction'}:
+			return 'high'
+		if question_type in {'impact', 'remedy', 'evidence'}:
+			return 'high'
+		return 'medium'
+
+	def _question_corroboration_priority(self, question_type: str) -> str:
+		if question_type in {'timeline', 'requirement', 'evidence', 'contradiction'}:
+			return 'high'
+		if question_type in {'impact', 'remedy', 'responsible_party'}:
+			return 'medium'
+		return 'medium'
+
+	def _proof_lead_expected_format(self, lead_type: str) -> str:
+		normalized = self._normalize_intake_text(lead_type).lower()
+		if 'email' in normalized:
+			return 'email'
+		if 'text' in normalized or 'message' in normalized:
+			return 'message export'
+		if 'photo' in normalized or 'picture' in normalized:
+			return 'image'
+		if 'witness' in normalized:
+			return 'testimony'
+		return 'document or testimony'
+
+	def _proof_lead_retrieval_path(self, lead_type: str) -> str:
+		normalized = self._normalize_intake_text(lead_type).lower()
+		if 'email' in normalized:
+			return 'complainant_email_account'
+		if 'text' in normalized or 'message' in normalized:
+			return 'complainant_mobile_device'
+		if 'witness' in normalized:
+			return 'witness_follow_up'
+		return 'complainant_possession'
+
+	def _resolve_answer_claim_types(self, intake_case_file: Dict[str, Any], context: Dict[str, Any]) -> List[str]:
+		claim_types: List[str] = []
+		context_claim_type = self._normalize_intake_text(context.get('claim_type') or context.get('target_claim_type')).lower()
+		if context_claim_type:
+			claim_types.append(context_claim_type)
+		for claim in intake_case_file.get('candidate_claims', []) if isinstance(intake_case_file.get('candidate_claims', []), list) else []:
+			if not isinstance(claim, dict) or not claim.get('claim_type'):
+				continue
+			claim_type = str(claim.get('claim_type')).strip().lower()
+			if claim_type and claim_type not in claim_types:
+				claim_types.append(claim_type)
+		return claim_types
+
+	def _resolve_answer_element_targets(self, context: Dict[str, Any]) -> List[str]:
+		element_targets: List[str] = []
+		for key in ('target_element_id', 'requirement_id', 'claim_element_id'):
+			value = self._normalize_intake_text(context.get(key))
+			if value and value not in element_targets:
+				element_targets.append(value)
+		return element_targets
+
+	def _resolve_evidence_classes_for_context(self, intake_case_file: Dict[str, Any], context: Dict[str, Any]) -> List[str]:
+		target_claim_type = self._normalize_intake_text(context.get('claim_type') or context.get('target_claim_type')).lower()
+		target_element_id = self._normalize_intake_text(context.get('target_element_id') or context.get('requirement_id')).lower()
+		for claim in intake_case_file.get('candidate_claims', []) if isinstance(intake_case_file.get('candidate_claims', []), list) else []:
+			if not isinstance(claim, dict):
+				continue
+			claim_type = str(claim.get('claim_type') or '').strip().lower()
+			if target_claim_type and claim_type != target_claim_type:
+				continue
+			for element in claim.get('required_elements', []) or []:
+				if not isinstance(element, dict):
+					continue
+				element_id = str(element.get('element_id') or '').strip().lower()
+				if target_element_id and element_id != target_element_id:
+					continue
+				return list(element.get('evidence_classes', []) or [])
+		return []
+
 	def _next_intake_record_id(self, prefix: str, records: List[Dict[str, Any]]) -> str:
 		return f"{prefix}_{len(records) + 1:03d}"
 
@@ -3506,6 +3598,15 @@ class Mediator:
 		text: str,
 		fact_type: str,
 		question_type: str,
+		event_date_or_range: str | None = None,
+		actor_ids: List[str] | None = None,
+		target_ids: List[str] | None = None,
+		location: str | None = None,
+		claim_types: List[str] | None = None,
+		element_tags: List[str] | None = None,
+		materiality: str | None = None,
+		corroboration_priority: str | None = None,
+		fact_participants: Dict[str, Any] | None = None,
 	) -> Dict[str, Any]:
 		canonical_facts = intake_case_file.setdefault('canonical_facts', [])
 		if not isinstance(canonical_facts, list):
@@ -3516,23 +3617,42 @@ class Mediator:
 		if existing is not None:
 			existing['confidence'] = max(float(existing.get('confidence', 0.6) or 0.6), 0.75)
 			existing['status'] = 'accepted'
+			if event_date_or_range and not existing.get('event_date_or_range'):
+				existing['event_date_or_range'] = event_date_or_range
+			if location and not existing.get('location'):
+				existing['location'] = location
+			existing['claim_types'] = list(dict.fromkeys(list(existing.get('claim_types', []) or []) + list(claim_types or [])))
+			existing['element_tags'] = list(dict.fromkeys(list(existing.get('element_tags', []) or []) + list(element_tags or [])))
+			existing['actor_ids'] = list(dict.fromkeys(list(existing.get('actor_ids', []) or []) + list(actor_ids or [])))
+			existing['target_ids'] = list(dict.fromkeys(list(existing.get('target_ids', []) or []) + list(target_ids or [])))
+			existing['fact_participants'] = {
+				**(existing.get('fact_participants') if isinstance(existing.get('fact_participants'), dict) else {}),
+				**(fact_participants if isinstance(fact_participants, dict) else {}),
+			}
+			if materiality:
+				existing['materiality'] = materiality
+			if corroboration_priority:
+				existing['corroboration_priority'] = corroboration_priority
 			return existing
 
 		fact_record = {
 			'fact_id': self._next_intake_record_id('fact', canonical_facts),
 			'text': normalized_text,
 			'fact_type': fact_type,
-			'claim_types': [],
-			'element_tags': [],
-			'event_date_or_range': None,
-			'actor_ids': [],
-			'target_ids': [],
-			'location': None,
+			'claim_types': list(claim_types or []),
+			'element_tags': list(element_tags or []),
+			'event_date_or_range': event_date_or_range,
+			'actor_ids': list(actor_ids or []),
+			'target_ids': list(target_ids or []),
+			'location': location,
 			'source_kind': 'complainant_answer',
 			'source_ref': question_type,
 			'confidence': 0.75,
 			'status': 'accepted',
 			'needs_corroboration': True,
+			'corroboration_priority': corroboration_priority or self._question_corroboration_priority(question_type),
+			'materiality': materiality or self._question_materiality(question_type),
+			'fact_participants': fact_participants if isinstance(fact_participants, dict) else {},
 			'contradiction_group_id': None,
 		}
 		canonical_facts.append(fact_record)
@@ -3545,6 +3665,15 @@ class Mediator:
 		text: str,
 		lead_type: str,
 		related_fact_ids: List[str] | None = None,
+		fact_targets: List[str] | None = None,
+		element_targets: List[str] | None = None,
+		owner: str | None = None,
+		expected_format: str | None = None,
+		retrieval_path: str | None = None,
+		authenticity_risk: str | None = None,
+		privacy_risk: str | None = None,
+		priority: str | None = None,
+		evidence_classes: List[str] | None = None,
 	) -> Dict[str, Any]:
 		proof_leads = intake_case_file.setdefault('proof_leads', [])
 		if not isinstance(proof_leads, list):
@@ -3555,13 +3684,26 @@ class Mediator:
 			if not isinstance(lead, dict):
 				continue
 			if self._normalize_intake_text(lead.get('description')).lower() == normalized_text.lower():
+				lead['related_fact_ids'] = list(dict.fromkeys(list(lead.get('related_fact_ids', []) or []) + list(related_fact_ids or [])))
+				lead['fact_targets'] = list(dict.fromkeys(list(lead.get('fact_targets', []) or []) + list(fact_targets or [])))
+				lead['element_targets'] = list(dict.fromkeys(list(lead.get('element_targets', []) or []) + list(element_targets or [])))
+				lead['evidence_classes'] = list(dict.fromkeys(list(lead.get('evidence_classes', []) or []) + list(evidence_classes or [])))
 				return lead
 		lead_record = {
 			'lead_id': self._next_intake_record_id('lead', proof_leads),
 			'lead_type': lead_type,
 			'description': normalized_text,
 			'related_fact_ids': list(related_fact_ids or []),
+			'fact_targets': list(fact_targets or []),
+			'element_targets': list(element_targets or []),
 			'availability': 'claimed_available',
+			'owner': owner or 'complainant',
+			'expected_format': expected_format or self._proof_lead_expected_format(lead_type),
+			'retrieval_path': retrieval_path or self._proof_lead_retrieval_path(lead_type),
+			'authenticity_risk': authenticity_risk or 'review_required',
+			'privacy_risk': privacy_risk or 'review_required',
+			'priority': priority or 'medium',
+			'evidence_classes': list(evidence_classes or []),
 			'source_kind': 'complainant_answer',
 			'source_ref': lead_type,
 		}
@@ -3596,6 +3738,7 @@ class Mediator:
 			'contradiction_id': contradiction_id,
 			'severity': severity,
 			'fact_ids': [left_fact.get('fact_id')],
+			'affected_element_ids': list(left_fact.get('element_tags', []) or []),
 			'topic': normalized_topic,
 			'status': 'open',
 			'existing_text': self._normalize_intake_text(left_fact.get('text')),
@@ -3632,6 +3775,8 @@ class Mediator:
 
 		question_type = str(question.get('type') or '').strip().lower()
 		context = question.get('context', {}) if isinstance(question.get('context'), dict) else {}
+		resolved_claim_types = self._resolve_answer_claim_types(intake_case_file, context)
+		resolved_element_targets = self._resolve_answer_element_targets(context)
 		created_fact: Dict[str, Any] | None = None
 
 		if question_type == 'timeline':
@@ -3644,6 +3789,11 @@ class Mediator:
 				text=normalized_answer,
 				fact_type='timeline',
 				question_type=question_type,
+				event_date_or_range=self._extract_date_or_range_from_text(normalized_answer),
+				claim_types=resolved_claim_types,
+				element_tags=resolved_element_targets,
+				materiality='high',
+				corroboration_priority='high',
 			)
 			for existing_fact in existing_timeline_facts:
 				existing_text = self._normalize_intake_text(existing_fact.get('text'))
@@ -3663,6 +3813,9 @@ class Mediator:
 				text=normalized_answer,
 				fact_type='remedy' if question_type == 'remedy' else 'impact',
 				question_type=question_type,
+				claim_types=resolved_claim_types,
+				element_tags=resolved_element_targets,
+				materiality='high',
 			)
 			if question_type == 'impact' and self._normalize_intake_text(answer):
 				lower_answer = normalized_answer.lower()
@@ -3679,12 +3832,21 @@ class Mediator:
 				text=normalized_answer,
 				fact_type='supporting_evidence',
 				question_type=question_type,
+				claim_types=resolved_claim_types,
+				element_tags=resolved_element_targets,
+				materiality='high',
+				corroboration_priority='high',
 			)
+			evidence_classes = self._resolve_evidence_classes_for_context(intake_case_file, context)
 			self._append_proof_lead(
 				intake_case_file,
 				text=normalized_answer,
 				lead_type=self._extract_proof_lead_type(answer),
 				related_fact_ids=[created_fact['fact_id']],
+				fact_targets=[created_fact['fact_id']],
+				element_targets=resolved_element_targets,
+				priority='high' if question.get('priority') == 'high' else 'medium',
+				evidence_classes=evidence_classes,
 			)
 		elif question_type == 'responsible_party':
 			created_fact = self._append_canonical_fact(
@@ -3692,6 +3854,11 @@ class Mediator:
 				text=normalized_answer,
 				fact_type='responsible_party',
 				question_type=question_type,
+				actor_ids=[normalized_answer],
+				claim_types=resolved_claim_types,
+				element_tags=resolved_element_targets,
+				fact_participants={'actor': normalized_answer},
+				materiality='high',
 			)
 		elif question_type == 'requirement':
 			created_fact = self._append_canonical_fact(
@@ -3699,6 +3866,10 @@ class Mediator:
 				text=normalized_answer,
 				fact_type='claim_element',
 				question_type=question_type,
+				claim_types=resolved_claim_types,
+				element_tags=list(resolved_element_targets),
+				materiality='high',
+				corroboration_priority='high',
 			)
 			target_element_id = self._normalize_intake_text(context.get('requirement_id'))
 			requirement_name = self._normalize_intake_text(context.get('requirement_name'))
@@ -3722,6 +3893,8 @@ class Mediator:
 				text=normalized_answer,
 				fact_type='clarification',
 				question_type=question_type,
+				claim_types=resolved_claim_types,
+				element_tags=resolved_element_targets,
 			)
 		elif question_type == 'contradiction':
 			contradiction_queue = intake_case_file.setdefault('contradiction_queue', [])
@@ -3739,18 +3912,16 @@ class Mediator:
 				text=normalized_answer,
 				fact_type='contradiction_resolution',
 				question_type=question_type,
+				claim_types=resolved_claim_types,
+				element_tags=resolved_element_targets,
+				materiality='high',
+				corroboration_priority='high',
 			)
 
 		if created_fact and intake_case_file.get('candidate_claims'):
-			claim_types = [
-				str(claim.get('claim_type') or '').strip().lower()
-				for claim in intake_case_file.get('candidate_claims', [])
-				if isinstance(claim, dict) and claim.get('claim_type')
-			]
-			created_fact['claim_types'] = [claim_type for claim_type in claim_types if claim_type]
+			created_fact['claim_types'] = list(dict.fromkeys(list(created_fact.get('claim_types', []) or []) + resolved_claim_types))
 
-		intake_case_file['intake_sections'] = refresh_intake_sections(intake_case_file, knowledge_graph)
-		return intake_case_file
+		return refresh_intake_case_file(intake_case_file, knowledge_graph, append_snapshot=True)
 	
 	def process_denoising_answer(self, question: Dict[str, Any], answer: str) -> Dict[str, Any]:
 		"""
@@ -4353,6 +4524,39 @@ class Mediator:
 		)
 		return tasks
 
+	def _retire_answered_alignment_evidence_tasks(
+		self,
+		question: Dict[str, Any],
+		answer: str,
+		tasks: Any,
+	) -> List[Dict[str, Any]]:
+		remaining_tasks = [
+			dict(task)
+			for task in (tasks if isinstance(tasks, list) else [])
+			if isinstance(task, dict)
+		]
+		if not answer or not str(answer).strip():
+			return remaining_tasks
+		context = question.get('context', {}) if isinstance(question, dict) else {}
+		if not isinstance(context, dict) or not context.get('alignment_task'):
+			return remaining_tasks
+
+		target_claim_type = str(context.get('claim_type') or '').strip().lower()
+		target_element_id = str(context.get('claim_element_id') or '').strip().lower()
+		if not target_claim_type and not target_element_id:
+			return remaining_tasks
+
+		filtered_tasks: List[Dict[str, Any]] = []
+		for task in remaining_tasks:
+			task_claim_type = str(task.get('claim_type') or '').strip().lower()
+			task_element_id = str(task.get('claim_element_id') or '').strip().lower()
+			matches_claim = not target_claim_type or task_claim_type == target_claim_type
+			matches_element = not target_element_id or task_element_id == target_element_id
+			if matches_claim and matches_element:
+				continue
+			filtered_tasks.append(task)
+		return filtered_tasks
+
 	def _classify_evidence_ingestion_outcomes(
 		self,
 		evidence_data: Dict[str, Any],
@@ -4710,6 +4914,7 @@ class Mediator:
 		updates = self.denoiser.process_answer(question, answer, kg, dg)
 		
 		# If answer describes evidence, add it
+		evidence_refreshed = False
 		if len(answer) > 20 and question.get('type') in ['evidence_clarification', 'evidence_quality']:
 			evidence_data = {
 				'id': f"evidence_from_q_{len(self.denoiser.questions_asked)}",
@@ -4720,10 +4925,22 @@ class Mediator:
 				'supports_claims': [question.get('context', {}).get('claim_id')]
 			}
 			self.add_evidence_to_graphs(evidence_data)
+			evidence_refreshed = True
 		
 		# Generate next evidence questions
 		evidence_gaps = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'evidence_gaps') or []
 		alignment_evidence_tasks = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks') or []
+		if not evidence_refreshed:
+			alignment_evidence_tasks = self._retire_answered_alignment_evidence_tasks(
+				question,
+				answer,
+				alignment_evidence_tasks,
+			)
+			self.phase_manager.update_phase_data(
+				ComplaintPhase.EVIDENCE,
+				'alignment_evidence_tasks',
+				alignment_evidence_tasks,
+			)
 		questions = self.denoiser.generate_evidence_questions(
 			kg,
 			dg,
@@ -4748,6 +4965,7 @@ class Mediator:
 			'updates': updates,
 			'next_questions': questions,
 			'alignment_evidence_tasks': alignment_evidence_tasks,
+			'next_action': self.phase_manager.get_next_action(),
 			'noise_level': noise,
 			'ready_for_formalization': self.phase_manager.is_phase_complete(ComplaintPhase.EVIDENCE)
 		}

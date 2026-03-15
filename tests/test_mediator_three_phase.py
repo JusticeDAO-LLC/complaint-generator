@@ -339,6 +339,9 @@ class TestMediatorThreePhaseIntegration:
         assert any(claim['required_elements'] for claim in intake_case_file['candidate_claims'])
         assert any(fact['fact_type'] == 'impact' for fact in intake_case_file['canonical_facts'])
         assert any(lead['lead_type'] == 'email communication' for lead in intake_case_file['proof_leads'])
+        assert intake_case_file['open_items']
+        assert intake_case_file['summary_snapshots']
+        assert intake_case_file['summary_snapshots'][0]['candidate_claim_count'] >= 1
 
     def test_process_denoising_answer_updates_timeline_fact_in_intake_case_file(self):
         """Timeline answers should update canonical facts and section coverage in the intake case file."""
@@ -387,6 +390,76 @@ class TestMediatorThreePhaseIntegration:
         assert intake_case_file['proof_leads']
         assert intake_case_file['intake_sections']['proof_leads']['status'] == 'complete'
         assert any('emails' in lead['description'].lower() for lead in intake_case_file['proof_leads'])
+
+    def test_process_denoising_answer_enriches_proof_lead_metadata_for_targeted_element(self):
+        """Evidence answers should preserve claim-element targeting and retrieval metadata on proof leads."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process("I was fired after I complained about discrimination.")
+
+        mediator.process_denoising_answer(
+            {
+                'type': 'evidence',
+                'question': 'What evidence do you have to support protected activity?',
+                'priority': 'high',
+                'context': {
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'target_element_id': 'protected_activity',
+                },
+            },
+            'I have emails to HR and text messages from my supervisor.',
+        )
+        intake_case_file = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file')
+        matching_lead = next(
+            lead for lead in intake_case_file['proof_leads']
+            if 'emails to hr' in lead['description'].lower()
+        )
+
+        assert 'protected_activity' in matching_lead['element_targets']
+        assert matching_lead['expected_format'] == 'email'
+        assert matching_lead['retrieval_path'] == 'complainant_email_account'
+        assert matching_lead['priority'] == 'high'
+
+    def test_process_denoising_answer_refreshes_open_items_and_summary_snapshots(self):
+        """Structured intake refresh should keep unresolved work and snapshots current after answers."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process("My employer discriminated against me because of my race.")
+
+        mediator.process_denoising_answer(
+            {
+                'type': 'requirement',
+                'question': 'What protected class are you in?',
+                'context': {
+                    'claim_type': 'employment_discrimination',
+                    'requirement_id': 'protected_trait',
+                    'target_element_id': 'protected_trait',
+                    'requirement_name': 'Protected trait or class',
+                },
+            },
+            'I am Black.',
+        )
+        intake_case_file = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file')
+        open_item_ids = {item['open_item_id'] for item in intake_case_file['open_items']}
+
+        assert 'element:employment_discrimination:protected_trait' not in open_item_ids
+        assert intake_case_file['summary_snapshots']
+        assert intake_case_file['summary_snapshots'][-1]['open_item_count'] == len(intake_case_file['open_items'])
 
     def test_process_denoising_answer_tracks_conflicting_timeline_answers(self):
         """Conflicting timeline answers should create a structured contradiction entry."""
@@ -566,6 +639,52 @@ class TestMediatorThreePhaseIntegration:
         assert result['next_questions']
         assert result['next_questions'][0]['context']['alignment_task'] is True
         assert result['next_questions'][0]['context']['claim_element_id'] == 'protected_activity'
+
+    def test_process_evidence_denoising_retires_answered_alignment_task_without_refresh(self):
+        """Short answers to alignment-driven evidence prompts should retire the matching task immediately."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', mediator.kg_builder.build_from_text("I complained to HR."))
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', mediator.dg_builder.build_from_claims([{'name': 'Retaliation', 'type': 'retaliation'}], {}))
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_evidence_tasks',
+            [
+                {
+                    'action': 'fill_evidence_gaps',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'claim_element_label': 'Protected activity',
+                    'support_status': 'unsupported',
+                    'blocking': True,
+                }
+            ],
+        )
+        mediator.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_gaps', [])
+
+        result = mediator.process_evidence_denoising(
+            {
+                'type': 'evidence_clarification',
+                'question': 'What evidence do you have for protected activity?',
+                'context': {
+                    'alignment_task': True,
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                },
+            },
+            'HR email',
+        )
+
+        assert result['alignment_evidence_tasks'] == []
+        assert mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks') == []
 
     def test_requirement_answer_can_satisfy_registry_backed_claim_element(self):
         """Requirement answers should tag and satisfy registry-backed claim elements when the requirement name is recognizable."""

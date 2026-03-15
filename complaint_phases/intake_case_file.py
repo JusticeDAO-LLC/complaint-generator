@@ -17,6 +17,51 @@ def _status(has_value: bool) -> str:
     return "complete" if has_value else "missing"
 
 
+def _coerce_list(value: Any) -> List[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _coerce_dict(value: Any) -> Dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _derive_expected_format(lead_type: str) -> str:
+    normalized = _normalize_text(lead_type).lower()
+    if "email" in normalized:
+        return "email"
+    if "text" in normalized or "message" in normalized:
+        return "message export"
+    if "photo" in normalized or "image" in normalized or "picture" in normalized:
+        return "image"
+    if "witness" in normalized:
+        return "testimony"
+    if "letter" in normalized or "notice" in normalized:
+        return "document"
+    return "document or testimony"
+
+
+def _derive_retrieval_path(lead_type: str) -> str:
+    normalized = _normalize_text(lead_type).lower()
+    if "email" in normalized:
+        return "complainant_email_account"
+    if "text" in normalized or "message" in normalized:
+        return "complainant_mobile_device"
+    if "witness" in normalized:
+        return "witness_follow_up"
+    if "photo" in normalized or "image" in normalized:
+        return "complainant_device_gallery"
+    return "complainant_possession"
+
+
+def _derive_lead_priority(lead_type: str) -> str:
+    normalized = _normalize_text(lead_type).lower()
+    if any(token in normalized for token in ("termination", "notice", "email", "text", "message", "letter")):
+        return "high"
+    if "witness" in normalized:
+        return "medium"
+    return "medium"
+
+
 def build_candidate_claims(knowledge_graph) -> List[Dict[str, Any]]:
     """Build initial candidate claim records from claim entities."""
     if knowledge_graph is None:
@@ -87,12 +132,129 @@ def build_proof_leads(knowledge_graph) -> List[Dict[str, Any]]:
                 "lead_type": evidence_type,
                 "description": description,
                 "related_fact_ids": [],
+                "fact_targets": [],
+                "element_targets": [],
                 "availability": "mentioned_in_initial_complaint",
+                "owner": "complainant",
+                "expected_format": _derive_expected_format(evidence_type),
+                "retrieval_path": _derive_retrieval_path(evidence_type),
+                "authenticity_risk": "unknown",
+                "privacy_risk": "review_required",
+                "priority": _derive_lead_priority(evidence_type),
                 "source_kind": "knowledge_graph_entity",
                 "source_ref": entity.id,
             }
         )
     return proof_leads
+
+
+def build_open_items(intake_case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Build the unresolved-work queue for the current intake record."""
+    case_file = _coerce_dict(intake_case_file)
+    sections = _coerce_dict(case_file.get("intake_sections"))
+    candidate_claims = _coerce_list(case_file.get("candidate_claims"))
+    contradiction_queue = _coerce_list(case_file.get("contradiction_queue"))
+    open_items: List[Dict[str, Any]] = []
+
+    for section_name, section in sections.items():
+        section_dict = _coerce_dict(section)
+        status = _normalize_text(section_dict.get("status")).lower() or "missing"
+        if status == "complete":
+            continue
+        open_items.append(
+            {
+                "open_item_id": f"section:{section_name}",
+                "kind": "section_gap",
+                "status": "open",
+                "blocking_level": "blocking" if section_name in {"chronology", "actors", "conduct", "claim_elements"} else "important",
+                "section": section_name,
+                "reason": "; ".join(_coerce_list(section_dict.get("missing_items"))) or f"{section_name} is incomplete",
+                "target_claim_type": "",
+                "target_element_id": "",
+                "next_question_strategy": f"fill_{section_name}",
+            }
+        )
+
+    for claim in candidate_claims:
+        claim_dict = _coerce_dict(claim)
+        claim_type = _normalize_text(claim_dict.get("claim_type"))
+        claim_label = _normalize_text(claim_dict.get("label") or claim_type)
+        for element in _coerce_list(claim_dict.get("required_elements")):
+            element_dict = _coerce_dict(element)
+            if _normalize_text(element_dict.get("status")).lower() == "present":
+                continue
+            element_id = _normalize_text(element_dict.get("element_id"))
+            element_label = _normalize_text(element_dict.get("label") or element_id)
+            open_items.append(
+                {
+                    "open_item_id": f"element:{claim_type}:{element_id}",
+                    "kind": "claim_element_gap",
+                    "status": "open",
+                    "blocking_level": "blocking" if bool(element_dict.get("blocking", False)) else "important",
+                    "section": "claim_elements",
+                    "reason": f"{claim_label} is still missing {element_label}.",
+                    "target_claim_type": claim_type,
+                    "target_element_id": element_id,
+                    "next_question_strategy": "satisfy_claim_element",
+                    "evidence_classes": list(element_dict.get("evidence_classes", []) or []),
+                }
+            )
+
+    for contradiction in contradiction_queue:
+        contradiction_dict = _coerce_dict(contradiction)
+        if _normalize_text(contradiction_dict.get("status") or "open").lower() == "resolved":
+            continue
+        contradiction_id = _normalize_text(contradiction_dict.get("contradiction_id") or "contradiction")
+        topic = _normalize_text(contradiction_dict.get("topic") or "intake contradiction")
+        open_items.append(
+            {
+                "open_item_id": f"contradiction:{contradiction_id}",
+                "kind": "contradiction",
+                "status": "open",
+                "blocking_level": _normalize_text(contradiction_dict.get("severity") or "important").lower() or "important",
+                "section": "contradictions",
+                "reason": f"Resolve contradiction about {topic}.",
+                "target_claim_type": "",
+                "target_element_id": "",
+                "next_question_strategy": "resolve_contradiction",
+            }
+        )
+
+    seen_ids = set()
+    deduped_items: List[Dict[str, Any]] = []
+    for item in open_items:
+        item_id = _normalize_text(item.get("open_item_id"))
+        if not item_id or item_id in seen_ids:
+            continue
+        seen_ids.add(item_id)
+        deduped_items.append(item)
+    return deduped_items
+
+
+def build_summary_snapshot(intake_case_file: Dict[str, Any]) -> Dict[str, Any]:
+    """Build a compact summary snapshot for the current intake record."""
+    case_file = _coerce_dict(intake_case_file)
+    candidate_claims = _coerce_list(case_file.get("candidate_claims"))
+    canonical_facts = _coerce_list(case_file.get("canonical_facts"))
+    proof_leads = _coerce_list(case_file.get("proof_leads"))
+    open_items = _coerce_list(case_file.get("open_items"))
+    contradiction_queue = _coerce_list(case_file.get("contradiction_queue"))
+    sections = _coerce_dict(case_file.get("intake_sections"))
+    unresolved_contradictions = [
+        item for item in contradiction_queue
+        if isinstance(item, dict) and _normalize_text(item.get("status") or "open").lower() != "resolved"
+    ]
+    return {
+        "candidate_claim_count": len(candidate_claims),
+        "canonical_fact_count": len(canonical_facts),
+        "proof_lead_count": len(proof_leads),
+        "open_item_count": len(open_items),
+        "unresolved_contradiction_count": len(unresolved_contradictions),
+        "section_statuses": {
+            name: _normalize_text(_coerce_dict(section).get("status") or "missing").lower() or "missing"
+            for name, section in sections.items()
+        },
+    }
 
 
 def build_intake_sections(
@@ -176,7 +338,7 @@ def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[st
     )
 
     normalized_complaint_text = _normalize_text(complaint_text)
-    return {
+    intake_case_file = {
         "candidate_claims": candidate_claims,
         "intake_sections": intake_sections,
         "canonical_facts": canonical_facts,
@@ -186,6 +348,9 @@ def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[st
         "summary_snapshots": [],
         "source_complaint_text": normalized_complaint_text,
     }
+    intake_case_file["open_items"] = build_open_items(intake_case_file)
+    intake_case_file["summary_snapshots"] = [build_summary_snapshot(intake_case_file)]
+    return intake_case_file
 
 
 def refresh_intake_sections(intake_case_file: Dict[str, Any], knowledge_graph) -> Dict[str, Dict[str, Any]]:
@@ -201,3 +366,22 @@ def refresh_intake_sections(intake_case_file: Dict[str, Any], knowledge_graph) -
         proof_leads=proof_leads if isinstance(proof_leads, list) else [],
         source_text=str(source_text or ""),
     )
+
+
+def refresh_intake_case_file(intake_case_file: Dict[str, Any], knowledge_graph, *, append_snapshot: bool = False) -> Dict[str, Any]:
+    """Refresh derived intake sections, open items, and summary snapshots."""
+    case_file = _coerce_dict(intake_case_file)
+    case_file["intake_sections"] = refresh_intake_sections(case_file, knowledge_graph)
+    case_file["open_items"] = build_open_items(case_file)
+
+    summary_snapshots = _coerce_list(case_file.get("summary_snapshots"))
+    snapshot = build_summary_snapshot(case_file)
+    if append_snapshot:
+        if not summary_snapshots or summary_snapshots[-1] != snapshot:
+            summary_snapshots.append(snapshot)
+    elif not summary_snapshots:
+        summary_snapshots.append(snapshot)
+    else:
+        summary_snapshots[-1] = snapshot
+    case_file["summary_snapshots"] = summary_snapshots
+    return case_file

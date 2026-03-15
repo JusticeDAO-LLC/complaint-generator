@@ -54,6 +54,55 @@ def _build_hook_backed_browser_mediator(db_path: str):
     mediator = Mock()
     mediator.state = SimpleNamespace(username="browser-smoke-text-link", hashed_username=None)
     mediator.log = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "iteration_count": 2,
+        "intake_readiness": {
+            "score": 0.41,
+            "ready_to_advance": False,
+            "remaining_gap_count": 2,
+            "contradiction_count": 0,
+            "blockers": ["collect_missing_support"],
+        },
+        "candidate_claims": [
+            {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.87},
+        ],
+        "intake_sections": {
+            "proof_leads": {"status": "partial", "missing_items": ["documents"]},
+        },
+        "canonical_fact_summary": {
+            "count": 1,
+            "facts": [{"fact_id": "fact_001", "text": "Protected activity timeline recorded."}],
+        },
+        "proof_lead_summary": {
+            "count": 1,
+            "proof_leads": [{"lead_id": "lead_001", "description": "Archived HR complaint email"}],
+        },
+        "intake_evidence_alignment_summary": {
+            "aligned_element_count": 1,
+            "claims": {
+                "retaliation": {
+                    "shared_elements": [
+                        {"element_id": "retaliation:1", "support_status": "supported"},
+                    ],
+                    "intake_only_element_ids": ["retaliation:3"],
+                    "evidence_only_element_ids": ["retaliation:2"],
+                }
+            },
+        },
+        "alignment_evidence_tasks": [
+            {
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:3",
+                "claim_element_label": "Causal connection",
+                "support_status": "missing",
+                "action": "fill_evidence_gaps",
+                "blocking": True,
+            }
+        ],
+        "question_candidate_summary": {},
+        "claim_support_packet_summary": {},
+    }
 
     hook = ClaimSupportHook(mediator, db_path=db_path)
     hook.register_claim_requirements(
@@ -590,6 +639,145 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
             assert {
                 "text": "Open Claims For Relief Question Review (1)",
                 "href": "/claim-support-review?section=claims_for_relief&follow_up_support_kind=authority",
+            } in question_links
+
+            browser.close()
+
+
+def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for intake-evidence alignment smoke coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+
+        app = _build_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(
+                    f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
+                )
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                alignment_summary = page.locator("#intake-evidence-alignment-summary-list").inner_text()
+                alignment_tasks = page.locator("#alignment-evidence-task-list").inner_text()
+
+                assert "Cross-phase element alignment for retaliation" in alignment_summary
+                assert "aligned retaliation:1: supported" in alignment_summary
+                assert "intake only: retaliation:3" in alignment_summary
+                assert "evidence only: retaliation:2" in alignment_summary
+                assert "Alignment task for retaliation" in alignment_tasks
+                assert "evidence action fill_evidence_gaps" in alignment_tasks
+                assert "element: retaliation:3" in alignment_tasks
+                assert "label: Causal connection" in alignment_tasks
+                assert "blocking: yes" in alignment_tasks
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+def test_optimization_trace_smoke_renders_question_review_links_with_support_kind():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    payload = {
+        "cid": "bafy-trace-smoke",
+        "size": 321,
+        "trace": {
+            "user_id": "trace-smoke-user",
+            "intake_status": {
+                "current_phase": "intake",
+                "score": 0.52,
+                "contradiction_count": 0,
+                "blockers": ["collect_missing_support"],
+                "contradictions": [],
+            },
+            "intake_constraints": [],
+            "intake_case_summary": {
+                "candidate_claims": [
+                    {"claim_type": "retaliation", "label": "Retaliation"},
+                ],
+                "intake_sections": {
+                    "proof_leads": {"status": "partial", "missing_items": ["documents"]},
+                    "claims_for_relief": {"status": "partial", "missing_items": ["authority"]},
+                },
+                "canonical_fact_summary": {"count": 1, "facts": [{"fact_id": "fact_001"}]},
+                "proof_lead_summary": {"count": 1, "proof_leads": [{"lead_id": "lead_001"}]},
+                "question_candidate_summary": {
+                    "count": 2,
+                    "question_goal_counts": {
+                        "identify_supporting_proof": 1,
+                        "establish_element": 1,
+                    },
+                    "phase1_section_counts": {
+                        "proof_leads": 1,
+                        "claims_for_relief": 1,
+                    },
+                    "blocking_level_counts": {
+                        "blocking": 1,
+                        "non_blocking": 1,
+                    },
+                },
+                "claim_support_packet_summary": {
+                    "claim_count": 1,
+                    "element_count": 2,
+                    "status_counts": {"unsupported": 2},
+                    "recommended_actions": ["collect_missing_support_kind"],
+                },
+            },
+            "iterations": [
+                {
+                    "iteration": 1,
+                    "focus_section": "factual_allegations",
+                    "accepted": True,
+                    "critic": {"overall_score": 0.73},
+                }
+            ],
+            "initial_review": {"overall_score": 0.41},
+            "final_review": {"overall_score": 0.73, "recommended_focus": "claims_for_relief"},
+        },
+    }
+
+    app = _build_document_browser_smoke_app()
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page()
+            page.goto(f"{base_url}/document/optimization-trace")
+            page.evaluate("payload => window.renderTrace(payload)", payload)
+            page.wait_for_function(
+                "() => Array.from(document.querySelectorAll('#traceEvidenceQuestionTargets a.inline-link')).length >= 2"
+            )
+
+            question_links = page.evaluate(
+                """() => Array.from(document.querySelectorAll('#traceEvidenceQuestionTargets a.inline-link'))
+                    .map((node) => ({ text: node.textContent.trim(), href: node.getAttribute('href') || '' }))"""
+            )
+
+            assert {
+                "text": "Open Proof Leads Question Review (1)",
+                "href": "/claim-support-review?user_id=trace-smoke-user&section=proof_leads&follow_up_support_kind=evidence",
+            } in question_links
+            assert {
+                "text": "Open Claims For Relief Question Review (1)",
+                "href": "/claim-support-review?user_id=trace-smoke-user&section=claims_for_relief&follow_up_support_kind=authority",
             } in question_links
 
             browser.close()
