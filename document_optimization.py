@@ -5,7 +5,11 @@ import json
 import math
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from intake_status import build_intake_status_summary, build_intake_warning_entries
+from intake_status import (
+    build_intake_case_review_summary,
+    build_intake_status_summary,
+    build_intake_warning_entries,
+)
 
 try:
     from integrations.ipfs_datasets.llm import generate_text_with_metadata
@@ -217,6 +221,7 @@ class AgenticDocumentOptimizer:
         upstream_optimizer = self._build_upstream_optimizer_metadata()
         intake_status = build_intake_status_summary(self.mediator)
         intake_constraints = build_intake_warning_entries(intake_status)
+        intake_case_summary = build_intake_case_review_summary(self.mediator)
         trace_storage = self._store_trace(
             {
                 "user_id": user_id or "",
@@ -232,6 +237,7 @@ class AgenticDocumentOptimizer:
                 },
                 "intake_status": intake_status,
                 "intake_constraints": intake_constraints,
+                "intake_case_summary": intake_case_summary,
                 "support_context": support_context,
                 "initial_review": initial_review,
                 "final_review": current_review,
@@ -254,6 +260,7 @@ class AgenticDocumentOptimizer:
             "upstream_optimizer": upstream_optimizer,
             "intake_status": intake_status,
             "intake_constraints": intake_constraints,
+            "intake_case_summary": intake_case_summary,
             "packet_projection": dict(support_context.get("packet_projection") or {}),
             "section_history": [
                 {

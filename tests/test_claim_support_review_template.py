@@ -271,6 +271,11 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "renderChangeGroup" in content
     assert "change-group-badge" in content
     assert "Intake Constraints" in content
+    assert "Intake Evidence Snapshot" in content
+    assert "Candidate claims:" in content
+    assert "Canonical facts:" in content
+    assert "Proof leads:" in content
+    assert "Packet next steps:" in content
     assert "Current intake phase:" in content
     assert "Intake readiness score:" in content
     assert "Persisted intake phase:" in content
@@ -403,6 +408,10 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "Iteration Changes" in content
     assert "Accepted Changes" in content
     assert "Rejected Changes" in content
+    assert "traceEvidenceList" in content
+    assert "Intake Evidence Snapshot" in content
+    assert "Candidate claims:" in content
+    assert "Canonical facts:" in content
     assert "renderGroupedList" in content
     assert "filterIterations" in content
     assert "setIterationFilter" in content

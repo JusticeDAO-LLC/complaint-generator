@@ -337,6 +337,33 @@ def _build_mediator() -> Mock:
     mediator.get_three_phase_status.return_value = {
         "current_phase": "intake",
         "iteration_count": 1,
+        "candidate_claims": [
+            {"claim_type": "employment discrimination", "label": "Employment Discrimination", "confidence": 0.82},
+            {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.8},
+        ],
+        "intake_sections": {
+            "chronology": {"status": "complete", "missing_items": []},
+            "proof_leads": {"status": "partial", "missing_items": ["documents"]},
+        },
+        "canonical_fact_summary": {
+            "count": 2,
+            "facts": [{"fact_id": "fact_001"}, {"fact_id": "fact_002"}],
+        },
+        "proof_lead_summary": {
+            "count": 1,
+            "proof_leads": [{"lead_id": "lead_001"}],
+        },
+        "claim_support_packet_summary": {
+            "claim_count": 2,
+            "element_count": 6,
+            "status_counts": {
+                "supported": 2,
+                "partially_supported": 1,
+                "unsupported": 1,
+                "contradicted": 0,
+            },
+            "recommended_actions": ["collect_missing_support_kind"],
+        },
         "intake_readiness": {
             "ready_to_advance": False,
             "score": 0.38,
@@ -763,6 +790,9 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     assert stored_traces[0]["config"]["router_usage"]["llm_calls"] >= 3
     assert stored_traces[0]["intake_status"] == report["intake_status"]
     assert stored_traces[0]["intake_constraints"] == report["intake_constraints"]
+    assert stored_traces[0]["intake_case_summary"]["canonical_fact_summary"]["count"] == 2
+    assert stored_traces[0]["intake_case_summary"]["proof_lead_summary"]["count"] == 1
+    assert stored_traces[0]["intake_case_summary"]["claim_support_packet_summary"]["claim_count"] == 2
     assert stored_traces[0]["iterations"][0]["change_manifest"]
     assert stored_traces[0]["iterations"][0]["change_manifest"][0]["field"] == "factual_allegations"
     assert stored_traces[0]["iterations"][0]["change_manifest"][0]["before_count"] == 2
@@ -2839,6 +2869,9 @@ def test_review_surface_returns_document_optimization_contract_end_to_end(monkey
     assert 'selected_provider' in report['upstream_optimizer']
     assert 'selected_method' in report['upstream_optimizer']
     assert 'control_loop' in report['upstream_optimizer']
+    assert report['intake_case_summary']['canonical_fact_summary']['count'] == 2
+    assert report['intake_case_summary']['proof_lead_summary']['count'] == 1
+    assert report['intake_case_summary']['claim_support_packet_summary']['claim_count'] == 2
     assert report['intake_status'] == {
         'current_phase': 'intake',
         'ready_to_advance': False,

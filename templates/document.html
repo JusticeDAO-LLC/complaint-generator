@@ -2265,6 +2265,12 @@
             const finalReview = report.final_review && typeof report.final_review === 'object' ? report.final_review : {};
             const intakeStatus = report.intake_status && typeof report.intake_status === 'object' ? report.intake_status : {};
             const intakeConstraints = Array.isArray(report.intake_constraints) ? report.intake_constraints : [];
+            const intakeCaseSummary = report.intake_case_summary && typeof report.intake_case_summary === 'object' ? report.intake_case_summary : {};
+            const intakeCandidateClaims = Array.isArray(intakeCaseSummary.candidate_claims) ? intakeCaseSummary.candidate_claims : [];
+            const intakeSections = intakeCaseSummary.intake_sections && typeof intakeCaseSummary.intake_sections === 'object' ? intakeCaseSummary.intake_sections : {};
+            const canonicalFactSummary = intakeCaseSummary.canonical_fact_summary && typeof intakeCaseSummary.canonical_fact_summary === 'object' ? intakeCaseSummary.canonical_fact_summary : {};
+            const proofLeadSummary = intakeCaseSummary.proof_lead_summary && typeof intakeCaseSummary.proof_lead_summary === 'object' ? intakeCaseSummary.proof_lead_summary : {};
+            const claimSupportPacketSummary = intakeCaseSummary.claim_support_packet_summary && typeof intakeCaseSummary.claim_support_packet_summary === 'object' ? intakeCaseSummary.claim_support_packet_summary : {};
             const focusSections = Array.from(new Set(sectionHistory
                 .map((entry) => entry && typeof entry.focus_section === 'string' ? entry.focus_section : '')
                 .filter(Boolean)));
@@ -2431,6 +2437,28 @@
                     : '',
                 ...intakeConstraints.map((warning) => `${humanizeKey(warning.code || 'intake_constraint')}: ${warning.message || 'constraint reported'}`),
             ].filter(Boolean);
+            const intakeEvidenceLines = [
+                intakeCandidateClaims.length
+                    ? `Candidate claims: ${intakeCandidateClaims.map((claim) => claim.label || humanizeKey(claim.claim_type || 'unknown')).join(' | ')}`
+                    : '',
+                Object.keys(intakeSections).length
+                    ? `Intake sections: ${Object.entries(intakeSections).map(([sectionName, section]) => `${humanizeKey(sectionName)} ${section && section.status ? section.status : 'missing'}`).join(', ')}`
+                    : '',
+                (canonicalFactSummary.count != null || Array.isArray(canonicalFactSummary.facts))
+                    ? `Canonical facts: ${canonicalFactSummary.count != null ? canonicalFactSummary.count : canonicalFactSummary.facts.length}`
+                    : '',
+                (proofLeadSummary.count != null || Array.isArray(proofLeadSummary.proof_leads))
+                    ? `Proof leads: ${proofLeadSummary.count != null ? proofLeadSummary.count : proofLeadSummary.proof_leads.length}`
+                    : '',
+                claimSupportPacketSummary.claim_count != null ? `Packet claims: ${claimSupportPacketSummary.claim_count}` : '',
+                claimSupportPacketSummary.element_count != null ? `Packet elements: ${claimSupportPacketSummary.element_count}` : '',
+                claimSupportPacketSummary.status_counts && typeof claimSupportPacketSummary.status_counts === 'object'
+                    ? `Packet status counts: ${Object.entries(claimSupportPacketSummary.status_counts).map(([status, count]) => `${humanizeKey(status)} ${count}`).join(', ')}`
+                    : '',
+                Array.isArray(claimSupportPacketSummary.recommended_actions) && claimSupportPacketSummary.recommended_actions.length
+                    ? `Packet next steps: ${claimSupportPacketSummary.recommended_actions.join(' | ')}`
+                    : '',
+            ].filter(Boolean);
             const optimizationFocusLines = [
                 focusSections.length ? `Focus trajectory: ${focusSections.map(humanizeKey).join(' -> ')}` : '',
                 finalReview.recommended_focus ? `Final recommended focus: ${humanizeKey(finalReview.recommended_focus)}` : '',
@@ -2455,6 +2483,7 @@
                         ${renderChangeGroup('Rejected Changes', rejectedChangeLines, 'rejected')}
                         ${routerUsageLines.length ? `<div class="preview-meta"><strong>Router Usage</strong></div>${renderLines(routerUsageLines)}` : ''}
                         ${intakeConstraintLines.length ? `<div class="preview-meta"><strong>Intake Constraints</strong></div>${renderLines(intakeConstraintLines)}` : ''}
+                        ${intakeEvidenceLines.length ? `<div class="preview-meta"><strong>Intake Evidence Snapshot</strong></div>${renderLines(intakeEvidenceLines)}` : ''}
                         ${upstreamOptimizerLines.length ? `<div class="preview-meta"><strong>Upstream Optimizer</strong></div>${renderLines(upstreamOptimizerLines)}` : ''}
                         ${stageProviderLines.length ? `<div class="preview-meta"><strong>Stage Provider Selection</strong></div>${renderLines(stageProviderLines)}` : ''}
                         ${packetProjectionLines.length ? `<div class="preview-meta"><strong>Packet Projection</strong></div>${renderLines(packetProjectionLines)}` : ''}

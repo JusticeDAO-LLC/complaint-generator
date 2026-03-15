@@ -267,6 +267,10 @@
                 <ul id="traceReviewList"><li class="muted">No trace loaded.</li></ul>
             </section>
             <section class="panel">
+                <h2>Intake Evidence Snapshot</h2>
+                <ul id="traceEvidenceList"><li class="muted">No trace loaded.</li></ul>
+            </section>
+            <section class="panel">
                 <h2>Raw Trace JSON</h2>
                 <pre id="traceJsonViewer">{}</pre>
             </section>
@@ -516,10 +520,16 @@
             const trace = payload && typeof payload.trace === 'object' ? payload.trace : {};
             const intakeStatus = trace.intake_status && typeof trace.intake_status === 'object' ? trace.intake_status : {};
             const intakeConstraints = Array.isArray(trace.intake_constraints) ? trace.intake_constraints : [];
+            const intakeCaseSummary = trace.intake_case_summary && typeof trace.intake_case_summary === 'object' ? trace.intake_case_summary : {};
             const iterations = Array.isArray(trace.iterations) ? trace.iterations : [];
             const filteredIterations = filterIterations(iterations);
             const initialReview = trace.initial_review && typeof trace.initial_review === 'object' ? trace.initial_review : {};
             const finalReview = trace.final_review && typeof trace.final_review === 'object' ? trace.final_review : {};
+            const candidateClaims = Array.isArray(intakeCaseSummary.candidate_claims) ? intakeCaseSummary.candidate_claims : [];
+            const intakeSections = intakeCaseSummary.intake_sections && typeof intakeCaseSummary.intake_sections === 'object' ? intakeCaseSummary.intake_sections : {};
+            const canonicalFactSummary = intakeCaseSummary.canonical_fact_summary && typeof intakeCaseSummary.canonical_fact_summary === 'object' ? intakeCaseSummary.canonical_fact_summary : {};
+            const proofLeadSummary = intakeCaseSummary.proof_lead_summary && typeof intakeCaseSummary.proof_lead_summary === 'object' ? intakeCaseSummary.proof_lead_summary : {};
+            const claimSupportPacketSummary = intakeCaseSummary.claim_support_packet_summary && typeof intakeCaseSummary.claim_support_packet_summary === 'object' ? intakeCaseSummary.claim_support_packet_summary : {};
             const focusSections = Array.from(new Set(iterations
                 .map((entry) => entry && typeof entry.focus_section === 'string' ? entry.focus_section : '')
                 .filter(Boolean)));
@@ -584,6 +594,32 @@
                     focusSections.length ? `Focus trajectory: ${focusSections.map(humanizeKey).join(' -> ')}` : '',
                     finalReview.recommended_focus ? `Final recommended focus: ${humanizeKey(finalReview.recommended_focus)}` : '',
                     `Relief-targeted optimization: ${reliefTargeted ? 'yes' : 'no'}`,
+                ].filter(Boolean),
+            );
+
+            renderList(
+                document.getElementById('traceEvidenceList'),
+                [
+                    candidateClaims.length
+                        ? `Candidate claims: ${candidateClaims.map((claim) => claim.label || humanizeKey(claim.claim_type || 'unknown')).join(' | ')}`
+                        : '',
+                    Object.keys(intakeSections).length
+                        ? `Intake sections: ${Object.entries(intakeSections).map(([sectionName, section]) => `${humanizeKey(sectionName)} ${section && section.status ? section.status : 'missing'}`).join(', ')}`
+                        : '',
+                    (canonicalFactSummary.count != null || Array.isArray(canonicalFactSummary.facts))
+                        ? `Canonical facts: ${canonicalFactSummary.count != null ? canonicalFactSummary.count : canonicalFactSummary.facts.length}`
+                        : '',
+                    (proofLeadSummary.count != null || Array.isArray(proofLeadSummary.proof_leads))
+                        ? `Proof leads: ${proofLeadSummary.count != null ? proofLeadSummary.count : proofLeadSummary.proof_leads.length}`
+                        : '',
+                    claimSupportPacketSummary.claim_count != null ? `Packet claims: ${claimSupportPacketSummary.claim_count}` : '',
+                    claimSupportPacketSummary.element_count != null ? `Packet elements: ${claimSupportPacketSummary.element_count}` : '',
+                    claimSupportPacketSummary.status_counts && typeof claimSupportPacketSummary.status_counts === 'object'
+                        ? `Packet status counts: ${Object.entries(claimSupportPacketSummary.status_counts).map(([status, count]) => `${humanizeKey(status)} ${count}`).join(', ')}`
+                        : '',
+                    Array.isArray(claimSupportPacketSummary.recommended_actions) && claimSupportPacketSummary.recommended_actions.length
+                        ? `Packet next steps: ${claimSupportPacketSummary.recommended_actions.join(' | ')}`
+                        : '',
                 ].filter(Boolean),
             );
         }
