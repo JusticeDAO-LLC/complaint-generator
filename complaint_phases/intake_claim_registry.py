@@ -10,6 +10,8 @@ from typing import Any, Dict, List
 CLAIM_INTAKE_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
     "employment_discrimination": {
         "label": "Employment Discrimination",
+        "actor_roles": ["complainant", "employer", "supervisor", "hr"],
+        "evidence_classes": ["email", "text_message", "hr_complaint", "termination_notice", "discipline_record", "witness_statement", "comparator_record"],
         "elements": [
             {
                 "element_id": "protected_trait",
@@ -17,6 +19,8 @@ CLAIM_INTAKE_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
                 "blocking": True,
                 "keywords": ["race", "sex", "gender", "disability", "religion", "pregnan", "national origin", "age", "black", "white", "latino", "hispanic", "asian"],
                 "fact_types": [],
+                "actor_roles": ["complainant"],
+                "evidence_classes": ["testimony", "personnel_record"],
             },
             {
                 "element_id": "employment_relationship",
@@ -24,6 +28,8 @@ CLAIM_INTAKE_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
                 "blocking": True,
                 "keywords": ["employer", "job", "work", "workplace", "supervisor", "manager", "hr", "human resources", "coworker", "company"],
                 "fact_types": ["responsible_party"],
+                "actor_roles": ["employer", "supervisor", "hr"],
+                "evidence_classes": ["offer_letter", "org_chart", "pay_stub", "witness_statement"],
             },
             {
                 "element_id": "adverse_action",
@@ -31,6 +37,8 @@ CLAIM_INTAKE_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
                 "blocking": True,
                 "keywords": ["fired", "terminated", "demoted", "harass", "disciplined", "suspended", "cut hours", "reduced my hours", "promot"],
                 "fact_types": ["impact"],
+                "actor_roles": ["employer", "supervisor"],
+                "evidence_classes": ["termination_notice", "discipline_record", "schedule_change", "witness_statement"],
             },
             {
                 "element_id": "discriminatory_motive",
@@ -38,11 +46,15 @@ CLAIM_INTAKE_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
                 "blocking": True,
                 "keywords": ["because of", "discrimination", "treated differently", "bias", "slur"],
                 "fact_types": [],
+                "actor_roles": ["supervisor", "coworker", "comparator"],
+                "evidence_classes": ["email", "text_message", "witness_statement", "comparator_record"],
             },
         ],
     },
     "housing_discrimination": {
         "label": "Housing Discrimination",
+        "actor_roles": ["complainant", "landlord", "property_manager", "housing_provider"],
+        "evidence_classes": ["lease", "denial_notice", "accommodation_request", "landlord_message", "inspection_record", "witness_statement"],
         "elements": [
             {
                 "element_id": "protected_trait",
@@ -50,6 +62,8 @@ CLAIM_INTAKE_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
                 "blocking": True,
                 "keywords": ["race", "sex", "gender", "disability", "religion", "familial status", "national origin", "age", "black", "white", "latino", "hispanic", "asian", "children", "pregnan"],
                 "fact_types": [],
+                "actor_roles": ["complainant"],
+                "evidence_classes": ["testimony", "application_record"],
             },
             {
                 "element_id": "housing_context",
@@ -57,6 +71,8 @@ CLAIM_INTAKE_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
                 "blocking": True,
                 "keywords": ["landlord", "tenant", "lease", "apartment", "housing", "rent", "property manager", "evict", "unit"],
                 "fact_types": ["responsible_party"],
+                "actor_roles": ["landlord", "property_manager", "housing_provider"],
+                "evidence_classes": ["lease", "application_record", "rent_record"],
             },
             {
                 "element_id": "adverse_action",
@@ -64,6 +80,8 @@ CLAIM_INTAKE_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
                 "blocking": True,
                 "keywords": ["denied", "refused", "evict", "raised rent", "steered", "harass", "failed to repair"],
                 "fact_types": ["impact"],
+                "actor_roles": ["landlord", "property_manager"],
+                "evidence_classes": ["denial_notice", "eviction_notice", "maintenance_record", "witness_statement"],
             },
             {
                 "element_id": "discriminatory_motive",
@@ -71,11 +89,15 @@ CLAIM_INTAKE_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
                 "blocking": True,
                 "keywords": ["because of", "discrimination", "treated differently", "bias", "slur"],
                 "fact_types": [],
+                "actor_roles": ["landlord", "property_manager", "comparator"],
+                "evidence_classes": ["landlord_message", "witness_statement", "comparator_record"],
             },
         ],
     },
     "discrimination": {
         "label": "Discrimination",
+        "actor_roles": ["complainant", "decision_maker"],
+        "evidence_classes": ["document", "message", "witness_statement", "policy"],
         "elements": [
             {
                 "element_id": "protected_trait",
@@ -102,6 +124,8 @@ CLAIM_INTAKE_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
     },
     "retaliation": {
         "label": "Retaliation",
+        "actor_roles": ["complainant", "decision_maker", "report_recipient"],
+        "evidence_classes": ["complaint_record", "timeline_record", "email", "witness_statement"],
         "elements": [
             {
                 "element_id": "protected_activity",
@@ -128,6 +152,8 @@ CLAIM_INTAKE_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
     },
     "accommodation": {
         "label": "Accommodation",
+        "actor_roles": ["complainant", "decision_maker", "accommodation_contact"],
+        "evidence_classes": ["accommodation_request", "medical_note", "denial_message", "policy"],
         "elements": [
             {
                 "element_id": "accommodation_request",
@@ -154,6 +180,8 @@ CLAIM_INTAKE_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
     },
     "denial": {
         "label": "Denial or Refusal",
+        "actor_roles": ["complainant", "decision_maker"],
+        "evidence_classes": ["application_record", "denial_notice", "policy", "message"],
         "elements": [
             {
                 "element_id": "request_or_application",
@@ -180,6 +208,8 @@ CLAIM_INTAKE_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
     },
     "termination": {
         "label": "Termination",
+        "actor_roles": ["complainant", "employer", "decision_maker"],
+        "evidence_classes": ["termination_notice", "personnel_record", "email", "witness_statement"],
         "elements": [
             {
                 "element_id": "termination_event",
@@ -221,6 +251,27 @@ def normalize_claim_type(claim_type: Any) -> str:
 def registry_for_claim_type(claim_type: Any) -> Dict[str, Any]:
     normalized = normalize_claim_type(claim_type)
     return CLAIM_INTAKE_REQUIREMENTS.get(normalized, {"label": normalized.replace("_", " ").title(), "elements": []})
+
+
+def registry_element_for_claim_type(claim_type: Any, element_id: Any) -> Dict[str, Any]:
+    registry = registry_for_claim_type(claim_type)
+    normalized_element_id = str(element_id or "").strip().lower()
+    for element in registry.get("elements", []):
+        if str(element.get("element_id") or "").strip().lower() == normalized_element_id:
+            return element
+    return {}
+
+
+def _unique_strings(values: List[Any]) -> List[str]:
+    seen = set()
+    result: List[str] = []
+    for value in values:
+        normalized = str(value or "").strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        result.append(normalized)
+    return result
 
 
 def _combined_case_text(candidate_claim: Dict[str, Any], canonical_facts: List[Dict[str, Any]], source_text: str) -> str:
@@ -289,64 +340,165 @@ def match_required_element_id(claim_type: Any, text: Any) -> str:
 
 
 def build_claim_element_question_text(claim_type: Any, claim_label: Any, element_id: Any, element_label: Any) -> str:
+    intent = build_claim_element_question_intent(
+        claim_type,
+        claim_label,
+        {
+            "element_id": element_id,
+            "label": element_label,
+        },
+    )
+    return render_question_text_from_intent(intent)
+
+
+def build_claim_element_question_intent(
+    claim_type: Any,
+    claim_label: Any,
+    element: Dict[str, Any],
+) -> Dict[str, Any]:
     normalized_claim_type = normalize_claim_type(claim_type)
     normalized_claim_label = str(claim_label or normalized_claim_type or "this claim").strip() or "this claim"
-    normalized_element_id = str(element_id or "").strip().lower()
-    normalized_element_label = str(element_label or normalized_element_id or "this missing element").strip()
+    normalized_element_id = str(element.get("element_id") or "").strip().lower()
+    normalized_element_label = str(element.get("label") or normalized_element_id or "this missing element").strip()
+    registry = registry_for_claim_type(normalized_claim_type)
+    registry_element = registry_element_for_claim_type(normalized_claim_type, normalized_element_id)
 
-    prompt_map = {
-        ("employment_discrimination", "protected_trait"): (
-            "For {claim_label}, what protected trait or class applies here, and how do you want it described?"
+    return {
+        "intent_type": "claim_element_question",
+        "question_goal": "establish_element",
+        "claim_type": normalized_claim_type,
+        "claim_label": normalized_claim_label,
+        "target_element_id": normalized_element_id,
+        "target_element_label": normalized_element_label or str(registry_element.get("label") or normalized_element_id),
+        "blocking": bool(element.get("blocking", registry_element.get("blocking", False))),
+        "actor_roles": _unique_strings(
+            list(element.get("actor_roles", []) or [])
+            + list(registry_element.get("actor_roles", []) or [])
+            + list(registry.get("actor_roles", []) or [])
         ),
-        ("employment_discrimination", "employment_relationship"): (
-            "For {claim_label}, who was the employer or supervisor involved, and what was your workplace relationship to them?"
+        "evidence_classes": _unique_strings(
+            list(element.get("evidence_classes", []) or [])
+            + list(registry_element.get("evidence_classes", []) or [])
+            + list(registry.get("evidence_classes", []) or [])
         ),
-        ("employment_discrimination", "adverse_action"): (
-            "For {claim_label}, what adverse job action or workplace harassment happened to you?"
-        ),
-        ("employment_discrimination", "discriminatory_motive"): (
-            "For {claim_label}, what facts suggest the employer acted because of your protected trait, such as comments, unequal treatment, or timing?"
-        ),
-        ("housing_discrimination", "protected_trait"): (
-            "For {claim_label}, what protected trait or class is involved, and how should it be described?"
-        ),
-        ("housing_discrimination", "housing_context"): (
-            "For {claim_label}, who was the landlord, property manager, or housing provider, and what was your housing or tenancy situation?"
-        ),
-        ("housing_discrimination", "adverse_action"): (
-            "For {claim_label}, what housing decision or treatment happened, such as a denial, eviction step, refusal, or unequal terms?"
-        ),
-        ("housing_discrimination", "discriminatory_motive"): (
-            "For {claim_label}, what facts suggest the housing decision was because of your protected trait, such as statements, unequal treatment, or policy explanations?"
-        ),
+        "question_strategy": "ontology_guided_element_probe",
     }
-
-    template = prompt_map.get((normalized_claim_type, normalized_element_id))
-    if template:
-        return template.format(claim_label=normalized_claim_label)
-    return f"For {normalized_claim_label}, what facts show {normalized_element_label.lower()}?"
 
 
 def build_proof_lead_question_text(claim_type: Any, claim_label: Any) -> str:
+    intent = build_proof_lead_question_intent(claim_type, claim_label)
+    return render_question_text_from_intent(intent)
+
+
+def build_proof_lead_question_intent(claim_type: Any, claim_label: Any) -> Dict[str, Any]:
     normalized_claim_type = normalize_claim_type(claim_type)
     normalized_claim_label = str(claim_label or normalized_claim_type or "this claim").strip() or "this claim"
+    registry = registry_for_claim_type(normalized_claim_type)
 
-    prompt_map = {
-        "employment_discrimination": (
-            "For {claim_label}, what proof do you have, such as emails or texts, an HR complaint, a termination or discipline notice, witness names, or comparator records?"
-        ),
-        "housing_discrimination": (
-            "For {claim_label}, what proof do you have, such as a lease, denial notice, accommodation request, landlord messages, inspection records, or witness names?"
-        ),
-        "retaliation": (
-            "For {claim_label}, what proof do you have of the protected complaint and what happened after it, such as emails, reports, timing records, or witness names?"
-        ),
-        "accommodation": (
-            "For {claim_label}, what proof do you have, such as an accommodation request, medical note, denial message, policy, or witness names?"
-        ),
+    return {
+        "intent_type": "proof_lead_question",
+        "question_goal": "identify_supporting_proof",
+        "claim_type": normalized_claim_type,
+        "claim_label": normalized_claim_label,
+        "actor_roles": _unique_strings(list(registry.get("actor_roles", []) or [])),
+        "evidence_classes": _unique_strings(list(registry.get("evidence_classes", []) or [])),
+        "question_strategy": "ontology_guided_proof_probe",
     }
 
-    template = prompt_map.get(normalized_claim_type)
-    if template:
-        return template.format(claim_label=normalized_claim_label)
-    return f"For {normalized_claim_label}, what documents, messages, witnesses, or other proof leads support your account?"
+
+def render_question_text_from_intent(intent: Dict[str, Any]) -> str:
+    normalized_intent = intent if isinstance(intent, dict) else {}
+    intent_type = str(normalized_intent.get("intent_type") or "").strip().lower()
+    claim_label = str(normalized_intent.get("claim_label") or normalized_intent.get("claim_type") or "this claim").strip() or "this claim"
+    claim_type = normalize_claim_type(normalized_intent.get("claim_type"))
+    actor_roles = [str(role).replace("_", " ") for role in (normalized_intent.get("actor_roles") or []) if role]
+    evidence_classes = [str(kind) for kind in (normalized_intent.get("evidence_classes") or []) if kind]
+    target_element_id = str(normalized_intent.get("target_element_id") or "").strip().lower()
+    target_element_label = str(normalized_intent.get("target_element_label") or target_element_id or "this missing element").strip()
+
+    if intent_type == "claim_element_question":
+        prompt_map = {
+            ("employment_discrimination", "protected_trait"): (
+                "For {claim_label}, what protected trait or class applies here, and how do you want it described?"
+            ),
+            ("employment_discrimination", "employment_relationship"): (
+                "For {claim_label}, who was the employer or supervisor involved, and what was your workplace relationship to them?"
+            ),
+            ("employment_discrimination", "adverse_action"): (
+                "For {claim_label}, what adverse job action or workplace harassment happened to you?"
+            ),
+            ("employment_discrimination", "discriminatory_motive"): (
+                "For {claim_label}, what facts suggest the employer acted because of your protected trait, such as comments, unequal treatment, or timing?"
+            ),
+            ("housing_discrimination", "protected_trait"): (
+                "For {claim_label}, what protected trait or class is involved, and how should it be described?"
+            ),
+            ("housing_discrimination", "housing_context"): (
+                "For {claim_label}, who was the landlord, property manager, or housing provider, and what was your housing or tenancy situation?"
+            ),
+            ("housing_discrimination", "adverse_action"): (
+                "For {claim_label}, what housing decision or treatment happened, such as a denial, eviction step, refusal, or unequal terms?"
+            ),
+            ("housing_discrimination", "discriminatory_motive"): (
+                "For {claim_label}, what facts suggest the housing decision was because of your protected trait, such as statements, unequal treatment, or policy explanations?"
+            ),
+        }
+        template = prompt_map.get((claim_type, target_element_id))
+        if template:
+            return template.format(claim_label=claim_label)
+        if actor_roles:
+            return f"For {claim_label}, what facts involving {', '.join(actor_roles[:3])} show {target_element_label.lower()}?"
+        return f"For {claim_label}, what facts show {target_element_label.lower()}?"
+
+    if intent_type == "proof_lead_question":
+        if evidence_classes:
+            rendered_classes = ", ".join(_render_evidence_classes_for_prompt(evidence_classes))
+            return f"For {claim_label}, what proof do you have, such as {rendered_classes}, or other sources that support your account?"
+        return f"For {claim_label}, what documents, messages, witnesses, or other proof leads support your account?"
+
+    return f"For {claim_label}, what additional details would help support your account?"
+
+
+def _render_evidence_classes_for_prompt(evidence_classes: List[str]) -> List[str]:
+    values = {str(item or "").strip().lower() for item in evidence_classes if item}
+    rendered: List[str] = []
+    if "termination_notice" in values and "discipline_record" in values:
+        rendered.append("termination or discipline notice")
+        values.discard("termination_notice")
+        values.discard("discipline_record")
+
+    label_map = {
+        "email": "emails",
+        "text_message": "texts",
+        "hr_complaint": "HR complaint",
+        "witness_statement": "witness names",
+        "comparator_record": "comparator records",
+        "lease": "lease",
+        "denial_notice": "denial notice",
+        "accommodation_request": "accommodation request",
+        "landlord_message": "landlord messages",
+        "inspection_record": "inspection records",
+        "complaint_record": "complaint records",
+        "timeline_record": "timing records",
+        "medical_note": "medical note",
+        "denial_message": "denial message",
+        "policy": "policy",
+        "application_record": "application records",
+        "personnel_record": "personnel records",
+        "pay_stub": "pay stubs",
+        "org_chart": "organization records",
+        "offer_letter": "offer letter",
+        "rent_record": "rent records",
+        "eviction_notice": "eviction notice",
+        "maintenance_record": "maintenance records",
+    }
+
+    for item in evidence_classes:
+        normalized = str(item or "").strip().lower()
+        if normalized not in values:
+            continue
+        rendered.append(label_map.get(normalized, normalized.replace("_", " ")))
+        values.discard(normalized)
+        if len(rendered) >= 5:
+            break
+    return rendered[:5]

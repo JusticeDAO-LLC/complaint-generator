@@ -14,8 +14,11 @@ import random
 from .knowledge_graph import KnowledgeGraph, Entity, Relationship
 from .dependency_graph import DependencyGraph
 from .intake_claim_registry import (
+    build_claim_element_question_intent,
     build_claim_element_question_text,
+    build_proof_lead_question_intent,
     build_proof_lead_question_text,
+    render_question_text_from_intent,
 )
 
 logger = logging.getLogger(__name__)
@@ -745,16 +748,42 @@ class ComplaintDenoiser:
         question_text: str,
         context: Optional[Dict[str, Any]] = None,
         priority: str = 'medium',
+        question_intent: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        normalized_intent = question_intent if isinstance(question_intent, dict) else None
         payload = {
             'type': question_type,
-            'question': question_text,
+            'question': render_question_text_from_intent(normalized_intent) if normalized_intent else question_text,
             'context': context or {},
             'priority': priority,
         }
+        if normalized_intent:
+            payload['question_intent'] = normalized_intent
+            payload['question_goal'] = str(normalized_intent.get('question_goal') or '')
+            payload['question_strategy'] = str(normalized_intent.get('question_strategy') or '')
         payload.update(self._phase1_question_metadata(question_type, payload['context']))
         payload.update(self._phase1_question_targeting(question_type, payload['context']))
         return payload
+
+    def _question_candidate(
+        self,
+        *,
+        source: str,
+        question_type: str,
+        question_text: str,
+        context: Optional[Dict[str, Any]] = None,
+        priority: str = 'medium',
+        question_intent: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        question_payload = self._build_phase1_question(
+            question_type=question_type,
+            question_text=question_text,
+            context=context,
+            priority=priority,
+            question_intent=question_intent,
+        )
+        question_payload['candidate_source'] = source
+        return question_payload
 
     def _build_contradiction_questions(
         self,
@@ -780,7 +809,8 @@ class ComplaintDenoiser:
             seen_pairs.add(pair_key)
 
             contradiction_label = f"{left_name} and {right_name}"
-            questions.append(self._build_phase1_question(
+            questions.append(self._question_candidate(
+                source='dependency_graph_contradiction',
                 question_type='contradiction',
                 question_text=(
                     f"I have conflicting information about {left_name} and {right_name}. "
@@ -831,6 +861,17 @@ class ComplaintDenoiser:
                 if question_key in seen_keys:
                     continue
                 seen_keys.add(question_key)
+                question_intent = build_claim_element_question_intent(
+                    claim_type,
+                    claim_label,
+                    {
+                        'element_id': element_id,
+                        'label': element_label,
+                        'blocking': bool(element.get('blocking', False)),
+                        'actor_roles': list(element.get('actor_roles', []) or []),
+                        'evidence_classes': list(element.get('evidence_classes', []) or []),
+                    },
+                )
                 question_text = build_claim_element_question_text(
                     claim_type,
                     claim_label,
@@ -838,7 +879,8 @@ class ComplaintDenoiser:
                     element_label,
                 )
                 if not self._already_asked(question_text):
-                    questions.append(self._build_phase1_question(
+                    questions.append(self._question_candidate(
+                        source='intake_claim_element_gap',
                         question_type='requirement',
                         question_text=question_text,
                         context={
@@ -849,6 +891,7 @@ class ComplaintDenoiser:
                             'target_element_id': element_id,
                         },
                         priority='high' if bool(element.get('blocking', False)) else 'medium',
+                        question_intent=question_intent,
                     ))
                 if len(questions) >= max_questions:
                     return questions[:max_questions]
@@ -883,9 +926,11 @@ class ComplaintDenoiser:
             if question_key in seen_keys:
                 continue
             seen_keys.add(question_key)
+            question_intent = build_proof_lead_question_intent(claim_type, claim_label)
             question_text = build_proof_lead_question_text(claim_type, claim_label)
             if not self._already_asked(question_text):
-                questions.append(self._build_phase1_question(
+                questions.append(self._question_candidate(
+                    source='intake_proof_gap',
                     question_type='evidence',
                     question_text=question_text,
                     context={
@@ -893,11 +938,131 @@ class ComplaintDenoiser:
                         'claim_name': claim_label,
                     },
                     priority='high',
+                    question_intent=question_intent,
                 ))
             if len(questions) >= max_questions:
                 return questions[:max_questions]
 
         return questions
+
+    def collect_question_candidates(
+        self,
+        knowledge_graph: KnowledgeGraph,
+        dependency_graph: DependencyGraph,
+        max_questions: int = 10,
+        intake_case_file: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Collect ranked question candidates before final rendering/exploration."""
+        questions: List[Dict[str, Any]] = []
+
+        contradiction_questions = self._build_contradiction_questions(dependency_graph, max_questions)
+        questions.extend(contradiction_questions)
+
+        claim_element_questions = self._build_claim_element_questions(
+            intake_case_file,
+            max(0, max_questions - len(questions)),
+        )
+        questions.extend(claim_element_questions[:max(0, max_questions - len(questions))])
+
+        proof_lead_questions = self._build_proof_lead_questions(
+            intake_case_file,
+            max(0, max_questions - len(questions)),
+        )
+        questions.extend(proof_lead_questions[:max(0, max_questions - len(questions))])
+
+        kg_gaps = knowledge_graph.find_gaps()
+        for gap in kg_gaps[:max(0, max_questions - len(questions))]:
+            if gap['type'] == 'low_confidence_entity':
+                questions.append(self._question_candidate(
+                    source='knowledge_graph_gap',
+                    question_type='clarification',
+                    question_text=gap['suggested_question'],
+                    context={
+                        'entity_id': gap['entity_id'],
+                        'entity_name': gap['entity_name'],
+                        'confidence': gap['confidence']
+                    },
+                    priority='medium',
+                ))
+            elif gap['type'] == 'unsupported_claim':
+                questions.append(self._question_candidate(
+                    source='knowledge_graph_gap',
+                    question_type='evidence',
+                    question_text=gap['suggested_question'],
+                    context={
+                        'claim_id': gap['entity_id'],
+                        'claim_name': gap['claim_name']
+                    },
+                    priority='high',
+                ))
+            elif gap['type'] == 'isolated_entity':
+                questions.append(self._question_candidate(
+                    source='knowledge_graph_gap',
+                    question_type='relationship',
+                    question_text=gap['suggested_question'],
+                    context={
+                        'entity_id': gap['entity_id'],
+                        'entity_name': gap['entity_name']
+                    },
+                    priority='low',
+                ))
+            elif gap['type'] == 'missing_timeline':
+                questions.append(self._question_candidate(
+                    source='knowledge_graph_gap',
+                    question_type='timeline',
+                    question_text=gap['suggested_question'],
+                    context={},
+                    priority='high',
+                ))
+            elif gap['type'] == 'missing_responsible_party':
+                questions.append(self._question_candidate(
+                    source='knowledge_graph_gap',
+                    question_type='responsible_party',
+                    question_text=gap['suggested_question'],
+                    context={},
+                    priority='high',
+                ))
+            elif gap['type'] == 'missing_impact_remedy':
+                questions.append(self._question_candidate(
+                    source='knowledge_graph_gap',
+                    question_type='impact',
+                    question_text=gap['suggested_question'],
+                    context={
+                        'missing_impact': gap.get('missing_impact'),
+                        'missing_remedy': gap.get('missing_remedy'),
+                    },
+                    priority='high',
+                ))
+
+        unsatisfied = dependency_graph.find_unsatisfied_requirements()
+        for req in unsatisfied[:max(0, max_questions - len(questions))]:
+            missing_deps = req.get('missing_dependencies', [])
+            for dep in missing_deps[:2]:
+                questions.append(self._question_candidate(
+                    source='dependency_graph_requirement',
+                    question_type='requirement',
+                    question_text=f"To support the claim '{req['node_name']}', can you provide information about: {dep['source_name']}?",
+                    context={
+                        'claim_id': req['node_id'],
+                        'claim_name': req['node_name'],
+                        'requirement_id': dep['source_node_id'],
+                        'requirement_name': dep['source_name']
+                    },
+                    priority='high',
+                ))
+                if len(questions) >= max_questions:
+                    break
+            if len(questions) >= max_questions:
+                break
+
+        priority_order = {'high': 0, 'medium': 1, 'low': 2}
+        questions.sort(
+            key=lambda q: (
+                int(q.get('proof_priority', self._phase1_proof_priority(q.get('type', '')))),
+                priority_order.get(q.get('priority', 'low'), 3),
+            )
+        )
+        return questions[:max_questions]
 
     def _ensure_standard_intake_questions(self, questions: List[Dict[str, Any]], max_questions: int) -> List[Dict[str, Any]]:
         if len(questions) >= max_questions:
@@ -1128,110 +1293,11 @@ class ComplaintDenoiser:
         Returns:
             List of question dictionaries with type, question text, and context
         """
-        questions = []
-
-        contradiction_questions = self._build_contradiction_questions(dependency_graph, max_questions)
-        questions.extend(contradiction_questions)
-
-        claim_element_questions = self._build_claim_element_questions(
-            intake_case_file,
-            max(0, max_questions - len(questions)),
-        )
-        questions.extend(claim_element_questions[:max(0, max_questions - len(questions))])
-
-        proof_lead_questions = self._build_proof_lead_questions(
-            intake_case_file,
-            max(0, max_questions - len(questions)),
-        )
-        questions.extend(proof_lead_questions[:max(0, max_questions - len(questions))])
-        
-        # Get knowledge graph gaps
-        kg_gaps = knowledge_graph.find_gaps()
-        for gap in kg_gaps[:max(0, max_questions - len(questions))]:
-            if gap['type'] == 'low_confidence_entity':
-                questions.append(self._build_phase1_question(
-                    question_type='clarification',
-                    question_text=gap['suggested_question'],
-                    context={
-                        'entity_id': gap['entity_id'],
-                        'entity_name': gap['entity_name'],
-                        'confidence': gap['confidence']
-                    },
-                    priority='medium',
-                ))
-            elif gap['type'] == 'unsupported_claim':
-                questions.append(self._build_phase1_question(
-                    question_type='evidence',
-                    question_text=gap['suggested_question'],
-                    context={
-                        'claim_id': gap['entity_id'],
-                        'claim_name': gap['claim_name']
-                    },
-                    priority='high',
-                ))
-            elif gap['type'] == 'isolated_entity':
-                questions.append(self._build_phase1_question(
-                    question_type='relationship',
-                    question_text=gap['suggested_question'],
-                    context={
-                        'entity_id': gap['entity_id'],
-                        'entity_name': gap['entity_name']
-                    },
-                    priority='low',
-                ))
-            elif gap['type'] == 'missing_timeline':
-                questions.append(self._build_phase1_question(
-                    question_type='timeline',
-                    question_text=gap['suggested_question'],
-                    context={},
-                    priority='high',
-                ))
-            elif gap['type'] == 'missing_responsible_party':
-                questions.append(self._build_phase1_question(
-                    question_type='responsible_party',
-                    question_text=gap['suggested_question'],
-                    context={},
-                    priority='high',
-                ))
-            elif gap['type'] == 'missing_impact_remedy':
-                questions.append(self._build_phase1_question(
-                    question_type='impact',
-                    question_text=gap['suggested_question'],
-                    context={
-                        'missing_impact': gap.get('missing_impact'),
-                        'missing_remedy': gap.get('missing_remedy'),
-                    },
-                    priority='high',
-                ))
-        
-        # Get dependency graph unsatisfied requirements
-        unsatisfied = dependency_graph.find_unsatisfied_requirements()
-        for req in unsatisfied[:max(0, max_questions - len(questions))]:
-            missing_deps = req.get('missing_dependencies', [])
-            for dep in missing_deps[:2]:  # Ask about first 2 missing deps
-                questions.append(self._build_phase1_question(
-                    question_type='requirement',
-                    question_text=f"To support the claim '{req['node_name']}', can you provide information about: {dep['source_name']}?",
-                    context={
-                        'claim_id': req['node_id'],
-                        'claim_name': req['node_name'],
-                        'requirement_id': dep['source_node_id'],
-                        'requirement_name': dep['source_name']
-                    },
-                    priority='high',
-                ))
-                if len(questions) >= max_questions:
-                    break
-            if len(questions) >= max_questions:
-                break
-        
-        # Sort by proof objective first, then by priority within the objective.
-        priority_order = {'high': 0, 'medium': 1, 'low': 2}
-        questions.sort(
-            key=lambda q: (
-                int(q.get('proof_priority', self._phase1_proof_priority(q.get('type', '')))),
-                priority_order.get(q.get('priority', 'low'), 3),
-            )
+        questions = self.collect_question_candidates(
+            knowledge_graph,
+            dependency_graph,
+            max_questions=max_questions,
+            intake_case_file=intake_case_file,
         )
 
         # Ensure we cover basic intake dimensions beyond evidence-only prompts.

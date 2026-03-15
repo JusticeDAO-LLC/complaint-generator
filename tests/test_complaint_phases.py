@@ -373,6 +373,46 @@ class TestComplaintDenoiser:
         assert requirement_questions[0]["phase1_section"] == "claim_elements"
         assert requirement_questions[0]["blocking_level"] == "blocking"
 
+    def test_collect_question_candidates_exposes_candidate_sources_and_intents(self):
+        """Candidate collection should surface reasoning provenance before final question rendering."""
+        denoiser = ComplaintDenoiser()
+
+        kg = KnowledgeGraph()
+        kg.add_entity(Entity("claim1", "claim", "Employment Discrimination Claim", attributes={"claim_type": "employment_discrimination"}))
+
+        dg = DependencyGraph()
+        claim = DependencyNode("n1", NodeType.CLAIM, "Employment Discrimination Claim")
+        dg.add_node(claim)
+
+        intake_case_file = {
+            "candidate_claims": [
+                {
+                    "claim_id": "claim1",
+                    "claim_type": "employment_discrimination",
+                    "label": "Employment Discrimination",
+                    "required_elements": [
+                        {
+                            "element_id": "adverse_action",
+                            "label": "Adverse employment action or harassment",
+                            "blocking": True,
+                            "status": "missing",
+                        }
+                    ],
+                }
+            ],
+            "proof_leads": [],
+        }
+
+        candidates = denoiser.collect_question_candidates(kg, dg, max_questions=5, intake_case_file=intake_case_file)
+
+        assert candidates
+        first_requirement = next(question for question in candidates if question["type"] == "requirement")
+        first_evidence = next(question for question in candidates if question["type"] == "evidence")
+        assert first_requirement["candidate_source"] == "intake_claim_element_gap"
+        assert first_requirement["question_intent"]["intent_type"] == "claim_element_question"
+        assert first_evidence["candidate_source"] == "intake_proof_gap"
+        assert first_evidence["question_intent"]["intent_type"] == "proof_lead_question"
+
     def test_generate_questions_uses_employment_specific_claim_element_prompt_text(self):
         """Employment discrimination prompts should ask about workplace-specific facts."""
         denoiser = ComplaintDenoiser()
@@ -406,6 +446,10 @@ class TestComplaintDenoiser:
         question_text = requirement_question["question"].lower()
         assert "employer or supervisor" in question_text
         assert "workplace relationship" in question_text
+        assert requirement_question["question_intent"]["intent_type"] == "claim_element_question"
+        assert requirement_question["question_intent"]["question_goal"] == "establish_element"
+        assert "employer" in requirement_question["question_intent"]["actor_roles"]
+        assert "pay_stub" in requirement_question["question_intent"]["evidence_classes"]
 
     def test_generate_questions_uses_housing_specific_claim_element_prompt_text(self):
         """Housing discrimination prompts should ask about landlord or tenancy context."""
@@ -440,6 +484,9 @@ class TestComplaintDenoiser:
         question_text = requirement_question["question"].lower()
         assert "landlord" in question_text
         assert "tenancy situation" in question_text
+        assert requirement_question["question_intent"]["intent_type"] == "claim_element_question"
+        assert requirement_question["question_intent"]["question_strategy"] == "ontology_guided_element_probe"
+        assert "landlord" in requirement_question["question_intent"]["actor_roles"]
 
     def test_generate_questions_uses_employment_specific_proof_lead_prompt_text(self):
         """Employment discrimination proof prompts should ask for workplace-specific evidence."""
@@ -465,6 +512,9 @@ class TestComplaintDenoiser:
         question_text = evidence_question["question"].lower()
         assert "hr complaint" in question_text
         assert "termination or discipline notice" in question_text
+        assert evidence_question["question_intent"]["intent_type"] == "proof_lead_question"
+        assert evidence_question["question_intent"]["question_goal"] == "identify_supporting_proof"
+        assert "hr_complaint" in evidence_question["question_intent"]["evidence_classes"]
 
     def test_generate_questions_uses_housing_specific_proof_lead_prompt_text(self):
         """Housing discrimination proof prompts should ask for tenancy-specific evidence."""
@@ -490,6 +540,8 @@ class TestComplaintDenoiser:
         question_text = evidence_question["question"].lower()
         assert "lease" in question_text
         assert "landlord messages" in question_text
+        assert evidence_question["question_intent"]["intent_type"] == "proof_lead_question"
+        assert "landlord" in evidence_question["question_intent"]["actor_roles"]
     
     def test_calculate_noise_level(self):
         """Test noise level calculation."""

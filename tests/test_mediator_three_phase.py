@@ -606,6 +606,8 @@ class TestMediatorThreePhaseIntegration:
 
         assert employment_questions
         assert 'adverse job action' in employment_questions[0]['question'].lower()
+        assert employment_questions[0]['question_intent']['question_goal'] == 'establish_element'
+        assert employment_questions[0]['question_intent']['claim_type'] == 'employment_discrimination'
 
     def test_start_three_phase_process_uses_domain_specific_housing_proof_prompt_text(self):
         """Housing discrimination intake should ask for tenancy-specific proof leads."""
@@ -632,6 +634,8 @@ class TestMediatorThreePhaseIntegration:
         question_text = housing_evidence_questions[0]['question'].lower()
         assert 'lease' in question_text
         assert 'landlord messages' in question_text
+        assert housing_evidence_questions[0]['question_intent']['question_goal'] == 'identify_supporting_proof'
+        assert housing_evidence_questions[0]['question_intent']['claim_type'] == 'housing_discrimination'
     
     def test_graph_serialization(self):
         """Test that graphs can be serialized for storage."""

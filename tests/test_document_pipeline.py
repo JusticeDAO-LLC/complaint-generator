@@ -334,6 +334,24 @@ def _build_mediator() -> Mock:
             "parsed_text_preview": "Email to HR reporting discrimination.",
         },
     ]
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "iteration_count": 1,
+        "intake_readiness": {
+            "ready_to_advance": False,
+            "score": 0.38,
+            "remaining_gap_count": 2,
+            "contradiction_count": 1,
+            "blockers": ["resolve_contradictions", "collect_missing_timeline_details"],
+        },
+        "intake_contradictions": [
+            {
+                "summary": "Complaint date conflicts with schedule-cut date",
+                "question": "What were the exact dates for the complaint and schedule change?",
+                "severity": "high",
+            }
+        ],
+    }
     mediator.phase_manager = None
     return mediator
 

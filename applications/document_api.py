@@ -445,11 +445,24 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
 
     document_optimization = payload.get("document_optimization")
     if isinstance(document_optimization, dict):
-        document_optimization["intake_status"] = dict(intake_status)
+        optimization_intake_status = document_optimization.get("intake_status")
+        if isinstance(optimization_intake_status, dict) and optimization_intake_status and not intake_status:
+            document_optimization["intake_status"] = dict(optimization_intake_status)
+        else:
+            document_optimization["intake_status"] = dict(intake_status)
+
+        optimization_case_summary = document_optimization.get("intake_case_summary")
         if intake_case_summary:
             document_optimization["intake_case_summary"] = dict(intake_case_summary)
+        elif isinstance(optimization_case_summary, dict) and optimization_case_summary:
+            document_optimization["intake_case_summary"] = dict(optimization_case_summary)
+
+        optimization_constraints = document_optimization.get("intake_constraints")
         if intake_warning_entries:
             document_optimization["intake_constraints"] = list(intake_warning_entries)
+        elif isinstance(optimization_constraints, list) and optimization_constraints:
+            document_optimization["intake_constraints"] = list(optimization_constraints)
+
         trace_storage = document_optimization.get("trace_storage")
         trace_storage = trace_storage if isinstance(trace_storage, dict) else {}
         trace_cid = str(trace_storage.get("cid") or document_optimization.get("artifact_cid") or "").strip()
