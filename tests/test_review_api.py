@@ -194,6 +194,25 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                         {
                             "element_id": "retaliation:2",
                             "element_text": "Adverse action",
+        mediator.get_claim_coverage_matrix.return_value["claims"]["retaliation"]["elements"][0]["intake_status"] = {
+            "current_phase": "intake",
+            "iteration_count": 2,
+            "ready_to_advance": False,
+            "score": 0.5,
+            "remaining_gap_count": 1,
+            "contradiction_count": 1,
+            "blockers": ["resolve_contradictions"],
+            "contradictions": [
+                {
+                    "summary": "Complaint timing conflicts with employer timeline",
+                    "left_text": "The complaint came first.",
+                    "right_text": "The schedule cut came first.",
+                    "category": "",
+                    "severity": "high",
+                    "question": "Which event happened first?",
+                }
+            ],
+        }
                             "status": "partially_supported",
                             "support_by_kind": {"authority": 1},
                             "authority_treatment_summary": {},
