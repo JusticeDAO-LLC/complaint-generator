@@ -19,11 +19,8 @@ def _load_config(path: str) -> Dict[str, Any]:
 
 
 def _get_llm_router_backend_config(config: Dict[str, Any], backend_id: str | None) -> Dict[str, Any]:
-    backend_ids = config.get("MEDIATOR", {}).get("backends", [])
     if not backend_id:
-        backend_id = backend_ids[0] if backend_ids else None
-    if not backend_id:
-        raise ValueError("No backend id specified and config.MEDIATOR.backends is empty")
+        raise ValueError("backend_id is required")
 
     backend_config = next(
         (backend for backend in config.get("BACKENDS", []) if backend.get("id") == backend_id),
@@ -37,6 +34,59 @@ def _get_llm_router_backend_config(config: Dict[str, Any], backend_id: str | Non
     backend_kwargs = dict(backend_config)
     backend_kwargs.pop("type", None)
     return backend_kwargs
+
+
+def _get_llm_router_backend_candidates(config: Dict[str, Any], backend_id: str | None) -> list[str]:
+    if backend_id:
+        return [backend_id]
+
+    candidates = [value for value in config.get("MEDIATOR", {}).get("backends", []) if value]
+    for backend in config.get("BACKENDS", []):
+        candidate_id = str(backend.get("id") or "").strip()
+        if candidate_id and backend.get("type") == "llm_router" and candidate_id not in candidates:
+            candidates.append(candidate_id)
+    return candidates
+
+
+def _probe_backend_config(backend_kwargs: Dict[str, Any], probe_prompt: str) -> tuple[bool, str]:
+    from backends import LLMRouterBackend
+
+    try:
+        response = LLMRouterBackend(**backend_kwargs)(probe_prompt)
+    except Exception as exc:
+        return False, str(exc)
+    if not isinstance(response, str) or not response.strip():
+        return False, "empty_generation"
+    return True, ""
+
+
+def _select_llm_router_backend_config(
+    config: Dict[str, Any],
+    backend_id: str | None,
+    *,
+    probe_prompt: str = "Reply with exactly OK.",
+) -> tuple[str, Dict[str, Any], list[Dict[str, Any]], bool]:
+    candidate_ids = _get_llm_router_backend_candidates(config, backend_id)
+    if not candidate_ids:
+        raise ValueError("No backend id specified and no llm_router backends are configured")
+
+    probe_attempts: list[Dict[str, Any]] = []
+    first_backend_id = candidate_ids[0]
+    first_backend_kwargs = _get_llm_router_backend_config(config, first_backend_id)
+    for candidate_id in candidate_ids:
+        candidate_kwargs = _get_llm_router_backend_config(config, candidate_id)
+        ok, error = _probe_backend_config(candidate_kwargs, probe_prompt)
+        probe_attempts.append(
+            {
+                "backend_id": candidate_id,
+                "ok": ok,
+                "error": error,
+            }
+        )
+        if ok:
+            return candidate_id, candidate_kwargs, probe_attempts, True
+
+    return first_backend_id, first_backend_kwargs, probe_attempts, False
 
 
 def _select_matrix_recommendations(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
@@ -83,13 +133,14 @@ def _write_markdown_report(filepath: Path, rows: List[Dict[str, Any]], recommend
             "",
         ])
     lines.extend([
-        "| Preset | Avg Score | Success | Anchor Coverage | Router | Top Missing Sections | Missing Sections | Output Dir |",
-        "| --- | ---: | ---: | ---: | --- | --- | --- | --- |",
+        "| Preset | Backend | Avg Score | Success | Anchor Coverage | Router | Top Missing Sections | Missing Sections | Output Dir |",
+        "| --- | --- | ---: | ---: | ---: | --- | --- | --- | --- |",
     ])
     for row in rows:
         lines.append(
-            "| {preset} | {average_score:.2f} | {successful_sessions}/{total_sessions} | {anchor_coverage:.2f} | {router_status} | {top_missing_sections} | {missing_sections} | {output_dir} |".format(
+            "| {preset} | {backend_id} | {average_score:.2f} | {successful_sessions}/{total_sessions} | {anchor_coverage:.2f} | {router_status} | {top_missing_sections} | {missing_sections} | {output_dir} |".format(
                 preset=row["preset"],
+                backend_id=row.get("backend_id") or "-",
                 average_score=row["average_score"],
                 successful_sessions=row["successful_sessions"],
                 total_sessions=row["total_sessions"],
@@ -117,7 +168,10 @@ def _run_preset_batch(
     *,
     preset: str,
     preset_dir: Path,
+    backend_id: str,
     backend_kwargs: Dict[str, Any],
+    backend_probe_attempts: List[Dict[str, Any]],
+    selected_backend_healthy: bool,
     embeddings_config: Dict[str, Any] | None,
     num_sessions: int,
     hacc_count: int,
@@ -190,6 +244,8 @@ def _run_preset_batch(
 
     return {
         "preset": preset,
+        "backend_id": backend_id,
+        "selected_backend_healthy": selected_backend_healthy,
         "average_score": float(statistics.get("average_score", 0.0) or 0.0),
         "successful_sessions": int(statistics.get("successful_sessions", 0) or 0),
         "total_sessions": int(statistics.get("total_sessions", 0) or 0),
@@ -198,6 +254,7 @@ def _run_preset_batch(
         "missing_sections": missing_sections,
         "output_dir": str(preset_dir),
         "router_status": str(router_report.get("status") or ""),
+        "backend_probe_attempts": backend_probe_attempts,
         "router_report": router_report,
         "statistics": statistics,
         "optimizer_report": optimizer_report,
@@ -254,7 +311,10 @@ def main() -> int:
 
     logging.basicConfig(level=logging.INFO)
     config = _load_config(args.config)
-    backend_kwargs = _get_llm_router_backend_config(config, args.backend_id)
+    selected_backend_id, backend_kwargs, probe_attempts, selected_backend_healthy = _select_llm_router_backend_config(
+        config,
+        args.backend_id,
+    )
     embeddings_config = config.get("EMBEDDINGS") if isinstance(config.get("EMBEDDINGS"), dict) else None
 
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
@@ -269,7 +329,10 @@ def main() -> int:
         batch_result = _run_preset_batch(
             preset=preset,
             preset_dir=preset_dir,
+            backend_id=selected_backend_id,
             backend_kwargs=backend_kwargs,
+            backend_probe_attempts=probe_attempts,
+            selected_backend_healthy=selected_backend_healthy,
             embeddings_config=embeddings_config,
             num_sessions=args.num_sessions,
             hacc_count=args.hacc_count,
@@ -284,6 +347,7 @@ def main() -> int:
             key: batch_result[key]
             for key in (
                 "preset",
+                "backend_id",
                 "average_score",
                 "successful_sessions",
                 "total_sessions",
@@ -299,6 +363,9 @@ def main() -> int:
         full_results.append(
             {
                 "preset": preset,
+                "backend_id": batch_result["backend_id"],
+                "selected_backend_healthy": batch_result["selected_backend_healthy"],
+                "backend_probe_attempts": batch_result["backend_probe_attempts"],
                 "statistics": batch_result["statistics"],
                 "optimizer_report": batch_result["optimizer_report"],
                 "output_dir": batch_result["output_dir"],
@@ -323,7 +390,10 @@ def main() -> int:
             batch_result = _run_preset_batch(
                 preset=preset,
                 preset_dir=rerun_dir / preset,
+                backend_id=selected_backend_id,
                 backend_kwargs=backend_kwargs,
+                backend_probe_attempts=probe_attempts,
+                selected_backend_healthy=selected_backend_healthy,
                 embeddings_config=embeddings_config,
                 num_sessions=args.champion_sessions,
                 hacc_count=args.hacc_count,
@@ -339,6 +409,7 @@ def main() -> int:
                     key: batch_result[key]
                     for key in (
                         "preset",
+                        "backend_id",
                         "average_score",
                         "successful_sessions",
                         "total_sessions",
@@ -378,6 +449,7 @@ def main() -> int:
             handle,
             fieldnames=[
                 "preset",
+                "backend_id",
                 "average_score",
                 "successful_sessions",
                 "total_sessions",
@@ -405,6 +477,7 @@ def main() -> int:
     for row in matrix_rows:
         print(
             f"{row['preset']}: score={row['average_score']:.2f}, "
+            f"backend={row.get('backend_id') or '-'}, "
             f"anchor_coverage={row['anchor_coverage']:.2f}, "
             f"router={row.get('router_status') or '-'}, "
             f"top_missing={row['top_missing_sections'] or '-'}, "

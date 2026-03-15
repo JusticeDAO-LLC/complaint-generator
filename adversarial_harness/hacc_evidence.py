@@ -14,10 +14,36 @@ _ENGINE_CACHE: Dict[str, Any] = {}
 
 
 ANCHOR_SECTION_PATTERNS: Dict[str, Sequence[str]] = {
-    "grievance_hearing": ("grievance hearing", "informal hearing", "impartial person", "hearing process"),
-    "appeal_rights": ("appeal", "review", "right", "due process"),
+    "grievance_hearing": (
+        "grievance hearing",
+        "informal hearing",
+        "impartial person",
+        "hearing process",
+        "hearing procedures",
+        "request a grievance hearing",
+    ),
+    "appeal_rights": (
+        "appeal",
+        "review",
+        "right to appeal",
+        "right to request",
+        "due process",
+        "due process rights",
+        "final decision",
+        "written notice",
+    ),
     "reasonable_accommodation": ("reasonable accommodation", "person with a disability", "disability", "accommodation"),
-    "adverse_action": ("termination", "denial", "adverse action", "admission", "occupancy"),
+    "adverse_action": (
+        "termination",
+        "termination decision",
+        "denial",
+        "adverse action",
+        "admission",
+        "occupancy",
+        "terminate assistance",
+        "discontinued",
+        "notice of adverse action",
+    ),
     "selection_criteria": ("selection", "screening", "criteria", "evaluation", "prioritization"),
 }
 
@@ -115,12 +141,21 @@ HACC_QUERY_PRESETS: Dict[str, List[Dict[str, Any]]] = {
     ],
     "administrative_plan_retaliation": [
         {
-            "query": "retaliation grievance complaint appeal hearing due process tenant policy adverse action",
+            "query": "administrative plan retaliation grievance hearing appeal due process notice of adverse action right to appeal termination decision vawa complaint",
             "type": "housing_discrimination",
             "category": "housing",
             "description": "Retaliation and grievance complaint anchored to the HACC Administrative Plan",
             "anchor_titles": ["ADMINISTRATIVE PLAN"],
-            "anchor_terms": ["grievance", "hearing", "appeal", "informal hearing", "due process"],
+            "anchor_terms": [
+                "grievance hearing",
+                "informal hearing",
+                "right to appeal",
+                "due process rights",
+                "written notice",
+                "notice of adverse action",
+                "termination decision",
+                "retaliation",
+            ],
         },
     ],
     "acop_due_process": [
@@ -135,12 +170,18 @@ HACC_QUERY_PRESETS: Dict[str, List[Dict[str, Any]]] = {
     ],
     "accommodation_focus": [
         {
-            "query": "reasonable accommodation disability interactive process denial housing authority",
+            "query": "reasonable accommodation disability denial adverse action informal hearing right to appeal housing authority",
             "type": "housing_discrimination",
             "category": "housing",
             "description": "Reasonable-accommodation complaint anchored to HACC policy language",
             "anchor_titles": ["ADMINISTRATIVE PLAN", "ADMISSIONS AND CONTINUED OCCUPANCY POLICY"],
-            "anchor_terms": ["reasonable accommodation", "disability", "applicant", "accommodation"],
+            "anchor_terms": [
+                "reasonable accommodation",
+                "person with a disability",
+                "notices of adverse action",
+                "right to appeal",
+                "informal hearing",
+            ],
         },
     ],
     "core_hacc_policies": [
@@ -227,7 +268,7 @@ def _extract_anchor_passages(
     max_passages: int = 3,
 ) -> List[Dict[str, Any]]:
     normalized_terms = [str(value).strip().lower() for value in (anchor_terms or []) if str(value).strip()]
-    passages: List[Dict[str, Any]] = []
+    ranked_passages: List[Dict[str, Any]] = []
 
     for hit in hits:
         snippet = str(hit.get("snippet") or "").strip()
@@ -237,16 +278,35 @@ def _extract_anchor_passages(
         if not snippet:
             continue
         section_labels = _classify_anchor_sections(snippet)
-        passages.append(
+        matched_terms = [term for term in normalized_terms if term in snippet_lower]
+        ranked_passages.append(
             {
                 "title": str(hit.get("title") or ""),
                 "source_path": str(hit.get("source_path") or ""),
                 "snippet": snippet,
                 "section_labels": section_labels,
+                "_match_count": len(matched_terms),
+                "_specificity": 0 if section_labels == ["general_policy"] else len(section_labels),
+                "_score": float(hit.get("score") or 0.0),
             }
         )
-        if len(passages) >= max_passages:
-            break
+
+    ranked_passages.sort(
+        key=lambda item: (
+            -int(item.get("_match_count") or 0),
+            -int(item.get("_specificity") or 0),
+            -float(item.get("_score") or 0.0),
+        )
+    )
+    passages = [
+        {
+            "title": str(item.get("title") or ""),
+            "source_path": str(item.get("source_path") or ""),
+            "snippet": str(item.get("snippet") or ""),
+            "section_labels": list(item.get("section_labels") or []),
+        }
+        for item in ranked_passages[:max_passages]
+    ]
 
     if passages or not hits:
         return passages

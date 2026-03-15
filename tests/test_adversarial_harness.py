@@ -533,6 +533,41 @@ class TestSeedComplaintLibrary:
         assert 'grievance_hearing' in seed['key_facts']['anchor_passages'][0]['section_labels']
         assert 'reasonable_accommodation' in seed['key_facts']['anchor_sections']
 
+    def test_build_hacc_evidence_seed_prefers_more_specific_anchor_passages(self):
+        payload = {
+            'results': [
+                {
+                    'document_id': 'doc-1',
+                    'title': 'ADMINISTRATIVE PLAN',
+                    'source_path': '/tmp/admin-plan',
+                    'score': 10,
+                    'snippet': 'Applicants or tenant families who wish to file a VAWA complaint against HACC may proceed.',
+                },
+                {
+                    'document_id': 'doc-2',
+                    'title': 'ADMINISTRATIVE PLAN',
+                    'source_path': '/tmp/admin-plan',
+                    'score': 8,
+                    'snippet': 'HACC will advise the family of the right to appeal HACC’s decision through an informal hearing and provide written notice of the final decision.',
+                },
+            ]
+        }
+
+        seed = build_hacc_evidence_seed(
+            payload,
+            query='retaliation grievance hearing due process',
+            complaint_type='housing_discrimination',
+            category='housing',
+            description='Administrative-plan retaliation complaint',
+            anchor_titles=['ADMINISTRATIVE PLAN'],
+            anchor_terms=['right to appeal', 'informal hearing', 'written notice'],
+        )
+
+        assert seed is not None
+        assert seed['key_facts']['anchor_passages'][0]['snippet'].startswith('HACC will advise the family')
+        assert 'appeal_rights' in seed['key_facts']['anchor_passages'][0]['section_labels']
+        assert 'grievance_hearing' in seed['key_facts']['anchor_passages'][0]['section_labels']
+
     def test_build_hacc_mediator_evidence_packet_prefers_source_files(self, tmp_path):
         source_path = tmp_path / 'policy.txt'
         source_path.write_text('Full policy text about grievance hearings and impartial review.', encoding='utf-8')

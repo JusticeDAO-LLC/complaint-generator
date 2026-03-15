@@ -18,11 +18,8 @@ def _load_config(path: str) -> Dict[str, Any]:
 
 
 def _get_llm_router_backend_config(config: Dict[str, Any], backend_id: str | None) -> Dict[str, Any]:
-    backend_ids = config.get("MEDIATOR", {}).get("backends", [])
     if not backend_id:
-        backend_id = backend_ids[0] if backend_ids else None
-    if not backend_id:
-        raise ValueError("No backend id specified and config.MEDIATOR.backends is empty")
+        raise ValueError("backend_id is required")
 
     backend_config = next(
         (backend for backend in config.get("BACKENDS", []) if backend.get("id") == backend_id),
@@ -36,6 +33,60 @@ def _get_llm_router_backend_config(config: Dict[str, Any], backend_id: str | Non
     backend_kwargs = dict(backend_config)
     backend_kwargs.pop("type", None)
     return backend_kwargs
+
+
+def _get_llm_router_backend_candidates(config: Dict[str, Any], backend_id: str | None) -> list[str]:
+    backend_ids = config.get("MEDIATOR", {}).get("backends", [])
+    if backend_id:
+        return [backend_id]
+    candidates = [value for value in backend_ids if value]
+    for backend in config.get("BACKENDS", []):
+        candidate_id = str(backend.get("id") or "").strip()
+        if candidate_id and backend.get("type") == "llm_router" and candidate_id not in candidates:
+            candidates.append(candidate_id)
+    return candidates
+
+
+def _probe_backend_config(backend_kwargs: Dict[str, Any], probe_prompt: str) -> tuple[bool, str]:
+    from backends import LLMRouterBackend
+
+    try:
+        response = LLMRouterBackend(**backend_kwargs)(probe_prompt)
+    except Exception as exc:
+        return False, str(exc)
+    if not isinstance(response, str) or not response.strip():
+        return False, "empty_generation"
+    return True, ""
+
+
+def _select_llm_router_backend_config(
+    config: Dict[str, Any],
+    backend_id: str | None,
+    *,
+    probe_prompt: str = "Reply with exactly OK.",
+) -> tuple[str, Dict[str, Any], list[Dict[str, Any]], bool]:
+    candidate_ids = _get_llm_router_backend_candidates(config, backend_id)
+    if not candidate_ids:
+        raise ValueError("No backend id specified and no llm_router backends are configured")
+
+    probe_attempts: list[Dict[str, Any]] = []
+    first_backend_id = candidate_ids[0]
+    first_backend_kwargs = _get_llm_router_backend_config(config, first_backend_id)
+
+    for candidate_id in candidate_ids:
+        candidate_kwargs = _get_llm_router_backend_config(config, candidate_id)
+        ok, error = _probe_backend_config(candidate_kwargs, probe_prompt)
+        probe_attempts.append(
+            {
+                "backend_id": candidate_id,
+                "ok": ok,
+                "error": error,
+            }
+        )
+        if ok:
+            return candidate_id, candidate_kwargs, probe_attempts, True
+
+    return first_backend_id, first_backend_kwargs, probe_attempts, False
 
 
 def main() -> int:
@@ -77,7 +128,10 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO)
 
     config = _load_config(args.config)
-    backend_kwargs = _get_llm_router_backend_config(config, args.backend_id)
+    selected_backend_id, backend_kwargs, probe_attempts, selected_backend_healthy = _select_llm_router_backend_config(
+        config,
+        args.backend_id,
+    )
     if not args.disable_local_ipfs_fallback:
         ensure_ipfs_backend(prefer_local_fallback=True)
     router_report = get_router_status_report(
@@ -96,6 +150,7 @@ def main() -> int:
 
     logging.info("Output directory: %s", output_dir)
     logging.info("Preset: %s", args.preset)
+    logging.info("Selected backend: %s (healthy=%s)", selected_backend_id, selected_backend_healthy)
     logging.info("Router status: %s", router_report.get("status"))
 
     complainant_backend = LLMRouterBackend(**backend_kwargs)
@@ -137,6 +192,9 @@ def main() -> int:
     summary_payload = {
         "timestamp": datetime.now(UTC).isoformat(),
         "preset": args.preset,
+        "selected_backend_id": selected_backend_id,
+        "selected_backend_healthy": selected_backend_healthy,
+        "backend_probe_attempts": probe_attempts,
         "num_sessions": args.num_sessions,
         "hacc_count": args.hacc_count,
         "max_turns": args.max_turns,
@@ -159,6 +217,7 @@ def main() -> int:
 
     print(f"Saved run outputs to {output_dir}")
     print(f"Preset: {args.preset}")
+    print(f"Selected backend: {selected_backend_id} (healthy={selected_backend_healthy})")
     print(f"Router status: {router_report.get('status')}")
     print(f"Successful sessions: {statistics.get('successful_sessions', 0)}/{statistics.get('total_sessions', 0)}")
     return 0
