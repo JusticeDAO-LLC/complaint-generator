@@ -478,6 +478,22 @@ class AdversarialSession:
         return any(term in text for term in witness_terms)
 
     @staticmethod
+    def _is_contradiction_resolution_question(question: Any) -> bool:
+        objective = AdversarialSession._extract_question_objective(question)
+        question_type = AdversarialSession._extract_question_type(question)
+        if objective == 'resolve_factual_contradiction' or question_type == 'contradiction':
+            return True
+        text = AdversarialSession._extract_question_text(question).lower()
+        contradiction_terms = (
+            'conflicting information',
+            'which version is correct',
+            'contradiction',
+            'inconsistent',
+            'conflict',
+        )
+        return any(term in text for term in contradiction_terms)
+
+    @staticmethod
     def _coverage_gap_rank(
         question: Any,
         need_timeline: bool,
@@ -488,6 +504,8 @@ class AdversarialSession:
         missing_anchor_sections: Set[str] | None = None,
     ) -> int:
         question_text = AdversarialSession._extract_question_text(question)
+        if AdversarialSession._is_contradiction_resolution_question(question):
+            return -2
         if missing_anchor_sections and AdversarialSession._question_targets_missing_anchor_section(
             question_text,
             missing_anchor_sections,
@@ -738,6 +756,14 @@ class AdversarialSession:
                 recent_intent_keys=recent_intent_keys,
             )
         ]
+        for q, _, _, _, asked_count, intent_count, similarity_to_seen in non_redundant_candidates:
+            if (
+                self._is_contradiction_resolution_question(q)
+                and asked_count == 0
+                and intent_count == 0
+                and similarity_to_seen < novel_similarity_threshold
+            ):
+                return q
         if need_timeline:
             has_timeline_candidate = any(
                 self._is_timeline_question(c[0]) for c in non_redundant_candidates

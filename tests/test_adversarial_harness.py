@@ -733,6 +733,48 @@ SUGGESTIONS:
         assert selected is not None
         assert selected['question_objective'] == 'establish_chronology'
 
+    def test_select_next_question_prioritizes_contradiction_resolution_metadata(self):
+        session = AdversarialSession(
+            "test_session",
+            Complainant(MockLLMBackend()),
+            MockMediator(),
+            Critic(MockLLMBackend()),
+            max_turns=3,
+        )
+
+        questions = [
+            {
+                'question': 'When did this happen?',
+                'type': 'timeline',
+                'question_objective': 'establish_chronology',
+                'context': {},
+            },
+            {
+                'question': 'I have conflicting information about the sequence of events. Which version is correct?',
+                'type': 'contradiction',
+                'question_objective': 'resolve_factual_contradiction',
+                'context': {},
+            },
+        ]
+
+        selected = session._select_next_question(
+            questions=questions,
+            asked_question_counts={},
+            asked_intent_counts={},
+            need_timeline=True,
+            need_harm_remedy=False,
+            need_actor_decisionmaker=False,
+            need_documentary_evidence=False,
+            need_witness=False,
+            last_question_key=None,
+            last_question_intent_key=None,
+            recent_intent_keys=set(),
+            missing_anchor_sections=set(),
+        )
+
+        assert selected is not None
+        assert selected['question_objective'] == 'resolve_factual_contradiction'
+
     def test_question_intent_key_prefers_question_objective(self):
         question = {
             'question': 'Who handled the issue?',

@@ -267,6 +267,29 @@ class TestComplaintDenoiser:
         assert requirement_questions
         assert requirement_questions[0]['question_objective'] == 'satisfy_claim_requirement'
         assert 'Protected Class' in requirement_questions[0]['question_reason']
+
+    def test_generate_questions_emits_contradiction_resolution_prompt_first(self):
+        """Test contradiction edges produce contradiction-resolution questions ahead of other intake prompts."""
+        denoiser = ComplaintDenoiser()
+
+        kg = KnowledgeGraph()
+        kg.add_entity(Entity("c1", "claim", "Retaliation"))
+
+        dg = DependencyGraph()
+        left_fact = DependencyNode("n1", NodeType.FACT, "Termination happened before complaint")
+        right_fact = DependencyNode("n2", NodeType.FACT, "Complaint happened before termination")
+        claim = DependencyNode("n3", NodeType.CLAIM, "Retaliation Claim")
+        dg.add_node(left_fact)
+        dg.add_node(right_fact)
+        dg.add_node(claim)
+        dg.add_dependency(Dependency("d1", "n1", "n2", DependencyType.CONTRADICTS, required=False))
+
+        questions = denoiser.generate_questions(kg, dg, max_questions=5)
+
+        assert questions
+        assert questions[0]['type'] == 'contradiction'
+        assert questions[0]['question_objective'] == 'resolve_factual_contradiction'
+        assert 'conflicting information' in questions[0]['question'].lower()
     
     def test_calculate_noise_level(self):
         """Test noise level calculation."""

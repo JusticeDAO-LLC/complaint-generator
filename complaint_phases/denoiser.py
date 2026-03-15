@@ -565,13 +565,14 @@ class ComplaintDenoiser:
 
     def _phase1_proof_priority(self, question_type: str) -> int:
         objective_order = {
+            'contradiction': 0,
             'timeline': 0,
-            'responsible_party': 1,
-            'impact': 2,
-            'requirement': 3,
-            'evidence': 4,
-            'clarification': 5,
-            'relationship': 6,
+            'responsible_party': 2,
+            'impact': 3,
+            'requirement': 4,
+            'evidence': 5,
+            'clarification': 6,
+            'relationship': 7,
         }
         return objective_order.get((question_type or '').strip().lower(), 7)
 
@@ -587,6 +588,14 @@ class ComplaintDenoiser:
             return {
                 'question_objective': 'establish_chronology',
                 'question_reason': 'Chronology is necessary to determine sequence, notice, and causation.',
+                'expected_proof_gain': 'high',
+                'proof_priority': self._phase1_proof_priority(qtype),
+            }
+        if qtype == 'contradiction':
+            contradiction_label = str(context.get('contradiction_label') or 'the conflicting facts')
+            return {
+                'question_objective': 'resolve_factual_contradiction',
+                'question_reason': f"The intake record contains conflicting information about {contradiction_label} that should be reconciled before relying on it.",
                 'expected_proof_gain': 'high',
                 'proof_priority': self._phase1_proof_priority(qtype),
             }
@@ -661,6 +670,50 @@ class ComplaintDenoiser:
         }
         payload.update(self._phase1_question_metadata(question_type, payload['context']))
         return payload
+
+    def _build_contradiction_questions(
+        self,
+        dependency_graph: DependencyGraph,
+        max_questions: int,
+    ) -> List[Dict[str, Any]]:
+        questions: List[Dict[str, Any]] = []
+        seen_pairs: Set[str] = set()
+
+        for dependency in dependency_graph.dependencies.values():
+            dependency_type = getattr(dependency, 'dependency_type', None)
+            dependency_type_value = getattr(dependency_type, 'value', str(dependency_type or '')).lower()
+            if dependency_type_value != 'contradicts':
+                continue
+
+            left_node = dependency_graph.get_node(dependency.source_id)
+            right_node = dependency_graph.get_node(dependency.target_id)
+            left_name = left_node.name if left_node else dependency.source_id
+            right_name = right_node.name if right_node else dependency.target_id
+            pair_key = '|'.join(sorted([str(left_name), str(right_name)]))
+            if pair_key in seen_pairs:
+                continue
+            seen_pairs.add(pair_key)
+
+            contradiction_label = f"{left_name} and {right_name}"
+            questions.append(self._build_phase1_question(
+                question_type='contradiction',
+                question_text=(
+                    f"I have conflicting information about {left_name} and {right_name}. "
+                    "Which version is correct, and what details or records support it?"
+                ),
+                context={
+                    'left_node_id': dependency.source_id,
+                    'right_node_id': dependency.target_id,
+                    'left_node_name': left_name,
+                    'right_node_name': right_name,
+                    'contradiction_label': contradiction_label,
+                },
+                priority='high',
+            ))
+            if len(questions) >= max_questions:
+                break
+
+        return questions
 
     def _ensure_standard_intake_questions(self, questions: List[Dict[str, Any]], max_questions: int) -> List[Dict[str, Any]]:
         if len(questions) >= max_questions:
@@ -891,10 +944,13 @@ class ComplaintDenoiser:
             List of question dictionaries with type, question text, and context
         """
         questions = []
+
+        contradiction_questions = self._build_contradiction_questions(dependency_graph, max_questions)
+        questions.extend(contradiction_questions)
         
         # Get knowledge graph gaps
         kg_gaps = knowledge_graph.find_gaps()
-        for gap in kg_gaps[:max_questions]:
+        for gap in kg_gaps[:max(0, max_questions - len(questions))]:
             if gap['type'] == 'low_confidence_entity':
                 questions.append(self._build_phase1_question(
                     question_type='clarification',
@@ -953,7 +1009,7 @@ class ComplaintDenoiser:
         
         # Get dependency graph unsatisfied requirements
         unsatisfied = dependency_graph.find_unsatisfied_requirements()
-        for req in unsatisfied[:max_questions - len(questions)]:
+        for req in unsatisfied[:max(0, max_questions - len(questions))]:
             missing_deps = req.get('missing_dependencies', [])
             for dep in missing_deps[:2]:  # Ask about first 2 missing deps
                 questions.append(self._build_phase1_question(
@@ -967,6 +1023,10 @@ class ComplaintDenoiser:
                     },
                     priority='high',
                 ))
+                if len(questions) >= max_questions:
+                    break
+            if len(questions) >= max_questions:
+                break
         
         # Sort by proof objective first, then by priority within the objective.
         priority_order = {'high': 0, 'medium': 1, 'low': 2}
