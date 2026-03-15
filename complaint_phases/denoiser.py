@@ -783,6 +783,19 @@ class ComplaintDenoiser:
             question_intent=question_intent,
         )
         question_payload['candidate_source'] = source
+        question_payload['ranking_explanation'] = {
+            'candidate_source': source,
+            'priority': str(question_payload.get('priority') or priority or 'medium'),
+            'proof_priority': int(question_payload.get('proof_priority', self._phase1_proof_priority(question_type))),
+            'blocking_level': str(question_payload.get('blocking_level') or ''),
+            'phase1_section': str(question_payload.get('phase1_section') or ''),
+            'question_goal': str(question_payload.get('question_goal') or question_payload.get('question_objective') or ''),
+            'question_strategy': str(question_payload.get('question_strategy') or 'default_generation'),
+            'target_claim_type': str(question_payload.get('target_claim_type') or ''),
+            'target_element_id': str(question_payload.get('target_element_id') or ''),
+            'target_fact_type': str(question_payload.get('target_fact_type') or ''),
+            'expected_update_kind': str(question_payload.get('expected_update_kind') or ''),
+        }
         return question_payload
 
     def _build_contradiction_questions(
