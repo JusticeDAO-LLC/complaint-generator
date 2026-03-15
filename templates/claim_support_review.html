@@ -900,6 +900,8 @@
                 <div class="focus-block" data-section-focus-target="claims_for_relief requested_relief">
                     <h2 style="margin-top: 18px;">Claim Support Packet Summary</h2>
                     <div class="chip-row" id="claim-support-packet-summary-chips"></div>
+                    <h2 style="margin-top: 18px;">Intake-Evidence Alignment</h2>
+                    <div class="question-list" id="intake-evidence-alignment-summary-list"></div>
                 </div>
 
                 <div class="focus-block" data-section-focus-target="claims_for_relief requested_relief">
@@ -1530,6 +1532,7 @@
             const proofLeadContainer = document.getElementById('intake-proof-lead-chips');
             const intakeMatchingContainer = document.getElementById('intake-matching-summary-list');
             const packetContainer = document.getElementById('claim-support-packet-summary-chips');
+            const alignmentContainer = document.getElementById('intake-evidence-alignment-summary-list');
             const intakeCaseSummary = summary && typeof summary === 'object' ? summary : {};
             const candidateClaims = Array.isArray(intakeCaseSummary.candidate_claims) ? intakeCaseSummary.candidate_claims : [];
             const intakeSections = intakeCaseSummary.intake_sections && typeof intakeCaseSummary.intake_sections === 'object'
@@ -1546,6 +1549,9 @@
                 : {};
             const intakeLegalTargetingSummary = intakeCaseSummary.intake_legal_targeting_summary && typeof intakeCaseSummary.intake_legal_targeting_summary === 'object'
                 ? intakeCaseSummary.intake_legal_targeting_summary
+                : {};
+            const intakeEvidenceAlignmentSummary = intakeCaseSummary.intake_evidence_alignment_summary && typeof intakeCaseSummary.intake_evidence_alignment_summary === 'object'
+                ? intakeCaseSummary.intake_evidence_alignment_summary
                 : {};
             const questionCandidateSummary = intakeCaseSummary.question_candidate_summary && typeof intakeCaseSummary.question_candidate_summary === 'object'
                 ? intakeCaseSummary.question_candidate_summary
@@ -1667,6 +1673,44 @@
             packetContainer.innerHTML = packetChips.length
                 ? packetChips.join('')
                 : '<span class="chip">No claim-support packet summary available.</span>';
+
+            const alignmentClaims = intakeEvidenceAlignmentSummary.claims && typeof intakeEvidenceAlignmentSummary.claims === 'object'
+                ? intakeEvidenceAlignmentSummary.claims
+                : {};
+            const alignmentEntries = Object.entries(alignmentClaims);
+            if (!alignmentEntries.length) {
+                alignmentContainer.innerHTML = '<div class="task-card">Intake-evidence alignment: no cross-phase element alignment available.</div>';
+            } else {
+                alignmentContainer.innerHTML = alignmentEntries.map(([claimType, claim]) => {
+                    const sharedElements = Array.isArray(claim.shared_elements) ? claim.shared_elements : [];
+                    const intakeOnlyIds = Array.isArray(claim.intake_only_element_ids) ? claim.intake_only_element_ids : [];
+                    const evidenceOnlyIds = Array.isArray(claim.evidence_only_element_ids) ? claim.evidence_only_element_ids : [];
+                    const detailChips = [];
+                    sharedElements.forEach((element) => {
+                        detailChips.push(`<span class="chip">aligned ${element.element_id}: ${element.support_status || 'unknown'}</span>`);
+                    });
+                    intakeOnlyIds.forEach((elementId) => {
+                        detailChips.push(`<span class="chip">intake only: ${elementId}</span>`);
+                    });
+                    evidenceOnlyIds.forEach((elementId) => {
+                        detailChips.push(`<span class="chip">evidence only: ${elementId}</span>`);
+                    });
+                    return `
+                        <article class="task-card">
+                            <div class="row-head">
+                                <div>
+                                    <div class="row-title">Cross-phase element alignment for ${claimType}</div>
+                                    <div class="meta">Intake-evidence alignment</div>
+                                </div>
+                                <span class="badge">${sharedElements.length} aligned</span>
+                            </div>
+                            <div class="chip-row" style="margin-top: 10px;">
+                                ${detailChips.length ? detailChips.join('') : '<span class="chip">No aligned elements yet.</span>'}
+                            </div>
+                        </article>
+                    `;
+                }).join('');
+            }
         }
 
         function buildFollowUpSourceSignalCounts(planSummary) {

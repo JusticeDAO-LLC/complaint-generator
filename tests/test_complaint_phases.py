@@ -865,6 +865,55 @@ class TestPhaseManager:
         action = pm.get_next_action()
         assert action['action'] == 'resolve_support_conflicts'
 
+    def test_evidence_phase_prioritizes_alignment_tasks_for_shared_unsupported_elements(self):
+        """Cross-phase shared unsupported elements should drive evidence next actions."""
+        pm = PhaseManager()
+        pm.current_phase = ComplaintPhase.EVIDENCE
+
+        pm.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'claim_support_packets',
+            {
+                'employment_discrimination': {
+                    'claim_type': 'employment_discrimination',
+                    'elements': [
+                        {
+                            'element_id': 'adverse_action',
+                            'support_status': 'supported',
+                            'recommended_next_step': '',
+                            'contradiction_count': 0,
+                        },
+                        {
+                            'element_id': 'causation',
+                            'support_status': 'unsupported',
+                            'recommended_next_step': 'collect_documentary_support',
+                            'contradiction_count': 0,
+                        },
+                    ],
+                }
+            },
+        )
+        pm.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_evidence_tasks',
+            [
+                {
+                    'action': 'fill_evidence_gaps',
+                    'claim_type': 'employment_discrimination',
+                    'claim_element_id': 'causation',
+                    'claim_element_label': 'Causation',
+                    'support_status': 'unsupported',
+                    'blocking': True,
+                }
+            ],
+        )
+
+        assert pm.is_phase_complete(ComplaintPhase.EVIDENCE) is False
+        action = pm.get_next_action()
+        assert action['action'] == 'fill_evidence_gaps'
+        assert action['claim_type'] == 'employment_discrimination'
+        assert action['claim_element_id'] == 'causation'
+
 
 class TestLegalGraph:
     """Tests for LegalGraph and LegalGraphBuilder."""

@@ -429,6 +429,14 @@ class PhaseManager:
             total_elements = int(data.get('claim_support_element_count', 0) or 0)
             explicit_status_count = int(data.get('claim_support_explicit_status_count', 0) or 0)
             blocking_contradictions = int(data.get('claim_support_blocking_contradictions', 0) or 0)
+            alignment_tasks = data.get('alignment_evidence_tasks')
+            unresolved_alignment_tasks = [
+                task
+                for task in (alignment_tasks if isinstance(alignment_tasks, list) else [])
+                if isinstance(task, dict)
+                and str(task.get('support_status') or '').strip().lower()
+                in {'unsupported', 'partially_supported', 'contradicted'}
+            ]
             unsupported_missing_next_step = False
             for claim_packet in packets.values():
                 if not isinstance(claim_packet, dict):
@@ -446,6 +454,7 @@ class PhaseManager:
                 total_elements > 0
                 and explicit_status_count == total_elements
                 and blocking_contradictions == 0
+                and not unresolved_alignment_tasks
                 and not unsupported_missing_next_step
             )
 
@@ -610,6 +619,14 @@ class PhaseManager:
         """Get next action for evidence phase."""
         data = self.phase_data[ComplaintPhase.EVIDENCE]
         packets = data.get('claim_support_packets')
+        alignment_tasks = data.get('alignment_evidence_tasks')
+        prioritized_alignment_tasks = [
+            task
+            for task in (alignment_tasks if isinstance(alignment_tasks, list) else [])
+            if isinstance(task, dict)
+            and str(task.get('support_status') or '').strip().lower()
+            in {'unsupported', 'partially_supported', 'contradicted'}
+        ]
 
         if isinstance(packets, dict) and packets:
             total_elements = int(data.get('claim_support_element_count', 0) or 0)
@@ -623,6 +640,17 @@ class PhaseManager:
                 return {
                     'action': 'resolve_support_conflicts',
                     'recommended_actions': list(data.get('claim_support_recommended_actions', [])),
+                }
+            if prioritized_alignment_tasks:
+                first_task = prioritized_alignment_tasks[0]
+                return {
+                    'action': str(first_task.get('action') or 'fill_evidence_gaps'),
+                    'claim_type': str(first_task.get('claim_type') or ''),
+                    'claim_element_id': str(first_task.get('claim_element_id') or ''),
+                    'claim_element_label': str(first_task.get('claim_element_label') or ''),
+                    'support_status': str(first_task.get('support_status') or ''),
+                    'recommended_actions': list(data.get('claim_support_recommended_actions', [])),
+                    'alignment_tasks': prioritized_alignment_tasks,
                 }
             if self._is_evidence_complete():
                 return {

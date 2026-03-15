@@ -30,6 +30,13 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Unresolved legal elements for" in content
     assert "intake-matching-summary-list" in content
     assert "question target:" in content
+    assert "Intake-Evidence Alignment" in content
+    assert "intake-evidence-alignment-summary-list" in content
+    assert "Cross-phase element alignment for" in content
+    assert "Intake-evidence alignment" in content
+    assert "aligned ${element.element_id}: ${element.support_status || 'unknown'}" in content
+    assert "intake only:" in content
+    assert "evidence only:" in content
     assert "testimony-list" in content
     assert "document-list" in content
     assert "save-testimony-button" in content

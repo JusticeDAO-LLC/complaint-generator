@@ -107,6 +107,7 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
     proof_lead_summary = raw_status.get("proof_lead_summary")
     intake_matching_summary = raw_status.get("intake_matching_summary")
     intake_legal_targeting_summary = raw_status.get("intake_legal_targeting_summary")
+    intake_evidence_alignment_summary = raw_status.get("intake_evidence_alignment_summary")
     question_candidate_summary = raw_status.get("question_candidate_summary")
     claim_support_packet_summary = raw_status.get("claim_support_packet_summary")
 
@@ -125,6 +126,11 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
         "intake_legal_targeting_summary": (
             intake_legal_targeting_summary
             if isinstance(intake_legal_targeting_summary, dict)
+            else {}
+        ),
+        "intake_evidence_alignment_summary": (
+            intake_evidence_alignment_summary
+            if isinstance(intake_evidence_alignment_summary, dict)
             else {}
         ),
         "question_candidate_summary": (

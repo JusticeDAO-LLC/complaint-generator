@@ -4220,6 +4220,139 @@ class Mediator:
 			}
 		return summary
 
+	def _summarize_intake_evidence_alignment(
+		self,
+		intake_case_file: Any,
+		claim_support_packets: Any,
+	) -> Dict[str, Any]:
+		summary = {
+			'claim_count': 0,
+			'aligned_element_count': 0,
+			'unsupported_shared_count': 0,
+			'claims': {},
+		}
+		intake_case = intake_case_file if isinstance(intake_case_file, dict) else {}
+		packets = claim_support_packets if isinstance(claim_support_packets, dict) else {}
+		candidate_claims = intake_case.get('candidate_claims', []) if isinstance(intake_case.get('candidate_claims'), list) else []
+
+		claim_types = set(packets.keys())
+		for claim in candidate_claims:
+			if isinstance(claim, dict) and claim.get('claim_type'):
+				claim_types.add(str(claim.get('claim_type')))
+
+		for claim_type in sorted(claim_types):
+			candidate = next(
+				(
+					item for item in candidate_claims
+					if isinstance(item, dict) and str(item.get('claim_type') or '') == str(claim_type)
+				),
+				{},
+			)
+			required_elements = candidate.get('required_elements', []) if isinstance(candidate, dict) else []
+			intake_elements = []
+			for element in required_elements:
+				if not isinstance(element, dict):
+					continue
+				element_id = str(element.get('element_id') or '').strip()
+				if not element_id:
+					continue
+				intake_elements.append(
+					{
+						'element_id': element_id,
+						'label': str(element.get('label') or element_id).strip(),
+						'blocking': bool(element.get('blocking', True)),
+					}
+				)
+			intake_element_ids = [item['element_id'] for item in intake_elements]
+
+			packet = packets.get(claim_type, {}) if isinstance(packets, dict) else {}
+			packet_elements = packet.get('elements', []) if isinstance(packet, dict) else []
+			packet_status_by_element: Dict[str, str] = {}
+			for element in packet_elements if isinstance(packet_elements, list) else []:
+				if not isinstance(element, dict):
+					continue
+				element_id = str(element.get('element_id') or '').strip()
+				if not element_id:
+					continue
+				packet_status_by_element[element_id] = str(element.get('support_status') or '').strip().lower()
+
+			shared_elements = []
+			for intake_element in intake_elements:
+				element_id = intake_element['element_id']
+				if element_id not in packet_status_by_element:
+					continue
+				support_status = packet_status_by_element[element_id]
+				shared_elements.append(
+					{
+						'element_id': element_id,
+						'label': intake_element['label'],
+						'blocking': intake_element['blocking'],
+						'support_status': support_status,
+					}
+				)
+				summary['aligned_element_count'] += 1
+				if support_status in {'unsupported', 'contradicted', 'partially_supported'}:
+					summary['unsupported_shared_count'] += 1
+
+			evidence_only_element_ids = [
+				element_id
+				for element_id in packet_status_by_element
+				if element_id not in intake_element_ids
+			]
+			intake_only_element_ids = [
+				element_id
+				for element_id in intake_element_ids
+				if element_id not in packet_status_by_element
+			]
+			summary['claim_count'] += 1
+			summary['claims'][str(claim_type)] = {
+				'intake_required_element_ids': intake_element_ids,
+				'packet_element_statuses': packet_status_by_element,
+				'shared_elements': shared_elements,
+				'intake_only_element_ids': intake_only_element_ids,
+				'evidence_only_element_ids': evidence_only_element_ids,
+			}
+		return summary
+
+	def _build_alignment_evidence_tasks(self, alignment_summary: Any) -> List[Dict[str, Any]]:
+		tasks: List[Dict[str, Any]] = []
+		if not isinstance(alignment_summary, dict):
+			return tasks
+		claims = alignment_summary.get('claims', {})
+		if not isinstance(claims, dict):
+			return tasks
+
+		for claim_type, claim_data in claims.items():
+			if not isinstance(claim_data, dict):
+				continue
+			for element in claim_data.get('shared_elements', []) or []:
+				if not isinstance(element, dict):
+					continue
+				support_status = str(element.get('support_status') or '').strip().lower()
+				if support_status not in {'unsupported', 'partially_supported', 'contradicted'}:
+					continue
+				action = 'resolve_support_conflicts' if support_status == 'contradicted' else 'fill_evidence_gaps'
+				tasks.append(
+					{
+						'action': action,
+						'claim_type': str(claim_type),
+						'claim_element_id': str(element.get('element_id') or '').strip(),
+						'claim_element_label': str(element.get('label') or element.get('element_id') or '').strip(),
+						'support_status': support_status,
+						'blocking': bool(element.get('blocking', False)),
+					}
+				)
+
+		tasks.sort(
+			key=lambda task: (
+				0 if task.get('support_status') == 'contradicted' else 1,
+				0 if task.get('blocking') else 1,
+				str(task.get('claim_type') or ''),
+				str(task.get('claim_element_id') or ''),
+			)
+		)
+		return tasks
+
 	def _classify_evidence_ingestion_outcomes(
 		self,
 		evidence_data: Dict[str, Any],
@@ -4290,12 +4423,19 @@ class Mediator:
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_count', 0)
 		claim_support_packets = self._build_claim_support_packets()
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packets', claim_support_packets)
+		intake_case_file = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
+		alignment_summary = self._summarize_intake_evidence_alignment(intake_case_file, claim_support_packets)
+		alignment_tasks = self._build_alignment_evidence_tasks(alignment_summary)
+		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'intake_evidence_alignment_summary', alignment_summary)
+		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks', alignment_tasks)
 		
 		return {
 			'phase': ComplaintPhase.EVIDENCE.value,
 			'evidence_gaps': len(unsatisfied),
 			'knowledge_gaps': len(kg_gaps),
 			'claim_support_packets': claim_support_packets,
+			'intake_evidence_alignment_summary': alignment_summary,
+			'alignment_evidence_tasks': alignment_tasks,
 			'suggested_evidence_types': self._suggest_evidence_types(unsatisfied, kg_gaps),
 			'next_action': self.phase_manager.get_next_action()
 		}
@@ -4520,6 +4660,11 @@ class Mediator:
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_gap_ratio', gap_ratio)
 		claim_support_packets = self._build_claim_support_packets()
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packets', claim_support_packets)
+		intake_case_file = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
+		alignment_summary = self._summarize_intake_evidence_alignment(intake_case_file, claim_support_packets)
+		alignment_tasks = self._build_alignment_evidence_tasks(alignment_summary)
+		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'intake_evidence_alignment_summary', alignment_summary)
+		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks', alignment_tasks)
 		packet_summary = self._summarize_claim_support_packets(claim_support_packets)
 		evidence_outcomes = self._classify_evidence_ingestion_outcomes(
 			evidence_data,
@@ -4536,6 +4681,8 @@ class Mediator:
 			'gap_ratio': gap_ratio,
 			'claim_support_packets': claim_support_packets,
 			'claim_support_packet_summary': packet_summary,
+			'intake_evidence_alignment_summary': alignment_summary,
+			'alignment_evidence_tasks': alignment_tasks,
 			'evidence_outcomes': evidence_outcomes,
 			'graph_projection': projection_summary,
 			'next_action': next_action,
@@ -4863,6 +5010,7 @@ class Mediator:
 		question_candidates = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'question_candidates') or []
 		intake_matching_pressure = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_matching_pressure') or {}
 		claim_support_packets = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packets') or {}
+		alignment_evidence_tasks = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks') or []
 		return {
 			'current_phase': self.phase_manager.get_current_phase().value,
 			'iteration_count': self.phase_manager.iteration_count,
@@ -4886,6 +5034,11 @@ class Mediator:
 			),
 			'question_candidate_summary': self._summarize_question_candidates(question_candidates),
 			'claim_support_packet_summary': self._summarize_claim_support_packets(claim_support_packets),
+			'intake_evidence_alignment_summary': self._summarize_intake_evidence_alignment(
+				intake_case_file,
+				claim_support_packets,
+			),
+			'alignment_evidence_tasks': alignment_evidence_tasks if isinstance(alignment_evidence_tasks, list) else [],
 			'intake_contradictions': {
 				'candidate_count': intake_readiness.get('contradiction_count', 0),
 				'candidates': intake_readiness.get('contradictions', []),

@@ -746,36 +746,36 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 }
             ],
         }
-        assert payload["intake_case_summary"] == {
-            "candidate_claims": [
-                {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.8}
-            ],
-            "intake_sections": {
-                "chronology": {"status": "complete", "missing_items": []},
-                "proof_leads": {"status": "partial", "missing_items": ["documents"]},
+        intake_case_summary = payload["intake_case_summary"]
+        assert intake_case_summary["candidate_claims"] == [
+            {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.8}
+        ]
+        assert intake_case_summary["intake_sections"] == {
+            "chronology": {"status": "complete", "missing_items": []},
+            "proof_leads": {"status": "partial", "missing_items": ["documents"]},
+        }
+        assert intake_case_summary["canonical_fact_summary"] == {
+            "count": 2,
+            "facts": [{"fact_id": "fact_001"}, {"fact_id": "fact_002"}],
+        }
+        assert intake_case_summary["proof_lead_summary"] == {
+            "count": 1,
+            "proof_leads": [{"lead_id": "lead_001"}],
+        }
+        assert intake_case_summary["question_candidate_summary"] == {}
+        assert intake_case_summary.get("intake_matching_summary") == {}
+        assert intake_case_summary.get("intake_legal_targeting_summary") == {}
+        assert intake_case_summary.get("intake_evidence_alignment_summary") == {}
+        assert intake_case_summary["claim_support_packet_summary"] == {
+            "claim_count": 1,
+            "element_count": 3,
+            "status_counts": {
+                "supported": 1,
+                "partially_supported": 1,
+                "unsupported": 1,
+                "contradicted": 0,
             },
-            "canonical_fact_summary": {
-                "count": 2,
-                "facts": [{"fact_id": "fact_001"}, {"fact_id": "fact_002"}],
-            },
-            "proof_lead_summary": {
-                "count": 1,
-                "proof_leads": [{"lead_id": "lead_001"}],
-            },
-            "question_candidate_summary": {},
-            "intake_matching_summary": {},
-            "intake_legal_targeting_summary": {},
-            "claim_support_packet_summary": {
-                "claim_count": 1,
-                "element_count": 3,
-                "status_counts": {
-                    "supported": 1,
-                    "partially_supported": 1,
-                    "unsupported": 1,
-                    "contradicted": 0,
-                },
-                "recommended_actions": ["collect_missing_support_kind"],
-            },
+            "recommended_actions": ["collect_missing_support_kind"],
         }
         assert (
             payload["claim_coverage_matrix"]["retaliation"]["status_counts"]["covered"]

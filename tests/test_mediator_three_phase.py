@@ -433,7 +433,15 @@ class TestMediatorThreePhaseIntegration:
             ComplaintPhase.INTAKE,
             'intake_case_file',
             {
-                'candidate_claims': [{'claim_type': 'employment_discrimination'}],
+                'candidate_claims': [
+                    {
+                        'claim_type': 'employment_discrimination',
+                        'required_elements': [
+                            {'element_id': 'adverse_action', 'label': 'Adverse action', 'blocking': True},
+                            {'element_id': 'causation', 'label': 'Causation', 'blocking': True},
+                        ],
+                    }
+                ],
                 'canonical_facts': [{'fact_id': 'fact_001'}],
                 'proof_leads': [{'lead_id': 'lead_001'}],
                 'contradiction_queue': [],
@@ -507,9 +515,15 @@ class TestMediatorThreePhaseIntegration:
         assert 'employment_discrimination' in packets
         assert packets['employment_discrimination']['elements'][0]['support_status'] == 'supported'
         assert packets['employment_discrimination']['elements'][1]['support_status'] == 'unsupported'
+        assert result['alignment_evidence_tasks']
+        assert result['next_action']['action'] == 'fill_evidence_gaps'
+        assert result['next_action']['claim_element_id'] == 'causation'
         status = mediator.get_three_phase_status()
         assert status['claim_support_packet_summary']['claim_count'] == 1
         assert status['claim_support_packet_summary']['status_counts']['unsupported'] == 1
+        alignment = status['intake_evidence_alignment_summary']['claims']['employment_discrimination']
+        assert 'adverse_action' in alignment['packet_element_statuses']
+        assert isinstance(alignment['shared_elements'], list)
 
     def test_requirement_answer_can_satisfy_registry_backed_claim_element(self):
         """Requirement answers should tag and satisfy registry-backed claim elements when the requirement name is recognizable."""
