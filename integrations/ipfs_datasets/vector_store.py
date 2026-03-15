@@ -24,9 +24,20 @@ else:
     _numpy_error = None
 
 
+_embeddings_router_module, _embeddings_module_error = import_module_optional(
+    "ipfs_datasets_py.embeddings_router"
+)
 EmbeddingsRouter, _embeddings_error = import_attr_optional(
     "ipfs_datasets_py.embeddings_router",
     "EmbeddingsRouter",
+)
+embed_text, _embed_text_error = import_attr_optional(
+    "ipfs_datasets_py.embeddings_router",
+    "embed_text",
+)
+embed_texts, _embed_texts_error = import_attr_optional(
+    "ipfs_datasets_py.embeddings_router",
+    "embed_texts",
 )
 embed_texts_batched, _embed_texts_batched_error = import_attr_optional(
     "ipfs_datasets_py.embeddings_router",
@@ -36,9 +47,49 @@ _vector_stores_module, _vector_stores_error = import_module_optional(
     "ipfs_datasets_py.vector_stores"
 )
 
-EMBEDDINGS_AVAILABLE = embed_texts_batched is not None or EmbeddingsRouter is not None
+if EmbeddingsRouter is None and _embeddings_router_module is not None:
+    class EmbeddingsRouter:  # type: ignore[no-redef]
+        """Compatibility facade for vendored embeddings_router modules without a class export."""
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self.args = args
+            self.kwargs = dict(kwargs)
+
+        def _merged_kwargs(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+            merged = dict(self.kwargs)
+            merged.update(kwargs)
+            return merged
+
+        def embed_text(self, text: str, **kwargs: Any) -> Any:
+            if embed_text is None:
+                raise RuntimeError(_embed_text_error or "embed_text unavailable")
+            return embed_text(text, **self._merged_kwargs(kwargs))
+
+        def embed_texts(self, texts: Iterable[str], **kwargs: Any) -> Any:
+            if embed_texts is None:
+                raise RuntimeError(_embed_texts_error or "embed_texts unavailable")
+            return embed_texts(list(texts), **self._merged_kwargs(kwargs))
+
+        def embed_texts_batched(self, texts: Iterable[str], **kwargs: Any) -> Any:
+            if embed_texts_batched is None:
+                raise RuntimeError(_embed_texts_batched_error or "embed_texts_batched unavailable")
+            return embed_texts_batched(list(texts), **self._merged_kwargs(kwargs))
+
+
+EMBEDDINGS_AVAILABLE = any(
+    value is not None
+    for value in (embed_text, embed_texts, embed_texts_batched, EmbeddingsRouter)
+)
 VECTOR_STORE_AVAILABLE = EMBEDDINGS_AVAILABLE or _vector_stores_module is not None
-VECTOR_STORE_ERROR = _embeddings_error or _embed_texts_batched_error or _vector_stores_error or _numpy_error
+VECTOR_STORE_ERROR = (
+    _embeddings_error
+    or _embed_text_error
+    or _embed_texts_error
+    or _embed_texts_batched_error
+    or _embeddings_module_error
+    or _vector_stores_error
+    or _numpy_error
+)
 
 
 def _numpy_required_error(operation: str) -> Dict[str, Any]:
@@ -58,6 +109,78 @@ def get_embeddings_router(*args: Any, **kwargs: Any) -> Any:
     if EmbeddingsRouter is None:
         return None
     return EmbeddingsRouter(*args, **kwargs)
+
+
+def embeddings_backend_status(
+    *args: Any,
+    probe_text: str = "",
+    perform_probe: bool = False,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    if not EMBEDDINGS_AVAILABLE:
+        return with_adapter_metadata(
+            {
+                "status": "unavailable",
+                "router_name": "",
+                "router_present": False,
+                "available_methods": [],
+                "probe_performed": False,
+                "error": VECTOR_STORE_ERROR or "embeddings router unavailable",
+            },
+            operation="embeddings_backend_status",
+            backend_available=False,
+            degraded_reason=VECTOR_STORE_ERROR,
+            implementation_status="unavailable",
+        )
+
+    router = None
+    router_error = ""
+    try:
+        router = get_embeddings_router(*args, **kwargs)
+    except Exception as exc:
+        router_error = str(exc)
+
+    available_methods: List[str] = []
+    if callable(embed_text):
+        available_methods.append("embed_text")
+    if callable(embed_texts):
+        available_methods.append("embed_texts")
+    if callable(embed_texts_batched):
+        available_methods.append("embed_texts_batched")
+
+    payload: Dict[str, Any] = {
+        "status": "available" if not router_error else "degraded",
+        "router_name": type(router).__name__ if router is not None else "",
+        "router_present": router is not None,
+        "router_factory": getattr(EmbeddingsRouter, "__name__", ""),
+        "available_methods": available_methods,
+        "probe_performed": False,
+        "error": router_error,
+    }
+
+    if perform_probe:
+        payload["probe_performed"] = True
+        candidate_text = probe_text or "HACC embeddings router health check"
+        try:
+            vector: Any = None
+            if router is not None and callable(getattr(router, "embed_text", None)):
+                vector = router.embed_text(candidate_text)
+            elif callable(embed_text):
+                vector = embed_text(candidate_text, **dict(kwargs))
+            payload["probe_status"] = "available"
+            payload["vector_length"] = len(vector) if isinstance(vector, (list, tuple)) else 0
+        except Exception as exc:
+            payload["status"] = "error"
+            payload["probe_status"] = "error"
+            payload["error"] = str(exc)
+
+    return with_adapter_metadata(
+        payload,
+        operation="embeddings_backend_status",
+        backend_available=payload["status"] == "available",
+        degraded_reason=payload.get("error") or None,
+        implementation_status="available" if payload["status"] != "unavailable" else "unavailable",
+    )
 
 
 def _normalize_documents(documents: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -351,6 +474,7 @@ __all__ = [
     "VECTOR_STORE_AVAILABLE",
     "VECTOR_STORE_ERROR",
     "get_embeddings_router",
+    "embeddings_backend_status",
     "create_vector_index",
     "search_vector_index",
 ]

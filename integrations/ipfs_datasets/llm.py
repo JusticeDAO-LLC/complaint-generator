@@ -564,10 +564,83 @@ def generate_text_with_metadata(
 	)
 
 
+def llm_router_status(
+	*,
+	provider: Optional[str] = None,
+	model_name: Optional[str] = None,
+	prompt: str = "",
+	perform_probe: bool = False,
+	**kwargs: Any,
+) -> Dict[str, Any]:
+	if generate_text is None:
+		return with_adapter_metadata(
+			{
+				"status": "unavailable",
+				"configured_provider_name": provider or "",
+				"configured_model_name": model_name or "",
+				"effective_provider_name": "",
+				"effective_model_name": "",
+				"probe_performed": False,
+				"error": str(LLM_ROUTER_ERROR or "llm_router unavailable"),
+			},
+			operation="llm_router_status",
+			backend_available=False,
+			degraded_reason=LLM_ROUTER_ERROR,
+			implementation_status="unavailable",
+		)
+
+	effective_provider, effective_model_name, _, env_overrides, metadata = _prepare_generate_text_call(
+		prompt or "HACC llm_router health check",
+		provider=provider,
+		model_name=model_name,
+		**kwargs,
+	)
+	preflight_error = _provider_preflight_error(
+		effective_provider=effective_provider,
+		metadata=metadata,
+		env_overrides=env_overrides,
+	)
+	payload: Dict[str, Any] = {
+		"status": "available" if not preflight_error else "degraded",
+		"configured_provider_name": provider or "",
+		"configured_model_name": model_name or "",
+		"effective_provider_name": effective_provider or "",
+		"effective_model_name": effective_model_name or "",
+		"probe_performed": False,
+		"error": preflight_error or "",
+		**metadata,
+	}
+
+	if perform_probe:
+		probe_prompt = prompt or "Return a one-line router health confirmation for the HACC complaint workflow."
+		probe_payload = generate_text_with_metadata(
+			probe_prompt,
+			provider=provider,
+			model_name=model_name,
+			**kwargs,
+		)
+		payload["probe_performed"] = True
+		payload["probe_status"] = probe_payload.get("status")
+		payload["probe_error"] = probe_payload.get("error", "")
+		payload["probe_text_preview"] = str(probe_payload.get("text") or "")[:160]
+		if probe_payload.get("status") != "available":
+			payload["status"] = "error"
+			payload["error"] = str(probe_payload.get("error") or preflight_error or "")
+
+	return with_adapter_metadata(
+		payload,
+		operation="llm_router_status",
+		backend_available=payload["status"] == "available",
+		degraded_reason=payload.get("error") or None,
+		implementation_status="available" if payload["status"] != "unavailable" else "unavailable",
+	)
+
+
 __all__ = [
 	"generate_text",
 	"generate_text_via_router",
 	"generate_text_with_metadata",
+	"llm_router_status",
 	"LLM_ROUTER_AVAILABLE",
 	"LLM_ROUTER_ERROR",
 	"HF_ROUTER_DEFAULT_BASE_URL",

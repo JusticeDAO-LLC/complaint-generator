@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 logger = logging.getLogger(__name__)
+_ENGINE_CACHE: Dict[str, Any] = {}
 
 
 ANCHOR_SECTION_PATTERNS: Dict[str, Sequence[str]] = {
@@ -34,6 +35,14 @@ def _load_hacc_engine() -> Any:
     from hacc_research.engine import HACCResearchEngine
 
     return HACCResearchEngine
+
+
+def _get_hacc_engine_instance(repo_root: Optional[str | Path] = None) -> Any:
+    cache_key = str(Path(repo_root).resolve()) if repo_root else "default"
+    if cache_key not in _ENGINE_CACHE:
+        engine_cls = _load_hacc_engine()
+        _ENGINE_CACHE[cache_key] = engine_cls(repo_root=repo_root) if repo_root else engine_cls()
+    return _ENGINE_CACHE[cache_key]
 
 
 DEFAULT_HACC_QUERY_SPECS: List[Dict[str, Any]] = [
@@ -377,3 +386,150 @@ def build_hacc_evidence_seeds(
         if len(seeds) >= count:
             break
     return seeds[:count]
+
+
+def resolve_hacc_question_evidence(
+    *,
+    question: str,
+    key_facts: Optional[Dict[str, Any]] = None,
+    existing_evidence: Optional[Sequence[Dict[str, Any]]] = None,
+    repo_root: Optional[str | Path] = None,
+    use_vector: bool = False,
+    top_k: int = 4,
+) -> Dict[str, Any]:
+    normalized_question = str(question or "").strip()
+    facts = dict(key_facts or {})
+    if not normalized_question:
+        return {
+            "question": normalized_question,
+            "query": "",
+            "evidence_summary": "",
+            "evidence_items": [],
+            "anchor_passages": [],
+            "anchor_sections": [],
+        }
+
+    try:
+        engine = _get_hacc_engine_instance(repo_root=repo_root)
+    except Exception as exc:
+        logger.warning("Unable to initialize HACCResearchEngine for question evidence lookup: %s", exc)
+        return {
+            "question": normalized_question,
+            "query": normalized_question,
+            "evidence_summary": "",
+            "evidence_items": [],
+            "anchor_passages": [],
+            "anchor_sections": [],
+            "error": str(exc),
+        }
+
+    anchor_terms = [str(item).strip() for item in list(facts.get("anchor_terms") or []) if str(item).strip()]
+    query_parts: List[str] = [normalized_question]
+    if facts.get("evidence_query"):
+        query_parts.append(str(facts.get("evidence_query")))
+    if anchor_terms:
+        query_parts.append(" ".join(anchor_terms[:4]))
+    search_query = " ".join(part for part in query_parts if part).strip()
+
+    payload = engine.search(search_query, top_k=top_k, use_vector=use_vector)
+    raw_hits = [_summarize_hit(hit) for hit in list(payload.get("results", []) or [])]
+    hits = _filter_hits(
+        raw_hits,
+        anchor_titles=facts.get("anchor_titles"),
+        anchor_source_paths=facts.get("anchor_source_paths"),
+    ) or raw_hits
+
+    merged_hits: List[Dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for item in list(existing_evidence or []) + hits:
+        key = str(item.get("document_id") or "") or str(item.get("source_path") or "") or str(item.get("title") or "")
+        if not key or key in seen_keys:
+            continue
+        seen_keys.add(key)
+        merged_hits.append(item)
+
+    anchor_passages = _extract_anchor_passages(hits, anchor_terms=anchor_terms)
+    anchor_sections = _summarize_section_labels(anchor_passages)
+    lead = hits[0] if hits else {}
+    evidence_summary = " ".join(
+        part
+        for part in [
+            f"For this question, the strongest supporting material is '{lead.get('title')}'." if lead.get("title") else "",
+            str(lead.get("snippet") or "").strip(),
+        ]
+        if part
+    ).strip()
+
+    return {
+        "question": normalized_question,
+        "query": search_query,
+        "evidence_summary": evidence_summary,
+        "evidence_items": merged_hits[: max(top_k, 3)],
+        "anchor_passages": anchor_passages,
+        "anchor_sections": anchor_sections,
+    }
+
+
+def build_hacc_mediator_evidence_packet(
+    seed: Dict[str, Any],
+    *,
+    max_documents: int = 3,
+) -> List[Dict[str, Any]]:
+    key_facts = dict(seed.get("key_facts") or {})
+    evidence_items = list(seed.get("hacc_evidence") or [])
+    source_paths = [str(item) for item in list(key_facts.get("source_paths") or []) if str(item).strip()]
+    packets: List[Dict[str, Any]] = []
+    seen_paths: set[str] = set()
+
+    for source_path in source_paths[:max_documents]:
+        path = Path(source_path)
+        if not path.exists() or str(path) in seen_paths:
+            continue
+        try:
+            document_text = path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        seen_paths.add(str(path))
+        matching_item = next((item for item in evidence_items if str(item.get("source_path") or "") == str(path)), {})
+        packets.append(
+            {
+                "document_text": document_text,
+                "document_label": str(matching_item.get("title") or path.name),
+                "source_path": str(path),
+                "filename": path.name,
+                "mime_type": "text/plain",
+                "metadata": {
+                    "source_path": str(path),
+                    "hacc_seed_type": str(seed.get("type") or ""),
+                    "evidence_query": str(key_facts.get("evidence_query") or ""),
+                    "anchor_sections": list(key_facts.get("anchor_sections") or []),
+                    "anchor_terms": list(key_facts.get("anchor_terms") or []),
+                },
+            }
+        )
+
+    if packets:
+        return packets
+
+    for item in evidence_items[:max_documents]:
+        snippet = str(item.get("snippet") or "").strip()
+        if not snippet:
+            continue
+        packets.append(
+            {
+                "document_text": snippet,
+                "document_label": str(item.get("title") or item.get("document_id") or "hacc_evidence_snippet"),
+                "source_path": str(item.get("source_path") or ""),
+                "filename": "",
+                "mime_type": "text/plain",
+                "metadata": {
+                    "source_path": str(item.get("source_path") or ""),
+                    "hacc_seed_type": str(seed.get("type") or ""),
+                    "evidence_query": str(key_facts.get("evidence_query") or ""),
+                    "anchor_sections": list(key_facts.get("anchor_sections") or []),
+                    "anchor_terms": list(key_facts.get("anchor_terms") or []),
+                    "snippet_only": True,
+                },
+            }
+        )
+    return packets

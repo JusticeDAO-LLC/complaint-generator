@@ -53,9 +53,14 @@ from integrations.ipfs_datasets.search import (
     search_brave_web,
     search_multi_engine_web,
 )
+from integrations.ipfs_datasets.router_status import get_router_status_report
 from integrations.ipfs_datasets.storage import pin_cid, retrieve_bytes, storage_backend_status, store_bytes
 from integrations.ipfs_datasets import vector_store as vector_store_module
-from integrations.ipfs_datasets.vector_store import create_vector_index, search_vector_index
+from integrations.ipfs_datasets.vector_store import (
+    create_vector_index,
+    embeddings_backend_status,
+    search_vector_index,
+)
 
 
 def test_capability_registry_has_expected_keys():
@@ -1030,3 +1035,80 @@ def test_storage_wrappers_expose_canonical_operation_metadata():
     assert backend_status['status'] in {'available', 'unavailable'}
     assert backend_status['metadata']['operation'] == 'storage_backend_status'
     assert 'backend_present' in backend_status
+
+
+def test_storage_backend_reports_unavailable_when_kubo_cli_missing():
+    fake_backend = type('KuboCLIBackend', (), {'_cmd': 'ipfs'})()
+
+    with patch('integrations.ipfs_datasets.storage.get_ipfs_backend', return_value=fake_backend):
+        with patch('integrations.ipfs_datasets.storage.shutil.which', return_value=None):
+            stored = store_bytes(b'complaint text', pin_content=False)
+            backend_status = storage_backend_status()
+
+    assert stored['status'] == 'unavailable'
+    assert 'missing ipfs CLI binary' in stored['metadata']['degraded_reason']
+    assert backend_status['status'] == 'unavailable'
+    assert backend_status['backend_name'] == 'KuboCLIBackend'
+    assert 'missing ipfs CLI binary' in backend_status['metadata']['degraded_reason']
+
+
+def test_storage_backend_auto_discovers_repo_local_kubo_install(tmp_path: Path):
+    fake_backend = type('KuboCLIBackend', (), {'_cmd': 'ipfs'})()
+    local_root = tmp_path / 'ipfs_kit_py'
+    bin_dir = local_root / 'bin'
+    repo_dir = local_root / '.ipfs'
+    bin_dir.mkdir(parents=True)
+    repo_dir.mkdir(parents=True)
+    (bin_dir / 'ipfs').write_text('#!/bin/sh\nexit 0\n')
+    (repo_dir / 'config').write_text('{}')
+
+    with patch.dict('os.environ', {}, clear=False):
+        with patch('integrations.ipfs_datasets.storage._repo_local_ipfs_kit_root', return_value=local_root):
+            with patch('integrations.ipfs_datasets.storage.get_ipfs_backend', return_value=fake_backend):
+                with patch('integrations.ipfs_datasets.storage.shutil.which', return_value=None):
+                    backend_status = storage_backend_status()
+
+    assert backend_status['status'] == 'available'
+    assert backend_status['backend_name'] == 'KuboCLIBackend'
+    assert fake_backend._cmd == str(bin_dir / 'ipfs')
+
+
+def test_get_embeddings_router_falls_back_to_module_facade():
+    with patch.object(vector_store_module, "embed_text", Mock(return_value=[0.1, 0.2, 0.3])):
+        router = vector_store_module.get_embeddings_router(provider="hf_inference_api")
+        result = router.embed_text("HACC evidence")
+
+    assert router is not None
+    assert type(router).__name__ == "EmbeddingsRouter"
+    assert result == [0.1, 0.2, 0.3]
+
+
+def test_embeddings_backend_status_reports_probe_success():
+    with patch.object(vector_store_module, "embed_text", Mock(return_value=[0.1, 0.2, 0.3])):
+        payload = embeddings_backend_status(perform_probe=True, provider="hf_inference_api")
+
+    assert payload["status"] == "available"
+    assert payload["probe_performed"] is True
+    assert payload["probe_status"] == "available"
+    assert payload["vector_length"] == 3
+    assert "embed_text" in payload["available_methods"]
+
+
+def test_router_status_report_combines_llm_ipfs_and_embeddings():
+    with patch(
+        "integrations.ipfs_datasets.router_status.llm_router_status",
+        return_value={"status": "available", "error": ""},
+    ), patch(
+        "integrations.ipfs_datasets.router_status.storage_backend_status",
+        return_value={"status": "available", "error": ""},
+    ), patch(
+        "integrations.ipfs_datasets.router_status.embeddings_backend_status",
+        return_value={"status": "degraded", "error": "missing token"},
+    ):
+        report = get_router_status_report()
+
+    assert report["status"] == "degraded"
+    assert report["components"]["llm_router"]["status"] == "available"
+    assert report["components"]["ipfs_router"]["status"] == "available"
+    assert report["components"]["embeddings_router"]["status"] == "degraded"
+    assert report["unavailable_components"]["embeddings_router"] == "missing token"

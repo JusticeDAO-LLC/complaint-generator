@@ -1,7 +1,6 @@
 import argparse
 import json
 import logging
-import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -55,6 +54,8 @@ def main() -> int:
     parser.add_argument("--max-turns", type=int, default=6)
     parser.add_argument("--max-parallel", type=int, default=2)
     parser.add_argument("--use-vector-search", action="store_true")
+    parser.add_argument("--probe-llm-router", action="store_true")
+    parser.add_argument("--probe-embeddings-router", action="store_true")
     parser.add_argument(
         "--output-dir",
         default=None,
@@ -64,6 +65,7 @@ def main() -> int:
 
     from adversarial_harness import AdversarialHarness, HACC_QUERY_PRESETS, Optimizer
     from backends import LLMRouterBackend
+    from integrations.ipfs_datasets import get_router_status_report
     from mediator.mediator import Mediator
 
     if args.preset not in HACC_QUERY_PRESETS:
@@ -75,6 +77,13 @@ def main() -> int:
 
     config = _load_config(args.config)
     backend_kwargs = _get_llm_router_backend_config(config, args.backend_id)
+    router_report = get_router_status_report(
+        llm_config=backend_kwargs,
+        embeddings_config=config.get("EMBEDDINGS") if isinstance(config.get("EMBEDDINGS"), dict) else None,
+        probe_llm=args.probe_llm_router,
+        probe_embeddings=args.probe_embeddings_router,
+        probe_text="HACC complaint-generation router health check",
+    )
 
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     output_dir = Path(args.output_dir or (PROJECT_ROOT / "output" / "hacc_adversarial" / timestamp)).resolve()
@@ -84,6 +93,7 @@ def main() -> int:
 
     logging.info("Output directory: %s", output_dir)
     logging.info("Preset: %s", args.preset)
+    logging.info("Router status: %s", router_report.get("status"))
 
     complainant_backend = LLMRouterBackend(**backend_kwargs)
     critic_backend = LLMRouterBackend(**backend_kwargs)
@@ -128,6 +138,7 @@ def main() -> int:
         "hacc_count": args.hacc_count,
         "max_turns": args.max_turns,
         "use_vector_search": args.use_vector_search,
+        "router_report": router_report,
         "statistics": statistics,
         "artifacts": {
             "results_json": str(results_path),
@@ -145,6 +156,7 @@ def main() -> int:
 
     print(f"Saved run outputs to {output_dir}")
     print(f"Preset: {args.preset}")
+    print(f"Router status: {router_report.get('status')}")
     print(f"Successful sessions: {statistics.get('successful_sessions', 0)}/{statistics.get('total_sessions', 0)}")
     return 0
 

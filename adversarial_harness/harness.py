@@ -18,6 +18,7 @@ from .session import AdversarialSession, SessionResult
 from .complainant import Complainant, ComplaintContext
 from .critic import Critic
 from .seed_complaints import SeedComplaintLibrary
+from .hacc_evidence import build_hacc_mediator_evidence_packet
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,34 @@ class AdversarialHarness:
         self.session_state_dir = session_state_dir
         
         self.results = []
+
+    def _preload_hacc_seed_evidence(self, mediator: Any, seed: Dict[str, Any], *, session_id: str) -> List[Dict[str, Any]]:
+        save_claim_support_document = getattr(mediator, "save_claim_support_document", None)
+        if not callable(save_claim_support_document):
+            return []
+
+        packets = build_hacc_mediator_evidence_packet(seed)
+        stored: List[Dict[str, Any]] = []
+        for packet in packets:
+            try:
+                result = save_claim_support_document(
+                    claim_type=str(seed.get("type") or ""),
+                    user_id=session_id,
+                    claim_element_text=str(seed.get("summary") or seed.get("description") or "HACC evidence-grounded complaint"),
+                    document_text=str(packet.get("document_text") or ""),
+                    document_label=str(packet.get("document_label") or "HACC evidence"),
+                    source_url=str(packet.get("source_path") or ""),
+                    filename=str(packet.get("filename") or ""),
+                    mime_type=str(packet.get("mime_type") or "text/plain"),
+                    evidence_type="document",
+                    metadata=dict(packet.get("metadata") or {}),
+                )
+            except Exception as exc:
+                logger.warning("Unable to preload HACC seed evidence into mediator for %s: %s", session_id, exc)
+                continue
+            if isinstance(result, dict):
+                stored.append(result)
+        return stored
 
     def _safe_session_id(self, text: str) -> str:
         allowed = []
@@ -339,6 +368,21 @@ class AdversarialHarness:
                 session_id=spec['session_id'],
                 session_dir=session_dir,
             )
+            preloaded_evidence = self._preload_hacc_seed_evidence(
+                mediator,
+                spec['seed'],
+                session_id=spec['session_id'],
+            )
+            if preloaded_evidence and isinstance(spec['seed'], dict):
+                spec['seed'].setdefault('_meta', {})
+                spec['seed']['_meta']['preloaded_mediator_evidence'] = [
+                    {
+                        'cid': item.get('cid'),
+                        'record_id': item.get('record_id'),
+                        'document_label': item.get('metadata', {}).get('filename') or item.get('metadata', {}).get('source_path') or '',
+                    }
+                    for item in preloaded_evidence
+                ]
             
             # Create and run session
             session = AdversarialSession(

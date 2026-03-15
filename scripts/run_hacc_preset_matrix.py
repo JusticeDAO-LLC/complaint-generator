@@ -2,7 +2,6 @@ import argparse
 import csv
 import json
 import logging
-import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -84,17 +83,18 @@ def _write_markdown_report(filepath: Path, rows: List[Dict[str, Any]], recommend
             "",
         ])
     lines.extend([
-        "| Preset | Avg Score | Success | Anchor Coverage | Top Missing Sections | Missing Sections | Output Dir |",
-        "| --- | ---: | ---: | ---: | --- | --- | --- |",
+        "| Preset | Avg Score | Success | Anchor Coverage | Router | Top Missing Sections | Missing Sections | Output Dir |",
+        "| --- | ---: | ---: | ---: | --- | --- | --- | --- |",
     ])
     for row in rows:
         lines.append(
-            "| {preset} | {average_score:.2f} | {successful_sessions}/{total_sessions} | {anchor_coverage:.2f} | {top_missing_sections} | {missing_sections} | {output_dir} |".format(
+            "| {preset} | {average_score:.2f} | {successful_sessions}/{total_sessions} | {anchor_coverage:.2f} | {router_status} | {top_missing_sections} | {missing_sections} | {output_dir} |".format(
                 preset=row["preset"],
                 average_score=row["average_score"],
                 successful_sessions=row["successful_sessions"],
                 total_sessions=row["total_sessions"],
                 anchor_coverage=row["anchor_coverage"],
+                router_status=row.get("router_status") or "-",
                 top_missing_sections=row["top_missing_sections"] or "-",
                 missing_sections=row["missing_sections"] or "-",
                 output_dir=row["output_dir"],
@@ -118,19 +118,30 @@ def _run_preset_batch(
     preset: str,
     preset_dir: Path,
     backend_kwargs: Dict[str, Any],
+    embeddings_config: Dict[str, Any] | None,
     num_sessions: int,
     hacc_count: int,
     max_turns: int,
     max_parallel: int,
     use_vector_search: bool,
+    probe_llm_router: bool,
+    probe_embeddings_router: bool,
 ) -> Dict[str, Any]:
     from adversarial_harness import AdversarialHarness, Optimizer
     from backends import LLMRouterBackend
+    from integrations.ipfs_datasets import get_router_status_report
     from mediator.mediator import Mediator
 
     session_state_dir = preset_dir / "sessions"
     preset_dir.mkdir(parents=True, exist_ok=True)
     session_state_dir.mkdir(parents=True, exist_ok=True)
+    router_report = get_router_status_report(
+        llm_config=backend_kwargs,
+        embeddings_config=embeddings_config,
+        probe_llm=probe_llm_router,
+        probe_embeddings=probe_embeddings_router,
+        probe_text=f"HACC preset matrix router health check for {preset}",
+    )
 
     complainant_backend = LLMRouterBackend(**backend_kwargs)
     critic_backend = LLMRouterBackend(**backend_kwargs)
@@ -183,6 +194,8 @@ def _run_preset_batch(
         "top_missing_sections": top_missing_sections,
         "missing_sections": missing_sections,
         "output_dir": str(preset_dir),
+        "router_status": str(router_report.get("status") or ""),
+        "router_report": router_report,
         "statistics": statistics,
         "optimizer_report": optimizer_report,
     }
@@ -203,6 +216,8 @@ def main() -> int:
     parser.add_argument("--hacc-count", type=int, default=3)
     parser.add_argument("--max-turns", type=int, default=6)
     parser.add_argument("--max-parallel", type=int, default=2)
+    parser.add_argument("--probe-llm-router", action="store_true")
+    parser.add_argument("--probe-embeddings-router", action="store_true")
     parser.add_argument(
         "--top-k-rerun",
         type=int,
@@ -236,6 +251,7 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO)
     config = _load_config(args.config)
     backend_kwargs = _get_llm_router_backend_config(config, args.backend_id)
+    embeddings_config = config.get("EMBEDDINGS") if isinstance(config.get("EMBEDDINGS"), dict) else None
 
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     output_dir = Path(args.output_dir or (PROJECT_ROOT / "output" / "hacc_preset_matrix" / timestamp)).resolve()
@@ -250,11 +266,14 @@ def main() -> int:
             preset=preset,
             preset_dir=preset_dir,
             backend_kwargs=backend_kwargs,
+            embeddings_config=embeddings_config,
             num_sessions=args.num_sessions,
             hacc_count=args.hacc_count,
             max_turns=args.max_turns,
             max_parallel=args.max_parallel,
             use_vector_search=args.use_vector_search,
+            probe_llm_router=args.probe_llm_router,
+            probe_embeddings_router=args.probe_embeddings_router,
         )
         row = {
             key: batch_result[key]
@@ -264,9 +283,11 @@ def main() -> int:
                 "successful_sessions",
                 "total_sessions",
                 "anchor_coverage",
+                "router_status",
                 "top_missing_sections",
                 "missing_sections",
                 "output_dir",
+                "router_status",
             )
         }
         matrix_rows.append(row)
@@ -276,6 +297,7 @@ def main() -> int:
                 "statistics": batch_result["statistics"],
                 "optimizer_report": batch_result["optimizer_report"],
                 "output_dir": batch_result["output_dir"],
+                "router_report": batch_result["router_report"],
             }
         )
 
@@ -297,11 +319,14 @@ def main() -> int:
                 preset=preset,
                 preset_dir=rerun_dir / preset,
                 backend_kwargs=backend_kwargs,
+                embeddings_config=embeddings_config,
                 num_sessions=args.champion_sessions,
                 hacc_count=args.hacc_count,
                 max_turns=args.max_turns,
                 max_parallel=args.max_parallel,
                 use_vector_search=args.use_vector_search,
+                probe_llm_router=args.probe_llm_router,
+                probe_embeddings_router=args.probe_embeddings_router,
             )
             challenger_rows.append(
                 {
@@ -315,6 +340,7 @@ def main() -> int:
                         "top_missing_sections",
                         "missing_sections",
                         "output_dir",
+                        "router_status",
                     )
                 }
             )
@@ -350,6 +376,7 @@ def main() -> int:
                 "successful_sessions",
                 "total_sessions",
                 "anchor_coverage",
+                "router_status",
                 "top_missing_sections",
                 "missing_sections",
                 "output_dir",
@@ -373,6 +400,7 @@ def main() -> int:
         print(
             f"{row['preset']}: score={row['average_score']:.2f}, "
             f"anchor_coverage={row['anchor_coverage']:.2f}, "
+            f"router={row.get('router_status') or '-'}, "
             f"top_missing={row['top_missing_sections'] or '-'}, "
             f"success={row['successful_sessions']}/{row['total_sessions']}"
         )

@@ -377,6 +377,10 @@ python scripts/synthesize_hacc_complaint.py \
   --matrix-summary output/hacc_preset_matrix/<timestamp>/preset_matrix_summary.json
 ```
 
+When the matrix summary includes a `champion_challenger` block, the synthesis step
+now prefers that rerun's `best_overall` preset automatically before falling back to
+the initial matrix recommendation.
+
 ### 7. Search Integration (`search_hooks.py`)
 
 **Purpose:** Enrich adversarial testing with legal research and web evidence.

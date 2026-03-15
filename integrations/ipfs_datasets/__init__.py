@@ -45,7 +45,8 @@ from .documents import (
 	ingest_local_document,
 	parse_pdf_to_record,
 )
-from .llm import generate_text_with_metadata
+from .llm import generate_text_with_metadata, llm_router_status
+from .router_status import get_router_status_report
 from .graphrag import (
 	build_ontology,
 	validate_ontology,
@@ -66,6 +67,7 @@ from .vector_store import (
 	EMBEDDINGS_AVAILABLE,
 	VECTOR_STORE_AVAILABLE,
 	VECTOR_STORE_ERROR,
+	embeddings_backend_status,
 	create_vector_index,
 	get_embeddings_router,
 	search_vector_index,
@@ -103,6 +105,8 @@ __all__ = [
 	"download_url",
 	"download_with_recovery",
 	"generate_text_with_metadata",
+	"llm_router_status",
+	"get_router_status_report",
 	"build_ontology",
 	"validate_ontology",
 	"run_refinement_cycle",
@@ -130,6 +134,7 @@ __all__ = [
 	"EMBEDDINGS_AVAILABLE",
 	"VECTOR_STORE_AVAILABLE",
 	"VECTOR_STORE_ERROR",
+	"embeddings_backend_status",
 	"create_vector_index",
 	"search_vector_index",
 	"get_embeddings_router",

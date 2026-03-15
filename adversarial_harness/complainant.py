@@ -12,6 +12,23 @@ import json
 logger = logging.getLogger(__name__)
 
 
+def _resolve_dynamic_hacc_evidence(question: str, context: "ComplaintContext") -> Dict[str, Any]:
+    try:
+        from .hacc_evidence import resolve_hacc_question_evidence
+    except Exception as exc:
+        logger.debug("Dynamic HACC evidence lookup unavailable: %s", exc)
+        return {}
+
+    key_facts = context.key_facts if isinstance(context.key_facts, dict) else {}
+    if not key_facts.get("evidence_query") and not key_facts.get("anchor_terms") and not context.evidence_items:
+        return {}
+    return resolve_hacc_question_evidence(
+        question=question,
+        key_facts=key_facts,
+        existing_evidence=context.evidence_items,
+    )
+
+
 def _normalize_personality(value: str) -> str:
     if not value:
         return "cooperative"
@@ -115,6 +132,10 @@ class ComplaintContext:
     context_depth: int = 1  # How much detail complainant has
     evidence_items: List[Dict[str, Any]] = field(default_factory=list)
     evidence_summary: str = ""
+    dynamic_evidence_items: List[Dict[str, Any]] = field(default_factory=list)
+    dynamic_evidence_summary: str = ""
+    dynamic_anchor_passages: List[Dict[str, Any]] = field(default_factory=list)
+    dynamic_anchor_sections: List[str] = field(default_factory=list)
 
 
 class Complainant:
@@ -203,6 +224,8 @@ class Complainant:
         """
         if not self.context:
             raise ValueError("Context must be set before responding to questions")
+
+        self._refresh_dynamic_evidence(question)
         
         prompt = self._build_response_prompt(question)
         
@@ -216,7 +239,8 @@ class Complainant:
             self.conversation_history.append({
                 'role': 'complainant',
                 'type': 'response',
-                'content': response
+                'content': response,
+                'evidence_context': self._serialize_dynamic_evidence_context(),
             })
             return response
         except Exception as e:
@@ -315,12 +339,21 @@ Response:"""
         if isinstance(self.context.key_facts, dict):
             anchor_passages = list(self.context.key_facts.get("anchor_passages") or [])
             anchor_sections = list(self.context.key_facts.get("anchor_sections") or [])
-        return self._format_evidence_block(
+        base_block = self._format_evidence_block(
             self.context.evidence_summary,
             self.context.evidence_items,
             anchor_passages,
             anchor_sections,
         )
+        dynamic_block = self._format_evidence_block(
+            self.context.dynamic_evidence_summary,
+            self.context.dynamic_evidence_items,
+            self.context.dynamic_anchor_passages,
+            self.context.dynamic_anchor_sections,
+        )
+        if self.context.dynamic_evidence_items or self.context.dynamic_anchor_passages:
+            return f"Seed evidence:\n{base_block}\n\nQuestion-focused HACC evidence:\n{dynamic_block}"
+        return base_block
 
     def _format_evidence_block(
         self,
@@ -354,6 +387,25 @@ Response:"""
                 line += f" (source: {source_path})"
             lines.append(line)
         return "\n".join(lines) if lines else "No external evidence was provided."
+
+    def _refresh_dynamic_evidence(self, question: str) -> None:
+        if not self.context:
+            return
+        payload = _resolve_dynamic_hacc_evidence(question, self.context)
+        self.context.dynamic_evidence_items = list(payload.get("evidence_items") or [])
+        self.context.dynamic_evidence_summary = str(payload.get("evidence_summary") or "")
+        self.context.dynamic_anchor_passages = list(payload.get("anchor_passages") or [])
+        self.context.dynamic_anchor_sections = list(payload.get("anchor_sections") or [])
+
+    def _serialize_dynamic_evidence_context(self) -> Dict[str, Any]:
+        if not self.context:
+            return {}
+        return {
+            "dynamic_evidence_summary": self.context.dynamic_evidence_summary,
+            "dynamic_evidence_items": list(self.context.dynamic_evidence_items),
+            "dynamic_anchor_passages": list(self.context.dynamic_anchor_passages),
+            "dynamic_anchor_sections": list(self.context.dynamic_anchor_sections),
+        }
     
     def get_conversation_history(self) -> List[Dict[str, Any]]:
         """Get the full conversation history."""

@@ -39,11 +39,18 @@ def _pick_best_session(results_payload: Dict[str, Any], preset: str | None = Non
     return max(successful, key=lambda session: float((session.get("critic_score") or {}).get("overall_score", 0.0) or 0.0))
 
 
-def _best_preset_from_matrix(matrix_payload: Dict[str, Any]) -> str | None:
+def _best_preset_from_matrix(matrix_payload: Dict[str, Any]) -> tuple[str | None, str]:
+    champion = dict(matrix_payload.get("champion_challenger") or {})
+    champion_recommendations = dict(champion.get("recommendations") or {})
+    champion_best = dict(champion_recommendations.get("best_overall") or {})
+    champion_preset = champion_best.get("preset")
+    if champion_preset:
+        return str(champion_preset), "champion_challenger"
+
     recommendations = dict(matrix_payload.get("recommendations") or {})
     best_overall = dict(recommendations.get("best_overall") or {})
     preset = best_overall.get("preset")
-    return str(preset) if preset else None
+    return (str(preset), "matrix") if preset else (None, "unknown")
 
 
 def _conversation_facts(conversation_history: List[Dict[str, Any]], limit: int = 8) -> List[str]:
@@ -170,7 +177,7 @@ def main() -> int:
     parser.add_argument(
         "--matrix-summary",
         default=None,
-        help="Path to preset_matrix_summary.json; if provided, the script uses the best_overall preset by default.",
+        help="Path to preset_matrix_summary.json; if provided, the script prefers the champion/challenger best_overall preset when available.",
     )
     parser.add_argument(
         "--results-json",
@@ -186,15 +193,20 @@ def main() -> int:
     args = parser.parse_args()
 
     matrix_payload = {}
+    selection_source = "results_json"
     if args.matrix_summary:
         matrix_path = Path(args.matrix_summary).resolve()
         matrix_payload = _load_json(matrix_path)
         if not args.results_json:
-            best_preset = args.preset or _best_preset_from_matrix(matrix_payload)
+            best_preset, selection_source = _best_preset_from_matrix(matrix_payload)
+            best_preset = args.preset or best_preset
             if not best_preset:
                 raise ValueError("Could not determine best preset from matrix summary")
             args.preset = best_preset
-            args.results_json = str(matrix_path.parent / best_preset / "adversarial_results.json")
+            if selection_source == "champion_challenger":
+                args.results_json = str(matrix_path.parent / "champion_challenger" / best_preset / "adversarial_results.json")
+            else:
+                args.results_json = str(matrix_path.parent / best_preset / "adversarial_results.json")
     if not args.results_json:
         raise ValueError("Either --results-json or --matrix-summary must be provided")
 
@@ -219,6 +231,7 @@ def main() -> int:
         "source_artifacts": {
             "results_json": str(results_path),
             "matrix_summary": str(Path(args.matrix_summary).resolve()) if args.matrix_summary else None,
+            "selection_source": selection_source,
         },
     }
 

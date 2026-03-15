@@ -26,7 +26,7 @@ from adversarial_harness.demo_autopatch import (
     DemoBatchMediator,
     run_adversarial_autopatch_batch,
 )
-from adversarial_harness.hacc_evidence import build_hacc_evidence_seed
+from adversarial_harness.hacc_evidence import build_hacc_evidence_seed, build_hacc_mediator_evidence_packet
 import adversarial_harness.seed_complaints as seed_complaints_module
 
 
@@ -222,6 +222,75 @@ class TestComplainant:
         assert any('HACC Policy' in prompt for prompt in prompts)
         assert any('Decision-tree sections: grievance_hearing, appeal_rights' in prompt for prompt in prompts)
         assert any('Passage 1 [grievance_hearing] from HACC Policy' in prompt for prompt in prompts)
+
+    def test_question_response_refreshes_dynamic_hacc_evidence(self, monkeypatch):
+        prompts = []
+
+        def backend(prompt):
+            prompts.append(prompt)
+            return "The grievance policy supports what happened."
+
+        complainant = Complainant(backend, personality="detailed")
+        seed = {
+            'type': 'housing_discrimination',
+            'summary': 'The evidence points to a grievance issue.',
+            'key_facts': {
+                'evidence_query': 'grievance hearing due process',
+                'evidence_summary': 'Static summary.',
+                'anchor_sections': ['grievance_hearing'],
+            },
+            'hacc_evidence': [
+                {'title': 'Static Policy', 'snippet': 'Static seed evidence.'},
+            ],
+        }
+        context = Complainant.build_default_context(seed, 'detailed')
+        complainant.set_context(context)
+
+        monkeypatch.setattr(
+            'adversarial_harness.complainant._resolve_dynamic_hacc_evidence',
+            lambda question, context: {
+                'evidence_summary': 'Dynamic evidence for the specific question.',
+                'evidence_items': [{'title': 'ADMINISTRATIVE PLAN', 'snippet': 'A grievance hearing will be conducted by an impartial person.'}],
+                'anchor_passages': [{'title': 'ADMINISTRATIVE PLAN', 'snippet': 'A grievance hearing will be conducted by an impartial person.', 'section_labels': ['grievance_hearing']}],
+                'anchor_sections': ['grievance_hearing'],
+            },
+        )
+
+        response = complainant.respond_to_question("What policy supports your appeal rights?")
+
+        assert response
+        assert complainant.context.dynamic_evidence_summary == 'Dynamic evidence for the specific question.'
+        assert complainant.context.dynamic_evidence_items[0]['title'] == 'ADMINISTRATIVE PLAN'
+        assert any('Question-focused HACC evidence:' in prompt for prompt in prompts)
+        assert any('Dynamic evidence for the specific question.' in prompt for prompt in prompts)
+
+    def test_response_history_persists_dynamic_evidence_context(self, monkeypatch):
+        backend = MockLLMBackend("I relied on the administrative plan language.")
+        complainant = Complainant(backend, personality="detailed")
+        context = ComplaintContext(
+            complaint_type="housing_discrimination",
+            key_facts={'evidence_query': 'administrative plan grievance hearing'},
+            evidence_items=[{'title': 'Static Policy', 'snippet': 'Static'}],
+            evidence_summary='Static summary',
+        )
+        complainant.set_context(context)
+
+        monkeypatch.setattr(
+            'adversarial_harness.complainant._resolve_dynamic_hacc_evidence',
+            lambda question, context: {
+                'evidence_summary': 'Dynamic summary',
+                'evidence_items': [{'title': 'ADMINISTRATIVE PLAN', 'snippet': 'Impartial person'}],
+                'anchor_passages': [],
+                'anchor_sections': ['grievance_hearing'],
+            },
+        )
+
+        complainant.respond_to_question("Which document mentions an impartial person?")
+
+        last_message = complainant.get_conversation_history()[-1]
+        assert last_message['role'] == 'complainant'
+        assert last_message['evidence_context']['dynamic_evidence_summary'] == 'Dynamic summary'
+        assert last_message['evidence_context']['dynamic_anchor_sections'] == ['grievance_hearing']
 
 
 class TestCritic:
@@ -449,6 +518,28 @@ class TestSeedComplaintLibrary:
         assert 'impartial person' in seed['key_facts']['anchor_passages'][0]['snippet'].lower()
         assert 'grievance_hearing' in seed['key_facts']['anchor_passages'][0]['section_labels']
         assert 'reasonable_accommodation' in seed['key_facts']['anchor_sections']
+
+    def test_build_hacc_mediator_evidence_packet_prefers_source_files(self, tmp_path):
+        source_path = tmp_path / 'policy.txt'
+        source_path.write_text('Full policy text about grievance hearings and impartial review.', encoding='utf-8')
+
+        packet = build_hacc_mediator_evidence_packet(
+            {
+                'type': 'housing_discrimination',
+                'key_facts': {
+                    'evidence_query': 'grievance hearing',
+                    'source_paths': [str(source_path)],
+                    'anchor_sections': ['grievance_hearing'],
+                },
+                'hacc_evidence': [
+                    {'title': 'ADMINISTRATIVE PLAN', 'source_path': str(source_path), 'snippet': 'Short snippet'},
+                ],
+            }
+        )
+
+        assert len(packet) == 1
+        assert packet[0]['document_text'].startswith('Full policy text')
+        assert packet[0]['metadata']['anchor_sections'] == ['grievance_hearing']
 
 
 class TestAdversarialSession:
@@ -882,6 +973,43 @@ class TestAdversarialHarness:
 
         assert results[0].seed_complaint['_meta']['seed_source'] == 'hacc_research_engine'
         assert results[0].seed_complaint['_meta']['anchor_sections'] == ['grievance_hearing', 'appeal_rights']
+
+    def test_preload_hacc_seed_evidence_submits_documents_to_mediator(self, tmp_path):
+        source_path = tmp_path / 'policy.txt'
+        source_path.write_text('Full policy text about due process and grievance hearings.', encoding='utf-8')
+
+        harness = AdversarialHarness(
+            MockLLMBackend(),
+            MockLLMBackend(),
+            MockMediator,
+            max_parallel=1,
+        )
+
+        captured = []
+
+        class MediatorWithSave:
+            def save_claim_support_document(self, **kwargs):
+                captured.append(kwargs)
+                return {'cid': 'cid-1', 'record_id': 7, 'metadata': {'source_path': kwargs.get('source_url', '')}}
+
+        seed = {
+            'type': 'housing_discrimination',
+            'summary': 'Grounded HACC complaint seed',
+            'key_facts': {
+                'evidence_query': 'grievance hearing due process',
+                'source_paths': [str(source_path)],
+                'anchor_sections': ['grievance_hearing'],
+            },
+            'hacc_evidence': [{'title': 'ADMINISTRATIVE PLAN', 'source_path': str(source_path)}],
+        }
+
+        stored = harness._preload_hacc_seed_evidence(MediatorWithSave(), seed, session_id='session_123')
+
+        assert len(stored) == 1
+        assert len(captured) == 1
+        assert captured[0]['user_id'] == 'session_123'
+        assert captured[0]['claim_type'] == 'housing_discrimination'
+        assert 'Full policy text about due process' in captured[0]['document_text']
 
 
 class TestOptimizer:
