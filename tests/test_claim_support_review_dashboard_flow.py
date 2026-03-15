@@ -30,6 +30,27 @@ def _build_dashboard_app(mediator: Mock) -> FastAPI:
 def _build_dashboard_mediator() -> Mock:
     mediator = Mock()
     mediator.state = SimpleNamespace(username="dashboard-user", hashed_username=None)
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "iteration_count": 3,
+        "intake_readiness": {
+            "score": 0.42,
+            "ready_to_advance": False,
+            "remaining_gap_count": 2,
+            "contradiction_count": 1,
+            "blockers": ["resolve_contradictions", "collect_missing_timeline_details"],
+        },
+        "intake_contradictions": [
+            {
+                "summary": "Complaint date conflicts with schedule-cut date",
+                "left_text": "The complaint was made before the schedule change.",
+                "right_text": "The schedule change came before the complaint.",
+                "question": "What were the exact dates for the complaint and the schedule change?",
+                "severity": "high",
+                "category": "timeline",
+            }
+        ],
+    }
     mediator.get_claim_coverage_matrix.return_value = {
         "claims": {
             "retaliation": {
@@ -607,6 +628,8 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert soup.find(id="signal-plan-normalized") is not None
     assert soup.find(id="signal-history-normalized") is not None
     assert soup.find(id="signal-follow-up-source-context") is not None
+    assert soup.find(id="intake-status-chips") is not None
+    assert soup.find(id="intake-contradiction-list") is not None
     assert soup.find(id="signal-archive-captures") is not None
     assert soup.find(id="signal-fallback-authorities") is not None
     assert soup.find(id="signal-low-quality-records") is not None
@@ -654,6 +677,7 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert "Save Document" in page_html
     assert "buildDocumentUploadFormData" in page_html
     assert "postFormData" in page_html
+    assert "renderIntakeStatus" in page_html
     assert "renderQuestionRecommendations" in page_html
     assert "renderTestimonyRecords" in page_html
     assert "renderDocumentArtifacts" in page_html
@@ -673,6 +697,15 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
         Response(),
     )
     assert review_payload["user_id"] == "dashboard-user"
+    assert review_payload["intake_status"]["current_phase"] == "intake"
+    assert review_payload["intake_status"]["contradiction_count"] == 1
+    assert review_payload["intake_status"]["blockers"] == [
+        "resolve_contradictions",
+        "collect_missing_timeline_details",
+    ]
+    assert review_payload["intake_status"]["contradictions"][0]["question"] == (
+        "What were the exact dates for the complaint and the schedule change?"
+    )
     assert review_payload["claim_coverage_summary"]["retaliation"]["missing_elements"] == [
         "Causal connection"
     ]
