@@ -374,6 +374,22 @@
             });
         }
 
+        function buildGroupedIterationDiffLines(iterations) {
+            const filteredIterations = filterIterations(iterations);
+            const groups = [];
+            const acceptedIterations = filteredIterations.filter((entry) => Boolean(entry && entry.accepted));
+            const rejectedIterations = filteredIterations.filter((entry) => !Boolean(entry && entry.accepted));
+            if (acceptedIterations.length) {
+                groups.push('Accepted Changes:');
+                groups.push(...buildIterationDiffLines(acceptedIterations));
+            }
+            if (rejectedIterations.length) {
+                groups.push('Rejected Changes:');
+                groups.push(...buildIterationDiffLines(rejectedIterations));
+            }
+            return groups;
+        }
+
         function setIterationFilter(filterValue) {
             activeIterationFilter = filterValue;
             document.querySelectorAll('[data-iteration-filter]').forEach((node) => {
@@ -476,7 +492,7 @@
 
             renderList(
                 document.getElementById('traceDiffList'),
-                buildIterationDiffLines(iterations),
+                buildGroupedIterationDiffLines(iterations),
             );
 
             renderList(

@@ -106,8 +106,8 @@ class TestKnowledgeGraph:
         summary = kg.summary()
         assert summary['total_entities'] > 0
 
-    def test_knowledge_graph_builder_recognizes_discriminated_and_retaliation_phrasing(self):
-        """Heuristic claim extraction should handle common complaint phrasings, not only base nouns."""
+    def test_knowledge_graph_builder_specializes_employment_discrimination_and_retaliation(self):
+        """Heuristic claim extraction should specialize workplace discrimination when employment context is present."""
         builder = KnowledgeGraphBuilder()
         text = (
             "My employer discriminated against me because of my race and retaliated "
@@ -120,8 +120,24 @@ class TestKnowledgeGraph:
             for entity in kg.get_entities_by_type("claim")
         }
 
-        assert "discrimination" in claim_types
+        assert "employment_discrimination" in claim_types
         assert "retaliation" in claim_types
+
+    def test_knowledge_graph_builder_specializes_housing_discrimination(self):
+        """Housing context should promote generic discrimination language into housing discrimination."""
+        builder = KnowledgeGraphBuilder()
+        text = (
+            "My landlord discriminated against me because of my disability and refused "
+            "to renew my lease."
+        )
+
+        kg = builder.build_from_text(text)
+        claim_types = {
+            str(entity.attributes.get("claim_type") or "").strip().lower()
+            for entity in kg.get_entities_by_type("claim")
+        }
+
+        assert "housing_discrimination" in claim_types
 
 
 class TestDependencyGraph:
@@ -322,7 +338,7 @@ class TestComplaintDenoiser:
         denoiser = ComplaintDenoiser()
 
         kg = KnowledgeGraph()
-        kg.add_entity(Entity("claim1", "claim", "Discrimination Claim", attributes={"claim_type": "discrimination"}))
+        kg.add_entity(Entity("claim1", "claim", "Employment Discrimination Claim", attributes={"claim_type": "employment_discrimination"}))
 
         dg = DependencyGraph()
         claim = DependencyNode("n1", NodeType.CLAIM, "Discrimination Claim")
@@ -332,8 +348,8 @@ class TestComplaintDenoiser:
             "candidate_claims": [
                 {
                     "claim_id": "claim1",
-                    "claim_type": "discrimination",
-                    "label": "Discrimination Claim",
+                    "claim_type": "employment_discrimination",
+                    "label": "Employment Discrimination Claim",
                     "required_elements": [
                         {
                             "element_id": "protected_trait",
@@ -356,6 +372,74 @@ class TestComplaintDenoiser:
         assert "protected trait or class" in requirement_questions[0]["question"].lower()
         assert requirement_questions[0]["phase1_section"] == "claim_elements"
         assert requirement_questions[0]["blocking_level"] == "blocking"
+
+    def test_generate_questions_uses_employment_specific_claim_element_prompt_text(self):
+        """Employment discrimination prompts should ask about workplace-specific facts."""
+        denoiser = ComplaintDenoiser()
+
+        kg = KnowledgeGraph()
+        dg = DependencyGraph()
+        intake_case_file = {
+            "candidate_claims": [
+                {
+                    "claim_id": "claim1",
+                    "claim_type": "employment_discrimination",
+                    "label": "Employment Discrimination",
+                    "required_elements": [
+                        {
+                            "element_id": "employment_relationship",
+                            "label": "Employment relationship or workplace context",
+                            "blocking": True,
+                            "status": "missing",
+                        }
+                    ],
+                }
+            ]
+        }
+
+        questions = denoiser.generate_questions(kg, dg, max_questions=5, intake_case_file=intake_case_file)
+        requirement_question = next(
+            question for question in questions
+            if question["type"] == "requirement" and question.get("target_element_id") == "employment_relationship"
+        )
+
+        question_text = requirement_question["question"].lower()
+        assert "employer or supervisor" in question_text
+        assert "workplace relationship" in question_text
+
+    def test_generate_questions_uses_housing_specific_claim_element_prompt_text(self):
+        """Housing discrimination prompts should ask about landlord or tenancy context."""
+        denoiser = ComplaintDenoiser()
+
+        kg = KnowledgeGraph()
+        dg = DependencyGraph()
+        intake_case_file = {
+            "candidate_claims": [
+                {
+                    "claim_id": "claim1",
+                    "claim_type": "housing_discrimination",
+                    "label": "Housing Discrimination",
+                    "required_elements": [
+                        {
+                            "element_id": "housing_context",
+                            "label": "Housing relationship or tenancy context",
+                            "blocking": True,
+                            "status": "missing",
+                        }
+                    ],
+                }
+            ]
+        }
+
+        questions = denoiser.generate_questions(kg, dg, max_questions=5, intake_case_file=intake_case_file)
+        requirement_question = next(
+            question for question in questions
+            if question["type"] == "requirement" and question.get("target_element_id") == "housing_context"
+        )
+
+        question_text = requirement_question["question"].lower()
+        assert "landlord" in question_text
+        assert "tenancy situation" in question_text
     
     def test_calculate_noise_level(self):
         """Test noise level calculation."""

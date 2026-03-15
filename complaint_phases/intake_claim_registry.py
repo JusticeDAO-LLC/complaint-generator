@@ -8,6 +8,72 @@ from typing import Any, Dict, List
 
 
 CLAIM_INTAKE_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
+    "employment_discrimination": {
+        "label": "Employment Discrimination",
+        "elements": [
+            {
+                "element_id": "protected_trait",
+                "label": "Protected trait or class",
+                "blocking": True,
+                "keywords": ["race", "sex", "gender", "disability", "religion", "pregnan", "national origin", "age", "black", "white", "latino", "hispanic", "asian"],
+                "fact_types": [],
+            },
+            {
+                "element_id": "employment_relationship",
+                "label": "Employment relationship or workplace context",
+                "blocking": True,
+                "keywords": ["employer", "job", "work", "workplace", "supervisor", "manager", "hr", "human resources", "coworker", "company"],
+                "fact_types": ["responsible_party"],
+            },
+            {
+                "element_id": "adverse_action",
+                "label": "Adverse employment action or harassment",
+                "blocking": True,
+                "keywords": ["fired", "terminated", "demoted", "harass", "disciplined", "suspended", "cut hours", "reduced my hours", "promot"],
+                "fact_types": ["impact"],
+            },
+            {
+                "element_id": "discriminatory_motive",
+                "label": "Facts suggesting discriminatory motive",
+                "blocking": True,
+                "keywords": ["because of", "discrimination", "treated differently", "bias", "slur"],
+                "fact_types": [],
+            },
+        ],
+    },
+    "housing_discrimination": {
+        "label": "Housing Discrimination",
+        "elements": [
+            {
+                "element_id": "protected_trait",
+                "label": "Protected trait or class",
+                "blocking": True,
+                "keywords": ["race", "sex", "gender", "disability", "religion", "familial status", "national origin", "age", "black", "white", "latino", "hispanic", "asian", "children", "pregnan"],
+                "fact_types": [],
+            },
+            {
+                "element_id": "housing_context",
+                "label": "Housing relationship or tenancy context",
+                "blocking": True,
+                "keywords": ["landlord", "tenant", "lease", "apartment", "housing", "rent", "property manager", "evict", "unit"],
+                "fact_types": ["responsible_party"],
+            },
+            {
+                "element_id": "adverse_action",
+                "label": "Discriminatory housing action",
+                "blocking": True,
+                "keywords": ["denied", "refused", "evict", "raised rent", "steered", "harass", "failed to repair"],
+                "fact_types": ["impact"],
+            },
+            {
+                "element_id": "discriminatory_motive",
+                "label": "Facts suggesting discriminatory motive",
+                "blocking": True,
+                "keywords": ["because of", "discrimination", "treated differently", "bias", "slur"],
+                "fact_types": [],
+            },
+        ],
+    },
     "discrimination": {
         "label": "Discrimination",
         "elements": [
@@ -142,8 +208,8 @@ CLAIM_INTAKE_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
 
 
 CLAIM_TYPE_ALIASES = {
-    "employment_discrimination": "discrimination",
     "wrongful_termination": "termination",
+    "fair_housing_discrimination": "housing_discrimination",
 }
 
 
@@ -220,3 +286,42 @@ def match_required_element_id(claim_type: Any, text: Any) -> str:
         if label_terms and any(term in normalized_text for term in label_terms):
             return element_id
     return ""
+
+
+def build_claim_element_question_text(claim_type: Any, claim_label: Any, element_id: Any, element_label: Any) -> str:
+    normalized_claim_type = normalize_claim_type(claim_type)
+    normalized_claim_label = str(claim_label or normalized_claim_type or "this claim").strip() or "this claim"
+    normalized_element_id = str(element_id or "").strip().lower()
+    normalized_element_label = str(element_label or normalized_element_id or "this missing element").strip()
+
+    prompt_map = {
+        ("employment_discrimination", "protected_trait"): (
+            "For {claim_label}, what protected trait or class applies here, and how do you want it described?"
+        ),
+        ("employment_discrimination", "employment_relationship"): (
+            "For {claim_label}, who was the employer or supervisor involved, and what was your workplace relationship to them?"
+        ),
+        ("employment_discrimination", "adverse_action"): (
+            "For {claim_label}, what adverse job action or workplace harassment happened to you?"
+        ),
+        ("employment_discrimination", "discriminatory_motive"): (
+            "For {claim_label}, what facts suggest the employer acted because of your protected trait, such as comments, unequal treatment, or timing?"
+        ),
+        ("housing_discrimination", "protected_trait"): (
+            "For {claim_label}, what protected trait or class is involved, and how should it be described?"
+        ),
+        ("housing_discrimination", "housing_context"): (
+            "For {claim_label}, who was the landlord, property manager, or housing provider, and what was your housing or tenancy situation?"
+        ),
+        ("housing_discrimination", "adverse_action"): (
+            "For {claim_label}, what housing decision or treatment happened, such as a denial, eviction step, refusal, or unequal terms?"
+        ),
+        ("housing_discrimination", "discriminatory_motive"): (
+            "For {claim_label}, what facts suggest the housing decision was because of your protected trait, such as statements, unequal treatment, or policy explanations?"
+        ),
+    }
+
+    template = prompt_map.get((normalized_claim_type, normalized_element_id))
+    if template:
+        return template.format(claim_label=normalized_claim_label)
+    return f"For {normalized_claim_label}, what facts show {normalized_element_label.lower()}?"

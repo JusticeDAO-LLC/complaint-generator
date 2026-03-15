@@ -398,8 +398,11 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "data-iteration-filter=\"rejected\"" in content
     assert "traceDiffList" in content
     assert "Iteration Changes" in content
+    assert "Accepted Changes:" in content
+    assert "Rejected Changes:" in content
     assert "filterIterations" in content
     assert "setIterationFilter" in content
+    assert "buildGroupedIterationDiffLines" in content
     assert "summarizeActorPayloadChanges" in content
     assert "summarizeChangeManifestEntry" in content
     assert "summarizePersistedChanges" in content

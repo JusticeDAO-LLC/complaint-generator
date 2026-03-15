@@ -329,7 +329,7 @@ class TestMediatorThreePhaseIntegration:
         intake_case_file = mediator._initialize_intake_case_file(kg, "Initial complaint text")
 
         assert intake_case_file['source_complaint_text'] == 'Initial complaint text'
-        assert any(claim['claim_type'] == 'discrimination' for claim in intake_case_file['candidate_claims'])
+        assert any(claim['claim_type'] == 'employment_discrimination' for claim in intake_case_file['candidate_claims'])
         assert any(claim['required_elements'] for claim in intake_case_file['candidate_claims'])
         assert any(fact['fact_type'] == 'impact' for fact in intake_case_file['canonical_facts'])
         assert any(lead['lead_type'] == 'email communication' for lead in intake_case_file['proof_leads'])
@@ -530,7 +530,7 @@ class TestMediatorThreePhaseIntegration:
         intake_case_file = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file')
         discrimination_claim = next(
             claim for claim in intake_case_file['candidate_claims']
-            if claim['claim_type'] == 'discrimination'
+            if claim['claim_type'] == 'employment_discrimination'
         )
         protected_trait = next(
             element for element in discrimination_claim['required_elements']
@@ -540,6 +540,25 @@ class TestMediatorThreePhaseIntegration:
         assert protected_trait['status'] == 'present'
         assert any('protected_trait' in (fact.get('element_tags') or []) for fact in intake_case_file['canonical_facts'])
         assert result['intake_readiness']['intake_sections']['claim_elements']['status'] in {'partial', 'complete'}
+
+    def test_initialize_intake_case_file_specializes_housing_discrimination(self):
+        """Landlord and lease context should produce a housing discrimination candidate claim."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        kg = mediator.kg_builder.build_from_text(
+            "My landlord discriminated against me because of my disability and refused to renew my lease."
+        )
+
+        intake_case_file = mediator._initialize_intake_case_file(kg, "Housing complaint")
+
+        assert any(claim['claim_type'] == 'housing_discrimination' for claim in intake_case_file['candidate_claims'])
 
     def test_start_three_phase_process_includes_registry_backed_claim_element_question(self):
         """Initial intake questions should include prompts for missing registry-backed claim elements."""
@@ -563,6 +582,30 @@ class TestMediatorThreePhaseIntegration:
 
         assert requirement_questions
         assert any(question.get('phase1_section') == 'claim_elements' for question in requirement_questions)
+
+    def test_start_three_phase_process_uses_domain_specific_employment_question_text(self):
+        """Employment discrimination intake should ask workplace-specific claim-element questions."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        result = mediator.start_three_phase_process(
+            "My employer discriminated against me because of my race."
+        )
+
+        employment_questions = [
+            question for question in result['initial_questions']
+            if question.get('type') == 'requirement'
+            and question.get('target_element_id') == 'employment_relationship'
+        ]
+
+        assert employment_questions
+        assert 'employer or supervisor' in employment_questions[0]['question'].lower()
     
     def test_graph_serialization(self):
         """Test that graphs can be serialized for storage."""

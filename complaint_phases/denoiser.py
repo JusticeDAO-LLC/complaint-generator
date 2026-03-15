@@ -13,6 +13,7 @@ import os
 import random
 from .knowledge_graph import KnowledgeGraph, Entity, Relationship
 from .dependency_graph import DependencyGraph
+from .intake_claim_registry import build_claim_element_question_text
 
 logger = logging.getLogger(__name__)
 
@@ -827,7 +828,12 @@ class ComplaintDenoiser:
                 if question_key in seen_keys:
                     continue
                 seen_keys.add(question_key)
-                question_text = f"For {claim_label}, what facts show {element_label.lower()}?"
+                question_text = build_claim_element_question_text(
+                    claim_type,
+                    claim_label,
+                    element_id,
+                    element_label,
+                )
                 if not self._already_asked(question_text):
                     questions.append(self._build_phase1_question(
                         question_type='requirement',

@@ -479,6 +479,33 @@ class KnowledgeGraphBuilder:
             return snippet
 
         lower_text = (text or "").lower()
+        employment_context_terms = (
+            'employer',
+            'job',
+            'work',
+            'workplace',
+            'supervisor',
+            'manager',
+            'hr',
+            'human resources',
+            'coworker',
+            'company',
+            'shift',
+            'promotion',
+        )
+        housing_context_terms = (
+            'landlord',
+            'tenant',
+            'lease',
+            'apartment',
+            'housing',
+            'rent',
+            'property manager',
+            'property management',
+            'evict',
+            'unit',
+            'section 8',
+        )
         
         # For now, use simple keyword-based extraction
         # In production, this would use LLM prompts like:
@@ -493,11 +520,22 @@ class KnowledgeGraphBuilder:
             'harassed',
         )
         if any(term in lower_text for term in discrimination_terms):
+            employment_context = any(term in lower_text for term in employment_context_terms)
+            housing_context = any(term in lower_text for term in housing_context_terms)
+            if employment_context and not housing_context:
+                claim_type = 'employment_discrimination'
+                claim_name = 'Employment Discrimination Claim'
+            elif housing_context and not employment_context:
+                claim_type = 'housing_discrimination'
+                claim_name = 'Housing Discrimination Claim'
+            else:
+                claim_type = 'discrimination'
+                claim_name = 'Discrimination Claim'
             add_entity({
                 'type': 'claim',
-                'name': 'Discrimination Claim',
+                'name': claim_name,
                 'attributes': {
-                    'claim_type': 'discrimination',
+                    'claim_type': claim_type,
                     'description': short_description(text),
                 },
                 'confidence': 0.9
