@@ -266,6 +266,8 @@ class PhaseManager:
         """Refresh derived readiness state after phase data changes."""
         if phase == ComplaintPhase.INTAKE:
             self.phase_data[phase].update(self._build_intake_readiness(self.phase_data[phase]))
+        elif phase == ComplaintPhase.EVIDENCE:
+            self.phase_data[phase].update(self._build_evidence_packet_summary(self.phase_data[phase]))
 
     def get_intake_readiness(self) -> Dict[str, Any]:
         """Return derived intake readiness state."""
@@ -283,6 +285,51 @@ class PhaseManager:
             'canonical_fact_count': int(data.get('canonical_fact_count', 0) or 0),
             'proof_lead_count': int(data.get('proof_lead_count', 0) or 0),
             'blocking_contradictions': list(data.get('blocking_contradictions', [])),
+        }
+
+    def _build_evidence_packet_summary(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Derive evidence coverage metrics from claim-support packets when present."""
+        packets = data.get('claim_support_packets')
+        if not isinstance(packets, dict):
+            packets = {}
+
+        total_claims = 0
+        total_elements = 0
+        explicit_status_elements = 0
+        unsupported_elements = 0
+        blocking_contradictions = 0
+        next_steps: List[str] = []
+
+        for claim_packet in packets.values():
+            if not isinstance(claim_packet, dict):
+                continue
+            total_claims += 1
+            elements = claim_packet.get('elements')
+            if not isinstance(elements, list):
+                continue
+            for element in elements:
+                if not isinstance(element, dict):
+                    continue
+                total_elements += 1
+                status = str(element.get('support_status') or '').strip().lower()
+                if status in {'supported', 'partially_supported', 'unsupported', 'contradicted'}:
+                    explicit_status_elements += 1
+                if status == 'unsupported':
+                    unsupported_elements += 1
+                contradiction_count = int(element.get('contradiction_count', 0) or 0)
+                if contradiction_count > 0 and status == 'contradicted':
+                    blocking_contradictions += contradiction_count
+                next_step = str(element.get('recommended_next_step') or '').strip()
+                if next_step and next_step not in next_steps:
+                    next_steps.append(next_step)
+
+        return {
+            'claim_support_packet_count': total_claims,
+            'claim_support_element_count': total_elements,
+            'claim_support_explicit_status_count': explicit_status_elements,
+            'claim_support_unsupported_count': unsupported_elements,
+            'claim_support_blocking_contradictions': blocking_contradictions,
+            'claim_support_recommended_actions': next_steps,
         }
     
     def get_current_phase(self) -> ComplaintPhase:
@@ -373,7 +420,31 @@ class PhaseManager:
         evidence_gathered = data.get('evidence_count', 0) > 0
         kg_enhanced = data.get('knowledge_graph_enhanced', False)
         gap_ratio = data.get('evidence_gap_ratio', 1.0)
-        
+        packets = data.get('claim_support_packets')
+        if isinstance(packets, dict) and packets:
+            total_elements = int(data.get('claim_support_element_count', 0) or 0)
+            explicit_status_count = int(data.get('claim_support_explicit_status_count', 0) or 0)
+            blocking_contradictions = int(data.get('claim_support_blocking_contradictions', 0) or 0)
+            unsupported_missing_next_step = False
+            for claim_packet in packets.values():
+                if not isinstance(claim_packet, dict):
+                    continue
+                for element in claim_packet.get('elements', []) or []:
+                    if not isinstance(element, dict):
+                        continue
+                    status = str(element.get('support_status') or '').strip().lower()
+                    if status == 'unsupported' and not str(element.get('recommended_next_step') or '').strip():
+                        unsupported_missing_next_step = True
+                        break
+                if unsupported_missing_next_step:
+                    break
+            return (
+                total_elements > 0
+                and explicit_status_count == total_elements
+                and blocking_contradictions == 0
+                and not unsupported_missing_next_step
+            )
+
         return evidence_gathered and kg_enhanced and gap_ratio < _EVIDENCE_GAP_RATIO_THRESHOLD
     
     def _is_formalization_complete(self) -> bool:
@@ -533,6 +604,35 @@ class PhaseManager:
     def _get_evidence_action(self) -> Dict[str, Any]:
         """Get next action for evidence phase."""
         data = self.phase_data[ComplaintPhase.EVIDENCE]
+        packets = data.get('claim_support_packets')
+
+        if isinstance(packets, dict) and packets:
+            total_elements = int(data.get('claim_support_element_count', 0) or 0)
+            explicit_status_count = int(data.get('claim_support_explicit_status_count', 0) or 0)
+            if total_elements == 0 or explicit_status_count < total_elements:
+                return {
+                    'action': 'build_claim_support_packets',
+                    'recommended_actions': list(data.get('claim_support_recommended_actions', [])),
+                }
+            if int(data.get('claim_support_blocking_contradictions', 0) or 0) > 0:
+                return {
+                    'action': 'resolve_support_conflicts',
+                    'recommended_actions': list(data.get('claim_support_recommended_actions', [])),
+                }
+            if self._is_evidence_complete():
+                return {
+                    'action': 'complete_evidence',
+                    'recommended_actions': list(data.get('claim_support_recommended_actions', [])),
+                }
+            if int(data.get('claim_support_unsupported_count', 0) or 0) > 0:
+                return {
+                    'action': 'fill_evidence_gaps',
+                    'recommended_actions': list(data.get('claim_support_recommended_actions', [])),
+                }
+            return {
+                'action': 'complete_evidence',
+                'recommended_actions': list(data.get('claim_support_recommended_actions', [])),
+            }
         
         if data.get('evidence_count', 0) == 0:
             return {'action': 'gather_evidence'}

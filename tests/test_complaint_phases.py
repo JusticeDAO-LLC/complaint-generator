@@ -529,6 +529,67 @@ class TestPhaseManager:
         assert 'blocking_contradiction' in readiness['blockers']
         assert readiness['criteria']['blocking_contradictions_resolved'] is False
 
+    def test_evidence_phase_uses_claim_support_packets_for_completion(self):
+        """Evidence completeness should be driven by explicit claim-support packet coverage when available."""
+        pm = PhaseManager()
+        pm.current_phase = ComplaintPhase.EVIDENCE
+
+        pm.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'claim_support_packets',
+            {
+                'employment_discrimination': {
+                    'claim_type': 'employment_discrimination',
+                    'elements': [
+                        {
+                            'element_id': 'adverse_action',
+                            'support_status': 'supported',
+                            'recommended_next_step': '',
+                            'contradiction_count': 0,
+                        },
+                        {
+                            'element_id': 'causation',
+                            'support_status': 'unsupported',
+                            'recommended_next_step': 'collect_documentary_support',
+                            'contradiction_count': 0,
+                        },
+                    ],
+                }
+            },
+        )
+
+        assert pm.is_phase_complete(ComplaintPhase.EVIDENCE)
+        action = pm.get_next_action()
+        assert action['action'] == 'complete_evidence'
+        assert 'collect_documentary_support' in action['recommended_actions']
+
+    def test_evidence_phase_blocks_on_contradicted_claim_support_packets(self):
+        """Contradicted support packets should prevent evidence completion and suggest conflict resolution."""
+        pm = PhaseManager()
+        pm.current_phase = ComplaintPhase.EVIDENCE
+
+        pm.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'claim_support_packets',
+            {
+                'retaliation': {
+                    'claim_type': 'retaliation',
+                    'elements': [
+                        {
+                            'element_id': 'causation',
+                            'support_status': 'contradicted',
+                            'recommended_next_step': 'resolve_support_conflicts',
+                            'contradiction_count': 1,
+                        }
+                    ],
+                }
+            },
+        )
+
+        assert pm.is_phase_complete(ComplaintPhase.EVIDENCE) is False
+        action = pm.get_next_action()
+        assert action['action'] == 'resolve_support_conflicts'
+
 
 class TestLegalGraph:
     """Tests for LegalGraph and LegalGraphBuilder."""

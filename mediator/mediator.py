@@ -53,6 +53,7 @@ from complaint_phases import (
 	DependencyGraphBuilder,
 	ComplaintDenoiser,
 	build_intake_case_file,
+	refresh_intake_sections,
 	LegalGraphBuilder,
 	NeurosymbolicMatcher,
 	NodeType
@@ -3240,6 +3241,270 @@ class Mediator:
 	def _initialize_intake_case_file(self, knowledge_graph, complaint_text: str) -> Dict[str, Any]:
 		"""Build the initial structured intake case file from the current knowledge graph."""
 		return build_intake_case_file(knowledge_graph, complaint_text)
+
+	def _normalize_intake_text(self, value: Any) -> str:
+		return " ".join(str(value or "").strip().split())
+
+	def _next_intake_record_id(self, prefix: str, records: List[Dict[str, Any]]) -> str:
+		return f"{prefix}_{len(records) + 1:03d}"
+
+	def _find_matching_canonical_fact(
+		self,
+		canonical_facts: List[Dict[str, Any]],
+		*,
+		fact_type: str,
+		text: str,
+	) -> Dict[str, Any] | None:
+		normalized_text = self._normalize_intake_text(text).lower()
+		for fact in canonical_facts:
+			if not isinstance(fact, dict):
+				continue
+			if str(fact.get('fact_type') or '').strip().lower() != fact_type:
+				continue
+			existing_text = self._normalize_intake_text(fact.get('text')).lower()
+			if existing_text == normalized_text:
+				return fact
+		return None
+
+	def _append_canonical_fact(
+		self,
+		intake_case_file: Dict[str, Any],
+		*,
+		text: str,
+		fact_type: str,
+		question_type: str,
+	) -> Dict[str, Any]:
+		canonical_facts = intake_case_file.setdefault('canonical_facts', [])
+		if not isinstance(canonical_facts, list):
+			canonical_facts = []
+			intake_case_file['canonical_facts'] = canonical_facts
+		normalized_text = self._normalize_intake_text(text)
+		existing = self._find_matching_canonical_fact(canonical_facts, fact_type=fact_type, text=normalized_text)
+		if existing is not None:
+			existing['confidence'] = max(float(existing.get('confidence', 0.6) or 0.6), 0.75)
+			existing['status'] = 'accepted'
+			return existing
+
+		fact_record = {
+			'fact_id': self._next_intake_record_id('fact', canonical_facts),
+			'text': normalized_text,
+			'fact_type': fact_type,
+			'claim_types': [],
+			'element_tags': [],
+			'event_date_or_range': None,
+			'actor_ids': [],
+			'target_ids': [],
+			'location': None,
+			'source_kind': 'complainant_answer',
+			'source_ref': question_type,
+			'confidence': 0.75,
+			'status': 'accepted',
+			'needs_corroboration': True,
+			'contradiction_group_id': None,
+		}
+		canonical_facts.append(fact_record)
+		return fact_record
+
+	def _append_proof_lead(
+		self,
+		intake_case_file: Dict[str, Any],
+		*,
+		text: str,
+		lead_type: str,
+		related_fact_ids: List[str] | None = None,
+	) -> Dict[str, Any]:
+		proof_leads = intake_case_file.setdefault('proof_leads', [])
+		if not isinstance(proof_leads, list):
+			proof_leads = []
+			intake_case_file['proof_leads'] = proof_leads
+		normalized_text = self._normalize_intake_text(text)
+		for lead in proof_leads:
+			if not isinstance(lead, dict):
+				continue
+			if self._normalize_intake_text(lead.get('description')).lower() == normalized_text.lower():
+				return lead
+		lead_record = {
+			'lead_id': self._next_intake_record_id('lead', proof_leads),
+			'lead_type': lead_type,
+			'description': normalized_text,
+			'related_fact_ids': list(related_fact_ids or []),
+			'availability': 'claimed_available',
+			'source_kind': 'complainant_answer',
+			'source_ref': lead_type,
+		}
+		proof_leads.append(lead_record)
+		return lead_record
+
+	def _record_case_file_contradiction(
+		self,
+		intake_case_file: Dict[str, Any],
+		*,
+		topic: str,
+		left_fact: Dict[str, Any],
+		right_text: str,
+		severity: str = 'blocking',
+	) -> None:
+		contradiction_queue = intake_case_file.setdefault('contradiction_queue', [])
+		if not isinstance(contradiction_queue, list):
+			contradiction_queue = []
+			intake_case_file['contradiction_queue'] = contradiction_queue
+		normalized_topic = self._normalize_intake_text(topic) or 'intake fact'
+		normalized_right_text = self._normalize_intake_text(right_text)
+		for entry in contradiction_queue:
+			if not isinstance(entry, dict):
+				continue
+			if self._normalize_intake_text(entry.get('topic')) == normalized_topic:
+				return
+		left_fact['status'] = 'contradicted'
+		left_fact['needs_corroboration'] = True
+		contradiction_id = self._next_intake_record_id('ctr', contradiction_queue)
+		left_fact['contradiction_group_id'] = contradiction_id
+		contradiction_queue.append({
+			'contradiction_id': contradiction_id,
+			'severity': severity,
+			'fact_ids': [left_fact.get('fact_id')],
+			'topic': normalized_topic,
+			'status': 'open',
+			'existing_text': self._normalize_intake_text(left_fact.get('text')),
+			'new_text': normalized_right_text,
+		})
+
+	def _extract_proof_lead_type(self, answer: str) -> str:
+		lower_answer = (answer or '').lower()
+		if 'email' in lower_answer:
+			return 'email communication'
+		if 'text' in lower_answer:
+			return 'text messages'
+		if 'letter' in lower_answer:
+			return 'letter'
+		if 'witness' in lower_answer:
+			return 'witness'
+		if 'photo' in lower_answer or 'picture' in lower_answer:
+			return 'photos'
+		return 'supporting evidence'
+
+	def _apply_intake_answer_to_case_file(
+		self,
+		question: Dict[str, Any],
+		answer: str,
+		intake_case_file: Dict[str, Any],
+		knowledge_graph,
+	) -> Dict[str, Any]:
+		"""Update the structured intake case file from a denoising answer."""
+		if not isinstance(intake_case_file, dict):
+			intake_case_file = {}
+		normalized_answer = self._normalize_intake_text(answer)
+		if not normalized_answer:
+			return intake_case_file
+
+		question_type = str(question.get('type') or '').strip().lower()
+		context = question.get('context', {}) if isinstance(question.get('context'), dict) else {}
+		created_fact: Dict[str, Any] | None = None
+
+		if question_type == 'timeline':
+			existing_timeline_facts = [
+				fact for fact in intake_case_file.get('canonical_facts', [])
+				if isinstance(fact, dict) and str(fact.get('fact_type') or '').strip().lower() == 'timeline'
+			]
+			created_fact = self._append_canonical_fact(
+				intake_case_file,
+				text=normalized_answer,
+				fact_type='timeline',
+				question_type=question_type,
+			)
+			for existing_fact in existing_timeline_facts:
+				existing_text = self._normalize_intake_text(existing_fact.get('text'))
+				if existing_text and existing_text.lower() != normalized_answer.lower():
+					self._record_case_file_contradiction(
+						intake_case_file,
+						topic='timeline',
+						left_fact=existing_fact,
+						right_text=normalized_answer,
+					)
+					created_fact['status'] = 'contradicted'
+					created_fact['contradiction_group_id'] = existing_fact.get('contradiction_group_id')
+					break
+		elif question_type in {'impact', 'remedy'}:
+			created_fact = self._append_canonical_fact(
+				intake_case_file,
+				text=normalized_answer,
+				fact_type='remedy' if question_type == 'remedy' else 'impact',
+				question_type=question_type,
+			)
+			if question_type == 'impact' and self._normalize_intake_text(answer):
+				lower_answer = normalized_answer.lower()
+				if any(token in lower_answer for token in ['seek', 'seeking', 'want', 'request', 'asking for', 'compensation', 'refund']):
+					self._append_canonical_fact(
+						intake_case_file,
+						text=normalized_answer,
+						fact_type='remedy',
+						question_type='remedy',
+					)
+		elif question_type == 'evidence':
+			created_fact = self._append_canonical_fact(
+				intake_case_file,
+				text=normalized_answer,
+				fact_type='supporting_evidence',
+				question_type=question_type,
+			)
+			self._append_proof_lead(
+				intake_case_file,
+				text=normalized_answer,
+				lead_type=self._extract_proof_lead_type(answer),
+				related_fact_ids=[created_fact['fact_id']],
+			)
+		elif question_type == 'responsible_party':
+			created_fact = self._append_canonical_fact(
+				intake_case_file,
+				text=normalized_answer,
+				fact_type='responsible_party',
+				question_type=question_type,
+			)
+		elif question_type == 'requirement':
+			created_fact = self._append_canonical_fact(
+				intake_case_file,
+				text=normalized_answer,
+				fact_type='claim_element',
+				question_type=question_type,
+			)
+			target_element_id = self._normalize_intake_text(context.get('requirement_id'))
+			if target_element_id:
+				created_fact['element_tags'] = [target_element_id]
+		elif question_type == 'clarification':
+			created_fact = self._append_canonical_fact(
+				intake_case_file,
+				text=normalized_answer,
+				fact_type='clarification',
+				question_type=question_type,
+			)
+		elif question_type == 'contradiction':
+			contradiction_queue = intake_case_file.setdefault('contradiction_queue', [])
+			if isinstance(contradiction_queue, list):
+				contradiction_label = self._normalize_intake_text(context.get('contradiction_label'))
+				for entry in contradiction_queue:
+					if not isinstance(entry, dict):
+						continue
+					if contradiction_label and self._normalize_intake_text(entry.get('topic')) == contradiction_label:
+						entry['status'] = 'resolved'
+						entry['resolution'] = normalized_answer
+						break
+			created_fact = self._append_canonical_fact(
+				intake_case_file,
+				text=normalized_answer,
+				fact_type='contradiction_resolution',
+				question_type=question_type,
+			)
+
+		if created_fact and intake_case_file.get('candidate_claims'):
+			claim_types = [
+				str(claim.get('claim_type') or '').strip().lower()
+				for claim in intake_case_file.get('candidate_claims', [])
+				if isinstance(claim, dict) and claim.get('claim_type')
+			]
+			created_fact['claim_types'] = [claim_type for claim_type in claim_types if claim_type]
+
+		intake_case_file['intake_sections'] = refresh_intake_sections(intake_case_file, knowledge_graph)
+		return intake_case_file
 	
 	def process_denoising_answer(self, question: Dict[str, Any], answer: str) -> Dict[str, Any]:
 		"""
@@ -3258,6 +3523,9 @@ class Mediator:
 		# Process the answer
 		updates = self.denoiser.process_answer(question, answer, kg, dg)
 		self._update_intake_contradiction_state(dg)
+		intake_case_file = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
+		intake_case_file = self._apply_intake_answer_to_case_file(question, answer, intake_case_file, kg)
+		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_case_file', intake_case_file)
 		
 		# Generate next questions
 		max_questions = 5
@@ -3356,6 +3624,217 @@ class Mediator:
 			bool(contradiction_snapshot.get('candidate_count', 0)),
 		)
 		return contradiction_snapshot
+
+	def _current_user_id(self) -> str:
+		return getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+
+	def _build_claim_support_packets(
+		self,
+		user_id: str = None,
+		required_support_kinds: List[str] | None = None,
+	) -> Dict[str, Any]:
+		"""Build normalized evidence support packets from claim-support diagnostics."""
+		resolved_user_id = user_id or self._current_user_id()
+		intake_case_file = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
+		candidate_claims = intake_case_file.get('candidate_claims', []) if isinstance(intake_case_file, dict) else []
+
+		try:
+			validation = self.get_claim_support_validation(
+				user_id=resolved_user_id,
+				required_support_kinds=required_support_kinds,
+			)
+		except Exception:
+			validation = {'claims': {}}
+		try:
+			gaps = self.get_claim_support_gaps(
+				user_id=resolved_user_id,
+				required_support_kinds=required_support_kinds,
+			)
+		except Exception:
+			gaps = {'claims': {}}
+
+		validation_claims = validation.get('claims', {}) if isinstance(validation, dict) else {}
+		gap_claims = gaps.get('claims', {}) if isinstance(gaps, dict) else {}
+		claim_names = set(validation_claims.keys()) | set(gap_claims.keys())
+		for candidate in candidate_claims:
+			if isinstance(candidate, dict) and candidate.get('claim_type'):
+				claim_names.add(str(candidate.get('claim_type')))
+
+		packets: Dict[str, Any] = {}
+		for claim_type in sorted(claim_names):
+			validation_claim = validation_claims.get(claim_type, {}) if isinstance(validation_claims, dict) else {}
+			gap_claim = gap_claims.get(claim_type, {}) if isinstance(gap_claims, dict) else {}
+			elements = []
+			validation_elements = validation_claim.get('elements', []) if isinstance(validation_claim, dict) else []
+			if isinstance(validation_elements, list) and validation_elements:
+				for element in validation_elements:
+					if not isinstance(element, dict):
+						continue
+					gap_context = element.get('gap_context', {}) if isinstance(element.get('gap_context'), dict) else {}
+					support_facts = gap_context.get('support_facts', []) if isinstance(gap_context, dict) else []
+					support_traces = gap_context.get('support_traces', []) if isinstance(gap_context, dict) else []
+					elements.append({
+						'element_id': element.get('element_id'),
+						'element_text': element.get('element_text'),
+						'support_status': self._normalize_support_status(element.get('validation_status')),
+						'canonical_fact_ids': [
+							fact.get('fact_id') for fact in support_facts
+							if isinstance(fact, dict) and fact.get('fact_id')
+						],
+						'supporting_artifact_ids': [
+							trace.get('source_ref') for trace in support_traces
+							if isinstance(trace, dict) and trace.get('source_ref')
+						],
+						'supporting_testimony_ids': [
+							trace.get('support_ref') for trace in support_traces
+							if isinstance(trace, dict) and str(trace.get('source_family') or '').lower() == 'testimony'
+							and trace.get('support_ref')
+						],
+						'supporting_authority_ids': [
+							trace.get('support_ref') for trace in support_traces
+							if isinstance(trace, dict) and str(trace.get('source_family') or '').lower() == 'authority'
+							and trace.get('support_ref')
+						],
+						'contrary_fact_ids': [
+							fact_id
+							for item in (element.get('contradiction_candidates', []) or [])
+							if isinstance(item, dict)
+							for fact_id in (item.get('fact_ids', []) or [])
+							if fact_id
+						],
+						'missing_support_kinds': list(element.get('missing_support_kinds', []) or []),
+						'parse_quality_flags': self._extract_parse_quality_flags(element),
+						'recommended_next_step': str(element.get('recommended_action') or ''),
+						'contradiction_count': int(element.get('contradiction_candidate_count', 0) or 0),
+					})
+			else:
+				for gap_element in gap_claim.get('unresolved_elements', []) if isinstance(gap_claim, dict) else []:
+					if not isinstance(gap_element, dict):
+						continue
+					elements.append({
+						'element_id': gap_element.get('element_id'),
+						'element_text': gap_element.get('element_text'),
+						'support_status': 'unsupported',
+						'canonical_fact_ids': [
+							fact.get('fact_id') for fact in (gap_element.get('support_facts', []) or [])
+							if isinstance(fact, dict) and fact.get('fact_id')
+						],
+						'supporting_artifact_ids': [],
+						'supporting_testimony_ids': [],
+						'supporting_authority_ids': [],
+						'contrary_fact_ids': [],
+						'missing_support_kinds': list(gap_element.get('missing_support_kinds', []) or []),
+						'parse_quality_flags': [],
+						'recommended_next_step': str(gap_element.get('recommended_action') or ''),
+						'contradiction_count': 0,
+					})
+			packets[claim_type] = {
+				'claim_type': claim_type,
+				'overall_status': str(validation_claim.get('validation_status') or 'missing'),
+				'elements': elements,
+			}
+
+		return packets
+
+	def _normalize_support_status(self, validation_status: Any) -> str:
+		status = str(validation_status or '').strip().lower()
+		if status == 'supported':
+			return 'supported'
+		if status == 'incomplete':
+			return 'partially_supported'
+		if status == 'missing':
+			return 'unsupported'
+		if status == 'contradicted':
+			return 'contradicted'
+		return 'unsupported'
+
+	def _extract_parse_quality_flags(self, element: Dict[str, Any]) -> List[str]:
+		flags: List[str] = []
+		if not isinstance(element, dict):
+			return flags
+		proof_diagnostics = element.get('proof_diagnostics', {})
+		if isinstance(proof_diagnostics, dict):
+			decision_source = str(proof_diagnostics.get('decision_source') or '').strip()
+			if decision_source == 'low_quality_parse':
+				flags.append('low_quality_parse')
+		recommended_action = str(element.get('recommended_action') or '').strip()
+		if recommended_action == 'improve_parse_quality' and 'improve_parse_quality' not in flags:
+			flags.append('improve_parse_quality')
+		return flags
+
+	def _summarize_claim_support_packets(self, packets: Dict[str, Any]) -> Dict[str, Any]:
+		summary = {
+			'claim_count': 0,
+			'element_count': 0,
+			'status_counts': {
+				'supported': 0,
+				'partially_supported': 0,
+				'unsupported': 0,
+				'contradicted': 0,
+			},
+			'recommended_actions': [],
+		}
+		if not isinstance(packets, dict):
+			return summary
+		for packet in packets.values():
+			if not isinstance(packet, dict):
+				continue
+			summary['claim_count'] += 1
+			for element in packet.get('elements', []) or []:
+				if not isinstance(element, dict):
+					continue
+				summary['element_count'] += 1
+				status = str(element.get('support_status') or '').strip().lower()
+				if status in summary['status_counts']:
+					summary['status_counts'][status] += 1
+				next_step = str(element.get('recommended_next_step') or '').strip()
+				if next_step and next_step not in summary['recommended_actions']:
+					summary['recommended_actions'].append(next_step)
+		return summary
+
+	def _classify_evidence_ingestion_outcomes(
+		self,
+		evidence_data: Dict[str, Any],
+		projection_summary: Dict[str, Any],
+		claim_support_packets: Dict[str, Any],
+	) -> List[str]:
+		"""Classify the main evidence-ingestion outcomes for downstream consumers."""
+		outcomes: List[str] = []
+
+		if bool(evidence_data.get('record_reused')) and not projection_summary.get('graph_changed', False):
+			outcomes.append('duplicates_existing_support')
+		elif projection_summary.get('graph_changed', False) or bool(evidence_data.get('support_link_created')):
+			outcomes.append('corroborates_fact')
+
+		if bool(evidence_data.get('contradicts_existing_fact')):
+			outcomes.append('contradicts_fact')
+		if bool(evidence_data.get('creates_new_fact')):
+			outcomes.append('creates_new_fact')
+
+		packet_summary = self._summarize_claim_support_packets(claim_support_packets)
+		if packet_summary['status_counts'].get('contradicted', 0) > 0 and 'contradicts_fact' not in outcomes:
+			outcomes.append('contradicts_fact')
+
+		parse_quality_flag_found = False
+		if isinstance(claim_support_packets, dict):
+			for packet in claim_support_packets.values():
+				if not isinstance(packet, dict):
+					continue
+				for element in packet.get('elements', []) or []:
+					if not isinstance(element, dict):
+						continue
+					flags = element.get('parse_quality_flags', []) or []
+					if flags:
+						parse_quality_flag_found = True
+						break
+				if parse_quality_flag_found:
+					break
+		if parse_quality_flag_found:
+			outcomes.append('insufficiently_parsed')
+
+		if not outcomes:
+			outcomes.append('corroborates_fact')
+		return outcomes
 	
 	def advance_to_evidence_phase(self) -> Dict[str, Any]:
 		"""
@@ -3381,11 +3860,14 @@ class Mediator:
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_gaps', unsatisfied)
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'knowledge_gaps', kg_gaps)
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_count', 0)
+		claim_support_packets = self._build_claim_support_packets()
+		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packets', claim_support_packets)
 		
 		return {
 			'phase': ComplaintPhase.EVIDENCE.value,
 			'evidence_gaps': len(unsatisfied),
 			'knowledge_gaps': len(kg_gaps),
+			'claim_support_packets': claim_support_packets,
 			'suggested_evidence_types': self._suggest_evidence_types(unsatisfied, kg_gaps),
 			'next_action': self.phase_manager.get_next_action()
 		}
@@ -3608,6 +4090,15 @@ class Mediator:
 		readiness = dg.get_claim_readiness() if dg else {'overall_readiness': 0.0}
 		gap_ratio = 1.0 - readiness['overall_readiness'] if dg else 1.0
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_gap_ratio', gap_ratio)
+		claim_support_packets = self._build_claim_support_packets()
+		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packets', claim_support_packets)
+		packet_summary = self._summarize_claim_support_packets(claim_support_packets)
+		evidence_outcomes = self._classify_evidence_ingestion_outcomes(
+			evidence_data,
+			projection_summary,
+			claim_support_packets,
+		)
+		next_action = self.phase_manager.get_next_action()
 		
 		return {
 			'evidence_added': True,
@@ -3615,7 +4106,11 @@ class Mediator:
 			'kg_summary': kg.summary() if kg else {},
 			'dg_readiness': readiness,
 			'gap_ratio': gap_ratio,
+			'claim_support_packets': claim_support_packets,
+			'claim_support_packet_summary': packet_summary,
+			'evidence_outcomes': evidence_outcomes,
 			'graph_projection': projection_summary,
+			'next_action': next_action,
 			'ready_for_formalization': self.phase_manager.is_phase_complete(ComplaintPhase.EVIDENCE)
 		}
 	
@@ -3937,6 +4432,7 @@ class Mediator:
 		candidate_claims = intake_case_file.get('candidate_claims', []) if isinstance(intake_case_file, dict) else []
 		canonical_facts = intake_case_file.get('canonical_facts', []) if isinstance(intake_case_file, dict) else []
 		proof_leads = intake_case_file.get('proof_leads', []) if isinstance(intake_case_file, dict) else []
+		claim_support_packets = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packets') or {}
 		return {
 			'current_phase': self.phase_manager.get_current_phase().value,
 			'iteration_count': self.phase_manager.iteration_count,
@@ -3953,6 +4449,7 @@ class Mediator:
 				'count': len(proof_leads),
 				'proof_leads': proof_leads,
 			},
+			'claim_support_packet_summary': self._summarize_claim_support_packets(claim_support_packets),
 			'intake_contradictions': {
 				'candidate_count': intake_readiness.get('contradiction_count', 0),
 				'candidates': intake_readiness.get('contradictions', []),

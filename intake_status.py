@@ -91,6 +91,39 @@ def build_intake_status_summary(
     return summary
 
 
+def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
+    """Return additive structured intake/evidence review data when available."""
+    get_three_phase_status = getattr(mediator, "get_three_phase_status", None)
+    if not callable(get_three_phase_status):
+        return {}
+
+    raw_status = get_three_phase_status()
+    if not isinstance(raw_status, dict):
+        return {}
+
+    candidate_claims = raw_status.get("candidate_claims")
+    intake_sections = raw_status.get("intake_sections")
+    canonical_fact_summary = raw_status.get("canonical_fact_summary")
+    proof_lead_summary = raw_status.get("proof_lead_summary")
+    claim_support_packet_summary = raw_status.get("claim_support_packet_summary")
+
+    return {
+        "candidate_claims": candidate_claims if isinstance(candidate_claims, list) else [],
+        "intake_sections": intake_sections if isinstance(intake_sections, dict) else {},
+        "canonical_fact_summary": (
+            canonical_fact_summary if isinstance(canonical_fact_summary, dict) else {}
+        ),
+        "proof_lead_summary": (
+            proof_lead_summary if isinstance(proof_lead_summary, dict) else {}
+        ),
+        "claim_support_packet_summary": (
+            claim_support_packet_summary
+            if isinstance(claim_support_packet_summary, dict)
+            else {}
+        ),
+    }
+
+
 def build_intake_warning_entries(intake_status: Dict[str, Any]) -> List[Dict[str, Any]]:
     if not isinstance(intake_status, dict) or not intake_status:
         return []

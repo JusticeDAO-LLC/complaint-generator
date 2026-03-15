@@ -388,6 +388,11 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "filterIterations" in content
     assert "setIterationFilter" in content
     assert "summarizeActorPayloadChanges" in content
+    assert "summarizeChangeManifestEntry" in content
+    assert "summarizePersistedChanges" in content
+    assert "changed_items" in content
+    assert "added_items" in content
+    assert "removed_items" in content
     assert "summarizeStructuredArrayField" in content
     assert "summarizeStructuredObjectField" in content
     assert "buildIterationDiffLines" in content

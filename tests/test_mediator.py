@@ -1736,6 +1736,8 @@ class TestMediatorWithMocks:
                 assert duplicate_result['graph_projection']['graph_snapshot']['created'] is False
                 assert duplicate_result['graph_projection']['graph_snapshot']['reused'] is True
                 assert duplicate_result['evidence_count'] == first_result['evidence_count']
+                assert 'corroborates_fact' in first_result['evidence_outcomes']
+                assert 'duplicates_existing_support' in duplicate_result['evidence_outcomes']
                 assert len(duplicate_dg.nodes) == 2
                 assert len(duplicate_dg.dependencies) == 1
                 assert len(evidence_nodes) == 1
@@ -1747,3 +1749,66 @@ class TestMediatorWithMocks:
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
+    def test_add_evidence_to_graphs_reports_packet_driven_contradiction_and_parse_outcomes(self):
+        """Evidence ingestion should surface contradiction and parse-quality outcomes from support packets."""
+        try:
+            from mediator import Mediator
+            from complaint_phases import KnowledgeGraph, Entity, DependencyGraph, DependencyNode, NodeType, ComplaintPhase
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+
+            kg = KnowledgeGraph()
+            kg.add_entity(Entity(
+                id='claim-1',
+                type='claim',
+                name='Retaliation Claim',
+                attributes={'claim_type': 'retaliation'},
+                confidence=0.9,
+                source='complaint',
+            ))
+            dg = DependencyGraph()
+            dg.add_node(DependencyNode(
+                id='claim-1',
+                node_type=NodeType.CLAIM,
+                name='Retaliation Claim',
+                satisfied=False,
+                confidence=0.9,
+            ))
+            mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+            mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', kg)
+            mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', dg)
+            mediator._build_claim_support_packets = Mock(return_value={
+                'retaliation': {
+                    'claim_type': 'retaliation',
+                    'elements': [
+                        {
+                            'element_id': 'causation',
+                            'support_status': 'contradicted',
+                            'parse_quality_flags': ['improve_parse_quality'],
+                            'recommended_next_step': 'resolve_support_conflicts',
+                            'contradiction_count': 1,
+                        }
+                    ],
+                }
+            })
+
+            result = mediator.add_evidence_to_graphs({
+                'artifact_id': 'artifact-contradiction',
+                'name': 'Conflicting memo',
+                'description': 'Memo with contradictory timing',
+                'confidence': 0.8,
+                'supports_claims': ['claim-1'],
+                'record_created': True,
+                'record_reused': False,
+                'support_link_created': True,
+                'support_link_reused': False,
+            })
+
+            assert 'contradicts_fact' in result['evidence_outcomes']
+            assert 'insufficiently_parsed' in result['evidence_outcomes']
+            assert result['claim_support_packet_summary']['status_counts']['contradicted'] == 1
+            assert result['next_action']['action'] == 'resolve_support_conflicts'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")

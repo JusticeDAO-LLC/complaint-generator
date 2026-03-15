@@ -332,6 +332,175 @@ class TestMediatorThreePhaseIntegration:
         assert any(claim['claim_type'] == 'discrimination' for claim in intake_case_file['candidate_claims'])
         assert any(fact['fact_type'] == 'impact' for fact in intake_case_file['canonical_facts'])
         assert any(lead['lead_type'] == 'email communication' for lead in intake_case_file['proof_leads'])
+
+    def test_process_denoising_answer_updates_timeline_fact_in_intake_case_file(self):
+        """Timeline answers should update canonical facts and section coverage in the intake case file."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process("My employer discriminated against me.")
+
+        result = mediator.process_denoising_answer(
+            {'type': 'timeline', 'question': 'When did this happen?', 'context': {}},
+            'It happened on January 20, 2026.',
+        )
+        intake_case_file = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file')
+
+        assert any(fact['fact_type'] == 'timeline' for fact in intake_case_file['canonical_facts'])
+        assert intake_case_file['intake_sections']['chronology']['status'] == 'complete'
+        assert result['intake_readiness']['canonical_fact_count'] >= 1
+
+    def test_process_denoising_answer_updates_proof_leads_in_intake_case_file(self):
+        """Evidence answers should create proof leads in the structured intake record."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process("I was fired after discrimination.")
+
+        mediator.process_denoising_answer(
+            {'type': 'evidence', 'question': 'What evidence supports this?', 'context': {}},
+            'I have emails and a termination letter.',
+        )
+        intake_case_file = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file')
+
+        assert intake_case_file['proof_leads']
+        assert intake_case_file['intake_sections']['proof_leads']['status'] == 'complete'
+        assert any('emails' in lead['description'].lower() for lead in intake_case_file['proof_leads'])
+
+    def test_process_denoising_answer_tracks_conflicting_timeline_answers(self):
+        """Conflicting timeline answers should create a structured contradiction entry."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process("I was fired after discrimination.")
+
+        question = {'type': 'timeline', 'question': 'When did this happen?', 'context': {}}
+        mediator.process_denoising_answer(question, 'It happened on January 20, 2026.')
+        result = mediator.process_denoising_answer(question, 'It happened on February 2, 2026.')
+        intake_case_file = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file')
+
+        assert intake_case_file['contradiction_queue']
+        assert intake_case_file['contradiction_queue'][0]['topic'] == 'timeline'
+        assert 'blocking_contradiction' in result['intake_readiness']['blockers']
+
+    def test_advance_to_evidence_phase_builds_claim_support_packets(self):
+        """Evidence phase initialization should normalize claim-support validation into packets."""
+        from mediator.mediator import Mediator
+        from unittest.mock import Mock
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process(
+            "I was fired after I complained about discrimination and I have a termination letter."
+        )
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', 0)
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'denoising_converged', True)
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'current_gaps', [])
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_gap_types', [])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'intake_case_file',
+            {
+                'candidate_claims': [{'claim_type': 'employment_discrimination'}],
+                'canonical_facts': [{'fact_id': 'fact_001'}],
+                'proof_leads': [{'lead_id': 'lead_001'}],
+                'contradiction_queue': [],
+                'intake_sections': {
+                    'chronology': {'status': 'complete', 'missing_items': []},
+                    'actors': {'status': 'complete', 'missing_items': []},
+                    'conduct': {'status': 'complete', 'missing_items': []},
+                    'harm': {'status': 'complete', 'missing_items': []},
+                    'remedy': {'status': 'complete', 'missing_items': []},
+                    'proof_leads': {'status': 'complete', 'missing_items': []},
+                    'claim_elements': {'status': 'complete', 'missing_items': []},
+                },
+            },
+        )
+        mediator.get_claim_support_validation = Mock(return_value={
+            'claims': {
+                'employment_discrimination': {
+                    'claim_type': 'employment_discrimination',
+                    'validation_status': 'incomplete',
+                    'elements': [
+                        {
+                            'element_id': 'adverse_action',
+                            'element_text': 'Adverse action',
+                            'validation_status': 'supported',
+                            'recommended_action': '',
+                            'missing_support_kinds': [],
+                            'contradiction_candidate_count': 0,
+                            'proof_diagnostics': {},
+                            'gap_context': {
+                                'support_facts': [{'fact_id': 'fact_001'}],
+                                'support_traces': [{'source_ref': 'artifact_001', 'source_family': 'evidence'}],
+                            },
+                        },
+                        {
+                            'element_id': 'causation',
+                            'element_text': 'Causation',
+                            'validation_status': 'missing',
+                            'recommended_action': 'collect_documentary_support',
+                            'missing_support_kinds': ['evidence'],
+                            'contradiction_candidate_count': 0,
+                            'proof_diagnostics': {},
+                            'gap_context': {
+                                'support_facts': [],
+                                'support_traces': [],
+                            },
+                        },
+                    ],
+                }
+            }
+        })
+        mediator.get_claim_support_gaps = Mock(return_value={
+            'claims': {
+                'employment_discrimination': {
+                    'claim_type': 'employment_discrimination',
+                    'unresolved_count': 1,
+                    'unresolved_elements': [
+                        {
+                            'element_id': 'causation',
+                            'element_text': 'Causation',
+                            'recommended_action': 'collect_documentary_support',
+                            'missing_support_kinds': ['evidence'],
+                        }
+                    ],
+                }
+            }
+        })
+
+        result = mediator.advance_to_evidence_phase()
+
+        packets = result['claim_support_packets']
+        assert 'employment_discrimination' in packets
+        assert packets['employment_discrimination']['elements'][0]['support_status'] == 'supported'
+        assert packets['employment_discrimination']['elements'][1]['support_status'] == 'unsupported'
+        status = mediator.get_three_phase_status()
+        assert status['claim_support_packet_summary']['claim_count'] == 1
+        assert status['claim_support_packet_summary']['status_counts']['unsupported'] == 1
     
     def test_graph_serialization(self):
         """Test that graphs can be serialized for storage."""

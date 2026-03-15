@@ -101,6 +101,32 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                     "severity": "high",
                 }
             ],
+            "candidate_claims": [
+                {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.8}
+            ],
+            "intake_sections": {
+                "chronology": {"status": "complete", "missing_items": []},
+                "proof_leads": {"status": "partial", "missing_items": ["documents"]},
+            },
+            "canonical_fact_summary": {
+                "count": 2,
+                "facts": [{"fact_id": "fact_001"}, {"fact_id": "fact_002"}],
+            },
+            "proof_lead_summary": {
+                "count": 1,
+                "proof_leads": [{"lead_id": "lead_001"}],
+            },
+            "claim_support_packet_summary": {
+                "claim_count": 1,
+                "element_count": 3,
+                "status_counts": {
+                    "supported": 1,
+                    "partially_supported": 1,
+                    "unsupported": 1,
+                    "contradicted": 0,
+                },
+                "recommended_actions": ["collect_missing_support_kind"],
+            },
         }
         mediator.get_claim_coverage_matrix.return_value = {
             "claims": {
@@ -719,6 +745,34 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                     "question": "Which event happened first?",
                 }
             ],
+        }
+        assert payload["intake_case_summary"] == {
+            "candidate_claims": [
+                {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.8}
+            ],
+            "intake_sections": {
+                "chronology": {"status": "complete", "missing_items": []},
+                "proof_leads": {"status": "partial", "missing_items": ["documents"]},
+            },
+            "canonical_fact_summary": {
+                "count": 2,
+                "facts": [{"fact_id": "fact_001"}, {"fact_id": "fact_002"}],
+            },
+            "proof_lead_summary": {
+                "count": 1,
+                "proof_leads": [{"lead_id": "lead_001"}],
+            },
+            "claim_support_packet_summary": {
+                "claim_count": 1,
+                "element_count": 3,
+                "status_counts": {
+                    "supported": 1,
+                    "partially_supported": 1,
+                    "unsupported": 1,
+                    "contradicted": 0,
+                },
+                "recommended_actions": ["collect_missing_support_kind"],
+            },
         }
         assert (
             payload["claim_coverage_matrix"]["retaliation"]["status_counts"]["covered"]

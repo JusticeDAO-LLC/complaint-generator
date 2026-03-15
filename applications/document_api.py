@@ -9,7 +9,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from document_pipeline import DEFAULT_OUTPUT_DIR
 from integrations.ipfs_datasets.storage import retrieve_bytes
-from intake_status import build_intake_status_summary, build_intake_warning_entries
+from intake_status import (
+    build_intake_case_review_summary,
+    build_intake_status_summary,
+    build_intake_warning_entries,
+)
 
 
 FORMAL_COMPLAINT_DOCUMENT_REQUEST_EXAMPLE = {
@@ -312,6 +316,7 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
     dashboard_url = _build_review_url(user_id=resolved_user_id)
     default_review_intent = _build_review_intent(user_id=resolved_user_id)
     intake_status = build_intake_status_summary(mediator)
+    intake_case_summary = build_intake_case_review_summary(mediator)
     intake_warning_entries = build_intake_warning_entries(intake_status)
 
     claim_links = []
@@ -441,6 +446,8 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
     document_optimization = payload.get("document_optimization")
     if isinstance(document_optimization, dict):
         document_optimization["intake_status"] = dict(intake_status)
+        if intake_case_summary:
+            document_optimization["intake_case_summary"] = dict(intake_case_summary)
         if intake_warning_entries:
             document_optimization["intake_constraints"] = list(intake_warning_entries)
         trace_storage = document_optimization.get("trace_storage")
@@ -455,6 +462,7 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
         "claims": claim_links,
         "sections": section_links,
         "intake_status": intake_status,
+        "intake_case_summary": intake_case_summary,
     }
     payload["review_intent"] = _build_review_intent(
         user_id=resolved_user_id,

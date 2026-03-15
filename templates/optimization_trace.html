@@ -315,6 +315,46 @@
             return lines.length ? lines : ['Actor payload recorded with no readable field changes.'];
         }
 
+        function summarizeChangeManifestEntry(entry) {
+            if (!entry || typeof entry !== 'object') {
+                return [];
+            }
+            const field = humanizeKey(entry.field || 'section');
+            const changeType = humanizeKey(entry.change_type || 'updated').toLowerCase();
+            const beforeCount = Number(entry.before_count || 0);
+            const afterCount = Number(entry.after_count || 0);
+            const beforePreview = Array.isArray(entry.before_preview) ? entry.before_preview.filter(Boolean).slice(0, 2) : [];
+            const afterPreview = Array.isArray(entry.after_preview) ? entry.after_preview.filter(Boolean).slice(0, 2) : [];
+            const lines = [`${field}: ${changeType} (${beforeCount} -> ${afterCount})`];
+            const changedItems = Array.isArray(entry.changed_items) ? entry.changed_items.filter(Boolean).slice(0, 2) : [];
+            const addedItems = Array.isArray(entry.added_items) ? entry.added_items.filter(Boolean).slice(0, 2) : [];
+            const removedItems = Array.isArray(entry.removed_items) ? entry.removed_items.filter(Boolean).slice(0, 2) : [];
+            if (changedItems.length) {
+                lines.push(`${field} changed: ${changedItems.join(' | ')}`);
+            }
+            if (addedItems.length) {
+                lines.push(`${field} added: ${addedItems.join(' | ')}`);
+            }
+            if (removedItems.length) {
+                lines.push(`${field} removed: ${removedItems.join(' | ')}`);
+            }
+            if (beforePreview.length) {
+                lines.push(`${field} before: ${beforePreview.join(' | ')}`);
+            }
+            if (afterPreview.length) {
+                lines.push(`${field} after: ${afterPreview.join(' | ')}`);
+            }
+            return lines;
+        }
+
+        function summarizePersistedChanges(entry) {
+            const manifest = Array.isArray(entry && entry.change_manifest) ? entry.change_manifest : [];
+            if (!manifest.length) {
+                return summarizeActorPayloadChanges(entry && entry.actor_payload ? entry.actor_payload : {});
+            }
+            return manifest.flatMap((manifestEntry) => summarizeChangeManifestEntry(manifestEntry));
+        }
+
         function filterIterations(iterations) {
             if (activeIterationFilter === 'accepted') {
                 return iterations.filter((entry) => Boolean(entry && entry.accepted));
@@ -330,7 +370,7 @@
                 const iteration = entry && entry.iteration != null ? entry.iteration : index + 1;
                 const focus = humanizeKey(entry && entry.focus_section ? entry.focus_section : 'section');
                 const prefix = `Iteration ${iteration} (${focus})`;
-                return summarizeActorPayloadChanges(entry && entry.actor_payload ? entry.actor_payload : {}).map((line) => `${prefix}: ${line}`);
+                return summarizePersistedChanges(entry).map((line) => `${prefix}: ${line}`);
             });
         }
 

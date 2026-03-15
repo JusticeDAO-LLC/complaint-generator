@@ -680,6 +680,10 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     assert report["section_history"][0]["focus_section"] == "factual_allegations"
     assert report["section_history"][0]["critic_llm_metadata"]["arch_router_selected_route"] == "legal_reasoning"
     assert report["section_history"][0]["actor_llm_metadata"]["arch_router_selected_route"] == "drafting"
+    assert report["section_history"][0]["change_manifest"]
+    assert report["section_history"][0]["change_manifest"][0]["field"] == "factual_allegations"
+    assert report["section_history"][0]["change_manifest"][0]["before_count"] == 2
+    assert report["section_history"][0]["change_manifest"][0]["after_count"] == 3
     assert report["section_history"][0]["selected_support_context"]["focus_section"] == "factual_allegations"
     assert report["section_history"][0]["selected_support_context"]["top_support"]
     assert report["section_history"][0]["selected_support_context"]["top_support"][0]["ranking_method"] == "embeddings_router_hybrid"
@@ -741,6 +745,16 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     assert stored_traces[0]["config"]["router_usage"]["llm_calls"] >= 3
     assert stored_traces[0]["intake_status"] == report["intake_status"]
     assert stored_traces[0]["intake_constraints"] == report["intake_constraints"]
+    assert stored_traces[0]["iterations"][0]["change_manifest"]
+    assert stored_traces[0]["iterations"][0]["change_manifest"][0]["field"] == "factual_allegations"
+    assert stored_traces[0]["iterations"][0]["change_manifest"][0]["before_count"] == 2
+    assert stored_traces[0]["iterations"][0]["change_manifest"][0]["after_count"] == 3
+    before_preview = " ".join(stored_traces[0]["iterations"][0]["change_manifest"][0]["before_preview"])
+    after_preview = " ".join(stored_traces[0]["iterations"][0]["change_manifest"][0]["after_preview"])
+    assert "human resources" in before_preview.lower()
+    assert "terminated plaintiff" in before_preview.lower()
+    assert "lost pay and benefits" in after_preview.lower()
+    assert stored_traces[0]["iterations"][0]["change_manifest"][1]["field"] == "claim_supporting_facts"
     assert any(
         "Plaintiff was fired two days later and lost pay and benefits" in allegation
         for allegation in result["draft"]["factual_allegations"]
@@ -854,6 +868,75 @@ def test_formal_complaint_document_builder_uses_state_court_opening_language(tmp
     assert "Coordination No. 24STCV10001" in result["draft"]["draft_text"]
     assert "Judicial Officer: Hon. Elena Park" in result["draft"]["draft_text"]
     assert "Department: Dept. 12" in result["draft"]["draft_text"]
+
+
+def test_agentic_optimizer_tracks_claim_and_relief_manifest_deltas():
+    optimizer = document_optimization.AgenticDocumentOptimizer(mediator=Mock())
+    draft = {
+        "factual_allegations": ["Plaintiff complained about discrimination."],
+        "claims_for_relief": [
+            {
+                "claim_type": "retaliation",
+                "count_title": "Count I - Retaliation",
+                "legal_standards": ["Protected activity", "Adverse action"],
+                "supporting_facts": ["Plaintiff reported discrimination to human resources."],
+                "missing_elements": ["Causation details"],
+                "partially_supported_elements": [],
+                "support_summary": {"covered_elements": 1},
+                "supporting_exhibits": [{"label": "Exhibit A", "title": "HR complaint"}],
+            }
+        ],
+        "requested_relief": ["Back pay."],
+    }
+    actor_payload = {
+        "claims_for_relief": [
+            {
+                "claim_type": "retaliation",
+                "supporting_facts": [
+                    "Plaintiff reported discrimination to human resources.",
+                    "Defendant fired Plaintiff two days later.",
+                ],
+                "missing_elements": [],
+            },
+            {
+                "claim_type": "wrongful termination",
+                "count_title": "Count II - Wrongful Termination",
+                "legal_standards": ["Termination", "Public policy violation"],
+                "supporting_facts": ["Defendant fired Plaintiff after the protected complaint."],
+            },
+        ],
+        "requested_relief": ["Back pay.", "Front pay.", "Compensatory damages."],
+    }
+
+    updated = optimizer._apply_actor_payload(
+        draft=draft,
+        actor_payload=actor_payload,
+        focus_section="claims_for_relief",
+    )
+    manifest = optimizer._build_iteration_change_manifest(
+        before_draft=draft,
+        after_draft=updated,
+        actor_payload=actor_payload,
+        focus_section="claims_for_relief",
+    )
+
+    assert len(updated["claims_for_relief"]) == 2
+    retaliation_claim = next(claim for claim in updated["claims_for_relief"] if claim["claim_type"] == "retaliation")
+    assert retaliation_claim["legal_standards"] == ["Protected activity.", "Adverse action."]
+    assert retaliation_claim["supporting_facts"] == [
+        "Plaintiff reported discrimination to human resources.",
+        "Defendant fired Plaintiff two days later.",
+    ]
+    assert updated["requested_relief"] == ["Back pay.", "Front pay.", "Compensatory damages."]
+
+    claims_manifest = next(entry for entry in manifest if entry["field"] == "claims_for_relief")
+    assert claims_manifest["changed_items"] == ["retaliation supporting facts 1 -> 2"]
+    assert claims_manifest["added_items"] == ["wrongful termination (1 facts)"]
+    assert claims_manifest["removed_items"] == []
+
+    relief_manifest = next(entry for entry in manifest if entry["field"] == "requested_relief")
+    assert relief_manifest["added_items"] == ["Compensatory damages.", "Front pay."]
+    assert relief_manifest["removed_items"] == []
 
 
 def test_formal_complaint_document_builder_handles_structured_complaint_payloads_without_dict_leak(tmp_path: Path):

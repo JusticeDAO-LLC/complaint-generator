@@ -74,6 +74,10 @@ def _unique_preserving_order(values: Iterable[str]) -> List[str]:
     return ordered
 
 
+def _stable_json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, ensure_ascii=True)
+
+
 class AgenticDocumentOptimizer:
     CRITIC_PROMPT_TAG = "[DOC_OPT_CRITIC]"
     ACTOR_PROMPT_TAG = "[DOC_OPT_ACTOR]"
@@ -82,6 +86,18 @@ class AgenticDocumentOptimizer:
         "claims_for_relief",
         "affidavit",
         "certificate_of_service",
+    }
+    _ACTOR_FIELD_TO_DRAFT_FIELD = {
+        "factual_allegations": "factual_allegations",
+        "claim_supporting_facts": "claim_supporting_facts",
+        "claims_for_relief": "claims_for_relief",
+        "requested_relief": "requested_relief",
+        "affidavit_intro": "affidavit",
+        "affidavit_facts": "affidavit",
+        "affidavit_supporting_exhibits": "affidavit",
+        "service_text": "certificate_of_service",
+        "service_recipients": "certificate_of_service",
+        "service_recipient_details": "certificate_of_service",
     }
 
     def __init__(
@@ -161,6 +177,12 @@ class AgenticDocumentOptimizer:
                 actor_payload=actor_payload,
                 focus_section=focus_section,
             )
+            change_manifest = self._build_iteration_change_manifest(
+                before_draft=working_draft,
+                after_draft=candidate_draft,
+                actor_payload=actor_payload,
+                focus_section=focus_section,
+            )
             candidate_review = self._run_critic(
                 draft=candidate_draft,
                 drafting_readiness=readiness,
@@ -179,6 +201,7 @@ class AgenticDocumentOptimizer:
                     "accepted": accepted,
                     "critic": candidate_review,
                     "actor_payload": actor_payload,
+                    "change_manifest": change_manifest,
                     "selected_support_context": selected_support_context,
                     "packet_projection": dict(support_context.get("packet_projection") or {}),
                 }
@@ -239,6 +262,7 @@ class AgenticDocumentOptimizer:
                     "overall_score": float((entry.get("critic") or {}).get("overall_score") or 0.0),
                     "critic_llm_metadata": dict((entry.get("critic") or {}).get("llm_metadata") or {}),
                     "actor_llm_metadata": dict((entry.get("actor_payload") or {}).get("llm_metadata") or {}),
+                    "change_manifest": list(entry.get("change_manifest") or []),
                     "selected_support_context": dict(entry.get("selected_support_context") or {}),
                 }
                 for entry in iterations
@@ -580,6 +604,11 @@ class AgenticDocumentOptimizer:
         if isinstance(factual_allegations, list):
             updated["factual_allegations"] = self._normalize_lines(factual_allegations)
 
+        claims_for_relief = actor_payload.get("claims_for_relief")
+        if isinstance(claims_for_relief, list):
+            existing_claims = updated.get("claims_for_relief") if isinstance(updated.get("claims_for_relief"), list) else []
+            updated["claims_for_relief"] = self._normalize_claims_for_relief(claims_for_relief, existing_claims)
+
         claim_supporting_facts = actor_payload.get("claim_supporting_facts")
         if isinstance(claim_supporting_facts, dict):
             claims = updated.get("claims_for_relief") if isinstance(updated.get("claims_for_relief"), list) else []
@@ -590,6 +619,10 @@ class AgenticDocumentOptimizer:
                 payload_facts = claim_supporting_facts.get(claim_type)
                 if isinstance(payload_facts, list):
                     claim["supporting_facts"] = self._normalize_lines(payload_facts)
+
+        requested_relief = actor_payload.get("requested_relief")
+        if isinstance(requested_relief, list):
+            updated["requested_relief"] = self._normalize_lines(requested_relief)
 
         if focus_section == "affidavit" or any(
             key in actor_payload for key in ("affidavit_intro", "affidavit_facts", "affidavit_supporting_exhibits")
@@ -620,6 +653,247 @@ class AgenticDocumentOptimizer:
                     certificate["recipients"] = _unique_preserving_order(detail.get("recipient") for detail in details)
 
         return self._refresh_dependent_sections(updated)
+
+    def _build_iteration_change_manifest(
+        self,
+        *,
+        before_draft: Dict[str, Any],
+        after_draft: Dict[str, Any],
+        actor_payload: Dict[str, Any],
+        focus_section: str,
+    ) -> List[Dict[str, Any]]:
+        tracked_fields = self._resolve_tracked_fields(focus_section=focus_section, actor_payload=actor_payload)
+        manifest: List[Dict[str, Any]] = []
+        for field_name in tracked_fields:
+            before_value = self._extract_manifest_value(before_draft, field_name)
+            after_value = self._extract_manifest_value(after_draft, field_name)
+            if _stable_json(before_value) == _stable_json(after_value):
+                continue
+            before_count, before_preview = self._summarize_manifest_value(field_name, before_value)
+            after_count, after_preview = self._summarize_manifest_value(field_name, after_value)
+            manifest.append(
+                {
+                    "field": field_name,
+                    "change_type": self._classify_manifest_change(before_count, after_count),
+                    "before_count": before_count,
+                    "after_count": after_count,
+                    "before_preview": before_preview,
+                    "after_preview": after_preview,
+                    **self._build_manifest_delta_details(field_name, before_value, after_value),
+                }
+            )
+
+        if manifest:
+            return manifest
+
+        fallback_count, fallback_preview = self._summarize_manifest_value(
+            focus_section,
+            self._extract_manifest_value(after_draft, focus_section),
+        )
+        return [
+            {
+                "field": focus_section,
+                "change_type": "no_effect",
+                "before_count": fallback_count,
+                "after_count": fallback_count,
+                "before_preview": fallback_preview,
+                "after_preview": fallback_preview,
+            }
+        ]
+
+    def _resolve_tracked_fields(self, *, focus_section: str, actor_payload: Dict[str, Any]) -> List[str]:
+        tracked_fields: List[str] = []
+        if focus_section in self.VALID_FOCUS_SECTIONS:
+            tracked_fields.append(focus_section)
+        for key in actor_payload:
+            mapped_field = self._ACTOR_FIELD_TO_DRAFT_FIELD.get(key)
+            if mapped_field and mapped_field not in tracked_fields:
+                tracked_fields.append(mapped_field)
+        return tracked_fields
+
+    def _extract_manifest_value(self, draft: Dict[str, Any], field_name: str) -> Any:
+        if field_name == "claim_supporting_facts":
+            claims = draft.get("claims_for_relief") if isinstance(draft.get("claims_for_relief"), list) else []
+            supporting_facts: Dict[str, List[str]] = {}
+            for claim in claims:
+                if not isinstance(claim, dict):
+                    continue
+                claim_type = str(claim.get("claim_type") or "").strip()
+                if not claim_type:
+                    continue
+                supporting_facts[claim_type] = self._normalize_lines(claim.get("supporting_facts") or [])
+            return supporting_facts
+        if field_name in {"affidavit", "certificate_of_service"}:
+            return deepcopy(draft.get(field_name) or {})
+        if field_name in {"factual_allegations", "requested_relief"}:
+            return list(draft.get(field_name) or []) if isinstance(draft.get(field_name), list) else []
+        if field_name == "claims_for_relief":
+            claims = draft.get("claims_for_relief") if isinstance(draft.get("claims_for_relief"), list) else []
+            return [deepcopy(claim) for claim in claims if isinstance(claim, dict)]
+        return deepcopy(draft.get(field_name))
+
+    def _build_manifest_delta_details(self, field_name: str, before_value: Any, after_value: Any) -> Dict[str, List[str]]:
+        if field_name == "claims_for_relief":
+            return self._build_claims_for_relief_delta(before_value, after_value)
+        if field_name == "claim_supporting_facts":
+            return self._build_claim_supporting_facts_delta(before_value, after_value)
+        if field_name == "requested_relief":
+            return self._build_list_delta(before_value, after_value)
+        return self._build_generic_delta(before_value, after_value)
+
+    def _summarize_manifest_value(self, field_name: str, value: Any) -> Tuple[int, List[str]]:
+        if field_name == "claim_supporting_facts":
+            if not isinstance(value, dict):
+                return 0, []
+            total = 0
+            preview: List[str] = []
+            for claim_type, facts in value.items():
+                normalized_facts = self._normalize_lines(facts or []) if isinstance(facts, list) else []
+                total += len(normalized_facts)
+                if normalized_facts:
+                    preview.append(f"{claim_type}: {normalized_facts[0]}")
+                else:
+                    preview.append(f"{claim_type}: 0 facts")
+            return total, preview[:3]
+        if field_name == "claims_for_relief":
+            claims = value if isinstance(value, list) else []
+            preview = []
+            for claim in claims[:3]:
+                if not isinstance(claim, dict):
+                    continue
+                claim_label = str(claim.get("claim_type") or claim.get("title") or "Claim").strip() or "Claim"
+                fact_count = len(self._normalize_lines(claim.get("supporting_facts") or []))
+                preview.append(f"{claim_label} ({fact_count} facts)")
+            return len(claims), preview
+        if field_name == "affidavit":
+            affidavit = value if isinstance(value, dict) else {}
+            facts = self._normalize_lines(affidavit.get("facts") or [])
+            exhibits = self._normalize_lines(affidavit.get("supporting_exhibits") or [])
+            preview = []
+            if str(affidavit.get("intro") or "").strip():
+                preview.append("intro updated")
+            preview.extend(facts[:2])
+            if exhibits:
+                preview.append(f"{len(exhibits)} exhibits")
+            count = len(facts) + len(exhibits) + int(bool(str(affidavit.get("intro") or "").strip()))
+            return count, preview[:3]
+        if field_name == "certificate_of_service":
+            certificate = value if isinstance(value, dict) else {}
+            recipients = self._normalize_lines(certificate.get("recipients") or [])
+            details = certificate.get("recipient_details") if isinstance(certificate.get("recipient_details"), list) else []
+            preview = list(recipients[:2])
+            if details:
+                preview.append(f"{len(details)} recipient details")
+            count = len(recipients) + len(details) + int(bool(str(certificate.get("text") or "").strip()))
+            return count, preview[:3]
+        if isinstance(value, list):
+            preview = []
+            for entry in value[:3]:
+                if isinstance(entry, dict):
+                    preview.append(
+                        str(entry.get("title") or entry.get("claim_type") or entry.get("label") or entry.get("summary") or entry.get("text") or "").strip()
+                    )
+                else:
+                    preview.append(str(entry or "").strip())
+            return len(value), [entry for entry in preview if entry]
+        if isinstance(value, dict):
+            preview = []
+            for inner_key, inner_value in list(value.items())[:3]:
+                if isinstance(inner_value, list):
+                    preview.append(f"{inner_key}: {len(inner_value)}")
+                else:
+                    preview.append(f"{inner_key}: updated")
+            return len(value), preview
+        text = str(value or "").strip()
+        return (1, [text[:120]]) if text else (0, [])
+
+    def _classify_manifest_change(self, before_count: int, after_count: int) -> str:
+        if before_count <= 0 and after_count > 0:
+            return "added"
+        if before_count > 0 and after_count <= 0:
+            return "removed"
+        if after_count > before_count:
+            return "expanded"
+        if after_count < before_count:
+            return "trimmed"
+        return "updated"
+
+    def _build_claims_for_relief_delta(self, before_value: Any, after_value: Any) -> Dict[str, List[str]]:
+        before_claims = before_value if isinstance(before_value, list) else []
+        after_claims = after_value if isinstance(after_value, list) else []
+        before_by_key = {self._claim_key(claim): claim for claim in before_claims if isinstance(claim, dict) and self._claim_key(claim)}
+        after_by_key = {self._claim_key(claim): claim for claim in after_claims if isinstance(claim, dict) and self._claim_key(claim)}
+        added_items = [self._summarize_claim_entry(after_by_key[key]) for key in sorted(after_by_key.keys() - before_by_key.keys())]
+        removed_items = [self._summarize_claim_entry(before_by_key[key]) for key in sorted(before_by_key.keys() - after_by_key.keys())]
+        changed_items: List[str] = []
+        for key in sorted(before_by_key.keys() & after_by_key.keys()):
+            before_claim = before_by_key[key]
+            after_claim = after_by_key[key]
+            if _stable_json(before_claim) == _stable_json(after_claim):
+                continue
+            changed_items.append(
+                f"{self._claim_label(after_claim)} supporting facts {len(self._normalize_lines(before_claim.get('supporting_facts') or []))} -> {len(self._normalize_lines(after_claim.get('supporting_facts') or []))}"
+            )
+        return {
+            "added_items": added_items[:4],
+            "removed_items": removed_items[:4],
+            "changed_items": changed_items[:4],
+        }
+
+    def _build_claim_supporting_facts_delta(self, before_value: Any, after_value: Any) -> Dict[str, List[str]]:
+        before_map = before_value if isinstance(before_value, dict) else {}
+        after_map = after_value if isinstance(after_value, dict) else {}
+        added_items: List[str] = []
+        removed_items: List[str] = []
+        changed_items: List[str] = []
+        for claim_type in sorted(after_map.keys() - before_map.keys()):
+            added_items.append(f"{claim_type}: {len(self._normalize_lines(after_map.get(claim_type) or []))} facts")
+        for claim_type in sorted(before_map.keys() - after_map.keys()):
+            removed_items.append(f"{claim_type}: {len(self._normalize_lines(before_map.get(claim_type) or []))} facts")
+        for claim_type in sorted(before_map.keys() & after_map.keys()):
+            before_facts = self._normalize_lines(before_map.get(claim_type) or [])
+            after_facts = self._normalize_lines(after_map.get(claim_type) or [])
+            if _stable_json(before_facts) == _stable_json(after_facts):
+                continue
+            changed_items.append(f"{claim_type}: facts {len(before_facts)} -> {len(after_facts)}")
+        return {
+            "added_items": added_items[:4],
+            "removed_items": removed_items[:4],
+            "changed_items": changed_items[:4],
+        }
+
+    def _build_list_delta(self, before_value: Any, after_value: Any) -> Dict[str, List[str]]:
+        before_items = self._normalize_lines(before_value or []) if isinstance(before_value, list) else []
+        after_items = self._normalize_lines(after_value or []) if isinstance(after_value, list) else []
+        before_lookup = {item.lower(): item for item in before_items}
+        after_lookup = {item.lower(): item for item in after_items}
+        added_items = [after_lookup[key] for key in sorted(after_lookup.keys() - before_lookup.keys())]
+        removed_items = [before_lookup[key] for key in sorted(before_lookup.keys() - after_lookup.keys())]
+        return {
+            "added_items": added_items[:4],
+            "removed_items": removed_items[:4],
+            "changed_items": [],
+        }
+
+    def _build_generic_delta(self, before_value: Any, after_value: Any) -> Dict[str, List[str]]:
+        if isinstance(before_value, list) and isinstance(after_value, list):
+            return self._build_list_delta(before_value, after_value)
+        return {
+            "added_items": [],
+            "removed_items": [],
+            "changed_items": [],
+        }
+
+    def _claim_key(self, claim: Dict[str, Any]) -> str:
+        return str(claim.get("claim_type") or claim.get("count_title") or "").strip().lower()
+
+    def _claim_label(self, claim: Dict[str, Any]) -> str:
+        return str(claim.get("claim_type") or claim.get("count_title") or "Claim").strip() or "Claim"
+
+    def _summarize_claim_entry(self, claim: Dict[str, Any]) -> str:
+        label = self._claim_label(claim)
+        fact_count = len(self._normalize_lines(claim.get("supporting_facts") or []))
+        return f"{label} ({fact_count} facts)"
 
     def _heuristic_review(
         self,
@@ -907,15 +1181,24 @@ class AgenticDocumentOptimizer:
                     factual_candidates.extend(self._normalize_lines(claim.get("supporting_facts") or []))
             payload["factual_allegations"] = self._normalize_lines(factual_candidates)[:8]
         elif focus_section == "claims_for_relief":
+            updated_claims: List[Dict[str, Any]] = []
             claim_supporting_facts: Dict[str, List[str]] = {}
             for claim in draft.get("claims_for_relief") if isinstance(draft.get("claims_for_relief"), list) else []:
                 if not isinstance(claim, dict):
                     continue
                 claim_type = str(claim.get("claim_type") or "").strip()
-                claim_supporting_facts[claim_type] = self._normalize_lines(
+                merged_supporting_facts = self._normalize_lines(
                     list(claim.get("supporting_facts") or []) + support_texts
                 )[:6]
+                claim_supporting_facts[claim_type] = merged_supporting_facts
+                updated_claim = deepcopy(claim)
+                updated_claim["supporting_facts"] = merged_supporting_facts
+                updated_claims.append(updated_claim)
             payload["claim_supporting_facts"] = claim_supporting_facts
+            payload["claims_for_relief"] = updated_claims
+            relief_candidates = self._normalize_lines(list(draft.get("requested_relief") or []) + support_texts)[:6]
+            if relief_candidates:
+                payload["requested_relief"] = relief_candidates
         elif focus_section == "affidavit":
             affidavit = draft.get("affidavit") if isinstance(draft.get("affidavit"), dict) else {}
             payload["affidavit_intro"] = str(
@@ -1259,6 +1542,45 @@ class AgenticDocumentOptimizer:
                 text = f"{text}."
             normalized.append(text)
         return _unique_preserving_order(normalized)
+
+    def _normalize_claims_for_relief(self, values: Any, existing_claims: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        existing_by_key = {
+            self._claim_key(claim): deepcopy(claim)
+            for claim in existing_claims
+            if isinstance(claim, dict) and self._claim_key(claim)
+        }
+        normalized_claims: List[Dict[str, Any]] = []
+        seen_keys = set()
+        for item in values if isinstance(values, list) else []:
+            if not isinstance(item, dict):
+                continue
+            claim_key = str(item.get("claim_type") or item.get("count_title") or "").strip().lower()
+            base_claim = deepcopy(existing_by_key.get(claim_key) or {})
+            claim_type = str(item.get("claim_type") or base_claim.get("claim_type") or item.get("count_title") or "Claim").strip() or "Claim"
+            normalized = {
+                **base_claim,
+                **item,
+                "claim_type": claim_type,
+                "count_title": str(item.get("count_title") or base_claim.get("count_title") or claim_type.title()).strip(),
+                "legal_standards": self._normalize_lines(item.get("legal_standards") if "legal_standards" in item else base_claim.get("legal_standards") or []),
+                "supporting_facts": self._normalize_lines(item.get("supporting_facts") if "supporting_facts" in item else base_claim.get("supporting_facts") or []),
+                "missing_elements": self._normalize_lines(item.get("missing_elements") if "missing_elements" in item else base_claim.get("missing_elements") or []),
+                "partially_supported_elements": self._normalize_lines(item.get("partially_supported_elements") if "partially_supported_elements" in item else base_claim.get("partially_supported_elements") or []),
+                "supporting_exhibits": self._normalize_exhibits(item.get("supporting_exhibits") if "supporting_exhibits" in item else base_claim.get("supporting_exhibits") or []),
+                "support_summary": {
+                    **(base_claim.get("support_summary") if isinstance(base_claim.get("support_summary"), dict) else {}),
+                    **(item.get("support_summary") if isinstance(item.get("support_summary"), dict) else {}),
+                },
+            }
+            normalized_claims.append(normalized)
+            seen_keys.add(self._claim_key(normalized))
+        for claim in existing_claims:
+            if not isinstance(claim, dict):
+                continue
+            claim_key = self._claim_key(claim)
+            if claim_key and claim_key not in seen_keys:
+                normalized_claims.append(deepcopy(claim))
+        return normalized_claims
 
     def _normalize_affidavit_facts(self, values: Any) -> List[str]:
         sanitized: List[str] = []
