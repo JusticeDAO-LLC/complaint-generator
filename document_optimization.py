@@ -84,6 +84,7 @@ class AgenticDocumentOptimizer:
     VALID_FOCUS_SECTIONS = {
         "factual_allegations",
         "claims_for_relief",
+        "requested_relief",
         "affidavit",
         "certificate_of_service",
     }
@@ -911,6 +912,11 @@ class AgenticDocumentOptimizer:
         section_scores = {
             "factual_allegations": self._score_factual_allegations(factual_allegations, claims),
             "claims_for_relief": self._score_claims_section(claims, support_context),
+            "requested_relief": self._score_requested_relief_section(
+                self._normalize_lines(draft.get("requested_relief") or []),
+                claims,
+                drafting_readiness,
+            ),
             "affidavit": self._score_affidavit_section(affidavit, exhibits),
             "certificate_of_service": self._score_certificate_section(certificate),
             "packet_projection": self._score_packet_projection(
@@ -934,6 +940,9 @@ class AgenticDocumentOptimizer:
             elif section_name == "claims_for_relief":
                 weaknesses.append("Claims for relief still contain support gaps or thin claim-specific fact statements.")
                 suggestions.append("Backfill claim-specific support facts for the weakest claim before rendering artifacts.")
+            elif section_name == "requested_relief":
+                weaknesses.append("Requested relief is incomplete or does not yet reflect the remedies supported by the current claim record.")
+                suggestions.append("Confirm the prayer for relief includes the concrete damages, equitable remedies, and injunctive terms supported by the packet.")
             elif section_name == "affidavit":
                 weaknesses.append("The affidavit is missing completeness or exhibit-consistency signals needed for a filing-ready packet.")
                 suggestions.append("Revise affidavit facts and mirrored exhibit support so the affidavit matches the complaint record.")
@@ -1013,6 +1022,23 @@ class AgenticDocumentOptimizer:
         coverage = supported_claims / max(len(claims), 1)
         return _clamp(coverage - unresolved_penalty + 0.2)
 
+    def _score_requested_relief_section(
+        self,
+        requested_relief: List[str],
+        claims: List[Dict[str, Any]],
+        drafting_readiness: Dict[str, Any],
+    ) -> float:
+        if not requested_relief:
+            return 0.0
+        section_readiness = drafting_readiness.get("sections") if isinstance(drafting_readiness.get("sections"), dict) else {}
+        relief_readiness = section_readiness.get("requested_relief") if isinstance(section_readiness.get("requested_relief"), dict) else {}
+        readiness_status = str(relief_readiness.get("status") or "").strip().lower()
+        count_score = min(len(requested_relief), 3) / 3.0
+        variety_score = 0.2 if len({item.lower() for item in requested_relief}) == len(requested_relief) else 0.0
+        claim_bonus = 0.15 if claims else 0.0
+        readiness_bonus = 0.2 if readiness_status == "ready" else 0.05 if readiness_status == "warning" else 0.0
+        return _clamp((count_score * 0.45) + variety_score + claim_bonus + readiness_bonus)
+
     def _score_affidavit_section(self, affidavit: Dict[str, Any], exhibits: List[Dict[str, Any]]) -> float:
         facts = self._normalize_lines(affidavit.get("facts") or [])
         intro_score = 0.2 if str(affidavit.get("intro") or "").strip() else 0.0
@@ -1034,13 +1060,14 @@ class AgenticDocumentOptimizer:
     def _score_packet_projection(self, packet_projection: Dict[str, Any]) -> float:
         section_presence = packet_projection.get("section_presence") if isinstance(packet_projection.get("section_presence"), dict) else {}
         section_counts = packet_projection.get("section_counts") if isinstance(packet_projection.get("section_counts"), dict) else {}
-        required_sections = ("nature_of_action", "summary_of_facts", "factual_allegations", "claims_for_relief")
+        required_sections = ("nature_of_action", "summary_of_facts", "factual_allegations", "claims_for_relief", "requested_relief")
         required_score = sum(1.0 for key in required_sections if section_presence.get(key)) / max(len(required_sections), 1)
         affidavit_score = 1.0 if packet_projection.get("has_affidavit") else 0.0
         certificate_score = 1.0 if packet_projection.get("has_certificate_of_service") else 0.0
         allegation_depth = min(int(section_counts.get("factual_allegations") or 0), 4) / 4.0
         claim_depth = min(int(section_counts.get("claims_for_relief") or 0), 2) / 2.0
-        return _clamp((required_score * 0.35) + (affidavit_score * 0.2) + (certificate_score * 0.2) + (allegation_depth * 0.15) + (claim_depth * 0.1))
+        relief_depth = min(int(section_counts.get("requested_relief") or 0), 3) / 3.0
+        return _clamp((required_score * 0.3) + (affidavit_score * 0.2) + (certificate_score * 0.2) + (allegation_depth * 0.15) + (claim_depth * 0.1) + (relief_depth * 0.05))
 
     def _score_grounding(self, support_context: Dict[str, Any]) -> float:
         claim_contexts = support_context.get("claims") if isinstance(support_context.get("claims"), list) else []
@@ -1199,6 +1226,28 @@ class AgenticDocumentOptimizer:
             relief_candidates = self._normalize_lines(list(draft.get("requested_relief") or []) + support_texts)[:6]
             if relief_candidates:
                 payload["requested_relief"] = relief_candidates
+        elif focus_section == "requested_relief":
+            relief_candidates = list(draft.get("requested_relief") or [])
+            if self.builder is not None:
+                extract_relief = getattr(self.builder, "_extract_requested_relief_from_facts", None)
+                if callable(extract_relief):
+                    try:
+                        relief_candidates.extend(extract_relief(support_texts))
+                    except Exception:
+                        pass
+            if not relief_candidates:
+                for claim in draft.get("claims_for_relief") if isinstance(draft.get("claims_for_relief"), list) else []:
+                    if not isinstance(claim, dict):
+                        continue
+                    claim_type = str(claim.get("claim_type") or "").strip().lower()
+                    if "retaliation" in claim_type or "termination" in claim_type:
+                        relief_candidates.extend([
+                            "Back pay, front pay, and lost benefits.",
+                            "Reinstatement or front pay in lieu of reinstatement.",
+                        ])
+                    if "discrimination" in claim_type:
+                        relief_candidates.append("Injunctive relief to prevent continuing violations.")
+            payload["requested_relief"] = self._normalize_lines(relief_candidates)[:6]
         elif focus_section == "affidavit":
             affidavit = draft.get("affidavit") if isinstance(draft.get("affidavit"), dict) else {}
             payload["affidavit_intro"] = str(
@@ -1237,6 +1286,8 @@ class AgenticDocumentOptimizer:
                 if isinstance(claim, dict):
                     claim_titles.append(str(claim.get("claim_type") or claim.get("count_title") or ""))
             return "claims for relief " + " ".join(title for title in claim_titles if title)
+        if focus_section == "requested_relief":
+            return "requested relief remedies damages injunction reinstatement back pay front pay"
         if focus_section == "affidavit":
             return "affidavit facts exhibits personal knowledge"
         if focus_section == "certificate_of_service":

@@ -231,6 +231,8 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Intake Review Signals" in content
     assert "Intake blockers:" in content
     assert "Tracked intake contradictions:" in content
+    assert "Persisted Trace Snapshot" in content
+    assert "Open Persisted Trace" in content
     assert "Checklist Intake Signals" in content
     assert "Checklist intake blockers:" in content
     assert "Source Context:" in content

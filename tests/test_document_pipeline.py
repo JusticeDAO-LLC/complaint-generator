@@ -939,6 +939,97 @@ def test_agentic_optimizer_tracks_claim_and_relief_manifest_deltas():
     assert relief_manifest["removed_items"] == []
 
 
+def test_agentic_optimizer_can_prioritize_requested_relief_focus():
+    builder = Mock()
+    builder._extract_requested_relief_from_facts.return_value = [
+        "Back pay, front pay, and lost benefits.",
+        "Injunctive relief to prevent continuing violations.",
+    ]
+    optimizer = document_optimization.AgenticDocumentOptimizer(mediator=Mock(), builder=builder)
+    draft = {
+        "factual_allegations": [
+            "Plaintiff complained about discrimination.",
+            "Defendant terminated Plaintiff two days later.",
+            "Plaintiff lost wages and benefits.",
+            "Plaintiff seeks reinstatement.",
+        ],
+        "claims_for_relief": [
+            {
+                "claim_type": "retaliation",
+                "supporting_facts": [
+                    "Plaintiff complained about discrimination.",
+                    "Defendant terminated Plaintiff two days later.",
+                ],
+            }
+        ],
+        "requested_relief": [],
+    }
+    drafting_readiness = {
+        "status": "warning",
+        "sections": {
+            "requested_relief": {
+                "status": "warning",
+                "warnings": [{"code": "requested_relief_missing", "message": "Requested relief should be confirmed before filing."}],
+            }
+        },
+    }
+    support_context = {
+        "claims": [
+            {
+                "claim_type": "retaliation",
+                "support_facts": [
+                    "Plaintiff lost wages and benefits.",
+                    "Plaintiff seeks reinstatement.",
+                    "Continuing violations require injunctive relief.",
+                ],
+                "missing_elements": [],
+            }
+        ],
+        "evidence": [],
+        "packet_projection": {
+            "section_presence": {
+                "nature_of_action": True,
+                "summary_of_facts": True,
+                "factual_allegations": True,
+                "claims_for_relief": True,
+                "requested_relief": False,
+            },
+            "section_counts": {
+                "nature_of_action": 1,
+                "summary_of_facts": 1,
+                "factual_allegations": 4,
+                "claims_for_relief": 1,
+                "requested_relief": 0,
+            },
+            "has_affidavit": True,
+            "has_certificate_of_service": True,
+        },
+    }
+
+    review = optimizer._heuristic_review(
+        draft=draft,
+        drafting_readiness=drafting_readiness,
+        support_context=support_context,
+    )
+    actor_payload = optimizer._build_fallback_actor_payload(
+        draft=draft,
+        focus_section="requested_relief",
+        support_context={
+            "top_support": [
+                {"text": "Plaintiff lost wages and benefits."},
+                {"text": "Plaintiff seeks reinstatement."},
+                {"text": "Continuing violations require injunctive relief."},
+            ]
+        },
+    )
+
+    assert review["recommended_focus"] == "requested_relief"
+    assert actor_payload["requested_relief"] == [
+        "Back pay, front pay, and lost benefits.",
+        "Injunctive relief to prevent continuing violations.",
+    ]
+
+
 def test_formal_complaint_document_builder_handles_structured_complaint_payloads_without_dict_leak(tmp_path: Path):
     mediator = _build_mediator()
     mediator.state.complaint = {

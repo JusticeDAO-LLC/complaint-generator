@@ -888,6 +888,19 @@
                     <div class="question-list" id="intake-contradiction-list"></div>
                 </div>
 
+                <div class="focus-block" data-section-focus-target="summary_of_facts claims_for_relief requested_relief">
+                    <h2 style="margin-top: 18px;">Intake Case Summary</h2>
+                    <div class="chip-row" id="intake-case-claim-chips"></div>
+                    <div class="chip-row" id="intake-section-chips" style="margin-top: 10px;"></div>
+                    <div class="question-list" id="intake-canonical-fact-list"></div>
+                    <div class="chip-row" id="intake-proof-lead-chips" style="margin-top: 10px;"></div>
+                </div>
+
+                <div class="focus-block" data-section-focus-target="claims_for_relief requested_relief">
+                    <h2 style="margin-top: 18px;">Claim Support Packet Summary</h2>
+                    <div class="chip-row" id="claim-support-packet-summary-chips"></div>
+                </div>
+
                 <div class="focus-block" data-section-focus-target="claims_for_relief requested_relief">
                     <h2 style="margin-top: 18px;">Question Queue</h2>
                     <div class="question-list" id="question-list"></div>
@@ -1504,6 +1517,82 @@
                     </article>
                 `;
             }).join('');
+        }
+
+        function renderIntakeCaseSummary(summary) {
+            const claimContainer = document.getElementById('intake-case-claim-chips');
+            const sectionContainer = document.getElementById('intake-section-chips');
+            const factContainer = document.getElementById('intake-canonical-fact-list');
+            const proofLeadContainer = document.getElementById('intake-proof-lead-chips');
+            const packetContainer = document.getElementById('claim-support-packet-summary-chips');
+            const intakeCaseSummary = summary && typeof summary === 'object' ? summary : {};
+            const candidateClaims = Array.isArray(intakeCaseSummary.candidate_claims) ? intakeCaseSummary.candidate_claims : [];
+            const intakeSections = intakeCaseSummary.intake_sections && typeof intakeCaseSummary.intake_sections === 'object'
+                ? intakeCaseSummary.intake_sections
+                : {};
+            const canonicalFactSummary = intakeCaseSummary.canonical_fact_summary && typeof intakeCaseSummary.canonical_fact_summary === 'object'
+                ? intakeCaseSummary.canonical_fact_summary
+                : {};
+            const proofLeadSummary = intakeCaseSummary.proof_lead_summary && typeof intakeCaseSummary.proof_lead_summary === 'object'
+                ? intakeCaseSummary.proof_lead_summary
+                : {};
+            const claimSupportPacketSummary = intakeCaseSummary.claim_support_packet_summary && typeof intakeCaseSummary.claim_support_packet_summary === 'object'
+                ? intakeCaseSummary.claim_support_packet_summary
+                : {};
+
+            claimContainer.innerHTML = candidateClaims.length
+                ? candidateClaims.map((claim) => `<span class="chip">claim: ${claim.label || claim.claim_type || 'unknown'}</span>`).join('')
+                : '<span class="chip">No candidate claims identified.</span>';
+
+            const sectionEntries = Object.entries(intakeSections);
+            sectionContainer.innerHTML = sectionEntries.length
+                ? sectionEntries.map(([sectionName, section]) => `<span class="chip">${sectionName}: ${(section && section.status) || 'missing'}</span>`).join('')
+                : '<span class="chip">No intake sections available.</span>';
+
+            const canonicalFacts = Array.isArray(canonicalFactSummary.facts) ? canonicalFactSummary.facts : [];
+            if (!canonicalFacts.length) {
+                factContainer.innerHTML = '<div class="task-card">Canonical Fact Table: no structured facts available.</div>';
+            } else {
+                factContainer.innerHTML = canonicalFacts.map((fact) => `
+                    <article class="task-card">
+                        <div class="row-head">
+                            <div>
+                                <div class="row-title">${fact.text || fact.fact_id || 'Canonical fact'}</div>
+                                <div class="meta">Canonical Fact Table</div>
+                            </div>
+                            <span class="badge">${fact.fact_type || 'fact'}</span>
+                        </div>
+                    </article>
+                `).join('');
+            }
+
+            const proofLeads = Array.isArray(proofLeadSummary.proof_leads) ? proofLeadSummary.proof_leads : [];
+            proofLeadContainer.innerHTML = proofLeads.length
+                ? proofLeads.map((lead) => `<span class="chip">proof lead: ${lead.description || lead.lead_type || 'support'}</span>`).join('')
+                : '<span class="chip">No proof leads captured.</span>';
+
+            const packetStatusCounts = claimSupportPacketSummary.status_counts && typeof claimSupportPacketSummary.status_counts === 'object'
+                ? claimSupportPacketSummary.status_counts
+                : {};
+            const packetChips = [];
+            if (claimSupportPacketSummary.claim_count !== undefined) {
+                packetChips.push(`<span class="chip">claims: ${Number(claimSupportPacketSummary.claim_count || 0)}</span>`);
+            }
+            if (claimSupportPacketSummary.element_count !== undefined) {
+                packetChips.push(`<span class="chip">elements: ${Number(claimSupportPacketSummary.element_count || 0)}</span>`);
+            }
+            Object.entries(packetStatusCounts).forEach(([status, count]) => {
+                packetChips.push(`<span class="chip">packet ${status}: ${count}</span>`);
+            });
+            const recommendedActions = Array.isArray(claimSupportPacketSummary.recommended_actions)
+                ? claimSupportPacketSummary.recommended_actions
+                : [];
+            recommendedActions.forEach((action) => {
+                packetChips.push(`<span class="chip">packet next: ${action}</span>`);
+            });
+            packetContainer.innerHTML = packetChips.length
+                ? packetChips.join('')
+                : '<span class="chip">No claim-support packet summary available.</span>';
         }
 
         function buildFollowUpSourceSignalCounts(planSummary) {
@@ -2656,6 +2745,7 @@
             setSummary(summary, planSummary);
             setFollowUpSignals(planSummary, historySummary);
             renderIntakeStatus(payload.intake_status || null);
+            renderIntakeCaseSummary(payload.intake_case_summary || null);
             renderQuestionRecommendations(questionRecommendations);
             renderTestimonyRecords(testimonyRecords, testimonySummary);
             renderDocumentArtifacts(documentArtifacts, documentSummary);
