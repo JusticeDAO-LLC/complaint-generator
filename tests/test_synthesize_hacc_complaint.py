@@ -450,15 +450,23 @@ def test_markdown_groups_tagged_evidence_sections():
 
     markdown = MODULE._render_markdown(package)
 
+    assert "## Exhibit Index" in markdown
+    assert "### Administrative Basis Exhibits" in markdown
+    assert "- Exhibit A: ADMINISTRATIVE PLAN" in markdown
+    assert "### Anchor Passage Exhibits" in markdown
+    assert "### Supporting Evidence Exhibits" in markdown
     assert "## Administrative Basis" in markdown
     assert "These policy excerpts frame the accommodation theory" in markdown
+    assert "- Exhibit A: ADMINISTRATIVE PLAN supports reasonable accommodation, adverse action:" in markdown
+    assert "See also Exhibit A (ADMINISTRATIVE PLAN) under Accommodation." in markdown
     assert "## Anchor Passages" in markdown
     assert "### Accommodation" in markdown
     assert "### Notice" in markdown
     assert "These passages support the accommodation theory" in markdown
-    assert "See also ADMINISTRATIVE PLAN [reasonable_accommodation, adverse_action] under Accommodation." in markdown
+    assert "See also Exhibit A (ADMINISTRATIVE PLAN [reasonable_accommodation, adverse_action]) under Accommodation." in markdown
     assert "## Supporting Evidence" in markdown
     assert "These materials support the notice theory" in markdown
+    assert "See also Exhibit A (ADMINISTRATIVE PLAN) under Accommodation." in markdown
     assert markdown.count("### Accommodation") >= 2
     assert markdown.count("### Notice") >= 2
 

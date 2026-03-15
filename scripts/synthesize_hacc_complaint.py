@@ -432,14 +432,40 @@ def _group_lines_by_tag(lines: List[str], max_groups: int = 3, max_repeat_groups
 
 def _line_label(line: str) -> str:
     text = str(line or "")
+    if " supports " in text:
+        return text.split(" supports ", 1)[0].strip()
     if ":" in text:
         return text.split(":", 1)[0].strip()
     return text[:80].strip()
 
 
+def _exhibit_id(index: int) -> str:
+    return f"Exhibit {chr(ord('A') + index)}"
+
+
+def _build_exhibit_index(line_groups: List[List[str]]) -> Dict[str, str]:
+    exhibit_index: Dict[str, str] = {}
+    ordered_lines: List[str] = []
+    for group in line_groups:
+        for line in group:
+            if line not in ordered_lines:
+                ordered_lines.append(line)
+    for index, line in enumerate(ordered_lines):
+        exhibit_index[line] = _exhibit_id(index)
+    return exhibit_index
+
+
+def _section_exhibit_index(lines: List[str]) -> List[tuple[str, str]]:
+    grouped = _group_lines_by_tag(lines)
+    exhibit_index = _build_exhibit_index([items for _, items in grouped])
+    ordered = sorted(exhibit_index.items(), key=lambda item: item[1])
+    return [(exhibit_id, _line_label(line)) for line, exhibit_id in ordered]
+
+
 def _render_grouped_lines(lines: List[str], section_kind: str) -> List[str]:
     rendered: List[str] = []
     grouped = _group_lines_by_tag(lines)
+    exhibit_index = _build_exhibit_index([items for _, items in grouped])
     first_heading_for_line: Dict[str, str] = {}
 
     for heading, items in grouped:
@@ -450,9 +476,15 @@ def _render_grouped_lines(lines: List[str], section_kind: str) -> List[str]:
         for item in items:
             if item not in first_heading_for_line:
                 first_heading_for_line[item] = heading
-                rendered.append(f"- {item}")
+                exhibit_id = exhibit_index.get(item)
+                if exhibit_id:
+                    rendered.append(f"- {exhibit_id}: {item}")
+                else:
+                    rendered.append(f"- {item}")
             else:
-                rendered.append(f"- See also {_line_label(item)} under {first_heading_for_line[item]}.")
+                exhibit_id = exhibit_index.get(item)
+                exhibit_text = f"{exhibit_id} ({_line_label(item)})" if exhibit_id else _line_label(item)
+                rendered.append(f"- See also {exhibit_text} under {first_heading_for_line[item]}.")
         rendered.append("")
     return rendered
 
@@ -1007,8 +1039,24 @@ def _render_markdown(package: Dict[str, Any]) -> str:
     lines.extend([f"- Theory Labels: {', '.join(theory_labels) if theory_labels else 'None identified'}"])
     lines.extend([f"- Protected Bases: {', '.join(protected_bases) if protected_bases else 'None identified'}"])
     lines.extend([f"- Authority Hints: {', '.join(authority_hints) if authority_hints else 'None identified'}"])
+    exhibit_sections = [
+        ("Administrative Basis Exhibits", _section_exhibit_index(list(package["policy_basis"]))),
+        ("Anchor Passage Exhibits", _section_exhibit_index(list(package["anchor_passages"]))),
+        ("Supporting Evidence Exhibits", _section_exhibit_index(list(package["supporting_evidence"]))),
+    ]
     lines.extend([
         "",
+        "## Exhibit Index",
+        "",
+    ])
+    for heading, exhibits in exhibit_sections:
+        if not exhibits:
+            continue
+        lines.append(f"### {heading}")
+        lines.append("")
+        lines.extend(f"- {exhibit_id}: {label}" for exhibit_id, label in exhibits)
+        lines.append("")
+    lines.extend([
         "## Factual Allegations",
         "",
     ])
