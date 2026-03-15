@@ -710,7 +710,8 @@ class TestSeedComplaintLibrary:
 
         assert seed is not None
         expanded = seed['hacc_evidence'][0]['snippet']
-        assert expanded.startswith('HACC will advise the family')
+        assert expanded.startswith('Intro text before the match.')
+        assert 'HACC will advise the family' in expanded
         assert expanded.endswith('written notice of the final decision.')
 
     def test_build_hacc_mediator_evidence_packet_prefers_source_files(self, tmp_path):
