@@ -485,7 +485,14 @@ class KnowledgeGraphBuilder:
         # "Extract all people, organizations, dates, locations, and claims from: {text}"
         
         # Extract simple entities (this is a placeholder)
-        if 'discrimination' in lower_text:
+        discrimination_terms = (
+            'discrimination',
+            'discriminated',
+            'discriminatory',
+            'harassment',
+            'harassed',
+        )
+        if any(term in lower_text for term in discrimination_terms):
             add_entity({
                 'type': 'claim',
                 'name': 'Discrimination Claim',
@@ -496,7 +503,7 @@ class KnowledgeGraphBuilder:
                 'confidence': 0.9
             })
 
-        if 'accommodation' in lower_text:
+        if any(term in lower_text for term in ['accommodation', 'accommodate', 'reasonable accommodation']):
             add_entity({
                 'type': 'claim',
                 'name': 'Accommodation Request',
@@ -516,6 +523,49 @@ class KnowledgeGraphBuilder:
                     'description': short_description(text),
                 },
                 'confidence': 0.7
+            })
+
+        retaliation_terms = (
+            'retaliation',
+            'retaliated',
+            'retaliatory',
+            'retaliat',
+        )
+        retaliation_context_terms = (
+            'complained',
+            'reported',
+            'grievance',
+            'hr',
+            'human resources',
+            'requested accommodation',
+            'whistlebl',
+        )
+        adverse_action_terms = (
+            'fired',
+            'terminated',
+            'demoted',
+            'suspended',
+            'cut my hours',
+            'reduced my hours',
+            'evicted',
+            'disciplined',
+        )
+        if (
+            any(term in lower_text for term in retaliation_terms)
+            or (
+                any(term in lower_text for term in retaliation_context_terms)
+                and any(term in lower_text for term in adverse_action_terms)
+                and any(term in lower_text for term in ['after', 'because', 'later', 'soon after'])
+            )
+        ):
+            add_entity({
+                'type': 'claim',
+                'name': 'Retaliation Claim',
+                'attributes': {
+                    'claim_type': 'retaliation',
+                    'description': short_description(text),
+                },
+                'confidence': 0.85
             })
         
         if 'employer' in lower_text:

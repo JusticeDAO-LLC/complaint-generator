@@ -106,6 +106,23 @@ class TestKnowledgeGraph:
         summary = kg.summary()
         assert summary['total_entities'] > 0
 
+    def test_knowledge_graph_builder_recognizes_discriminated_and_retaliation_phrasing(self):
+        """Heuristic claim extraction should handle common complaint phrasings, not only base nouns."""
+        builder = KnowledgeGraphBuilder()
+        text = (
+            "My employer discriminated against me because of my race and retaliated "
+            "after I complained to HR by firing me."
+        )
+
+        kg = builder.build_from_text(text)
+        claim_types = {
+            str(entity.attributes.get("claim_type") or "").strip().lower()
+            for entity in kg.get_entities_by_type("claim")
+        }
+
+        assert "discrimination" in claim_types
+        assert "retaliation" in claim_types
+
 
 class TestDependencyGraph:
     """Tests for DependencyGraph and DependencyGraphBuilder."""

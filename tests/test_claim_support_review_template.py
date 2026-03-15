@@ -260,10 +260,12 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Optimization Focus" in content
     assert "Relief-targeted optimization:" in content
     assert "Final recommended focus:" in content
-    assert "Changed Claims" in content
+    assert "Accepted Changes" in content
+    assert "Rejected Changes" in content
+    assert "claim changes:" in content
     assert "added claims:" in content
     assert "changed claims:" in content
-    assert "Changed Remedies" in content
+    assert "remedy changes:" in content
     assert "added remedies:" in content
     assert "Intake Constraints" in content
     assert "Current intake phase:" in content
