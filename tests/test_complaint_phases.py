@@ -410,8 +410,12 @@ class TestComplaintDenoiser:
         first_evidence = next(question for question in candidates if question["type"] == "evidence")
         assert first_requirement["candidate_source"] == "intake_claim_element_gap"
         assert first_requirement["question_intent"]["intent_type"] == "claim_element_question"
+        assert first_requirement["ranking_explanation"]["candidate_source"] == "intake_claim_element_gap"
+        assert first_requirement["ranking_explanation"]["question_goal"] == "establish_element"
+        assert first_requirement["ranking_explanation"]["phase1_section"] == "claim_elements"
         assert first_evidence["candidate_source"] == "intake_proof_gap"
         assert first_evidence["question_intent"]["intent_type"] == "proof_lead_question"
+        assert first_evidence["ranking_explanation"]["question_goal"] == "identify_supporting_proof"
 
     def test_generate_questions_uses_employment_specific_claim_element_prompt_text(self):
         """Employment discrimination prompts should ask about workplace-specific facts."""

@@ -50,7 +50,14 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
         "intake_sections": {"chronology": {"status": "complete", "missing_items": []}},
         "canonical_fact_summary": {"count": 2, "facts": [{"fact_id": "fact_1"}]},
         "proof_lead_summary": {"count": 1, "proof_leads": [{"lead_id": "lead_1"}]},
-        "question_candidate_summary": {"count": 1, "candidates": [{"candidate_source": "intake_proof_gap"}]},
+        "question_candidate_summary": {
+            "count": 1,
+            "candidates": [{"candidate_source": "intake_proof_gap"}],
+            "source_counts": {"intake_proof_gap": 1},
+            "question_goal_counts": {"identify_supporting_proof": 1},
+            "phase1_section_counts": {"proof_leads": 1},
+            "blocking_level_counts": {"important": 1},
+        },
         "claim_support_packet_summary": {
             "claim_count": 1,
             "element_count": 2,
@@ -66,4 +73,5 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["canonical_fact_summary"]["count"] == 2
     assert summary["proof_lead_summary"]["count"] == 1
     assert summary["question_candidate_summary"]["count"] == 1
+    assert summary["question_candidate_summary"]["source_counts"]["intake_proof_gap"] == 1
     assert summary["claim_support_packet_summary"]["claim_count"] == 1

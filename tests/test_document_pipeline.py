@@ -353,6 +353,10 @@ def _build_mediator() -> Mock:
             "count": 1,
             "proof_leads": [{"lead_id": "lead_001"}],
         },
+        "question_candidate_summary": {
+            "count": 1,
+            "candidates": [{"candidate_source": "intake_proof_gap"}],
+        },
         "claim_support_packet_summary": {
             "claim_count": 2,
             "element_count": 6,
@@ -587,6 +591,10 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
             "count": 1,
             "proof_leads": [{"lead_id": "lead_001"}],
         },
+        "question_candidate_summary": {
+            "count": 1,
+            "candidates": [{"candidate_source": "intake_proof_gap"}],
+        },
         "claim_support_packet_summary": {
             "claim_count": 2,
             "element_count": 6,
@@ -819,6 +827,7 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     assert stored_traces[0]["intake_constraints"] == report["intake_constraints"]
     assert stored_traces[0]["intake_case_summary"]["canonical_fact_summary"]["count"] == 2
     assert stored_traces[0]["intake_case_summary"]["proof_lead_summary"]["count"] == 1
+    assert stored_traces[0]["intake_case_summary"]["question_candidate_summary"]["count"] == 1
     assert stored_traces[0]["intake_case_summary"]["claim_support_packet_summary"]["claim_count"] == 2
     assert stored_traces[0]["iterations"][0]["change_manifest"]
     assert stored_traces[0]["iterations"][0]["change_manifest"][0]["field"] == "factual_allegations"
@@ -2898,6 +2907,7 @@ def test_review_surface_returns_document_optimization_contract_end_to_end(monkey
     assert 'control_loop' in report['upstream_optimizer']
     assert report['intake_case_summary']['canonical_fact_summary']['count'] == 2
     assert report['intake_case_summary']['proof_lead_summary']['count'] == 1
+    assert report['intake_case_summary']['question_candidate_summary']['count'] == 1
     assert report['intake_case_summary']['claim_support_packet_summary']['claim_count'] == 2
     assert report['intake_status'] == {
         'current_phase': 'intake',

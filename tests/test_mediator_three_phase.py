@@ -312,6 +312,8 @@ class TestMediatorThreePhaseIntegration:
         assert status['canonical_fact_summary']['count'] == len(intake_case_file['canonical_facts'])
         assert status['proof_lead_summary']['count'] == len(intake_case_file['proof_leads'])
         assert status['question_candidate_summary']['count'] >= 1
+        assert status['question_candidate_summary']['source_counts']
+        assert status['question_candidate_summary']['phase1_section_counts']
 
     def test_initialize_intake_case_file_extracts_claims_facts_and_proof_leads(self):
         """The intake case file helper should normalize graph state into structured sections."""
@@ -612,6 +614,7 @@ class TestMediatorThreePhaseIntegration:
         assert 'adverse job action' in employment_questions[0]['question'].lower()
         assert employment_questions[0]['question_intent']['question_goal'] == 'establish_element'
         assert employment_questions[0]['question_intent']['claim_type'] == 'employment_discrimination'
+        assert employment_questions[0]['ranking_explanation']['blocking_level'] == 'blocking'
         assert any(candidate.get('candidate_source') == 'intake_claim_element_gap' for candidate in result['question_candidates'])
 
     def test_start_three_phase_process_uses_domain_specific_housing_proof_prompt_text(self):
@@ -641,6 +644,7 @@ class TestMediatorThreePhaseIntegration:
         assert 'landlord messages' in question_text
         assert housing_evidence_questions[0]['question_intent']['question_goal'] == 'identify_supporting_proof'
         assert housing_evidence_questions[0]['question_intent']['claim_type'] == 'housing_discrimination'
+        assert housing_evidence_questions[0]['ranking_explanation']['phase1_section'] == 'proof_leads'
         assert any(candidate.get('candidate_source') == 'intake_proof_gap' for candidate in result['question_candidates'])
     
     def test_graph_serialization(self):

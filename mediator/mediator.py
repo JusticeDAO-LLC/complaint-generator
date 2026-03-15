@@ -3832,6 +3832,38 @@ class Mediator:
 					summary['recommended_actions'].append(next_step)
 		return summary
 
+	def _summarize_question_candidates(self, candidates: Any) -> Dict[str, Any]:
+		summary = {
+			'count': 0,
+			'candidates': [],
+			'source_counts': {},
+			'question_goal_counts': {},
+			'phase1_section_counts': {},
+			'blocking_level_counts': {},
+		}
+		if not isinstance(candidates, list):
+			return summary
+
+		summary['count'] = len(candidates)
+		summary['candidates'] = candidates
+		for candidate in candidates:
+			if not isinstance(candidate, dict):
+				continue
+			explanation = candidate.get('ranking_explanation', {}) if isinstance(candidate.get('ranking_explanation'), dict) else {}
+			source = str(explanation.get('candidate_source') or candidate.get('candidate_source') or '').strip()
+			question_goal = str(explanation.get('question_goal') or candidate.get('question_goal') or '').strip()
+			phase1_section = str(explanation.get('phase1_section') or candidate.get('phase1_section') or '').strip()
+			blocking_level = str(explanation.get('blocking_level') or candidate.get('blocking_level') or '').strip()
+			if source:
+				summary['source_counts'][source] = summary['source_counts'].get(source, 0) + 1
+			if question_goal:
+				summary['question_goal_counts'][question_goal] = summary['question_goal_counts'].get(question_goal, 0) + 1
+			if phase1_section:
+				summary['phase1_section_counts'][phase1_section] = summary['phase1_section_counts'].get(phase1_section, 0) + 1
+			if blocking_level:
+				summary['blocking_level_counts'][blocking_level] = summary['blocking_level_counts'].get(blocking_level, 0) + 1
+		return summary
+
 	def _classify_evidence_ingestion_outcomes(
 		self,
 		evidence_data: Dict[str, Any],
@@ -4490,10 +4522,7 @@ class Mediator:
 				'count': len(proof_leads),
 				'proof_leads': proof_leads,
 			},
-			'question_candidate_summary': {
-				'count': len(question_candidates) if isinstance(question_candidates, list) else 0,
-				'candidates': question_candidates if isinstance(question_candidates, list) else [],
-			},
+			'question_candidate_summary': self._summarize_question_candidates(question_candidates),
 			'claim_support_packet_summary': self._summarize_claim_support_packets(claim_support_packets),
 			'intake_contradictions': {
 				'candidate_count': intake_readiness.get('contradiction_count', 0),

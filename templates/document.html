@@ -2270,6 +2270,7 @@
             const intakeSections = intakeCaseSummary.intake_sections && typeof intakeCaseSummary.intake_sections === 'object' ? intakeCaseSummary.intake_sections : {};
             const canonicalFactSummary = intakeCaseSummary.canonical_fact_summary && typeof intakeCaseSummary.canonical_fact_summary === 'object' ? intakeCaseSummary.canonical_fact_summary : {};
             const proofLeadSummary = intakeCaseSummary.proof_lead_summary && typeof intakeCaseSummary.proof_lead_summary === 'object' ? intakeCaseSummary.proof_lead_summary : {};
+            const questionCandidateSummary = intakeCaseSummary.question_candidate_summary && typeof intakeCaseSummary.question_candidate_summary === 'object' ? intakeCaseSummary.question_candidate_summary : {};
             const claimSupportPacketSummary = intakeCaseSummary.claim_support_packet_summary && typeof intakeCaseSummary.claim_support_packet_summary === 'object' ? intakeCaseSummary.claim_support_packet_summary : {};
             const focusSections = Array.from(new Set(sectionHistory
                 .map((entry) => entry && typeof entry.focus_section === 'string' ? entry.focus_section : '')
@@ -2449,6 +2450,12 @@
                     : '',
                 (proofLeadSummary.count != null || Array.isArray(proofLeadSummary.proof_leads))
                     ? `Proof leads: ${proofLeadSummary.count != null ? proofLeadSummary.count : proofLeadSummary.proof_leads.length}`
+                    : '',
+                (questionCandidateSummary.count != null || Array.isArray(questionCandidateSummary.candidates))
+                    ? `Question candidates: ${questionCandidateSummary.count != null ? questionCandidateSummary.count : questionCandidateSummary.candidates.length}`
+                    : '',
+                Array.isArray(questionCandidateSummary.candidates) && questionCandidateSummary.candidates.length
+                    ? `Question candidate sources: ${questionCandidateSummary.candidates.slice(0, 3).map((candidate) => humanizeKey(candidate.candidate_source || candidate.source || 'candidate')).join(' | ')}`
                     : '',
                 claimSupportPacketSummary.claim_count != null ? `Packet claims: ${claimSupportPacketSummary.claim_count}` : '',
                 claimSupportPacketSummary.element_count != null ? `Packet elements: ${claimSupportPacketSummary.element_count}` : '',
