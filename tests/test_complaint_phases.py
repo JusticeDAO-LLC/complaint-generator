@@ -417,6 +417,34 @@ class TestComplaintDenoiser:
         assert first_evidence["question_intent"]["intent_type"] == "proof_lead_question"
         assert first_evidence["ranking_explanation"]["question_goal"] == "identify_supporting_proof"
 
+    def test_select_question_candidates_uses_selector_override_when_available(self):
+        """Selection should honor an explicit override so routers/provers can choose among candidates."""
+        denoiser = ComplaintDenoiser()
+        candidates = [
+            {
+                "type": "timeline",
+                "question": "When did this happen?",
+                "priority": "high",
+                "proof_priority": 0,
+                "candidate_source": "knowledge_graph_gap",
+            },
+            {
+                "type": "evidence",
+                "question": "What proof do you have?",
+                "priority": "high",
+                "proof_priority": 1,
+                "candidate_source": "intake_proof_gap",
+            },
+        ]
+
+        def selector(items, max_questions=10):
+            return [items[1], items[0]][:max_questions]
+
+        selected = denoiser.select_question_candidates(candidates, max_questions=2, selector=selector)
+
+        assert selected[0]["type"] == "evidence"
+        assert selected[1]["type"] == "timeline"
+
     def test_generate_questions_uses_employment_specific_claim_element_prompt_text(self):
         """Employment discrimination prompts should ask about workplace-specific facts."""
         denoiser = ComplaintDenoiser()

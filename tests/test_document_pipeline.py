@@ -356,6 +356,10 @@ def _build_mediator() -> Mock:
         "question_candidate_summary": {
             "count": 1,
             "candidates": [{"candidate_source": "intake_proof_gap"}],
+            "source_counts": {"intake_proof_gap": 1},
+            "question_goal_counts": {"identify_supporting_proof": 1},
+            "phase1_section_counts": {"proof_leads": 1},
+            "blocking_level_counts": {"important": 1},
         },
         "claim_support_packet_summary": {
             "claim_count": 2,
@@ -594,6 +598,10 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
         "question_candidate_summary": {
             "count": 1,
             "candidates": [{"candidate_source": "intake_proof_gap"}],
+            "source_counts": {"intake_proof_gap": 1},
+            "question_goal_counts": {"identify_supporting_proof": 1},
+            "phase1_section_counts": {"proof_leads": 1},
+            "blocking_level_counts": {"important": 1},
         },
         "claim_support_packet_summary": {
             "claim_count": 2,
@@ -822,12 +830,14 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     assert all(entry["kwargs"].get("base_url") == "https://router.huggingface.co/v1" for entry in llm_invocations)
     assert all(entry["kwargs"].get("headers", {}).get("X-Title") == "Complaint Generator Tests" for entry in llm_invocations)
     assert stored_traces
+    assert stored_traces[0]["user_id"] == "test-user"
     assert stored_traces[0]["config"]["router_usage"]["llm_calls"] >= 3
     assert stored_traces[0]["intake_status"] == report["intake_status"]
     assert stored_traces[0]["intake_constraints"] == report["intake_constraints"]
     assert stored_traces[0]["intake_case_summary"]["canonical_fact_summary"]["count"] == 2
     assert stored_traces[0]["intake_case_summary"]["proof_lead_summary"]["count"] == 1
     assert stored_traces[0]["intake_case_summary"]["question_candidate_summary"]["count"] == 1
+    assert stored_traces[0]["intake_case_summary"]["question_candidate_summary"]["phase1_section_counts"]["proof_leads"] == 1
     assert stored_traces[0]["intake_case_summary"]["claim_support_packet_summary"]["claim_count"] == 2
     assert stored_traces[0]["iterations"][0]["change_manifest"]
     assert stored_traces[0]["iterations"][0]["change_manifest"][0]["field"] == "factual_allegations"
@@ -2908,6 +2918,7 @@ def test_review_surface_returns_document_optimization_contract_end_to_end(monkey
     assert report['intake_case_summary']['canonical_fact_summary']['count'] == 2
     assert report['intake_case_summary']['proof_lead_summary']['count'] == 1
     assert report['intake_case_summary']['question_candidate_summary']['count'] == 1
+    assert report['intake_case_summary']['question_candidate_summary']['question_goal_counts']['identify_supporting_proof'] == 1
     assert report['intake_case_summary']['claim_support_packet_summary']['claim_count'] == 2
     assert report['intake_status'] == {
         'current_phase': 'intake',

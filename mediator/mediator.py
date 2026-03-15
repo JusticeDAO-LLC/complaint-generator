@@ -127,6 +127,108 @@ class Mediator:
 	def response(self):
 		return "I'm sorry, I don't understand. Please try again."
 
+	def select_intake_question_candidates(
+		self,
+		candidates: List[Dict[str, Any]],
+		*,
+		max_questions: int = 10,
+	) -> List[Dict[str, Any]]:
+		"""Default intake-question selector using explicit reasoning signals and a fallback heuristic."""
+		normalized_candidates = [candidate for candidate in (candidates or []) if isinstance(candidate, dict)]
+		if not normalized_candidates:
+			return []
+		dg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'dependency_graph')
+		claim_pressure = self._build_intake_claim_pressure_map(dg)
+		scored_candidates = [
+			self._annotate_intake_question_candidate(candidate, claim_pressure)
+			for candidate in normalized_candidates
+		]
+		scored_candidates.sort(
+			key=lambda candidate: (
+				-float(candidate.get('selector_score', 0.0) or 0.0),
+				int(candidate.get('proof_priority', 99) or 99),
+			)
+		)
+		return scored_candidates[:max_questions]
+
+	def _build_intake_claim_pressure_map(self, dependency_graph) -> Dict[str, Dict[str, Any]]:
+		pressure_map: Dict[str, Dict[str, Any]] = {}
+		if dependency_graph is None:
+			return pressure_map
+
+		for claim in dependency_graph.get_nodes_by_type(NodeType.CLAIM):
+			if claim is None:
+				continue
+			claim_type = str(claim.attributes.get('claim_type') or '').strip().lower()
+			if not claim_type:
+				continue
+			check = dependency_graph.check_satisfaction(claim.id)
+			missing_count = int(len(check.get('missing_dependencies', [])) if isinstance(check, dict) else 0)
+			pressure_map[claim_type] = {
+				'claim_id': claim.id,
+				'claim_name': claim.name,
+				'missing_count': missing_count,
+				'satisfaction_ratio': float(check.get('satisfaction_ratio', 0.0) or 0.0) if isinstance(check, dict) else 0.0,
+			}
+		return pressure_map
+
+	def _annotate_intake_question_candidate(
+		self,
+		candidate: Dict[str, Any],
+		claim_pressure: Dict[str, Dict[str, Any]],
+	) -> Dict[str, Any]:
+		annotated = dict(candidate)
+		explanation = dict(candidate.get('ranking_explanation', {}) if isinstance(candidate.get('ranking_explanation'), dict) else {})
+		target_claim_type = str(
+			explanation.get('target_claim_type')
+			or candidate.get('target_claim_type')
+			or ''
+		).strip().lower()
+		claim_state = claim_pressure.get(target_claim_type, {})
+		missing_count = int(claim_state.get('missing_count', 0) or 0)
+		satisfaction_ratio = float(claim_state.get('satisfaction_ratio', 0.0) or 0.0)
+		blocking_level = str(explanation.get('blocking_level') or candidate.get('blocking_level') or '').strip().lower()
+		question_goal = str(explanation.get('question_goal') or candidate.get('question_goal') or '').strip().lower()
+		candidate_source = str(explanation.get('candidate_source') or candidate.get('candidate_source') or '').strip().lower()
+		proof_priority = int(candidate.get('proof_priority', 99) or 99)
+
+		score = 0.0
+		score += max(0, 10 - proof_priority) * 2.0
+		score += {
+			'blocking': 20.0,
+			'important': 10.0,
+			'informational': 0.0,
+		}.get(blocking_level, 0.0)
+		score += {
+			'dependency_graph_contradiction': 35.0,
+			'intake_claim_element_gap': 18.0,
+			'intake_proof_gap': 12.0,
+			'dependency_graph_requirement': 10.0,
+			'knowledge_graph_gap': 6.0,
+		}.get(candidate_source, 0.0)
+		score += {
+			'establish_element': 8.0,
+			'identify_supporting_proof': 5.0,
+			'resolve_factual_contradiction': 12.0,
+		}.get(question_goal, 0.0)
+		score += min(missing_count, 5) * 2.0
+		score += max(0.0, 1.0 - satisfaction_ratio) * 5.0
+
+		selector_signals = {
+			'candidate_source': candidate_source,
+			'blocking_level': blocking_level,
+			'question_goal': question_goal,
+			'proof_priority': proof_priority,
+			'claim_missing_dependency_count': missing_count,
+			'claim_satisfaction_ratio': satisfaction_ratio,
+		}
+		annotated['selector_score'] = score
+		annotated['selector_signals'] = selector_signals
+		explanation['selector_score'] = score
+		explanation['selector_signals'] = selector_signals
+		annotated['ranking_explanation'] = explanation
+		return annotated
+
 	def io(self, text):
 		self.log('user_input', text=text)
 

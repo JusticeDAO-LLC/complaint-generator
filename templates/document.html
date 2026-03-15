@@ -2242,7 +2242,7 @@
             return `<section><h2>Pre-Filing Checklist</h2><div class="checklist-stack">${cards}</div></section>`;
         }
 
-        function renderOptimizationReport(report) {
+        function renderOptimizationReport(report, reviewLinks) {
             if (!report || typeof report !== 'object') {
                 return '';
             }
@@ -2272,6 +2272,10 @@
             const proofLeadSummary = intakeCaseSummary.proof_lead_summary && typeof intakeCaseSummary.proof_lead_summary === 'object' ? intakeCaseSummary.proof_lead_summary : {};
             const questionCandidateSummary = intakeCaseSummary.question_candidate_summary && typeof intakeCaseSummary.question_candidate_summary === 'object' ? intakeCaseSummary.question_candidate_summary : {};
             const claimSupportPacketSummary = intakeCaseSummary.claim_support_packet_summary && typeof intakeCaseSummary.claim_support_packet_summary === 'object' ? intakeCaseSummary.claim_support_packet_summary : {};
+            const questionSourceCounts = questionCandidateSummary.source_counts && typeof questionCandidateSummary.source_counts === 'object' ? questionCandidateSummary.source_counts : {};
+            const questionGoalCounts = questionCandidateSummary.question_goal_counts && typeof questionCandidateSummary.question_goal_counts === 'object' ? questionCandidateSummary.question_goal_counts : {};
+            const questionSectionCounts = questionCandidateSummary.phase1_section_counts && typeof questionCandidateSummary.phase1_section_counts === 'object' ? questionCandidateSummary.phase1_section_counts : {};
+            const questionBlockingCounts = questionCandidateSummary.blocking_level_counts && typeof questionCandidateSummary.blocking_level_counts === 'object' ? questionCandidateSummary.blocking_level_counts : {};
             const focusSections = Array.from(new Set(sectionHistory
                 .map((entry) => entry && typeof entry.focus_section === 'string' ? entry.focus_section : '')
                 .filter(Boolean)));
@@ -2457,6 +2461,15 @@
                 Array.isArray(questionCandidateSummary.candidates) && questionCandidateSummary.candidates.length
                     ? `Question candidate sources: ${questionCandidateSummary.candidates.slice(0, 3).map((candidate) => humanizeKey(candidate.candidate_source || candidate.source || 'candidate')).join(' | ')}`
                     : '',
+                Object.keys(questionGoalCounts).length
+                    ? `Question goals: ${Object.entries(questionGoalCounts).map(([goal, count]) => `${humanizeKey(goal)} ${count}`).join(', ')}`
+                    : '',
+                Object.keys(questionSectionCounts).length
+                    ? `Question target sections: ${Object.entries(questionSectionCounts).map(([sectionName, count]) => `${humanizeKey(sectionName)} ${count}`).join(', ')}`
+                    : '',
+                Object.keys(questionBlockingCounts).length
+                    ? `Question blocking levels: ${Object.entries(questionBlockingCounts).map(([level, count]) => `${humanizeKey(level)} ${count}`).join(', ')}`
+                    : '',
                 claimSupportPacketSummary.claim_count != null ? `Packet claims: ${claimSupportPacketSummary.claim_count}` : '',
                 claimSupportPacketSummary.element_count != null ? `Packet elements: ${claimSupportPacketSummary.element_count}` : '',
                 claimSupportPacketSummary.status_counts && typeof claimSupportPacketSummary.status_counts === 'object'
@@ -2471,6 +2484,28 @@
                 finalReview.recommended_focus ? `Final recommended focus: ${humanizeKey(finalReview.recommended_focus)}` : '',
                 `Relief-targeted optimization: ${reliefTargeted ? 'yes' : 'no'}`,
             ].filter(Boolean);
+            const intakeEvidenceLinks = (() => {
+                const claimLinks = intakeCandidateClaims.map((claim) => {
+                    const reviewUrl = resolveClaimReviewUrl(claim, reviewLinks);
+                    const claimLabel = claim && (claim.label || claim.claim_type)
+                        ? humanizeKey(claim.label || claim.claim_type)
+                        : '';
+                    if (!reviewUrl || !claimLabel) {
+                        return '';
+                    }
+                    return `<a class="inline-link" data-review-intent-link="true" href="${escapeHtml(reviewUrl)}">Open ${escapeHtml(claimLabel)} Intake Claim Review</a>`;
+                }).filter(Boolean);
+                const sectionLinks = Object.entries(intakeSections).map(([sectionKey, section]) => {
+                    const reviewUrl = resolveSectionReviewUrl(sectionKey, section, reviewLinks);
+                    const sectionLabel = humanizeKey(sectionKey);
+                    if (!reviewUrl || !sectionLabel) {
+                        return '';
+                    }
+                    return `<a class="inline-link" data-review-intent-link="true" href="${escapeHtml(reviewUrl)}">Open ${escapeHtml(sectionLabel)} Intake Section Review</a>`;
+                }).filter(Boolean);
+                const links = [...claimLinks, ...sectionLinks];
+                return links.length ? `<div class="inline-link-row">${links.join('')}</div>` : '';
+            })();
             return `
                 <section>
                     <h2>Document Optimization</h2>
@@ -2490,7 +2525,7 @@
                         ${renderChangeGroup('Rejected Changes', rejectedChangeLines, 'rejected')}
                         ${routerUsageLines.length ? `<div class="preview-meta"><strong>Router Usage</strong></div>${renderLines(routerUsageLines)}` : ''}
                         ${intakeConstraintLines.length ? `<div class="preview-meta"><strong>Intake Constraints</strong></div>${renderLines(intakeConstraintLines)}` : ''}
-                        ${intakeEvidenceLines.length ? `<div class="preview-meta"><strong>Intake Evidence Snapshot</strong></div>${renderLines(intakeEvidenceLines)}` : ''}
+                        ${intakeEvidenceLines.length ? `<div class="preview-meta"><strong>Intake Evidence Snapshot</strong></div>${renderLines(intakeEvidenceLines)}${intakeEvidenceLinks}` : ''}
                         ${upstreamOptimizerLines.length ? `<div class="preview-meta"><strong>Upstream Optimizer</strong></div>${renderLines(upstreamOptimizerLines)}` : ''}
                         ${stageProviderLines.length ? `<div class="preview-meta"><strong>Stage Provider Selection</strong></div>${renderLines(stageProviderLines)}` : ''}
                         ${packetProjectionLines.length ? `<div class="preview-meta"><strong>Packet Projection</strong></div>${renderLines(packetProjectionLines)}` : ''}
@@ -2616,7 +2651,7 @@
                 ${renderArtifacts(payload.artifacts || {})}
                 <div class="draft-shell">
                     ${renderReadiness(readiness, draft.exhibits || [], reviewLinks)}
-                    ${renderOptimizationReport(optimizationReport)}
+                    ${renderOptimizationReport(optimizationReport, reviewLinks)}
                     <div class="court-header">${escapeHtml(draft.court_header || '')}</div>
                     <div class="caption-block">
                         <div class="caption-parties">${escapeHtml(captionPartyLines.join('\n\n'))}</div>

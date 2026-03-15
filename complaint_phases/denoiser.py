@@ -1077,6 +1077,44 @@ class ComplaintDenoiser:
         )
         return questions[:max_questions]
 
+    def _default_candidate_sort_key(self, candidate: Dict[str, Any]) -> Tuple[int, int]:
+        priority_order = {'high': 0, 'medium': 1, 'low': 2}
+        if not isinstance(candidate, dict):
+            return (99, 99)
+        return (
+            int(candidate.get('proof_priority', self._phase1_proof_priority(candidate.get('type', '')))),
+            priority_order.get(candidate.get('priority', 'low'), 3),
+        )
+
+    def select_question_candidates(
+        self,
+        candidates: List[Dict[str, Any]],
+        *,
+        max_questions: int = 10,
+        selector: Any = None,
+    ) -> List[Dict[str, Any]]:
+        """Select final question candidates, allowing a router/prover override."""
+        normalized_candidates = [candidate for candidate in (candidates or []) if isinstance(candidate, dict)]
+        if not normalized_candidates or max_questions <= 0:
+            return []
+
+        selected: Any = None
+        if callable(selector):
+            try:
+                selected = selector(normalized_candidates, max_questions=max_questions)
+            except TypeError:
+                selected = selector(normalized_candidates)
+            except Exception:
+                selected = None
+
+        if isinstance(selected, list):
+            normalized_selected = [candidate for candidate in selected if isinstance(candidate, dict)]
+            if normalized_selected:
+                return normalized_selected[:max_questions]
+
+        normalized_candidates.sort(key=self._default_candidate_sort_key)
+        return normalized_candidates[:max_questions]
+
     def _ensure_standard_intake_questions(self, questions: List[Dict[str, Any]], max_questions: int) -> List[Dict[str, Any]]:
         if len(questions) >= max_questions:
             return questions
@@ -1311,6 +1349,12 @@ class ComplaintDenoiser:
             dependency_graph,
             max_questions=max_questions,
             intake_case_file=intake_case_file,
+        )
+        selector = getattr(self.mediator, 'select_intake_question_candidates', None) if self.mediator else None
+        questions = self.select_question_candidates(
+            questions,
+            max_questions=max_questions,
+            selector=selector,
         )
 
         # Ensure we cover basic intake dimensions beyond evidence-only prompts.

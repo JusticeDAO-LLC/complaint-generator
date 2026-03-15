@@ -277,6 +277,11 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Proof leads:" in content
     assert "Question candidates:" in content
     assert "Question candidate sources:" in content
+    assert "Question goals:" in content
+    assert "Question target sections:" in content
+    assert "Question blocking levels:" in content
+    assert "Intake Claim Review" in content
+    assert "Intake Section Review" in content
     assert "Packet next steps:" in content
     assert "Current intake phase:" in content
     assert "Intake readiness score:" in content
@@ -416,6 +421,14 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "Canonical facts:" in content
     assert "Question candidates:" in content
     assert "Question candidate sources:" in content
+    assert "Question goals:" in content
+    assert "Question target sections:" in content
+    assert "Question blocking levels:" in content
+    assert "traceEvidenceLinks" in content
+    assert "buildTraceClaimReviewUrl" in content
+    assert "buildTraceSectionReviewUrl" in content
+    assert "Intake Claim Review" in content
+    assert "Intake Section Review" in content
     assert "renderGroupedList" in content
     assert "filterIterations" in content
     assert "setIterationFilter" in content

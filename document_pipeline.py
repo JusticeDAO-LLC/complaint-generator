@@ -239,6 +239,7 @@ class FormalComplaintDocumentBuilder:
         if enable_agentic_optimization:
             draft, document_optimization = self._optimize_draft(
                 draft,
+                user_id=resolved_user_id,
                 max_iterations=optimization_max_iterations,
                 target_score=optimization_target_score,
                 provider=optimization_provider,
@@ -611,6 +612,7 @@ class FormalComplaintDocumentBuilder:
         self,
         draft: Dict[str, Any],
         *,
+        user_id: Optional[str],
         max_iterations: int,
         target_score: float,
         provider: Optional[str],
@@ -629,7 +631,7 @@ class FormalComplaintDocumentBuilder:
         )
         report = optimizer.optimize_draft(
             draft=draft,
-            user_id=None,
+            user_id=user_id,
             drafting_readiness={},
             config={
                 "provider": provider,

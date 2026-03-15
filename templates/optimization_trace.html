@@ -186,6 +186,24 @@
             gap: 8px;
         }
 
+        .inline-link-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .inline-link {
+            display: inline-flex;
+            align-items: center;
+            padding: 8px 10px;
+            border-radius: 999px;
+            text-decoration: none;
+            color: var(--accent);
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid var(--border);
+        }
+
         .chip {
             padding: 6px 10px;
             border-radius: 999px;
@@ -269,6 +287,7 @@
             <section class="panel">
                 <h2>Intake Evidence Snapshot</h2>
                 <ul id="traceEvidenceList"><li class="muted">No trace loaded.</li></ul>
+                <div id="traceEvidenceLinks" class="inline-link-row"></div>
             </section>
             <section class="panel">
                 <h2>Raw Trace JSON</h2>
@@ -514,10 +533,37 @@
             node.textContent = message;
         }
 
+        function buildTraceClaimReviewUrl(claimType, userId) {
+            const normalizedClaimType = String(claimType || '').trim();
+            if (!normalizedClaimType) {
+                return '';
+            }
+            const params = new URLSearchParams();
+            if (userId) {
+                params.set('user_id', userId);
+            }
+            params.set('claim_type', normalizedClaimType);
+            return `/claim-support-review?${params.toString()}`;
+        }
+
+        function buildTraceSectionReviewUrl(sectionKey, userId) {
+            const normalizedSectionKey = String(sectionKey || '').trim();
+            if (!normalizedSectionKey) {
+                return '';
+            }
+            const params = new URLSearchParams();
+            if (userId) {
+                params.set('user_id', userId);
+            }
+            params.set('section', normalizedSectionKey);
+            return `/claim-support-review?${params.toString()}`;
+        }
+
         function renderTrace(payload) {
             activeTracePayload = payload;
             setExportEnabled(true);
             const trace = payload && typeof payload.trace === 'object' ? payload.trace : {};
+            const traceUserId = String(trace.user_id || '').trim();
             const intakeStatus = trace.intake_status && typeof trace.intake_status === 'object' ? trace.intake_status : {};
             const intakeConstraints = Array.isArray(trace.intake_constraints) ? trace.intake_constraints : [];
             const intakeCaseSummary = trace.intake_case_summary && typeof trace.intake_case_summary === 'object' ? trace.intake_case_summary : {};
@@ -531,6 +577,9 @@
             const proofLeadSummary = intakeCaseSummary.proof_lead_summary && typeof intakeCaseSummary.proof_lead_summary === 'object' ? intakeCaseSummary.proof_lead_summary : {};
             const questionCandidateSummary = intakeCaseSummary.question_candidate_summary && typeof intakeCaseSummary.question_candidate_summary === 'object' ? intakeCaseSummary.question_candidate_summary : {};
             const claimSupportPacketSummary = intakeCaseSummary.claim_support_packet_summary && typeof intakeCaseSummary.claim_support_packet_summary === 'object' ? intakeCaseSummary.claim_support_packet_summary : {};
+            const questionGoalCounts = questionCandidateSummary.question_goal_counts && typeof questionCandidateSummary.question_goal_counts === 'object' ? questionCandidateSummary.question_goal_counts : {};
+            const questionSectionCounts = questionCandidateSummary.phase1_section_counts && typeof questionCandidateSummary.phase1_section_counts === 'object' ? questionCandidateSummary.phase1_section_counts : {};
+            const questionBlockingCounts = questionCandidateSummary.blocking_level_counts && typeof questionCandidateSummary.blocking_level_counts === 'object' ? questionCandidateSummary.blocking_level_counts : {};
             const focusSections = Array.from(new Set(iterations
                 .map((entry) => entry && typeof entry.focus_section === 'string' ? entry.focus_section : '')
                 .filter(Boolean)));
@@ -619,6 +668,15 @@
                     Array.isArray(questionCandidateSummary.candidates) && questionCandidateSummary.candidates.length
                         ? `Question candidate sources: ${questionCandidateSummary.candidates.slice(0, 3).map((candidate) => humanizeKey(candidate.candidate_source || candidate.source || 'candidate')).join(' | ')}`
                         : '',
+                    Object.keys(questionGoalCounts).length
+                        ? `Question goals: ${Object.entries(questionGoalCounts).map(([goal, count]) => `${humanizeKey(goal)} ${count}`).join(', ')}`
+                        : '',
+                    Object.keys(questionSectionCounts).length
+                        ? `Question target sections: ${Object.entries(questionSectionCounts).map(([sectionName, count]) => `${humanizeKey(sectionName)} ${count}`).join(', ')}`
+                        : '',
+                    Object.keys(questionBlockingCounts).length
+                        ? `Question blocking levels: ${Object.entries(questionBlockingCounts).map(([level, count]) => `${humanizeKey(level)} ${count}`).join(', ')}`
+                        : '',
                     claimSupportPacketSummary.claim_count != null ? `Packet claims: ${claimSupportPacketSummary.claim_count}` : '',
                     claimSupportPacketSummary.element_count != null ? `Packet elements: ${claimSupportPacketSummary.element_count}` : '',
                     claimSupportPacketSummary.status_counts && typeof claimSupportPacketSummary.status_counts === 'object'
@@ -629,6 +687,29 @@
                         : '',
                 ].filter(Boolean),
             );
+
+            const evidenceLinks = [
+                ...candidateClaims.map((claim) => {
+                    const claimType = String(claim && claim.claim_type || '').trim();
+                    const claimLabel = claim && (claim.label || claim.claim_type)
+                        ? humanizeKey(claim.label || claim.claim_type)
+                        : '';
+                    const reviewUrl = buildTraceClaimReviewUrl(claimType, traceUserId);
+                    if (!reviewUrl || !claimLabel) {
+                        return '';
+                    }
+                    return `<a class="inline-link" href="${escapeHtml(reviewUrl)}">Open ${escapeHtml(claimLabel)} Intake Claim Review</a>`;
+                }).filter(Boolean),
+                ...Object.keys(intakeSections).map((sectionKey) => {
+                    const sectionLabel = humanizeKey(sectionKey);
+                    const reviewUrl = buildTraceSectionReviewUrl(sectionKey, traceUserId);
+                    if (!reviewUrl || !sectionLabel) {
+                        return '';
+                    }
+                    return `<a class="inline-link" href="${escapeHtml(reviewUrl)}">Open ${escapeHtml(sectionLabel)} Intake Section Review</a>`;
+                }).filter(Boolean),
+            ];
+            document.getElementById('traceEvidenceLinks').innerHTML = evidenceLinks.join('');
         }
 
         async function loadTrace(cid) {

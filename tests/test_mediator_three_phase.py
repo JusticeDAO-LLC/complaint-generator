@@ -646,6 +646,89 @@ class TestMediatorThreePhaseIntegration:
         assert housing_evidence_questions[0]['question_intent']['claim_type'] == 'housing_discrimination'
         assert housing_evidence_questions[0]['ranking_explanation']['phase1_section'] == 'proof_leads'
         assert any(candidate.get('candidate_source') == 'intake_proof_gap' for candidate in result['question_candidates'])
+
+    def test_start_three_phase_process_allows_selector_override_to_reorder_questions(self):
+        """Mediator should expose a selector seam so an upstream router can choose among candidates."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+
+        def selector(candidates, max_questions=10):
+            evidence_first = [candidate for candidate in candidates if candidate.get('type') == 'evidence']
+            remainder = [candidate for candidate in candidates if candidate.get('type') != 'evidence']
+            return (evidence_first + remainder)[:max_questions]
+
+        mediator.select_intake_question_candidates = selector
+        result = mediator.start_three_phase_process(
+            "My employer discriminated against me because of my race."
+        )
+
+        assert result['initial_questions']
+        assert result['initial_questions'][0]['type'] == 'evidence'
+
+    def test_default_selector_attaches_reasoning_scores_to_selected_questions(self):
+        """Default mediator selection should annotate chosen intake questions with reasoning signals."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        result = mediator.start_three_phase_process(
+            "My employer discriminated against me because of my race."
+        )
+
+        assert result['initial_questions']
+        first_question = result['initial_questions'][0]
+        assert 'selector_score' in first_question
+        assert 'selector_signals' in first_question
+        assert 'selector_score' in first_question['ranking_explanation']
+        assert first_question['selector_signals']['proof_priority'] == first_question['proof_priority']
+
+    def test_default_selector_prioritizes_contradiction_candidates(self):
+        """Reasoning-backed selection should keep contradiction resolution ahead of lower-pressure prompts."""
+        from mediator.mediator import Mediator
+        from complaint_phases.knowledge_graph import KnowledgeGraph, Entity
+        from complaint_phases.dependency_graph import DependencyGraph, DependencyNode, Dependency, NodeType, DependencyType
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        kg = KnowledgeGraph()
+        kg.add_entity(Entity("claim1", "claim", "Retaliation Claim", attributes={"claim_type": "retaliation"}))
+
+        dg = DependencyGraph()
+        left_fact = DependencyNode("n1", NodeType.FACT, "Complaint happened first")
+        right_fact = DependencyNode("n2", NodeType.FACT, "Termination happened first")
+        claim = DependencyNode("n3", NodeType.CLAIM, "Retaliation Claim", attributes={"claim_type": "retaliation"})
+        dg.add_node(left_fact)
+        dg.add_node(right_fact)
+        dg.add_node(claim)
+        dg.add_dependency(Dependency("d1", "n1", "n2", DependencyType.CONTRADICTS, required=False))
+
+        intake_case_file = {
+            "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation", "required_elements": []}],
+            "proof_leads": [],
+        }
+
+        questions = mediator.denoiser.generate_questions(kg, dg, max_questions=5, intake_case_file=intake_case_file)
+
+        assert questions
+        assert questions[0]['type'] == 'contradiction'
+        assert questions[0]['selector_signals']['candidate_source'] == 'dependency_graph_contradiction'
     
     def test_graph_serialization(self):
         """Test that graphs can be serialized for storage."""
