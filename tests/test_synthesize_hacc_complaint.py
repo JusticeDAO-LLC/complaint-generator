@@ -994,6 +994,7 @@ def test_best_grounding_result_excerpt_prefers_source_expansion_over_combined_tr
     source_path.write_text(
         "I. Definitions applicable to the grievance procedure [24 CFR 966.53]\n\n"
         "A. Grievance: Any dispute a tenant may have with respect to HACC action or failure to act in accordance with the individual tenant's lease or HACC regulations that adversely affects the individual tenant's rights, duties, welfare, or status.\n\n"
+        "C. Elements of due process: An eviction action or a termination of tenancy in a state or local court in which the following procedural safeguards are required.\n\n"
         "If HUD has issued a due process determination, HACC may exclude from HACC grievance procedure any grievance concerning a termination of tenancy or eviction that involves criminal activity.\n",
         encoding="utf-8",
     )
@@ -1015,6 +1016,7 @@ def test_best_grounding_result_excerpt_prefers_source_expansion_over_combined_tr
     excerpt = MODULE._best_grounding_result_excerpt(item)
 
     assert "act in accordance with the individual tenant's lease" in excerpt
+    assert "Elements of due process" in excerpt
     assert "exclude from HACC grievance procedure" in excerpt
 
 

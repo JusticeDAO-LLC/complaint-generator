@@ -1446,9 +1446,13 @@ def _best_grounding_result_excerpt(item: Dict[str, Any], max_chars: int = 420) -
     if expanded and _policy_text_quality(expanded) >= _policy_text_quality(combined) and len(expanded) > len(combined):
         combined = expanded
 
+    effective_max_chars = max_chars
+    if any(term in combined.lower() for term in ("definitions applicable to the grievance procedure", "elements of due process")):
+        effective_max_chars = max(max_chars, 760)
+
     combined = re.sub(r"\s{2,}", " ", combined).strip(" ;,")
-    if len(combined) > max_chars:
-        combined = combined[: max_chars - 3].rstrip(" ,;:.") + "..."
+    if len(combined) > effective_max_chars:
+        combined = combined[: effective_max_chars - 3].rstrip(" ,;:.") + "..."
     return combined
 
 
