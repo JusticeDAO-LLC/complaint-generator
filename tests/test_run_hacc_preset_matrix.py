@@ -27,6 +27,25 @@ def test_compact_claim_selection_summary_formats_tags_exhibits_and_rationale():
     assert "rationale=selected for stronger accommodation contact-language" in overview
 
 
+def test_compact_relief_selection_summary_formats_families_role_and_related_claims():
+    summary = [
+        {
+            "text": "Corrective action requiring clear notice, fair review, and non-retaliation safeguards.",
+            "strategic_families": ["process"],
+            "strategic_role": "shared_baseline",
+            "related_claims": ["Administrative Fair Housing Process Failure"],
+            "strategic_note": "This relief item tracks the shared process baseline that appeared in both the selected preset and the runner-up.",
+        }
+    ]
+
+    overview = MODULE._compact_relief_selection_summary(summary)
+
+    assert "Corrective action requiring clear notice" in overview
+    assert "families=process" in overview
+    assert "role=shared_baseline" in overview
+    assert "related=Administrative Fair Housing Process Failure" in overview
+
+
 def test_markdown_report_includes_claim_selection_snapshots(tmp_path):
     report_path = tmp_path / "preset_matrix_summary.md"
     rows = [
@@ -46,6 +65,10 @@ def test_markdown_report_includes_claim_selection_snapshots(tmp_path):
                 "exhibits=Exhibit B: ADMINISTRATIVE PLAN; "
                 "rationale=selected for stronger accommodation contact-language]"
             ),
+            "relief_selection_overview": (
+                "Corrective action requiring clear notice, fair review, and non-retaliation safeguards. "
+                "[families=process; role=shared_baseline]"
+            ),
             "claim_theory_families": ["accommodation", "process"],
             "synthesis_output_dir": "/tmp/accommodation_focus/complaint_synthesis",
         }
@@ -63,6 +86,7 @@ def test_markdown_report_includes_claim_selection_snapshots(tmp_path):
     assert "## Claim Selection Snapshots" in report
     assert "### accommodation_focus" in report
     assert "- Overview: Accommodation Theory [tags=reasonable_accommodation,contact;" in report
+    assert "- Relief overview: Corrective action requiring clear notice, fair review, and non-retaliation safeguards." in report
     assert "- Complaint synthesis: `/tmp/accommodation_focus/complaint_synthesis`" in report
 
 
@@ -71,6 +95,7 @@ def test_attach_recommendation_claim_snapshots_enriches_best_overall():
         {
             "preset": "accommodation_focus",
             "claim_selection_overview": "Accommodation Theory [tags=reasonable_accommodation,contact]",
+            "relief_selection_overview": "Corrective action requiring clear notice [families=process]",
             "claim_theory_families": ["accommodation", "process"],
             "synthesis_output_dir": "/tmp/accommodation_focus/complaint_synthesis",
         }
@@ -82,6 +107,7 @@ def test_attach_recommendation_claim_snapshots_enriches_best_overall():
     enriched = MODULE._attach_recommendation_claim_snapshots(recommendations, rows)
 
     assert enriched["best_overall"]["claim_selection_overview"] == "Accommodation Theory [tags=reasonable_accommodation,contact]"
+    assert enriched["best_overall"]["relief_selection_overview"] == "Corrective action requiring clear notice [families=process]"
     assert enriched["best_overall"]["claim_theory_families"] == ["accommodation", "process"]
     assert enriched["best_overall"]["synthesis_output_dir"] == "/tmp/accommodation_focus/complaint_synthesis"
 def test_attach_recommendation_tradeoff_notes_enriches_winner():
@@ -196,6 +222,7 @@ def test_markdown_report_includes_champion_claim_snapshot(tmp_path):
             "missing_sections": "",
             "output_dir": "/tmp/accommodation_focus",
             "claim_selection_overview": "Accommodation Theory [tags=reasonable_accommodation,contact]",
+            "relief_selection_overview": "Corrective action requiring clear notice [families=process]",
             "synthesis_output_dir": "/tmp/accommodation_focus/complaint_synthesis",
         }
     ]
@@ -203,6 +230,7 @@ def test_markdown_report_includes_champion_claim_snapshot(tmp_path):
         "best_overall": {
             "preset": "accommodation_focus",
             "claim_selection_overview": "Accommodation Theory [tags=reasonable_accommodation,contact]",
+            "relief_selection_overview": "Corrective action requiring clear notice [families=process]",
             "synthesis_output_dir": "/tmp/accommodation_focus/complaint_synthesis",
         },
         "best_anchor_coverage": {"preset": "accommodation_focus"},
@@ -215,6 +243,7 @@ def test_markdown_report_includes_champion_claim_snapshot(tmp_path):
             "best_overall": {
                 "preset": "accommodation_focus",
                 "claim_selection_overview": "Accommodation Theory [tags=reasonable_accommodation,contact]",
+                "relief_selection_overview": "Corrective action requiring clear notice [families=process]",
                 "synthesis_output_dir": "/tmp/accommodation_focus/complaint_synthesis",
             },
             "best_anchor_coverage": {"preset": "accommodation_focus"},
@@ -230,6 +259,7 @@ def test_markdown_report_includes_champion_claim_snapshot(tmp_path):
     assert "- Reran top 2 presets with 8 sessions each." in report
     assert "### Champion Claim Snapshot" in report
     assert "- Overview: Accommodation Theory [tags=reasonable_accommodation,contact]" in report
+    assert "- Relief overview: Corrective action requiring clear notice [families=process]" in report
 
 
 def test_markdown_report_includes_winner_vs_runner_up_delta(tmp_path):

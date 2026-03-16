@@ -141,6 +141,8 @@ def _attach_recommendation_claim_snapshots(
         row = row_by_preset.get(preset, {})
         if row.get("claim_selection_overview"):
             item["claim_selection_overview"] = row["claim_selection_overview"]
+        if row.get("relief_selection_overview"):
+            item["relief_selection_overview"] = row["relief_selection_overview"]
         if row.get("claim_theory_families"):
             item["claim_theory_families"] = list(row["claim_theory_families"])
         if row.get("synthesis_output_dir"):
@@ -250,6 +252,8 @@ def _write_markdown_report(
                 "",
                 f"- Overview: {best_overall['claim_selection_overview']}",
             ])
+            if best_overall.get("relief_selection_overview"):
+                lines.append(f"- Relief overview: {best_overall['relief_selection_overview']}")
             if best_overall.get("synthesis_output_dir"):
                 lines.append(f"- Complaint synthesis: `{best_overall['synthesis_output_dir']}`")
             lines.extend(["",])
@@ -320,6 +324,8 @@ def _write_markdown_report(
                 "",
                 f"- Overview: {row['claim_selection_overview']}",
             ])
+            if row.get("relief_selection_overview"):
+                lines.append(f"- Relief overview: {row['relief_selection_overview']}")
             synthesis_dir = row.get("synthesis_output_dir")
             if synthesis_dir:
                 lines.append(f"- Complaint synthesis: `{synthesis_dir}`")
@@ -343,6 +349,8 @@ def _write_markdown_report(
                 "",
                 f"- Overview: {champion_best['claim_selection_overview']}",
             ])
+            if champion_best.get("relief_selection_overview"):
+                lines.append(f"- Relief overview: {champion_best['relief_selection_overview']}")
             if champion_best.get("synthesis_output_dir"):
                 lines.append(f"- Complaint synthesis: `{champion_best['synthesis_output_dir']}`")
         champion_delta = dict(champion.get("winner_delta") or {})
@@ -416,6 +424,30 @@ def _compact_claim_selection_summary(summary: List[Dict[str, Any]], limit: int =
             parts.append(f"{title} [{'; '.join(detail_parts)}]")
         else:
             parts.append(title)
+    return " | ".join(parts)
+
+
+def _compact_relief_selection_summary(summary: List[Dict[str, Any]], limit: int = 3) -> str:
+    parts: List[str] = []
+    for item in summary[:limit]:
+        text = str(item.get("text") or "Untitled relief").strip()
+        families = [str(value) for value in list(item.get("strategic_families") or []) if str(value)]
+        role = str(item.get("strategic_role") or "").strip()
+        related_claims = [str(value) for value in list(item.get("related_claims") or []) if str(value)]
+        note = str(item.get("strategic_note") or "").strip()
+        detail_parts = []
+        if families:
+            detail_parts.append(f"families={','.join(families)}")
+        if role:
+            detail_parts.append(f"role={role}")
+        if related_claims:
+            detail_parts.append(f"related={'; '.join(related_claims)}")
+        if note:
+            detail_parts.append(f"rationale={note}")
+        if detail_parts:
+            parts.append(f"{text} [{'; '.join(detail_parts)}]")
+        else:
+            parts.append(text)
     return " | ".join(parts)
 
 
@@ -566,7 +598,15 @@ def _synthesize_claim_selection_snapshot(
         },
     }
     synthesis._inject_exhibit_references(package)
+    package["requested_relief_annotations"] = synthesis._annotate_requested_relief_with_selection_rationale(
+        list(package.get("requested_relief") or []),
+        list(package.get("causes_of_action") or []),
+        {},
+    )
     package["claim_selection_summary"] = synthesis._claim_selection_summary(list(package.get("causes_of_action") or []))
+    package["relief_selection_summary"] = synthesis._relief_selection_summary(
+        list(package.get("requested_relief_annotations") or [])
+    )
     theory_families = _claim_selection_theory_families(package["claim_selection_summary"])
 
     output_dir = preset_dir / "complaint_synthesis"
@@ -577,6 +617,8 @@ def _synthesize_claim_selection_snapshot(
     return {
         "claim_selection_summary": package["claim_selection_summary"],
         "claim_selection_overview": _compact_claim_selection_summary(package["claim_selection_summary"]),
+        "relief_selection_summary": package["relief_selection_summary"],
+        "relief_selection_overview": _compact_relief_selection_summary(package["relief_selection_summary"]),
         "claim_theory_families": theory_families,
         "synthesis_output_dir": str(output_dir),
     }
@@ -790,6 +832,7 @@ def main() -> int:
             "missing_sections": batch_result["missing_sections"],
             "output_dir": batch_result["output_dir"],
             "claim_selection_overview": batch_result["claim_selection_overview"],
+            "relief_selection_overview": batch_result["relief_selection_overview"],
             "claim_theory_families": batch_result["claim_theory_families"],
             "synthesis_output_dir": batch_result["synthesis_output_dir"],
         }
@@ -806,6 +849,8 @@ def main() -> int:
                 "router_report": batch_result["router_report"],
                 "claim_selection_summary": batch_result["claim_selection_summary"],
                 "claim_selection_overview": batch_result["claim_selection_overview"],
+                "relief_selection_summary": batch_result["relief_selection_summary"],
+                "relief_selection_overview": batch_result["relief_selection_overview"],
                 "claim_theory_families": batch_result["claim_theory_families"],
                 "synthesis_output_dir": batch_result["synthesis_output_dir"],
             }
@@ -862,6 +907,7 @@ def main() -> int:
                         "output_dir",
                         "router_status",
                         "claim_selection_overview",
+                        "relief_selection_overview",
                         "claim_theory_families",
                         "synthesis_output_dir",
                     )
@@ -872,6 +918,8 @@ def main() -> int:
                     "preset": batch_result["preset"],
                     "claim_selection_overview": batch_result["claim_selection_overview"],
                     "claim_selection_summary": batch_result["claim_selection_summary"],
+                    "relief_selection_summary": batch_result["relief_selection_summary"],
+                    "relief_selection_overview": batch_result["relief_selection_overview"],
                     "claim_theory_families": batch_result["claim_theory_families"],
                 }
             )
@@ -926,6 +974,7 @@ def main() -> int:
                 "missing_sections",
                 "output_dir",
                 "claim_selection_overview",
+                "relief_selection_overview",
                 "claim_theory_families",
                 "synthesis_output_dir",
             ],
