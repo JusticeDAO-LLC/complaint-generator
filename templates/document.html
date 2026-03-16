@@ -2840,10 +2840,16 @@
                 : '';
             const intakeEvidenceLinks = (() => {
                 const claimLinks = intakeCandidateClaims.map((claim) => {
-                    const reviewUrl = resolveClaimReviewUrl(claim, reviewLinks);
+                    const claimType = String(claim && claim.claim_type || '').trim();
+                    let reviewUrl = resolveClaimReviewUrl(claim, reviewLinks);
                     const claimLabel = claim && (claim.label || claim.claim_type)
                         ? humanizeKey(claim.label || claim.claim_type)
                         : '';
+                    if (manualReviewClaims.has(claimType)) {
+                        reviewUrl = appendAlignmentTaskViewToReviewUrl(reviewUrl, 'manual_review', 'manual_review_first');
+                    } else if (pendingReviewClaims.has(claimType)) {
+                        reviewUrl = appendAlignmentTaskViewToReviewUrl(reviewUrl, 'pending_review', 'pending_review_first');
+                    }
                     if (!reviewUrl || !claimLabel) {
                         return '';
                     }

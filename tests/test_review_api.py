@@ -502,6 +502,9 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                         "validation_status": "contradicted",
                         "follow_up_focus": "contradiction_resolution",
                         "query_strategy": "standard_gap_targeted",
+                        "primary_missing_fact": "Adverse action details",
+                        "missing_fact_bundle": ["Adverse action details"],
+                        "satisfied_fact_bundle": ["Protected activity"],
                     },
                     {
                         "execution_id": 20,
@@ -516,6 +519,9 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                         "validation_status": "incomplete",
                         "follow_up_focus": "support_gap_closure",
                         "query_strategy": "standard_gap_targeted",
+                        "primary_missing_fact": "Manager knowledge",
+                        "missing_fact_bundle": ["Manager knowledge", "Event sequence"],
+                        "satisfied_fact_bundle": ["Protected activity"],
                         "adaptive_retry_applied": True,
                         "adaptive_retry_reason": "repeated_zero_result_reasoning_gap",
                         "adaptive_query_strategy": "standard_gap_targeted",
@@ -632,6 +638,9 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                         {
                             "claim_element": "Causal connection",
                             "recommended_action": "retrieve_more_support",
+                            "primary_missing_fact": "Manager knowledge",
+                            "missing_fact_bundle": ["Manager knowledge", "Event sequence"],
+                            "satisfied_fact_bundle": ["Protected activity"],
                             "authority_search_program_summary": {
                                 "program_count": 2,
                                 "program_type_counts": {
@@ -667,6 +676,9 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                         {
                             "claim_element": "Adverse action",
                             "recommended_action": "target_missing_support_kind",
+                            "primary_missing_fact": "Adverse action details",
+                            "missing_fact_bundle": ["Adverse action details"],
+                            "satisfied_fact_bundle": ["Protected activity"],
                             "has_graph_support": False,
                             "should_suppress_retrieval": True,
                             "graph_support": {"summary": {}},
@@ -683,6 +695,9 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                         {
                             "claim_element": "Causal connection",
                             "resolution_applied": "manual_review_resolved",
+                            "primary_missing_fact": "Manager knowledge",
+                            "missing_fact_bundle": ["Manager knowledge", "Event sequence"],
+                            "satisfied_fact_bundle": ["Protected activity"],
                             "authority_search_program_summary": {
                                 "program_count": 2,
                                 "program_type_counts": {
@@ -937,6 +952,12 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             for item in payload["question_recommendations"]["retaliation"]
         )
         assert payload["follow_up_history"]["retaliation"][0]["support_kind"] == "manual_review"
+        assert payload["follow_up_history"]["retaliation"][1]["primary_missing_fact"] == "Manager knowledge"
+        assert payload["follow_up_history"]["retaliation"][1]["missing_fact_bundle"] == [
+            "Manager knowledge",
+            "Event sequence",
+        ]
+        assert payload["follow_up_history"]["retaliation"][1]["satisfied_fact_bundle"] == ["Protected activity"]
         assert payload["follow_up_history_summary"]["retaliation"] == {
             "total_entry_count": 2,
             "status_counts": {
@@ -1090,6 +1111,12 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert payload["support_summary"]["retaliation"]["total_links"] == 2
         assert payload["claim_overview"]["retaliation"]["missing"][0]["element_text"] == "Causal connection"
         assert payload["follow_up_plan"]["retaliation"]["task_count"] == 2
+        assert payload["follow_up_plan"]["retaliation"]["tasks"][0]["primary_missing_fact"] == "Manager knowledge"
+        assert payload["follow_up_plan"]["retaliation"]["tasks"][0]["missing_fact_bundle"] == [
+            "Manager knowledge",
+            "Event sequence",
+        ]
+        assert payload["follow_up_plan"]["retaliation"]["tasks"][0]["satisfied_fact_bundle"] == ["Protected activity"]
         assert payload["follow_up_plan_summary"]["retaliation"]["blocked_task_count"] == 1
         assert payload["follow_up_plan_summary"]["retaliation"]["suppressed_task_count"] == 1
         assert payload["follow_up_plan_summary"]["retaliation"]["contradiction_task_count"] == 0
@@ -1154,6 +1181,12 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "target_missing_support_kind": 1,
         }
         assert payload["follow_up_execution"]["retaliation"]["task_count"] == 1
+        assert payload["follow_up_execution"]["retaliation"]["tasks"][0]["primary_missing_fact"] == "Manager knowledge"
+        assert payload["follow_up_execution"]["retaliation"]["tasks"][0]["missing_fact_bundle"] == [
+            "Manager knowledge",
+            "Event sequence",
+        ]
+        assert payload["follow_up_execution"]["retaliation"]["tasks"][0]["satisfied_fact_bundle"] == ["Protected activity"]
         assert payload["follow_up_execution_summary"]["retaliation"]["executed_task_count"] == 1
         assert payload["follow_up_execution_summary"]["retaliation"]["skipped_task_count"] == 2
         assert payload["follow_up_execution_summary"]["retaliation"]["suppressed_task_count"] == 1
@@ -1564,6 +1597,9 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
                         "follow_up_focus": "parse_quality_improvement",
                         "query_strategy": "quality_gap_targeted",
                         "proof_decision_source": "logic_unprovable",
+                        "primary_missing_fact": "Manager knowledge",
+                        "missing_fact_bundle": ["Manager knowledge", "Event sequence"],
+                        "satisfied_fact_bundle": ["Protected activity"],
                         "graph_support": {
                             "summary": {
                                 "semantic_cluster_count": 1,
@@ -1579,6 +1615,9 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
                         "follow_up_focus": "contradiction_resolution",
                         "query_strategy": "contradiction_targeted",
                         "proof_decision_source": "contradiction_candidates",
+                        "primary_missing_fact": "Witness corroboration",
+                        "missing_fact_bundle": ["Witness corroboration"],
+                        "satisfied_fact_bundle": ["Protected activity"],
                         "skipped": {
                             "manual_review": {
                                 "reason": "contradiction_requires_resolution",
@@ -1738,6 +1777,12 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
     assert payload["follow_up_support_kind"] == "evidence"
     assert payload["follow_up_force"] is True
     assert payload["follow_up_execution"]["retaliation"]["task_count"] == 1
+    assert payload["follow_up_execution"]["retaliation"]["tasks"][0]["primary_missing_fact"] == "Manager knowledge"
+    assert payload["follow_up_execution"]["retaliation"]["tasks"][0]["missing_fact_bundle"] == [
+        "Manager knowledge",
+        "Event sequence",
+    ]
+    assert payload["follow_up_execution"]["retaliation"]["tasks"][0]["satisfied_fact_bundle"] == ["Protected activity"]
     assert payload["follow_up_execution_summary"]["retaliation"] == {
         "executed_task_count": 1,
         "skipped_task_count": 1,

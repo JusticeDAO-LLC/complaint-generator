@@ -273,6 +273,11 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Source Context:" in content
     assert "Source families:" in content
     assert "follow_up_support_kind" in content
+    assert "appendAlignmentTaskViewToReviewUrl" in content
+    assert "Manual Review Blockers" in content
+    assert "Pending Review Items" in content
+    assert "Open ${escapeHtml(humanizeKey(claimType))} Manual Review" in content
+    assert "Open ${escapeHtml(humanizeKey(claimType))} Pending Review" in content
     assert "renderSectionReadiness" in content
     assert "renderClaimReadiness" in content
     assert "Open Section Review" in content
@@ -476,11 +481,16 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "defaultSupportKindForSection" in content
     assert "inferQuestionSupportKind" in content
     assert "appendSupportKindToReviewUrl" in content
+    assert "appendAlignmentTaskViewToReviewUrl" in content
     assert "traceEvidenceLinks" in content
     assert "buildTraceClaimReviewUrl" in content
     assert "buildTraceSectionReviewUrl" in content
     assert "Intake Claim Review" in content
     assert "Intake Section Review" in content
+    assert "Manual Review Blockers" in content
+    assert "Pending Review Items" in content
+    assert "Open ${escapeHtml(humanizeKey(claimType))} Manual Review" in content
+    assert "Open ${escapeHtml(humanizeKey(claimType))} Pending Review" in content
     assert "renderGroupedList" in content
     assert "filterIterations" in content
     assert "setIterationFilter" in content
