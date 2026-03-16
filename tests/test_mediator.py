@@ -1737,6 +1737,137 @@ class TestMediatorWithMocks:
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
+    def test_execute_follow_up_plan_respects_alignment_testimony_handoff(self):
+        """Follow-up execution should surface awaiting_testimony as a handoff outcome instead of running retrieval lanes."""
+        try:
+            from mediator import Mediator
+            from complaint_phases import ComplaintPhase
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={'claims': {'employment': []}})
+            mediator.claim_support.get_follow_up_execution_status = Mock(return_value={'in_cooldown': False})
+            mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+            mediator.phase_manager.update_phase_data(
+                ComplaintPhase.EVIDENCE,
+                'alignment_evidence_tasks',
+                [
+                    {
+                        'claim_type': 'employment',
+                        'claim_element_id': 'employment:1',
+                        'preferred_support_kind': 'testimony',
+                        'resolution_status': 'awaiting_testimony',
+                        'intake_proof_leads': [
+                            {
+                                'lead_id': 'lead:witness:1',
+                                'owner': 'complainant',
+                                'recommended_support_kind': 'testimony',
+                            }
+                        ],
+                    }
+                ],
+            )
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'required_support_kinds': ['evidence'],
+                        'elements': [
+                            {
+                                'element_id': 'employment:1',
+                                'element_text': 'Protected activity',
+                                'coverage_status': 'missing',
+                                'validation_status': 'missing',
+                                'recommended_action': 'collect_initial_support',
+                                'support_by_kind': {},
+                                'proof_gap_count': 0,
+                                'proof_gaps': [],
+                                'proof_decision_trace': {},
+                                'reasoning_diagnostics': {'backend_available_count': 0},
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value=_make_graph_support_payload())
+            mediator.get_claim_overview = Mock(return_value={'claims': {'employment': {}}})
+
+            result = mediator.execute_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                max_tasks_per_claim=1,
+            )
+
+            skipped_task = result['claims']['employment']['skipped_tasks'][0]
+            assert skipped_task['resolution_applied'] == 'awaiting_testimony'
+            assert skipped_task['skipped']['escalation']['reason'] == 'awaiting_testimony_collection'
+            mediator.claim_support.record_follow_up_execution.assert_called_once()
+            executed_call = mediator.claim_support.record_follow_up_execution.call_args
+            assert executed_call.kwargs['support_kind'] == 'testimony'
+            assert executed_call.kwargs['status'] == 'skipped_resolution_handoff'
+            assert executed_call.kwargs['metadata']['resolution_applied'] == 'awaiting_testimony'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_execute_follow_up_plan_marks_zero_result_runs_as_insufficient_support(self):
+        """When all attempted follow-up lanes return zero results, execution should end in insufficient_support_after_search."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={'claims': {'employment': []}})
+            mediator.claim_support.get_follow_up_execution_status = Mock(return_value={'in_cooldown': False})
+            mediator.claim_support.was_follow_up_executed = Mock(return_value=False)
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'required_support_kinds': ['evidence'],
+                        'elements': [
+                            {
+                                'element_id': 'employment:1',
+                                'element_text': 'Protected activity',
+                                'coverage_status': 'missing',
+                                'validation_status': 'missing',
+                                'recommended_action': 'collect_initial_support',
+                                'support_by_kind': {},
+                                'proof_gap_count': 0,
+                                'proof_gaps': [],
+                                'proof_decision_trace': {},
+                                'reasoning_diagnostics': {'backend_available_count': 0},
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value=_make_graph_support_payload())
+            mediator.discover_web_evidence = Mock(return_value={
+                'discovered': 0,
+                'stored': 0,
+                'total_records': 0,
+            })
+            mediator.get_claim_overview = Mock(return_value={'claims': {'employment': {}}})
+
+            result = mediator.execute_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                support_kind='evidence',
+                max_tasks_per_claim=1,
+            )
+
+            executed_task = result['claims']['employment']['tasks'][0]
+            assert executed_task['resolution_applied'] == 'insufficient_support_after_search'
+            executed_call = mediator.claim_support.record_follow_up_execution.call_args_list[0]
+            assert executed_call.kwargs['metadata']['resolution_applied'] == 'insufficient_support_after_search'
+            assert executed_call.kwargs['metadata']['resolution_status'] == 'insufficient_support_after_search'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
     def test_add_evidence_to_graphs_skips_duplicate_dependency_projection(self):
         """Duplicate evidence should not create duplicate dependency-graph nodes."""
         try:

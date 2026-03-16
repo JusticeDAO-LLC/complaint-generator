@@ -47,6 +47,14 @@ from document_pipeline import FormalComplaintDocumentBuilder
 
 
 ALIGNMENT_TASK_UPDATE_HISTORY_LIMIT = 25
+FOLLOW_UP_REVIEWABLE_ESCALATION_STATUSES = {
+	'awaiting_complainant_record',
+	'awaiting_third_party_record',
+	'awaiting_testimony',
+	'needs_manual_legal_review',
+	'insufficient_support_after_search',
+	'needs_manual_review',
+}
 
 # Import three-phase complaint processing
 from complaint_phases import (
@@ -2044,13 +2052,46 @@ class Mediator:
 			'preferred_support_kind': preferred_support_kind,
 			'preferred_evidence_classes': list(element.get('preferred_evidence_classes', []) or []),
 			'fallback_support_kinds': list(element.get('fallback_support_kinds', []) or []),
+			'source_quality_target': str(element.get('source_quality_target') or '').strip(),
 			'missing_fact_bundle': list(element.get('missing_fact_bundle', []) or []),
 			'satisfied_fact_bundle': list(element.get('satisfied_fact_bundle', []) or []),
 			'intake_origin_refs': list(element.get('intake_origin_refs', []) or []),
+			'intake_proof_leads': list(element.get('intake_proof_leads', []) or []),
+			'resolution_status': str(element.get('resolution_status') or '').strip().lower(),
 			'success_criteria': list(element.get('success_criteria', []) or []),
 			'recommended_queries': list(element.get('recommended_queries', []) or []),
 			'queries': queries,
 		}
+
+	def _normalize_follow_up_resolution_status(self, value: Any) -> str:
+		return str(value or '').strip().lower()
+
+	def _resolve_follow_up_execution_handoff(self, task: Dict[str, Any]) -> str:
+		resolution_status = self._normalize_follow_up_resolution_status(task.get('resolution_status'))
+		if resolution_status in FOLLOW_UP_REVIEWABLE_ESCALATION_STATUSES:
+			return resolution_status
+		return ''
+
+	def _follow_up_handoff_support_kind(self, task: Dict[str, Any], resolution_status: str) -> str:
+		if resolution_status == 'awaiting_testimony':
+			return 'testimony'
+		if resolution_status in {'needs_manual_legal_review', 'needs_manual_review'}:
+			return 'manual_review'
+		return str(task.get('preferred_support_kind') or 'evidence').strip().lower() or 'evidence'
+
+	def _follow_up_handoff_skip_reason(self, resolution_status: str) -> str:
+		return {
+			'awaiting_testimony': 'awaiting_testimony_collection',
+			'awaiting_complainant_record': 'awaiting_complainant_record_collection',
+			'awaiting_third_party_record': 'awaiting_third_party_record_collection',
+			'needs_manual_legal_review': 'needs_manual_legal_review',
+			'needs_manual_review': 'needs_manual_review',
+			'insufficient_support_after_search': 'insufficient_support_after_search',
+		}.get(resolution_status, 'reviewable_escalation')
+
+	def _build_follow_up_handoff_query(self, claim_type: str, task: Dict[str, Any], resolution_status: str) -> str:
+		element_ref = task.get('claim_element_id') or task.get('claim_element') or 'unknown_element'
+		return f'follow_up_handoff::{claim_type}::{element_ref}::{resolution_status}'
 
 	def _build_authority_search_programs_for_task(
 		self,
@@ -2519,6 +2560,7 @@ class Mediator:
 			executed_tasks = []
 			skipped_tasks = []
 			for task in claim_plan.get('tasks', [])[:max_tasks_per_claim]:
+				task_resolution_status = self._resolve_follow_up_execution_handoff(task)
 				execution = {
 					'claim_element_id': task.get('claim_element_id'),
 					'claim_element': task.get('claim_element'),
@@ -2542,8 +2584,42 @@ class Mediator:
 					'graph_support': task.get('graph_support', {}),
 					'should_suppress_retrieval': task.get('should_suppress_retrieval', False),
 					'suppression_reason': task.get('suppression_reason', ''),
+					'resolution_status': task_resolution_status,
+					'resolution_applied': '',
 					'executed': {},
 				}
+				if task_resolution_status:
+					handoff_query = self._build_follow_up_handoff_query(current_claim, task, task_resolution_status)
+					handoff_reason = self._follow_up_handoff_skip_reason(task_resolution_status)
+					handoff_support_kind = self._follow_up_handoff_support_kind(task, task_resolution_status)
+					self.claim_support.record_follow_up_execution(
+						user_id=user_id,
+						claim_type=current_claim,
+						claim_element_id=task.get('claim_element_id'),
+						claim_element_text=task.get('claim_element'),
+						support_kind=handoff_support_kind,
+						query_text=handoff_query,
+						status='skipped_resolution_handoff',
+						metadata=self._build_follow_up_record_metadata(
+							task,
+							skip_reason=handoff_reason,
+							audit_query=handoff_query,
+							resolution_status=task_resolution_status,
+							resolution_applied=task_resolution_status,
+						),
+					)
+					skipped_tasks.append({
+						**execution,
+						'resolution_applied': task_resolution_status,
+						'skipped': {
+							'escalation': {
+								'reason': handoff_reason,
+								'resolution_status': task_resolution_status,
+								'audit_query': handoff_query,
+							}
+						},
+					})
+					continue
 				if task.get('execution_mode') == 'manual_review':
 					manual_review_query = self._build_manual_review_audit_query(current_claim, task)
 					skip_reason = self._manual_review_skip_reason(task)
@@ -2582,6 +2658,7 @@ class Mediator:
 					})
 					continue
 				preferred_support_kind = str(task.get('preferred_support_kind') or '').strip().lower()
+				lane_execution_records: List[Dict[str, Any]] = []
 				run_evidence_lane = (
 					support_kind in (None, 'evidence')
 					and 'evidence' in task.get('missing_support_kinds', [])
@@ -2641,15 +2718,12 @@ class Mediator:
 							min_relevance=min_relevance,
 						)
 						discovery_result_count = self._count_evidence_follow_up_results(discovery_result)
-						self.claim_support.record_follow_up_execution(
-							user_id=user_id,
-							claim_type=current_claim,
-							claim_element_id=task.get('claim_element_id'),
-							claim_element_text=task.get('claim_element'),
-							support_kind='evidence',
-							query_text=query_text,
-							status='executed',
-							metadata=self._build_follow_up_record_metadata(
+						lane_execution_records.append({
+							'support_kind': 'evidence',
+							'query_text': query_text,
+							'status': 'executed',
+							'zero_result': discovery_result_count <= 0,
+							'metadata': self._build_follow_up_record_metadata(
 								task,
 								keywords=keywords,
 								query_variants=task.get('queries', {}).get('evidence', []),
@@ -2659,7 +2733,7 @@ class Mediator:
 								else 0,
 								zero_result=discovery_result_count <= 0,
 							),
-						)
+						})
 						execution['executed']['evidence'] = {
 							'query': query_text,
 							'keywords': keywords,
@@ -2732,15 +2806,12 @@ class Mediator:
 							user_id=user_id,
 							search_programs=task.get('authority_search_programs', []),
 						)
-						self.claim_support.record_follow_up_execution(
-							user_id=user_id,
-							claim_type=current_claim,
-							claim_element_id=task.get('claim_element_id'),
-							claim_element_text=task.get('claim_element'),
-							support_kind='authority',
-							query_text=query_text,
-							status='executed',
-							metadata=self._build_follow_up_record_metadata(
+						lane_execution_records.append({
+							'support_kind': 'authority',
+							'query_text': query_text,
+							'status': 'executed',
+							'zero_result': authority_result_count <= 0,
+							'metadata': self._build_follow_up_record_metadata(
 								task,
 								search_results={key: len(value) for key, value in search_results.items()},
 								query_variants=task.get('queries', {}).get('authority', []),
@@ -2763,7 +2834,7 @@ class Mediator:
 								stored_result_count=int(stored_counts.get('total_records', 0) or 0),
 								zero_result=authority_result_count <= 0,
 							),
-						)
+						})
 						execution['executed']['authority'] = {
 							'query': query_text,
 							'task_query': task_query_text,
@@ -2777,6 +2848,28 @@ class Mediator:
 							'search_results': {key: len(value) for key, value in search_results.items()},
 							'stored_counts': stored_counts,
 						}
+				if lane_execution_records:
+					post_execution_resolution = ''
+					if all(bool(record.get('zero_result')) for record in lane_execution_records):
+						post_execution_resolution = 'insufficient_support_after_search'
+					for record_index, record in enumerate(lane_execution_records):
+						metadata = dict(record.get('metadata') or {})
+						if post_execution_resolution and record_index == len(lane_execution_records) - 1:
+							metadata['resolution_status'] = post_execution_resolution
+							metadata['resolution_applied'] = post_execution_resolution
+						self.claim_support.record_follow_up_execution(
+							user_id=user_id,
+							claim_type=current_claim,
+							claim_element_id=task.get('claim_element_id'),
+							claim_element_text=task.get('claim_element'),
+							support_kind=record.get('support_kind'),
+							query_text=record.get('query_text'),
+							status=record.get('status') or 'executed',
+							metadata=metadata,
+						)
+					if post_execution_resolution:
+						execution['resolution_status'] = post_execution_resolution
+						execution['resolution_applied'] = post_execution_resolution
 				if execution['executed']:
 					executed_tasks.append(execution)
 
@@ -4702,6 +4795,15 @@ class Mediator:
 		]
 		if alignment_queries:
 			task['recommended_queries'] = alignment_queries
+		task['source_quality_target'] = str(
+			alignment_task.get('source_quality_target')
+			or task.get('source_quality_target')
+			or ''
+		).strip()
+		task['intake_proof_leads'] = list(alignment_task.get('intake_proof_leads', []) or task.get('intake_proof_leads', []) or [])
+		task['resolution_status'] = self._normalize_follow_up_resolution_status(
+			alignment_task.get('resolution_status') or task.get('resolution_status')
+		)
 		return self._refresh_follow_up_task_queries(claim_type, task)
 
 	def _build_claim_support_packets(

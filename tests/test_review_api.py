@@ -1938,6 +1938,65 @@ def test_claim_support_follow_up_execution_payload_can_skip_post_review():
     mediator.get_claim_follow_up_plan.assert_not_called()
 
 
+def test_claim_support_follow_up_execution_payload_summarizes_escalation_outcomes():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.execute_claim_follow_up_plan.return_value = {
+        "claims": {
+            "retaliation": {
+                "task_count": 1,
+                "tasks": [
+                    {
+                        "claim_element": "Manager knowledge",
+                        "follow_up_focus": "support_gap_closure",
+                        "query_strategy": "standard_gap_targeted",
+                        "proof_decision_source": "missing_support",
+                        "primary_missing_fact": "Manager knowledge",
+                        "missing_fact_bundle": ["Manager knowledge"],
+                        "satisfied_fact_bundle": [],
+                        "resolution_applied": "insufficient_support_after_search",
+                        "graph_support": {"summary": {}},
+                    }
+                ],
+                "skipped_tasks": [
+                    {
+                        "claim_element": "Causation",
+                        "follow_up_focus": "support_gap_closure",
+                        "query_strategy": "standard_gap_targeted",
+                        "proof_decision_source": "missing_support",
+                        "primary_missing_fact": "Witness corroboration",
+                        "missing_fact_bundle": ["Witness corroboration"],
+                        "satisfied_fact_bundle": [],
+                        "resolution_applied": "awaiting_testimony",
+                        "skipped": {
+                            "escalation": {
+                                "reason": "awaiting_testimony_collection",
+                                "resolution_status": "awaiting_testimony",
+                            }
+                        },
+                        "graph_support": {"summary": {}},
+                    }
+                ],
+            }
+        }
+    }
+
+    payload = build_claim_support_follow_up_execution_payload(
+        mediator,
+        ClaimSupportFollowUpExecuteRequest(
+            claim_type="retaliation",
+            include_post_execution_review=False,
+        ),
+    )
+
+    assert payload["follow_up_execution_summary"]["retaliation"]["executed_task_count"] == 1
+    assert payload["follow_up_execution_summary"]["retaliation"]["skipped_task_count"] == 1
+    assert payload["follow_up_execution_summary"]["retaliation"]["resolution_applied_counts"] == {
+        "insufficient_support_after_search": 1,
+        "awaiting_testimony": 1,
+    }
+
+
 def test_claim_support_manual_review_resolution_payload_returns_post_resolution_review():
     mediator = Mock()
     mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
