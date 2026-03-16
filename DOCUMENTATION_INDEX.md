@@ -88,8 +88,10 @@ Complete index of all documentation in the complaint-generator repository.
 - [docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md](docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md) - Implementation backlog with work packages, dependencies, acceptance criteria, and sprint sequencing
 - [docs/IPFS_DATASETS_PY_NEXT_BATCH_PLAN.md](docs/IPFS_DATASETS_PY_NEXT_BATCH_PLAN.md) - Concrete next implementation batches with file targets, validation commands, and stop or go criteria
 - [docs/IPFS_DATASETS_PY_BATCH1_IMPLEMENTATION_PLAN.md](docs/IPFS_DATASETS_PY_BATCH1_IMPLEMENTATION_PLAN.md) - Issue-sized Batch 1 execution plan for parse completion, corpus unification, and cross-source provenance normalization
+- [docs/IPFS_DATASETS_PY_BATCH1_SLICE1_TASKLIST.md](docs/IPFS_DATASETS_PY_BATCH1_SLICE1_TASKLIST.md) - Completed task list for the adapter-contract stabilization and import-boundary cleanup slice
 - [docs/IPFS_DATASETS_PY_BATCH1_SLICE2_TASKLIST.md](docs/IPFS_DATASETS_PY_BATCH1_SLICE2_TASKLIST.md) - Exact task list and completion notes for the archived-page corpus-normalization slice
 - [docs/IPFS_DATASETS_PY_BATCH1_SLICE3_TASKLIST.md](docs/IPFS_DATASETS_PY_BATCH1_SLICE3_TASKLIST.md) - Active task list for shared fact-registry completion in Batch 1
+- [docs/IPFS_DATASETS_PY_BATCH1_STATUS_AUDIT.md](docs/IPFS_DATASETS_PY_BATCH1_STATUS_AUDIT.md) - Current-state audit against Batch 1 acceptance criteria
 - [docs/IPFS_DATASETS_PY_BATCH6_IMPLEMENTATION_PLAN.md](docs/IPFS_DATASETS_PY_BATCH6_IMPLEMENTATION_PLAN.md) - Issue-sized Batch 6 execution plan for support-aware drafting, filing readiness, and `/document` workflow integration
 - [docs/IPFS_DATASETS_PY_DIRECT_IMPORT_AUDIT.md](docs/IPFS_DATASETS_PY_DIRECT_IMPORT_AUDIT.md) - Production-only audit of direct `ipfs_datasets_py` imports, separating real adapter-boundary violations from test and documentation noise
 - [docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md](docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md) - Runtime and implementation dependency map for search, archival, parsing, graphs, GraphRAG, logic, and review workflows
@@ -113,56 +115,61 @@ Complete index of all documentation in the complaint-generator repository.
 
 ### GraphRAG Ontology Extraction
 - [docs/EXTRACTION_CONFIG_GUIDE.md](docs/EXTRACTION_CONFIG_GUIDE.md) - Comprehensive configuration reference for ExtractionConfig: field descriptions, valid ranges, use cases, performance tuning, common patterns, and troubleshooting
+- [docs/REFINEMENT_STRATEGY_GUIDE.md](docs/REFINEMENT_STRATEGY_GUIDE.md) - OntologyMediator refinement strategy selection: strategy types, selection algorithm, and integration with the pipeline
+- [docs/PERFORMANCE_TUNING.md](docs/PERFORMANCE_TUNING.md) - GraphRAG pipeline performance tuning: regex pre-compilation, entity position indexing, caching, and benchmark results
+- [docs/FEATURE_WIRING_MATRIX.md](docs/FEATURE_WIRING_MATRIX.md) - Static filesystem scan of feature wiring status across ipfs_datasets_py (wired/partial/missing)
 
 ### 🔧 Optimizers API Documentation
+- [docs/API_REFERENCE.md](docs/API_REFERENCE.md) - Top-level API reference index linking to all subsystem API docs
 - [docs/API_REFERENCE_GRAPHRAG.md](docs/API_REFERENCE_GRAPHRAG.md) - Complete GraphRAG optimizer API with OntologyGenerator, QueryUnifiedOptimizer, WikipediaOptimizer, StreamingExtractor, QueryBudget, QueryMetrics, and all statistical methods (confidence_min, confidence_max, confidence_range, confidence_percentile, confidence_iqr, history_kurtosis, score_ewma)
 - [docs/API_REFERENCE_COMMON.md](docs/API_REFERENCE_COMMON.md) - Common optimizer components: BaseOptimizer, OptimizerConfig, QueryValidationMixin, AsyncBatchProcessor, PerformanceMetricsCollector with best practices and performance tuning
 - [docs/API_REFERENCE_AGENTIC.md](docs/API_REFERENCE_AGENTIC.md) - Agentic optimizer API: AgenticOptimizer, AgenticCLI, Session management, FeedbackLoop, and integration examples for iterative artifact optimization
-- [docs/USAGE_EXAMPLES.md](docs/USAGE_EXAMPLES.md) - Comprehensive usage examples for all optimizers with real-world scenarios, code patterns, troubleshooting, and performance tips
 
 ### Additional Documentation
-- [docs/EXAMPLES.md](docs/EXAMPLES.md) - Complete reference for all 21 example scripts
+- [docs/EXAMPLES.md](docs/EXAMPLES.md) - Complete reference for all 23 example scripts
 - [docs/IMPLEMENTATION_SUMMARY.md](docs/IMPLEMENTATION_SUMMARY.md) - Implementation summary
 - [docs/TAXONOMY_EXPANSION_SUMMARY.md](docs/TAXONOMY_EXPANSION_SUMMARY.md) - Taxonomy expansion
 - [docs/VERIFICATION_SUMMARY.md](docs/VERIFICATION_SUMMARY.md) - Verification summary
 
 ## Example Scripts
 
-See [docs/EXAMPLES.md](docs/EXAMPLES.md) for detailed documentation of all 21 example scripts, organized by category:
+See [docs/EXAMPLES.md](docs/EXAMPLES.md) for detailed documentation of all 23 example scripts, organized by category:
 
-### Core System Examples (6)
+### Core System Examples (7)
 1. three_phase_example.py
 2. legal_analysis_demo.py
 3. evidence_management_demo.py
 4. legal_authority_research_demo.py
 5. web_evidence_discovery_demo.py
 6. search_hooks_demo.py
+7. claim_support_review_demo.py
 
 ### Complaint Analysis Examples (5)
-7. complaint_analysis_integration_demo.py
-8. complaint_analysis_taxonomies_demo.py
-9. dei_taxonomy_example.py
-10. hacc_integration_example.py
-11. hacc_dei_analysis_example.py
+8. complaint_analysis_integration_demo.py
+9. complaint_analysis_taxonomies_demo.py
+10. dei_taxonomy_example.py
+11. hacc_integration_example.py
+12. hacc_dei_analysis_example.py
 
-### Adversarial Testing Examples (8)
-12. adversarial_harness_example.py
-13. adversarial_harness_standalone.py
-14. adversarial_optimization_demo.py
-15. batch_sgd_cycle.py
-16. session_sgd_report.py
-17. parallelism_backoff_sweep.py
-18. sweep_ranker.py
-19-21. codex_autopatch_*.py (3 variants)
+### Adversarial Testing Examples (9)
+13. adversarial_harness_example.py
+14. adversarial_harness_standalone.py
+15. adversarial_harness_autopatch_demo.py
+16. adversarial_optimization_demo.py
+17. batch_sgd_cycle.py
+18. session_sgd_report.py
+19. parallelism_backoff_sweep.py
+20. sweep_ranker.py
+21-23. codex_autopatch_*.py (3 variants)
 
 ## Documentation Statistics
 
-- **Total Markdown Files**: 42+
-- **Module READMEs**: 4 (adversarial_harness, complaint_analysis, complaint_phases, tests)
+- **Total Markdown Files**: 79+ (13 root-level + 61 docs/ + 5 module READMEs)
+- **Module READMEs**: 5 (adversarial_harness, complaint_analysis, complaint_phases, mediator, tests)
 - **Core Documentation**: 3 (README.md, TESTING.md, CONTRIBUTING.md)
-- **Feature Documentation**: 32 docs/*.md files
-- **Example Scripts Documented**: 21
-- **Test Files Documented**: 19
+- **Feature Documentation**: 61 docs/*.md files
+- **Example Scripts Documented**: 23
+- **Test Files**: 100+
 - **Complaint Types Covered**: 14
 - **Total Pages of Documentation**: 250+
 
@@ -217,7 +224,7 @@ See [docs/EXAMPLES.md](docs/EXAMPLES.md) for detailed documentation of all 21 ex
 - **Understand the architecture** → docs/ARCHITECTURE.md
 - **Use the three-phase system** → docs/THREE_PHASE_SYSTEM.md, complaint_phases/README.md
 - **Use optimizer APIs** → docs/API_REFERENCE_GRAPHRAG.md, docs/API_REFERENCE_COMMON.md, docs/API_REFERENCE_AGENTIC.md
-- **See optimizer examples** → docs/USAGE_EXAMPLES.md
+- **See optimizer examples** → docs/EXAMPLES.md
 - **Analyze complaints** → complaint_analysis/README.md
 - **Test the system** → adversarial_harness/README.md, TESTING.md
 - **Validate claim-support dashboard changes** → TESTING.md, tests/README.md, .github/workflows/claim-support-regression.yml
@@ -261,5 +268,5 @@ Found an issue with documentation? Please:
 
 ---
 
-**Last Updated**: 2026-03-14
-**Total Documentation**: 42+ markdown files, 250+ pages
+**Last Updated**: 2026-03-16
+**Total Documentation**: 79+ markdown files, 250+ pages

@@ -368,10 +368,12 @@ User Interface (CLI/Web) → Mediator → LLM Router Backend
 - [Backends](docs/BACKENDS.md) - LLM backend configuration
 
 ### GraphRAG & Optimization APIs
+- [API Reference](docs/API_REFERENCE.md) - Top-level API reference index
 - [GraphRAG Optimizer API](docs/API_REFERENCE_GRAPHRAG.md) - OntologyGenerator, QueryUnifiedOptimizer, WikipediaOptimizer, StreamingExtractor
 - [Common Optimizer API](docs/API_REFERENCE_COMMON.md) - BaseOptimizer, OptimizerConfig, AsyncBatchProcessor
 - [Agentic Optimizer API](docs/API_REFERENCE_AGENTIC.md) - AgenticOptimizer, AgenticCLI, FeedbackLoop
-- [Usage Examples](docs/USAGE_EXAMPLES.md) - Complete optimizer examples
+- [Refinement Strategy Guide](docs/REFINEMENT_STRATEGY_GUIDE.md) - OntologyMediator refinement strategy selection
+- [Optimizer Examples](docs/EXAMPLES.md) - Complete example scripts reference
 - [Performance Tuning](docs/PERFORMANCE_TUNING.md) - GraphRAG pipeline optimization guide
 
 ### Claim Support & Review
@@ -391,6 +393,8 @@ User Interface (CLI/Web) → Mediator → LLM Router Backend
 ### Features
 - [Complaint Analysis](docs/COMPLAINT_ANALYSIS_INTEGRATION.md) - 14 complaint types
 - [Legal Research](docs/LEGAL_AUTHORITY_RESEARCH.md) - Multi-source research
+- [Legal Analysis Hooks](docs/LEGAL_HOOKS.md) - 4-stage legal analysis pipeline (classify → statutes → requirements → questions)
+- [Search & RAG Hooks](docs/SEARCH_HOOKS.md) - Legal corpus RAG and Brave search integration
 - [Evidence Management](docs/EVIDENCE_MANAGEMENT.md) - IPFS and DuckDB
 - [Web Evidence](docs/WEB_EVIDENCE_DISCOVERY.md) - Automated discovery
 - [Adversarial Testing](docs/ADVERSARIAL_HARNESS.md) - Quality assurance
@@ -458,15 +462,20 @@ complaint-generator/
 ├── backends/               # LLM integrations (llm_router, huggingface, openai, workstation)
 ├── complaint_analysis/     # 14 complaint types with keywords, patterns, decision trees
 ├── complaint_phases/       # 3-phase processing (denoiser, knowledge/dependency/legal graphs)
-├── docs/                   # 61 documentation files
+├── docs/                   # 62 documentation files
 ├── examples/               # 23 usage example scripts
 ├── integrations/           # IPFS datasets adapter layer
 ├── lib/                    # Logging and shared utilities
 ├── mediator/               # Core orchestration, hooks, state, formal documents
+├── patches/                # Adversarial autopatch output artifacts
 ├── scripts/                # 13 CLI and utility scripts
 ├── statefiles/             # DuckDB state and evidence databases
 ├── templates/              # Web UI (HTML/Jinja2)
 ├── tests/                  # 100+ test files, 340+ test classes
+├── claim_support_review.py         # Claim support review data models
+├── document_optimization.py        # Agentic document optimizer
+├── document_pipeline.py            # Formal complaint document pipeline
+├── intake_status.py                # Intake status and contradiction helpers
 ├── config.llm_router.json          # Main LLM router configuration
 ├── config.huggingface_router.json  # HF router configuration
 ├── config.review_surface.json      # Review surface configuration
