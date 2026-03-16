@@ -337,6 +337,7 @@ def summarize_follow_up_history_claim(
     priority_penalized_entry_count = 0
     zero_result_entry_count = 0
     last_adaptive_retry: Optional[Dict[str, Any]] = None
+    fact_targeting_metrics = _aggregate_fact_targeting_metrics(entries)
 
     for entry in entries:
         if not isinstance(entry, dict):
@@ -440,6 +441,9 @@ def summarize_follow_up_history_claim(
         "artifact_family_counts": artifact_family_counts,
         "corpus_family_counts": corpus_family_counts,
         "content_origin_counts": content_origin_counts,
+        "primary_missing_fact_counts": fact_targeting_metrics["primary_missing_fact_counts"],
+        "missing_fact_bundle_counts": fact_targeting_metrics["missing_fact_bundle_counts"],
+        "satisfied_fact_bundle_counts": fact_targeting_metrics["satisfied_fact_bundle_counts"],
         "zero_result_entry_count": zero_result_entry_count,
         "last_adaptive_retry": last_adaptive_retry,
         "manual_review_entry_count": len(
@@ -1689,6 +1693,7 @@ def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any
     adaptive_retry_metrics = _aggregate_adaptive_retry_metrics(tasks)
     authority_search_program_metrics = _aggregate_authority_search_program_metrics(tasks)
     rule_candidate_metrics = _aggregate_rule_candidate_metrics(tasks)
+    fact_targeting_metrics = _aggregate_fact_targeting_metrics(tasks)
     return {
         "task_count": len(tasks),
         "blocked_task_count": claim_plan.get("blocked_task_count", 0),
@@ -1748,6 +1753,9 @@ def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any
         "artifact_family_counts": graph_support_metrics["artifact_family_counts"],
         "corpus_family_counts": graph_support_metrics["corpus_family_counts"],
         "content_origin_counts": graph_support_metrics["content_origin_counts"],
+        "primary_missing_fact_counts": fact_targeting_metrics["primary_missing_fact_counts"],
+        "missing_fact_bundle_counts": fact_targeting_metrics["missing_fact_bundle_counts"],
+        "satisfied_fact_bundle_counts": fact_targeting_metrics["satisfied_fact_bundle_counts"],
         "follow_up_focus_counts": follow_up_focus_counts,
         "query_strategy_counts": query_strategy_counts,
         "proof_decision_source_counts": proof_decision_source_counts,
@@ -1841,6 +1849,7 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
     adaptive_retry_metrics = _aggregate_adaptive_retry_metrics(all_tasks)
     authority_search_program_metrics = _aggregate_authority_search_program_metrics(all_tasks)
     rule_candidate_metrics = _aggregate_rule_candidate_metrics(all_tasks)
+    fact_targeting_metrics = _aggregate_fact_targeting_metrics(all_tasks)
     return {
         "executed_task_count": len(executed_tasks),
         "skipped_task_count": len(skipped_tasks),
@@ -1878,6 +1887,9 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
         "artifact_family_counts": graph_support_metrics["artifact_family_counts"],
         "corpus_family_counts": graph_support_metrics["corpus_family_counts"],
         "content_origin_counts": graph_support_metrics["content_origin_counts"],
+        "primary_missing_fact_counts": fact_targeting_metrics["primary_missing_fact_counts"],
+        "missing_fact_bundle_counts": fact_targeting_metrics["missing_fact_bundle_counts"],
+        "satisfied_fact_bundle_counts": fact_targeting_metrics["satisfied_fact_bundle_counts"],
         "follow_up_focus_counts": follow_up_focus_counts,
         "query_strategy_counts": query_strategy_counts,
         "proof_decision_source_counts": proof_decision_source_counts,
@@ -1926,6 +1938,39 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
         "rule_candidate_type_counts": rule_candidate_metrics[
             "rule_candidate_type_counts"
         ],
+    }
+
+
+def _aggregate_fact_targeting_metrics(entries: List[Dict[str, Any]]) -> Dict[str, Dict[str, int]]:
+    primary_missing_fact_counts: Dict[str, int] = {}
+    missing_fact_bundle_counts: Dict[str, int] = {}
+    satisfied_fact_bundle_counts: Dict[str, int] = {}
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        primary_missing_fact = str(entry.get("primary_missing_fact") or "").strip()
+        if primary_missing_fact:
+            primary_missing_fact_counts[primary_missing_fact] = (
+                primary_missing_fact_counts.get(primary_missing_fact, 0) + 1
+            )
+        for item in entry.get("missing_fact_bundle", []) or []:
+            normalized_item = str(item or "").strip()
+            if normalized_item:
+                missing_fact_bundle_counts[normalized_item] = (
+                    missing_fact_bundle_counts.get(normalized_item, 0) + 1
+                )
+        for item in entry.get("satisfied_fact_bundle", []) or []:
+            normalized_item = str(item or "").strip()
+            if normalized_item:
+                satisfied_fact_bundle_counts[normalized_item] = (
+                    satisfied_fact_bundle_counts.get(normalized_item, 0) + 1
+                )
+
+    return {
+        "primary_missing_fact_counts": primary_missing_fact_counts,
+        "missing_fact_bundle_counts": missing_fact_bundle_counts,
+        "satisfied_fact_bundle_counts": satisfied_fact_bundle_counts,
     }
 
 

@@ -1015,6 +1015,18 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "content_origin_counts": {
                 "authority_reference_fallback": 1,
             },
+            "primary_missing_fact_counts": {
+                "Adverse action details": 1,
+                "Manager knowledge": 1,
+            },
+            "missing_fact_bundle_counts": {
+                "Adverse action details": 1,
+                "Manager knowledge": 1,
+                "Event sequence": 1,
+            },
+            "satisfied_fact_bundle_counts": {
+                "Protected activity": 2,
+            },
             "last_adaptive_retry": {
                 "claim_element_id": "retaliation:3",
                 "claim_element_text": "Causal connection",
@@ -1804,6 +1816,18 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
         "artifact_family_counts": {},
         "corpus_family_counts": {},
         "content_origin_counts": {},
+        "primary_missing_fact_counts": {
+            "Manager knowledge": 1,
+            "Witness corroboration": 1,
+        },
+        "missing_fact_bundle_counts": {
+            "Manager knowledge": 1,
+            "Event sequence": 1,
+            "Witness corroboration": 1,
+        },
+        "satisfied_fact_bundle_counts": {
+            "Protected activity": 2,
+        },
         "follow_up_focus_counts": {
             "parse_quality_improvement": 1,
             "contradiction_resolution": 1,
@@ -2645,6 +2669,9 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
                     "follow_up_focus": "fact_gap_closure",
                     "query_strategy": "rule_fact_targeted",
                     "recommended_action": "collect_fact_support",
+                    "primary_missing_fact": "Manager knowledge",
+                    "missing_fact_bundle": ["Manager knowledge", "Event sequence"],
+                    "satisfied_fact_bundle": ["Protected activity"],
                     "authority_search_program_summary": {
                         "program_count": 2,
                         "program_type_counts": {
@@ -2690,6 +2717,9 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
                     "follow_up_focus": "adverse_authority_review",
                     "query_strategy": "adverse_authority_targeted",
                     "recommended_action": "review_adverse_authority",
+                    "primary_missing_fact": "Adverse treatment timing",
+                    "missing_fact_bundle": ["Adverse treatment timing"],
+                    "satisfied_fact_bundle": ["Adverse action"],
                     "authority_search_program_summary": {
                         "program_count": 2,
                         "program_type_counts": {
@@ -2741,6 +2771,9 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
                 {
                     "follow_up_focus": "fact_gap_closure",
                     "query_strategy": "rule_fact_targeted",
+                    "primary_missing_fact": "Manager knowledge",
+                    "missing_fact_bundle": ["Manager knowledge", "Event sequence"],
+                    "satisfied_fact_bundle": ["Protected activity"],
                     "authority_search_program_summary": {
                         "program_count": 2,
                         "program_type_counts": {
@@ -2785,6 +2818,9 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
                 {
                     "follow_up_focus": "adverse_authority_review",
                     "query_strategy": "adverse_authority_targeted",
+                    "primary_missing_fact": "Adverse treatment timing",
+                    "missing_fact_bundle": ["Adverse treatment timing"],
+                    "satisfied_fact_bundle": ["Adverse action"],
                     "authority_search_program_summary": {
                         "program_count": 2,
                         "program_type_counts": {
@@ -2862,6 +2898,19 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
         "collect_fact_support": 1,
         "review_adverse_authority": 1,
     }
+    assert plan_summary["primary_missing_fact_counts"] == {
+        "Adverse treatment timing": 1,
+        "Manager knowledge": 1,
+    }
+    assert plan_summary["missing_fact_bundle_counts"] == {
+        "Adverse treatment timing": 1,
+        "Event sequence": 1,
+        "Manager knowledge": 1,
+    }
+    assert plan_summary["satisfied_fact_bundle_counts"] == {
+        "Adverse action": 1,
+        "Protected activity": 1,
+    }
 
     assert execution_summary["fact_gap_task_count"] == 1
     assert execution_summary["adverse_authority_task_count"] == 1
@@ -2884,6 +2933,19 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
     assert execution_summary["content_origin_counts"] == {
         "historical_archive_capture": 1,
         "authority_reference_fallback": 1,
+    }
+    assert execution_summary["primary_missing_fact_counts"] == {
+        "Adverse treatment timing": 1,
+        "Manager knowledge": 1,
+    }
+    assert execution_summary["missing_fact_bundle_counts"] == {
+        "Adverse treatment timing": 1,
+        "Event sequence": 1,
+        "Manager knowledge": 1,
+    }
+    assert execution_summary["satisfied_fact_bundle_counts"] == {
+        "Adverse action": 1,
+        "Protected activity": 1,
     }
     assert execution_summary["follow_up_focus_counts"] == {
         "fact_gap_closure": 1,

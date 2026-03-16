@@ -274,6 +274,7 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Source families:" in content
     assert "follow_up_support_kind" in content
     assert "appendAlignmentTaskViewToReviewUrl" in content
+    assert "appendClaimQueueIntentToReviewUrl" in content
     assert "Manual Review Blockers" in content
     assert "Pending Review Items" in content
     assert "Open ${escapeHtml(humanizeKey(claimType))} Manual Review" in content
@@ -482,6 +483,7 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "inferQuestionSupportKind" in content
     assert "appendSupportKindToReviewUrl" in content
     assert "appendAlignmentTaskViewToReviewUrl" in content
+    assert "appendClaimQueueIntentToReviewUrl" in content
     assert "traceEvidenceLinks" in content
     assert "buildTraceClaimReviewUrl" in content
     assert "buildTraceSectionReviewUrl" in content

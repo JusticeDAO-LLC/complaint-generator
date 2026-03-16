@@ -649,6 +649,20 @@
             return `${parsedUrl.pathname}${parsedUrl.search}`;
         }
 
+        function appendClaimQueueIntentToReviewUrl(reviewUrl, claimType, manualReviewClaims, pendingReviewClaims) {
+            const normalizedClaimType = String(claimType || '').trim();
+            if (!normalizedClaimType) {
+                return reviewUrl;
+            }
+            if (manualReviewClaims instanceof Set && manualReviewClaims.has(normalizedClaimType)) {
+                return appendAlignmentTaskViewToReviewUrl(reviewUrl, 'manual_review', 'manual_review_first');
+            }
+            if (pendingReviewClaims instanceof Set && pendingReviewClaims.has(normalizedClaimType)) {
+                return appendAlignmentTaskViewToReviewUrl(reviewUrl, 'pending_review', 'pending_review_first');
+            }
+            return reviewUrl;
+        }
+
         function appendTaskUpdateIntentToReviewUrl(reviewUrl, sectionKey, supportKind) {
             const normalizedUrl = String(reviewUrl || '').trim();
             if (!normalizedUrl) {
@@ -1048,12 +1062,12 @@
                     const claimLabel = claim && (claim.label || claim.claim_type)
                         ? humanizeKey(claim.label || claim.claim_type)
                         : '';
-                    let reviewUrl = buildTraceClaimReviewUrl(claimType, traceUserId);
-                    if (manualReviewClaims.has(claimType)) {
-                        reviewUrl = appendAlignmentTaskViewToReviewUrl(reviewUrl, 'manual_review', 'manual_review_first');
-                    } else if (pendingReviewClaims.has(claimType)) {
-                        reviewUrl = appendAlignmentTaskViewToReviewUrl(reviewUrl, 'pending_review', 'pending_review_first');
-                    }
+                    const reviewUrl = appendClaimQueueIntentToReviewUrl(
+                        buildTraceClaimReviewUrl(claimType, traceUserId),
+                        claimType,
+                        manualReviewClaims,
+                        pendingReviewClaims,
+                    );
                     if (!reviewUrl || !claimLabel) {
                         return '';
                     }
