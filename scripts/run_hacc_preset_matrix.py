@@ -3,6 +3,7 @@ import csv
 import importlib
 import json
 import logging
+import traceback
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -885,6 +886,11 @@ def main() -> int:
         default=None,
         help="Directory for outputs; defaults to output/hacc_preset_matrix/<timestamp>",
     )
+    parser.add_argument(
+        "--continue-on-error",
+        action="store_true",
+        help="Continue building the matrix summary from presets that finish successfully even if another preset fails.",
+    )
     args = parser.parse_args()
 
     from adversarial_harness import HACC_QUERY_PRESETS
@@ -911,27 +917,41 @@ def main() -> int:
 
     matrix_rows: List[Dict[str, Any]] = []
     full_results: List[Dict[str, Any]] = []
+    preset_errors: List[Dict[str, str]] = []
 
     for preset in requested_presets:
         preset_dir = output_dir / preset
-        batch_result = _run_preset_batch(
-            preset=preset,
-            preset_dir=preset_dir,
-            backend_id=selected_backend_id,
-            backend_kwargs=backend_kwargs,
-            backend_probe_attempts=probe_attempts,
-            selected_backend_healthy=selected_backend_healthy,
-            embeddings_config=embeddings_config,
-            num_sessions=args.num_sessions,
-            hacc_count=args.hacc_count,
-            max_turns=args.max_turns,
-            max_parallel=args.max_parallel,
-            use_vector_search=args.use_vector_search,
-            probe_llm_router=args.probe_llm_router,
-            probe_embeddings_router=args.probe_embeddings_router,
-            disable_local_ipfs_fallback=args.disable_local_ipfs_fallback,
-            synthesis_filing_forum=args.synthesis_filing_forum,
-        )
+        try:
+            batch_result = _run_preset_batch(
+                preset=preset,
+                preset_dir=preset_dir,
+                backend_id=selected_backend_id,
+                backend_kwargs=backend_kwargs,
+                backend_probe_attempts=probe_attempts,
+                selected_backend_healthy=selected_backend_healthy,
+                embeddings_config=embeddings_config,
+                num_sessions=args.num_sessions,
+                hacc_count=args.hacc_count,
+                max_turns=args.max_turns,
+                max_parallel=args.max_parallel,
+                use_vector_search=args.use_vector_search,
+                probe_llm_router=args.probe_llm_router,
+                probe_embeddings_router=args.probe_embeddings_router,
+                disable_local_ipfs_fallback=args.disable_local_ipfs_fallback,
+                synthesis_filing_forum=args.synthesis_filing_forum,
+            )
+        except Exception as exc:
+            if not args.continue_on_error:
+                raise
+            preset_errors.append(
+                {
+                    "preset": preset,
+                    "error": str(exc),
+                    "traceback": traceback.format_exc(),
+                }
+            )
+            logging.exception("Preset %s failed; continuing with completed presets", preset)
+            continue
         row = {
             "preset": batch_result["preset"],
             "backend_id": batch_result["backend_id"],
@@ -969,6 +989,11 @@ def main() -> int:
         )
 
     matrix_rows.sort(key=lambda row: (-row["average_score"], -row["anchor_coverage"], row["preset"]))
+    if not matrix_rows:
+        raise RuntimeError(
+            "No presets completed successfully. " +
+            ("Errors: " + "; ".join(f"{item['preset']}: {item['error']}" for item in preset_errors) if preset_errors else "")
+        )
     recommendations = _select_matrix_recommendations(matrix_rows)
     recommendations = _attach_recommendation_claim_snapshots(recommendations, matrix_rows)
     winner_delta = _build_claim_snapshot_delta(matrix_rows, full_results, recommendations)
@@ -1066,6 +1091,7 @@ def main() -> int:
                 "rows": matrix_rows,
                 "details": full_results,
                 "champion_challenger": challenger_summary,
+                "errors": preset_errors,
             },
             handle,
             indent=2,
@@ -1098,6 +1124,11 @@ def main() -> int:
     _write_markdown_report(summary_md, matrix_rows, recommendations, challenger_summary, winner_delta)
 
     print(f"Saved preset matrix outputs to {output_dir}")
+    if preset_errors:
+        print(
+            "Preset errors: " +
+            "; ".join(f"{item['preset']}={item['error']}" for item in preset_errors)
+        )
     if recommendations:
         def _recommendation_console_suffix(payload: Dict[str, Any]) -> str:
             family_list = list(payload.get("claim_theory_families") or [])

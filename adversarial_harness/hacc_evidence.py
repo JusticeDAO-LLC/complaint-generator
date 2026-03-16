@@ -521,13 +521,19 @@ def _extract_paragraph_excerpt(
 
     combined_parts: List[str] = []
     total_length = 0
-    for match in paragraph_matches[selected_index : selected_index + 3]:
+    for match in paragraph_matches[selected_index : selected_index + 5]:
         part = _clean_extracted_excerpt(match.group(0))
         if not part:
             continue
         combined_parts.append(part)
         total_length += len(part)
-        if total_length >= max_chars or re.search(r"[.!?]$", part):
+        combined_text = " ".join(combined_parts)
+        definitions_context = "definitions applicable to the grievance procedure" in combined_text.lower()
+        if total_length >= max_chars:
+            break
+        if re.search(r"[.!?]$", part):
+            if definitions_context and "elements of due process" not in combined_text.lower():
+                continue
             break
 
     excerpt = " ".join(combined_parts).strip()

@@ -390,3 +390,23 @@ def test_markdown_report_includes_winner_vs_runner_up_delta(tmp_path):
     assert "- Runner-up-only relief items: Retaliation remedies." in report
     assert "Shared claim changed: Accommodation Theory | winner tags=reasonable_accommodation, contact" in report
     assert "Shared relief changed: Corrective action requiring clear notice. | winner families=process | runner-up families=process, retaliation" in report
+
+
+def test_summary_json_can_record_partial_preset_errors(tmp_path):
+    summary_path = tmp_path / "preset_matrix_summary.json"
+    payload = {
+        "timestamp": "2026-03-16T00:00:00+00:00",
+        "presets": ["accommodation_focus", "administrative_plan_retaliation"],
+        "recommendations": {"best_overall": {"preset": "accommodation_focus"}},
+        "winner_delta": {},
+        "rows": [{"preset": "accommodation_focus"}],
+        "details": [{"preset": "accommodation_focus"}],
+        "champion_challenger": None,
+        "errors": [{"preset": "administrative_plan_retaliation", "error": "quota exceeded"}],
+    }
+
+    summary_path.write_text(__import__("json").dumps(payload, indent=2), encoding="utf-8")
+    loaded = __import__("json").loads(summary_path.read_text(encoding="utf-8"))
+
+    assert loaded["errors"][0]["preset"] == "administrative_plan_retaliation"
+    assert loaded["errors"][0]["error"] == "quota exceeded"
