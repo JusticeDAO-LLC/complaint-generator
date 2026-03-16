@@ -605,7 +605,7 @@ def test_markdown_includes_selection_rationale_section():
     assert "- Why this preset won: best for accommodation framing + protected-basis framing; runner-up is stronger on retaliation-heavy framing" in markdown
     assert "- Runner-up preset: administrative_plan_retaliation" in markdown
     assert "## Requested Administrative Relief" in markdown
-    assert "Selection role: This relief item tracks the shared process baseline" in markdown
+    assert "This relief item tracks the shared process baseline that appeared in both the selected preset and the runner-up." in markdown
 
 
 def test_summary_with_selection_rationale_prefixes_tradeoff_note():
@@ -918,6 +918,35 @@ def test_best_grounding_result_excerpt_expands_truncated_rule_from_source(tmp_pa
 
     assert "Definitions applicable to the grievance procedure" in excerpt
     assert "adversely affects the individual tenant's rights" in excerpt
+
+
+def test_best_grounding_result_excerpt_prefers_source_expansion_over_combined_truncated_rules(tmp_path):
+    source_path = tmp_path / "policy.txt"
+    source_path.write_text(
+        "I. Definitions applicable to the grievance procedure [24 CFR 966.53]\n\n"
+        "A. Grievance: Any dispute a tenant may have with respect to HACC action or failure to act in accordance with the individual tenant's lease or HACC regulations that adversely affects the individual tenant's rights, duties, welfare, or status.\n\n"
+        "If HUD has issued a due process determination, HACC may exclude from HACC grievance procedure any grievance concerning a termination of tenancy or eviction that involves criminal activity.\n",
+        encoding="utf-8",
+    )
+
+    item = {
+        "source_path": str(source_path),
+        "snippet": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+        "matched_rules": [
+            {
+                "text": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+                "section_title": "I. Definitions applicable to the grievance procedure [24 CFR 966.53]",
+            },
+            {
+                "text": "If HUD has issued a due process determination, HACC may exclude from HACC grievance",
+            },
+        ],
+    }
+
+    excerpt = MODULE._best_grounding_result_excerpt(item)
+
+    assert "act in accordance with the individual tenant's lease" in excerpt
+    assert "exclude from HACC grievance procedure" in excerpt
 
 
 def test_best_grounding_result_excerpt_expands_toc_like_informal_review_snippet(tmp_path):

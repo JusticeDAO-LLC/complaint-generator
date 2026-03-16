@@ -949,6 +949,21 @@ def _claim_selection_summary(causes: List[Dict[str, Any]]) -> List[Dict[str, Any
     return summary
 
 
+def _relief_selection_summary(relief_annotations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    summary: List[Dict[str, Any]] = []
+    for item in relief_annotations:
+        summary.append(
+            {
+                "text": str(item.get("text") or ""),
+                "strategic_families": [str(value) for value in list(item.get("strategic_families") or []) if str(value)],
+                "strategic_role": str(item.get("strategic_role") or ""),
+                "strategic_note": str(item.get("strategic_note") or ""),
+                "related_claims": [str(value) for value in list(item.get("related_claims") or []) if str(value)],
+            }
+        )
+    return summary
+
+
 def _render_grouped_lines(lines: List[str], section_kind: str, exhibit_index: Dict[str, str]) -> List[str]:
     rendered: List[str] = []
     grouped = _group_lines_by_tag(lines)
@@ -1406,10 +1421,9 @@ def _best_grounding_result_excerpt(item: Dict[str, Any], max_chars: int = 420) -
     else:
         combined = ""
 
-    if combined and (_looks_truncated_rule_text(combined) or _is_probably_toc_text(combined)):
-        expanded = _expand_grounding_result_from_source(item, combined)
-        if expanded and len(expanded) > len(combined):
-            combined = expanded
+    expanded = _expand_grounding_result_from_source(item, combined)
+    if expanded and _policy_text_quality(expanded) >= _policy_text_quality(combined) and len(expanded) > len(combined):
+        combined = expanded
 
     combined = re.sub(r"\s{2,}", " ", combined).strip(" ;,")
     if len(combined) > max_chars:
@@ -2050,6 +2064,7 @@ def _render_markdown(package: Dict[str, Any]) -> str:
         lines.extend(f"- {item}" for item in grounded_summary)
     ordered_exhibits = _ordered_exhibit_index(all_exhibit_lines)
     claim_selection_summary = list(package.get("claim_selection_summary") or [])
+    relief_selection_summary = list(package.get("relief_selection_summary") or [])
     lines.extend([
         "",
         "## Exhibit Index",
@@ -2069,6 +2084,22 @@ def _render_markdown(package: Dict[str, Any]) -> str:
     lines.extend([
         "",
     ])
+    if relief_selection_summary:
+        lines.extend([
+            "## Relief Selection Summary",
+            "",
+        ])
+        for item in relief_selection_summary:
+            families = ", ".join(list(item.get("strategic_families") or [])) or "none"
+            related_claims = ", ".join(list(item.get("related_claims") or [])) or "none"
+            role = str(item.get("strategic_role") or "none")
+            rationale = str(item.get("strategic_note") or "none")
+            lines.append(
+                f"- {item.get('text', '')}: families={families}; role={role}; related_claims={related_claims}; rationale={rationale}"
+            )
+        lines.extend([
+            "",
+        ])
     lines.extend([
         "## Factual Allegations",
         "",
@@ -2256,6 +2287,9 @@ def main(argv: List[str] | None = None) -> int:
         selection_rationale,
     )
     package["claim_selection_summary"] = _claim_selection_summary(list(package.get("causes_of_action") or []))
+    package["relief_selection_summary"] = _relief_selection_summary(
+        list(package.get("requested_relief_annotations") or [])
+    )
 
     output_dir = Path(args.output_dir).resolve() if args.output_dir else results_path.parent / "complaint_synthesis"
     output_dir.mkdir(parents=True, exist_ok=True)
