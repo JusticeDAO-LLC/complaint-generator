@@ -580,11 +580,11 @@ class AdversarialSession:
         probe_candidates: List[tuple[str, str]] = []
         anchor_probe_map = {
             'grievance_hearing': (
-                "What grievance or hearing process were you told was available, and who was supposed to handle it?",
+                "What grievance or informal hearing process were you told was available, whether you requested it, and who was supposed to handle it?",
                 "anchor_grievance_hearing",
             ),
             'appeal_rights': (
-                "Were you given any appeal, review, or due-process rights, and did you try to use them?",
+                "Were you told you could request a grievance hearing, appeal, review, or other due-process rights, and did you try to use them?",
                 "anchor_appeal_rights",
             ),
             'reasonable_accommodation': (
