@@ -902,6 +902,121 @@ def _write_matrix_outputs(
     _write_markdown_report(summary_md, matrix_rows, recommendations, challenger_summary, winner_delta)
 
 
+def _rebuild_batch_result_from_preset_dir(
+    *,
+    preset: str,
+    preset_dir: Path,
+    backend_id: str,
+    selected_backend_healthy: bool,
+    backend_probe_attempts: List[Dict[str, Any]],
+    synthesis_filing_forum: str,
+) -> Dict[str, Any]:
+    results_path = preset_dir / "adversarial_results.json"
+    optimizer_path = preset_dir / "optimizer_report.json"
+    if not results_path.exists() or not optimizer_path.exists():
+        raise FileNotFoundError(f"Missing preset artifacts under {preset_dir}")
+
+    with results_path.open("r", encoding="utf-8") as handle:
+        results_payload = json.load(handle)
+    with optimizer_path.open("r", encoding="utf-8") as handle:
+        optimizer_report = json.load(handle)
+
+    synthesis_snapshot = _synthesize_claim_selection_snapshot(
+        preset=preset,
+        preset_dir=preset_dir,
+        filing_forum=synthesis_filing_forum,
+    )
+
+    sessions = list(results_payload.get("results") or [])
+    successful_sessions = [
+        session for session in sessions
+        if session.get("success") and isinstance(session.get("critic_score"), dict)
+    ]
+    scores = [
+        float((session.get("critic_score") or {}).get("overall_score", 0.0) or 0.0)
+        for session in successful_sessions
+    ]
+    average_score = sum(scores) / len(scores) if scores else 0.0
+
+    anchor_sections_expected: Dict[str, int] = {}
+    anchor_sections_covered: Dict[str, int] = {}
+    anchor_sections_missing: Dict[str, int] = {}
+    for session in successful_sessions:
+        critic = dict(session.get("critic_score") or {})
+        for key, target in (
+            ("anchor_sections_expected", anchor_sections_expected),
+            ("anchor_sections_covered", anchor_sections_covered),
+            ("anchor_sections_missing", anchor_sections_missing),
+        ):
+            for item in list(critic.get(key) or []):
+                label = str(item)
+                if label:
+                    target[label] = target.get(label, 0) + 1
+
+    all_sections = sorted(set(anchor_sections_expected) | set(anchor_sections_covered) | set(anchor_sections_missing))
+    coverage_by_section = {}
+    rates = []
+    for section in all_sections:
+        expected = anchor_sections_expected.get(section, 0)
+        covered = anchor_sections_covered.get(section, 0)
+        missing = anchor_sections_missing.get(section, 0)
+        rate = (covered / expected) if expected else 0.0
+        coverage_by_section[section] = {
+            "expected_count": expected,
+            "covered_count": covered,
+            "missing_count": missing,
+            "coverage_rate": rate,
+        }
+        rates.append(rate)
+    avg_anchor_coverage = sum(rates) / len(rates) if rates else 0.0
+    anchor_sections = {
+        "expected_counts": anchor_sections_expected,
+        "covered_counts": anchor_sections_covered,
+        "missing_counts": anchor_sections_missing,
+        "coverage_by_section": coverage_by_section,
+    }
+
+    router_status = "unknown"
+    run_summary_path = preset_dir / "run_summary.json"
+    if run_summary_path.exists():
+        with run_summary_path.open("r", encoding="utf-8") as handle:
+            run_summary = json.load(handle)
+        router_status = str(((run_summary.get("router_report") or {}).get("status")) or router_status)
+
+    statistics = {
+        "average_score": average_score,
+        "successful_sessions": len(successful_sessions),
+        "total_sessions": len(sessions),
+        "anchor_sections": anchor_sections,
+    }
+    top_missing_sections = _top_missing_sections(anchor_sections)
+    missing_sections = ",".join(sorted(anchor_sections_missing.keys()))
+
+    return {
+        "preset": preset,
+        "backend_id": backend_id,
+        "selected_backend_healthy": selected_backend_healthy,
+        "average_score": average_score,
+        "successful_sessions": len(successful_sessions),
+        "total_sessions": len(sessions),
+        "anchor_coverage": avg_anchor_coverage,
+        "top_missing_sections": top_missing_sections,
+        "missing_sections": missing_sections,
+        "output_dir": str(preset_dir),
+        "router_status": router_status,
+        "backend_probe_attempts": backend_probe_attempts,
+        "router_report": {},
+        "statistics": statistics,
+        "optimizer_report": optimizer_report,
+        "claim_selection_summary": synthesis_snapshot["claim_selection_summary"],
+        "claim_selection_overview": synthesis_snapshot["claim_selection_overview"],
+        "relief_selection_summary": synthesis_snapshot["relief_selection_summary"],
+        "relief_selection_overview": synthesis_snapshot["relief_selection_overview"],
+        "claim_theory_families": synthesis_snapshot["claim_theory_families"],
+        "synthesis_output_dir": synthesis_snapshot["synthesis_output_dir"],
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run multiple HACC adversarial presets and write a comparison report."
@@ -949,6 +1064,11 @@ def main() -> int:
         action="store_true",
         help="Continue building the matrix summary from presets that finish successfully even if another preset fails.",
     )
+    parser.add_argument(
+        "--rebuild-existing",
+        action="store_true",
+        help="Rebuild matrix summary/report from preset subdirectories already present under --output-dir.",
+    )
     args = parser.parse_args()
 
     from adversarial_harness import HACC_QUERY_PRESETS
@@ -980,24 +1100,34 @@ def main() -> int:
     for preset in requested_presets:
         preset_dir = output_dir / preset
         try:
-            batch_result = _run_preset_batch(
-                preset=preset,
-                preset_dir=preset_dir,
-                backend_id=selected_backend_id,
-                backend_kwargs=backend_kwargs,
-                backend_probe_attempts=probe_attempts,
-                selected_backend_healthy=selected_backend_healthy,
-                embeddings_config=embeddings_config,
-                num_sessions=args.num_sessions,
-                hacc_count=args.hacc_count,
-                max_turns=args.max_turns,
-                max_parallel=args.max_parallel,
-                use_vector_search=args.use_vector_search,
-                probe_llm_router=args.probe_llm_router,
-                probe_embeddings_router=args.probe_embeddings_router,
-                disable_local_ipfs_fallback=args.disable_local_ipfs_fallback,
-                synthesis_filing_forum=args.synthesis_filing_forum,
-            )
+            if args.rebuild_existing:
+                batch_result = _rebuild_batch_result_from_preset_dir(
+                    preset=preset,
+                    preset_dir=preset_dir,
+                    backend_id=selected_backend_id,
+                    selected_backend_healthy=selected_backend_healthy,
+                    backend_probe_attempts=probe_attempts,
+                    synthesis_filing_forum=args.synthesis_filing_forum,
+                )
+            else:
+                batch_result = _run_preset_batch(
+                    preset=preset,
+                    preset_dir=preset_dir,
+                    backend_id=selected_backend_id,
+                    backend_kwargs=backend_kwargs,
+                    backend_probe_attempts=probe_attempts,
+                    selected_backend_healthy=selected_backend_healthy,
+                    embeddings_config=embeddings_config,
+                    num_sessions=args.num_sessions,
+                    hacc_count=args.hacc_count,
+                    max_turns=args.max_turns,
+                    max_parallel=args.max_parallel,
+                    use_vector_search=args.use_vector_search,
+                    probe_llm_router=args.probe_llm_router,
+                    probe_embeddings_router=args.probe_embeddings_router,
+                    disable_local_ipfs_fallback=args.disable_local_ipfs_fallback,
+                    synthesis_filing_forum=args.synthesis_filing_forum,
+                )
         except Exception as exc:
             if not args.continue_on_error:
                 raise

@@ -948,6 +948,49 @@ def test_merge_seed_with_grounding_uses_matched_rule_when_snippet_is_generic_cha
     assert "If HUD has issued a due process determination" in merged["key_facts"]["anchor_passages"][0]["snippet"]
 
 
+def test_merge_seed_with_grounding_refreshes_grievance_procedure_with_due_process_section(tmp_path):
+    source_path = tmp_path / "policy.txt"
+    source_path.write_text(
+        "I. Definitions applicable to the grievance procedure [24 CFR 966.53]\n\n"
+        "A. Grievance: Any dispute a tenant may have with respect to HACC action or failure to act in accordance with the individual tenant's lease or HACC regulations that adversely affects the individual tenant's rights, duties, welfare, or status.\n\n"
+        "B. Complainant: Any tenant whose grievance is presented to HACC.\n\n"
+        "C. Elements of due process: An eviction action or a termination of tenancy in a state or local court in which adequate notice and an opportunity to refute the evidence are required.\n",
+        encoding="utf-8",
+    )
+
+    seed = {
+        "key_facts": {
+            "anchor_terms": ["grievance", "hearing", "appeal"],
+            "anchor_passages": [
+                {
+                    "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+                    "source_path": str(source_path),
+                    "snippet": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+                    "section_labels": ["grievance_hearing"],
+                }
+            ],
+        },
+        "hacc_evidence": [
+            {
+                "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+                "source_path": str(source_path),
+                "snippet": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+                "matched_rules": [
+                    {
+                        "text": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+                        "section_title": "I. Definitions applicable to the grievance procedure [24 CFR 966.53]",
+                    }
+                ],
+            }
+        ],
+    }
+
+    merged = MODULE._merge_seed_with_grounding(seed, {})
+
+    assert "C. Elements of due process" in merged["hacc_evidence"][0]["snippet"]
+    assert "C. Elements of due process" in merged["key_facts"]["anchor_passages"][0]["snippet"]
+
+
 def test_best_grounding_result_excerpt_combines_truncated_rule_with_followup_rule():
     item = {
         "snippet": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",

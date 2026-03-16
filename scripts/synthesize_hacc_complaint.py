@@ -1156,10 +1156,15 @@ def _refresh_snippet_from_source(
     refresh_terms = _refresh_anchor_terms(anchor_terms, fallback_snippet)
     if not source_path or not refresh_terms:
         return _clean_policy_text(fallback_snippet)
+    window_chars = 520
+    combined_terms = " ".join(refresh_terms).lower()
+    if any(term in combined_terms for term in ("definitions applicable to the grievance procedure", "elements of due process", "grievance procedure")):
+        window_chars = 900
     refreshed = _extract_grounded_source_window(
         source_path=source_path,
         anchor_terms=refresh_terms,
         fallback_snippet=fallback_snippet,
+        window_chars=window_chars,
     )
     return _clean_policy_text(refreshed or fallback_snippet)
 
