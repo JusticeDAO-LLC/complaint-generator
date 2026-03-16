@@ -836,6 +836,8 @@ def _run_preset_batch(
         "optimizer_report": optimizer_report,
         "claim_selection_summary": synthesis_snapshot["claim_selection_summary"],
         "claim_selection_overview": synthesis_snapshot["claim_selection_overview"],
+        "relief_selection_summary": synthesis_snapshot["relief_selection_summary"],
+        "relief_selection_overview": synthesis_snapshot["relief_selection_overview"],
         "claim_theory_families": synthesis_snapshot["claim_theory_families"],
         "synthesis_output_dir": synthesis_snapshot["synthesis_output_dir"],
     }
