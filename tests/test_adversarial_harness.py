@@ -803,17 +803,28 @@ class TestSeedComplaintLibrary:
         assert 'Page 10-23' not in expanded
         assert 'Absorbing a Portable Family' not in expanded
 
-    def test_build_hacc_mediator_evidence_packet_prefers_source_files(self, tmp_path):
-        source_path = tmp_path / 'policy.txt'
-        source_path.write_text('Full policy text about grievance hearings and impartial review.', encoding='utf-8')
-
+    def test_build_hacc_mediator_evidence_packet_prefers_grounded_seed_packets(self, tmp_path):
+        source_path = tmp_path / 'policy.pdf'
         packet = build_hacc_mediator_evidence_packet(
             {
                 'type': 'housing_discrimination',
                 'key_facts': {
                     'evidence_query': 'grievance hearing',
-                    'source_paths': [str(source_path)],
                     'anchor_sections': ['grievance_hearing'],
+                    'mediator_evidence_packets': [
+                        {
+                            'document_text': 'Grounded extracted policy text about grievance hearings and impartial review.',
+                            'document_label': 'ADMINISTRATIVE PLAN',
+                            'source_path': str(source_path),
+                            'filename': 'policy.txt',
+                            'mime_type': 'text/plain',
+                            'metadata': {
+                                'anchor_sections': ['grievance_hearing'],
+                                'upload_strategy': 'extracted_text_fallback',
+                                'original_mime_type': 'application/pdf',
+                            },
+                        }
+                    ],
                 },
                 'hacc_evidence': [
                     {'title': 'ADMINISTRATIVE PLAN', 'source_path': str(source_path), 'snippet': 'Short snippet'},
@@ -822,8 +833,9 @@ class TestSeedComplaintLibrary:
         )
 
         assert len(packet) == 1
-        assert packet[0]['document_text'].startswith('Full policy text')
+        assert packet[0]['document_text'].startswith('Grounded extracted policy text')
         assert packet[0]['metadata']['anchor_sections'] == ['grievance_hearing']
+        assert packet[0]['metadata']['upload_strategy'] == 'extracted_text_fallback'
 
 
 class TestAdversarialSession:
@@ -962,6 +974,60 @@ SUGGESTIONS:
         assert 'reasonable accommodation' in probe['question'].lower()
         assert probe['question_reason'] == 'Harness fallback probe to cover a missing intake objective.'
 
+    def test_fallback_probe_for_appeal_rights_also_mentions_grievance_hearing(self):
+        session = AdversarialSession(
+            "test_session",
+            Complainant(MockLLMBackend()),
+            MockMediator(),
+            Critic(MockLLMBackend()),
+            max_turns=3,
+        )
+
+        probe = session._build_fallback_probe(
+            asked_question_counts={},
+            asked_intent_counts={},
+            need_timeline=False,
+            need_harm_remedy=False,
+            need_actor_decisionmaker=False,
+            need_documentary_evidence=False,
+            need_witness=False,
+            last_question_key=None,
+            last_question_intent_key=None,
+            recent_intent_keys=set(),
+            missing_anchor_sections={'appeal_rights'},
+        )
+
+        assert probe is not None
+        assert 'grievance hearing' in probe['question'].lower()
+        assert 'due-process rights' in probe['question'].lower()
+
+    def test_fallback_probe_prefers_harm_remedy_before_timeline_after_anchor_coverage(self):
+        session = AdversarialSession(
+            "test_session",
+            Complainant(MockLLMBackend()),
+            MockMediator(),
+            Critic(MockLLMBackend()),
+            max_turns=3,
+        )
+
+        probe = session._build_fallback_probe(
+            asked_question_counts={},
+            asked_intent_counts={},
+            need_timeline=True,
+            need_harm_remedy=True,
+            need_actor_decisionmaker=False,
+            need_documentary_evidence=False,
+            need_witness=False,
+            last_question_key=None,
+            last_question_intent_key=None,
+            recent_intent_keys=set(),
+            missing_anchor_sections=set(),
+        )
+
+        assert probe is not None
+        assert probe['type'] == 'harm_remedy'
+        assert 'what concrete harms did this cause you' in probe['question'].lower()
+
     def test_select_next_question_uses_question_objective_metadata(self):
         session = AdversarialSession(
             "test_session",
@@ -1066,6 +1132,15 @@ SUGGESTIONS:
         assert 'reasonable_accommodation' in covered
         assert 'appeal_rights' in covered
         assert 'grievance_hearing' not in covered
+
+    def test_covered_anchor_sections_from_combined_due_process_question(self):
+        covered = AdversarialSession._covered_anchor_sections_from_questions(
+            ['were you told you could request a grievance hearing, appeal, review, or other due-process rights'],
+            {'appeal_rights', 'grievance_hearing'},
+        )
+
+        assert 'appeal_rights' in covered
+        assert 'grievance_hearing' in covered
 
 
 class TestAdversarialHarness:
@@ -1374,8 +1449,7 @@ class TestAdversarialHarness:
         assert results[0].seed_complaint['_meta']['anchor_sections'] == ['grievance_hearing', 'appeal_rights']
 
     def test_preload_hacc_seed_evidence_submits_documents_to_mediator(self, tmp_path):
-        source_path = tmp_path / 'policy.txt'
-        source_path.write_text('Full policy text about due process and grievance hearings.', encoding='utf-8')
+        source_path = tmp_path / 'policy.pdf'
 
         harness = AdversarialHarness(
             MockLLMBackend(),
@@ -1396,8 +1470,20 @@ class TestAdversarialHarness:
             'summary': 'Grounded HACC complaint seed',
             'key_facts': {
                 'evidence_query': 'grievance hearing due process',
-                'source_paths': [str(source_path)],
                 'anchor_sections': ['grievance_hearing'],
+                'mediator_evidence_packets': [
+                    {
+                        'document_text': 'Grounded extracted due process evidence text.',
+                        'document_label': 'ADMINISTRATIVE PLAN',
+                        'source_path': str(source_path),
+                        'filename': 'policy.txt',
+                        'mime_type': 'text/plain',
+                        'metadata': {
+                            'upload_strategy': 'extracted_text_fallback',
+                            'original_mime_type': 'application/pdf',
+                        },
+                    }
+                ],
             },
             'hacc_evidence': [{'title': 'ADMINISTRATIVE PLAN', 'source_path': str(source_path)}],
         }
@@ -1408,7 +1494,9 @@ class TestAdversarialHarness:
         assert len(captured) == 1
         assert captured[0]['user_id'] == 'session_123'
         assert captured[0]['claim_type'] == 'housing_discrimination'
-        assert 'Full policy text about due process' in captured[0]['document_text']
+        assert captured[0]['document_text'] == 'Grounded extracted due process evidence text.'
+        assert captured[0]['mime_type'] == 'text/plain'
+        assert captured[0]['metadata']['upload_strategy'] == 'extracted_text_fallback'
 
     def test_ensure_session_db_paths_rebinds_shared_storage_hooks(self):
         harness = AdversarialHarness(

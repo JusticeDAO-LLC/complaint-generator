@@ -141,8 +141,73 @@ def _attach_recommendation_claim_snapshots(
         row = row_by_preset.get(preset, {})
         if row.get("claim_selection_overview"):
             item["claim_selection_overview"] = row["claim_selection_overview"]
+        if row.get("claim_theory_families"):
+            item["claim_theory_families"] = list(row["claim_theory_families"])
         if row.get("synthesis_output_dir"):
             item["synthesis_output_dir"] = row["synthesis_output_dir"]
+        enriched[key] = item
+    return enriched
+
+
+def _recommendation_use_note(families: List[str]) -> str:
+    ordered = [family for family in families if family]
+    if not ordered:
+        return ""
+    family_labels = {
+        "process": "process framing",
+        "accommodation": "accommodation framing",
+        "protected_basis": "protected-basis framing",
+        "retaliation": "retaliation-heavy framing",
+        "selection_criteria": "selection-criteria framing",
+        "other": "general complaint framing",
+    }
+    labels = [family_labels.get(family, family.replace("_", " ")) for family in ordered]
+    if len(labels) == 1:
+        return f"best for {labels[0]}"
+    if len(labels) == 2:
+        return f"best for {labels[0]} + {labels[1]}"
+    return f"best for {', '.join(labels[:-1])}, and {labels[-1]}"
+
+
+def _family_focus_phrase(families: List[str]) -> str:
+    note = _recommendation_use_note(families)
+    return note.replace("best for ", "", 1) if note.startswith("best for ") else note
+
+
+def _recommendation_tradeoff_note(winner_delta: Dict[str, Any]) -> str:
+    winner_only = list(winner_delta.get("winner_only_theory_families") or [])
+    runner_only = list(winner_delta.get("runner_up_only_theory_families") or [])
+    winner_phrase = _family_focus_phrase(winner_only)
+    runner_phrase = _family_focus_phrase(runner_only)
+    if winner_phrase and runner_phrase:
+        return f"best for {winner_phrase}; runner-up is stronger on {runner_phrase}"
+    if winner_phrase:
+        return f"best for {winner_phrase}"
+    if runner_phrase:
+        return f"runner-up is stronger on {runner_phrase}"
+    return ""
+
+
+def _attach_recommendation_tradeoff_notes(
+    recommendations: Dict[str, Dict[str, Any]],
+    winner_delta: Dict[str, Any],
+) -> Dict[str, Dict[str, Any]]:
+    if not recommendations or not winner_delta:
+        return recommendations
+
+    winner_preset = str(winner_delta.get("winner_preset") or "")
+    if not winner_preset:
+        return recommendations
+
+    tradeoff_note = _recommendation_tradeoff_note(winner_delta)
+    if not tradeoff_note:
+        return recommendations
+
+    enriched: Dict[str, Dict[str, Any]] = {}
+    for key, payload in recommendations.items():
+        item = dict(payload or {})
+        if str(item.get("preset") or "") == winner_preset:
+            item["tradeoff_note"] = tradeoff_note
         enriched[key] = item
     return enriched
 
@@ -152,18 +217,30 @@ def _write_markdown_report(
     rows: List[Dict[str, Any]],
     recommendations: Dict[str, Dict[str, Any]],
     champion_challenger: Dict[str, Any] | None = None,
+    winner_delta: Dict[str, Any] | None = None,
 ) -> None:
     lines = [
         "# HACC Preset Matrix",
         "",
     ]
     if recommendations:
+        def _recommendation_label(key: str, payload: Dict[str, Any]) -> str:
+            family_list = list(payload.get("claim_theory_families") or [])
+            families = ", ".join(family_list)
+            use_note = str(payload.get("tradeoff_note") or "")
+            if not use_note:
+                use_note = _recommendation_use_note(family_list)
+            suffix = f" ({families})" if families else ""
+            if use_note:
+                suffix += f" - {use_note}"
+            return f"- {key}: `{payload.get('preset')}`{suffix}"
+
         lines.extend([
             "## Recommendations",
             "",
-            f"- Best overall: `{recommendations['best_overall']['preset']}`",
-            f"- Best anchor coverage: `{recommendations['best_anchor_coverage']['preset']}`",
-            f"- Best balanced: `{recommendations['best_balanced']['preset']}`",
+            _recommendation_label("Best overall", dict(recommendations.get("best_overall") or {})),
+            _recommendation_label("Best anchor coverage", dict(recommendations.get("best_anchor_coverage") or {})),
+            _recommendation_label("Best balanced", dict(recommendations.get("best_balanced") or {})),
             "",
         ])
         best_overall = dict(recommendations.get("best_overall") or {})
@@ -175,6 +252,41 @@ def _write_markdown_report(
             ])
             if best_overall.get("synthesis_output_dir"):
                 lines.append(f"- Complaint synthesis: `{best_overall['synthesis_output_dir']}`")
+            lines.extend(["",])
+        delta = dict(winner_delta or {})
+        if delta:
+            lines.extend([
+                "### Winner Vs Runner-Up",
+                "",
+                f"- Winner: `{delta.get('winner_preset')}`",
+                f"- Runner-up: `{delta.get('runner_up_preset')}`",
+            ])
+            winner_only = list(delta.get("winner_only_claims") or [])
+            runner_only = list(delta.get("runner_up_only_claims") or [])
+            winner_only_families = list(delta.get("winner_only_theory_families") or [])
+            runner_only_families = list(delta.get("runner_up_only_theory_families") or [])
+            shared_families = list(delta.get("shared_theory_families") or [])
+            changed_shared = list(delta.get("changed_shared_claims") or [])
+            if winner_only_families:
+                lines.append(f"- Winner-only theory families: {', '.join(winner_only_families)}")
+            if runner_only_families:
+                lines.append(f"- Runner-up-only theory families: {', '.join(runner_only_families)}")
+            if shared_families:
+                lines.append(f"- Shared theory families: {', '.join(shared_families)}")
+            if winner_only:
+                lines.append(f"- Winner-only claims: {', '.join(winner_only)}")
+            if runner_only:
+                lines.append(f"- Runner-up-only claims: {', '.join(runner_only)}")
+            for item in changed_shared:
+                lines.append(
+                    "- Shared claim changed: {title} | winner tags={winner_tags} | runner-up tags={runner_tags} | winner exhibits={winner_exhibits} | runner-up exhibits={runner_up_exhibits}".format(
+                        title=item.get("title") or "",
+                        winner_tags=", ".join(item.get("winner_tags") or []) or "none",
+                        runner_tags=", ".join(item.get("runner_up_tags") or []) or "none",
+                        winner_exhibits="; ".join(item.get("winner_exhibits") or []) or "none",
+                        runner_up_exhibits="; ".join(item.get("runner_up_exhibits") or []) or "none",
+                    )
+                )
             lines.extend(["",])
     lines.extend([
         "| Preset | Backend | Avg Score | Success | Anchor Coverage | Router | Top Missing Sections | Missing Sections | Output Dir |",
@@ -233,6 +345,41 @@ def _write_markdown_report(
             ])
             if champion_best.get("synthesis_output_dir"):
                 lines.append(f"- Complaint synthesis: `{champion_best['synthesis_output_dir']}`")
+        champion_delta = dict(champion.get("winner_delta") or {})
+        if champion_delta:
+            lines.extend([
+                "",
+                "### Champion Delta",
+                "",
+                f"- Winner: `{champion_delta.get('winner_preset')}`",
+                f"- Runner-up: `{champion_delta.get('runner_up_preset')}`",
+            ])
+            winner_only = list(champion_delta.get("winner_only_claims") or [])
+            runner_only = list(champion_delta.get("runner_up_only_claims") or [])
+            winner_only_families = list(champion_delta.get("winner_only_theory_families") or [])
+            runner_only_families = list(champion_delta.get("runner_up_only_theory_families") or [])
+            shared_families = list(champion_delta.get("shared_theory_families") or [])
+            changed_shared = list(champion_delta.get("changed_shared_claims") or [])
+            if winner_only_families:
+                lines.append(f"- Winner-only theory families: {', '.join(winner_only_families)}")
+            if runner_only_families:
+                lines.append(f"- Runner-up-only theory families: {', '.join(runner_only_families)}")
+            if shared_families:
+                lines.append(f"- Shared theory families: {', '.join(shared_families)}")
+            if winner_only:
+                lines.append(f"- Winner-only claims: {', '.join(winner_only)}")
+            if runner_only:
+                lines.append(f"- Runner-up-only claims: {', '.join(runner_only)}")
+            for item in changed_shared:
+                lines.append(
+                    "- Shared claim changed: {title} | winner tags={winner_tags} | runner-up tags={runner_tags} | winner exhibits={winner_exhibits} | runner-up exhibits={runner_up_exhibits}".format(
+                        title=item.get("title") or "",
+                        winner_tags=", ".join(item.get("winner_tags") or []) or "none",
+                        runner_tags=", ".join(item.get("runner_up_tags") or []) or "none",
+                        winner_exhibits="; ".join(item.get("winner_exhibits") or []) or "none",
+                        runner_up_exhibits="; ".join(item.get("runner_up_exhibits") or []) or "none",
+                    )
+                )
         lines.append("")
     filepath.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -270,6 +417,109 @@ def _compact_claim_selection_summary(summary: List[Dict[str, Any]], limit: int =
         else:
             parts.append(title)
     return " | ".join(parts)
+
+
+def _claim_summary_title_map(summary: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    return {
+        str(item.get("title") or "").strip(): dict(item)
+        for item in summary
+        if str(item.get("title") or "").strip()
+    }
+
+
+def _claim_exhibit_labels(item: Dict[str, Any]) -> List[str]:
+    return [
+        f"{entry.get('exhibit_id')}: {entry.get('label')}"
+        for entry in list(item.get("selected_exhibits") or [])
+        if entry.get("exhibit_id") and entry.get("label")
+    ]
+
+
+def _semantic_theory_labels(item: Dict[str, Any]) -> List[str]:
+    title = str(item.get("title") or "").lower()
+    tags = [str(tag).lower() for tag in list(item.get("selection_tags") or []) if str(tag)]
+    combined = " ".join([title, " ".join(tags)])
+    families: List[str] = []
+    checks = (
+        ("process", ("process", "notice", "hearing", "appeal", "adverse action", "adverse_action")),
+        ("accommodation", ("accommodation", "reasonable_accommodation", "contact", "section 504", "ada")),
+        ("protected_basis", ("protected-basis", "protected basis", "protected_basis", "discrimination")),
+        ("retaliation", ("retaliation", "retaliat")),
+        ("selection_criteria", ("selection criteria", "selection_criteria", "criteria", "proxy")),
+    )
+    for label, patterns in checks:
+        if any(pattern in combined for pattern in patterns):
+            families.append(label)
+    return families or ["other"]
+
+
+def _claim_selection_theory_families(summary: List[Dict[str, Any]]) -> List[str]:
+    return sorted({label for item in summary for label in _semantic_theory_labels(item)})
+
+
+def _build_claim_snapshot_delta(
+    rows: List[Dict[str, Any]],
+    details: List[Dict[str, Any]],
+    recommendations: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    if len(rows) < 2 or not recommendations:
+        return {}
+
+    winner_preset = str((recommendations.get("best_overall") or {}).get("preset") or "")
+    if not winner_preset:
+        return {}
+
+    runner_up_row = next((row for row in rows if str(row.get("preset") or "") != winner_preset), None)
+    if not runner_up_row:
+        return {}
+
+    detail_by_preset = {str(item.get("preset") or ""): item for item in details}
+    winner_detail = detail_by_preset.get(winner_preset, {})
+    runner_detail = detail_by_preset.get(str(runner_up_row.get("preset") or ""), {})
+    winner_summary = list(winner_detail.get("claim_selection_summary") or [])
+    runner_summary = list(runner_detail.get("claim_selection_summary") or [])
+    if not winner_summary and not runner_summary:
+        return {}
+
+    winner_map = _claim_summary_title_map(winner_summary)
+    runner_map = _claim_summary_title_map(runner_summary)
+    winner_titles = set(winner_map)
+    runner_titles = set(runner_map)
+    shared_titles = sorted(winner_titles & runner_titles)
+    winner_semantic = sorted({label for item in winner_summary for label in _semantic_theory_labels(item)})
+    runner_semantic = sorted({label for item in runner_summary for label in _semantic_theory_labels(item)})
+
+    changed_shared_claims: List[Dict[str, Any]] = []
+    for title in shared_titles:
+        winner_item = winner_map[title]
+        runner_item = runner_map[title]
+        winner_exhibits = _claim_exhibit_labels(winner_item)
+        runner_exhibits = _claim_exhibit_labels(runner_item)
+        winner_tags = [str(tag) for tag in list(winner_item.get("selection_tags") or []) if str(tag)]
+        runner_tags = [str(tag) for tag in list(runner_item.get("selection_tags") or []) if str(tag)]
+        if winner_exhibits != runner_exhibits or winner_tags != runner_tags:
+            changed_shared_claims.append(
+                {
+                    "title": title,
+                    "winner_exhibits": winner_exhibits,
+                    "runner_up_exhibits": runner_exhibits,
+                    "winner_tags": winner_tags,
+                    "runner_up_tags": runner_tags,
+                }
+            )
+
+    return {
+        "winner_preset": winner_preset,
+        "runner_up_preset": str(runner_up_row.get("preset") or ""),
+        "winner_overview": winner_detail.get("claim_selection_overview") or "",
+        "runner_up_overview": runner_detail.get("claim_selection_overview") or "",
+        "winner_only_claims": sorted(winner_titles - runner_titles),
+        "runner_up_only_claims": sorted(runner_titles - winner_titles),
+        "winner_only_theory_families": sorted(set(winner_semantic) - set(runner_semantic)),
+        "runner_up_only_theory_families": sorted(set(runner_semantic) - set(winner_semantic)),
+        "shared_theory_families": sorted(set(winner_semantic) & set(runner_semantic)),
+        "changed_shared_claims": changed_shared_claims,
+    }
 
 
 def _synthesize_claim_selection_snapshot(
@@ -317,6 +567,7 @@ def _synthesize_claim_selection_snapshot(
     }
     synthesis._inject_exhibit_references(package)
     package["claim_selection_summary"] = synthesis._claim_selection_summary(list(package.get("causes_of_action") or []))
+    theory_families = _claim_selection_theory_families(package["claim_selection_summary"])
 
     output_dir = preset_dir / "complaint_synthesis"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -326,6 +577,7 @@ def _synthesize_claim_selection_snapshot(
     return {
         "claim_selection_summary": package["claim_selection_summary"],
         "claim_selection_overview": _compact_claim_selection_summary(package["claim_selection_summary"]),
+        "claim_theory_families": theory_families,
         "synthesis_output_dir": str(output_dir),
     }
 
@@ -432,6 +684,7 @@ def _run_preset_batch(
         "optimizer_report": optimizer_report,
         "claim_selection_summary": synthesis_snapshot["claim_selection_summary"],
         "claim_selection_overview": synthesis_snapshot["claim_selection_overview"],
+        "claim_theory_families": synthesis_snapshot["claim_theory_families"],
         "synthesis_output_dir": synthesis_snapshot["synthesis_output_dir"],
     }
 
@@ -537,6 +790,7 @@ def main() -> int:
             "missing_sections": batch_result["missing_sections"],
             "output_dir": batch_result["output_dir"],
             "claim_selection_overview": batch_result["claim_selection_overview"],
+            "claim_theory_families": batch_result["claim_theory_families"],
             "synthesis_output_dir": batch_result["synthesis_output_dir"],
         }
         matrix_rows.append(row)
@@ -552,6 +806,7 @@ def main() -> int:
                 "router_report": batch_result["router_report"],
                 "claim_selection_summary": batch_result["claim_selection_summary"],
                 "claim_selection_overview": batch_result["claim_selection_overview"],
+                "claim_theory_families": batch_result["claim_theory_families"],
                 "synthesis_output_dir": batch_result["synthesis_output_dir"],
             }
         )
@@ -559,6 +814,8 @@ def main() -> int:
     matrix_rows.sort(key=lambda row: (-row["average_score"], -row["anchor_coverage"], row["preset"]))
     recommendations = _select_matrix_recommendations(matrix_rows)
     recommendations = _attach_recommendation_claim_snapshots(recommendations, matrix_rows)
+    winner_delta = _build_claim_snapshot_delta(matrix_rows, full_results, recommendations)
+    recommendations = _attach_recommendation_tradeoff_notes(recommendations, winner_delta)
 
     summary_json = output_dir / "preset_matrix_summary.json"
     summary_csv = output_dir / "preset_matrix_summary.csv"
@@ -569,6 +826,7 @@ def main() -> int:
         rerun_dir = output_dir / "champion_challenger"
         rerun_dir.mkdir(parents=True, exist_ok=True)
         challenger_rows: List[Dict[str, Any]] = []
+        challenger_details: List[Dict[str, Any]] = []
         top_presets = [row["preset"] for row in matrix_rows[: args.top_k_rerun]]
         for preset in top_presets:
             batch_result = _run_preset_batch(
@@ -604,8 +862,17 @@ def main() -> int:
                         "output_dir",
                         "router_status",
                         "claim_selection_overview",
+                        "claim_theory_families",
                         "synthesis_output_dir",
                     )
+                }
+            )
+            challenger_details.append(
+                {
+                    "preset": batch_result["preset"],
+                    "claim_selection_overview": batch_result["claim_selection_overview"],
+                    "claim_selection_summary": batch_result["claim_selection_summary"],
+                    "claim_theory_families": batch_result["claim_theory_families"],
                 }
             )
         challenger_rows.sort(key=lambda row: (-row["average_score"], -row["anchor_coverage"], row["preset"]))
@@ -619,6 +886,15 @@ def main() -> int:
             ),
             "output_dir": str(rerun_dir),
         }
+        challenger_summary["winner_delta"] = _build_claim_snapshot_delta(
+            challenger_rows,
+            challenger_details,
+            challenger_summary["recommendations"],
+        )
+        challenger_summary["recommendations"] = _attach_recommendation_tradeoff_notes(
+            challenger_summary["recommendations"],
+            challenger_summary["winner_delta"],
+        )
 
     with open(summary_json, "w", encoding="utf-8") as handle:
         json.dump(
@@ -626,6 +902,7 @@ def main() -> int:
                 "timestamp": datetime.now(UTC).isoformat(),
                 "presets": requested_presets,
                 "recommendations": recommendations,
+                "winner_delta": winner_delta,
                 "rows": matrix_rows,
                 "details": full_results,
                 "champion_challenger": challenger_summary,
@@ -649,6 +926,7 @@ def main() -> int:
                 "missing_sections",
                 "output_dir",
                 "claim_selection_overview",
+                "claim_theory_families",
                 "synthesis_output_dir",
             ],
         )
@@ -656,15 +934,26 @@ def main() -> int:
         for row in matrix_rows:
             writer.writerow(row)
 
-    _write_markdown_report(summary_md, matrix_rows, recommendations, challenger_summary)
+    _write_markdown_report(summary_md, matrix_rows, recommendations, challenger_summary, winner_delta)
 
     print(f"Saved preset matrix outputs to {output_dir}")
     if recommendations:
+        def _recommendation_console_suffix(payload: Dict[str, Any]) -> str:
+            family_list = list(payload.get("claim_theory_families") or [])
+            families = ", ".join(family_list)
+            use_note = str(payload.get("tradeoff_note") or "")
+            if not use_note:
+                use_note = _recommendation_use_note(family_list)
+            suffix = f" ({families})" if families else ""
+            if use_note:
+                suffix += f" - {use_note}"
+            return suffix
+
         print(
             "Recommendations: "
-            f"best_overall={recommendations['best_overall']['preset']}, "
-            f"best_anchor_coverage={recommendations['best_anchor_coverage']['preset']}, "
-            f"best_balanced={recommendations['best_balanced']['preset']}"
+            f"best_overall={recommendations['best_overall']['preset']}{_recommendation_console_suffix(dict(recommendations.get('best_overall') or {}))}, "
+            f"best_anchor_coverage={recommendations['best_anchor_coverage']['preset']}{_recommendation_console_suffix(dict(recommendations.get('best_anchor_coverage') or {}))}, "
+            f"best_balanced={recommendations['best_balanced']['preset']}{_recommendation_console_suffix(dict(recommendations.get('best_balanced') or {}))}"
         )
     for row in matrix_rows:
         print(
@@ -682,11 +971,22 @@ def main() -> int:
             f"reran top {args.top_k_rerun} presets with {args.champion_sessions} sessions each"
         )
         if challenger_recs:
+            def _challenger_suffix(payload: Dict[str, Any]) -> str:
+                family_list = list(payload.get("claim_theory_families") or [])
+                families = ", ".join(family_list)
+                use_note = str(payload.get("tradeoff_note") or "")
+                if not use_note:
+                    use_note = _recommendation_use_note(family_list)
+                suffix = f" ({families})" if families else ""
+                if use_note:
+                    suffix += f" - {use_note}"
+                return suffix
+
             print(
                 "Champion/challenger recommendations: "
-                f"best_overall={challenger_recs['best_overall']['preset']}, "
-                f"best_anchor_coverage={challenger_recs['best_anchor_coverage']['preset']}, "
-                f"best_balanced={challenger_recs['best_balanced']['preset']}"
+                f"best_overall={challenger_recs['best_overall']['preset']}{_challenger_suffix(dict(challenger_recs.get('best_overall') or {}))}, "
+                f"best_anchor_coverage={challenger_recs['best_anchor_coverage']['preset']}{_challenger_suffix(dict(challenger_recs.get('best_anchor_coverage') or {}))}, "
+                f"best_balanced={challenger_recs['best_balanced']['preset']}{_challenger_suffix(dict(challenger_recs.get('best_balanced') or {}))}"
             )
     return 0
 

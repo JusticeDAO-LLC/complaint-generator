@@ -580,11 +580,11 @@ class AdversarialSession:
         probe_candidates: List[tuple[str, str]] = []
         anchor_probe_map = {
             'grievance_hearing': (
-                "What grievance or hearing process were you told was available, and who was supposed to handle it?",
+                "What grievance or informal hearing process were you told was available, whether you requested it, and who was supposed to handle it?",
                 "anchor_grievance_hearing",
             ),
             'appeal_rights': (
-                "Were you given any appeal, review, or due-process rights, and did you try to use them?",
+                "Were you told you could request a grievance hearing, appeal, review, or other due-process rights, and did you try to use them?",
                 "anchor_appeal_rights",
             ),
             'reasonable_accommodation': (
@@ -604,15 +604,15 @@ class AdversarialSession:
             probe = anchor_probe_map.get(section)
             if probe:
                 probe_candidates.append(probe)
-        if need_timeline:
-            probe_candidates.append((
-                "What are the most precise dates or date ranges for each key event, starting with the first incident?",
-                "timeline",
-            ))
         if need_harm_remedy:
             probe_candidates.append((
                 "What concrete harms did this cause you, and what specific remedy are you requesting?",
                 "harm_remedy",
+            ))
+        if need_timeline:
+            probe_candidates.append((
+                "What are the most precise dates or date ranges for each key event, starting with the first incident?",
+                "timeline",
             ))
         if need_actor_decisionmaker:
             probe_candidates.append((

@@ -31,6 +31,46 @@ def test_clean_policy_text_keeps_descriptive_policy_phrase():
     assert MODULE._clean_policy_text(text) == text
 
 
+def test_conversation_facts_excludes_scorecard_style_responses():
+    facts = MODULE._conversation_facts(
+        [
+            {"role": "complainant", "content": "SCORES:\nquestion_quality: 0.72\nFEEDBACK:\nGood coverage."},
+            {"role": "complainant", "content": "I complained and then received a termination notice two days later."},
+        ]
+    )
+
+    assert facts == ["I complained and then received a termination notice two days later."]
+
+
+def test_summarize_policy_excerpt_avoids_table_of_contents_text():
+    text = "14 GRIEVANCES AND APPEALS INTRODUCTION ........ 14-1 PART I: INFORMAL HEARINGS ........ 14-2"
+
+    summary = MODULE._summarize_policy_excerpt(text)
+
+    assert "GRIEVANCES AND APPEALS INTRODUCTION" not in summary
+    assert len(summary) <= 360
+
+
+def test_summarize_policy_excerpt_normalizes_hacc_grievance_fragments():
+    text = (
+        "Grievance: Any dispute a tenant may have with respect to HACC action or failure to "
+        "If HUD has issued a due process determination, HACC may exclude from HACC grievance"
+    )
+
+    summary = MODULE._summarize_policy_excerpt(text)
+
+    assert "defines a grievance as a tenant dispute" in summary
+    assert "due process determination" in summary
+
+
+def test_summarize_policy_excerpt_normalizes_informal_review_heading():
+    text = "16-11 Scheduling an Informal Review"
+
+    summary = MODULE._summarize_policy_excerpt(text)
+
+    assert summary == "HACC policy describes scheduling and procedures for informal review."
+
+
 def test_summarize_policy_excerpt_prefers_complaint_grade_sentences():
     text = (
         "This responsibility begins with the first contact by an interested family and continues through every aspect "
@@ -508,11 +548,70 @@ def test_grounded_supporting_evidence_merges_packets_and_uploads():
     lines = MODULE._grounded_supporting_evidence(grounding_bundle, upload_report)
     summary = MODULE._grounded_summary_lines(grounding_bundle, upload_report)
 
-    assert any("mediator evidence packet prepared for grounded intake" in line for line in lines)
-    assert any("uploaded into mediator evidence store" in line for line in lines)
+    assert len(lines) == 1
+    assert "prepared as mediator evidence for grounded intake" in lines[0]
+    assert "uploaded into mediator evidence store" in lines[0]
     assert any("Grounding query: reasonable accommodation hearing rights" == line for line in summary)
     assert any("Mediator preload / upload count: 1" == line for line in summary)
     assert any("Claim-support links recorded: 2" == line for line in summary)
+
+
+def test_merge_seed_with_grounding_replaces_toc_summary_with_grounded_snippet():
+    seed = {
+        "summary": "14 GRIEVANCES AND APPEALS INTRODUCTION ........ 14-1 PART I: INFORMAL HEARINGS ........ 14-2",
+        "key_facts": {
+            "evidence_summary": "14 GRIEVANCES AND APPEALS INTRODUCTION ........ 14-1 PART I: INFORMAL HEARINGS ........ 14-2",
+        },
+        "hacc_evidence": [],
+    }
+    grounding_bundle = {
+        "search_payload": {
+            "results": [
+                {
+                    "title": "ADMINISTRATIVE PLAN",
+                    "snippet": "Applicants or tenant families who wish to file a VAWA complaint against HACC may request an informal hearing.",
+                    "source_path": "/tmp/admin-plan.txt",
+                }
+            ]
+        }
+    }
+
+    merged = MODULE._merge_seed_with_grounding(seed, grounding_bundle)
+
+    assert merged["summary"].startswith("Applicants or tenant families")
+    assert merged["key_facts"]["evidence_summary"].startswith("Applicants or tenant families")
+    assert merged["hacc_evidence"][0]["title"] == "ADMINISTRATIVE PLAN"
+
+
+def test_best_grounding_result_excerpt_combines_truncated_rule_with_followup_rule():
+    item = {
+        "snippet": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+        "matched_rules": [
+            {"text": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to"},
+            {"text": "In states without due process determinations, HACC must grant opportunity for grievance hearings."},
+        ],
+    }
+
+    excerpt = MODULE._best_grounding_result_excerpt(item)
+
+    assert "Grievance: Any dispute" in excerpt
+    assert "must grant opportunity for grievance hearings" in excerpt
+
+
+def test_filter_grounding_evidence_for_seed_prefers_anchor_titles():
+    seed = {
+        "key_facts": {
+            "anchor_titles": ["ADMINISTRATIVE PLAN"],
+        }
+    }
+    evidence_items = [
+        {"title": "Supportive Housing Services Program", "source_path": "/tmp/other.txt"},
+        {"title": "ADMINISTRATIVE PLAN", "source_path": "/tmp/admin-plan.txt"},
+    ]
+
+    filtered = MODULE._filter_grounding_evidence_for_seed(seed, evidence_items)
+
+    assert filtered == [{"title": "ADMINISTRATIVE PLAN", "source_path": "/tmp/admin-plan.txt"}]
 
 
 def test_markdown_includes_grounded_evidence_run_section():
