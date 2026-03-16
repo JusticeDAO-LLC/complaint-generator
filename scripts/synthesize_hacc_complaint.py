@@ -102,6 +102,9 @@ def _summary_with_selection_rationale(summary: str, selection_rationale: Dict[st
     if not tradeoff_note:
         return base
     prefix = f"This draft follows the `{selected_preset}` path because {tradeoff_note}." if selected_preset else f"This draft was selected because {tradeoff_note}."
+    relief_similarity_note = _selection_relief_similarity_note(selection_rationale)
+    if relief_similarity_note:
+        prefix = f"{prefix} {relief_similarity_note}"
     if not base:
         return prefix
     if prefix in base:
