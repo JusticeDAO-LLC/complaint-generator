@@ -499,6 +499,11 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "Alignment fallback lanes:" in content
     assert "Alignment quality targets:" in content
     assert "Packet blocking covered:" in content
+    assert "Packet credible support:" in content
+    assert "Packet draft ready:" in content
+    assert "Packet parse quality:" in content
+    assert "Packet review escalations:" in content
+    assert "Packet escalations:" in content
     assert "Packet proof readiness:" in content
     assert "Packet unresolved without path:" in content
     assert "Packet completion ready:" in content

@@ -998,6 +998,21 @@
                     claimSupportPacketSummary.supported_blocking_element_ratio != null
                         ? `Packet blocking covered: ${Number(claimSupportPacketSummary.supported_blocking_element_ratio || 0).toFixed(2)}`
                         : '',
+                    claimSupportPacketSummary.credible_support_ratio != null
+                        ? `Packet credible support: ${Number(claimSupportPacketSummary.credible_support_ratio || 0).toFixed(2)}`
+                        : '',
+                    claimSupportPacketSummary.draft_ready_element_ratio != null
+                        ? `Packet draft ready: ${Number(claimSupportPacketSummary.draft_ready_element_ratio || 0).toFixed(2)}`
+                        : '',
+                    claimSupportPacketSummary.high_quality_parse_ratio != null
+                        ? `Packet parse quality: ${Number(claimSupportPacketSummary.high_quality_parse_ratio || 0).toFixed(2)}`
+                        : '',
+                    claimSupportPacketSummary.reviewable_escalation_ratio != null
+                        ? `Packet review escalations: ${Number(claimSupportPacketSummary.reviewable_escalation_ratio || 0).toFixed(2)}`
+                        : '',
+                    claimSupportPacketSummary.claim_support_reviewable_escalation_count != null
+                        ? `Packet escalations: ${Number(claimSupportPacketSummary.claim_support_reviewable_escalation_count || 0)}`
+                        : '',
                     claimSupportPacketSummary.proof_readiness_score != null
                         ? `Packet proof readiness: ${Number(claimSupportPacketSummary.proof_readiness_score || 0).toFixed(2)}`
                         : '',

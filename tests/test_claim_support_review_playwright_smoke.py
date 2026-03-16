@@ -1359,6 +1359,11 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
                     "status_counts": {"unsupported": 2},
                     "recommended_actions": ["collect_missing_support_kind"],
                     "supported_blocking_element_ratio": 0.5,
+                    "credible_support_ratio": 0.5,
+                    "draft_ready_element_ratio": 0.0,
+                    "high_quality_parse_ratio": 0.0,
+                    "reviewable_escalation_ratio": 0.5,
+                    "claim_support_reviewable_escalation_count": 1,
                     "proof_readiness_score": 0.225,
                     "claim_support_unresolved_without_review_path_count": 1,
                     "evidence_completion_ready": False,
@@ -1476,6 +1481,11 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
             assert "Alignment fallback lanes: Authority 1, Testimony 1" in trace_evidence
             assert "Alignment quality targets: High Quality Document 1" in trace_evidence
             assert "Packet blocking covered: 0.50" in trace_evidence
+            assert "Packet credible support: 0.50" in trace_evidence
+            assert "Packet draft ready: 0.00" in trace_evidence
+            assert "Packet parse quality: 0.00" in trace_evidence
+            assert "Packet review escalations: 0.50" in trace_evidence
+            assert "Packet escalations: 1" in trace_evidence
             assert "Packet proof readiness: 0.23" in trace_evidence
             assert "Packet unresolved without path: 1" in trace_evidence
             assert "Packet completion ready: no" in trace_evidence
