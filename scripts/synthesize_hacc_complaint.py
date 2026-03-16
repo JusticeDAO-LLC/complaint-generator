@@ -816,6 +816,16 @@ def _render_grouped_lines(lines: List[str], section_kind: str, exhibit_index: Di
     return rendered
 
 
+def _should_include_full_passage(snippet: str, summary: str) -> bool:
+    cleaned_snippet = _clean_policy_text(snippet)
+    cleaned_summary = _clean_policy_text(summary)
+    if not cleaned_snippet or cleaned_snippet == cleaned_summary:
+        return False
+    if _is_probably_toc_text(cleaned_snippet) or _is_placeholder_policy_text(cleaned_snippet):
+        return False
+    return True
+
+
 def _anchor_passage_lines(seed: Dict[str, Any], limit: int = 5) -> List[str]:
     key_facts = dict(seed.get("key_facts") or {})
     passages = list(key_facts.get("anchor_passages") or [])
@@ -828,15 +838,15 @@ def _anchor_passage_lines(seed: Dict[str, Any], limit: int = 5) -> List[str]:
         tags = _evidence_tags(section_labels, summary, snippet)
         tag_prefix = f"[{', '.join(tags)}] " if tags else ""
         if section_labels:
-            if summary and summary != snippet:
+            if summary and _should_include_full_passage(snippet, summary):
                 lines.append(f"{title} [{section_labels}]: {tag_prefix}{summary} Full passage: {snippet}")
             else:
-                lines.append(f"{title} [{section_labels}]: {tag_prefix}{snippet}")
+                lines.append(f"{title} [{section_labels}]: {tag_prefix}{summary or snippet}")
         else:
-            if summary and summary != snippet:
+            if summary and _should_include_full_passage(snippet, summary):
                 lines.append(f"{title}: {tag_prefix}{summary} Full passage: {snippet}")
             else:
-                lines.append(f"{title}: {tag_prefix}{snippet}")
+                lines.append(f"{title}: {tag_prefix}{summary or snippet}")
     return lines
 
 
@@ -850,10 +860,10 @@ def _evidence_lines(seed: Dict[str, Any], limit: int = 5) -> List[str]:
         tags = _evidence_tags(title, summary, snippet)
         tag_prefix = f"[{', '.join(tags)}] " if tags else ""
         source_path = str(item.get("source_path") or "")
-        if summary and summary != snippet:
+        if summary and _should_include_full_passage(snippet, summary):
             line = f"{title}: {tag_prefix}{summary} Full passage: {snippet}"
         else:
-            line = f"{title}: {tag_prefix}{snippet}"
+            line = f"{title}: {tag_prefix}{summary or snippet}"
         if source_path:
             line += f" ({source_path})"
         lines.append(line)
@@ -892,6 +902,26 @@ def _refresh_anchor_terms(anchor_terms: List[str], fallback_snippet: str) -> Lis
             seen.add(normalized)
             deduped.append(term)
     return deduped
+
+
+def _policy_text_quality(text: str) -> int:
+    cleaned = _clean_policy_text(text)
+    if not cleaned:
+        return -10
+
+    score = 0
+    if _is_probably_toc_text(cleaned):
+        score -= 8
+    if _is_placeholder_policy_text(cleaned):
+        score -= 6
+    if "HACC Policy" in str(text):
+        score += 4
+    if re.search(r"\b(?:must|shall|will|may request|written notice|informal review|informal hearing|grievance)\b", cleaned, flags=re.IGNORECASE):
+        score += 3
+    if re.search(r"[.!?]", cleaned):
+        score += 2
+    score += min(len(cleaned) // 180, 3)
+    return score
 
 
 def _is_placeholder_policy_text(text: str) -> bool:
@@ -996,10 +1026,7 @@ def _refresh_seed_source_snippets(seed: Dict[str, Any]) -> Dict[str, Any]:
                 str(updated.get("source_path") or "").strip().lower(),
             )
             evidence_snippet = evidence_by_key.get(key, "")
-            if evidence_snippet and (
-                _is_placeholder_policy_text(str(updated.get("snippet") or ""))
-                or _is_probably_toc_text(str(updated.get("snippet") or ""))
-            ):
+            if evidence_snippet and _policy_text_quality(evidence_snippet) > _policy_text_quality(str(updated.get("snippet") or "")):
                 updated["snippet"] = evidence_snippet
             updated_passages.append(updated)
         key_facts["anchor_passages"] = updated_passages
@@ -1137,11 +1164,7 @@ def _looks_truncated_rule_text(text: str) -> bool:
     return bool(re.search(r"\b(?:may|must|shall|of|to|from|for|on|with|that|which|if|when|because|under)\.?$", cleaned, flags=re.IGNORECASE))
 
 
-def _expand_grounding_result_from_source(item: Dict[str, Any], fallback_excerpt: str) -> str:
-    source_path = str(item.get("source_path") or "").strip()
-    if not source_path:
-        return ""
-
+def _grounding_item_anchor_terms(item: Dict[str, Any], fallback_excerpt: str) -> List[str]:
     anchor_terms: List[str] = []
     for rule in list(item.get("matched_rules") or [])[:4]:
         section_title = str(rule.get("section_title") or "").strip()
@@ -1151,7 +1174,26 @@ def _expand_grounding_result_from_source(item: Dict[str, Any], fallback_excerpt:
         if rule_text:
             anchor_terms.append(rule_text)
 
-    anchor_terms = _refresh_anchor_terms(anchor_terms, fallback_excerpt)
+    if not anchor_terms:
+        fallback_lower = fallback_excerpt.lower()
+        if "informal review" in fallback_lower or "informal hearing" in fallback_lower:
+            anchor_terms.extend(
+                [
+                    "Scheduling an Informal Review",
+                    "Informal Review Procedures",
+                    "Informal Hearing Process",
+                ]
+            )
+
+    return _refresh_anchor_terms(anchor_terms, fallback_excerpt)
+
+
+def _expand_grounding_result_from_source(item: Dict[str, Any], fallback_excerpt: str) -> str:
+    source_path = str(item.get("source_path") or "").strip()
+    if not source_path:
+        return ""
+
+    anchor_terms = _grounding_item_anchor_terms(item, fallback_excerpt)
     if not anchor_terms:
         return ""
 
@@ -1206,10 +1248,18 @@ def _grounding_results_to_seed_evidence(grounding_bundle: Dict[str, Any], limit:
     results = list(search_payload.get("results") or [])
     evidence: List[Dict[str, Any]] = []
     for item in results[:limit]:
+        excerpt = _best_grounding_result_excerpt(item)
+        refreshed_excerpt = _refresh_snippet_from_source(
+            str(item.get("source_path") or "").strip(),
+            anchor_terms=_grounding_item_anchor_terms(item, excerpt),
+            fallback_snippet=excerpt,
+        )
+        if _policy_text_quality(refreshed_excerpt) > _policy_text_quality(excerpt):
+            excerpt = refreshed_excerpt
         evidence.append(
             {
                 "title": str(item.get("title") or item.get("document_id") or "Grounding evidence"),
-                "snippet": _best_grounding_result_excerpt(item),
+                "snippet": excerpt,
                 "source_path": str(item.get("source_path") or "").strip(),
             }
         )
@@ -1356,15 +1406,15 @@ def _policy_basis(seed: Dict[str, Any], limit: int = 4) -> List[str]:
         if not snippet:
             continue
         if labels:
-            if summary and summary != snippet:
+            if summary and _should_include_full_passage(snippet, summary):
                 basis.append(f"{title} supports {labels}: {tag_prefix}{summary} Full passage: {snippet}")
             else:
-                basis.append(f"{title} supports {labels}: {tag_prefix}{snippet}")
+                basis.append(f"{title} supports {labels}: {tag_prefix}{summary or snippet}")
         else:
-            if summary and summary != snippet:
+            if summary and _should_include_full_passage(snippet, summary):
                 basis.append(f"{title}: {tag_prefix}{summary} Full passage: {snippet}")
             else:
-                basis.append(f"{title}: {tag_prefix}{snippet}")
+                basis.append(f"{title}: {tag_prefix}{summary or snippet}")
     return basis
 
 

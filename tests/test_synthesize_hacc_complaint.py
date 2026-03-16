@@ -779,6 +779,81 @@ def test_best_grounding_result_excerpt_expands_truncated_rule_from_source(tmp_pa
 
     assert "Definitions applicable to the grievance procedure" in excerpt
     assert "adversely affects the individual tenant's rights" in excerpt
+
+
+def test_best_grounding_result_excerpt_expands_toc_like_informal_review_snippet(tmp_path):
+    source_path = tmp_path / "policy.txt"
+    source_path.write_text(
+        "Scheduling an Informal Review ........ 16-11\n\n"
+        "The notice must describe how to obtain the informal review.\n\n"
+        "Scheduling an Informal Review\n\n"
+        "HACC Policy\n\n"
+        "A request for an informal review must be made in writing and delivered to HACC.\n"
+        "HACC must schedule and send written notice of the informal review within 10 business days.\n",
+        encoding="utf-8",
+    )
+
+    item = {
+        "source_path": str(source_path),
+        "snippet": "16-11 Scheduling an Informal Review ................................................... 16-11 Informal Review Procedures [24 CFR 982.554(b)] ..................... 16-11",
+        "matched_rules": [],
+    }
+
+    excerpt = MODULE._best_grounding_result_excerpt(item)
+
+    assert "must schedule and send written notice" in excerpt
+    assert "Informal Review Procedures" not in excerpt
+
+
+def test_grounding_results_to_seed_evidence_refreshes_toc_like_informal_review_snippet(tmp_path):
+    source_path = tmp_path / "policy.txt"
+    source_path.write_text(
+        "Scheduling an Informal Review ........ 16-11\n\n"
+        "The notice must describe how to obtain the informal review.\n\n"
+        "Scheduling an Informal Review\n\n"
+        "HACC Policy\n\n"
+        "A request for an informal review must be made in writing and delivered to HACC.\n"
+        "HACC must schedule and send written notice of the informal review within 10 business days.\n",
+        encoding="utf-8",
+    )
+
+    grounding_bundle = {
+        "search_payload": {
+            "results": [
+                {
+                    "title": "ADMINISTRATIVE PLAN",
+                    "source_path": str(source_path),
+                    "snippet": "16-11 Scheduling an Informal Review ................................................... 16-11 Informal Review Procedures [24 CFR 982.554(b)] ..................... 16-11",
+                    "matched_rules": [],
+                }
+            ]
+        }
+    }
+
+    evidence = MODULE._grounding_results_to_seed_evidence(grounding_bundle)
+
+    assert "must schedule and send written notice" in evidence[0]["snippet"]
+    assert "Informal Review Procedures" not in evidence[0]["snippet"]
+
+
+def test_anchor_passage_lines_omit_full_passage_for_toc_like_snippet():
+    seed = {
+        "key_facts": {
+            "anchor_passages": [
+                {
+                    "title": "ADMINISTRATIVE PLAN",
+                    "section_labels": ["grievance_hearing"],
+                    "snippet": "16-11 Scheduling an Informal Review ................................................... 16-11 Informal Review Procedures [24 CFR 982.554(b)] ..................... 16-11",
+                }
+            ]
+        }
+    }
+
+    lines = MODULE._anchor_passage_lines(seed)
+
+    assert len(lines) == 1
+    assert "Full passage:" not in lines[0]
+    assert "describes scheduling and procedures for informal review" in lines[0]
 def test_filter_grounding_evidence_for_seed_prefers_anchor_titles():
     seed = {
         "key_facts": {
