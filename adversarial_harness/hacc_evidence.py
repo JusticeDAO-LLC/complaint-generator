@@ -250,6 +250,8 @@ def get_hacc_query_specs(
 
 def _summarize_hit(hit: Dict[str, Any], max_snippet_chars: int = 240) -> Dict[str, Any]:
     snippet = str(hit.get("snippet") or "").strip()
+    if _is_probably_toc_text(snippet):
+        snippet = _best_rule_text(hit) or snippet
     return {
         "document_id": str(hit.get("document_id") or ""),
         "title": str(hit.get("title") or ""),
@@ -261,6 +263,28 @@ def _summarize_hit(hit: Dict[str, Any], max_snippet_chars: int = 240) -> Dict[st
         "matched_entities": list(hit.get("matched_entities") or []),
         "metadata": dict(hit.get("metadata") or {}),
     }
+
+
+def _is_probably_toc_text(text: str) -> bool:
+    normalized = str(text or "").strip()
+    if not normalized:
+        return False
+    dotted_leaders = len(re.findall(r"\.{8,}", normalized))
+    page_refs = len(re.findall(r"\b\d{1,3}-\d{1,3}\b", normalized))
+    heading_hits = len(re.findall(r"\b(?:PART|SECTION|INTRODUCTION|OVERVIEW|PROCEDURES?|APPEALS?)\b", normalized, flags=re.IGNORECASE))
+    return dotted_leaders >= 2 or page_refs >= 4 or (heading_hits >= 3 and dotted_leaders >= 1)
+
+
+def _best_rule_text(hit: Dict[str, Any]) -> str:
+    for rule in list(hit.get("matched_rules") or []):
+        rule_text = " ".join(str(rule.get("text") or "").split()).strip()
+        if len(rule_text) >= 40:
+            return rule_text
+    for entity in list(hit.get("matched_entities") or []):
+        entity_text = " ".join(str(entity.get("name") or "").split()).strip()
+        if len(entity_text) >= 40:
+            return entity_text
+    return ""
 
 
 def _filter_hits(
@@ -491,11 +515,16 @@ def _expand_hit_with_source_window(
     snippet = str(hit.get("snippet") or "").strip()
     if not snippet:
         return expanded_hit
+    fallback_snippet = _best_rule_text(hit) if _is_probably_toc_text(snippet) else snippet
+    anchor_needles = [str(term).strip().lower() for term in (anchor_terms or []) if str(term).strip()]
+    best_rule = _best_rule_text(hit)
+    if best_rule:
+        anchor_needles = [best_rule.lower(), *anchor_needles]
 
     expanded_hit["snippet"] = _extract_source_window(
         source_path=str(hit.get("source_path") or ""),
-        anchor_terms=[str(term).strip().lower() for term in (anchor_terms or []) if str(term).strip()],
-        fallback_snippet=snippet,
+        anchor_terms=anchor_needles,
+        fallback_snippet=fallback_snippet,
     )
     return expanded_hit
 
@@ -554,9 +583,57 @@ def _build_repository_candidates(
                 "snippet": _condense_evidence_snippet(str(candidate.get("snippet") or "")),
                 "score": float(candidate.get("score") or 0.0),
                 "source_type": str(candidate.get("source_type") or ""),
+                "metadata": dict(candidate.get("metadata") or {}),
             }
         )
     return simplified
+
+
+def _build_seed_mediator_packets(
+    engine: Any,
+    grounding_bundle: Optional[Dict[str, Any]],
+    *,
+    max_documents: int = 3,
+) -> List[Dict[str, Any]]:
+    upload_candidates = list((grounding_bundle or {}).get("upload_candidates") or [])[:max_documents]
+    if not upload_candidates:
+        return []
+
+    base_packets = list((grounding_bundle or {}).get("mediator_evidence_packets") or [])[:max_documents]
+    packets_by_path = {
+        str(packet.get("source_path") or "").strip(): dict(packet)
+        for packet in base_packets
+        if str(packet.get("source_path") or "").strip()
+    }
+
+    enriched_packets: List[Dict[str, Any]] = []
+    for candidate in upload_candidates:
+        source_path = str(candidate.get("source_path") or "").strip()
+        if not source_path:
+            continue
+        packet = dict(packets_by_path.get(source_path) or {})
+        if not packet:
+            path = Path(source_path)
+            packet = {
+                "document_label": str(candidate.get("title") or path.name),
+                "source_path": source_path,
+                "relative_path": str(candidate.get("relative_path") or path.name),
+                "filename": path.name,
+                "mime_type": "text/plain",
+                "metadata": {},
+            }
+        metadata = dict(packet.get("metadata") or {})
+        try:
+            document_text = str(engine._resolve_candidate_upload_text(candidate) or "")
+        except Exception:
+            document_text = str(candidate.get("snippet") or "")
+        packet["document_text"] = document_text
+        metadata.setdefault("relative_path", str(candidate.get("relative_path") or ""))
+        metadata.setdefault("source_type", str(candidate.get("source_type") or ""))
+        metadata.setdefault("upload_strategy", "snippet_only" if not document_text else "seed_packet")
+        packet["metadata"] = metadata
+        enriched_packets.append(packet)
+    return enriched_packets
 
 
 def _build_complainant_story_facts(
@@ -651,6 +728,7 @@ def build_hacc_evidence_seed(
     anchor_sections = _summarize_section_labels(anchor_passages)
     repository_candidates = _build_repository_candidates(grounding_bundle)
     synthetic_prompts = dict((grounding_bundle or {}).get("synthetic_prompts") or {})
+    mediator_evidence_packets = list((grounding_bundle or {}).get("mediator_evidence_packets") or [])
     complainant_story_facts = _build_complainant_story_facts(
         description=description,
         evidence_summary=evidence_summary,
@@ -681,6 +759,7 @@ def build_hacc_evidence_seed(
             "authority_hints": [str(item) for item in list(authority_hints or []) if str(item).strip()],
             "repository_evidence_candidates": repository_candidates,
             "synthetic_prompts": synthetic_prompts,
+            "mediator_evidence_packets": mediator_evidence_packets,
             "complainant_story_facts": complainant_story_facts,
             "grounding_note": "Use the evidence as factual grounding and identify missing case-specific facts during questioning.",
         },
@@ -723,6 +802,12 @@ def build_hacc_evidence_seeds(
             claim_type=complaint_type,
             use_vector=use_vector,
         )
+        if isinstance(grounding_bundle, dict):
+            grounding_bundle["mediator_evidence_packets"] = _build_seed_mediator_packets(
+                engine,
+                grounding_bundle,
+                max_documents=max(1, search_top_k),
+            )
         seed = build_hacc_evidence_seed(
             payload,
             query=query,
@@ -833,8 +918,28 @@ def build_hacc_mediator_evidence_packet(
     max_documents: int = 3,
 ) -> List[Dict[str, Any]]:
     key_facts = dict(seed.get("key_facts") or {})
+    grounded_packets = list(key_facts.get("mediator_evidence_packets") or [])
     evidence_items = list(seed.get("hacc_evidence") or [])
     repository_candidates = list(key_facts.get("repository_evidence_candidates") or [])
+
+    packets: List[Dict[str, Any]] = []
+    for packet in grounded_packets[:max_documents]:
+        document_text = str(packet.get("document_text") or "").strip()
+        if not document_text:
+            continue
+        packets.append(
+            {
+                "document_text": document_text,
+                "document_label": str(packet.get("document_label") or "HACC evidence"),
+                "source_path": str(packet.get("source_path") or ""),
+                "filename": str(packet.get("filename") or ""),
+                "mime_type": str(packet.get("mime_type") or "text/plain"),
+                "metadata": dict(packet.get("metadata") or {}),
+            }
+        )
+    if packets:
+        return packets
+
     source_paths: List[str] = []
     for candidate in repository_candidates:
         candidate_path = str(candidate.get("source_path") or "").strip()
@@ -844,7 +949,6 @@ def build_hacc_mediator_evidence_packet(
         item_path = str(item).strip()
         if item_path:
             source_paths.append(item_path)
-    packets: List[Dict[str, Any]] = []
     seen_paths: set[str] = set()
 
     for source_path in source_paths[:max_documents]:
