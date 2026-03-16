@@ -1262,22 +1262,23 @@ def _is_generic_chapter_intro_text(text: str) -> bool:
 
 def _trim_admin_plan_complaint_preamble(text: str) -> str:
     cleaned = _clean_policy_text(text)
-    if not cleaned or not _is_complaint_process_text(cleaned):
+    if not cleaned:
         return cleaned
-    heading_matches = [
-        cleaned.lower().find(term.lower())
-        for term in (
-            "Scheduling an Informal Review",
-            "Informal Review Procedures",
-            "Notice to the Applicant",
-            "Notice of Denial or Termination of Assistance",
-            "Informal Hearing Procedures",
-        )
-    ]
+    heading_terms = (
+        "Notice to the Applicant",
+        "Scheduling an Informal Review",
+        "Informal Review Procedures",
+        "Notice of Denial or Termination of Assistance",
+        "Informal Hearing Procedures",
+    )
+    heading_matches = [cleaned.lower().find(term.lower()) for term in heading_terms]
     heading_matches = [idx for idx in heading_matches if idx >= 0]
     if not heading_matches:
         return cleaned
-    start = min(heading_matches)
+    first_heading = min(heading_matches)
+    if not _is_complaint_process_text(cleaned) and first_heading > 160:
+        return cleaned
+    start = first_heading
     trimmed = cleaned[start:].strip()
     return trimmed or cleaned
 
