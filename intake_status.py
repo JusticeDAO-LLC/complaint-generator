@@ -123,6 +123,7 @@ def summarize_intake_contradictions(contradictions: Any) -> Dict[str, Any]:
     status_counts: Dict[str, int] = {}
     severity_counts: Dict[str, int] = {}
     affected_claim_type_counts: Dict[str, int] = {}
+    affected_element_counts: Dict[str, int] = {}
     corroboration_required_count = 0
 
     for item in normalized_items:
@@ -149,6 +150,14 @@ def summarize_intake_contradictions(contradictions: Any) -> Dict[str, Any]:
                 affected_claim_type_counts.get(normalized_claim_type, 0) + 1
             )
 
+        for element_id in item.get("affected_element_ids") or []:
+            normalized_element_id = str(element_id or "").strip()
+            if not normalized_element_id:
+                continue
+            affected_element_counts[normalized_element_id] = (
+                affected_element_counts.get(normalized_element_id, 0) + 1
+            )
+
     return {
         "count": len(normalized_items),
         "lane_counts": lane_counts,
@@ -156,6 +165,7 @@ def summarize_intake_contradictions(contradictions: Any) -> Dict[str, Any]:
         "severity_counts": severity_counts,
         "corroboration_required_count": corroboration_required_count,
         "affected_claim_type_counts": affected_claim_type_counts,
+        "affected_element_counts": affected_element_counts,
     }
 
 

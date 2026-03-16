@@ -3389,6 +3389,94 @@
             return optimizationLlmConfig;
         }
 
+        function formatContradictionTargetElementSummary(contradictions) {
+            const counts = {};
+            const items = Array.isArray(contradictions) ? contradictions.filter((item) => item && typeof item === 'object') : [];
+            items.forEach((item) => {
+                const affectedElementIds = Array.isArray(item.affected_element_ids) ? item.affected_element_ids : [];
+                affectedElementIds.forEach((elementId) => {
+                    const normalizedElementId = String(elementId || '').trim();
+                    if (!normalizedElementId) {
+                        return;
+                    }
+                    counts[normalizedElementId] = (counts[normalizedElementId] || 0) + 1;
+                });
+            });
+            return Object.entries(counts)
+                .map(([elementId, count]) => `${humanizeKey(elementId)} ${count}`)
+                .join(', ');
+        }
+
+        function appendContradictionTargetElementsLine(listNode, label, summary) {
+            if (!listNode || !summary) {
+                return;
+            }
+            let item = listNode.querySelector(`[data-contradiction-target-elements="${label}"]`);
+            if (!item) {
+                item = document.createElement('li');
+                item.dataset.contradictionTargetElements = label;
+                listNode.appendChild(item);
+            }
+            item.textContent = `${label}: ${summary}`;
+        }
+
+        function appendChecklistContradictionTargetElements(cardNode, summary) {
+            if (!cardNode || !summary) {
+                return;
+            }
+            let node = cardNode.querySelector('[data-contradiction-target-elements="checklist"]');
+            if (!node) {
+                node = document.createElement('div');
+                node.className = 'preview-meta';
+                node.dataset.contradictionTargetElements = 'checklist';
+                cardNode.appendChild(node);
+            }
+            node.textContent = `Contradiction target elements: ${summary}`;
+        }
+
+        function decorateContradictionTargetElements(payload) {
+            const optimizationReport = payload && payload.document_optimization && typeof payload.document_optimization === 'object'
+                ? payload.document_optimization
+                : null;
+            if (optimizationReport) {
+                const optimizationSummary = formatContradictionTargetElementSummary(
+                    optimizationReport.intake_status && Array.isArray(optimizationReport.intake_status.contradictions)
+                        ? optimizationReport.intake_status.contradictions
+                        : []
+                );
+                if (optimizationSummary) {
+                    const optimizationSection = Array.from(document.querySelectorAll('section')).find((section) => {
+                        const title = section.querySelector('h2');
+                        return title && title.textContent.trim() === 'Document Optimization';
+                    });
+                    if (optimizationSection) {
+                        Array.from(optimizationSection.querySelectorAll('.preview-meta > strong')).forEach((node) => {
+                            const label = node.textContent.trim();
+                            const listNode = node.parentElement && node.parentElement.nextElementSibling && node.parentElement.nextElementSibling.classList.contains('list-lines')
+                                ? node.parentElement.nextElementSibling
+                                : null;
+                            if (label === 'Persisted Trace Snapshot') {
+                                appendContradictionTargetElementsLine(listNode, 'Persisted contradiction target elements', optimizationSummary);
+                            }
+                            if (label === 'Intake Constraints') {
+                                appendContradictionTargetElementsLine(listNode, 'Contradiction target elements', optimizationSummary);
+                            }
+                        });
+                    }
+                }
+            }
+            const checklistItems = payload && Array.isArray(payload.filing_checklist) ? payload.filing_checklist : [];
+            Array.from(document.querySelectorAll('.checklist-card')).forEach((cardNode, index) => {
+                const checklistItem = checklistItems[index] && typeof checklistItems[index] === 'object' ? checklistItems[index] : {};
+                const summary = formatContradictionTargetElementSummary(
+                    checklistItem.intake_status && Array.isArray(checklistItem.intake_status.contradictions)
+                        ? checklistItem.intake_status.contradictions
+                        : []
+                );
+                appendChecklistContradictionTargetElements(cardNode, summary);
+            });
+        }
+
         function renderPreview(payload) {
             state.generatedPayload = payload;
             persistGeneratedPayload(payload);
@@ -3529,6 +3617,7 @@
 
             document.getElementById('previewRoot').className = '';
             document.getElementById('previewRoot').innerHTML = html;
+            decorateContradictionTargetElements(payload);
             bindReviewIntentLinks();
             const copyButton = document.getElementById('copyPleadingButton');
             if (copyButton) {

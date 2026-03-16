@@ -44,6 +44,7 @@ def test_build_intake_status_summary_preserves_legacy_alias_fields():
             "severity_counts": {},
             "corroboration_required_count": 0,
             "affected_claim_type_counts": {},
+            "affected_element_counts": {},
         },
         "blockers": ["missing_proof_leads"],
         "criteria": {
@@ -288,6 +289,7 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
         "severity_counts": {"blocking": 1},
         "corroboration_required_count": 1,
         "affected_claim_type_counts": {"retaliation": 1},
+        "affected_element_counts": {},
     }
     assert summary["claim_support_packet_summary"]["claim_count"] == 1
     assert summary["claim_support_packet_summary"]["supported_blocking_element_ratio"] == 0.5
@@ -333,6 +335,7 @@ def test_build_intake_status_summary_preserves_rich_contradiction_workflow_field
         "severity_counts": {"blocking": 1},
         "corroboration_required_count": 1,
         "affected_claim_type_counts": {"retaliation": 1},
+        "affected_element_counts": {"causation": 1},
     }
     assert summary["contradictions"][0]["recommended_resolution_lane"] == "request_document"
     assert summary["contradictions"][0]["current_resolution_status"] == "open"

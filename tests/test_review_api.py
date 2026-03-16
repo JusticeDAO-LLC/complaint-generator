@@ -822,6 +822,7 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 "severity_counts": {"high": 1},
                 "corroboration_required_count": 0,
                 "affected_claim_type_counts": {},
+                "affected_element_counts": {},
             },
             "blockers": ["resolve_contradictions"],
             "criteria": {
@@ -857,6 +858,7 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "severity_counts": {"high": 1},
             "corroboration_required_count": 0,
             "affected_claim_type_counts": {},
+            "affected_element_counts": {},
         }
         intake_case_summary = payload["intake_case_summary"]
         assert intake_case_summary["candidate_claims"] == [
@@ -901,6 +903,7 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "severity_counts": {"high": 1},
             "corroboration_required_count": 0,
             "affected_claim_type_counts": {},
+            "affected_element_counts": {},
         }
         assert intake_case_summary["timeline_anchor_summary"] == {
             "count": 1,

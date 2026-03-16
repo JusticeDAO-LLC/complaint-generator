@@ -470,25 +470,38 @@
             const laneCountsFromSummary = normalizedSummary.lane_counts && typeof normalizedSummary.lane_counts === 'object'
                 ? normalizedSummary.lane_counts
                 : null;
-            if (laneCountsFromSummary || normalizedSummary.corroboration_required_count !== undefined) {
+            const affectedElementCountsFromSummary = normalizedSummary.affected_element_counts && typeof normalizedSummary.affected_element_counts === 'object'
+                ? normalizedSummary.affected_element_counts
+                : null;
+            if (laneCountsFromSummary || normalizedSummary.corroboration_required_count !== undefined || affectedElementCountsFromSummary) {
                 return {
                     laneCounts: laneCountsFromSummary || {},
                     corroborationRequiredCount: Number(normalizedSummary.corroboration_required_count || 0),
+                    affectedElementCounts: affectedElementCountsFromSummary || {},
                 };
             }
             const items = Array.isArray(contradictions) ? contradictions.filter((item) => item && typeof item === 'object') : [];
             const laneCounts = {};
+            const affectedElementCounts = {};
             let corroborationRequiredCount = 0;
             items.forEach((item) => {
                 const lane = String(item.recommended_resolution_lane || '').trim();
                 if (lane) {
                     laneCounts[lane] = (laneCounts[lane] || 0) + 1;
                 }
+                const affectedElementIds = Array.isArray(item.affected_element_ids) ? item.affected_element_ids : [];
+                affectedElementIds.forEach((elementId) => {
+                    const normalizedElementId = String(elementId || '').trim();
+                    if (!normalizedElementId) {
+                        return;
+                    }
+                    affectedElementCounts[normalizedElementId] = (affectedElementCounts[normalizedElementId] || 0) + 1;
+                });
                 if (item.external_corroboration_required) {
                     corroborationRequiredCount += 1;
                 }
             });
-            return { laneCounts, corroborationRequiredCount };
+            return { laneCounts, corroborationRequiredCount, affectedElementCounts };
         }
 
         function formatContradictionSummary(entry) {

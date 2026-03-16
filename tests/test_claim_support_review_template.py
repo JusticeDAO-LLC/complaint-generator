@@ -307,7 +307,7 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Contradiction lanes:" in content
     assert "Corroboration-required contradictions:" in content
     assert "affected elements" in content
-    assert "Contradiction target elements:" in content
+    assert "Contradiction target elements" in content
     assert "Source Context:" in content
     assert "Source families:" in content
     assert "follow_up_support_kind" in content
@@ -396,7 +396,7 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Persisted intake contradictions:" in content
     assert "Persisted contradiction lanes:" in content
     assert "Persisted corroboration-required contradictions:" in content
-    assert "Persisted contradiction target elements:" in content
+    assert "Persisted contradiction target elements" in content
     assert "Persisted intake criteria:" in content
 
 
