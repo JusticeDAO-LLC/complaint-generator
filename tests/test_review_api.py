@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from claim_support_review import (
     ClaimSupportDocumentSaveRequest,
     ClaimSupportFollowUpExecuteRequest,
+    ClaimSupportIntakeSummaryConfirmRequest,
     ClaimSupportManualReviewResolveRequest,
     ClaimSupportReviewRequest,
     ClaimSupportTestimonySaveRequest,
@@ -19,6 +20,7 @@ from claim_support_review import (
     _summarize_follow_up_plan_claim,
     build_claim_support_document_payload,
     build_claim_support_follow_up_execution_payload,
+    build_claim_support_intake_summary_confirmation_payload,
     build_claim_support_manual_review_resolution_payload,
     build_claim_support_review_payload,
     build_claim_support_testimony_payload,
@@ -2299,6 +2301,12 @@ def test_claim_support_review_endpoint_is_registered_on_app():
         if hasattr(route, "methods")
     )
     assert any(
+        route.path == "/api/claim-support/confirm-intake-summary"
+        and "POST" in route.methods
+        for route in app.routes
+        if hasattr(route, "methods")
+    )
+    assert any(
         route.path == "/api/claim-support/resolve-manual-review"
         and "POST" in route.methods
         for route in app.routes
@@ -2409,6 +2417,88 @@ def test_claim_support_testimony_payload_persists_and_refreshes_review():
         firsthand_status="firsthand",
         source_confidence=0.9,
         metadata={},
+    )
+
+
+def test_claim_support_intake_summary_confirmation_payload_refreshes_review():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.confirm_intake_summary.return_value = {
+        "complainant_summary_confirmation": {
+            "confirmed": True,
+            "confirmation_note": "reviewed with complainant",
+            "confirmation_source": "dashboard",
+        },
+        "intake_readiness": {
+            "ready_to_advance": True,
+            "criteria": {"complainant_summary_confirmed": True},
+        },
+    }
+    mediator.get_claim_coverage_matrix.return_value = {
+        "claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}
+    }
+    mediator.get_claim_overview.return_value = {"claims": {"retaliation": {}}}
+    mediator.get_claim_support_diagnostic_snapshots.return_value = {"claims": {}}
+    mediator.get_claim_support_gaps.return_value = {"claims": {"retaliation": {"unresolved_elements": []}}}
+    mediator.get_claim_contradiction_candidates.return_value = {"claims": {"retaliation": {"candidates": []}}}
+    mediator.get_claim_support_validation.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_recent_claim_follow_up_execution.return_value = {"claims": {"retaliation": []}}
+    mediator.get_claim_follow_up_plan.return_value = {"claims": {"retaliation": {"tasks": []}}}
+    mediator.get_claim_testimony_records.return_value = {"claims": {}, "summary": {}}
+    mediator.get_user_evidence.return_value = []
+    mediator.summarize_claim_support.return_value = {"claims": {"retaliation": {}}}
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "iteration_count": 1,
+        "intake_readiness": {
+            "score": 1.0,
+            "ready_to_advance": True,
+            "remaining_gap_count": 0,
+            "contradiction_count": 0,
+            "criteria": {"complainant_summary_confirmed": True},
+            "blockers": [],
+            "contradictions": [],
+            "candidate_claim_count": 1,
+            "canonical_fact_count": 1,
+            "proof_lead_count": 1,
+        },
+        "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.9}],
+        "intake_sections": {},
+        "canonical_fact_summary": {"count": 1, "facts": []},
+        "canonical_fact_intent_summary": {},
+        "proof_lead_summary": {"count": 1, "proof_leads": []},
+        "proof_lead_intent_summary": {},
+        "timeline_anchor_summary": {"count": 0, "anchors": []},
+        "harm_profile": {},
+        "remedy_profile": {},
+        "complainant_summary_confirmation": {
+            "confirmed": True,
+            "confirmation_note": "reviewed with complainant",
+            "confirmation_source": "dashboard",
+        },
+        "question_candidate_summary": {},
+        "claim_support_packet_summary": {},
+        "intake_evidence_alignment_summary": {},
+        "alignment_evidence_tasks": [],
+        "alignment_task_updates": [],
+        "alignment_task_update_history": [],
+    }
+
+    payload = build_claim_support_intake_summary_confirmation_payload(
+        mediator,
+        ClaimSupportIntakeSummaryConfirmRequest(
+            claim_type="retaliation",
+            confirmation_note="reviewed with complainant",
+            confirmation_source="dashboard",
+        ),
+    )
+
+    assert payload["confirmed"] is True
+    assert payload["confirmation_result"]["confirmation_note"] == "reviewed with complainant"
+    assert payload["post_confirmation_review"]["intake_case_summary"]["complainant_summary_confirmation"]["confirmed"] is True
+    mediator.confirm_intake_summary.assert_called_once_with(
+        confirmation_note="reviewed with complainant",
+        confirmation_source="dashboard",
     )
 
 
@@ -2532,6 +2622,85 @@ def test_claim_support_upload_document_route_accepts_multipart_file():
         evidence_type="document",
         metadata={},
     )
+
+
+def test_claim_support_confirm_intake_summary_route_returns_refreshed_review():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.confirm_intake_summary.return_value = {
+        "complainant_summary_confirmation": {
+            "confirmed": True,
+            "confirmation_note": "ready for evidence handoff",
+            "confirmation_source": "dashboard",
+        }
+    }
+    mediator.get_claim_coverage_matrix.return_value = {
+        "claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}
+    }
+    mediator.get_claim_overview.return_value = {"claims": {"retaliation": {}}}
+    mediator.get_claim_support_diagnostic_snapshots.return_value = {"claims": {}}
+    mediator.get_claim_support_gaps.return_value = {"claims": {"retaliation": {"unresolved_elements": []}}}
+    mediator.get_claim_contradiction_candidates.return_value = {"claims": {"retaliation": {"candidates": []}}}
+    mediator.get_claim_support_validation.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_recent_claim_follow_up_execution.return_value = {"claims": {"retaliation": []}}
+    mediator.get_claim_follow_up_plan.return_value = {"claims": {"retaliation": {"tasks": []}}}
+    mediator.get_claim_testimony_records.return_value = {"claims": {}, "summary": {}}
+    mediator.get_user_evidence.return_value = []
+    mediator.summarize_claim_support.return_value = {"claims": {"retaliation": {}}}
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "iteration_count": 1,
+        "intake_readiness": {
+            "score": 1.0,
+            "ready_to_advance": True,
+            "remaining_gap_count": 0,
+            "contradiction_count": 0,
+            "criteria": {"complainant_summary_confirmed": True},
+            "blockers": [],
+            "contradictions": [],
+            "candidate_claim_count": 1,
+            "canonical_fact_count": 1,
+            "proof_lead_count": 1,
+        },
+        "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.9}],
+        "intake_sections": {},
+        "canonical_fact_summary": {"count": 1, "facts": []},
+        "canonical_fact_intent_summary": {},
+        "proof_lead_summary": {"count": 1, "proof_leads": []},
+        "proof_lead_intent_summary": {},
+        "timeline_anchor_summary": {"count": 0, "anchors": []},
+        "harm_profile": {},
+        "remedy_profile": {},
+        "complainant_summary_confirmation": {
+            "confirmed": True,
+            "confirmation_note": "ready for evidence handoff",
+            "confirmation_source": "dashboard",
+        },
+        "question_candidate_summary": {},
+        "claim_support_packet_summary": {},
+        "intake_evidence_alignment_summary": {},
+        "alignment_evidence_tasks": [],
+        "alignment_task_updates": [],
+        "alignment_task_update_history": [],
+    }
+
+    app = create_review_api_app(mediator)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/claim-support/confirm-intake-summary",
+        json={
+            "claim_type": "retaliation",
+            "confirmation_note": "ready for evidence handoff",
+            "confirmation_source": "dashboard",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["confirmed"] is True
+    assert payload["confirmation_result"]["confirmation_source"] == "dashboard"
+    assert payload["post_confirmation_review"]["intake_case_summary"]["complainant_summary_confirmation"]["confirmed"] is True
 
 
 def test_claim_support_save_testimony_route_canonicalizes_text_only_claim_element():

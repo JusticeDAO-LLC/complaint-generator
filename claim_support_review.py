@@ -184,6 +184,20 @@ class ClaimSupportDocumentSaveRequest(BaseModel):
     include_follow_up_plan: bool = True
 
 
+class ClaimSupportIntakeSummaryConfirmRequest(BaseModel):
+    user_id: Optional[str] = None
+    claim_type: Optional[str] = None
+    confirmation_note: Optional[str] = None
+    confirmation_source: str = "complainant"
+    required_support_kinds: List[str] = Field(
+        default_factory=lambda: list(DEFAULT_REQUIRED_SUPPORT_KINDS)
+    )
+    include_post_confirmation_review: bool = True
+    include_support_summary: bool = True
+    include_overview: bool = True
+    include_follow_up_plan: bool = True
+
+
 def _resolve_user_id(mediator: Any, user_id: Optional[str]) -> str:
     if user_id:
         return user_id
@@ -2537,6 +2551,57 @@ def build_claim_support_uploaded_document_payload(
                 include_support_summary=include_support_summary,
                 include_overview=include_overview,
                 include_follow_up_plan=include_follow_up_plan,
+                execute_follow_up=False,
+            ),
+        )
+
+    return payload
+
+
+def build_claim_support_intake_summary_confirmation_payload(
+    mediator: Any,
+    request: ClaimSupportIntakeSummaryConfirmRequest,
+) -> Dict[str, Any]:
+    resolved_user_id = _resolve_user_id(mediator, request.user_id)
+    required_support_kinds = (
+        request.required_support_kinds or list(DEFAULT_REQUIRED_SUPPORT_KINDS)
+    )
+
+    confirm_summary = getattr(mediator, "confirm_intake_summary", None)
+    if not callable(confirm_summary):
+        payload: Dict[str, Any] = {
+            "user_id": resolved_user_id,
+            "claim_type": request.claim_type,
+            "confirmed": False,
+            "error": "intake_summary_confirmation_unavailable",
+        }
+    else:
+        confirmation_result = confirm_summary(
+            confirmation_note=request.confirmation_note or "",
+            confirmation_source=request.confirmation_source,
+        )
+        confirmation_record = (
+            confirmation_result.get("complainant_summary_confirmation", {})
+            if isinstance(confirmation_result, dict)
+            else {}
+        )
+        payload = {
+            "user_id": resolved_user_id,
+            "claim_type": request.claim_type,
+            "confirmation_result": confirmation_record,
+            "confirmed": bool(confirmation_record.get("confirmed", False)),
+        }
+
+    if request.include_post_confirmation_review:
+        payload["post_confirmation_review"] = build_claim_support_review_payload(
+            mediator,
+            ClaimSupportReviewRequest(
+                user_id=resolved_user_id,
+                claim_type=request.claim_type,
+                required_support_kinds=required_support_kinds,
+                include_support_summary=request.include_support_summary,
+                include_overview=request.include_overview,
+                include_follow_up_plan=request.include_follow_up_plan,
                 execute_follow_up=False,
             ),
         )

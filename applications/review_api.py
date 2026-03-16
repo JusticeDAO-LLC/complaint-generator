@@ -4,11 +4,13 @@ from fastapi import APIRouter, FastAPI, File, Form, Response, UploadFile
 from claim_support_review import (
     ClaimSupportDocumentSaveRequest,
     ClaimSupportFollowUpExecuteRequest,
+    ClaimSupportIntakeSummaryConfirmRequest,
     ClaimSupportManualReviewResolveRequest,
     ClaimSupportReviewRequest,
     ClaimSupportTestimonySaveRequest,
     build_claim_support_document_payload,
     build_claim_support_follow_up_execution_payload,
+    build_claim_support_intake_summary_confirmation_payload,
     build_claim_support_manual_review_resolution_payload,
     build_claim_support_review_payload,
     build_claim_support_testimony_payload,
@@ -73,6 +75,12 @@ def create_claim_support_review_router(mediator: Any) -> APIRouter:
         request: ClaimSupportFollowUpExecuteRequest,
     ) -> Dict[str, Any]:
         return build_claim_support_follow_up_execution_payload(mediator, request)
+
+    @router.post("/api/claim-support/confirm-intake-summary")
+    async def claim_support_confirm_intake_summary(
+        request: ClaimSupportIntakeSummaryConfirmRequest,
+    ) -> Dict[str, Any]:
+        return build_claim_support_intake_summary_confirmation_payload(mediator, request)
 
     @router.post("/api/claim-support/resolve-manual-review")
     async def claim_support_resolve_manual_review(

@@ -71,11 +71,12 @@ def _build_hook_backed_browser_mediator(db_path: str):
             "ready_to_advance": False,
             "remaining_gap_count": 2,
             "contradiction_count": 1,
-            "blockers": ["collect_missing_support"],
+            "blockers": ["collect_missing_support", "complainant_summary_confirmation_required"],
             "criteria": {
                 "case_theory_coherent": True,
                 "minimum_proof_path_present": True,
                 "claim_disambiguation_resolved": False,
+                "complainant_summary_confirmed": False,
             },
             "contradictions": [
                 {
@@ -141,6 +142,19 @@ def _build_hook_backed_browser_mediator(db_path: str):
         "remedy_profile": {
             "count": 1,
             "categories": ["monetary"],
+        },
+        "complainant_summary_confirmation": {
+            "status": "pending",
+            "confirmed": False,
+            "confirmation_source": "complainant",
+            "confirmation_note": "",
+            "summary_snapshot_index": 0,
+            "current_summary_snapshot": {
+                "candidate_claim_count": 2,
+                "canonical_fact_count": 1,
+                "proof_lead_count": 1,
+            },
+            "confirmed_summary_snapshot": {},
         },
         "intake_evidence_alignment_summary": {
             "aligned_element_count": 1,
@@ -573,6 +587,39 @@ def _build_hook_backed_browser_mediator(db_path: str):
     mediator.get_user_evidence.return_value = []
     mediator.summarize_claim_support.return_value = {"claims": {"retaliation": {}}}
 
+    def _confirm_intake_summary(confirmation_note="", confirmation_source="complainant"):
+        status_payload = mediator.get_three_phase_status.return_value
+        status_payload["complainant_summary_confirmation"] = {
+            "status": "confirmed",
+            "confirmed": True,
+            "confirmed_at": "2026-03-16T12:00:00+00:00",
+            "confirmation_source": confirmation_source,
+            "confirmation_note": confirmation_note,
+            "summary_snapshot_index": 0,
+            "current_summary_snapshot": {
+                "candidate_claim_count": 2,
+                "canonical_fact_count": 1,
+                "proof_lead_count": 1,
+            },
+            "confirmed_summary_snapshot": {
+                "candidate_claim_count": 2,
+                "canonical_fact_count": 1,
+                "proof_lead_count": 1,
+            },
+        }
+        intake_readiness = status_payload["intake_readiness"]
+        criteria = intake_readiness.get("criteria", {})
+        criteria["complainant_summary_confirmed"] = True
+        intake_readiness["criteria"] = criteria
+        intake_readiness["blockers"] = [
+            blocker
+            for blocker in intake_readiness.get("blockers", [])
+            if blocker != "complainant_summary_confirmation_required"
+        ]
+        return status_payload
+
+    mediator.confirm_intake_summary.side_effect = _confirm_intake_summary
+
     return mediator, hook
 
 
@@ -849,6 +896,7 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
                         "current_resolution_status": "open",
                         "external_corroboration_required": True,
                         "affected_claim_types": ["retaliation"],
+                        "affected_element_ids": ["retaliation:2"],
                     }
                 ],
             },
@@ -1285,6 +1333,62 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert reloaded_alignment_updates.index("evidence event: 1") < reloaded_alignment_updates.index("evidence event: 2")
 
                 browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+def test_claim_support_review_dashboard_smoke_confirms_intake_summary():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for intake summary confirmation smoke coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+
+        app = _build_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(
+                    f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
+                )
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                assert "Latest intake summary snapshot is awaiting complainant confirmation." in page.locator("#confirm-intake-summary-status").inner_text()
+                page.fill("#confirm-intake-summary-note", "Reviewed with complainant for evidence handoff")
+                page.click("#confirm-intake-summary-button")
+
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Intake summary confirmed.')"
+                )
+                page.wait_for_function(
+                    "() => document.getElementById('confirm-intake-summary-status').textContent.includes('Intake summary confirmed')"
+                )
+
+                intake_status = page.locator("#intake-status-chips").inner_text()
+                intake_readiness = page.locator("#intake-readiness-criteria-chips").inner_text()
+                intake_context = page.locator("#intake-context-chips").inner_text()
+                confirmation_status = page.locator("#confirm-intake-summary-status").inner_text()
+                browser.close()
+
+        assert "summary confirmation: confirmed" in intake_status
+        assert "ready Complainant Summary Confirmed" in intake_readiness
+        assert "summary confirmation: Confirmed" in intake_context
+        assert "note: Reviewed with complainant for evidence handoff" in confirmation_status
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -3212,6 +3316,7 @@ def test_document_builder_checklist_review_link_preserves_focus_on_review_page()
                             "current_resolution_status": "open",
                             "external_corroboration_required": True,
                             "affected_claim_types": ["retaliation"],
+                            "affected_element_ids": ["retaliation:2"],
                         }
                     ],
                 },
@@ -3243,6 +3348,7 @@ def test_document_builder_checklist_review_link_preserves_focus_on_review_page()
                         "current_resolution_status": "open",
                         "external_corroboration_required": True,
                         "affected_claim_types": ["retaliation"],
+                        "affected_element_ids": ["retaliation:2"],
                     }
                 ],
             },

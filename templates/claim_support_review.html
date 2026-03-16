@@ -886,6 +886,18 @@
                     <h2 style="margin-top: 18px;">Intake Status</h2>
                     <div class="chip-row" id="intake-status-chips"></div>
                     <div class="chip-row" id="intake-readiness-criteria-chips" style="margin-top: 10px;"></div>
+                    <div class="control-grid" style="margin-top: 10px;">
+                        <div>
+                            <label for="confirm-intake-summary-note">Intake Summary Confirmation Note</label>
+                            <input id="confirm-intake-summary-note" type="text" placeholder="Optional note for evidence handoff" />
+                        </div>
+                        <div>
+                            <div class="button-row" style="margin-top: 23px;">
+                                <button id="confirm-intake-summary-button" type="button">Confirm Intake Summary</button>
+                            </div>
+                            <div class="status-line" id="confirm-intake-summary-status">Awaiting review payload.</div>
+                        </div>
+                    </div>
                     <div class="question-list" id="intake-contradiction-list"></div>
                 </div>
 
@@ -1780,22 +1792,40 @@
             return { laneCounts, corroborationRequiredCount };
         }
 
-        function renderIntakeStatus(status) {
+        function renderIntakeStatus(status, summary = null) {
             const chipContainer = document.getElementById('intake-status-chips');
             const criteriaContainer = document.getElementById('intake-readiness-criteria-chips');
             const contradictionContainer = document.getElementById('intake-contradiction-list');
+            const confirmationButton = document.getElementById('confirm-intake-summary-button');
+            const confirmationStatus = document.getElementById('confirm-intake-summary-status');
             const intakeStatus = status && typeof status === 'object' ? status : {};
+            const intakeCaseSummary = summary && typeof summary === 'object' ? summary : {};
             const blockers = Array.isArray(intakeStatus.blockers) ? intakeStatus.blockers : [];
             const contradictions = Array.isArray(intakeStatus.contradictions) ? intakeStatus.contradictions : [];
             const criteria = intakeStatus.criteria && typeof intakeStatus.criteria === 'object'
                 ? intakeStatus.criteria
                 : {};
+            const summaryConfirmation = intakeCaseSummary.complainant_summary_confirmation && typeof intakeCaseSummary.complainant_summary_confirmation === 'object'
+                ? intakeCaseSummary.complainant_summary_confirmation
+                : {};
             const blockingContradictions = Array.isArray(intakeStatus.blocking_contradictions)
                 ? intakeStatus.blocking_contradictions
+                : [];
+            const escalatedBlockingContradictions = Array.isArray(intakeStatus.escalated_blocking_contradictions)
+                ? intakeStatus.escalated_blocking_contradictions
                 : [];
             const contradictionMetadata = summarizeContradictionMetadata(contradictions, intakeStatus.contradiction_summary);
             const scoreValue = Number(intakeStatus.score || 0);
             const scoreLabel = Number.isFinite(scoreValue) ? scoreValue.toFixed(2) : '0.00';
+            const summaryConfirmed = Boolean(summaryConfirmation.confirmed);
+            const confirmationNote = String(summaryConfirmation.confirmation_note || '').trim();
+            const confirmationSource = String(summaryConfirmation.confirmation_source || '').trim();
+            const confirmedAt = String(summaryConfirmation.confirmed_at || '').trim();
+            const hasCurrentSummarySnapshot = Boolean(
+                summaryConfirmation.current_summary_snapshot
+                && typeof summaryConfirmation.current_summary_snapshot === 'object'
+                && Object.keys(summaryConfirmation.current_summary_snapshot).length
+            );
 
             const chips = [];
             if (intakeStatus.current_phase) chips.push(`<span class="chip">phase: ${intakeStatus.current_phase}</span>`);
@@ -1805,6 +1835,7 @@
             if (typeof intakeStatus.ready_to_advance === 'boolean') {
                 chips.push(`<span class="chip">ready: ${intakeStatus.ready_to_advance ? 'yes' : 'no'}</span>`);
             }
+            chips.push(`<span class="chip">summary confirmation: ${summaryConfirmed ? 'confirmed' : 'pending'}</span>`);
             blockers.forEach((blocker) => {
                 chips.push(`<span class="chip">blocker: ${blocker}</span>`);
             });
@@ -1828,6 +1859,9 @@
             if (blockingContradictions.length) {
                 criteriaChips.push(`<span class="chip">blocking contradictions: ${blockingContradictions.length}</span>`);
             }
+            if (escalatedBlockingContradictions.length) {
+                criteriaChips.push(`<span class="chip">escalated blocking contradictions: ${escalatedBlockingContradictions.length}</span>`);
+            }
             if (contradictionMetadata.corroborationRequiredCount) {
                 criteriaChips.push(`<span class="chip">corroboration-required contradictions: ${contradictionMetadata.corroborationRequiredCount}</span>`);
             }
@@ -1837,6 +1871,26 @@
             criteriaContainer.innerHTML = criteriaChips.length
                 ? criteriaChips.join('')
                 : '<span class="chip">No intake readiness criteria available.</span>';
+
+            confirmationButton.disabled = summaryConfirmed || !hasCurrentSummarySnapshot;
+            confirmationButton.textContent = summaryConfirmed ? 'Intake Summary Confirmed' : 'Confirm Intake Summary';
+            if (summaryConfirmed) {
+                const fragments = ['Intake summary confirmed'];
+                if (confirmationSource) {
+                    fragments.push(`via ${humanizeQueryValue(confirmationSource)}`);
+                }
+                if (confirmedAt) {
+                    fragments.push(`at ${confirmedAt}`);
+                }
+                if (confirmationNote) {
+                    fragments.push(`note: ${confirmationNote}`);
+                }
+                confirmationStatus.textContent = fragments.join(' | ');
+            } else if (hasCurrentSummarySnapshot) {
+                confirmationStatus.textContent = 'Latest intake summary snapshot is awaiting complainant confirmation.';
+            } else {
+                confirmationStatus.textContent = 'No structured intake summary snapshot is available yet.';
+            }
 
             if (!contradictions.length) {
                 contradictionContainer.innerHTML = '<div class="task-card">No intake contradictions are currently tracked.</div>';
@@ -1915,6 +1969,9 @@
                 : {};
             const remedyProfile = intakeCaseSummary.remedy_profile && typeof intakeCaseSummary.remedy_profile === 'object'
                 ? intakeCaseSummary.remedy_profile
+                : {};
+            const summaryConfirmation = intakeCaseSummary.complainant_summary_confirmation && typeof intakeCaseSummary.complainant_summary_confirmation === 'object'
+                ? intakeCaseSummary.complainant_summary_confirmation
                 : {};
             const candidateClaimSummary = intakeCaseSummary.candidate_claim_summary && typeof intakeCaseSummary.candidate_claim_summary === 'object'
                 ? intakeCaseSummary.candidate_claim_summary
@@ -2015,6 +2072,9 @@
             const remedyCategories = Array.isArray(remedyProfile.categories) ? remedyProfile.categories : [];
             if (remedyCategories.length) {
                 contextChips.push(`<span class="chip">remedy profile: ${remedyCategories.map((item) => humanizeQueryValue(item)).join(', ')}</span>`);
+            }
+            if (summaryConfirmation.status) {
+                contextChips.push(`<span class="chip">summary confirmation: ${humanizeQueryValue(summaryConfirmation.status)}</span>`);
             }
             contextContainer.innerHTML = contextChips.length
                 ? contextChips.join('')
@@ -3787,7 +3847,7 @@
 
             setSummary(summary, planSummary);
             setFollowUpSignals(planSummary, historySummary);
-            renderIntakeStatus(payload.intake_status || null);
+            renderIntakeStatus(payload.intake_status || null, payload.intake_case_summary || null);
             renderIntakeCaseSummary(payload.intake_case_summary || null);
             renderQuestionRecommendations(questionRecommendations);
             renderTestimonyRecords(testimonyRecords, testimonySummary);
@@ -3861,8 +3921,27 @@
             }
         }
 
+        async function confirmIntakeSummary() {
+            const payload = {
+                ...baseRequest(),
+                confirmation_note: document.getElementById('confirm-intake-summary-note').value.trim() || null,
+                confirmation_source: 'dashboard',
+            };
+            syncReviewIntentUrl(persistReviewIntent(baseRequest()));
+            setStatus('Confirming intake summary...');
+            try {
+                const result = await postJson('/api/claim-support/confirm-intake-summary', payload);
+                renderPayload(result.post_confirmation_review || result);
+                document.getElementById('raw-output').textContent = JSON.stringify(result, null, 2);
+                setStatus(result && result.confirmed ? 'Intake summary confirmed.' : 'Intake summary confirmation is still pending.');
+            } catch (error) {
+                setStatus(`Intake summary confirmation failed: ${error.message}`);
+            }
+        }
+
         document.getElementById('review-button').addEventListener('click', loadReview);
         document.getElementById('execute-button').addEventListener('click', executeFollowUp);
+        document.getElementById('confirm-intake-summary-button').addEventListener('click', confirmIntakeSummary);
         document.getElementById('resolve-button').addEventListener('click', resolveManualReview);
         document.getElementById('clear-resolution-button').addEventListener('click', clearResolutionForm);
         document.getElementById('save-testimony-button').addEventListener('click', saveTestimony);

@@ -2420,6 +2420,9 @@
             if (Array.isArray(contradiction.affected_claim_types) && contradiction.affected_claim_types.length) {
                 segments.push(`claims ${contradiction.affected_claim_types.map((claimType) => humanizeKey(claimType)).join(', ')}`);
             }
+            if (Array.isArray(contradiction.affected_element_ids) && contradiction.affected_element_ids.length) {
+                segments.push(`affected elements ${contradiction.affected_element_ids.map((elementId) => humanizeKey(elementId)).join(', ')}`);
+            }
 
             return escapeHtml(segments.join(' | '));
         }
