@@ -48,6 +48,14 @@ ANCHOR_SECTION_PATTERNS: Dict[str, Sequence[str]] = {
     "selection_criteria": ("selection", "screening", "criteria", "evaluation", "prioritization"),
 }
 
+ANCHOR_SECTION_HINT_TERMS: Dict[str, Sequence[str]] = {
+    "grievance_hearing": ("grievance", "hearing", "informal hearing", "impartial person"),
+    "appeal_rights": ("appeal", "review", "due process", "written notice", "right to appeal"),
+    "reasonable_accommodation": ("reasonable accommodation", "accommodation", "disability"),
+    "adverse_action": ("adverse action", "denial", "termination", "terminate assistance", "notice of adverse action"),
+    "selection_criteria": ("selection", "screening", "criteria", "evaluation", "prioritization"),
+}
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -275,6 +283,24 @@ def _is_probably_toc_text(text: str) -> bool:
     return dotted_leaders >= 2 or page_refs >= 4 or (heading_hits >= 3 and dotted_leaders >= 1)
 
 
+def _is_substantive_policy_text(text: str) -> bool:
+    normalized = _normalize_match_text(text)
+    if not normalized or _is_probably_toc_text(normalized):
+        return False
+
+    word_count = len(re.findall(r"\b\w+\b", normalized))
+    if word_count < 12:
+        return False
+
+    if re.search(r"\bHACC Policy\b", normalized, flags=re.IGNORECASE):
+        return True
+    if re.search(r"[.!?]", normalized) and re.search(r"\b(?:must|shall|will|may|should)\b", normalized, flags=re.IGNORECASE):
+        return True
+    if re.search(r"\b(?:provide|request|deliver|schedule|notify|deny|terminate|review|hearing|appeal)\b", normalized, flags=re.IGNORECASE):
+        return True
+    return False
+
+
 def _best_rule_text(hit: Dict[str, Any]) -> str:
     scored_rules: List[tuple[int, str]] = []
     for rule in list(hit.get("matched_rules") or []):
@@ -343,7 +369,10 @@ def _extract_anchor_passages(
             anchor_terms=normalized_terms,
             fallback_snippet=snippet,
         )
-        section_labels = _classify_anchor_sections(passage_text)
+        section_labels = _filter_section_labels_for_anchor_terms(
+            _classify_anchor_sections(passage_text),
+            normalized_terms,
+        )
         matched_terms = [term for term in normalized_terms if term in snippet_lower]
         ranked_passages.append(
             {
@@ -386,7 +415,10 @@ def _extract_anchor_passages(
             anchor_terms=normalized_terms,
             fallback_snippet=snippet,
         )
-        section_labels = _classify_anchor_sections(passage_text)
+        section_labels = _filter_section_labels_for_anchor_terms(
+            _classify_anchor_sections(passage_text),
+            normalized_terms,
+        )
         passages.append(
             {
                 "title": str(hit.get("title") or ""),
@@ -406,6 +438,13 @@ def _clean_extracted_excerpt(text: str) -> str:
     cleaned = _normalize_match_text(text)
     if not cleaned:
         return cleaned
+
+    cleaned = re.sub(
+        r'^(?:[A-Z0-9 /&()\-]+\s+\.{4,}\s*\d{1,3}-\d{1,3}\s*)+',
+        '',
+        cleaned,
+        flags=re.IGNORECASE,
+    )
 
     boilerplate_patterns = (
         r"\s*©\s*Copyright\b.*$",
@@ -427,6 +466,19 @@ def _clean_extracted_excerpt(text: str) -> str:
     return _normalize_match_text(cleaned)
 
 
+def _score_excerpt_match(excerpt: str, anchor_terms: Sequence[str]) -> tuple[int, int, int, int]:
+    normalized_excerpt = _clean_extracted_excerpt(excerpt)
+    if not normalized_excerpt:
+        return (0, 0, 0, 0)
+
+    lowered = normalized_excerpt.lower()
+    normalized_terms = [str(term).strip().lower() for term in anchor_terms if str(term).strip()]
+    matched_terms = {term for term in normalized_terms if term in lowered}
+    substantive = 1 if _is_substantive_policy_text(normalized_excerpt) else 0
+    non_toc = 1 if not _is_probably_toc_text(normalized_excerpt) else 0
+    return (len(matched_terms), substantive, non_toc, len(normalized_excerpt))
+
+
 def _candidate_text_paths(source_path: str) -> List[Path]:
     path = Path(source_path)
     candidates: List[Path] = []
@@ -446,6 +498,44 @@ def _candidate_text_paths(source_path: str) -> List[Path]:
     return deduped
 
 
+def _extract_paragraph_excerpt(
+    raw_text: str,
+    *,
+    match_index: int,
+    max_chars: int = 520,
+) -> str:
+    if not raw_text:
+        return ""
+
+    paragraph_matches = list(re.finditer(r"\S(?:.*?\S)?(?:\n\s*\n|$)", raw_text, flags=re.DOTALL))
+    if not paragraph_matches:
+        return ""
+
+    selected_index = None
+    for index, match in enumerate(paragraph_matches):
+        if match.start() <= match_index < match.end():
+            selected_index = index
+            break
+    if selected_index is None:
+        return ""
+
+    combined_parts: List[str] = []
+    total_length = 0
+    for match in paragraph_matches[selected_index : selected_index + 3]:
+        part = _clean_extracted_excerpt(match.group(0))
+        if not part:
+            continue
+        combined_parts.append(part)
+        total_length += len(part)
+        if total_length >= max_chars or re.search(r"[.!?]$", part):
+            break
+
+    excerpt = " ".join(combined_parts).strip()
+    if len(excerpt) > max_chars:
+        excerpt = excerpt[: max_chars - 3].rstrip(" ,;:.") + "..."
+    return excerpt
+
+
 def _extract_source_window(
     *,
     source_path: str,
@@ -456,6 +546,16 @@ def _extract_source_window(
     normalized_fallback = _clean_extracted_excerpt(fallback_snippet)
     if not source_path:
         return normalized_fallback
+
+    best_excerpt = ""
+    best_score = (0, 0, 0, 0)
+
+    def consider_excerpt(candidate: str) -> None:
+        nonlocal best_excerpt, best_score
+        candidate_score = _score_excerpt_match(candidate, anchor_terms)
+        if candidate_score > best_score:
+            best_excerpt = _clean_extracted_excerpt(candidate)
+            best_score = candidate_score
 
     search_needles = sorted(
         [term for term in anchor_terms if term],
@@ -478,45 +578,61 @@ def _extract_source_window(
         if not normalized_source:
             continue
 
+        source_text_lower = source_text.lower()
         normalized_source_lower = normalized_source.lower()
         for needle in search_needles:
-            idx = normalized_source_lower.find(str(needle).lower())
-            if idx < 0:
-                continue
-            start = max(0, idx - (window_chars // 3))
-            end = min(len(normalized_source), idx + window_chars)
-            if start > 0:
-                sentence_start = max(
-                    normalized_source.rfind(". ", max(0, start - 200), start),
-                    normalized_source.rfind("! ", max(0, start - 200), start),
-                    normalized_source.rfind("? ", max(0, start - 200), start),
-                )
-                if sentence_start >= 0:
-                    start = sentence_start + 2
-                elif normalized_source[start - 1].isalnum():
-                    next_space = normalized_source.find(" ", start)
-                    if next_space > start:
-                        start = next_space + 1
-            if end < len(normalized_source):
-                sentence_end_candidates = [
-                    pos for pos in (
-                        normalized_source.find(". ", end, min(len(normalized_source), end + 200)),
-                        normalized_source.find("! ", end, min(len(normalized_source), end + 200)),
-                        normalized_source.find("? ", end, min(len(normalized_source), end + 200)),
+            needle_lower = str(needle).lower()
+            search_from = 0
+            while True:
+                raw_idx = source_text_lower.find(needle_lower, search_from)
+                if raw_idx >= 0:
+                    paragraph_excerpt = _extract_paragraph_excerpt(
+                        source_text,
+                        match_index=raw_idx,
+                        max_chars=window_chars,
                     )
-                    if pos >= 0
-                ]
-                if sentence_end_candidates:
-                    end = min(sentence_end_candidates) + 1
-                elif normalized_source[end - 1].isalnum():
-                    last_space = normalized_source.rfind(" ", start, end)
-                    if last_space > start:
-                        end = last_space
-            excerpt = _clean_extracted_excerpt(normalized_source[start:end])
-            if _is_probably_toc_text(excerpt):
-                continue
-            if excerpt:
-                return excerpt
+                    consider_excerpt(paragraph_excerpt)
+                idx = normalized_source_lower.find(needle_lower, search_from)
+                if idx < 0:
+                    break
+                start = max(0, idx - (window_chars // 3))
+                end = min(len(normalized_source), idx + window_chars)
+                if start > 0:
+                    sentence_start = max(
+                        normalized_source.rfind(". ", max(0, start - 200), start),
+                        normalized_source.rfind("! ", max(0, start - 200), start),
+                        normalized_source.rfind("? ", max(0, start - 200), start),
+                    )
+                    if sentence_start >= 0:
+                        start = sentence_start + 2
+                    elif normalized_source[start - 1].isalnum():
+                        next_space = normalized_source.find(" ", start)
+                        if next_space > start:
+                            start = next_space + 1
+                if end < len(normalized_source):
+                    sentence_end_candidates = [
+                        pos for pos in (
+                            normalized_source.find(". ", end, min(len(normalized_source), end + 200)),
+                            normalized_source.find("! ", end, min(len(normalized_source), end + 200)),
+                            normalized_source.find("? ", end, min(len(normalized_source), end + 200)),
+                        )
+                        if pos >= 0
+                    ]
+                    if sentence_end_candidates:
+                        end = min(sentence_end_candidates) + 1
+                    elif normalized_source[end - 1].isalnum():
+                        last_space = normalized_source.rfind(" ", start, end)
+                        if last_space > start:
+                            end = last_space
+                excerpt = _clean_extracted_excerpt(normalized_source[start:end])
+                consider_excerpt(excerpt)
+                if excerpt:
+                    trimmed_excerpt = _clean_extracted_excerpt(normalized_source[idx:end])
+                    consider_excerpt(trimmed_excerpt)
+                search_from = max(idx, raw_idx if raw_idx >= 0 else idx) + max(1, len(needle_lower))
+
+    if best_excerpt:
+        return best_excerpt
 
     return normalized_fallback
 
@@ -562,6 +678,25 @@ def _classify_anchor_sections(snippet: str) -> List[str]:
         if any(pattern in normalized for pattern in patterns):
             labels.append(label)
     return labels or ["general_policy"]
+
+
+def _filter_section_labels_for_anchor_terms(
+    section_labels: Sequence[str],
+    anchor_terms: Optional[Sequence[str]],
+) -> List[str]:
+    normalized_terms = [str(term).strip().lower() for term in (anchor_terms or []) if str(term).strip()]
+    if not normalized_terms:
+        return list(section_labels)
+
+    filtered: List[str] = []
+    for label in section_labels:
+        hints = ANCHOR_SECTION_HINT_TERMS.get(label, ())
+        if not hints:
+            filtered.append(label)
+            continue
+        if any(hint in term or term in hint for hint in hints for term in normalized_terms):
+            filtered.append(label)
+    return filtered or list(section_labels)
 
 
 def _summarize_section_labels(anchor_passages: Sequence[Dict[str, Any]]) -> List[str]:

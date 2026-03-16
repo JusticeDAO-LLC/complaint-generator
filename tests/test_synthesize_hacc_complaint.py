@@ -518,6 +518,88 @@ def test_markdown_groups_tagged_evidence_sections():
     assert markdown.count("### Notice") >= 2
 
 
+def test_selection_rationale_from_matrix_captures_tradeoff_metadata():
+    matrix_payload = {
+        "recommendations": {
+            "best_overall": {
+                "preset": "accommodation_focus",
+                "claim_theory_families": ["accommodation", "process", "protected_basis"],
+                "tradeoff_note": "best for accommodation framing + protected-basis framing; runner-up is stronger on retaliation-heavy framing",
+            }
+        },
+        "winner_delta": {
+            "runner_up_preset": "administrative_plan_retaliation",
+            "winner_only_theory_families": ["accommodation", "protected_basis"],
+            "runner_up_only_theory_families": ["retaliation"],
+            "shared_theory_families": ["process"],
+            "winner_only_claims": ["Fair Housing Act / Section 504 Accommodation Theory"],
+            "runner_up_only_claims": ["Retaliation for Protected Fair Housing Activity"],
+        },
+    }
+
+    rationale = MODULE._selection_rationale_from_matrix(matrix_payload, "matrix")
+
+    assert rationale["selected_preset"] == "accommodation_focus"
+    assert rationale["claim_theory_families"] == ["accommodation", "process", "protected_basis"]
+    assert rationale["tradeoff_note"].startswith("best for accommodation framing")
+    assert rationale["runner_up_preset"] == "administrative_plan_retaliation"
+    assert rationale["winner_only_theory_families"] == ["accommodation", "protected_basis"]
+
+
+def test_markdown_includes_selection_rationale_section():
+    package = {
+        "generated_at": "2026-03-15T00:00:00+00:00",
+        "preset": "accommodation_focus",
+        "filing_forum": "hud",
+        "session_id": "session_1",
+        "critic_score": 0.5,
+        "summary": "Summary.",
+        "selection_rationale": {
+            "selected_preset": "accommodation_focus",
+            "claim_theory_families": ["accommodation", "process", "protected_basis"],
+            "tradeoff_note": "best for accommodation framing + protected-basis framing; runner-up is stronger on retaliation-heavy framing",
+            "runner_up_preset": "administrative_plan_retaliation",
+            "winner_only_theory_families": ["accommodation", "protected_basis"],
+            "runner_up_only_theory_families": ["retaliation"],
+            "shared_theory_families": ["process"],
+        },
+        "caption": {
+            "court": "HUD",
+            "case_title": "Administrative Fair Housing Complaint",
+            "document_title": "Draft HUD Housing Discrimination Complaint",
+            "caption_note": "Note",
+        },
+        "parties": {
+            "plaintiff": "Aggrieved person / complainant.",
+            "defendant": "HACC, respondent.",
+        },
+        "jurisdiction_and_venue": ["HUD jurisdiction should be confirmed."],
+        "legal_theory_summary": {
+            "theory_labels": ["reasonable_accommodation"],
+            "protected_bases": ["disability"],
+            "authority_hints": ["Section 504 of the Rehabilitation Act"],
+        },
+        "grounded_evidence_summary": [],
+        "factual_allegations": ["Fact one."],
+        "claims_theory": ["Theory one."],
+        "policy_basis": ["Policy one."],
+        "causes_of_action": [{"title": "Cause", "theory": "Theory", "support": ["Support"]}],
+        "claim_selection_summary": [],
+        "proposed_allegations": ["Proposed."],
+        "anchor_sections": ["reasonable_accommodation"],
+        "anchor_passages": ["Passage"],
+        "supporting_evidence": ["Evidence"],
+        "requested_relief": ["Relief"],
+    }
+
+    markdown = MODULE._render_markdown(package)
+
+    assert "## Selection Rationale" in markdown
+    assert "- Selected preset: accommodation_focus" in markdown
+    assert "- Why this preset won: best for accommodation framing + protected-basis framing; runner-up is stronger on retaliation-heavy framing" in markdown
+    assert "- Runner-up preset: administrative_plan_retaliation" in markdown
+
+
 def test_grounded_supporting_evidence_merges_packets_and_uploads():
     grounding_bundle = {
         "query": "reasonable accommodation hearing rights",
@@ -581,6 +663,81 @@ def test_merge_seed_with_grounding_replaces_toc_summary_with_grounded_snippet():
     assert merged["summary"].startswith("Applicants or tenant families")
     assert merged["key_facts"]["evidence_summary"].startswith("Applicants or tenant families")
     assert merged["hacc_evidence"][0]["title"] == "ADMINISTRATIVE PLAN"
+
+
+def test_merge_seed_with_grounding_refreshes_anchor_passages_from_source_text(tmp_path):
+    source_path = tmp_path / "policy.txt"
+    source_path.write_text(
+        "Administrative Plan - Table of Contents\n"
+        "Scheduling an Informal Review ........ 16-11\n"
+        "Informal Review Procedures ........ 16-11\n\n"
+        "Scheduling an Informal Review\n\n"
+        "HACC Policy\n\n"
+        "A request for an informal review must be made in writing and delivered to HACC.\n"
+        "HACC must schedule and send written notice of the informal review within 10 business days.\n",
+        encoding="utf-8",
+    )
+
+    seed = {
+        "summary": "Scheduling an Informal Review ........ 16-11",
+        "key_facts": {
+            "anchor_terms": ["grievance", "hearing", "appeal"],
+            "anchor_passages": [
+                {
+                    "title": "ADMINISTRATIVE PLAN",
+                    "source_path": str(source_path),
+                    "snippet": "Scheduling an Informal Review ........ 16-11",
+                    "section_labels": ["appeal_rights"],
+                }
+            ],
+        },
+        "hacc_evidence": [
+            {
+                "title": "ADMINISTRATIVE PLAN",
+                "source_path": str(source_path),
+                "snippet": "Scheduling an Informal Review ........ 16-11",
+            }
+        ],
+    }
+
+    merged = MODULE._merge_seed_with_grounding(seed, {})
+
+    assert "must schedule and send written notice" in merged["key_facts"]["anchor_passages"][0]["snippet"]
+    assert "must schedule and send written notice" in merged["hacc_evidence"][0]["snippet"]
+    assert "........ 16-11" not in merged["key_facts"]["anchor_passages"][0]["snippet"]
+
+
+def test_merge_seed_with_grounding_uses_matched_rule_when_refresh_hits_placeholder_text():
+    seed = {
+        "key_facts": {
+            "anchor_terms": ["grievance", "hearing", "appeal"],
+            "anchor_passages": [
+                {
+                    "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+                    "source_path": "/tmp/acop.txt",
+                    "snippet": "[The following is an optional section where the PHA may include referral services to support a family in finding new housing.]",
+                    "section_labels": ["grievance_hearing"],
+                }
+            ],
+        },
+        "hacc_evidence": [
+            {
+                "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+                "source_path": "/tmp/acop.txt",
+                "snippet": "[The following is an optional section where the PHA may include referral services to support a family in finding new housing.]",
+                "matched_rules": [
+                    {
+                        "text": "In states without due process determinations, HACC must grant opportunity for grievance hearings."
+                    }
+                ],
+            }
+        ],
+    }
+
+    merged = MODULE._merge_seed_with_grounding(seed, {})
+
+    assert "must grant opportunity for grievance hearings" in merged["hacc_evidence"][0]["snippet"]
+    assert "must grant opportunity for grievance hearings" in merged["key_facts"]["anchor_passages"][0]["snippet"]
 
 
 def test_best_grounding_result_excerpt_combines_truncated_rule_with_followup_rule():

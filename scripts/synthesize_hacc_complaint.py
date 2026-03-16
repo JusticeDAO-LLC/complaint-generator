@@ -11,6 +11,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from adversarial_harness.hacc_evidence import _extract_source_window as _extract_grounded_source_window
+
 
 DEFAULT_RELIEF = [
     "Declaratory relief identifying the challenged conduct and policies.",
@@ -59,6 +61,29 @@ def _best_preset_from_matrix(matrix_payload: Dict[str, Any]) -> tuple[str | None
     best_overall = dict(recommendations.get("best_overall") or {})
     preset = best_overall.get("preset")
     return (str(preset), "matrix") if preset else (None, "unknown")
+
+
+def _selection_rationale_from_matrix(matrix_payload: Dict[str, Any], selection_source: str) -> Dict[str, Any]:
+    source_block = dict(matrix_payload.get("champion_challenger") or {}) if selection_source == "champion_challenger" else dict(matrix_payload)
+    recommendations = dict(source_block.get("recommendations") or {})
+    best_overall = dict(recommendations.get("best_overall") or {})
+    winner_delta = dict(source_block.get("winner_delta") or {})
+    if not best_overall and not winner_delta:
+        return {}
+
+    rationale: Dict[str, Any] = {
+        "selection_source": selection_source,
+        "selected_preset": str(best_overall.get("preset") or ""),
+        "claim_theory_families": [str(item) for item in list(best_overall.get("claim_theory_families") or []) if str(item)],
+        "tradeoff_note": str(best_overall.get("tradeoff_note") or "").strip(),
+        "runner_up_preset": str(winner_delta.get("runner_up_preset") or ""),
+        "winner_only_theory_families": [str(item) for item in list(winner_delta.get("winner_only_theory_families") or []) if str(item)],
+        "runner_up_only_theory_families": [str(item) for item in list(winner_delta.get("runner_up_only_theory_families") or []) if str(item)],
+        "shared_theory_families": [str(item) for item in list(winner_delta.get("shared_theory_families") or []) if str(item)],
+        "winner_only_claims": [str(item) for item in list(winner_delta.get("winner_only_claims") or []) if str(item)],
+        "runner_up_only_claims": [str(item) for item in list(winner_delta.get("runner_up_only_claims") or []) if str(item)],
+    }
+    return {key: value for key, value in rationale.items() if value}
 
 
 def _conversation_facts(conversation_history: List[Dict[str, Any]], limit: int = 8) -> List[str]:
@@ -841,6 +866,148 @@ def _load_optional_json(path: Path | None) -> Dict[str, Any]:
     return _load_json(path)
 
 
+def _refresh_anchor_terms(anchor_terms: List[str], fallback_snippet: str) -> List[str]:
+    terms: List[str] = []
+
+    cleaned_snippet = " ".join(str(fallback_snippet or "").split()).strip()
+    if cleaned_snippet:
+        heading_candidates = [
+            re.split(r"\.{6,}|\[[^\]]+\]|;|:", cleaned_snippet, maxsplit=1)[0].strip(),
+            cleaned_snippet,
+        ]
+        for candidate in heading_candidates:
+            candidate = re.sub(r"^\d{1,3}(?:-\d{1,3})?\s+", "", candidate).strip(" -.:")
+            if not candidate:
+                continue
+            if len(candidate.split()) >= 3:
+                terms.append(candidate)
+
+    terms.extend(anchor_terms)
+
+    deduped: List[str] = []
+    seen = set()
+    for term in terms:
+        normalized = term.lower()
+        if normalized not in seen:
+            seen.add(normalized)
+            deduped.append(term)
+    return deduped
+
+
+def _is_placeholder_policy_text(text: str) -> bool:
+    normalized = _clean_policy_text(text)
+    if not normalized:
+        return False
+    return bool(
+        re.search(
+            r"\[(?:INSERT|The following is an optional section|Optional)",
+            normalized,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _refresh_snippet_from_source(
+    source_path: str,
+    *,
+    anchor_terms: List[str],
+    fallback_snippet: str,
+) -> str:
+    refresh_terms = _refresh_anchor_terms(anchor_terms, fallback_snippet)
+    if not source_path or not refresh_terms:
+        return _clean_policy_text(fallback_snippet)
+    refreshed = _extract_grounded_source_window(
+        source_path=source_path,
+        anchor_terms=refresh_terms,
+        fallback_snippet=fallback_snippet,
+    )
+    return _clean_policy_text(refreshed or fallback_snippet)
+
+
+def _should_replace_snippet(current_snippet: str, refreshed_snippet: str) -> bool:
+    current_clean = _clean_policy_text(current_snippet)
+    refreshed_clean = _clean_policy_text(refreshed_snippet)
+    if not refreshed_clean or refreshed_clean == current_clean:
+        return False
+    if _is_probably_toc_text(current_clean) and not _is_probably_toc_text(refreshed_clean):
+        return True
+    if "HACC Policy" in refreshed_snippet and "HACC Policy" not in current_snippet:
+        return True
+    if len(refreshed_clean) > len(current_clean) and not _is_probably_toc_text(refreshed_clean):
+        return True
+    return False
+
+
+def _refresh_seed_source_snippets(seed: Dict[str, Any]) -> Dict[str, Any]:
+    refreshed_seed = dict(seed or {})
+    key_facts = dict(refreshed_seed.get("key_facts") or {})
+    anchor_terms = [str(item).strip() for item in list(key_facts.get("anchor_terms") or []) if str(item).strip()]
+    if not anchor_terms:
+        refreshed_seed["key_facts"] = key_facts
+        return refreshed_seed
+
+    refreshed_passages: List[Dict[str, Any]] = []
+    for passage in list(key_facts.get("anchor_passages") or []):
+        updated = dict(passage)
+        current_snippet = str(updated.get("snippet") or "")
+        refreshed_snippet = _refresh_snippet_from_source(
+            str(updated.get("source_path") or ""),
+            anchor_terms=anchor_terms,
+            fallback_snippet=current_snippet,
+        )
+        if _should_replace_snippet(current_snippet, refreshed_snippet):
+            updated["snippet"] = refreshed_snippet
+        refreshed_passages.append(updated)
+    if refreshed_passages:
+        key_facts["anchor_passages"] = refreshed_passages
+
+    refreshed_evidence: List[Dict[str, Any]] = []
+    for item in list(refreshed_seed.get("hacc_evidence") or []):
+        updated = dict(item)
+        current_snippet = str(updated.get("snippet") or "")
+        refreshed_snippet = _refresh_snippet_from_source(
+            str(updated.get("source_path") or ""),
+            anchor_terms=anchor_terms,
+            fallback_snippet=current_snippet,
+        )
+        if _should_replace_snippet(current_snippet, refreshed_snippet):
+            updated["snippet"] = refreshed_snippet
+        if _is_placeholder_policy_text(str(updated.get("snippet") or "")):
+            matched_rule_excerpt = _clean_policy_text(_best_grounding_result_excerpt(updated))
+            if matched_rule_excerpt and not _is_placeholder_policy_text(matched_rule_excerpt):
+                updated["snippet"] = matched_rule_excerpt
+        refreshed_evidence.append(updated)
+    if refreshed_evidence:
+        refreshed_seed["hacc_evidence"] = refreshed_evidence
+
+    if refreshed_passages and refreshed_evidence:
+        evidence_by_key = {
+            (
+                str(item.get("title") or "").strip().lower(),
+                str(item.get("source_path") or "").strip().lower(),
+            ): str(item.get("snippet") or "")
+            for item in refreshed_evidence
+        }
+        updated_passages: List[Dict[str, Any]] = []
+        for passage in refreshed_passages:
+            updated = dict(passage)
+            key = (
+                str(updated.get("title") or "").strip().lower(),
+                str(updated.get("source_path") or "").strip().lower(),
+            )
+            evidence_snippet = evidence_by_key.get(key, "")
+            if evidence_snippet and (
+                _is_placeholder_policy_text(str(updated.get("snippet") or ""))
+                or _is_probably_toc_text(str(updated.get("snippet") or ""))
+            ):
+                updated["snippet"] = evidence_snippet
+            updated_passages.append(updated)
+        key_facts["anchor_passages"] = updated_passages
+
+    refreshed_seed["key_facts"] = key_facts
+    return refreshed_seed
+
+
 def _auto_discover_grounded_artifacts(results_path: Path) -> Dict[str, Path]:
     candidates = []
     parent = results_path.parent
@@ -978,7 +1145,7 @@ def _best_grounding_result_excerpt(item: Dict[str, Any], max_chars: int = 420) -
         if str(rule.get("text") or "").strip()
     ]
     candidate_parts: List[str] = []
-    if snippet and not _is_probably_toc_text(snippet):
+    if snippet and not _is_probably_toc_text(snippet) and not _is_placeholder_policy_text(snippet):
         candidate_parts.append(snippet)
     for rule_text in rule_texts[:4]:
         if rule_text and rule_text not in candidate_parts:
@@ -1034,10 +1201,10 @@ def _filter_grounding_evidence_for_seed(seed: Dict[str, Any], evidence_items: Li
             continue
     return filtered or evidence_items
 def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str, Any]) -> Dict[str, Any]:
+    merged = _refresh_seed_source_snippets(dict(seed or {}))
     if not grounding_bundle:
-        return seed
+        return merged
 
-    merged = dict(seed or {})
     key_facts = dict(merged.get("key_facts") or {})
     grounding_evidence = _filter_grounding_evidence_for_seed(
         merged,
@@ -1558,6 +1725,35 @@ def _render_markdown(package: Dict[str, Any]) -> str:
         "",
         package["summary"],
         "",
+    ]
+    selection_rationale = dict(package.get("selection_rationale") or {})
+    if selection_rationale:
+        lines.extend([
+            "## Selection Rationale",
+            "",
+        ])
+        if selection_rationale.get("selected_preset"):
+            lines.append(f"- Selected preset: {selection_rationale['selected_preset']}")
+        if selection_rationale.get("claim_theory_families"):
+            lines.append(f"- Selected theory families: {', '.join(selection_rationale['claim_theory_families'])}")
+        if selection_rationale.get("tradeoff_note"):
+            lines.append(f"- Why this preset won: {selection_rationale['tradeoff_note']}")
+        if selection_rationale.get("runner_up_preset"):
+            lines.append(f"- Runner-up preset: {selection_rationale['runner_up_preset']}")
+        if selection_rationale.get("winner_only_theory_families"):
+            lines.append(f"- Winner-only theory families: {', '.join(selection_rationale['winner_only_theory_families'])}")
+        if selection_rationale.get("runner_up_only_theory_families"):
+            lines.append(f"- Runner-up-only theory families: {', '.join(selection_rationale['runner_up_only_theory_families'])}")
+        if selection_rationale.get("shared_theory_families"):
+            lines.append(f"- Shared theory families: {', '.join(selection_rationale['shared_theory_families'])}")
+        if selection_rationale.get("winner_only_claims"):
+            lines.append(f"- Winner-only claims: {', '.join(selection_rationale['winner_only_claims'])}")
+        if selection_rationale.get("runner_up_only_claims"):
+            lines.append(f"- Runner-up-only claims: {', '.join(selection_rationale['runner_up_only_claims'])}")
+        lines.extend([
+            "",
+        ])
+    lines.extend([
         "## Draft Caption",
         "",
         f"- Court: {caption.get('court', '')}",
@@ -1572,7 +1768,7 @@ def _render_markdown(package: Dict[str, Any]) -> str:
         "",
         f"## {section_labels['jurisdiction']}",
         "",
-    ]
+    ])
     lines.extend(f"- {item}" for item in package["jurisdiction_and_venue"])
     lines.extend([
         "",
@@ -1768,6 +1964,7 @@ def main(argv: List[str] | None = None) -> int:
         "proposed_allegations": _proposed_allegations(seed, best_session, args.filing_forum),
         "requested_relief": _requested_relief_for_forum(args.filing_forum),
         "grounded_evidence_summary": _grounded_summary_lines(grounding_bundle, evidence_upload_report),
+        "selection_rationale": _selection_rationale_from_matrix(matrix_payload, selection_source) if matrix_payload else {},
         "source_artifacts": {
             "results_json": str(results_path),
             "matrix_summary": str(Path(args.matrix_summary).resolve()) if args.matrix_summary else None,

@@ -26,7 +26,12 @@ from adversarial_harness.demo_autopatch import (
     DemoBatchMediator,
     run_adversarial_autopatch_batch,
 )
-from adversarial_harness.hacc_evidence import build_hacc_evidence_seed, build_hacc_mediator_evidence_packet
+from adversarial_harness.hacc_evidence import (
+    _best_rule_text,
+    _extract_source_window,
+    build_hacc_evidence_seed,
+    build_hacc_mediator_evidence_packet,
+)
 import adversarial_harness.seed_complaints as seed_complaints_module
 
 
@@ -802,6 +807,45 @@ class TestSeedComplaintLibrary:
         assert 'Unlimited copies may be made for internal use' not in expanded
         assert 'Page 10-23' not in expanded
         assert 'Absorbing a Portable Family' not in expanded
+
+    def test_best_rule_text_prefers_required_procedural_language(self):
+        hit = {
+            'matched_rules': [
+                {
+                    'text': 'General policy statement without the strongest procedural language but still fairly long for comparison.',
+                    'rule_type': 'statement',
+                    'modality': 'optional',
+                },
+                {
+                    'text': 'The family must receive written notice and may request an informal hearing before termination.',
+                    'rule_type': 'obligation',
+                    'modality': 'required',
+                },
+            ],
+            'matched_entities': [],
+        }
+
+        assert _best_rule_text(hit) == (
+            'The family must receive written notice and may request an informal hearing before termination.'
+        )
+
+    def test_extract_source_window_skips_toc_excerpt_when_source_contains_policy_text(self, tmp_path):
+        source_path = tmp_path / 'policy.txt'
+        source_path.write_text(
+            'SECTION 16-1 OVERVIEW ........ 16-1 APPEALS ........ 16-4 INFORMAL HEARING ........ 16-8 '
+            'Actual policy text. The family may request an informal hearing and receive written notice of the decision. '
+            'More details follow.',
+            encoding='utf-8',
+        )
+
+        excerpt = _extract_source_window(
+            source_path=str(source_path),
+            anchor_terms=['informal hearing', 'written notice'],
+            fallback_snippet='informal hearing',
+        )
+
+        assert 'written notice of the decision' in excerpt
+        assert '........' not in excerpt
 
     def test_build_hacc_mediator_evidence_packet_prefers_grounded_seed_packets(self, tmp_path):
         source_path = tmp_path / 'policy.pdf'
