@@ -823,10 +823,36 @@
             const canonicalFactSummary = intakeCaseSummary.canonical_fact_summary && typeof intakeCaseSummary.canonical_fact_summary === 'object' ? intakeCaseSummary.canonical_fact_summary : {};
             const proofLeadSummary = intakeCaseSummary.proof_lead_summary && typeof intakeCaseSummary.proof_lead_summary === 'object' ? intakeCaseSummary.proof_lead_summary : {};
             const questionCandidateSummary = intakeCaseSummary.question_candidate_summary && typeof intakeCaseSummary.question_candidate_summary === 'object' ? intakeCaseSummary.question_candidate_summary : {};
+            const alignmentEvidenceTasks = Array.isArray(intakeCaseSummary.alignment_evidence_tasks) ? intakeCaseSummary.alignment_evidence_tasks : [];
             const claimSupportPacketSummary = intakeCaseSummary.claim_support_packet_summary && typeof intakeCaseSummary.claim_support_packet_summary === 'object' ? intakeCaseSummary.claim_support_packet_summary : {};
             const questionGoalCounts = questionCandidateSummary.question_goal_counts && typeof questionCandidateSummary.question_goal_counts === 'object' ? questionCandidateSummary.question_goal_counts : {};
             const questionSectionCounts = questionCandidateSummary.phase1_section_counts && typeof questionCandidateSummary.phase1_section_counts === 'object' ? questionCandidateSummary.phase1_section_counts : {};
             const questionBlockingCounts = questionCandidateSummary.blocking_level_counts && typeof questionCandidateSummary.blocking_level_counts === 'object' ? questionCandidateSummary.blocking_level_counts : {};
+            const alignmentPreferredLaneCounts = {};
+            const alignmentFallbackLaneCounts = {};
+            const alignmentQualityTargetCounts = {};
+            alignmentEvidenceTasks.forEach((task) => {
+                if (!task || typeof task !== 'object') {
+                    return;
+                }
+                const preferredLane = String(task.preferred_support_kind || '').trim();
+                if (preferredLane) {
+                    alignmentPreferredLaneCounts[preferredLane] = (alignmentPreferredLaneCounts[preferredLane] || 0) + 1;
+                }
+                const fallbackLanes = Array.isArray(task.fallback_lanes)
+                    ? task.fallback_lanes
+                    : (Array.isArray(task.fallback_support_kinds) ? task.fallback_support_kinds : []);
+                fallbackLanes.forEach((lane) => {
+                    const normalizedLane = String(lane || '').trim();
+                    if (normalizedLane) {
+                        alignmentFallbackLaneCounts[normalizedLane] = (alignmentFallbackLaneCounts[normalizedLane] || 0) + 1;
+                    }
+                });
+                const qualityTarget = String(task.source_quality_target || '').trim();
+                if (qualityTarget) {
+                    alignmentQualityTargetCounts[qualityTarget] = (alignmentQualityTargetCounts[qualityTarget] || 0) + 1;
+                }
+            });
             const focusSections = Array.from(new Set(iterations
                 .map((entry) => entry && typeof entry.focus_section === 'string' ? entry.focus_section : '')
                 .filter(Boolean)));
@@ -952,10 +978,34 @@
                     Object.keys(questionBlockingCounts).length
                         ? `Question blocking levels: ${Object.entries(questionBlockingCounts).map(([level, count]) => `${humanizeKey(level)} ${count}`).join(', ')}`
                         : '',
+                    alignmentEvidenceTasks.length
+                        ? `Alignment tasks: ${alignmentEvidenceTasks.length}`
+                        : '',
+                    Object.keys(alignmentPreferredLaneCounts).length
+                        ? `Alignment preferred lanes: ${Object.entries(alignmentPreferredLaneCounts).map(([lane, count]) => `${humanizeKey(lane)} ${count}`).join(', ')}`
+                        : '',
+                    Object.keys(alignmentFallbackLaneCounts).length
+                        ? `Alignment fallback lanes: ${Object.entries(alignmentFallbackLaneCounts).map(([lane, count]) => `${humanizeKey(lane)} ${count}`).join(', ')}`
+                        : '',
+                    Object.keys(alignmentQualityTargetCounts).length
+                        ? `Alignment quality targets: ${Object.entries(alignmentQualityTargetCounts).map(([target, count]) => `${humanizeKey(target)} ${count}`).join(', ')}`
+                        : '',
                     claimSupportPacketSummary.claim_count != null ? `Packet claims: ${claimSupportPacketSummary.claim_count}` : '',
                     claimSupportPacketSummary.element_count != null ? `Packet elements: ${claimSupportPacketSummary.element_count}` : '',
                     claimSupportPacketSummary.status_counts && typeof claimSupportPacketSummary.status_counts === 'object'
                         ? `Packet status counts: ${Object.entries(claimSupportPacketSummary.status_counts).map(([status, count]) => `${humanizeKey(status)} ${count}`).join(', ')}`
+                        : '',
+                    claimSupportPacketSummary.supported_blocking_element_ratio != null
+                        ? `Packet blocking covered: ${Number(claimSupportPacketSummary.supported_blocking_element_ratio || 0).toFixed(2)}`
+                        : '',
+                    claimSupportPacketSummary.proof_readiness_score != null
+                        ? `Packet proof readiness: ${Number(claimSupportPacketSummary.proof_readiness_score || 0).toFixed(2)}`
+                        : '',
+                    claimSupportPacketSummary.claim_support_unresolved_without_review_path_count != null
+                        ? `Packet unresolved without path: ${Number(claimSupportPacketSummary.claim_support_unresolved_without_review_path_count || 0)}`
+                        : '',
+                    claimSupportPacketSummary.evidence_completion_ready != null
+                        ? `Packet completion ready: ${claimSupportPacketSummary.evidence_completion_ready ? 'yes' : 'no'}`
                         : '',
                     Array.isArray(claimSupportPacketSummary.recommended_actions) && claimSupportPacketSummary.recommended_actions.length
                         ? `Packet next steps: ${claimSupportPacketSummary.recommended_actions.join(' | ')}`

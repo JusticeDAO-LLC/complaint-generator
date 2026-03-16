@@ -494,6 +494,14 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "Question goals:" in content
     assert "Question target sections:" in content
     assert "Question blocking levels:" in content
+    assert "Alignment tasks:" in content
+    assert "Alignment preferred lanes:" in content
+    assert "Alignment fallback lanes:" in content
+    assert "Alignment quality targets:" in content
+    assert "Packet blocking covered:" in content
+    assert "Packet proof readiness:" in content
+    assert "Packet unresolved without path:" in content
+    assert "Packet completion ready:" in content
     assert "traceEvidenceTriage" in content
     assert "traceEvidenceQuestionTargets" in content
     assert "renderTriageChipRow" in content

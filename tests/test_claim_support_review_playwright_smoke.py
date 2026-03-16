@@ -1340,11 +1340,28 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
                         "non_blocking": 1,
                     },
                 },
+                "alignment_evidence_tasks": [
+                    {
+                        "task_id": "retaliation:retaliation:2:fill_evidence_gaps",
+                        "claim_type": "retaliation",
+                        "claim_element_id": "retaliation:2",
+                        "claim_element_label": "Claims For Relief",
+                        "preferred_support_kind": "evidence",
+                        "fallback_lanes": ["authority", "testimony"],
+                        "source_quality_target": "high_quality_document",
+                        "resolution_status": "still_open",
+                        "resolution_notes": "",
+                    }
+                ],
                 "claim_support_packet_summary": {
                     "claim_count": 1,
                     "element_count": 2,
                     "status_counts": {"unsupported": 2},
                     "recommended_actions": ["collect_missing_support_kind"],
+                    "supported_blocking_element_ratio": 0.5,
+                    "proof_readiness_score": 0.225,
+                    "claim_support_unresolved_without_review_path_count": 1,
+                    "evidence_completion_ready": False,
                 },
                 "alignment_task_update_history": [
                     {
@@ -1431,6 +1448,7 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
                     .filter((node) => node.textContent.includes('Pending Review'))
                     .map((node) => ({ text: node.textContent.trim(), href: node.getAttribute('href') || '' }))"""
             )
+            trace_evidence = page.locator("#traceEvidenceList").inner_text()
             trace_text = page.locator("#traceEvidenceManualReview").inner_text()
 
             assert {
@@ -1453,6 +1471,14 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
                 "text": "Open Retaliation Pending Review",
                 "href": "/claim-support-review?user_id=trace-smoke-user&claim_type=retaliation&alignment_task_update_filter=pending_review&alignment_task_update_sort=pending_review_first",
             } in pending_review_links
+            assert "Alignment tasks: 1" in trace_evidence
+            assert "Alignment preferred lanes: Evidence 1" in trace_evidence
+            assert "Alignment fallback lanes: Authority 1, Testimony 1" in trace_evidence
+            assert "Alignment quality targets: High Quality Document 1" in trace_evidence
+            assert "Packet blocking covered: 0.50" in trace_evidence
+            assert "Packet proof readiness: 0.23" in trace_evidence
+            assert "Packet unresolved without path: 1" in trace_evidence
+            assert "Packet completion ready: no" in trace_evidence
             assert "Manual Review Blockers" in trace_text
             assert "Manual review blockers: 1" in trace_text
             assert "Claims impacted: 1" in trace_text

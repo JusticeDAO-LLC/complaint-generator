@@ -361,6 +361,22 @@ def _build_mediator() -> Mock:
             "phase1_section_counts": {"proof_leads": 1},
             "blocking_level_counts": {"important": 1},
         },
+        "alignment_evidence_tasks": [
+            {
+                "task_id": "retaliation:causation:fill_evidence_gaps",
+                "action": "fill_evidence_gaps",
+                "claim_type": "retaliation",
+                "claim_element_id": "causation",
+                "claim_element_label": "Causal connection",
+                "support_status": "unsupported",
+                "blocking": True,
+                "preferred_support_kind": "evidence",
+                "fallback_lanes": ["authority", "testimony"],
+                "source_quality_target": "high_quality_document",
+                "resolution_status": "still_open",
+                "resolution_notes": "",
+            }
+        ],
         "claim_support_packet_summary": {
             "claim_count": 2,
             "element_count": 6,
@@ -371,6 +387,10 @@ def _build_mediator() -> Mock:
                 "contradicted": 0,
             },
             "recommended_actions": ["collect_missing_support_kind"],
+            "supported_blocking_element_ratio": 0.5,
+            "proof_readiness_score": 0.47,
+            "claim_support_unresolved_without_review_path_count": 1,
+            "evidence_completion_ready": False,
         },
         "intake_readiness": {
             "ready_to_advance": False,
@@ -2332,6 +2352,27 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
                             'message': 'Intake blocker: resolve_contradictions',
                         }
                     ],
+                    'intake_case_summary': {
+                        'alignment_evidence_tasks': [
+                            {
+                                'task_id': 'retaliation:causation:fill_evidence_gaps',
+                                'claim_type': 'retaliation',
+                                'claim_element_id': 'causation',
+                                'claim_element_label': 'Causal connection',
+                                'preferred_support_kind': 'evidence',
+                                'fallback_lanes': ['authority', 'testimony'],
+                                'source_quality_target': 'high_quality_document',
+                                'resolution_status': 'still_open',
+                                'resolution_notes': '',
+                            }
+                        ],
+                        'claim_support_packet_summary': {
+                            'claim_count': 1,
+                            'proof_readiness_score': 0.47,
+                            'claim_support_unresolved_without_review_path_count': 1,
+                            'evidence_completion_ready': False,
+                        },
+                    },
                 }
             ).encode('utf-8'),
         }
@@ -2347,6 +2388,8 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
     assert payload['size'] == 128
     assert payload['trace']['intake_status']['current_phase'] == 'intake'
     assert payload['trace']['intake_constraints'][0]['code'] == 'intake_blocker'
+    assert payload['trace']['intake_case_summary']['alignment_evidence_tasks'][0]['fallback_lanes'] == ['authority', 'testimony']
+    assert payload['trace']['intake_case_summary']['claim_support_packet_summary']['proof_readiness_score'] == 0.47
 
 
 def test_review_surface_document_builder_flow_serves_page_and_supports_api_round_trip():
@@ -2919,7 +2962,11 @@ def test_review_surface_returns_document_optimization_contract_end_to_end(monkey
     assert report['intake_case_summary']['proof_lead_summary']['count'] == 1
     assert report['intake_case_summary']['question_candidate_summary']['count'] == 1
     assert report['intake_case_summary']['question_candidate_summary']['question_goal_counts']['identify_supporting_proof'] == 1
+    assert report['intake_case_summary']['alignment_evidence_tasks'][0]['fallback_lanes'] == ['authority', 'testimony']
+    assert report['intake_case_summary']['alignment_evidence_tasks'][0]['source_quality_target'] == 'high_quality_document'
     assert report['intake_case_summary']['claim_support_packet_summary']['claim_count'] == 2
+    assert report['intake_case_summary']['claim_support_packet_summary']['proof_readiness_score'] == 0.47
+    assert report['intake_case_summary']['claim_support_packet_summary']['evidence_completion_ready'] is False
     assert report['intake_status'] == {
         'current_phase': 'intake',
         'ready_to_advance': False,
