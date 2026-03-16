@@ -69,6 +69,9 @@ def _conversation_facts(conversation_history: List[Dict[str, Any]], limit: int =
         content = " ".join(str(entry.get("content") or "").split())
         if not content:
             continue
+        lowered = content.lower()
+        if any(token in lowered for token in ("scores:", "feedback:", "strengths:", "weaknesses:", "suggestions:", "question_quality:", "information_extraction:", "coverage:")):
+            continue
         facts.append(content)
         if len(facts) >= limit:
             break
@@ -83,8 +86,19 @@ def _clean_policy_text(text: Any) -> str:
     cleaned = re.sub(r"^For this question, the strongest supporting material is '([^']+)'\.\s*", "", cleaned)
     cleaned = re.sub(r"^HACC Policy\s*", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bHACC Policy\b(?=\s+HACC\b)\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^\d+\s+[A-Z][A-Z\s,&/-]{8,}\.{6,}\d+(?:-\d+)?\s*", "", cleaned)
     cleaned = re.sub(r"\s{2,}", " ", cleaned)
     return cleaned.strip()
+
+
+def _is_probably_toc_text(text: str) -> bool:
+    normalized = " ".join(str(text or "").split()).strip()
+    if not normalized:
+        return False
+    dotted_leaders = len(re.findall(r"\.{8,}", normalized))
+    page_refs = len(re.findall(r"\b\d{1,3}-\d{1,3}\b", normalized))
+    heading_hits = len(re.findall(r"\b(?:PART|SECTION|INTRODUCTION|OVERVIEW|PROCEDURES?|APPEALS?|REQUIREMENTS)\b", normalized, flags=re.IGNORECASE))
+    return dotted_leaders >= 2 or page_refs >= 4 or (heading_hits >= 3 and dotted_leaders >= 1)
 
 
 def _to_sentence(text: Any) -> str:
@@ -98,9 +112,54 @@ def _summarize_policy_excerpt(text: Any, max_sentences: int = 2, max_chars: int 
     cleaned = _clean_policy_text(text)
     if not cleaned:
         return ""
+    if _is_probably_toc_text(cleaned):
+        sentence_match = re.search(
+            r"([^.]*\b(?:written notice|informal review|informal hearing|hearing|appeal|grievance|adverse action|termination|reasonable accommodation|accommodation|review decision)\b[^.]*\.)",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        if sentence_match:
+            cleaned = " ".join(sentence_match.group(1).split()).strip()
+        else:
+            lowered = cleaned.lower()
+            if any(term in lowered for term in ("grievance", "appeal", "hearing")):
+                return "HACC policy materials reference grievance, appeal, and hearing procedures."
+            if any(term in lowered for term in ("notice", "adverse action", "termination")):
+                return "HACC policy materials reference notice and adverse-action procedures."
+            if any(term in lowered for term in ("reasonable accommodation", "accommodation", "disability")):
+                return "HACC policy materials reference accommodation-related procedures."
+            return "HACC policy materials reference procedural protections relevant to the complaint theory."
 
     clause_hits: List[str] = []
     normalized_clauses = (
+        (
+            r"Grievance:\s*Any dispute a tenant may have with respect to HACC action or failure to",
+            "HACC policy defines a grievance as a tenant dispute concerning HACC action or inaction.",
+        ),
+        (
+            r"If HUD has issued a due process determination, HACC may exclude from HACC grievance",
+            "HACC policy says some grievance procedures may be limited when HUD has issued a due process determination.",
+        ),
+        (
+            r"In states without due process determinations, HACC must grant opportunity for grievance",
+            "HACC policy says HACC must offer grievance procedures when HUD has not issued a due process determination.",
+        ),
+        (
+            r"Appeals process:\s*Participants will be provided with a formal appeals process",
+            "HACC policy says participants must be provided a formal appeals process.",
+        ),
+        (
+            r"If termination is necessary, principles of due process must be followed",
+            "HACC policy says due process must be followed before termination.",
+        ),
+        (
+            r"Informal Hearing Process",
+            "HACC policy describes an informal hearing process for applicants and residents.",
+        ),
+        (
+            r"Scheduling an Informal Review",
+            "HACC policy describes scheduling and procedures for informal review.",
+        ),
         (
             r"Information of the availability of reasonable accommodation will be provided to all families at the time of application",
             "HACC policy says applicants must be informed at application that reasonable accommodation is available.",
@@ -868,6 +927,117 @@ def _grounded_summary_lines(
     return lines
 
 
+def _looks_truncated_rule_text(text: str) -> bool:
+    cleaned = " ".join(str(text or "").split()).strip()
+    if not cleaned:
+        return False
+    if len(cleaned) < 90:
+        return True
+    return bool(re.search(r"\b(?:may|must|shall|of|to|from|for|on|with|that|which|if|when|because|under)\.?$", cleaned, flags=re.IGNORECASE))
+
+
+def _best_grounding_result_excerpt(item: Dict[str, Any], max_chars: int = 420) -> str:
+    snippet = " ".join(str(item.get("snippet") or "").split()).strip()
+    rule_texts = [
+        " ".join(str(rule.get("text") or "").split()).strip()
+        for rule in list(item.get("matched_rules") or [])
+        if str(rule.get("text") or "").strip()
+    ]
+    candidate_parts: List[str] = []
+    if snippet and not _is_probably_toc_text(snippet):
+        candidate_parts.append(snippet)
+    for rule_text in rule_texts[:4]:
+        if rule_text and rule_text not in candidate_parts:
+            candidate_parts.append(rule_text)
+
+    if not candidate_parts:
+        candidate_parts = [snippet] if snippet else []
+
+    if len(candidate_parts) >= 2 and _looks_truncated_rule_text(candidate_parts[0]):
+        combined = "; ".join(candidate_parts[:2]).strip()
+    elif candidate_parts:
+        combined = candidate_parts[0]
+    else:
+        combined = ""
+
+    combined = re.sub(r"\s{2,}", " ", combined).strip(" ;,")
+    if len(combined) > max_chars:
+        combined = combined[: max_chars - 3].rstrip(" ,;:.") + "..."
+    return combined
+
+
+def _grounding_results_to_seed_evidence(grounding_bundle: Dict[str, Any], limit: int = 3) -> List[Dict[str, Any]]:
+    search_payload = dict(grounding_bundle.get("search_payload") or {})
+    results = list(search_payload.get("results") or [])
+    evidence: List[Dict[str, Any]] = []
+    for item in results[:limit]:
+        evidence.append(
+            {
+                "title": str(item.get("title") or item.get("document_id") or "Grounding evidence"),
+                "snippet": _best_grounding_result_excerpt(item),
+                "source_path": str(item.get("source_path") or "").strip(),
+            }
+        )
+    return evidence
+
+
+def _filter_grounding_evidence_for_seed(seed: Dict[str, Any], evidence_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    key_facts = dict(seed.get("key_facts") or {})
+    anchor_titles = {str(item).strip().lower() for item in list(key_facts.get("anchor_titles") or []) if str(item).strip()}
+    anchor_paths = {str(item).strip().lower() for item in list(key_facts.get("anchor_source_paths") or []) if str(item).strip()}
+    if not anchor_titles and not anchor_paths:
+        return evidence_items
+
+    filtered: List[Dict[str, Any]] = []
+    for item in evidence_items:
+        title = str(item.get("title") or "").strip().lower()
+        source_path = str(item.get("source_path") or "").strip().lower()
+        if anchor_titles and title in anchor_titles:
+            filtered.append(item)
+            continue
+        if anchor_paths and any(path and path in source_path for path in anchor_paths):
+            filtered.append(item)
+            continue
+    return filtered or evidence_items
+
+
+def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str, Any]) -> Dict[str, Any]:
+    if not grounding_bundle:
+        return seed
+
+    merged = dict(seed or {})
+    key_facts = dict(merged.get("key_facts") or {})
+    grounding_evidence = _filter_grounding_evidence_for_seed(
+        merged,
+        _grounding_results_to_seed_evidence(grounding_bundle),
+    )
+    current_summary = str(key_facts.get("evidence_summary") or merged.get("summary") or "").strip()
+
+    if _is_probably_toc_text(current_summary):
+        for item in grounding_evidence:
+            candidate_summary = str(item.get("snippet") or "").strip()
+            if candidate_summary and not _is_probably_toc_text(candidate_summary):
+                key_facts["evidence_summary"] = candidate_summary
+                merged["summary"] = candidate_summary
+                break
+
+    existing_evidence = list(merged.get("hacc_evidence") or [])
+    if grounding_evidence:
+        normalized_existing = {
+            (str(item.get("title") or "").strip().lower(), str(item.get("source_path") or "").strip().lower())
+            for item in existing_evidence
+        }
+        refreshed_evidence: List[Dict[str, Any]] = []
+        for item in grounding_evidence:
+            key = (str(item.get("title") or "").strip().lower(), str(item.get("source_path") or "").strip().lower())
+            if key not in normalized_existing:
+                refreshed_evidence.append(item)
+        merged["hacc_evidence"] = refreshed_evidence + existing_evidence
+
+    merged["key_facts"] = key_facts
+    return merged
+
+
 def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: int = 6) -> List[str]:
     key_facts = dict(seed.get("key_facts") or {})
     allegations: List[str] = []
@@ -1535,7 +1705,7 @@ def main(argv: List[str] | None = None) -> int:
     grounding_bundle = _load_optional_json(grounding_bundle_path)
     evidence_upload_report = _load_optional_json(evidence_upload_report_path)
     best_session = _pick_best_session(results_payload, preset=args.preset)
-    seed = dict(best_session.get("seed_complaint") or {})
+    seed = _merge_seed_with_grounding(dict(best_session.get("seed_complaint") or {}), grounding_bundle)
     key_facts = dict(seed.get("key_facts") or {})
     anchor_sections = [str(item) for item in list(key_facts.get("anchor_sections") or []) if str(item)]
     cleaned_summary = _summarize_policy_excerpt(
