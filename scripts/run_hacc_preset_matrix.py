@@ -126,7 +126,33 @@ def _select_matrix_recommendations(rows: List[Dict[str, Any]]) -> Dict[str, Dict
     }
 
 
-def _write_markdown_report(filepath: Path, rows: List[Dict[str, Any]], recommendations: Dict[str, Dict[str, Any]]) -> None:
+def _attach_recommendation_claim_snapshots(
+    recommendations: Dict[str, Dict[str, Any]],
+    rows: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    if not recommendations:
+        return {}
+
+    row_by_preset = {str(row.get("preset") or ""): row for row in rows}
+    enriched: Dict[str, Dict[str, Any]] = {}
+    for key, payload in recommendations.items():
+        item = dict(payload or {})
+        preset = str(item.get("preset") or "")
+        row = row_by_preset.get(preset, {})
+        if row.get("claim_selection_overview"):
+            item["claim_selection_overview"] = row["claim_selection_overview"]
+        if row.get("synthesis_output_dir"):
+            item["synthesis_output_dir"] = row["synthesis_output_dir"]
+        enriched[key] = item
+    return enriched
+
+
+def _write_markdown_report(
+    filepath: Path,
+    rows: List[Dict[str, Any]],
+    recommendations: Dict[str, Dict[str, Any]],
+    champion_challenger: Dict[str, Any] | None = None,
+) -> None:
     lines = [
         "# HACC Preset Matrix",
         "",
@@ -140,6 +166,16 @@ def _write_markdown_report(filepath: Path, rows: List[Dict[str, Any]], recommend
             f"- Best balanced: `{recommendations['best_balanced']['preset']}`",
             "",
         ])
+        best_overall = dict(recommendations.get("best_overall") or {})
+        if best_overall.get("claim_selection_overview"):
+            lines.extend([
+                "### Best Overall Claim Snapshot",
+                "",
+                f"- Overview: {best_overall['claim_selection_overview']}",
+            ])
+            if best_overall.get("synthesis_output_dir"):
+                lines.append(f"- Complaint synthesis: `{best_overall['synthesis_output_dir']}`")
+            lines.extend(["",])
     lines.extend([
         "| Preset | Backend | Avg Score | Success | Anchor Coverage | Router | Top Missing Sections | Missing Sections | Output Dir |",
         "| --- | --- | ---: | ---: | ---: | --- | --- | --- | --- |",
@@ -176,6 +212,28 @@ def _write_markdown_report(filepath: Path, rows: List[Dict[str, Any]], recommend
             if synthesis_dir:
                 lines.append(f"- Complaint synthesis: `{synthesis_dir}`")
             lines.append("")
+    champion = dict(champion_challenger or {})
+    champion_recommendations = dict(champion.get("recommendations") or {})
+    if champion_recommendations:
+        lines.extend([
+            "## Champion Challenger",
+            "",
+            f"- Reran top {champion.get('top_k_rerun')} presets with {champion.get('num_sessions')} sessions each.",
+            f"- Best overall: `{champion_recommendations['best_overall']['preset']}`",
+            f"- Best anchor coverage: `{champion_recommendations['best_anchor_coverage']['preset']}`",
+            f"- Best balanced: `{champion_recommendations['best_balanced']['preset']}`",
+        ])
+        champion_best = dict(champion_recommendations.get("best_overall") or {})
+        if champion_best.get("claim_selection_overview"):
+            lines.extend([
+                "",
+                "### Champion Claim Snapshot",
+                "",
+                f"- Overview: {champion_best['claim_selection_overview']}",
+            ])
+            if champion_best.get("synthesis_output_dir"):
+                lines.append(f"- Complaint synthesis: `{champion_best['synthesis_output_dir']}`")
+        lines.append("")
     filepath.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -500,6 +558,7 @@ def main() -> int:
 
     matrix_rows.sort(key=lambda row: (-row["average_score"], -row["anchor_coverage"], row["preset"]))
     recommendations = _select_matrix_recommendations(matrix_rows)
+    recommendations = _attach_recommendation_claim_snapshots(recommendations, matrix_rows)
 
     summary_json = output_dir / "preset_matrix_summary.json"
     summary_csv = output_dir / "preset_matrix_summary.csv"
@@ -554,7 +613,10 @@ def main() -> int:
             "num_sessions": args.champion_sessions,
             "top_k_rerun": args.top_k_rerun,
             "rows": challenger_rows,
-            "recommendations": _select_matrix_recommendations(challenger_rows),
+            "recommendations": _attach_recommendation_claim_snapshots(
+                _select_matrix_recommendations(challenger_rows),
+                challenger_rows,
+            ),
             "output_dir": str(rerun_dir),
         }
 
@@ -594,7 +656,7 @@ def main() -> int:
         for row in matrix_rows:
             writer.writerow(row)
 
-    _write_markdown_report(summary_md, matrix_rows, recommendations)
+    _write_markdown_report(summary_md, matrix_rows, recommendations, challenger_summary)
 
     print(f"Saved preset matrix outputs to {output_dir}")
     if recommendations:
