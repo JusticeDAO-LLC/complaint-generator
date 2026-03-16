@@ -510,6 +510,10 @@
             if (affectedClaimTypes.length) {
                 fragments.push(`Claims ${affectedClaimTypes.map((claimType) => humanizeKey(claimType)).join(', ')}`);
             }
+            const affectedElementIds = Array.isArray(contradiction.affected_element_ids) ? contradiction.affected_element_ids : [];
+            if (affectedElementIds.length) {
+                fragments.push(`Affected elements ${affectedElementIds.map((elementId) => humanizeKey(elementId)).join(', ')}`);
+            }
             return fragments.filter(Boolean).join(' | ');
         }
 

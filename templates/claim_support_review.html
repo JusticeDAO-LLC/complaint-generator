@@ -1853,6 +1853,8 @@
                 if (item.external_corroboration_required) detailChips.push('<span class="chip">external corroboration required</span>');
                 const affectedClaimTypes = Array.isArray(item.affected_claim_types) ? item.affected_claim_types : [];
                 if (affectedClaimTypes.length) detailChips.push(`<span class="chip">claims: ${affectedClaimTypes.map(humanizeQueryValue).join(', ')}</span>`);
+                const affectedElementIds = Array.isArray(item.affected_element_ids) ? item.affected_element_ids : [];
+                if (affectedElementIds.length) detailChips.push(`<span class="chip">affected elements: ${affectedElementIds.map(humanizeQueryValue).join(', ')}</span>`);
                 return `
                     <article class="task-card">
                         <div class="row-head">

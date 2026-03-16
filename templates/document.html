@@ -2721,7 +2721,7 @@
                         const intakeStatus = item && typeof item.intake_status === 'object' ? item.intake_status : {};
                         const blockers = Array.isArray(intakeStatus.blockers) ? intakeStatus.blockers : [];
                         const contradictions = Array.isArray(intakeStatus.contradictions) ? intakeStatus.contradictions : [];
-                        const contradictionMetadata = summarizeContradictionMetadata(contradictions);
+                        const contradictionMetadata = summarizeContradictionMetadata(contradictions, intakeStatus.contradiction_summary);
                         if (!Object.keys(intakeStatus).length) {
                             return '';
                         }
@@ -2985,7 +2985,7 @@
                         : '';
                 })(),
                 (() => {
-                    const contradictionMetadata = summarizeContradictionMetadata(intakeStatus.contradictions);
+                    const contradictionMetadata = summarizeContradictionMetadata(intakeStatus.contradictions, intakeStatus.contradiction_summary);
                     return Object.keys(contradictionMetadata.laneCounts).length
                         ? `Contradiction lanes: ${Object.entries(contradictionMetadata.laneCounts).map(([lane, count]) => `${humanizeKey(lane)} ${count}`).join(', ')}`
                         : '';

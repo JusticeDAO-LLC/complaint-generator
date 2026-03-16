@@ -92,6 +92,7 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "source_fact_ids" in content
     assert "Contradiction pairs" in content
     assert "contradiction-pair-details" in content
+    assert "affected elements:" in content
     assert "packet blocking covered:" in content
     assert "packet credible support:" in content
     assert "packet draft ready:" in content
@@ -553,6 +554,9 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "Packet proof readiness:" in content
     assert "Packet unresolved without path:" in content
     assert "Packet completion ready:" in content
+    assert "Corroboration-required contradictions:" in content
+    assert "Contradiction lanes:" in content
+    assert "Affected elements" in content
     assert "traceEvidenceTriage" in content
     assert "traceEvidenceQuestionTargets" in content
     assert "renderTriageChipRow" in content

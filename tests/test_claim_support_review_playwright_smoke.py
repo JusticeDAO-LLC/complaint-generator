@@ -85,6 +85,7 @@ def _build_hook_backed_browser_mediator(db_path: str):
                     "current_resolution_status": "open",
                     "external_corroboration_required": True,
                     "affected_claim_types": ["retaliation"],
+                    "affected_element_ids": ["retaliation:3"],
                 }
             ],
             "candidate_claim_count": 2,
@@ -1161,6 +1162,7 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "corroboration-required contradictions: 1" in intake_readiness
                 assert "contradiction lanes: Request Document=1" in intake_readiness
                 assert "lane: Request Document" in page.locator("#intake-contradiction-list").inner_text()
+                assert "affected elements: Retaliation:3" in page.locator("#intake-contradiction-list").inner_text()
                 assert "Canonical Fact Intake Intent" in intake_facts
                 assert "canonical fact objectives: Establish Chronology=1" in intake_facts
                 assert "proof lead objectives: Identify Supporting Evidence=1" in intake_proof_leads
@@ -1513,14 +1515,24 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
             "intake_status": {
                 "current_phase": "intake",
                 "score": 0.52,
-                "contradiction_count": 0,
+                "contradiction_count": 1,
                 "blockers": ["collect_missing_support"],
                 "criteria": {
                     "case_theory_coherent": True,
                     "minimum_proof_path_present": True,
                     "claim_disambiguation_resolved": False,
                 },
-                "contradictions": [],
+                "contradictions": [
+                    {
+                        "summary": "Termination date conflicts with reported complaint timeline",
+                        "question": "Which date is supported by the termination notice?",
+                        "recommended_resolution_lane": "request_document",
+                        "current_resolution_status": "open",
+                        "external_corroboration_required": True,
+                        "affected_claim_types": ["retaliation"],
+                        "affected_element_ids": ["retaliation:2"],
+                    }
+                ],
             },
             "intake_constraints": [],
             "intake_case_summary": {
@@ -1720,6 +1732,8 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
             assert "Timeline anchors: 1" in trace_evidence
             assert "Harm profile: Economic" in trace_evidence
             assert "Remedy profile: Monetary" in trace_evidence
+            assert "Corroboration-required contradictions: 1" in trace_evidence
+            assert "Contradiction lanes: Request Document 1" in trace_evidence
             assert "Canonical fact intent records: 1" in trace_evidence
             assert "Canonical fact target claims: Retaliation 1" in trace_evidence
             assert "Proof lead intent records: 1" in trace_evidence
@@ -1746,10 +1760,12 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
             assert "Claims impacted: 1" in trace_text
             assert "Retaliation: Claims For Relief | action Resolve Support Conflicts | artifact artifact-conflict" in trace_text
             pending_trace_text = page.locator("#traceEvidencePendingReview").inner_text()
+            contradiction_trace_text = page.locator("#traceContradictionList").inner_text()
             assert "Pending Review Items" in pending_trace_text
             assert "Pending review items: 1" in pending_trace_text
             assert "Claims impacted: 1" in pending_trace_text
             assert "Retaliation: Claims For Relief | action Await Operator Confirmation | artifact artifact-pending" in pending_trace_text
+            assert "Termination date conflicts with reported complaint timeline | Clarify: Which date is supported by the termination notice? | Lane Request Document | Status Open | External corroboration required | Claims Retaliation | Affected elements Retaliation:2" in contradiction_trace_text
 
             browser.close()
 
