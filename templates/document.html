@@ -2781,6 +2781,33 @@
                 claimSupportPacketSummary.status_counts && typeof claimSupportPacketSummary.status_counts === 'object'
                     ? `Packet status counts: ${Object.entries(claimSupportPacketSummary.status_counts).map(([status, count]) => `${humanizeKey(status)} ${count}`).join(', ')}`
                     : '',
+                claimSupportPacketSummary.supported_blocking_element_ratio != null
+                    ? `Packet blocking covered: ${Number(claimSupportPacketSummary.supported_blocking_element_ratio || 0).toFixed(2)}`
+                    : '',
+                claimSupportPacketSummary.credible_support_ratio != null
+                    ? `Packet credible support: ${Number(claimSupportPacketSummary.credible_support_ratio || 0).toFixed(2)}`
+                    : '',
+                claimSupportPacketSummary.draft_ready_element_ratio != null
+                    ? `Packet draft ready: ${Number(claimSupportPacketSummary.draft_ready_element_ratio || 0).toFixed(2)}`
+                    : '',
+                claimSupportPacketSummary.high_quality_parse_ratio != null
+                    ? `Packet parse quality: ${Number(claimSupportPacketSummary.high_quality_parse_ratio || 0).toFixed(2)}`
+                    : '',
+                claimSupportPacketSummary.reviewable_escalation_ratio != null
+                    ? `Packet review escalations: ${Number(claimSupportPacketSummary.reviewable_escalation_ratio || 0).toFixed(2)}`
+                    : '',
+                claimSupportPacketSummary.claim_support_reviewable_escalation_count != null
+                    ? `Packet escalations: ${Number(claimSupportPacketSummary.claim_support_reviewable_escalation_count || 0)}`
+                    : '',
+                claimSupportPacketSummary.proof_readiness_score != null
+                    ? `Packet proof readiness: ${Number(claimSupportPacketSummary.proof_readiness_score || 0).toFixed(2)}`
+                    : '',
+                claimSupportPacketSummary.claim_support_unresolved_without_review_path_count != null
+                    ? `Packet unresolved without path: ${Number(claimSupportPacketSummary.claim_support_unresolved_without_review_path_count || 0)}`
+                    : '',
+                claimSupportPacketSummary.evidence_completion_ready != null
+                    ? `Packet completion ready: ${claimSupportPacketSummary.evidence_completion_ready ? 'yes' : 'no'}`
+                    : '',
                 Array.isArray(claimSupportPacketSummary.recommended_actions) && claimSupportPacketSummary.recommended_actions.length
                     ? `Packet next steps: ${claimSupportPacketSummary.recommended_actions.join(' | ')}`
                     : '',

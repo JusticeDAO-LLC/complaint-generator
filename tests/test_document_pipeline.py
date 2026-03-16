@@ -623,6 +623,22 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
             "phase1_section_counts": {"proof_leads": 1},
             "blocking_level_counts": {"important": 1},
         },
+        "alignment_evidence_tasks": [
+            {
+                "task_id": "retaliation:causation:fill_evidence_gaps",
+                "action": "fill_evidence_gaps",
+                "claim_type": "retaliation",
+                "claim_element_id": "causation",
+                "claim_element_label": "Causal connection",
+                "support_status": "unsupported",
+                "blocking": True,
+                "preferred_support_kind": "evidence",
+                "fallback_lanes": ["authority", "testimony"],
+                "source_quality_target": "high_quality_document",
+                "resolution_status": "still_open",
+                "resolution_notes": "",
+            }
+        ],
         "claim_support_packet_summary": {
             "claim_count": 2,
             "element_count": 6,
@@ -633,6 +649,15 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
                 "contradicted": 0,
             },
             "recommended_actions": ["collect_missing_support_kind"],
+            "supported_blocking_element_ratio": 0.5,
+            "credible_support_ratio": 0.5,
+            "draft_ready_element_ratio": 0.333,
+            "high_quality_parse_ratio": 0.333,
+            "reviewable_escalation_ratio": 0.167,
+            "claim_support_reviewable_escalation_count": 1,
+            "claim_support_unresolved_without_review_path_count": 1,
+            "proof_readiness_score": 0.47,
+            "evidence_completion_ready": False,
         },
         "intake_readiness": {
             "score": 0.44,
@@ -2539,6 +2564,9 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert 'Trace CID' in page_html
         assert 'Persisted intake phase' in page_html
         assert 'Persisted intake contradictions' in page_html
+        assert 'Persisted alignment tasks' in page_html
+        assert 'Persisted packet proof readiness' in page_html
+        assert 'Persisted packet completion ready' in page_html
         assert 'Router Usage' in page_html
         assert 'Upstream Optimizer' in page_html
         assert 'Stage Provider Selection' in page_html
@@ -2550,6 +2578,19 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert 'Task complexity' in page_html
         assert 'Selected route' in page_html
         assert 'Section History' in page_html
+        assert 'Alignment tasks' in page_html
+        assert 'Alignment preferred lanes' in page_html
+        assert 'Alignment fallback lanes' in page_html
+        assert 'Alignment quality targets' in page_html
+        assert 'Packet blocking covered' in page_html
+        assert 'Packet credible support' in page_html
+        assert 'Packet draft ready' in page_html
+        assert 'Packet parse quality' in page_html
+        assert 'Packet review escalations' in page_html
+        assert 'Packet escalations' in page_html
+        assert 'Packet unresolved without path' in page_html
+        assert 'Packet proof readiness' in page_html
+        assert 'Packet completion ready' in page_html
 
         api_response = client.post(
             '/api/documents/formal-complaint',

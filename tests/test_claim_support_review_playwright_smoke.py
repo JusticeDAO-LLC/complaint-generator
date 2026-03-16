@@ -923,6 +923,15 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
             assert "Pending Review Items" in preview_text
             assert "Pending review items: 1" in preview_text
             assert "Retaliation: Proof Leads | action Await Operator Confirmation | artifact artifact-pending" in preview_text
+            assert "Packet blocking covered: 0.50" in preview_text
+            assert "Packet credible support: 0.50" in preview_text
+            assert "Packet draft ready: 0.00" in preview_text
+            assert "Packet parse quality: 0.00" in preview_text
+            assert "Packet review escalations: 0.50" in preview_text
+            assert "Packet escalations: 1" in preview_text
+            assert "Packet proof readiness: 0.23" in preview_text
+            assert "Packet unresolved without path: 1" in preview_text
+            assert "Packet completion ready: no" in preview_text
 
             browser.close()
 

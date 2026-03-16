@@ -342,6 +342,15 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Question goals:" in content
     assert "Question target sections:" in content
     assert "Question blocking levels:" in content
+    assert "Packet blocking covered:" in content
+    assert "Packet credible support:" in content
+    assert "Packet draft ready:" in content
+    assert "Packet parse quality:" in content
+    assert "Packet review escalations:" in content
+    assert "Packet escalations:" in content
+    assert "Packet proof readiness:" in content
+    assert "Packet unresolved without path:" in content
+    assert "Packet completion ready:" in content
     assert "renderTriageChipRow" in content
     assert "triage-chip" in content
     assert "Question Blocking Levels" in content
