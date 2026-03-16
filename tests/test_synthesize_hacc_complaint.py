@@ -680,6 +680,29 @@ def test_annotate_requested_relief_with_selection_rationale_marks_shared_and_win
     assert annotated[1]["related_claims"] == ["Fair Housing Act / Section 504 Accommodation Theory"]
 
 
+def test_annotate_requested_relief_with_selection_rationale_uses_only_matched_families_in_note():
+    causes = [
+        {
+            "title": "Administrative Fair Housing Process Failure",
+            "strategic_families": ["process"],
+            "strategic_role": "shared_baseline",
+        }
+    ]
+    relief = [
+        "Corrective action requiring clear notice, fair review, and non-retaliation safeguards.",
+    ]
+
+    annotated = MODULE._annotate_requested_relief_with_selection_rationale(
+        relief,
+        causes,
+        {"shared_theory_families": ["process", "retaliation"]},
+    )
+
+    assert annotated[0]["strategic_role"] == "shared_baseline"
+    assert "shared process baseline" in annotated[0]["strategic_note"]
+    assert "retaliation" not in annotated[0]["strategic_note"]
+
+
 def test_grounded_supporting_evidence_merges_packets_and_uploads():
     grounding_bundle = {
         "query": "reasonable accommodation hearing rights",

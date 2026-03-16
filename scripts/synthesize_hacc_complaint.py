@@ -206,25 +206,32 @@ def _annotate_requested_relief_with_selection_rationale(
         relief_text = str(item or "").strip()
         families = _relief_target_families(relief_text)
         related_causes = []
+        matched_families: List[str] = []
         for cause in causes:
             cause_families = [str(value) for value in list(cause.get("strategic_families") or []) if str(value)]
-            if set(cause_families).intersection(families):
+            overlap = [family for family in families if family in cause_families]
+            if overlap:
                 related_causes.append(cause)
+                for family in overlap:
+                    if family not in matched_families:
+                        matched_families.append(family)
+
+        note_families = matched_families or families
 
         role = ""
         note = ""
         if any(str(cause.get("strategic_role") or "") == "winner_unique_strength" for cause in related_causes):
             role = "winner_unique_strength"
-            note = f"This relief item tracks the winner-specific { _families_phrase(families) } advantage that helped the selected preset beat the runner-up."
+            note = f"This relief item tracks the winner-specific {_families_phrase(note_families)} advantage that helped the selected preset beat the runner-up."
         elif any(str(cause.get("strategic_role") or "") == "winner_family_strength" for cause in related_causes):
             role = "winner_family_strength"
-            note = f"This relief item supports a { _families_phrase(families) } theory family that was stronger in the selected preset than in the runner-up."
+            note = f"This relief item supports a {_families_phrase(note_families)} theory family that was stronger in the selected preset than in the runner-up."
         elif any(str(cause.get("strategic_role") or "") == "shared_baseline" for cause in related_causes):
             role = "shared_baseline"
-            note = f"This relief item tracks the shared { _families_phrase(families) } baseline that appeared in both the selected preset and the runner-up."
+            note = f"This relief item tracks the shared {_families_phrase(note_families)} baseline that appeared in both the selected preset and the runner-up."
         elif any(str(cause.get("strategic_role") or "") == "runner_up_emphasis" for cause in related_causes):
             role = "runner_up_emphasis"
-            note = f"This relief item aligns more closely with the runner-up's { _families_phrase(families) } emphasis and should be reviewed carefully in this selected draft."
+            note = f"This relief item aligns more closely with the runner-up's {_families_phrase(note_families)} emphasis and should be reviewed carefully in this selected draft."
 
         annotations.append(
             {
