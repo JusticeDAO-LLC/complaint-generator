@@ -512,6 +512,10 @@ def test_inject_exhibit_references_adds_citations_to_claims_and_facts():
         item.startswith("Documentary support: Exhibit A (ADMINISTRATIVE PLAN). Rationale:")
         for item in package["causes_of_action"][1]["support"]
     )
+    assert package["causes_of_action"][0]["selected_exhibits"][0]["label"] == "NOTICE POLICY"
+    assert package["causes_of_action"][1]["selected_exhibits"][0]["label"] == "ADMINISTRATIVE PLAN"
+    assert package["causes_of_action"][0]["selection_rationale"]
+    assert "notice" in package["causes_of_action"][0]["selection_tags"]
 
 
 def test_single_exhibit_margin_varies_by_cause_type():

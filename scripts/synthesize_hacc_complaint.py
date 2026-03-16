@@ -663,6 +663,15 @@ def _inject_exhibit_references(package: Dict[str, Any]) -> None:
         )
         cause_reference_text = _format_exhibit_reference_list(targeted_refs) or reference_text
         rationale = _exhibit_rationale_for_cause(cause, targeted_refs, tag_targets)
+        cause["selected_exhibits"] = [
+            {
+                "exhibit_id": exhibit_id,
+                "label": label,
+            }
+            for exhibit_id, label in targeted_refs
+        ]
+        cause["selection_rationale"] = rationale
+        cause["selection_tags"] = tag_targets
         cause_support_reference = f"Documentary support: {cause_reference_text}."
         if rationale:
             cause_support_reference += f" Rationale: {rationale}."
