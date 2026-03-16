@@ -2117,7 +2117,15 @@ def _render_markdown(package: Dict[str, Any]) -> str:
         f"## {section_labels['relief']}",
         "",
     ])
-    lines.extend(f"- {item}" for item in package["requested_relief"])
+    relief_annotations = list(package.get("requested_relief_annotations") or [])
+    if relief_annotations:
+        for item in relief_annotations:
+            lines.append(f"- {item.get('text', '')}")
+            strategic_note = str(item.get("strategic_note") or "").strip()
+            if strategic_note:
+                lines.append(f"  - Strategic role: {strategic_note}")
+    else:
+        lines.extend(f"- {item}" for item in package["requested_relief"])
     return "\n".join(lines) + "\n"
 
 
@@ -2232,6 +2240,11 @@ def main(argv: List[str] | None = None) -> int:
     }
     _inject_exhibit_references(package)
     package["causes_of_action"] = _annotate_causes_with_selection_rationale(
+        list(package.get("causes_of_action") or []),
+        selection_rationale,
+    )
+    package["requested_relief_annotations"] = _annotate_requested_relief_with_selection_rationale(
+        list(package.get("requested_relief") or []),
         list(package.get("causes_of_action") or []),
         selection_rationale,
     )

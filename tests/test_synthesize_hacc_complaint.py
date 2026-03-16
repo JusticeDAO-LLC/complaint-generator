@@ -590,6 +590,12 @@ def test_markdown_includes_selection_rationale_section():
         "anchor_passages": ["Passage"],
         "supporting_evidence": ["Evidence"],
         "requested_relief": ["Relief"],
+        "requested_relief_annotations": [
+            {
+                "text": "Relief",
+                "strategic_note": "This relief item tracks the shared process baseline that appeared in both the selected preset and the runner-up.",
+            }
+        ],
     }
 
     markdown = MODULE._render_markdown(package)
@@ -598,6 +604,8 @@ def test_markdown_includes_selection_rationale_section():
     assert "- Selected preset: accommodation_focus" in markdown
     assert "- Why this preset won: best for accommodation framing + protected-basis framing; runner-up is stronger on retaliation-heavy framing" in markdown
     assert "- Runner-up preset: administrative_plan_retaliation" in markdown
+    assert "## Requested Administrative Relief" in markdown
+    assert "Selection role: This relief item tracks the shared process baseline" in markdown
 
 
 def test_summary_with_selection_rationale_prefixes_tradeoff_note():
@@ -638,6 +646,38 @@ def test_annotate_causes_with_selection_rationale_marks_winner_unique_and_shared
     assert "winner-specific strength" in annotated[0]["strategic_note"]
     assert annotated[1]["strategic_role"] == "shared_baseline"
     assert "shared baseline theory" in annotated[1]["strategic_note"]
+
+
+def test_annotate_requested_relief_with_selection_rationale_marks_shared_and_winner_roles():
+    causes = [
+        {
+            "title": "Fair Housing Act / Section 504 Accommodation Theory",
+            "strategic_families": ["accommodation"],
+            "strategic_role": "winner_unique_strength",
+        },
+        {
+            "title": "Administrative Fair Housing Process Failure",
+            "strategic_families": ["process"],
+            "strategic_role": "shared_baseline",
+        },
+    ]
+    relief = [
+        "Corrective action requiring clear notice, fair review, and non-retaliation safeguards.",
+        "Appropriate administrative remedies under fair housing law for accommodation-related harm.",
+    ]
+    selection_rationale = {
+        "winner_only_theory_families": ["accommodation"],
+        "shared_theory_families": ["process"],
+    }
+
+    annotated = MODULE._annotate_requested_relief_with_selection_rationale(relief, causes, selection_rationale)
+
+    assert annotated[0]["strategic_role"] == "shared_baseline"
+    assert "shared process" in annotated[0]["strategic_note"]
+    assert annotated[0]["related_claims"] == ["Administrative Fair Housing Process Failure"]
+    assert annotated[1]["strategic_role"] == "winner_unique_strength"
+    assert "winner-specific accommodation" in annotated[1]["strategic_note"]
+    assert annotated[1]["related_claims"] == ["Fair Housing Act / Section 504 Accommodation Theory"]
 
 
 def test_grounded_supporting_evidence_merges_packets_and_uploads():
