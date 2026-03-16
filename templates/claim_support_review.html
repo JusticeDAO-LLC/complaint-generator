@@ -1325,6 +1325,56 @@
                 .replace(/\b\w/g, (char) => char.toUpperCase());
         }
 
+        const FOLLOW_UP_HANDOFF_STATUSES = new Set([
+            'awaiting_complainant_record',
+            'awaiting_third_party_record',
+            'awaiting_testimony',
+            'needs_manual_legal_review',
+            'needs_manual_review',
+        ]);
+
+        function formatFollowUpResolutionLabel(value) {
+            const normalizedValue = String(value || '').trim();
+            if (!normalizedValue) {
+                return '';
+            }
+            if (normalizedValue === 'insufficient_support_after_search') {
+                return 'Search Exhausted';
+            }
+            if (normalizedValue === 'skipped_resolution_handoff') {
+                return 'Resolution Handoff';
+            }
+            return humanizeQueryValue(normalizedValue);
+        }
+
+        function isFollowUpHandoffStatus(value) {
+            return FOLLOW_UP_HANDOFF_STATUSES.has(String(value || '').trim().toLowerCase());
+        }
+
+        function summarizeProofLeadLabels(leads, maxItems = 2) {
+            const proofLeads = Array.isArray(leads) ? leads : [];
+            if (!proofLeads.length) {
+                return [];
+            }
+            const labels = proofLeads
+                .map((lead) => {
+                    if (!lead || typeof lead !== 'object') {
+                        return '';
+                    }
+                    const owner = String(lead.owner || lead.custodian || '').trim();
+                    const supportKind = String(lead.recommended_support_kind || '').trim();
+                    const availability = String(lead.availability || '').trim();
+                    const descriptor = String(lead.description || lead.lead_type || lead.lead_id || '').trim();
+                    const parts = [owner, supportKind, availability, descriptor].filter(Boolean).slice(0, 3);
+                    return parts.length ? parts.join(' / ') : '';
+                })
+                .filter(Boolean);
+            if (labels.length <= maxItems) {
+                return labels;
+            }
+            return labels.slice(0, maxItems).concat(`+${labels.length - maxItems} more proof leads`);
+        }
+
         function clearSectionFocus() {
             sectionFocusState.sectionKey = null;
             document.querySelectorAll('[data-section-focus-target]').forEach((node) => {
@@ -2319,6 +2369,29 @@
             return `${title}: ${visibleEntries.join(', ')}${suffix}`;
         }
 
+        function buildResolutionCountSummaryLabel(title, countMap, maxItems = 2, options = {}) {
+            const includeKeys = Array.isArray(options.includeKeys) ? options.includeKeys.map((item) => String(item || '').trim()) : [];
+            const requireHandoff = Boolean(options.requireHandoff);
+            const entries = Object.entries(countMap || {})
+                .filter(([label, count]) => Number(count || 0) > 0)
+                .filter(([label]) => !includeKeys.length || includeKeys.includes(String(label || '').trim()))
+                .filter(([label]) => !requireHandoff || isFollowUpHandoffStatus(label));
+            if (!entries.length) {
+                return '';
+            }
+            entries.sort((left, right) => {
+                const countDifference = Number(right[1] || 0) - Number(left[1] || 0);
+                if (countDifference !== 0) {
+                    return countDifference;
+                }
+                return String(left[0] || '').localeCompare(String(right[0] || ''));
+            });
+            const visibleEntries = entries.slice(0, maxItems).map(([label, count]) => `${formatFollowUpResolutionLabel(label)}=${count}`);
+            const moreCount = entries.length - maxItems;
+            const suffix = moreCount > 0 ? ` (+${moreCount} more)` : '';
+            return `${title}: ${visibleEntries.join(', ')}${suffix}`;
+        }
+
         async function copyPacketUrl(url, label) {
             if (!url) {
                 throw new Error('No packet URL available to copy.');
@@ -2564,6 +2637,8 @@
             const executionSummary = executionSummaryMap[claimType]
                 || executionSummaryMap[Object.keys(executionSummaryMap)[0]]
                 || null;
+            const resolutionStatusCounts = (executionSummary && executionSummary.resolution_status_counts) || {};
+            const resolutionAppliedCounts = (executionSummary && executionSummary.resolution_applied_counts) || {};
             const taskCount = executionSummary ? Number(executionSummary.executed_task_count || 0) : 0;
             const parseQualityTaskCount = qualitySummary ? Number(qualitySummary.parse_quality_task_count || 0) : 0;
             const status = qualitySummary ? (qualitySummary.quality_improvement_status || 'unknown') : 'unknown';
@@ -2578,6 +2653,12 @@
             if (parseQualityTaskCount) chips.push(`<span class="chip">parse tasks ${parseQualityTaskCount}</span>`);
             chips.push(`<span class="chip">low-quality ${preLowQualityCount} → ${postLowQualityCount}</span>`);
             if (recommendedNextAction) chips.push(`<span class="chip">recommendation ${recommendedNextAction}</span>`);
+            const handoffLabel = buildResolutionCountSummaryLabel('handoffs', resolutionStatusCounts, 2, { requireHandoff: true });
+            const exhaustedLabel = buildResolutionCountSummaryLabel('outcomes', resolutionAppliedCounts, 2, {
+                includeKeys: ['skipped_resolution_handoff', 'insufficient_support_after_search'],
+            });
+            if (handoffLabel) chips.push(`<span class="chip">${handoffLabel}</span>`);
+            if (exhaustedLabel) chips.push(`<span class="chip">${exhaustedLabel}</span>`);
             chips.push(renderSourceContextChips(executionSummary, 'No graph source context'));
             resolvedElements.forEach((element) => chips.push(`<span class="chip">resolved ${element}</span>`));
             if (!resolvedElements.length && remainingElements.length) {
@@ -2597,6 +2678,9 @@
                 } else if (status === 'not_targeted') {
                     notes = 'This follow-up run did not target parse-quality remediation.';
                 }
+            }
+            if (handoffLabel || exhaustedLabel) {
+                notes = `${notes} ${[handoffLabel, exhaustedLabel].filter(Boolean).join(' · ')}.`;
             }
 
             card.hidden = false;
@@ -2906,9 +2990,15 @@
                 const primaryGapLabel = buildCountSummaryLabel('Primary gaps', planSummary.primary_missing_fact_counts || {});
                 const missingGapLabel = buildCountSummaryLabel('Gap coverage', planSummary.missing_fact_bundle_counts || {});
                 const coveredFactLabel = buildCountSummaryLabel('Covered facts', planSummary.satisfied_fact_bundle_counts || {});
+                const handoffLabel = buildResolutionCountSummaryLabel('Handoffs', planSummary.resolution_status_counts || {}, 2, { requireHandoff: true });
+                const outcomeLabel = buildResolutionCountSummaryLabel('Outcomes', planSummary.resolution_applied_counts || {}, 2, {
+                    includeKeys: ['skipped_resolution_handoff', 'insufficient_support_after_search', 'manual_review_resolved'],
+                });
                 if (primaryGapLabel) summaryLabels.push(primaryGapLabel);
                 if (missingGapLabel) summaryLabels.push(missingGapLabel);
                 if (coveredFactLabel) summaryLabels.push(coveredFactLabel);
+                if (handoffLabel) summaryLabels.push(handoffLabel);
+                if (outcomeLabel) summaryLabels.push(outcomeLabel);
             }
             summaryChips.innerHTML = summaryLabels.length
                 ? summaryLabels.map((label) => `<span class="chip">${label}</span>`).join('')
@@ -2929,14 +3019,25 @@
                 const focusScore = scoreTaskForSectionFocus(task);
                 const graphSourceContext = summarizeGraphSupportSourceContext(task.graph_support || {});
                 const satisfiedFactBundle = normalizeFactBundle(task.satisfied_fact_bundle);
+                const resolutionStatus = String(task.resolution_status || '').trim();
+                const proofLeadLabels = summarizeProofLeadLabels(task.intake_proof_leads, 2);
+                const handoffStatus = isFollowUpHandoffStatus(resolutionStatus);
+                const badgeLabel = handoffStatus ? formatFollowUpResolutionLabel(resolutionStatus) : (task.status || 'task');
+                const badgeClass = handoffStatus
+                    ? (resolutionStatus === 'needs_manual_review' || resolutionStatus === 'needs_manual_legal_review' ? 'contradicted' : '')
+                    : (task.status || 'missing');
+                const metaLabels = [`priority=${task.priority || 'n/a'}`, `action=${task.recommended_action || 'unspecified'}`];
+                if (handoffStatus) {
+                    metaLabels.push(`handoff=${formatFollowUpResolutionLabel(resolutionStatus)}`);
+                }
                 return `
                 <article class="task-card">
                     <div class="row-head">
                         <div>
                             <div class="row-title">${task.claim_element || 'Claim element'}</div>
-                            <div class="meta">priority=${task.priority || 'n/a'} action=${task.recommended_action || 'unspecified'}</div>
+                            <div class="meta">${metaLabels.join(' ')}</div>
                         </div>
-                        <span class="badge ${task.status || 'missing'}">${task.status || 'task'}</span>
+                        <span class="badge ${badgeClass}">${badgeLabel}</span>
                     </div>
                     <div class="chip-row">
                         ${renderFocusPin(focusScore)}
@@ -2946,6 +3047,9 @@
                         ${task.primary_missing_fact ? `<span class="chip">primary gap ${task.primary_missing_fact}</span>` : ''}
                         ${renderFactBundleChips('gap', task.missing_fact_bundle)}
                         ${satisfiedFactBundle.length ? `<span class="chip">covered facts ${satisfiedFactBundle.length}</span>` : ''}
+                        ${resolutionStatus ? `<span class="chip">${handoffStatus ? 'handoff' : 'resolution'} ${formatFollowUpResolutionLabel(resolutionStatus)}</span>` : ''}
+                        ${task.source_quality_target ? `<span class="chip">quality target ${formatFollowUpResolutionLabel(task.source_quality_target)}</span>` : ''}
+                        ${proofLeadLabels.map((label) => `<span class="chip">proof lead ${label}</span>`).join('')}
                         ${task.authority_search_program_summary && task.authority_search_program_summary.primary_program_type ? `<span class="chip">authority program ${task.authority_search_program_summary.primary_program_type}</span>` : ''}
                         ${task.authority_search_program_summary && task.authority_search_program_summary.primary_program_bias ? `<span class="chip">authority bias ${task.authority_search_program_summary.primary_program_bias}</span>` : ''}
                         ${task.authority_search_program_summary && task.authority_search_program_summary.primary_program_rule_bias ? `<span class="chip">rule bias ${task.authority_search_program_summary.primary_program_rule_bias}</span>` : ''}
@@ -3004,9 +3108,15 @@
                 const primaryGapLabel = buildCountSummaryLabel('Primary gaps', historySummary.primary_missing_fact_counts || {});
                 const missingGapLabel = buildCountSummaryLabel('Gap coverage', historySummary.missing_fact_bundle_counts || {});
                 const coveredFactLabel = buildCountSummaryLabel('Covered facts', historySummary.satisfied_fact_bundle_counts || {});
+                const handoffLabel = buildResolutionCountSummaryLabel('Handoffs', historySummary.resolution_status_counts || {}, 2, { requireHandoff: true });
+                const outcomeLabel = buildResolutionCountSummaryLabel('Outcomes', historySummary.resolution_applied_counts || {}, 2, {
+                    includeKeys: ['skipped_resolution_handoff', 'insufficient_support_after_search', 'manual_review_resolved'],
+                });
                 if (primaryGapLabel) summaryLabels.push(primaryGapLabel);
                 if (missingGapLabel) summaryLabels.push(missingGapLabel);
                 if (coveredFactLabel) summaryLabels.push(coveredFactLabel);
+                if (handoffLabel) summaryLabels.push(handoffLabel);
+                if (outcomeLabel) summaryLabels.push(outcomeLabel);
             }
             summaryChips.innerHTML = summaryLabels.length
                 ? summaryLabels.map((label) => `<span class="chip">${label}</span>`).join('')
@@ -3027,12 +3137,22 @@
                 const chips = [];
                 const focusPin = renderFocusPin(focusScore);
                 const satisfiedFactBundle = normalizeFactBundle(entry.satisfied_fact_bundle);
+                const resolutionStatus = String(entry.resolution_status || '').trim();
+                const proofLeadLabels = summarizeProofLeadLabels(entry.intake_proof_leads, 2);
+                const handoffStatus = isFollowUpHandoffStatus(resolutionStatus);
+                const badgeLabel = resolutionStatus ? formatFollowUpResolutionLabel(resolutionStatus) : (entry.status || 'history');
+                const badgeClass = handoffStatus
+                    ? (resolutionStatus === 'needs_manual_review' || resolutionStatus === 'needs_manual_legal_review' ? 'contradicted' : '')
+                    : '';
                 if (entry.support_kind) chips.push(`<span class="chip">${entry.support_kind}</span>`);
                 if (entry.status) chips.push(`<span class="chip">${entry.status}</span>`);
                 if (entry.query_strategy) chips.push(`<span class="chip">${entry.query_strategy}</span>`);
                 if (entry.primary_missing_fact) chips.push(`<span class="chip">primary gap: ${entry.primary_missing_fact}</span>`);
                 chips.push(renderFactBundleChips('gap', entry.missing_fact_bundle));
                 if (satisfiedFactBundle.length) chips.push(`<span class="chip">covered facts: ${satisfiedFactBundle.length}</span>`);
+                if (resolutionStatus) chips.push(`<span class="chip">${handoffStatus ? 'handoff' : 'resolution'}: ${formatFollowUpResolutionLabel(resolutionStatus)}</span>`);
+                if (entry.source_quality_target) chips.push(`<span class="chip">quality target: ${formatFollowUpResolutionLabel(entry.source_quality_target)}</span>`);
+                proofLeadLabels.forEach((label) => chips.push(`<span class="chip">proof lead: ${label}</span>`));
                 if (entry.selected_search_program_type) chips.push(`<span class="chip">program: ${entry.selected_search_program_type}</span>`);
                 if (entry.selected_search_program_bias) chips.push(`<span class="chip">bias: ${entry.selected_search_program_bias}</span>`);
                 if (entry.selected_search_program_rule_bias) chips.push(`<span class="chip">rule bias: ${entry.selected_search_program_rule_bias}</span>`);
@@ -3048,6 +3168,7 @@
                                 <div class="row-title">${entry.claim_element_text || entry.claim_element_id || 'Follow-up event'}</div>
                                 <div class="meta">${entry.timestamp || 'no timestamp'} · ${entry.execution_mode || 'unknown mode'}</div>
                             </div>
+                            <span class="badge ${badgeClass}">${badgeLabel}</span>
                         </div>
                         <div class="chip-row">${focusPin}${chips.join('')}</div>
                         <div class="button-row" style="margin-top: 12px;">

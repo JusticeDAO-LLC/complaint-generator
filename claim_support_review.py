@@ -1672,6 +1672,7 @@ def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any
     follow_up_focus_counts: Dict[str, int] = {}
     query_strategy_counts: Dict[str, int] = {}
     proof_decision_source_counts: Dict[str, int] = {}
+    resolution_status_counts: Dict[str, int] = {}
     resolution_applied_counts: Dict[str, int] = {}
     for task in tasks:
         action = str(task.get("recommended_action") or "unspecified")
@@ -1684,6 +1685,11 @@ def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any
         proof_decision_source_counts[decision_source] = (
             proof_decision_source_counts.get(decision_source, 0) + 1
         )
+        resolution_status = str(task.get("resolution_status") or "")
+        if resolution_status:
+            resolution_status_counts[resolution_status] = (
+                resolution_status_counts.get(resolution_status, 0) + 1
+            )
         resolution_applied = str(task.get("resolution_applied") or "")
         if resolution_applied:
             resolution_applied_counts[resolution_applied] = (
@@ -1759,6 +1765,7 @@ def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any
         "follow_up_focus_counts": follow_up_focus_counts,
         "query_strategy_counts": query_strategy_counts,
         "proof_decision_source_counts": proof_decision_source_counts,
+        "resolution_status_counts": resolution_status_counts,
         "resolution_applied_counts": resolution_applied_counts,
         "adaptive_retry_task_count": adaptive_retry_metrics["adaptive_retry_task_count"],
         "priority_penalized_task_count": adaptive_retry_metrics[
@@ -1830,6 +1837,7 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
     follow_up_focus_counts: Dict[str, int] = {}
     query_strategy_counts: Dict[str, int] = {}
     proof_decision_source_counts: Dict[str, int] = {}
+    resolution_status_counts: Dict[str, int] = {}
     resolution_applied_counts: Dict[str, int] = {}
     for task in all_tasks:
         focus = str(task.get("follow_up_focus") or "unknown")
@@ -1840,6 +1848,11 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
         proof_decision_source_counts[decision_source] = (
             proof_decision_source_counts.get(decision_source, 0) + 1
         )
+        resolution_status = str(task.get("resolution_status") or "")
+        if resolution_status:
+            resolution_status_counts[resolution_status] = (
+                resolution_status_counts.get(resolution_status, 0) + 1
+            )
         resolution_applied = str(task.get("resolution_applied") or "")
         if resolution_applied:
             resolution_applied_counts[resolution_applied] = (
@@ -1893,6 +1906,7 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
         "follow_up_focus_counts": follow_up_focus_counts,
         "query_strategy_counts": query_strategy_counts,
         "proof_decision_source_counts": proof_decision_source_counts,
+        "resolution_status_counts": resolution_status_counts,
         "resolution_applied_counts": resolution_applied_counts,
         "adaptive_retry_task_count": adaptive_retry_metrics["adaptive_retry_task_count"],
         "priority_penalized_task_count": adaptive_retry_metrics[

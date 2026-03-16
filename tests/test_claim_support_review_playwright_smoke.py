@@ -435,7 +435,17 @@ def _build_hook_backed_browser_mediator(db_path: str):
                     "primary_missing_fact": "Manager knowledge",
                     "missing_fact_bundle": ["Manager knowledge", "Event sequence"],
                     "satisfied_fact_bundle": ["Protected activity"],
-                    "resolution_applied": "manual_review_resolved",
+                    "resolution_status": "insufficient_support_after_search",
+                    "resolution_applied": "insufficient_support_after_search",
+                    "source_quality_target": "high_quality_document",
+                    "intake_proof_leads": [
+                        {
+                            "lead_id": "lead:complainant:record",
+                            "owner": "complainant",
+                            "recommended_support_kind": "evidence",
+                            "description": "Termination email held by complainant",
+                        }
+                    ],
                     "source_family": "legal_authority",
                     "record_scope": "legal_authority",
                     "artifact_family": "legal_authority_reference",
@@ -466,9 +476,18 @@ def _build_hook_backed_browser_mediator(db_path: str):
                         "missing_fact_bundle": ["Manager knowledge", "Event sequence"],
                         "satisfied_fact_bundle": ["Protected activity"],
                         "missing_support_kinds": ["authority"],
+                        "resolution_status": "awaiting_complainant_record",
                         "blocked_by_cooldown": False,
                         "should_suppress_retrieval": False,
-                        "resolution_applied": "manual_review_resolved",
+                        "source_quality_target": "high_quality_document",
+                        "intake_proof_leads": [
+                            {
+                                "lead_id": "lead:complainant:record",
+                                "owner": "complainant",
+                                "recommended_support_kind": "evidence",
+                                "description": "Termination email held by complainant",
+                            }
+                        ],
                         "authority_search_program_summary": {
                             "program_count": 1,
                             "primary_program_type": "element_definition_search",
@@ -1024,7 +1043,11 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "Primary gaps: Manager knowledge=1" in task_summary
                 assert "Gap coverage: Event sequence=1, Manager knowledge=1" in task_summary
                 assert "Covered facts: Protected activity=1" in task_summary
+                assert "Handoffs: Awaiting Complainant Record=1" in task_summary
                 assert "Causal connection" in follow_up_tasks
+                assert "handoff Awaiting Complainant Record" in follow_up_tasks
+                assert "quality target High Quality Document" in follow_up_tasks
+                assert "proof lead complainant / evidence / Termination email held by complainant" in follow_up_tasks
                 assert "primary gap Manager knowledge" in follow_up_tasks
                 assert "gap: Manager knowledge" in follow_up_tasks
                 assert "gap: Event sequence" in follow_up_tasks
@@ -1033,7 +1056,11 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "Primary gaps: Manager knowledge=1" in history_summary
                 assert "Gap coverage: Event sequence=1, Manager knowledge=1" in history_summary
                 assert "Covered facts: Protected activity=1" in history_summary
+                assert "Outcomes: Search Exhausted=1" in history_summary
                 assert "Causal connection" in follow_up_history
+                assert "resolution: Search Exhausted" in follow_up_history
+                assert "quality target: High Quality Document" in follow_up_history
+                assert "proof lead: complainant / evidence / Termination email held by complainant" in follow_up_history
                 assert "primary gap: Manager knowledge" in follow_up_history
                 assert "gap: Manager knowledge" in follow_up_history
                 assert "gap: Event sequence" in follow_up_history

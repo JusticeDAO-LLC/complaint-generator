@@ -1967,6 +1967,7 @@ def test_claim_support_follow_up_execution_payload_summarizes_escalation_outcome
                         "primary_missing_fact": "Witness corroboration",
                         "missing_fact_bundle": ["Witness corroboration"],
                         "satisfied_fact_bundle": [],
+                        "resolution_status": "awaiting_testimony",
                         "resolution_applied": "awaiting_testimony",
                         "skipped": {
                             "escalation": {
@@ -1991,6 +1992,9 @@ def test_claim_support_follow_up_execution_payload_summarizes_escalation_outcome
 
     assert payload["follow_up_execution_summary"]["retaliation"]["executed_task_count"] == 1
     assert payload["follow_up_execution_summary"]["retaliation"]["skipped_task_count"] == 1
+    assert payload["follow_up_execution_summary"]["retaliation"]["resolution_status_counts"] == {
+        "awaiting_testimony": 1,
+    }
     assert payload["follow_up_execution_summary"]["retaliation"]["resolution_applied_counts"] == {
         "insufficient_support_after_search": 1,
         "awaiting_testimony": 1,
