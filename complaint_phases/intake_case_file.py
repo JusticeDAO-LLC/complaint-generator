@@ -111,6 +111,9 @@ def build_canonical_facts(knowledge_graph) -> List[Dict[str, Any]]:
                 "confidence": float(entity.confidence),
                 "status": "accepted",
                 "needs_corroboration": entity.confidence < 0.85,
+                "corroboration_priority": "high" if entity.confidence < 0.7 else "medium",
+                "materiality": "medium",
+                "fact_participants": {},
                 "contradiction_group_id": None,
             }
         )
@@ -135,12 +138,17 @@ def build_proof_leads(knowledge_graph) -> List[Dict[str, Any]]:
                 "fact_targets": [],
                 "element_targets": [],
                 "availability": "mentioned_in_initial_complaint",
+                "availability_details": "Referenced in initial complaint narrative",
                 "owner": "complainant",
+                "custodian": "complainant",
                 "expected_format": _derive_expected_format(evidence_type),
                 "retrieval_path": _derive_retrieval_path(evidence_type),
                 "authenticity_risk": "unknown",
                 "privacy_risk": "review_required",
                 "priority": _derive_lead_priority(evidence_type),
+                "recommended_support_kind": "testimony" if "witness" in evidence_type else "evidence",
+                "source_quality_target": "credible" if "witness" in evidence_type else "high_quality_document",
+                "acquisition_notes": "Needs complainant confirmation and collection path review",
                 "source_kind": "knowledge_graph_entity",
                 "source_ref": entity.id,
             }
@@ -172,6 +180,8 @@ def build_open_items(intake_case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "target_claim_type": "",
                 "target_element_id": "",
                 "next_question_strategy": f"fill_{section_name}",
+                "recommended_support_kind": "evidence" if section_name == "proof_leads" else "intake_clarification",
+                "proof_path_status": "missing",
             }
         )
 
@@ -197,6 +207,8 @@ def build_open_items(intake_case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "target_element_id": element_id,
                     "next_question_strategy": "satisfy_claim_element",
                     "evidence_classes": list(element_dict.get("evidence_classes", []) or []),
+                    "recommended_support_kind": "testimony" if any("testimony" in str(item).lower() for item in (element_dict.get("evidence_classes", []) or [])) else "evidence",
+                    "proof_path_status": "missing",
                 }
             )
 
@@ -217,6 +229,8 @@ def build_open_items(intake_case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "target_claim_type": "",
                 "target_element_id": "",
                 "next_question_strategy": "resolve_contradiction",
+                "recommended_support_kind": "testimony",
+                "proof_path_status": "conflicted",
             }
         )
 

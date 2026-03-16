@@ -3714,6 +3714,10 @@ class Mediator:
 		privacy_risk: str | None = None,
 		priority: str | None = None,
 		evidence_classes: List[str] | None = None,
+		availability_details: str | None = None,
+		custodian: str | None = None,
+		recommended_support_kind: str | None = None,
+		source_quality_target: str | None = None,
 	) -> Dict[str, Any]:
 		proof_leads = intake_case_file.setdefault('proof_leads', [])
 		if not isinstance(proof_leads, list):
@@ -3728,6 +3732,14 @@ class Mediator:
 				lead['fact_targets'] = list(dict.fromkeys(list(lead.get('fact_targets', []) or []) + list(fact_targets or [])))
 				lead['element_targets'] = list(dict.fromkeys(list(lead.get('element_targets', []) or []) + list(element_targets or [])))
 				lead['evidence_classes'] = list(dict.fromkeys(list(lead.get('evidence_classes', []) or []) + list(evidence_classes or [])))
+				if availability_details and not lead.get('availability_details'):
+					lead['availability_details'] = availability_details
+				if custodian and not lead.get('custodian'):
+					lead['custodian'] = custodian
+				if recommended_support_kind and not lead.get('recommended_support_kind'):
+					lead['recommended_support_kind'] = recommended_support_kind
+				if source_quality_target and not lead.get('source_quality_target'):
+					lead['source_quality_target'] = source_quality_target
 				return lead
 		lead_record = {
 			'lead_id': self._next_intake_record_id('lead', proof_leads),
@@ -3737,13 +3749,17 @@ class Mediator:
 			'fact_targets': list(fact_targets or []),
 			'element_targets': list(element_targets or []),
 			'availability': 'claimed_available',
+			'availability_details': availability_details or 'Provided by complainant during intake',
 			'owner': owner or 'complainant',
+			'custodian': custodian or owner or 'complainant',
 			'expected_format': expected_format or self._proof_lead_expected_format(lead_type),
 			'retrieval_path': retrieval_path or self._proof_lead_retrieval_path(lead_type),
 			'authenticity_risk': authenticity_risk or 'review_required',
 			'privacy_risk': privacy_risk or 'review_required',
 			'priority': priority or 'medium',
 			'evidence_classes': list(evidence_classes or []),
+			'recommended_support_kind': recommended_support_kind or ('testimony' if 'witness' in lead_type.lower() else 'evidence'),
+			'source_quality_target': source_quality_target or ('credible' if 'witness' in lead_type.lower() else 'high_quality_document'),
 			'source_kind': 'complainant_answer',
 			'source_ref': lead_type,
 		}
@@ -3887,6 +3903,7 @@ class Mediator:
 				element_targets=resolved_element_targets,
 				priority='high' if question.get('priority') == 'high' else 'medium',
 				evidence_classes=evidence_classes,
+				recommended_support_kind='testimony' if 'witness' in normalized_answer.lower() else 'evidence',
 			)
 		elif question_type == 'responsible_party':
 			created_fact = self._append_canonical_fact(
@@ -4496,9 +4513,15 @@ class Mediator:
 				'contradicted': 0,
 			},
 			'recommended_actions': [],
+			'credible_support_ratio': 0.0,
+			'draft_ready_element_ratio': 0.0,
+			'proof_readiness_score': 0.0,
 		}
 		if not isinstance(packets, dict):
 			return summary
+		supported_count = 0
+		partial_count = 0
+		high_quality_supported_count = 0
 		for packet in packets.values():
 			if not isinstance(packet, dict):
 				continue
@@ -4510,9 +4533,25 @@ class Mediator:
 				status = str(element.get('support_status') or '').strip().lower()
 				if status in summary['status_counts']:
 					summary['status_counts'][status] += 1
+				if status == 'supported':
+					supported_count += 1
+					parse_quality_flags = element.get('parse_quality_flags', [])
+					if not (parse_quality_flags if isinstance(parse_quality_flags, list) else []):
+						high_quality_supported_count += 1
+				elif status == 'partially_supported':
+					partial_count += 1
 				next_step = str(element.get('recommended_next_step') or '').strip()
 				if next_step and next_step not in summary['recommended_actions']:
 					summary['recommended_actions'].append(next_step)
+		if summary['element_count']:
+			summary['credible_support_ratio'] = round((supported_count + partial_count) / summary['element_count'], 3)
+			summary['draft_ready_element_ratio'] = round(supported_count / summary['element_count'], 3)
+			high_quality_parse_ratio = high_quality_supported_count / summary['element_count']
+			contradiction_penalty = 0.15 if summary['status_counts'].get('contradicted', 0) else 0.0
+			summary['proof_readiness_score'] = round(
+				max(0.0, min(1.0, (summary['credible_support_ratio'] * 0.45) + (summary['draft_ready_element_ratio'] * 0.4) + (high_quality_parse_ratio * 0.15) - contradiction_penalty)),
+				3,
+			)
 		return summary
 
 	def _summarize_question_candidates(self, candidates: Any) -> Dict[str, Any]:
@@ -4826,11 +4865,17 @@ class Mediator:
 				missing_support_kinds = list(element.get('missing_support_kinds', []) or [])
 				preferred_support_kind = self._resolve_task_preferred_support_kind(missing_support_kinds, preferred_evidence_classes)
 				fallback_support_kinds = self._resolve_task_fallback_support_kinds(preferred_support_kind, preferred_evidence_classes)
+				source_quality_target = 'credible_testimony' if preferred_support_kind == 'testimony' else 'high_quality_document'
+				task_priority = 'high' if support_status == 'contradicted' or bool(element.get('blocking', False)) else 'medium'
 				success_criteria = [
 					f'Element {claim_element_label} reaches supported status',
 				]
 				if missing_fact_bundle:
 					success_criteria.append(f'Collect support addressing: {missing_fact_bundle[0]}')
+				recommended_witness_prompts = [
+					f'Who can give first-hand testimony about {bundle_item} for {claim_element_label}?'
+					for bundle_item in missing_fact_bundle[:2]
+				]
 				resolution_status = self._derive_alignment_task_resolution_status(
 					support_status,
 					missing_fact_bundle,
@@ -4847,6 +4892,8 @@ class Mediator:
 						'preferred_support_kind': preferred_support_kind,
 						'preferred_evidence_classes': preferred_evidence_classes,
 						'fallback_support_kinds': fallback_support_kinds,
+						'source_quality_target': source_quality_target,
+						'task_priority': task_priority,
 						'missing_fact_bundle': missing_fact_bundle,
 						'satisfied_fact_bundle': satisfied_fact_bundle,
 						'intake_origin_refs': [
@@ -4861,6 +4908,7 @@ class Mediator:
 							claim_element_label,
 							missing_fact_bundle,
 						),
+						'recommended_witness_prompts': recommended_witness_prompts,
 						'success_criteria': success_criteria,
 						'resolution_status': resolution_status,
 					}
@@ -5066,6 +5114,65 @@ class Mediator:
 				continue
 			filtered_tasks.append(task)
 		return filtered_tasks
+
+	def _build_answered_alignment_task_updates(
+		self,
+		prior_tasks: Any,
+		remaining_tasks: Any,
+		question: Dict[str, Any],
+		answer: str,
+	) -> List[Dict[str, Any]]:
+		updates: List[Dict[str, Any]] = []
+		if not answer or not str(answer).strip():
+			return updates
+		context = question.get('context', {}) if isinstance(question, dict) else {}
+		if not isinstance(context, dict) or not context.get('alignment_task'):
+			return updates
+
+		target_claim_type = str(context.get('claim_type') or '').strip().lower()
+		target_element_id = str(context.get('claim_element_id') or '').strip().lower()
+		if not target_claim_type and not target_element_id:
+			return updates
+
+		remaining_keys = {
+			(
+				str(task.get('claim_type') or '').strip().lower(),
+				str(task.get('claim_element_id') or '').strip().lower(),
+			)
+			for task in (remaining_tasks if isinstance(remaining_tasks, list) else [])
+			if isinstance(task, dict)
+		}
+		answer_preview = self._normalize_intake_text(answer)[:160]
+
+		for task in (prior_tasks if isinstance(prior_tasks, list) else []):
+			if not isinstance(task, dict):
+				continue
+			task_claim_type = str(task.get('claim_type') or '').strip().lower()
+			task_element_id = str(task.get('claim_element_id') or '').strip().lower()
+			key = (task_claim_type, task_element_id)
+			matches_claim = not target_claim_type or task_claim_type == target_claim_type
+			matches_element = not target_element_id or task_element_id == target_element_id
+			if not (matches_claim and matches_element):
+				continue
+			if key in remaining_keys:
+				continue
+			updates.append(
+				{
+					'task_id': str(task.get('task_id') or f'{task_claim_type}:{task_element_id}'),
+					'claim_type': str(task.get('claim_type') or ''),
+					'claim_element_id': str(task.get('claim_element_id') or ''),
+					'action': str(task.get('action') or ''),
+					'previous_support_status': str(task.get('support_status') or '').strip().lower(),
+					'current_support_status': str(task.get('support_status') or '').strip().lower(),
+					'previous_missing_fact_bundle': list(task.get('missing_fact_bundle') or []),
+					'current_missing_fact_bundle': list(task.get('missing_fact_bundle') or []),
+					'resolution_status': 'answered_pending_review',
+					'status': 'resolved',
+					'evidence_artifact_id': '',
+					'answer_preview': answer_preview,
+				}
+			)
+		return updates
 
 	def _classify_evidence_ingestion_outcomes(
 		self,
@@ -5459,17 +5566,55 @@ class Mediator:
 		# Generate next evidence questions
 		evidence_gaps = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'evidence_gaps') or []
 		alignment_evidence_tasks = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks') or []
+		alignment_task_updates = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_updates') or []
+		alignment_task_update_history = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history') or []
 		if not evidence_refreshed:
+			prior_alignment_tasks = alignment_evidence_tasks
 			alignment_evidence_tasks = self._retire_answered_alignment_evidence_tasks(
 				question,
 				answer,
 				alignment_evidence_tasks,
+			)
+			answer_task_updates = self._build_answered_alignment_task_updates(
+				prior_alignment_tasks,
+				alignment_evidence_tasks,
+				question,
+				answer,
 			)
 			self.phase_manager.update_phase_data(
 				ComplaintPhase.EVIDENCE,
 				'alignment_evidence_tasks',
 				alignment_evidence_tasks,
 			)
+			if answer_task_updates:
+				last_sequence = 0
+				for entry in alignment_task_update_history if isinstance(alignment_task_update_history, list) else []:
+					if not isinstance(entry, dict):
+						continue
+					try:
+						last_sequence = max(last_sequence, int(entry.get('evidence_sequence', 0) or 0))
+					except (TypeError, ValueError):
+						continue
+				evidence_sequence = max(
+					int(self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'evidence_count') or 0),
+					last_sequence,
+				) + 1
+				alignment_task_updates = answer_task_updates
+				alignment_task_update_history = self._merge_alignment_task_update_history(
+					alignment_task_update_history,
+					answer_task_updates,
+					evidence_sequence=evidence_sequence,
+				)
+				self.phase_manager.update_phase_data(
+					ComplaintPhase.EVIDENCE,
+					'alignment_task_updates',
+					alignment_task_updates,
+				)
+				self.phase_manager.update_phase_data(
+					ComplaintPhase.EVIDENCE,
+					'alignment_task_update_history',
+					alignment_task_update_history,
+				)
 		questions = self.denoiser.generate_evidence_questions(
 			kg,
 			dg,
@@ -5494,6 +5639,8 @@ class Mediator:
 			'updates': updates,
 			'next_questions': questions,
 			'alignment_evidence_tasks': alignment_evidence_tasks,
+			'alignment_task_updates': alignment_task_updates,
+			'alignment_task_update_history': alignment_task_update_history,
 			'next_action': self.phase_manager.get_next_action(),
 			'noise_level': noise,
 			'ready_for_formalization': self.phase_manager.is_phase_complete(ComplaintPhase.EVIDENCE)

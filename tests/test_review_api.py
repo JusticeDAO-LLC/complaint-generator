@@ -803,17 +803,22 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             }
         ]
         assert intake_case_summary["alignment_task_update_history"][1]["evidence_sequence"] == 2
-        assert intake_case_summary["claim_support_packet_summary"] == {
-            "claim_count": 1,
-            "element_count": 3,
-            "status_counts": {
-                "supported": 1,
-                "partially_supported": 1,
-                "unsupported": 1,
-                "contradicted": 0,
-            },
-            "recommended_actions": ["collect_missing_support_kind"],
+        claim_support_packet_summary = intake_case_summary["claim_support_packet_summary"]
+        assert claim_support_packet_summary["claim_count"] == 1
+        assert claim_support_packet_summary["element_count"] == 3
+        assert claim_support_packet_summary["status_counts"] == {
+            "supported": 1,
+            "partially_supported": 1,
+            "unsupported": 1,
+            "contradicted": 0,
         }
+        assert claim_support_packet_summary["recommended_actions"] == ["collect_missing_support_kind"]
+        if "credible_support_ratio" in claim_support_packet_summary:
+            assert claim_support_packet_summary["credible_support_ratio"] == 0.667
+        if "draft_ready_element_ratio" in claim_support_packet_summary:
+            assert claim_support_packet_summary["draft_ready_element_ratio"] == 0.333
+        if "proof_readiness_score" in claim_support_packet_summary:
+            assert claim_support_packet_summary["proof_readiness_score"] == 0.45
         assert (
             payload["claim_coverage_matrix"]["retaliation"]["status_counts"]["covered"]
             == 1

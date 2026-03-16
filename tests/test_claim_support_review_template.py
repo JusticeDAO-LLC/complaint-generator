@@ -40,6 +40,10 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Alignment task for ${task.claim_type || 'claim'}" in content
     assert "evidence action ${task.action || 'fill_evidence_gaps'}" in content
     assert "element: ${task.claim_element_id || 'unknown'}" in content
+    assert "pending_review" in content
+    assert "answered_pending_review" in content
+    assert "answered, pending review" in content
+    assert "review state: awaiting support validation" in content
     assert "intake only:" in content
     assert "evidence only:" in content
     assert "testimony-list" in content

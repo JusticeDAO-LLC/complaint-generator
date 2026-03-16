@@ -608,7 +608,9 @@ class TestMediatorThreePhaseIntegration:
         assert 'open_item:element:employment_discrimination:causation' in result['alignment_evidence_tasks'][0]['intake_origin_refs']
         assert 'proof_lead:lead_001' in result['alignment_evidence_tasks'][0]['intake_origin_refs']
         assert result['alignment_evidence_tasks'][0]['recommended_queries']
+        assert result['alignment_evidence_tasks'][0]['recommended_witness_prompts']
         assert result['alignment_evidence_tasks'][0]['success_criteria']
+        assert result['alignment_evidence_tasks'][0]['source_quality_target'] == 'high_quality_document'
         assert result['next_action']['action'] == 'fill_evidence_gaps'
         assert result['next_action']['claim_element_id'] == 'causation'
         status = mediator.get_three_phase_status()
@@ -616,6 +618,7 @@ class TestMediatorThreePhaseIntegration:
         assert status['alignment_evidence_tasks'][0]['claim_element_id'] == 'causation'
         assert status['claim_support_packet_summary']['claim_count'] == 1
         assert status['claim_support_packet_summary']['status_counts']['unsupported'] == 1
+        assert 'proof_readiness_score' in status['claim_support_packet_summary']
         alignment = status['intake_evidence_alignment_summary']['claims']['employment_discrimination']
         assert 'adverse_action' in alignment['packet_element_statuses']
         assert isinstance(alignment['shared_elements'], list)
@@ -704,7 +707,13 @@ class TestMediatorThreePhaseIntegration:
         )
 
         assert result['alignment_evidence_tasks'] == []
+        assert result['alignment_task_updates']
+        assert result['alignment_task_updates'][0]['resolution_status'] == 'answered_pending_review'
+        assert result['alignment_task_updates'][0]['status'] == 'resolved'
+        assert result['alignment_task_update_history']
+        assert result['alignment_task_update_history'][0]['evidence_sequence'] >= 1
         assert mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks') == []
+        assert mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history')
 
     def test_requirement_answer_can_satisfy_registry_backed_claim_element(self):
         """Requirement answers should tag and satisfy registry-backed claim elements when the requirement name is recognizable."""

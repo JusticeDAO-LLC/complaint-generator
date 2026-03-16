@@ -176,6 +176,34 @@ class PhaseManager:
             'blocking_contradictions_resolved': not bool(blocking_contradictions),
         }
 
+        coherence_required_sections = ('chronology', 'actors', 'conduct', 'harm')
+        criteria['case_theory_coherent'] = bool(candidate_claims) and all(
+            normalized_sections.get(section_name, {}).get('status') != 'missing'
+            for section_name in coherence_required_sections
+        )
+        criteria['minimum_proof_path_present'] = bool(proof_leads)
+
+        ambiguity_flags_present = False
+        confidence_pairs: List[tuple[float, str]] = []
+        for claim in candidate_claims:
+            if not isinstance(claim, dict):
+                continue
+            ambiguity_flags = claim.get('ambiguity_flags')
+            if isinstance(ambiguity_flags, list) and ambiguity_flags:
+                ambiguity_flags_present = True
+            try:
+                confidence_value = float(claim.get('confidence', 0.0) or 0.0)
+            except (TypeError, ValueError):
+                confidence_value = 0.0
+            confidence_pairs.append((confidence_value, str(claim.get('claim_type') or '')))
+        confidence_pairs.sort(reverse=True)
+        close_leading_claims = (
+            len(confidence_pairs) > 1
+            and confidence_pairs[0][0] >= 0.5
+            and (confidence_pairs[0][0] - confidence_pairs[1][0]) < 0.15
+        )
+        criteria['claim_disambiguation_resolved'] = not ambiguity_flags_present and not close_leading_claims
+
         return {
             'sections': normalized_sections,
             'blockers': blockers,
@@ -238,6 +266,12 @@ class PhaseManager:
             for blocker in structured_readiness['blockers']:
                 if blocker not in blockers:
                     blockers.append(blocker)
+            if not structured_readiness['criteria'].get('case_theory_coherent', False):
+                blockers.append('case_theory_incomplete')
+            if not structured_readiness['criteria'].get('minimum_proof_path_present', False):
+                blockers.append('missing_minimum_proof_path')
+            if not structured_readiness['criteria'].get('claim_disambiguation_resolved', True):
+                blockers.append('claim_disambiguation_required')
 
         for blocker in data.get('intake_blockers', []) or []:
             normalized = str(blocker or '').strip()
@@ -301,8 +335,11 @@ class PhaseManager:
         total_elements = 0
         explicit_status_elements = 0
         unsupported_elements = 0
+        supported_elements = 0
+        partially_supported_elements = 0
         blocking_contradictions = 0
         next_steps: List[str] = []
+        high_quality_ready_elements = 0
 
         for claim_packet in packets.values():
             if not isinstance(claim_packet, dict):
@@ -318,14 +355,34 @@ class PhaseManager:
                 status = str(element.get('support_status') or '').strip().lower()
                 if status in {'supported', 'partially_supported', 'unsupported', 'contradicted'}:
                     explicit_status_elements += 1
+                if status == 'supported':
+                    supported_elements += 1
+                elif status == 'partially_supported':
+                    partially_supported_elements += 1
                 if status == 'unsupported':
                     unsupported_elements += 1
                 contradiction_count = int(element.get('contradiction_count', 0) or 0)
                 if contradiction_count > 0 and status == 'contradicted':
                     blocking_contradictions += contradiction_count
+                parse_quality_flags = element.get('parse_quality_flags', [])
+                if status == 'supported' and not (parse_quality_flags if isinstance(parse_quality_flags, list) else []):
+                    high_quality_ready_elements += 1
                 next_step = str(element.get('recommended_next_step') or '').strip()
                 if next_step and next_step not in next_steps:
                     next_steps.append(next_step)
+
+        credible_support_ratio = 0.0
+        draft_ready_element_ratio = 0.0
+        high_quality_parse_ratio = 0.0
+        if total_elements > 0:
+            credible_support_ratio = round((supported_elements + partially_supported_elements) / total_elements, 3)
+            draft_ready_element_ratio = round(supported_elements / total_elements, 3)
+            high_quality_parse_ratio = round(high_quality_ready_elements / total_elements, 3)
+        contradiction_penalty = 0.15 if blocking_contradictions > 0 else 0.0
+        proof_readiness_score = round(
+            max(0.0, min(1.0, (credible_support_ratio * 0.45) + (draft_ready_element_ratio * 0.4) + (high_quality_parse_ratio * 0.15) - contradiction_penalty)),
+            3,
+        )
 
         return {
             'claim_support_packet_count': total_claims,
@@ -334,6 +391,10 @@ class PhaseManager:
             'claim_support_unsupported_count': unsupported_elements,
             'claim_support_blocking_contradictions': blocking_contradictions,
             'claim_support_recommended_actions': next_steps,
+            'credible_support_ratio': credible_support_ratio,
+            'draft_ready_element_ratio': draft_ready_element_ratio,
+            'high_quality_parse_ratio': high_quality_parse_ratio,
+            'proof_readiness_score': proof_readiness_score,
         }
     
     def get_current_phase(self) -> ComplaintPhase:

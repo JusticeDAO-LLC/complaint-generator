@@ -2665,7 +2665,15 @@
                     return `<a class="inline-link" data-review-intent-link="true" href="${escapeHtml(reviewUrl)}">Open ${escapeHtml(claimLabel)} Intake Claim Review</a>`;
                 }).filter(Boolean);
                 const sectionLinks = Object.entries(intakeSections).map(([sectionKey, section]) => {
-                    const reviewUrl = resolveSectionReviewUrl(sectionKey, section, reviewLinks);
+                    const supportKind = defaultSupportKindForSection(sectionKey);
+                    const reviewUrl = appendTaskUpdateIntentToReviewUrl(
+                        appendSupportKindToReviewUrl(
+                            resolveSectionReviewUrl(sectionKey, section, reviewLinks),
+                            supportKind,
+                        ),
+                        sectionKey,
+                        supportKind,
+                    );
                     const sectionLabel = humanizeKey(sectionKey);
                     if (!reviewUrl || !sectionLabel) {
                         return '';

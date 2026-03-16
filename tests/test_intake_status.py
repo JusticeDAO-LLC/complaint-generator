@@ -153,6 +153,9 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
             "element_count": 2,
             "status_counts": {"supported": 1, "unsupported": 1},
             "recommended_actions": ["collect_documentary_support"],
+            "credible_support_ratio": 0.5,
+            "draft_ready_element_ratio": 0.5,
+            "proof_readiness_score": 0.5,
         },
     }
 
@@ -174,3 +177,4 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["question_candidate_summary"]["count"] == 1
     assert summary["question_candidate_summary"]["source_counts"]["intake_proof_gap"] == 1
     assert summary["claim_support_packet_summary"]["claim_count"] == 1
+    assert summary["claim_support_packet_summary"]["proof_readiness_score"] == 0.5

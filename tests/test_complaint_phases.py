@@ -796,6 +796,9 @@ class TestPhaseManager:
         assert 'missing_remedy' in readiness['blockers']
         assert 'missing_proof_leads' in readiness['blockers']
         assert 'missing_claim_element_facts' in readiness['blockers']
+        assert 'missing_minimum_proof_path' in readiness['blockers']
+        assert readiness['criteria']['case_theory_coherent'] is False
+        assert readiness['criteria']['minimum_proof_path_present'] is False
 
     def test_intake_readiness_tracks_blocking_contradictions_from_case_file(self):
         """Blocking contradictions in the case file should appear in readiness output."""
@@ -832,6 +835,7 @@ class TestPhaseManager:
         assert readiness['blocking_contradictions'][0]['contradiction_id'] == 'ctr_1'
         assert 'blocking_contradiction' in readiness['blockers']
         assert readiness['criteria']['blocking_contradictions_resolved'] is False
+        assert readiness['criteria']['minimum_proof_path_present'] is True
 
     def test_evidence_phase_uses_claim_support_packets_for_completion(self):
         """Evidence completeness should be driven by explicit claim-support packet coverage when available."""

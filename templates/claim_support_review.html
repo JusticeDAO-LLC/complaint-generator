@@ -905,6 +905,8 @@
                     <h2 style="margin-top: 18px;">Alignment Evidence Tasks</h2>
                     <div class="question-list" id="alignment-evidence-task-list"></div>
                     <h2 style="margin-top: 18px;">Alignment Task Updates</h2>
+                    <div class="chip-row" id="alignment-task-manual-review-summary" style="margin-top: 10px;"></div>
+                    <div class="question-list" id="alignment-task-manual-review-list"></div>
                     <div class="control-grid" style="margin-top: 10px;">
                         <div>
                             <label for="alignment-task-update-filter">Task Update Filter</label>
@@ -912,6 +914,7 @@
                                 <option value="all">all</option>
                                 <option value="active">active</option>
                                 <option value="resolved">resolved</option>
+                                <option value="pending_review">pending_review</option>
                                 <option value="manual_review">manual_review</option>
                             </select>
                         </div>
@@ -1093,6 +1096,9 @@
             if (normalizedFilter === 'resolved') {
                 return updateList.filter((update) => String(update && update.status || '').trim().toLowerCase() === 'resolved');
             }
+            if (normalizedFilter === 'pending_review') {
+                return updateList.filter((update) => String(update && update.resolution_status || '').trim().toLowerCase() === 'answered_pending_review');
+            }
             if (normalizedFilter === 'manual_review') {
                 return updateList.filter((update) => String(update && update.resolution_status || '').trim().toLowerCase() === 'needs_manual_review');
             }
@@ -1122,6 +1128,47 @@
                 });
             }
             return updateList.sort((left, right) => sequenceValue(right) - sequenceValue(left));
+        }
+
+        function summarizeAlignmentManualReviewBlockers(updates) {
+            const updateList = Array.isArray(updates) ? updates : [];
+            const latestByTask = new Map();
+
+            updateList.forEach((update, index) => {
+                const fallbackTaskId = [
+                    update && update.claim_type,
+                    update && update.claim_element_id,
+                    update && update.action,
+                    index,
+                ].filter(Boolean).join(':');
+                const taskId = String(update && update.task_id || fallbackTaskId || `alignment-task-${index}`);
+                const existingEntry = latestByTask.get(taskId);
+                const existingSequence = Number(existingEntry && existingEntry.update && existingEntry.update.evidence_sequence);
+                const currentSequence = Number(update && update.evidence_sequence);
+                const currentOrder = index;
+                const existingOrder = existingEntry ? existingEntry.order : -1;
+                const replaceEntry = !existingEntry
+                    || (Number.isFinite(currentSequence) && (!Number.isFinite(existingSequence) || currentSequence >= existingSequence))
+                    || (!Number.isFinite(currentSequence) && currentOrder >= existingOrder);
+
+                if (replaceEntry) {
+                    latestByTask.set(taskId, { update, order: currentOrder });
+                }
+            });
+
+            return Array.from(latestByTask.values())
+                .map((entry) => entry.update)
+                .filter((update) => (
+                    String(update && update.resolution_status || '').trim().toLowerCase() === 'needs_manual_review'
+                    && String(update && update.status || '').trim().toLowerCase() !== 'resolved'
+                ))
+                .sort((left, right) => {
+                    const leftSequence = Number(left && left.evidence_sequence);
+                    const rightSequence = Number(right && right.evidence_sequence);
+                    const normalizedLeft = Number.isFinite(leftSequence) ? leftSequence : 0;
+                    const normalizedRight = Number.isFinite(rightSequence) ? rightSequence : 0;
+                    return normalizedRight - normalizedLeft;
+                });
         }
 
         function getLocalStorage() {
@@ -1415,8 +1462,13 @@
                 return;
             }
             contextLine.hidden = false;
-            const laneSummary = sectionConfig && sectionConfig.supportKind
-                ? ` Focused lane: ${humanizeQueryValue(sectionConfig.supportKind)}.`
+            const effectiveSupportKind = String(
+                (sectionConfig && sectionConfig.supportKind)
+                || document.getElementById('support-kind').value
+                || ''
+            ).trim();
+            const laneSummary = effectiveSupportKind
+                ? ` Focused lane: ${humanizeQueryValue(effectiveSupportKind)}.`
                 : '';
             contextLine.textContent = `Opened from document workflow: ${humanizeQueryValue(sectionKey)}.${laneSummary}`;
         }
@@ -1621,6 +1673,8 @@
             const alignmentTaskContainer = document.getElementById('alignment-evidence-task-list');
             const alignmentTaskUpdateFilter = document.getElementById('alignment-task-update-filter');
             const alignmentTaskUpdateFilterSummary = document.getElementById('alignment-task-update-filter-summary');
+            const alignmentTaskManualReviewSummary = document.getElementById('alignment-task-manual-review-summary');
+            const alignmentTaskManualReviewList = document.getElementById('alignment-task-manual-review-list');
             const alignmentTaskUpdateContainer = document.getElementById('alignment-task-update-list');
             const intakeCaseSummary = summary && typeof summary === 'object' ? summary : {};
             const candidateClaims = Array.isArray(intakeCaseSummary.candidate_claims) ? intakeCaseSummary.candidate_claims : [];
@@ -1660,6 +1714,7 @@
             const taskUpdateSortValue = document.getElementById('alignment-task-update-sort').value || 'newest_first';
             const filteredAlignmentTaskUpdates = filterAlignmentTaskUpdates(visibleAlignmentTaskUpdates, taskUpdateFilterValue);
             const orderedAlignmentTaskUpdates = sortAlignmentTaskUpdates(filteredAlignmentTaskUpdates, taskUpdateSortValue);
+            const manualReviewBlockers = summarizeAlignmentManualReviewBlockers(visibleAlignmentTaskUpdates);
             const questionCandidateSummary = intakeCaseSummary.question_candidate_summary && typeof intakeCaseSummary.question_candidate_summary === 'object'
                 ? intakeCaseSummary.question_candidate_summary
                 : {};
@@ -1847,15 +1902,70 @@
                 `<span class="chip">total updates: ${visibleAlignmentTaskUpdates.length}</span>`,
             ].join('');
 
+            const manualReviewClaims = new Set(
+                manualReviewBlockers
+                    .map((update) => String(update && update.claim_type || '').trim())
+                    .filter(Boolean)
+            );
+            alignmentTaskManualReviewSummary.innerHTML = [
+                `<span class="chip">manual review blockers: ${manualReviewBlockers.length}</span>`,
+                `<span class="chip">claims impacted: ${manualReviewClaims.size}</span>`,
+            ].join('');
+
+            if (!manualReviewBlockers.length) {
+                alignmentTaskManualReviewList.innerHTML = '<div class="task-card">Manual review blockers: none currently escalated.</div>';
+            } else {
+                alignmentTaskManualReviewList.innerHTML = manualReviewBlockers.map((update) => {
+                    const chips = [
+                        `<span class="chip">element: ${update.claim_element_id || 'unknown'}</span>`,
+                        `<span class="chip">action: ${update.action || 'resolve_support_conflicts'}</span>`,
+                    ];
+                    if (update.current_support_status) {
+                        chips.push(`<span class="chip">current support: ${update.current_support_status}</span>`);
+                    }
+                    if (update.evidence_artifact_id) {
+                        chips.push(`<span class="chip">artifact: ${update.evidence_artifact_id}</span>`);
+                    }
+                    if (update.evidence_sequence !== undefined && update.evidence_sequence !== null && update.evidence_sequence !== '') {
+                        chips.push(`<span class="chip">latest evidence event: ${update.evidence_sequence}</span>`);
+                    }
+                    return `
+                        <article class="task-card">
+                            <div class="row-head">
+                                <div>
+                                    <div class="row-title">Manual review blocker for ${update.claim_type || 'claim'}</div>
+                                    <div class="meta">${update.claim_element_label || update.claim_element_id || 'alignment task'} requires operator review</div>
+                                </div>
+                                <span class="badge contradicted">needs_manual_review</span>
+                            </div>
+                            <div class="chip-row" style="margin-top: 10px;">
+                                ${chips.join('')}
+                            </div>
+                        </article>
+                    `;
+                }).join('');
+            }
+
             if (!orderedAlignmentTaskUpdates.length) {
                 alignmentTaskUpdateContainer.innerHTML = '<div class="task-card">Alignment task updates: no recent evidence-driven task changes recorded.</div>';
             } else {
                 alignmentTaskUpdateContainer.innerHTML = orderedAlignmentTaskUpdates.map((update) => {
+                    const resolutionStatus = String(update.resolution_status || 'still_open').trim();
+                    const normalizedResolutionStatus = resolutionStatus.toLowerCase();
+                    const resolutionLabel = normalizedResolutionStatus === 'answered_pending_review'
+                        ? 'answered, pending review'
+                        : resolutionStatus;
+                    const badgeClass = update.status === 'resolved'
+                        ? (normalizedResolutionStatus === 'answered_pending_review' ? '' : 'covered')
+                        : (normalizedResolutionStatus === 'needs_manual_review' ? 'contradicted' : '');
                     const chips = [
                         `<span class="chip">element: ${update.claim_element_id || 'unknown'}</span>`,
                         `<span class="chip">status: ${update.status || 'active'}</span>`,
-                        `<span class="chip">resolution: ${update.resolution_status || 'still_open'}</span>`,
+                        `<span class="chip">resolution: ${resolutionLabel}</span>`,
                     ];
+                    if (normalizedResolutionStatus === 'answered_pending_review') {
+                        chips.push('<span class="chip">review state: awaiting support validation</span>');
+                    }
                     if (update.evidence_sequence !== undefined && update.evidence_sequence !== null && update.evidence_sequence !== '') {
                         chips.push(`<span class="chip">evidence event: ${update.evidence_sequence}</span>`);
                     }
@@ -1887,7 +1997,7 @@
                                     <div class="row-title">Alignment update for ${update.claim_type || 'claim'}</div>
                                     <div class="meta">${update.action || 'fill_evidence_gaps'}</div>
                                 </div>
-                                <span class="badge ${update.status === 'resolved' ? 'covered' : (update.resolution_status === 'needs_manual_review' ? 'contradicted' : '')}">${update.resolution_status || 'still_open'}</span>
+                                <span class="badge ${badgeClass}">${resolutionLabel}</span>
                             </div>
                             <div class="chip-row" style="margin-top: 10px;">
                                 ${chips.join('')}
