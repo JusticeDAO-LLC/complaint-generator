@@ -703,6 +703,30 @@ def test_annotate_requested_relief_with_selection_rationale_uses_only_matched_fa
     assert "retaliation" not in annotated[0]["strategic_note"]
 
 
+def test_relief_selection_summary_extracts_relief_metadata():
+    relief_annotations = [
+        {
+            "text": "Corrective action requiring clear notice, fair review, and non-retaliation safeguards.",
+            "strategic_families": ["process"],
+            "strategic_role": "shared_baseline",
+            "strategic_note": "This relief item tracks the shared process baseline that appeared in both the selected preset and the runner-up.",
+            "related_claims": ["Administrative Fair Housing Process Failure"],
+        }
+    ]
+
+    summary = MODULE._relief_selection_summary(relief_annotations)
+
+    assert summary == [
+        {
+            "text": "Corrective action requiring clear notice, fair review, and non-retaliation safeguards.",
+            "strategic_families": ["process"],
+            "strategic_role": "shared_baseline",
+            "strategic_note": "This relief item tracks the shared process baseline that appeared in both the selected preset and the runner-up.",
+            "related_claims": ["Administrative Fair Housing Process Failure"],
+        }
+    ]
+
+
 def test_grounded_supporting_evidence_merges_packets_and_uploads():
     grounding_bundle = {
         "query": "reasonable accommodation hearing rights",
