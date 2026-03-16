@@ -437,6 +437,14 @@ def test_markdown_groups_tagged_evidence_sections():
             "ADMINISTRATIVE PLAN supports reasonable accommodation, adverse action: [reasonable_accommodation, notice, contact, adverse_action] Summary text. Full passage: Source text.",
         ],
         "causes_of_action": [{"title": "Administrative Fair Housing Process Failure", "theory": "Theory", "support": ["Support"]}],
+        "claim_selection_summary": [
+            {
+                "title": "Administrative Fair Housing Process Failure",
+                "selection_tags": ["notice", "hearing", "adverse_action"],
+                "selected_exhibits": [{"exhibit_id": "Exhibit A", "label": "ADMINISTRATIVE PLAN"}],
+                "selection_rationale": "selected for stronger notice and process language",
+            }
+        ],
         "proposed_allegations": ["Complainant alleges conduct arising from X."],
         "anchor_sections": ["reasonable_accommodation", "adverse_action"],
         "anchor_passages": [
@@ -452,6 +460,8 @@ def test_markdown_groups_tagged_evidence_sections():
 
     assert "## Exhibit Index" in markdown
     assert "- Exhibit A: ADMINISTRATIVE PLAN" in markdown
+    assert "## Claim Selection Summary" in markdown
+    assert "Administrative Fair Housing Process Failure: tags=notice, hearing, adverse_action;" in markdown
     assert "## Administrative Basis" in markdown
     assert "These policy excerpts frame the accommodation theory" in markdown
     assert "- Exhibit A: ADMINISTRATIVE PLAN supports reasonable accommodation, adverse action:" in markdown
@@ -466,6 +476,90 @@ def test_markdown_groups_tagged_evidence_sections():
     assert "See also Exhibit A (ADMINISTRATIVE PLAN) under Accommodation." in markdown
     assert markdown.count("### Accommodation") >= 2
     assert markdown.count("### Notice") >= 2
+
+
+def test_grounded_supporting_evidence_merges_packets_and_uploads():
+    grounding_bundle = {
+        "query": "reasonable accommodation hearing rights",
+        "claim_type": "housing_discrimination",
+        "mediator_evidence_packets": [
+            {
+                "document_label": "README.txt",
+                "relative_path": "README.txt",
+                "source_path": "/tmp/README.txt",
+            }
+        ],
+        "synthetic_prompts": {
+            "complaint_chatbot_prompt": "Ground the complaint chatbot in uploaded repository evidence.",
+        },
+    }
+    upload_report = {
+        "upload_count": 1,
+        "uploads": [
+            {
+                "title": "README.txt",
+                "relative_path": "README.txt",
+                "result": {"claim_type": "housing_discrimination"},
+            }
+        ],
+        "support_summary": {"total_links": 2},
+    }
+
+    lines = MODULE._grounded_supporting_evidence(grounding_bundle, upload_report)
+    summary = MODULE._grounded_summary_lines(grounding_bundle, upload_report)
+
+    assert any("mediator evidence packet prepared for grounded intake" in line for line in lines)
+    assert any("uploaded into mediator evidence store" in line for line in lines)
+    assert any("Grounding query: reasonable accommodation hearing rights" == line for line in summary)
+    assert any("Mediator preload / upload count: 1" == line for line in summary)
+    assert any("Claim-support links recorded: 2" == line for line in summary)
+
+
+def test_markdown_includes_grounded_evidence_run_section():
+    package = {
+        "generated_at": "2026-03-15T00:00:00+00:00",
+        "preset": "core_hacc_policies",
+        "filing_forum": "court",
+        "session_id": "session_1",
+        "critic_score": 0.7,
+        "summary": "Summary.",
+        "caption": {
+            "court": "Court to be determined",
+            "case_title": "Complainant v. Housing Authority of Clackamas County",
+            "document_title": "Draft Complaint",
+            "caption_note": "Note",
+        },
+        "parties": {
+            "plaintiff": "Complainant",
+            "defendant": "HACC",
+        },
+        "jurisdiction_and_venue": ["Venue statement."],
+        "legal_theory_summary": {
+            "theory_labels": ["reasonable_accommodation"],
+            "protected_bases": ["disability"],
+            "authority_hints": ["Section 504 of the Rehabilitation Act"],
+        },
+        "grounded_evidence_summary": [
+            "Grounding query: reasonable accommodation hearing rights",
+            "Mediator preload / upload count: 1",
+        ],
+        "factual_allegations": ["Fact one."],
+        "claims_theory": ["Theory one."],
+        "policy_basis": ["Policy one."],
+        "causes_of_action": [{"title": "Cause", "theory": "Theory", "support": ["Support"]}],
+        "claim_selection_summary": [],
+        "proposed_allegations": ["Proposed."],
+        "anchor_sections": ["reasonable_accommodation"],
+        "anchor_passages": ["Passage"],
+        "supporting_evidence": ["Evidence"],
+        "requested_relief": ["Relief"],
+    }
+
+    markdown = MODULE._render_markdown(package)
+
+    assert "## Grounded Evidence Run" in markdown
+    assert "- Grounding query: reasonable accommodation hearing rights" in markdown
+    assert "- Mediator preload / upload count: 1" in markdown
 
 
 def test_inject_exhibit_references_adds_citations_to_claims_and_facts():
@@ -516,6 +610,28 @@ def test_inject_exhibit_references_adds_citations_to_claims_and_facts():
     assert package["causes_of_action"][1]["selected_exhibits"][0]["label"] == "ADMINISTRATIVE PLAN"
     assert package["causes_of_action"][0]["selection_rationale"]
     assert "notice" in package["causes_of_action"][0]["selection_tags"]
+
+
+def test_claim_selection_summary_extracts_cause_metadata():
+    causes = [
+        {
+            "title": "Administrative Fair Housing Process Failure",
+            "selection_tags": ["notice", "hearing", "adverse_action"],
+            "selected_exhibits": [{"exhibit_id": "Exhibit B", "label": "ADMINISTRATIVE PLAN"}],
+            "selection_rationale": "selected for stronger notice and process language",
+        }
+    ]
+
+    summary = MODULE._claim_selection_summary(causes)
+
+    assert summary == [
+        {
+            "title": "Administrative Fair Housing Process Failure",
+            "selection_tags": ["notice", "hearing", "adverse_action"],
+            "selected_exhibits": [{"exhibit_id": "Exhibit B", "label": "ADMINISTRATIVE PLAN"}],
+            "selection_rationale": "selected for stronger notice and process language",
+        }
+    ]
 
 
 def test_single_exhibit_margin_varies_by_cause_type():

@@ -531,6 +531,86 @@ def _summarize_section_labels(anchor_passages: Sequence[Dict[str, Any]]) -> List
     return labels
 
 
+def _condense_evidence_snippet(text: str, max_chars: int = 220) -> str:
+    cleaned = _normalize_match_text(text)
+    if len(cleaned) <= max_chars:
+        return cleaned
+    return cleaned[: max_chars - 3].rstrip(" ,;:.") + "..."
+
+
+def _build_repository_candidates(
+    grounding_bundle: Optional[Dict[str, Any]],
+    *,
+    max_candidates: int = 3,
+) -> List[Dict[str, Any]]:
+    candidates = list((grounding_bundle or {}).get("upload_candidates") or [])
+    simplified: List[Dict[str, Any]] = []
+    for candidate in candidates[:max_candidates]:
+        simplified.append(
+            {
+                "title": str(candidate.get("title") or ""),
+                "relative_path": str(candidate.get("relative_path") or ""),
+                "source_path": str(candidate.get("source_path") or ""),
+                "snippet": _condense_evidence_snippet(str(candidate.get("snippet") or "")),
+                "score": float(candidate.get("score") or 0.0),
+                "source_type": str(candidate.get("source_type") or ""),
+            }
+        )
+    return simplified
+
+
+def _build_complainant_story_facts(
+    *,
+    description: str,
+    evidence_summary: str,
+    anchor_passages: Sequence[Dict[str, Any]],
+    hits: Sequence[Dict[str, Any]],
+    repository_candidates: Sequence[Dict[str, Any]],
+    max_facts: int = 6,
+) -> List[str]:
+    facts: List[str] = []
+
+    if description:
+        facts.append(f"Complaint theory: {description}")
+    if evidence_summary:
+        facts.append(f"Primary evidence summary: {_condense_evidence_snippet(evidence_summary, max_chars=260)}")
+
+    for passage in list(anchor_passages or [])[:3]:
+        title = str(passage.get("title") or "policy document").strip()
+        snippet = _condense_evidence_snippet(str(passage.get("snippet") or ""), max_chars=240)
+        labels = ", ".join(list(passage.get("section_labels") or []))
+        if not snippet:
+            continue
+        if labels:
+            facts.append(f"Anchor from {title} [{labels}]: {snippet}")
+        else:
+            facts.append(f"Anchor from {title}: {snippet}")
+
+    for candidate in list(repository_candidates or [])[:2]:
+        title = str(candidate.get("title") or candidate.get("relative_path") or "repository evidence").strip()
+        snippet = _condense_evidence_snippet(str(candidate.get("snippet") or ""), max_chars=220)
+        if snippet:
+            facts.append(f"Repository evidence {title}: {snippet}")
+
+    for hit in list(hits or [])[:2]:
+        title = str(hit.get("title") or hit.get("document_id") or "supporting evidence").strip()
+        snippet = _condense_evidence_snippet(str(hit.get("snippet") or ""), max_chars=220)
+        if snippet:
+            facts.append(f"Supporting document {title}: {snippet}")
+
+    deduped: List[str] = []
+    seen = set()
+    for fact in facts:
+        normalized = re.sub(r"[^a-z0-9]+", " ", fact.lower()).strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(fact)
+        if len(deduped) >= max_facts:
+            break
+    return deduped
+
+
 def build_hacc_evidence_seed(
     search_payload: Dict[str, Any],
     *,
@@ -544,6 +624,7 @@ def build_hacc_evidence_seed(
     theory_labels: Optional[Sequence[str]] = None,
     protected_bases: Optional[Sequence[str]] = None,
     authority_hints: Optional[Sequence[str]] = None,
+    grounding_bundle: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
     raw_hits = [_summarize_hit(hit) for hit in list(search_payload.get("results", []) or [])]
     hits = _filter_hits(
@@ -568,6 +649,15 @@ def build_hacc_evidence_seed(
     evidence_titles = [hit["title"] for hit in hits if hit.get("title")]
     anchor_passages = _extract_anchor_passages(hits, anchor_terms=anchor_terms)
     anchor_sections = _summarize_section_labels(anchor_passages)
+    repository_candidates = _build_repository_candidates(grounding_bundle)
+    synthetic_prompts = dict((grounding_bundle or {}).get("synthetic_prompts") or {})
+    complainant_story_facts = _build_complainant_story_facts(
+        description=description,
+        evidence_summary=evidence_summary,
+        anchor_passages=anchor_passages,
+        hits=hits,
+        repository_candidates=repository_candidates,
+    )
 
     return {
         "template_id": f"hacc::{complaint_type}::{query[:40]}",
@@ -589,6 +679,9 @@ def build_hacc_evidence_seed(
             "theory_labels": [str(item) for item in list(theory_labels or []) if str(item).strip()],
             "protected_bases": [str(item) for item in list(protected_bases or []) if str(item).strip()],
             "authority_hints": [str(item) for item in list(authority_hints or []) if str(item).strip()],
+            "repository_evidence_candidates": repository_candidates,
+            "synthetic_prompts": synthetic_prompts,
+            "complainant_story_facts": complainant_story_facts,
             "grounding_note": "Use the evidence as factual grounding and identify missing case-specific facts during questioning.",
         },
         "keywords": [],
@@ -617,15 +710,23 @@ def build_hacc_evidence_seeds(
     specs = get_hacc_query_specs(preset=preset, query_specs=query_specs)
     seeds: List[Dict[str, Any]] = []
     for spec in specs:
+        query = str(spec.get("query") or "")
+        complaint_type = str(spec.get("type") or "civil_rights_violation")
         payload = engine.search(
-            str(spec.get("query") or ""),
+            query,
             top_k=search_top_k,
+            use_vector=use_vector,
+        )
+        grounding_bundle = engine.build_grounding_bundle(
+            query,
+            top_k=max(1, search_top_k),
+            claim_type=complaint_type,
             use_vector=use_vector,
         )
         seed = build_hacc_evidence_seed(
             payload,
-            query=str(spec.get("query") or ""),
-            complaint_type=str(spec.get("type") or "civil_rights_violation"),
+            query=query,
+            complaint_type=complaint_type,
             category=str(spec.get("category") or "civil_rights"),
             description=str(spec.get("description") or "Evidence-backed complaint seed from HACC corpus"),
             anchor_titles=spec.get("anchor_titles"),
@@ -634,6 +735,7 @@ def build_hacc_evidence_seeds(
             theory_labels=spec.get("theory_labels"),
             protected_bases=spec.get("protected_bases"),
             authority_hints=spec.get("authority_hints"),
+            grounding_bundle=grounding_bundle,
         )
         if seed:
             seeds.append(seed)
@@ -732,7 +834,16 @@ def build_hacc_mediator_evidence_packet(
 ) -> List[Dict[str, Any]]:
     key_facts = dict(seed.get("key_facts") or {})
     evidence_items = list(seed.get("hacc_evidence") or [])
-    source_paths = [str(item) for item in list(key_facts.get("source_paths") or []) if str(item).strip()]
+    repository_candidates = list(key_facts.get("repository_evidence_candidates") or [])
+    source_paths: List[str] = []
+    for candidate in repository_candidates:
+        candidate_path = str(candidate.get("source_path") or "").strip()
+        if candidate_path:
+            source_paths.append(candidate_path)
+    for item in list(key_facts.get("source_paths") or []):
+        item_path = str(item).strip()
+        if item_path:
+            source_paths.append(item_path)
     packets: List[Dict[str, Any]] = []
     seen_paths: set[str] = set()
 
@@ -746,10 +857,18 @@ def build_hacc_mediator_evidence_packet(
             continue
         seen_paths.add(str(path))
         matching_item = next((item for item in evidence_items if str(item.get("source_path") or "") == str(path)), {})
+        matching_candidate = next(
+            (item for item in repository_candidates if str(item.get("source_path") or "") == str(path)),
+            {},
+        )
         packets.append(
             {
                 "document_text": document_text,
-                "document_label": str(matching_item.get("title") or path.name),
+                "document_label": str(
+                    matching_candidate.get("title")
+                    or matching_item.get("title")
+                    or path.name
+                ),
                 "source_path": str(path),
                 "filename": path.name,
                 "mime_type": "text/plain",
@@ -759,6 +878,35 @@ def build_hacc_mediator_evidence_packet(
                     "evidence_query": str(key_facts.get("evidence_query") or ""),
                     "anchor_sections": list(key_facts.get("anchor_sections") or []),
                     "anchor_terms": list(key_facts.get("anchor_terms") or []),
+                    "relative_path": str(matching_candidate.get("relative_path") or ""),
+                    "repository_candidate": bool(matching_candidate),
+                },
+            }
+        )
+
+    if packets:
+        return packets
+
+    for candidate in repository_candidates[:max_documents]:
+        snippet = str(candidate.get("snippet") or "").strip()
+        if not snippet:
+            continue
+        packets.append(
+            {
+                "document_text": snippet,
+                "document_label": str(candidate.get("title") or candidate.get("relative_path") or "repository_evidence_snippet"),
+                "source_path": str(candidate.get("source_path") or ""),
+                "filename": str(candidate.get("relative_path") or ""),
+                "mime_type": "text/plain",
+                "metadata": {
+                    "source_path": str(candidate.get("source_path") or ""),
+                    "relative_path": str(candidate.get("relative_path") or ""),
+                    "hacc_seed_type": str(seed.get("type") or ""),
+                    "evidence_query": str(key_facts.get("evidence_query") or ""),
+                    "anchor_sections": list(key_facts.get("anchor_sections") or []),
+                    "anchor_terms": list(key_facts.get("anchor_terms") or []),
+                    "snippet_only": True,
+                    "repository_candidate": True,
                 },
             }
         )
