@@ -2009,6 +2009,153 @@ def test_document_builder_intake_claim_review_link_prefers_manual_review_queue_f
             os.unlink(db_path)
 
 
+def test_document_builder_claim_readiness_review_link_prefers_manual_review_queue_focus():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    payload = {
+        "generated_at": "2026-03-15T20:00:00+00:00",
+        "draft": {
+            "court_header": "IN THE UNITED STATES DISTRICT COURT",
+            "case_caption": {
+                "plaintiffs": ["Jane Doe"],
+                "defendants": ["Acme Corporation"],
+            },
+            "summary_of_facts": ["Plaintiff reported discrimination to HR."],
+            "factual_allegation_paragraphs": ["1. Plaintiff reported discrimination to HR."],
+            "legal_standards": ["Title VII prohibits retaliation."],
+            "claims_for_relief": [],
+            "requested_relief": ["Compensatory damages."],
+            "draft_text": "Sample draft text.",
+            "exhibits": [],
+        },
+        "drafting_readiness": {
+            "sections": {},
+            "claims": [
+                {
+                    "claim_type": "retaliation",
+                    "status": "needs_review",
+                    "validation_status": "incomplete",
+                    "covered_elements": 1,
+                    "total_elements": 2,
+                    "support_by_kind": {"authority": 1},
+                    "unresolved_element_count": 1,
+                    "proof_gap_count": 1,
+                    "contradiction_candidate_count": 1,
+                    "warnings": ["authority support incomplete"],
+                }
+            ],
+            "warnings": [],
+        },
+        "filing_checklist": [],
+        "review_links": {},
+        "document_optimization": {
+            "status": "optimized",
+            "method": "actor_mediator_critic_optimizer",
+            "optimizer_backend": "upstream_agentic",
+            "initial_score": 0.4,
+            "final_score": 0.7,
+            "accepted_iterations": 1,
+            "iteration_count": 1,
+            "optimized_sections": ["factual_allegations"],
+            "trace_storage": {"status": "available", "cid": "bafy-test", "size": 123, "pinned": True},
+            "intake_status": {
+                "current_phase": "intake",
+                "score": 0.5,
+                "remaining_gap_count": 1,
+                "contradiction_count": 0,
+                "ready_to_advance": False,
+                "blockers": ["collect_missing_support"],
+                "contradictions": [],
+            },
+            "intake_constraints": [],
+            "intake_case_summary": {
+                "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation"}],
+                "intake_sections": {
+                    "claims_for_relief": {"status": "partial", "missing_items": ["authority"]},
+                },
+                "canonical_fact_summary": {"count": 1, "facts": [{"fact_id": "fact_001"}]},
+                "proof_lead_summary": {"count": 1, "proof_leads": [{"lead_id": "lead_001"}]},
+                "question_candidate_summary": {"count": 0, "question_goal_counts": {}, "phase1_section_counts": {}, "blocking_level_counts": {}},
+                "claim_support_packet_summary": {
+                    "claim_count": 1,
+                    "element_count": 2,
+                    "status_counts": {"unsupported": 2},
+                    "recommended_actions": ["collect_missing_support_kind"],
+                },
+                "alignment_task_update_history": [
+                    {
+                        "task_id": "retaliation:claims_for_relief:resolve_support_conflicts",
+                        "claim_type": "retaliation",
+                        "claim_element_id": "retaliation:2",
+                        "claim_element_label": "Claims For Relief",
+                        "action": "resolve_support_conflicts",
+                        "current_support_status": "contradicted",
+                        "resolution_status": "needs_manual_review",
+                        "status": "active",
+                        "evidence_artifact_id": "artifact-conflict",
+                        "evidence_sequence": 2,
+                    }
+                ],
+            },
+            "packet_projection": {
+                "title": "Complaint Packet",
+                "section_presence": {"factual_allegations": True},
+                "has_affidavit": False,
+                "has_certificate_of_service": False,
+            },
+            "section_history": [],
+            "initial_review": {},
+            "final_review": {},
+            "router_status": {},
+            "upstream_optimizer": {},
+        },
+    }
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for document claim-readiness review click-through coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+
+        app = _build_document_review_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(f"{base_url}/document")
+                page.evaluate("payload => window.renderPreview(payload)", payload)
+                page.wait_for_function(
+                    "() => document.querySelectorAll('.readiness-claim-stack a.inline-link').length > 0"
+                )
+
+                page.locator(".readiness-claim-stack").get_by_text("Open Claim Support Review").click()
+                page.wait_for_url("**/claim-support-review?**")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                assert "claim_type=retaliation" in page.url
+                assert "alignment_task_update_filter=manual_review" in page.url
+                assert "alignment_task_update_sort=manual_review_first" in page.url
+                assert page.locator("#claim-type").input_value() == "retaliation"
+                assert page.locator("#alignment-task-update-filter").input_value() == "manual_review"
+                assert page.locator("#alignment-task-update-sort").input_value() == "manual_review_first"
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
 def test_optimization_trace_pending_review_link_click_preserves_queue_focus_on_review_page():
     if not PLAYWRIGHT_AVAILABLE:
         pytest.skip("Playwright not available")

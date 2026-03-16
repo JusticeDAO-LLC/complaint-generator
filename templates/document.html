@@ -2209,7 +2209,26 @@
                 });
         }
 
-        function renderSectionClaimLinks(sectionKey, section, reviewLinks) {
+        function buildClaimQueueIntentSets(intakeCaseSummary) {
+            const summary = intakeCaseSummary && typeof intakeCaseSummary === 'object' ? intakeCaseSummary : {};
+            const visibleAlignmentTaskUpdates = Array.isArray(summary.alignment_task_update_history)
+                && summary.alignment_task_update_history.length
+                ? summary.alignment_task_update_history
+                : (Array.isArray(summary.alignment_task_updates) ? summary.alignment_task_updates : []);
+            const manualReviewClaims = new Set(
+                summarizeAlignmentManualReviewBlockers(visibleAlignmentTaskUpdates)
+                    .map((update) => String(update && update.claim_type || '').trim())
+                    .filter(Boolean)
+            );
+            const pendingReviewClaims = new Set(
+                summarizeAlignmentPendingReviewItems(visibleAlignmentTaskUpdates)
+                    .map((update) => String(update && update.claim_type || '').trim())
+                    .filter(Boolean)
+            );
+            return { manualReviewClaims, pendingReviewClaims };
+        }
+
+        function renderSectionClaimLinks(sectionKey, section, reviewLinks, manualReviewClaims, pendingReviewClaims) {
             const sectionEntry = resolveSectionReviewEntry(sectionKey, section, reviewLinks);
             const claimLinks = Array.isArray(sectionEntry && sectionEntry.claim_links)
                 ? sectionEntry.claim_links.filter((claim) => claim && typeof claim === 'object')
@@ -2221,7 +2240,12 @@
                 <div class="inline-link-row">
                     ${claimLinks.map((claim) => {
                         const claimType = String(claim.claim_type || '').trim();
-                        const reviewUrl = String(claim.review_url || '').trim();
+                        const reviewUrl = appendClaimQueueIntentToReviewUrl(
+                            String(claim.review_url || '').trim(),
+                            claimType,
+                            manualReviewClaims,
+                            pendingReviewClaims,
+                        );
                         if (!claimType || !reviewUrl) {
                             return '';
                         }
@@ -2231,9 +2255,14 @@
             `;
         }
 
-        function renderClaimActions(claim, reviewLinks) {
+        function renderClaimActions(claim, reviewLinks, manualReviewClaims, pendingReviewClaims) {
             const claimType = String((claim && claim.claim_type) || '').trim();
-            const reviewUrl = resolveClaimReviewUrl(claim, reviewLinks);
+            const reviewUrl = appendClaimQueueIntentToReviewUrl(
+                resolveClaimReviewUrl(claim, reviewLinks),
+                claimType,
+                manualReviewClaims,
+                pendingReviewClaims,
+            );
             if (!claimType || !reviewUrl) {
                 return '';
             }
@@ -2338,7 +2367,7 @@
             return `<ul class="provenance-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
         }
 
-        function renderSectionReadiness(sections, reviewLinks) {
+        function renderSectionReadiness(sections, reviewLinks, manualReviewClaims, pendingReviewClaims) {
             const values = Object.entries(sections || {});
             if (!values.length) {
                 return '<div class="preview-meta">No section-level filing readiness data is available.</div>';
@@ -2356,14 +2385,14 @@
                     <div class="readiness-subtitle">Section Warnings</div>
                     ${renderWarningList(section.warnings || [])}
                     ${reviewUrl ? `<div class="inline-link-row"><a class="inline-link" data-review-intent-link="true" href="${escapeHtml(reviewUrl)}">Open Section Review</a></div>` : ''}
-                    ${renderSectionClaimLinks(key, section, reviewLinks)}
+                    ${renderSectionClaimLinks(key, section, reviewLinks, manualReviewClaims, pendingReviewClaims)}
                 </article>
             `;
             }).join('');
             return `<div class="readiness-detail-grid">${cards}</div>`;
         }
 
-        function renderClaimReadiness(claims, exhibits, reviewLinks) {
+        function renderClaimReadiness(claims, exhibits, reviewLinks, manualReviewClaims, pendingReviewClaims) {
             const values = Array.isArray(claims) ? claims.filter((claim) => claim && typeof claim === 'object') : [];
             if (!values.length) {
                 return '<div class="preview-meta">No claim-level drafting signals are available.</div>';
@@ -2405,17 +2434,18 @@
                         ${renderWarningList(claim.warnings || [])}
                         <div class="readiness-subtitle">Source Drilldown</div>
                         ${renderProvenanceList(claim, exhibits)}
-                        ${renderClaimActions(claim, reviewLinks)}
+                        ${renderClaimActions(claim, reviewLinks, manualReviewClaims, pendingReviewClaims)}
                     </article>
                 `;
             }).join('');
             return `<div class="readiness-claim-stack">${cards}</div>`;
         }
 
-        function renderReadiness(readiness, exhibits, reviewLinks) {
+        function renderReadiness(readiness, exhibits, reviewLinks, intakeCaseSummary) {
             if (!readiness || typeof readiness !== 'object') {
                 return '';
             }
+            const { manualReviewClaims, pendingReviewClaims } = buildClaimQueueIntentSets(intakeCaseSummary);
             const sections = Object.entries(readiness.sections || {});
             const warningCount = Number(readiness.warning_count || 0);
             const sectionCards = sections.map(([key, section]) => `
@@ -2431,9 +2461,9 @@
                     ${renderReviewLinks(reviewLinks)}
                     <div class="readiness-grid">${sectionCards}</div>
                     <div class="readiness-subtitle">Section Readiness</div>
-                    ${renderSectionReadiness(readiness.sections || {}, reviewLinks)}
+                    ${renderSectionReadiness(readiness.sections || {}, reviewLinks, manualReviewClaims, pendingReviewClaims)}
                     <div class="readiness-subtitle">Claim Readiness</div>
-                    ${renderClaimReadiness(readiness.claims || [], exhibits || [], reviewLinks)}
+                    ${renderClaimReadiness(readiness.claims || [], exhibits || [], reviewLinks, manualReviewClaims, pendingReviewClaims)}
                 </section>
             `;
         }
@@ -3032,7 +3062,7 @@
             const html = `
                 ${renderArtifacts(payload.artifacts || {})}
                 <div class="draft-shell">
-                    ${renderReadiness(readiness, draft.exhibits || [], reviewLinks)}
+                    ${renderReadiness(readiness, draft.exhibits || [], reviewLinks, optimizationReport && optimizationReport.intake_case_summary)}
                     ${renderOptimizationReport(optimizationReport, reviewLinks)}
                     <div class="court-header">${escapeHtml(draft.court_header || '')}</div>
                     <div class="caption-block">
