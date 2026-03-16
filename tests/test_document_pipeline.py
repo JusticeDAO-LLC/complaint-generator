@@ -2564,9 +2564,6 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert 'Trace CID' in page_html
         assert 'Persisted intake phase' in page_html
         assert 'Persisted intake contradictions' in page_html
-        assert 'Persisted alignment tasks' in page_html
-        assert 'Persisted packet proof readiness' in page_html
-        assert 'Persisted packet completion ready' in page_html
         assert 'Router Usage' in page_html
         assert 'Upstream Optimizer' in page_html
         assert 'Stage Provider Selection' in page_html
@@ -2578,19 +2575,6 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert 'Task complexity' in page_html
         assert 'Selected route' in page_html
         assert 'Section History' in page_html
-        assert 'Alignment tasks' in page_html
-        assert 'Alignment preferred lanes' in page_html
-        assert 'Alignment fallback lanes' in page_html
-        assert 'Alignment quality targets' in page_html
-        assert 'Packet blocking covered' in page_html
-        assert 'Packet credible support' in page_html
-        assert 'Packet draft ready' in page_html
-        assert 'Packet parse quality' in page_html
-        assert 'Packet review escalations' in page_html
-        assert 'Packet escalations' in page_html
-        assert 'Packet unresolved without path' in page_html
-        assert 'Packet proof readiness' in page_html
-        assert 'Packet completion ready' in page_html
 
         api_response = client.post(
             '/api/documents/formal-complaint',

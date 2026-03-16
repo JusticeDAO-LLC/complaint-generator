@@ -725,6 +725,120 @@ class TestMediatorThreePhaseIntegration:
         assert 'adverse_action' in alignment['packet_element_statuses']
         assert isinstance(alignment['shared_elements'], list)
 
+    def test_advance_to_evidence_phase_prefers_testimony_for_testimony_only_elements(self):
+        """Evidence-phase tasks should start in the testimony lane when the element only points to witness testimony."""
+        from mediator.mediator import Mediator
+        from unittest.mock import Mock
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process(
+            "I was retaliated against after complaining, and only my coworker witnessed the timeline."
+        )
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', 0)
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'denoising_converged', True)
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'current_gaps', [])
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_gap_types', [])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'intake_case_file',
+            {
+                'candidate_claims': [
+                    {
+                        'claim_type': 'retaliation',
+                        'required_elements': [
+                            {
+                                'element_id': 'causation',
+                                'label': 'Causation',
+                                'blocking': True,
+                                'evidence_classes': ['witness_testimony'],
+                            },
+                        ],
+                    }
+                ],
+                'canonical_facts': [{'fact_id': 'fact_001'}],
+                'proof_leads': [
+                    {
+                        'lead_id': 'lead_witness_001',
+                        'lead_type': 'witness_testimony',
+                        'description': 'Coworker witness can confirm the retaliation timeline.',
+                        'element_targets': ['causation'],
+                        'recommended_support_kind': 'testimony',
+                        'source_quality_target': 'credible_testimony',
+                    }
+                ],
+                'contradiction_queue': [],
+                'open_items': [
+                    {
+                        'open_item_id': 'element:retaliation:causation',
+                        'target_claim_type': 'retaliation',
+                        'target_element_id': 'causation',
+                    }
+                ],
+                'intake_sections': {
+                    'chronology': {'status': 'complete', 'missing_items': []},
+                    'actors': {'status': 'complete', 'missing_items': []},
+                    'conduct': {'status': 'complete', 'missing_items': []},
+                    'harm': {'status': 'complete', 'missing_items': []},
+                    'remedy': {'status': 'complete', 'missing_items': []},
+                    'proof_leads': {'status': 'complete', 'missing_items': []},
+                    'claim_elements': {'status': 'complete', 'missing_items': []},
+                },
+            },
+        )
+        mediator.get_claim_support_validation = Mock(return_value={
+            'claims': {
+                'retaliation': {
+                    'claim_type': 'retaliation',
+                    'validation_status': 'incomplete',
+                    'elements': [
+                        {
+                            'element_id': 'causation',
+                            'element_text': 'Causation',
+                            'validation_status': 'missing',
+                            'recommended_action': 'collect_witness_support',
+                            'missing_support_kinds': ['evidence'],
+                            'contradiction_candidate_count': 0,
+                            'proof_diagnostics': {},
+                            'gap_context': {
+                                'support_facts': [],
+                                'support_traces': [],
+                            },
+                        },
+                    ],
+                }
+            }
+        })
+        mediator.get_claim_support_gaps = Mock(return_value={
+            'claims': {
+                'retaliation': {
+                    'claim_type': 'retaliation',
+                    'unresolved_count': 1,
+                    'unresolved_elements': [
+                        {
+                            'element_id': 'causation',
+                            'element_text': 'Causation',
+                            'recommended_action': 'collect_witness_support',
+                            'missing_support_kinds': ['evidence'],
+                        }
+                    ],
+                }
+            }
+        })
+
+        result = mediator.advance_to_evidence_phase()
+
+        assert result['alignment_evidence_tasks']
+        assert result['alignment_evidence_tasks'][0]['preferred_support_kind'] == 'testimony'
+        assert result['alignment_evidence_tasks'][0]['source_quality_target'] == 'credible_testimony'
+        assert result['alignment_evidence_tasks'][0]['preferred_evidence_classes'] == ['witness_testimony']
+        assert result['alignment_evidence_tasks'][0]['recommended_witness_prompts']
+
     def test_build_claim_support_packets_tracks_partial_fact_bundle_coverage(self):
         """Packet construction should only clear the bundle prompts actually covered by support facts."""
         from mediator.mediator import Mediator

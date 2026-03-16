@@ -4598,11 +4598,23 @@ class Mediator:
 
 	def _resolve_task_preferred_support_kind(self, missing_support_kinds: List[str], evidence_classes: List[str]) -> str:
 		normalized_missing = [str(kind or '').strip().lower() for kind in (missing_support_kinds or []) if str(kind or '').strip()]
+		normalized_classes = [
+			str(item or '').strip().lower()
+			for item in (evidence_classes or [])
+			if str(item or '').strip()
+		]
+		testimony_class_present = any('testimony' in item or 'witness' in item for item in normalized_classes)
+		non_testimony_class_present = any(
+			'testimony' not in item and 'witness' not in item
+			for item in normalized_classes
+		)
+		if testimony_class_present and not non_testimony_class_present:
+			return 'testimony'
 		if 'evidence' in normalized_missing:
 			return 'evidence'
 		if 'authority' in normalized_missing:
 			return 'authority'
-		if any('testimony' in str(item or '').lower() for item in (evidence_classes or [])):
+		if testimony_class_present:
 			return 'testimony'
 		return normalized_missing[0] if normalized_missing else 'evidence'
 
