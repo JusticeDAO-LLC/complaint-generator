@@ -482,7 +482,6 @@ def _cause_target_tags(cause: Dict[str, Any]) -> List[str]:
         [
             str(cause.get("title") or ""),
             str(cause.get("theory") or ""),
-            " ".join(str(item) for item in list(cause.get("support") or [])),
         ]
     ).lower()
     tags: List[str] = []
@@ -500,25 +499,116 @@ def _cause_target_tags(cause: Dict[str, Any]) -> List[str]:
     return deduped
 
 
+def _cause_text(cause: Dict[str, Any]) -> str:
+    return " ".join(
+        [
+            str(cause.get("title") or ""),
+            str(cause.get("theory") or ""),
+            " ".join(str(item) for item in list(cause.get("support") or [])),
+        ]
+    ).lower()
+
+
+def _cause_title_and_theory(cause: Dict[str, Any]) -> str:
+    return " ".join(
+        [
+            str(cause.get("title") or ""),
+            str(cause.get("theory") or ""),
+        ]
+    ).lower()
+
+
+def _single_exhibit_margin_for_cause(cause: Dict[str, Any]) -> int:
+    combined = _cause_text(cause)
+    if any(term in combined for term in ("accommodation", "disability", "section 504", "ada", "protected-basis", "protected basis")):
+        return 1
+    if any(term in combined for term in ("notice", "process", "hearing", "review", "appeal", "adverse-action", "adverse action", "termination", "denial")):
+        return 3
+    return 2
+
+
 def _select_exhibit_refs_for_tags(
     tag_targets: List[str],
     line_tag_map: Dict[str, List[str]],
     exhibit_index: Dict[str, str],
+    line_text_map: Dict[str, str],
+    cause_text: str = "",
     limit: int = 2,
+    single_exhibit_margin: int = 2,
 ) -> List[tuple[str, str]]:
-    matches: List[tuple[str, str]] = []
-    seen = set()
+    scored_matches: List[tuple[int, str, str]] = []
+    cause_terms = {term for term in re.findall(r"[a-z0-9_]+", cause_text.lower()) if len(term) > 4}
+    accommodation_focus = any(tag == "reasonable_accommodation" for tag in tag_targets)
+    process_focus = any(tag in {"notice", "hearing", "adverse_action"} for tag in tag_targets)
     for line_key, tags in line_tag_map.items():
-        if tag_targets and not any(tag in tags for tag in tag_targets):
-            continue
         exhibit_id = exhibit_index.get(line_key)
-        if not exhibit_id or line_key in seen:
+        if not exhibit_id:
             continue
-        seen.add(line_key)
+        score = 0
+        for index, tag in enumerate(tag_targets):
+            if tag in tags:
+                score += max(1, len(tag_targets) - index)
+        line_text = line_text_map.get(line_key, "").lower()
+        line_terms = {term for term in re.findall(r"[a-z0-9_]+", line_text) if len(term) > 4}
+        score += len(cause_terms & line_terms)
+        if accommodation_focus and any(term in line_text for term in ("designated staff", "contact information", "process requests", "phone number")):
+            score += 2
+        if process_focus and any(term in line_text for term in ("written notice", "review decision", "informal review", "informal hearing")):
+            score += 2
+        if tag_targets and score == 0:
+            continue
+        scored_matches.append((score, exhibit_id, line_key))
+
+    best_by_exhibit: Dict[str, tuple[int, str]] = {}
+    for score, exhibit_id, line_key in scored_matches:
+        current = best_by_exhibit.get(exhibit_id)
+        if current is None or score > current[0] or (score == current[0] and line_key < current[1]):
+            best_by_exhibit[exhibit_id] = (score, line_key)
+
+    unique_matches = sorted(
+        [(score, exhibit_id, line_key) for exhibit_id, (score, line_key) in best_by_exhibit.items()],
+        key=lambda item: (-item[0], item[1], item[2]),
+    )
+
+    if process_focus and unique_matches:
+        top_score, top_exhibit_id, top_line_key = unique_matches[0]
+        next_score = unique_matches[1][0] if len(unique_matches) > 1 else -1
+        if top_score > next_score and top_score > 0:
+            return [(top_exhibit_id, top_line_key)]
+
+    if len(unique_matches) >= 2 and unique_matches[0][0] >= unique_matches[1][0] + single_exhibit_margin:
+        top_score, top_exhibit_id, top_line_key = unique_matches[0]
+        if top_score > 0:
+            return [(top_exhibit_id, top_line_key)]
+
+    matches: List[tuple[str, str]] = []
+    for score, exhibit_id, line_key in unique_matches:
+        if score <= 0:
+            continue
         matches.append((exhibit_id, line_key))
         if len(matches) >= limit:
             break
     return matches
+
+
+def _exhibit_rationale_for_cause(cause: Dict[str, Any], selected_refs: List[tuple[str, str]], tag_targets: List[str]) -> str:
+    title_and_theory = _cause_title_and_theory(cause)
+    labels = [label for _, label in selected_refs]
+    label_text = " ".join(labels).lower()
+
+    if not labels:
+        return ""
+    if any(term in title_and_theory for term in ("protected-basis", "protected basis", "discrimination")):
+        return "selected for strongest overlap with the protected-basis theory"
+    if "reasonable_accommodation" in tag_targets and any(
+        term in label_text for term in ("administrative plan", "designated staff", "contact")
+    ):
+        return "selected for stronger accommodation contact-language"
+    if any(tag in tag_targets for tag in ("notice", "hearing", "adverse_action")) and any(
+        term in label_text for term in ("administrative plan", "notice")
+    ):
+        return "selected for stronger notice and process language"
+    return "selected as the closest documentary match for this claim"
 
 
 def _inject_exhibit_references(package: Dict[str, Any]) -> None:
@@ -530,10 +620,12 @@ def _inject_exhibit_references(package: Dict[str, Any]) -> None:
     exhibit_index = _build_exhibit_index(all_exhibit_lines)
     exhibit_refs = _ordered_exhibit_index(all_exhibit_lines)
     line_tag_map: Dict[str, List[str]] = {}
+    line_text_map: Dict[str, str] = {}
     for line in all_exhibit_lines:
         key = _line_exhibit_key(line)
         if key not in line_tag_map:
             line_tag_map[key] = _extract_tags_from_line(line)
+            line_text_map[key] = str(line)
     reference_text = _format_exhibit_reference_list(exhibit_refs)
     if not reference_text:
         return
@@ -560,9 +652,20 @@ def _inject_exhibit_references(package: Dict[str, Any]) -> None:
     causes = list(package.get("causes_of_action") or [])
     for cause in causes:
         support_items = list(cause.get("support") or [])
-        targeted_refs = _select_exhibit_refs_for_tags(_cause_target_tags(cause), line_tag_map, exhibit_index)
+        tag_targets = _cause_target_tags(cause)
+        targeted_refs = _select_exhibit_refs_for_tags(
+            tag_targets,
+            line_tag_map,
+            exhibit_index,
+            line_text_map,
+            _cause_text(cause),
+            single_exhibit_margin=_single_exhibit_margin_for_cause(cause),
+        )
         cause_reference_text = _format_exhibit_reference_list(targeted_refs) or reference_text
+        rationale = _exhibit_rationale_for_cause(cause, targeted_refs, tag_targets)
         cause_support_reference = f"Documentary support: {cause_reference_text}."
+        if rationale:
+            cause_support_reference += f" Rationale: {rationale}."
         if cause_support_reference not in support_items:
             support_items.append(cause_support_reference)
         cause["support"] = support_items
@@ -750,17 +853,21 @@ def _authority_hints_for_forum(seed: Dict[str, Any], filing_forum: str, limit: i
                 remaining.append(hint)
         hints = preferred + remaining
     elif filing_forum == "court":
-        preferred = []
-        remaining = []
+        primary = []
+        secondary = []
+        tertiary = []
         for hint in hints:
             lowered = hint.lower()
             if "section 504" in lowered or "americans with disabilities act" in lowered or lowered == "ada":
-                preferred.append(hint)
+                if "section 504" in lowered:
+                    primary.append(hint)
+                else:
+                    tertiary.append(hint)
             elif "fair housing act" in lowered or "24 c.f.r." in lowered or "hud" in lowered:
-                remaining.append(hint)
+                secondary.append(hint)
             else:
-                preferred.append(hint)
-        hints = preferred + remaining
+                primary.append(hint)
+        hints = primary + secondary + tertiary
     return hints[:limit]
 
 
@@ -852,7 +959,7 @@ def _draft_caption(seed: Dict[str, Any], filing_forum: str) -> Dict[str, str]:
     title = str(seed.get("description") or "Evidence-backed complaint draft").strip().rstrip(".")
     if filing_forum == "hud":
         return {
-            "court": "U.S. Department of Housing and Urban Development, Office of Fair Housing and Equal Opportunity",
+            "court": "HUD, U.S. Department of Housing and Urban Development, Office of Fair Housing and Equal Opportunity",
             "case_title": "Administrative Fair Housing Complaint",
             "document_title": f"Draft HUD Housing Discrimination Complaint",
             "caption_note": title or "Draft administrative housing complaint synthesized from HACC evidence",

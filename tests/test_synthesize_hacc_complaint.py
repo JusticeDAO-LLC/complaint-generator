@@ -504,8 +504,24 @@ def test_inject_exhibit_references_adds_citations_to_claims_and_facts():
 
     assert "Exhibit A (ADMINISTRATIVE PLAN)" in package["claims_theory"][0]
     assert any("Exhibit A (ADMINISTRATIVE PLAN)" in item for item in package["factual_allegations"])
-    assert any("NOTICE POLICY" in item for item in package["causes_of_action"][0]["support"])
-    assert any("ADMINISTRATIVE PLAN" in item for item in package["causes_of_action"][1]["support"])
+    assert any(
+        item.startswith("Documentary support: Exhibit B (NOTICE POLICY). Rationale:")
+        for item in package["causes_of_action"][0]["support"]
+    )
+    assert any(
+        item.startswith("Documentary support: Exhibit A (ADMINISTRATIVE PLAN). Rationale:")
+        for item in package["causes_of_action"][1]["support"]
+    )
+
+
+def test_single_exhibit_margin_varies_by_cause_type():
+    process_cause = {"title": "Administrative Fair Housing Process Failure", "theory": "Notice and hearing theory."}
+    accommodation_cause = {"title": "Fair Housing Act / Section 504 Accommodation Theory", "theory": "Accommodation and disability theory."}
+    protected_basis_cause = {"title": "Protected-Basis Administrative Theory", "theory": "Disability discrimination theory."}
+
+    assert MODULE._single_exhibit_margin_for_cause(process_cause) == 3
+    assert MODULE._single_exhibit_margin_for_cause(accommodation_cause) == 1
+    assert MODULE._single_exhibit_margin_for_cause(protected_basis_cause) == 1
 
 
 def test_summarize_timeline_fact_condenses_numbered_intake_timeline():
