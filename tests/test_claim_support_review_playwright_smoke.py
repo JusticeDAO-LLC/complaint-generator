@@ -1108,9 +1108,11 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
             assert "Persisted intake criteria: Case Theory Coherent ready, Minimum Proof Path Present ready, Claim Disambiguation Resolved needs work" in preview_text
             assert "Corroboration-required contradictions: 1" in preview_text
             assert "Contradiction lanes: Request Document 1" in preview_text
+            assert "Contradiction target elements: Retaliation:2 1" in preview_text
             assert "Termination date conflicts with reported complaint timeline | ask Which date is supported by the termination notice? | lane Request Document | status Open | external corroboration required | claims Retaliation" in preview_text
             assert "Persisted contradiction lanes: Request Document 1" in preview_text
             assert "Persisted corroboration-required contradictions: 1" in preview_text
+            assert "Persisted contradiction target elements: Retaliation:2 1" in preview_text
             assert "Manual Review Blockers" in preview_text
             assert "Manual review blockers: 1" in preview_text
             assert "Claims impacted: 1" in preview_text
@@ -3431,6 +3433,7 @@ def test_document_builder_checklist_review_link_preserves_focus_on_review_page()
                 assert "checklist intake signals" in normalized_checklist_text
                 assert "corroboration-required contradictions: 1" in normalized_checklist_text
                 assert "contradiction lanes: request document 1" in normalized_checklist_text
+                assert "contradiction target elements: retaliation:2 1" in normalized_checklist_text
                 assert "complaint date conflicts with hr intake record | ask which date is reflected in the hr complaint email? | lane request document | status open | external corroboration required | claims retaliation" in normalized_checklist_text
 
                 page.locator('.checklist-card').get_by_text('Open Checklist Review').click()
