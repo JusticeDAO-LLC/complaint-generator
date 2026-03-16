@@ -204,6 +204,27 @@
             border: 1px solid var(--border);
         }
 
+        .intake-handoff-card {
+            margin-top: 14px;
+            padding: 14px;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.9);
+        }
+
+        .intake-handoff-card[data-status="confirmed"] {
+            border-color: rgba(22, 101, 52, 0.22);
+            background: rgba(236, 253, 245, 0.92);
+        }
+
+        .intake-handoff-lines {
+            margin-top: 10px;
+        }
+
+        .intake-handoff-lines div + div {
+            margin-top: 6px;
+        }
+
         .triage-chip-row {
             display: flex;
             flex-wrap: wrap;
@@ -330,6 +351,7 @@
                 <div id="traceEvidencePendingReview"></div>
                 <div id="traceEvidenceTriage"></div>
                 <div id="traceEvidenceQuestionTargets"></div>
+                <div id="traceIntakeConfirmation"></div>
                 <div id="traceEvidenceLinks" class="inline-link-row"></div>
             </section>
             <section class="panel">
@@ -743,6 +765,90 @@
             return `/claim-support-review?${params.toString()}`;
         }
 
+        function buildTraceDashboardUrl(userId, claimType) {
+            const params = new URLSearchParams();
+            if (userId) {
+                params.set('user_id', userId);
+            }
+            if (claimType) {
+                params.set('claim_type', claimType);
+            }
+            const query = params.toString();
+            return query ? `/claim-support-review?${query}` : '/claim-support-review';
+        }
+
+        function normalizeIntakeSummaryConfirmation(value) {
+            if (!value || typeof value !== 'object') {
+                return {};
+            }
+            const status = String(value.status || (value.confirmed ? 'confirmed' : 'pending')).trim().toLowerCase() || 'pending';
+            return {
+                ...value,
+                status,
+                confirmed: Boolean(value.confirmed),
+                confirmation_source: String(value.confirmation_source || '').trim(),
+                confirmation_note: String(value.confirmation_note || '').trim(),
+                confirmed_at: String(value.confirmed_at || '').trim(),
+                current_summary_snapshot: value.current_summary_snapshot && typeof value.current_summary_snapshot === 'object'
+                    ? value.current_summary_snapshot
+                    : null,
+                confirmed_summary_snapshot: value.confirmed_summary_snapshot && typeof value.confirmed_summary_snapshot === 'object'
+                    ? value.confirmed_summary_snapshot
+                    : null,
+            };
+        }
+
+        function summarizeIntakeSummarySnapshot(snapshot) {
+            if (!snapshot || typeof snapshot !== 'object') {
+                return '';
+            }
+            return [
+                snapshot.candidate_claim_count != null ? `candidate claims ${snapshot.candidate_claim_count}` : '',
+                snapshot.canonical_fact_count != null ? `canonical facts ${snapshot.canonical_fact_count}` : '',
+                snapshot.proof_lead_count != null ? `proof leads ${snapshot.proof_lead_count}` : '',
+            ].filter(Boolean).join(' | ');
+        }
+
+        function renderIntakeSummaryConfirmation(intakeCaseSummary, dashboardUrl) {
+            const summary = intakeCaseSummary && typeof intakeCaseSummary === 'object' ? intakeCaseSummary : {};
+            const confirmation = normalizeIntakeSummaryConfirmation(summary.complainant_summary_confirmation);
+            const currentSummarySnapshot = confirmation.current_summary_snapshot
+                || (summary.current_summary_snapshot && typeof summary.current_summary_snapshot === 'object' ? summary.current_summary_snapshot : null);
+            const confirmedSummarySnapshot = confirmation.confirmed_summary_snapshot
+                || (summary.confirmed_summary_snapshot && typeof summary.confirmed_summary_snapshot === 'object' ? summary.confirmed_summary_snapshot : null);
+            if (!Object.keys(confirmation).length && !currentSummarySnapshot && !confirmedSummarySnapshot) {
+                return '';
+            }
+            const activeSnapshot = confirmation.confirmed ? (confirmedSummarySnapshot || currentSummarySnapshot) : currentSummarySnapshot;
+            const statusLabel = confirmation.confirmed ? 'confirmed' : (confirmation.status || 'pending');
+            const summaryIndex = confirmation.summary_snapshot_index != null ? Number(confirmation.summary_snapshot_index) + 1 : null;
+            const detailLines = [
+                summaryIndex != null ? `Summary snapshot ${summaryIndex}` : '',
+                (() => {
+                    const snapshotSummary = summarizeIntakeSummarySnapshot(activeSnapshot);
+                    return snapshotSummary ? `Snapshot scope: ${snapshotSummary}` : '';
+                })(),
+                confirmation.confirmed_at ? `Confirmed at ${confirmation.confirmed_at}` : '',
+                confirmation.confirmation_source ? `Source ${humanizeKey(confirmation.confirmation_source)}` : '',
+                confirmation.confirmation_note ? `Note: ${confirmation.confirmation_note}` : '',
+                !confirmation.confirmed && !currentSummarySnapshot ? 'No current intake summary snapshot is available to confirm from this trace.' : '',
+            ].filter(Boolean);
+            const dashboardLabel = confirmation.confirmed ? 'Open Review Dashboard' : 'Confirm on Review Dashboard';
+            return `
+                <div class="intake-handoff-card" data-status="${escapeHtml(statusLabel)}">
+                    <div><strong>Intake Summary Handoff</strong></div>
+                    <div class="chip-row" style="margin-top: 10px;">
+                        <span class="chip">Status ${escapeHtml(humanizeKey(statusLabel))}</span>
+                        <span class="chip">Complainant confirmed ${confirmation.confirmed ? 'yes' : 'no'}</span>
+                    </div>
+                    ${detailLines.length ? `<div class="intake-handoff-lines muted">${detailLines.map((line) => `<div>${escapeHtml(line)}</div>`).join('')}</div>` : ''}
+                    <div class="inline-link-row">
+                        <a class="inline-link" href="${escapeHtml(dashboardUrl)}">${escapeHtml(dashboardLabel)}</a>
+                    </div>
+                </div>
+            `;
+        }
+
         function appendSupportKindToReviewUrl(reviewUrl, supportKind) {
             const normalizedUrl = String(reviewUrl || '').trim();
             const normalizedSupportKind = String(supportKind || '').trim();
@@ -989,6 +1095,8 @@
                 candidateClaims,
                 intakeCaseSummary.candidate_claim_summary,
             );
+            const topClaimType = String(candidateClaimSummary.top_claim_type || '').trim();
+            const traceDashboardUrl = buildTraceDashboardUrl(traceUserId, topClaimType);
             const intakeSections = intakeCaseSummary.intake_sections && typeof intakeCaseSummary.intake_sections === 'object' ? intakeCaseSummary.intake_sections : {};
             const canonicalFactSummary = intakeCaseSummary.canonical_fact_summary && typeof intakeCaseSummary.canonical_fact_summary === 'object' ? intakeCaseSummary.canonical_fact_summary : {};
             const canonicalFactIntentSummary = intakeCaseSummary.canonical_fact_intent_summary && typeof intakeCaseSummary.canonical_fact_intent_summary === 'object' ? intakeCaseSummary.canonical_fact_intent_summary : {};
@@ -1366,6 +1474,10 @@
             document.getElementById('traceEvidenceQuestionTargets').innerHTML = questionTargetLinks.length
                 ? `<div class="muted"><strong>Question Review Targets</strong></div><div class="inline-link-row">${questionTargetLinks.join('')}</div>`
                 : '';
+            document.getElementById('traceIntakeConfirmation').innerHTML = renderIntakeSummaryConfirmation(
+                intakeCaseSummary,
+                traceDashboardUrl,
+            );
 
             const evidenceLinks = [
                 ...candidateClaims.map((claim) => {

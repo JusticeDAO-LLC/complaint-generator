@@ -300,6 +300,11 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Intake Review Signals" in content
     assert "Intake blockers:" in content
     assert "Tracked intake contradictions:" in content
+    assert "Intake Summary Handoff" in content
+    assert "Confirm intake summary" in content
+    assert "confirm-intake-summary-button" in content
+    assert "/api/claim-support/confirm-intake-summary" in content
+    assert "Confirmation records the latest intake summary snapshot before evidence marshalling continues." in content
     assert "Persisted Trace Snapshot" in content
     assert "Open Persisted Trace" in content
     assert "Checklist Intake Signals" in content
@@ -574,8 +579,12 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "traceEvidenceLinks" in content
     assert "buildTraceClaimReviewUrl" in content
     assert "buildTraceSectionReviewUrl" in content
+    assert "buildTraceDashboardUrl" in content
     assert "Intake Claim Review" in content
     assert "Intake Section Review" in content
+    assert "traceIntakeConfirmation" in content
+    assert "Intake Summary Handoff" in content
+    assert "Confirm on Review Dashboard" in content
     assert "Manual Review Blockers" in content
     assert "Pending Review Items" in content
     assert "Open ${escapeHtml(humanizeKey(claimType))} Manual Review" in content

@@ -2517,6 +2517,9 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert 'Intake Review Signals' in page_html
         assert 'Intake blockers:' in page_html
         assert 'Tracked intake contradictions:' in page_html
+        assert 'Intake Summary Handoff' in page_html
+        assert 'Confirm intake summary' in page_html
+        assert '/api/claim-support/confirm-intake-summary' in page_html
         assert 'Checklist Intake Signals' in page_html
         assert 'Checklist intake blockers:' in page_html
         assert 'Open Section Review' in page_html

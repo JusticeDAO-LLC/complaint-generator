@@ -501,6 +501,36 @@
             text-decoration: none;
         }
 
+        .intake-handoff-card {
+            margin-top: 14px;
+            padding: 14px;
+            border-radius: 16px;
+            border: 1px solid rgba(22, 33, 38, 0.12);
+            background: rgba(255,255,255,0.82);
+        }
+
+        .intake-handoff-card[data-status="confirmed"] {
+            border-color: rgba(37, 94, 55, 0.2);
+            background: rgba(37, 94, 55, 0.08);
+        }
+
+        .intake-handoff-controls {
+            display: grid;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .intake-handoff-note {
+            min-height: 74px;
+            background: rgba(255,255,255,0.92);
+        }
+
+        .intake-handoff-status {
+            color: var(--muted);
+            font-size: 0.84rem;
+            line-height: 1.5;
+        }
+
         .readiness-claim-stack {
             display: grid;
             gap: 14px;
@@ -2113,6 +2143,119 @@
             `;
         }
 
+        function normalizeIntakeSummaryConfirmation(value) {
+            if (!value || typeof value !== 'object') {
+                return {};
+            }
+            const status = String(value.status || (value.confirmed ? 'confirmed' : 'pending')).trim().toLowerCase() || 'pending';
+            return {
+                ...value,
+                status,
+                confirmed: Boolean(value.confirmed),
+                confirmation_source: String(value.confirmation_source || '').trim(),
+                confirmation_note: String(value.confirmation_note || '').trim(),
+                confirmed_at: String(value.confirmed_at || '').trim(),
+                current_summary_snapshot: value.current_summary_snapshot && typeof value.current_summary_snapshot === 'object'
+                    ? value.current_summary_snapshot
+                    : null,
+                confirmed_summary_snapshot: value.confirmed_summary_snapshot && typeof value.confirmed_summary_snapshot === 'object'
+                    ? value.confirmed_summary_snapshot
+                    : null,
+            };
+        }
+
+        function summarizeIntakeSummarySnapshot(snapshot) {
+            if (!snapshot || typeof snapshot !== 'object') {
+                return '';
+            }
+            return [
+                snapshot.candidate_claim_count != null ? `candidate claims ${snapshot.candidate_claim_count}` : '',
+                snapshot.canonical_fact_count != null ? `canonical facts ${snapshot.canonical_fact_count}` : '',
+                snapshot.proof_lead_count != null ? `proof leads ${snapshot.proof_lead_count}` : '',
+            ].filter(Boolean).join(' | ');
+        }
+
+        function resolveDocumentIntakeHandoffContext(reviewLinks, intakeCaseSummary) {
+            const summary = intakeCaseSummary && typeof intakeCaseSummary === 'object'
+                ? intakeCaseSummary
+                : (reviewLinks && typeof reviewLinks.intake_case_summary === 'object' ? reviewLinks.intake_case_summary : {});
+            const confirmation = normalizeIntakeSummaryConfirmation(summary.complainant_summary_confirmation);
+            const currentSummarySnapshot = confirmation.current_summary_snapshot
+                || (summary.current_summary_snapshot && typeof summary.current_summary_snapshot === 'object' ? summary.current_summary_snapshot : null);
+            const confirmedSummarySnapshot = confirmation.confirmed_summary_snapshot
+                || (summary.confirmed_summary_snapshot && typeof summary.confirmed_summary_snapshot === 'object' ? summary.confirmed_summary_snapshot : null);
+            const reviewIntent = normalizeReviewIntent((state.generatedPayload && state.generatedPayload.review_intent) || state.reviewIntent);
+            const claimType = String((reviewIntent && reviewIntent.claim_type) || '').trim();
+            const dashboardUrl = String((reviewLinks && reviewLinks.dashboard_url) || '').trim() || buildClaimReviewUrl(claimType) || '/claim-support-review';
+            return {
+                summary,
+                confirmation,
+                currentSummarySnapshot,
+                confirmedSummarySnapshot,
+                claimType,
+                dashboardUrl,
+                canConfirm: !confirmation.confirmed && Boolean(currentSummarySnapshot),
+            };
+        }
+
+        function renderIntakeSummaryConfirmation(reviewLinks, intakeCaseSummary) {
+            const context = resolveDocumentIntakeHandoffContext(reviewLinks, intakeCaseSummary);
+            if (!Object.keys(context.confirmation).length && !context.currentSummarySnapshot && !context.confirmedSummarySnapshot) {
+                return '';
+            }
+            const activeSnapshot = context.confirmation.confirmed
+                ? (context.confirmedSummarySnapshot || context.currentSummarySnapshot)
+                : context.currentSummarySnapshot;
+            const statusLabel = context.confirmation.confirmed ? 'confirmed' : (context.confirmation.status || 'pending');
+            const summaryIndex = context.confirmation.summary_snapshot_index != null
+                ? Number(context.confirmation.summary_snapshot_index) + 1
+                : null;
+            const detailLines = [
+                summaryIndex != null ? `Summary snapshot ${summaryIndex}` : '',
+                (() => {
+                    const snapshotSummary = summarizeIntakeSummarySnapshot(activeSnapshot);
+                    return snapshotSummary ? `Snapshot scope: ${snapshotSummary}` : '';
+                })(),
+                context.confirmation.confirmed_at ? `Confirmed at ${context.confirmation.confirmed_at}` : '',
+                context.confirmation.confirmation_source ? `Source ${humanizeKey(context.confirmation.confirmation_source)}` : '',
+                context.confirmation.confirmation_note ? `Note: ${context.confirmation.confirmation_note}` : '',
+                !context.confirmation.confirmed && !context.currentSummarySnapshot ? 'No current intake summary snapshot is available for confirmation yet.' : '',
+            ].filter(Boolean);
+            const controls = context.canConfirm
+                ? `
+                    <div class="intake-handoff-controls">
+                        <textarea id="confirm-intake-summary-note" class="intake-handoff-note" placeholder="Optional note for the confirmed intake summary handoff."></textarea>
+                        <div class="inline-link-row">
+                            <button type="button" class="secondary" id="confirm-intake-summary-button">Confirm intake summary</button>
+                            <a class="inline-link" data-review-intent-link="true" href="${escapeHtml(context.dashboardUrl)}">Open Review Dashboard</a>
+                        </div>
+                        <div id="confirm-intake-summary-status" class="intake-handoff-status">Confirmation records the latest intake summary snapshot before evidence marshalling continues.</div>
+                    </div>
+                `
+                : `
+                    <div class="inline-link-row">
+                        <a class="inline-link" data-review-intent-link="true" href="${escapeHtml(context.dashboardUrl)}">Open Review Dashboard</a>
+                    </div>
+                `;
+            return `
+                <div class="intake-handoff-card" data-status="${escapeHtml(statusLabel)}">
+                    <div class="readiness-subtitle">Intake Summary Handoff</div>
+                    <div class="readiness-grid">
+                        <div class="readiness-chip">
+                            <strong>Status</strong>
+                            <div class="preview-meta">${escapeHtml(humanizeKey(statusLabel))}</div>
+                        </div>
+                        <div class="readiness-chip">
+                            <strong>Complainant Confirmed</strong>
+                            <div class="preview-meta">${context.confirmation.confirmed ? 'yes' : 'no'}</div>
+                        </div>
+                    </div>
+                    ${detailLines.length ? `<div class="preview-meta" style="margin-top: 10px;">${detailLines.map((line) => `<div>${escapeHtml(line)}</div>`).join('')}</div>` : ''}
+                    ${controls}
+                </div>
+            `;
+        }
+
         function resolveSectionReviewUrl(sectionKey, section, reviewLinks) {
             const sectionEntry = resolveSectionReviewEntry(sectionKey, section, reviewLinks);
             const directReviewUrl = String((sectionEntry && sectionEntry.review_url) || '').trim();
@@ -2680,6 +2823,7 @@
                     <div class="readiness-title">Drafting Readiness</div>
                     <div class="preview-meta">Overall status: ${escapeHtml(readiness.status || 'ready')} | Warnings: ${escapeHtml(String(warningCount))}</div>
                     ${renderReviewLinks(reviewLinks)}
+                    ${renderIntakeSummaryConfirmation(reviewLinks, intakeCaseSummary)}
                     <div class="readiness-grid">${sectionCards}</div>
                     <div class="readiness-subtitle">Section Readiness</div>
                     ${renderSectionReadiness(readiness.sections || {}, reviewLinks, manualReviewClaims, pendingReviewClaims)}
@@ -3485,6 +3629,11 @@
             const filingChecklist = payload.filing_checklist || draft.filing_checklist || [];
             const reviewLinks = payload.review_links || {};
             const optimizationReport = payload.document_optimization || null;
+            const readinessIntakeCaseSummary = optimizationReport && optimizationReport.intake_case_summary && typeof optimizationReport.intake_case_summary === 'object'
+                ? optimizationReport.intake_case_summary
+                : (payload.intake_case_summary && typeof payload.intake_case_summary === 'object'
+                    ? payload.intake_case_summary
+                    : (reviewLinks.intake_case_summary && typeof reviewLinks.intake_case_summary === 'object' ? reviewLinks.intake_case_summary : {}));
             const { manualReviewClaims, pendingReviewClaims } = buildClaimQueueIntentSets(optimizationReport && optimizationReport.intake_case_summary);
             const payloadReviewIntent = normalizeReviewIntent(payload.review_intent);
             if (payloadReviewIntent) {
@@ -3514,7 +3663,7 @@
             const html = `
                 ${renderArtifacts(payload.artifacts || {})}
                 <div class="draft-shell">
-                    ${renderReadiness(readiness, draft.exhibits || [], reviewLinks, optimizationReport && optimizationReport.intake_case_summary)}
+                    ${renderReadiness(readiness, draft.exhibits || [], reviewLinks, readinessIntakeCaseSummary)}
                     ${renderFilingChecklist(filingChecklist, manualReviewClaims, pendingReviewClaims)}
                     ${renderOptimizationReport(optimizationReport, reviewLinks)}
                     <div class="court-header">${escapeHtml(draft.court_header || '')}</div>
@@ -3619,9 +3768,134 @@
             document.getElementById('previewRoot').innerHTML = html;
             decorateContradictionTargetElements(payload);
             bindReviewIntentLinks();
+            const confirmIntakeSummaryButton = document.getElementById('confirm-intake-summary-button');
+            if (confirmIntakeSummaryButton) {
+                confirmIntakeSummaryButton.addEventListener('click', confirmIntakeSummaryFromDocument);
+            }
             const copyButton = document.getElementById('copyPleadingButton');
             if (copyButton) {
                 copyButton.addEventListener('click', copyPleadingText);
+            }
+        }
+
+        function applyIntakeSummaryConfirmationToPayload(payload, confirmationResult, postConfirmationReview) {
+            const nextPayload = {
+                ...payload,
+                review_links: {
+                    ...(payload && payload.review_links && typeof payload.review_links === 'object' ? payload.review_links : {}),
+                    ...(postConfirmationReview && postConfirmationReview.review_links && typeof postConfirmationReview.review_links === 'object'
+                        ? postConfirmationReview.review_links
+                        : {}),
+                },
+            };
+            const reviewIntakeStatus = postConfirmationReview && postConfirmationReview.intake_status && typeof postConfirmationReview.intake_status === 'object'
+                ? postConfirmationReview.intake_status
+                : null;
+            const reviewIntakeCaseSummary = postConfirmationReview && postConfirmationReview.intake_case_summary && typeof postConfirmationReview.intake_case_summary === 'object'
+                ? postConfirmationReview.intake_case_summary
+                : null;
+            if (reviewIntakeStatus) {
+                nextPayload.review_links.intake_status = reviewIntakeStatus;
+            }
+            if (reviewIntakeCaseSummary) {
+                nextPayload.review_links.intake_case_summary = reviewIntakeCaseSummary;
+            } else if (confirmationResult && typeof confirmationResult === 'object') {
+                const existingSummary = nextPayload.review_links.intake_case_summary && typeof nextPayload.review_links.intake_case_summary === 'object'
+                    ? nextPayload.review_links.intake_case_summary
+                    : {};
+                nextPayload.review_links.intake_case_summary = {
+                    ...existingSummary,
+                    complainant_summary_confirmation: confirmationResult,
+                };
+            }
+            if (payload && payload.document_optimization && typeof payload.document_optimization === 'object') {
+                nextPayload.document_optimization = {
+                    ...payload.document_optimization,
+                    ...(reviewIntakeStatus ? { intake_status: reviewIntakeStatus } : {}),
+                    ...(reviewIntakeCaseSummary ? { intake_case_summary: reviewIntakeCaseSummary } : {}),
+                };
+            }
+            return nextPayload;
+        }
+
+        async function confirmIntakeSummaryFromDocument() {
+            if (!state.generatedPayload) {
+                showBox('errorBox', 'Generate a document preview before confirming the intake summary handoff.');
+                return;
+            }
+            const payload = state.generatedPayload;
+            const reviewLinks = payload.review_links && typeof payload.review_links === 'object' ? payload.review_links : {};
+            const optimizationReport = payload.document_optimization && typeof payload.document_optimization === 'object'
+                ? payload.document_optimization
+                : null;
+            const intakeCaseSummary = optimizationReport && optimizationReport.intake_case_summary && typeof optimizationReport.intake_case_summary === 'object'
+                ? optimizationReport.intake_case_summary
+                : (reviewLinks.intake_case_summary && typeof reviewLinks.intake_case_summary === 'object' ? reviewLinks.intake_case_summary : {});
+            const handoffContext = resolveDocumentIntakeHandoffContext(reviewLinks, intakeCaseSummary);
+            if (handoffContext.confirmation.confirmed) {
+                showBox('successBox', 'The intake summary is already confirmed for evidence handoff.');
+                return;
+            }
+            if (!handoffContext.currentSummarySnapshot) {
+                showBox('errorBox', 'No current intake summary snapshot is available to confirm yet.');
+                return;
+            }
+
+            const button = document.getElementById('confirm-intake-summary-button');
+            const statusNode = document.getElementById('confirm-intake-summary-status');
+            const noteNode = document.getElementById('confirm-intake-summary-note');
+            const confirmationNote = noteNode ? noteNode.value.trim() : '';
+            if (button) {
+                button.disabled = true;
+            }
+            if (statusNode) {
+                statusNode.textContent = 'Confirming intake summary handoff...';
+            }
+            showBox('statusBox', 'Confirming the intake summary handoff...');
+            showBox('errorBox', '');
+            showBox('successBox', '');
+
+            try {
+                const reviewIntent = normalizeReviewIntent((payload && payload.review_intent) || state.reviewIntent || {
+                    review_url: handoffContext.dashboardUrl,
+                    claim_type: handoffContext.claimType,
+                    user_id: state.userId,
+                });
+                const response = await fetch('/api/claim-support/confirm-intake-summary', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        user_id: state.userId,
+                        claim_type: reviewIntent && reviewIntent.claim_type ? reviewIntent.claim_type : null,
+                        confirmation_note: confirmationNote,
+                        confirmation_source: 'document',
+                    }),
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.detail || result.error || 'Failed to confirm the intake summary.');
+                }
+                const nextPayload = applyIntakeSummaryConfirmationToPayload(
+                    payload,
+                    result.confirmation_result,
+                    result.post_confirmation_review,
+                );
+                renderPreview(nextPayload);
+                showBox('successBox', 'Intake summary confirmed for evidence handoff.');
+                showBox('statusBox', '');
+            } catch (error) {
+                if (statusNode) {
+                    statusNode.textContent = error.message || 'Unable to confirm the intake summary handoff.';
+                }
+                showBox('statusBox', '');
+                showBox('errorBox', error.message || 'Unable to confirm the intake summary handoff.');
+            } finally {
+                if (button) {
+                    button.disabled = false;
+                }
             }
         }
 
