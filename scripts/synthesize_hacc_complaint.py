@@ -865,28 +865,62 @@ def _grounded_supporting_evidence(
     *,
     limit: int = 5,
 ) -> List[str]:
-    lines: List[str] = []
+    grouped: Dict[tuple[str, str], Dict[str, Any]] = {}
     for packet in list(grounding_bundle.get("mediator_evidence_packets") or [])[:limit]:
         label = str(packet.get("document_label") or packet.get("filename") or "Mediator evidence packet")
         relative_path = str(packet.get("relative_path") or packet.get("filename") or "").strip()
         source_path = str(packet.get("source_path") or "").strip()
-        line = f"{label}: mediator evidence packet prepared for grounded intake"
-        if relative_path:
-            line += f" ({relative_path})"
-        elif source_path:
-            line += f" ({source_path})"
-        lines.append(line)
+        location = relative_path or source_path
+        key = (label, location)
+        grouped.setdefault(
+            key,
+            {
+                "label": label,
+                "location": location,
+                "prepared": False,
+                "uploaded": False,
+                "claim_types": [],
+            },
+        )
+        grouped[key]["prepared"] = True
 
     for upload in list(upload_report.get("uploads") or [])[:limit]:
         title = str(upload.get("title") or upload.get("relative_path") or "Uploaded evidence")
         relative_path = str(upload.get("relative_path") or "").strip()
+        source_path = str(upload.get("source_path") or "").strip()
         result = dict(upload.get("result") or {})
         claim_type = str(result.get("claim_type") or "").strip()
-        line = f"{title}: uploaded into mediator evidence store"
-        if claim_type:
-            line += f" for {claim_type}"
-        if relative_path:
-            line += f" ({relative_path})"
+        location = relative_path or source_path
+        key = (title, location)
+        grouped.setdefault(
+            key,
+            {
+                "label": title,
+                "location": location,
+                "prepared": False,
+                "uploaded": False,
+                "claim_types": [],
+            },
+        )
+        grouped[key]["uploaded"] = True
+        if claim_type and claim_type not in grouped[key]["claim_types"]:
+            grouped[key]["claim_types"].append(claim_type)
+
+    lines: List[str] = []
+    for item in grouped.values():
+        status_parts: List[str] = []
+        if item["prepared"]:
+            status_parts.append("prepared as mediator evidence for grounded intake")
+        if item["uploaded"]:
+            upload_text = "uploaded into mediator evidence store"
+            if item["claim_types"]:
+                upload_text += f" for {', '.join(item['claim_types'])}"
+            status_parts.append(upload_text)
+        if not status_parts:
+            continue
+        line = f"{item['label']}: {'; '.join(status_parts)}"
+        if item["location"]:
+            line += f" ({item['location']})"
         lines.append(line)
 
     deduped: List[str] = []
@@ -981,13 +1015,34 @@ def _grounding_results_to_seed_evidence(grounding_bundle: Dict[str, Any], limit:
     return evidence
 
 
+def _filter_grounding_evidence_for_seed(seed: Dict[str, Any], evidence_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    key_facts = dict(seed.get("key_facts") or {})
+    anchor_titles = {str(item).strip().lower() for item in list(key_facts.get("anchor_titles") or []) if str(item).strip()}
+    anchor_paths = {str(item).strip().lower() for item in list(key_facts.get("anchor_source_paths") or []) if str(item).strip()}
+    if not anchor_titles and not anchor_paths:
+        return evidence_items
+
+    filtered: List[Dict[str, Any]] = []
+    for item in evidence_items:
+        title = str(item.get("title") or "").strip().lower()
+        source_path = str(item.get("source_path") or "").strip().lower()
+        if anchor_titles and title in anchor_titles:
+            filtered.append(item)
+            continue
+        if anchor_paths and any(path and path in source_path for path in anchor_paths):
+            filtered.append(item)
+            continue
+    return filtered or evidence_items
 def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str, Any]) -> Dict[str, Any]:
     if not grounding_bundle:
         return seed
 
     merged = dict(seed or {})
     key_facts = dict(merged.get("key_facts") or {})
-    grounding_evidence = _grounding_results_to_seed_evidence(grounding_bundle)
+    grounding_evidence = _filter_grounding_evidence_for_seed(
+        merged,
+        _grounding_results_to_seed_evidence(grounding_bundle),
+    )
     current_summary = str(key_facts.get("evidence_summary") or merged.get("summary") or "").strip()
 
     if _is_probably_toc_text(current_summary):
@@ -1004,11 +1059,12 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
             (str(item.get("title") or "").strip().lower(), str(item.get("source_path") or "").strip().lower())
             for item in existing_evidence
         }
+        refreshed_evidence: List[Dict[str, Any]] = []
         for item in grounding_evidence:
             key = (str(item.get("title") or "").strip().lower(), str(item.get("source_path") or "").strip().lower())
             if key not in normalized_existing:
-                existing_evidence.append(item)
-        merged["hacc_evidence"] = existing_evidence
+                refreshed_evidence.append(item)
+        merged["hacc_evidence"] = refreshed_evidence + existing_evidence
 
     merged["key_facts"] = key_facts
     return merged

@@ -548,8 +548,9 @@ def test_grounded_supporting_evidence_merges_packets_and_uploads():
     lines = MODULE._grounded_supporting_evidence(grounding_bundle, upload_report)
     summary = MODULE._grounded_summary_lines(grounding_bundle, upload_report)
 
-    assert any("mediator evidence packet prepared for grounded intake" in line for line in lines)
-    assert any("uploaded into mediator evidence store" in line for line in lines)
+    assert len(lines) == 1
+    assert "prepared as mediator evidence for grounded intake" in lines[0]
+    assert "uploaded into mediator evidence store" in lines[0]
     assert any("Grounding query: reasonable accommodation hearing rights" == line for line in summary)
     assert any("Mediator preload / upload count: 1" == line for line in summary)
     assert any("Claim-support links recorded: 2" == line for line in summary)
@@ -595,8 +596,20 @@ def test_best_grounding_result_excerpt_combines_truncated_rule_with_followup_rul
 
     assert "Grievance: Any dispute" in excerpt
     assert "must grant opportunity for grievance hearings" in excerpt
+def test_filter_grounding_evidence_for_seed_prefers_anchor_titles():
+    seed = {
+        "key_facts": {
+            "anchor_titles": ["ADMINISTRATIVE PLAN"],
+        }
+    }
+    evidence_items = [
+        {"title": "Supportive Housing Services Program", "source_path": "/tmp/other.txt"},
+        {"title": "ADMINISTRATIVE PLAN", "source_path": "/tmp/admin-plan.txt"},
+    ]
 
+    filtered = MODULE._filter_grounding_evidence_for_seed(seed, evidence_items)
 
+    assert filtered == [{"title": "ADMINISTRATIVE PLAN", "source_path": "/tmp/admin-plan.txt"}]
 def test_markdown_includes_grounded_evidence_run_section():
     package = {
         "generated_at": "2026-03-15T00:00:00+00:00",

@@ -815,6 +815,7 @@ def main() -> int:
     recommendations = _select_matrix_recommendations(matrix_rows)
     recommendations = _attach_recommendation_claim_snapshots(recommendations, matrix_rows)
     winner_delta = _build_claim_snapshot_delta(matrix_rows, full_results, recommendations)
+    recommendations = _attach_recommendation_tradeoff_notes(recommendations, winner_delta)
 
     summary_json = output_dir / "preset_matrix_summary.json"
     summary_csv = output_dir / "preset_matrix_summary.csv"
@@ -890,6 +891,10 @@ def main() -> int:
             challenger_details,
             challenger_summary["recommendations"],
         )
+        challenger_summary["recommendations"] = _attach_recommendation_tradeoff_notes(
+            challenger_summary["recommendations"],
+            challenger_summary["winner_delta"],
+        )
 
     with open(summary_json, "w", encoding="utf-8") as handle:
         json.dump(
@@ -936,7 +941,9 @@ def main() -> int:
         def _recommendation_console_suffix(payload: Dict[str, Any]) -> str:
             family_list = list(payload.get("claim_theory_families") or [])
             families = ", ".join(family_list)
-            use_note = _recommendation_use_note(family_list)
+            use_note = str(payload.get("tradeoff_note") or "")
+            if not use_note:
+                use_note = _recommendation_use_note(family_list)
             suffix = f" ({families})" if families else ""
             if use_note:
                 suffix += f" - {use_note}"
@@ -967,7 +974,9 @@ def main() -> int:
             def _challenger_suffix(payload: Dict[str, Any]) -> str:
                 family_list = list(payload.get("claim_theory_families") or [])
                 families = ", ".join(family_list)
-                use_note = _recommendation_use_note(family_list)
+                use_note = str(payload.get("tradeoff_note") or "")
+                if not use_note:
+                    use_note = _recommendation_use_note(family_list)
                 suffix = f" ({families})" if families else ""
                 if use_note:
                     suffix += f" - {use_note}"

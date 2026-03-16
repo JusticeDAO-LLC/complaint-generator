@@ -1001,6 +1001,33 @@ SUGGESTIONS:
         assert 'grievance hearing' in probe['question'].lower()
         assert 'due-process rights' in probe['question'].lower()
 
+    def test_fallback_probe_prefers_harm_remedy_before_timeline_after_anchor_coverage(self):
+        session = AdversarialSession(
+            "test_session",
+            Complainant(MockLLMBackend()),
+            MockMediator(),
+            Critic(MockLLMBackend()),
+            max_turns=3,
+        )
+
+        probe = session._build_fallback_probe(
+            asked_question_counts={},
+            asked_intent_counts={},
+            need_timeline=True,
+            need_harm_remedy=True,
+            need_actor_decisionmaker=False,
+            need_documentary_evidence=False,
+            need_witness=False,
+            last_question_key=None,
+            last_question_intent_key=None,
+            recent_intent_keys=set(),
+            missing_anchor_sections=set(),
+        )
+
+        assert probe is not None
+        assert probe['type'] == 'harm_remedy'
+        assert 'what concrete harms did this cause you' in probe['question'].lower()
+
     def test_select_next_question_uses_question_objective_metadata(self):
         session = AdversarialSession(
             "test_session",

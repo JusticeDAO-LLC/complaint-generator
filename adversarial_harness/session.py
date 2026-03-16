@@ -604,15 +604,15 @@ class AdversarialSession:
             probe = anchor_probe_map.get(section)
             if probe:
                 probe_candidates.append(probe)
-        if need_timeline:
-            probe_candidates.append((
-                "What are the most precise dates or date ranges for each key event, starting with the first incident?",
-                "timeline",
-            ))
         if need_harm_remedy:
             probe_candidates.append((
                 "What concrete harms did this cause you, and what specific remedy are you requesting?",
                 "harm_remedy",
+            ))
+        if need_timeline:
+            probe_candidates.append((
+                "What are the most precise dates or date ranges for each key event, starting with the first incident?",
+                "timeline",
             ))
         if need_actor_decisionmaker:
             probe_candidates.append((

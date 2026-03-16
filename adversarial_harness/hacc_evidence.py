@@ -276,10 +276,23 @@ def _is_probably_toc_text(text: str) -> bool:
 
 
 def _best_rule_text(hit: Dict[str, Any]) -> str:
+    scored_rules: List[tuple[int, str]] = []
     for rule in list(hit.get("matched_rules") or []):
         rule_text = " ".join(str(rule.get("text") or "").split()).strip()
-        if len(rule_text) >= 40:
-            return rule_text
+        if len(rule_text) < 30:
+            continue
+        score = len(rule_text)
+        lowered = rule_text.lower()
+        if any(token in lowered for token in ("written notice", "informal review", "informal hearing", "hearing", "appeal", "grievance", "due process", "termination", "adverse action", "reasonable accommodation")):
+            score += 40
+        if str(rule.get("rule_type") or "").lower() == "obligation":
+            score += 25
+        if str(rule.get("modality") or "").lower() == "required":
+            score += 20
+        scored_rules.append((score, rule_text))
+    if scored_rules:
+        scored_rules.sort(key=lambda item: (-item[0], item[1]))
+        return scored_rules[0][1]
     for entity in list(hit.get("matched_entities") or []):
         entity_text = " ".join(str(entity.get("name") or "").split()).strip()
         if len(entity_text) >= 40:
@@ -500,6 +513,8 @@ def _extract_source_window(
                     if last_space > start:
                         end = last_space
             excerpt = _clean_extracted_excerpt(normalized_source[start:end])
+            if _is_probably_toc_text(excerpt):
+                continue
             if excerpt:
                 return excerpt
 

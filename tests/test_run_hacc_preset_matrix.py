@@ -84,8 +84,24 @@ def test_attach_recommendation_claim_snapshots_enriches_best_overall():
     assert enriched["best_overall"]["claim_selection_overview"] == "Accommodation Theory [tags=reasonable_accommodation,contact]"
     assert enriched["best_overall"]["claim_theory_families"] == ["accommodation", "process"]
     assert enriched["best_overall"]["synthesis_output_dir"] == "/tmp/accommodation_focus/complaint_synthesis"
+def test_attach_recommendation_tradeoff_notes_enriches_winner():
+    recommendations = {
+        "best_overall": {"preset": "accommodation_focus"},
+        "best_anchor_coverage": {"preset": "administrative_plan_retaliation"},
+    }
+    delta = {
+        "winner_preset": "accommodation_focus",
+        "winner_only_theory_families": ["accommodation", "protected_basis"],
+        "runner_up_only_theory_families": ["retaliation"],
+    }
 
+    enriched = MODULE._attach_recommendation_tradeoff_notes(recommendations, delta)
 
+    assert enriched["best_overall"]["tradeoff_note"] == (
+        "best for accommodation framing + protected-basis framing; "
+        "runner-up is stronger on retaliation-heavy framing"
+    )
+    assert "tradeoff_note" not in enriched["best_anchor_coverage"]
 def test_claim_selection_theory_families_collects_unique_semantic_labels():
     summary = [
         {"title": "Administrative Fair Housing Process Failure", "selection_tags": ["notice", "hearing"]},
@@ -101,8 +117,15 @@ def test_claim_selection_theory_families_collects_unique_semantic_labels():
 def test_recommendation_use_note_reads_like_decision_aid():
     assert MODULE._recommendation_use_note(["accommodation", "process"]) == "best for accommodation framing + process framing"
     assert MODULE._recommendation_use_note(["retaliation"]) == "best for retaliation-heavy framing"
+def test_recommendation_tradeoff_note_compares_winner_to_runner_up():
+    delta = {
+        "winner_only_theory_families": ["accommodation", "protected_basis"],
+        "runner_up_only_theory_families": ["retaliation"],
+    }
 
+    note = MODULE._recommendation_tradeoff_note(delta)
 
+    assert note == "best for accommodation framing + protected-basis framing; runner-up is stronger on retaliation-heavy framing"
 def test_build_claim_snapshot_delta_identifies_winner_only_and_changed_shared_claims():
     rows = [
         {"preset": "accommodation_focus", "average_score": 0.9, "anchor_coverage": 1.0},
