@@ -31,6 +31,17 @@ def test_clean_policy_text_keeps_descriptive_policy_phrase():
     assert MODULE._clean_policy_text(text) == text
 
 
+def test_clean_policy_text_strips_acop_exhibit_boilerplate():
+    text = (
+        "ACOP 11/1/24 EXHIBIT 14-1: SAMPLE GRIEVANCE PROCEDURE "
+        "Note: The sample procedure provided below is a sample only and is designed to match up with the default policies in the model ACOP. "
+        "If HACC has made policy decisions that do not reflect the default policies in the ACOP, you would need to ensure that the procedure matches those policy decisions. "
+        "I. Definitions applicable to the grievance procedure [24 CFR 966.53]"
+    )
+
+    assert MODULE._clean_policy_text(text) == "I. Definitions applicable to the grievance procedure [24 CFR 966.53]"
+
+
 def test_conversation_facts_excludes_scorecard_style_responses():
     facts = MODULE._conversation_facts(
         [

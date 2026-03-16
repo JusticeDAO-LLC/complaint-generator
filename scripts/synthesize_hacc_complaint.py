@@ -271,6 +271,20 @@ def _clean_policy_text(text: Any) -> str:
     cleaned = re.sub(r"^HACC Policy\s*", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bHACC Policy\b(?=\s+HACC\b)\s*", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"^\d+\s+[A-Z][A-Z\s,&/-]{8,}\.{6,}\d+(?:-\d+)?\s*", "", cleaned)
+    cleaned = re.sub(r"^ACOP\s+\d{1,2}/\d{1,2}/\d{2,4}\s+", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^EXHIBIT\s+\d+(?:-\d+)?:\s*SAMPLE GRIEVANCE PROCEDURE\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(
+        r"^Note:\s*The sample procedure provided below is a sample only and is designed to match up with the default policies in the model ACOP\.\s*",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^If HACC has made policy decisions that do not reflect the default policies in the ACOP,\s*you would need to ensure that the procedure matches those policy decisions\.\s*",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
     cleaned = re.sub(r"\s{2,}", " ", cleaned)
     return cleaned.strip()
 
