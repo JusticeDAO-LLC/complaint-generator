@@ -802,6 +802,8 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
 
                 alignment_summary = page.locator("#intake-evidence-alignment-summary-list").inner_text()
                 alignment_tasks = page.locator("#alignment-evidence-task-list").inner_text()
+                manual_review_summary = page.locator("#alignment-task-manual-review-summary").inner_text()
+                manual_review_list = page.locator("#alignment-task-manual-review-list").inner_text()
                 alignment_updates = page.locator("#alignment-task-update-list").inner_text()
                 alignment_update_filter_summary = page.locator("#alignment-task-update-filter-summary").inner_text()
 
@@ -814,6 +816,13 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "element: retaliation:3" in alignment_tasks
                 assert "label: Causal connection" in alignment_tasks
                 assert "blocking: yes" in alignment_tasks
+                assert "manual review blockers: 1" in manual_review_summary
+                assert "claims impacted: 1" in manual_review_summary
+                assert "Manual review blocker for retaliation" in manual_review_list
+                assert "action: resolve_support_conflicts" in manual_review_list
+                assert "current support: contradicted" in manual_review_list
+                assert "artifact: artifact-conflict" in manual_review_list
+                assert "latest evidence event: 2" in manual_review_list
                 assert "Alignment update for retaliation" in alignment_updates
                 assert "resolution: still_open" in alignment_updates
                 assert "resolution: needs_manual_review" in alignment_updates
