@@ -1408,6 +1408,26 @@ def _refresh_seed_source_snippets(seed: Dict[str, Any]) -> Dict[str, Any]:
             updated_passages.append(updated)
         key_facts["anchor_passages"] = updated_passages
 
+        passage_by_key = {
+            (
+                str(item.get("title") or "").strip().lower(),
+                str(item.get("source_path") or "").strip().lower(),
+            ): str(item.get("snippet") or "")
+            for item in updated_passages
+        }
+        updated_evidence: List[Dict[str, Any]] = []
+        for item in refreshed_evidence:
+            updated = dict(item)
+            key = (
+                str(updated.get("title") or "").strip().lower(),
+                str(updated.get("source_path") or "").strip().lower(),
+            )
+            passage_snippet = passage_by_key.get(key, "")
+            if passage_snippet and _should_promote_grounded_snippet(str(updated.get("snippet") or ""), passage_snippet):
+                updated["snippet"] = passage_snippet
+            updated_evidence.append(updated)
+        refreshed_seed["hacc_evidence"] = updated_evidence
+
     refreshed_seed["key_facts"] = key_facts
     return refreshed_seed
 
@@ -1746,6 +1766,25 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
                 updated_passages.append(updated)
             if updated_passages:
                 key_facts["anchor_passages"] = updated_passages
+                passage_by_key = {
+                    (
+                        str(item.get("title") or "").strip().lower(),
+                        str(item.get("source_path") or "").strip().lower(),
+                    ): str(item.get("snippet") or "")
+                    for item in updated_passages
+                }
+                synced_evidence: List[Dict[str, Any]] = []
+                for item in list(merged.get("hacc_evidence") or []):
+                    updated_item = dict(item)
+                    key = (
+                        str(updated_item.get("title") or "").strip().lower(),
+                        str(updated_item.get("source_path") or "").strip().lower(),
+                    )
+                    passage_snippet = passage_by_key.get(key, "")
+                    if passage_snippet and _should_promote_grounded_snippet(str(updated_item.get("snippet") or ""), passage_snippet):
+                        updated_item["snippet"] = passage_snippet
+                    synced_evidence.append(updated_item)
+                merged["hacc_evidence"] = synced_evidence
 
     merged["key_facts"] = key_facts
     return merged

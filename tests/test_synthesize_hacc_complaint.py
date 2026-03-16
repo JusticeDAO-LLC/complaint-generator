@@ -1024,6 +1024,45 @@ def test_merge_seed_with_grounding_replaces_existing_matching_evidence_when_grou
     assert "Elements of due process" in merged["key_facts"]["anchor_passages"][0]["snippet"]
 
 
+def test_refresh_seed_source_snippets_syncs_stronger_anchor_passage_back_into_hacc_evidence(tmp_path):
+    source_path = tmp_path / "admin-plan.txt"
+    source_path.write_text(
+        "16-11 Notice to the Applicant [24 CFR 982.554(a)] ........ 16-11 Scheduling an Informal Review ........ 16-11\n\n"
+        "Notice to the Applicant [24 CFR 982.554(a)]\n\n"
+        "HACC must give an applicant prompt notice of a decision denying assistance and describe how to obtain an informal review.\n\n"
+        "Scheduling an Informal Review\n\n"
+        "HACC Policy\n\n"
+        "A request for an informal review must be made in writing and delivered to HACC.\n",
+        encoding="utf-8",
+    )
+
+    seed = {
+        "key_facts": {
+            "anchor_terms": ["grievance", "hearing", "appeal", "informal hearing", "due process"],
+            "anchor_passages": [
+                {
+                    "title": "ADMINISTRATIVE PLAN",
+                    "source_path": str(source_path),
+                    "snippet": "16-11 Scheduling an Informal Review ........ 16-11",
+                    "section_labels": ["grievance_hearing", "appeal_rights", "adverse_action"],
+                }
+            ],
+        },
+        "hacc_evidence": [
+            {
+                "title": "ADMINISTRATIVE PLAN",
+                "source_path": str(source_path),
+                "snippet": "HACC’s essential responsibility is to ensure informal hearings meet the requirements of due process.",
+            }
+        ],
+    }
+
+    refreshed = MODULE._refresh_seed_source_snippets(seed)
+
+    assert "prompt notice of a decision denying assistance" in refreshed["key_facts"]["anchor_passages"][0]["snippet"]
+    assert "prompt notice of a decision denying assistance" in refreshed["hacc_evidence"][0]["snippet"]
+
+
 def test_should_promote_grounded_snippet_prefers_due_process_expansion():
     current = "HACC policy describes an informal hearing process for applicants and residents."
     evidence = (
