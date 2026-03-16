@@ -528,6 +528,21 @@ def test_single_exhibit_margin_varies_by_cause_type():
     assert MODULE._single_exhibit_margin_for_cause(protected_basis_cause) == 1
 
 
+def test_protected_basis_cause_uses_dedicated_selection_tag():
+    protected_basis_cause = {"title": "Protected-Basis Administrative Theory", "theory": "Disability discrimination theory."}
+
+    assert MODULE._cause_target_tags(protected_basis_cause) == ["protected_basis"]
+
+
+def test_accommodation_cause_prefers_narrow_selection_tags():
+    accommodation_cause = {
+        "title": "Fair Housing Act / Section 504 Accommodation Theory",
+        "theory": "Accommodation-related issues intersected with adverse-action or review procedures.",
+    }
+
+    assert MODULE._cause_target_tags(accommodation_cause) == ["reasonable_accommodation", "contact"]
+
+
 def test_summarize_timeline_fact_condenses_numbered_intake_timeline():
     fact = (
         "I'm very cooperative. Here's the best timeline I can give right now: "

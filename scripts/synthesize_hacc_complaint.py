@@ -478,18 +478,23 @@ def _format_exhibit_reference_list(exhibits: List[tuple[str, str]], limit: int =
 
 
 def _cause_target_tags(cause: Dict[str, Any]) -> List[str]:
-    combined = " ".join(
+    title_and_theory = " ".join(
         [
             str(cause.get("title") or ""),
             str(cause.get("theory") or ""),
         ]
     ).lower()
+    title_only = str(cause.get("title") or "").lower()
+    if any(term in title_and_theory for term in ("protected-basis", "protected basis", "discrimination")):
+        return ["protected_basis"]
+    if any(term in title_only for term in ("accommodation theory", "accommodation claim", "accommodation rights")):
+        return ["reasonable_accommodation", "contact"]
     tags: List[str] = []
-    if any(term in combined for term in ("accommodation", "disability", "section 504", "ada")):
+    if any(term in title_and_theory for term in ("accommodation", "disability", "section 504", "ada")):
         tags.extend(["reasonable_accommodation", "contact"])
-    if any(term in combined for term in ("notice", "process", "hearing", "review", "appeal", "adverse-action", "adverse action", "termination", "denial")):
+    if any(term in title_and_theory for term in ("notice", "process", "hearing", "review", "appeal", "adverse-action", "adverse action", "termination", "denial")):
         tags.extend(["notice", "hearing", "adverse_action"])
-    if any(term in combined for term in ("selection", "criteria", "proxy")):
+    if any(term in title_and_theory for term in ("selection", "criteria", "proxy")):
         tags.append("selection_criteria")
 
     deduped: List[str] = []
