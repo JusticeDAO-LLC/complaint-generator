@@ -1988,6 +1988,17 @@
                     if (update.evidence_sequence !== undefined && update.evidence_sequence !== null && update.evidence_sequence !== '') {
                         chips.push(`<span class="chip">latest evidence event: ${update.evidence_sequence}</span>`);
                     }
+                    const prefillButton = `
+                        <div class="button-row" style="margin-top: 12px;">
+                            <button
+                                class="button-tertiary prefill-resolution-button"
+                                type="button"
+                                data-claim-element-id="${update.claim_element_id || ''}"
+                                data-claim-element-text="${(update.claim_element_label || update.claim_element_id || '').replace(/"/g, '&quot;')}"
+                                data-resolution-status="resolved_supported"
+                            >Load Into Resolution Form</button>
+                        </div>
+                    `;
                     return `
                         <article class="task-card">
                             <div class="row-head">
@@ -2000,6 +2011,7 @@
                             <div class="chip-row" style="margin-top: 10px;">
                                 ${chips.join('')}
                             </div>
+                            ${prefillButton}
                         </article>
                     `;
                 }).join('');
@@ -2032,6 +2044,25 @@
                     if (update.evidence_sequence !== undefined && update.evidence_sequence !== null && update.evidence_sequence !== '') {
                         chips.push(`<span class="chip">latest evidence event: ${update.evidence_sequence}</span>`);
                     }
+                    const prefillButtons = `
+                        <div class="button-row" style="margin-top: 12px;">
+                            <button
+                                class="button-tertiary prefill-testimony-update-button"
+                                type="button"
+                                data-claim-element-id="${update.claim_element_id || ''}"
+                                data-claim-element-text="${(update.claim_element_label || update.claim_element_id || '').replace(/"/g, '&quot;')}"
+                                data-question-text="${(update.answer_preview || '').replace(/"/g, '&quot;')}"
+                            >Load Into Testimony Form</button>
+                            <button
+                                class="button-tertiary prefill-document-update-button"
+                                type="button"
+                                data-claim-element-id="${update.claim_element_id || ''}"
+                                data-claim-element-text="${(update.claim_element_label || update.claim_element_id || '').replace(/"/g, '&quot;')}"
+                                data-document-label="${(update.claim_element_label || update.claim_element_id || 'Alignment update').replace(/"/g, '&quot;')}"
+                                data-document-text="${(update.answer_preview || '').replace(/"/g, '&quot;')}"
+                            >Load Into Document Form</button>
+                        </div>
+                    `;
                     return `
                         <article class="task-card">
                             <div class="row-head">
@@ -2044,6 +2075,7 @@
                             <div class="chip-row" style="margin-top: 10px;">
                                 ${chips.join('')}
                             </div>
+                            ${prefillButtons}
                         </article>
                     `;
                 }).join('');
@@ -2195,6 +2227,24 @@
             return entries.length
                 ? entries.map(([label, count]) => `<span class="chip">${label}: ${count}</span>`).join('')
                 : `<span class="chip">${emptyLabel}</span>`;
+        }
+
+        function normalizeFactBundle(bundleLike) {
+            return Array.isArray(bundleLike)
+                ? bundleLike.map((item) => String(item || '').trim()).filter(Boolean)
+                : [];
+        }
+
+        function renderFactBundleChips(prefix, bundleLike, maxItems = 2) {
+            const bundle = normalizeFactBundle(bundleLike);
+            if (!bundle.length) {
+                return '';
+            }
+            const visibleItems = bundle.slice(0, maxItems).map((item) => `<span class="chip">${prefix}: ${item}</span>`);
+            if (bundle.length > maxItems) {
+                visibleItems.push(`<span class="chip">${prefix}: +${bundle.length - maxItems} more</span>`);
+            }
+            return visibleItems.join('');
         }
 
         async function copyPacketUrl(url, label) {
@@ -2791,6 +2841,7 @@
             container.innerHTML = orderedTasks.map((task) => {
                 const focusScore = scoreTaskForSectionFocus(task);
                 const graphSourceContext = summarizeGraphSupportSourceContext(task.graph_support || {});
+                const satisfiedFactBundle = normalizeFactBundle(task.satisfied_fact_bundle);
                 return `
                 <article class="task-card">
                     <div class="row-head">
@@ -2805,6 +2856,9 @@
                         ${(task.missing_support_kinds || []).map((kind) => `<span class="chip">Need ${kind}</span>`).join('')}
                         ${task.follow_up_focus ? `<span class="chip">focus ${task.follow_up_focus}</span>` : ''}
                         ${task.query_strategy ? `<span class="chip">strategy ${task.query_strategy}</span>` : ''}
+                        ${task.primary_missing_fact ? `<span class="chip">primary gap ${task.primary_missing_fact}</span>` : ''}
+                        ${renderFactBundleChips('gap', task.missing_fact_bundle)}
+                        ${satisfiedFactBundle.length ? `<span class="chip">covered facts ${satisfiedFactBundle.length}</span>` : ''}
                         ${task.authority_search_program_summary && task.authority_search_program_summary.primary_program_type ? `<span class="chip">authority program ${task.authority_search_program_summary.primary_program_type}</span>` : ''}
                         ${task.authority_search_program_summary && task.authority_search_program_summary.primary_program_bias ? `<span class="chip">authority bias ${task.authority_search_program_summary.primary_program_bias}</span>` : ''}
                         ${task.authority_search_program_summary && task.authority_search_program_summary.primary_program_rule_bias ? `<span class="chip">rule bias ${task.authority_search_program_summary.primary_program_rule_bias}</span>` : ''}
@@ -2879,9 +2933,13 @@
                 const focusScore = scoreHistoryEntryForSectionFocus(entry);
                 const chips = [];
                 const focusPin = renderFocusPin(focusScore);
+                const satisfiedFactBundle = normalizeFactBundle(entry.satisfied_fact_bundle);
                 if (entry.support_kind) chips.push(`<span class="chip">${entry.support_kind}</span>`);
                 if (entry.status) chips.push(`<span class="chip">${entry.status}</span>`);
                 if (entry.query_strategy) chips.push(`<span class="chip">${entry.query_strategy}</span>`);
+                if (entry.primary_missing_fact) chips.push(`<span class="chip">primary gap: ${entry.primary_missing_fact}</span>`);
+                chips.push(renderFactBundleChips('gap', entry.missing_fact_bundle));
+                if (satisfiedFactBundle.length) chips.push(`<span class="chip">covered facts: ${satisfiedFactBundle.length}</span>`);
                 if (entry.selected_search_program_type) chips.push(`<span class="chip">program: ${entry.selected_search_program_type}</span>`);
                 if (entry.selected_search_program_bias) chips.push(`<span class="chip">bias: ${entry.selected_search_program_bias}</span>`);
                 if (entry.selected_search_program_rule_bias) chips.push(`<span class="chip">rule bias: ${entry.selected_search_program_rule_bias}</span>`);

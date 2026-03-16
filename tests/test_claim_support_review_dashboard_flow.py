@@ -738,10 +738,13 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert "manual review blockers: ${manualReviewBlockers.length}" in page_html
     assert "claims impacted: ${manualReviewClaims.size}" in page_html
     assert "Manual review blocker for ${update.claim_type || 'claim'}" in page_html
+    assert "Load Into Resolution Form" in page_html
     assert "Manual review blockers: none currently escalated." in page_html
     assert "pending review items: ${pendingReviewItems.length}" in page_html
     assert "claims impacted: ${pendingReviewClaims.size}" in page_html
     assert "Pending review item for ${update.claim_type || 'claim'}" in page_html
+    assert "Load Into Testimony Form" in page_html
+    assert "Load Into Document Form" in page_html
     assert "Pending review items: none currently awaiting operator confirmation." in page_html
     assert "alignment_task_update_filter" in page_html
     assert "Task Update Sort" in page_html

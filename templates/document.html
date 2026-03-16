@@ -2035,6 +2035,23 @@
             return `${parsedUrl.pathname}${parsedUrl.search}`;
         }
 
+        function appendAlignmentTaskViewToReviewUrl(reviewUrl, filterValue, sortValue) {
+            const normalizedUrl = String(reviewUrl || '').trim();
+            if (!normalizedUrl) {
+                return normalizedUrl;
+            }
+            const parsedUrl = new URL(normalizedUrl, window.location.origin);
+            const normalizedFilter = String(filterValue || '').trim();
+            const normalizedSort = String(sortValue || '').trim();
+            if (normalizedFilter) {
+                parsedUrl.searchParams.set('alignment_task_update_filter', normalizedFilter);
+            }
+            if (normalizedSort) {
+                parsedUrl.searchParams.set('alignment_task_update_sort', normalizedSort);
+            }
+            return `${parsedUrl.pathname}${parsedUrl.search}`;
+        }
+
         function appendTaskUpdateIntentToReviewUrl(reviewUrl, sectionKey, supportKind) {
             const normalizedUrl = String(reviewUrl || '').trim();
             if (!normalizedUrl) {
@@ -2126,6 +2143,47 @@
                 .map((entry) => entry.update)
                 .filter((update) => (
                     String(update && update.resolution_status || '').trim().toLowerCase() === 'needs_manual_review'
+                    && String(update && update.status || '').trim().toLowerCase() !== 'resolved'
+                ))
+                .sort((left, right) => {
+                    const leftSequence = Number(left && left.evidence_sequence);
+                    const rightSequence = Number(right && right.evidence_sequence);
+                    const normalizedLeft = Number.isFinite(leftSequence) ? leftSequence : 0;
+                    const normalizedRight = Number.isFinite(rightSequence) ? rightSequence : 0;
+                    return normalizedRight - normalizedLeft;
+                });
+        }
+
+        function summarizeAlignmentPendingReviewItems(updates) {
+            const updateList = Array.isArray(updates) ? updates : [];
+            const latestByTask = new Map();
+
+            updateList.forEach((update, index) => {
+                const fallbackTaskId = [
+                    update && update.claim_type,
+                    update && update.claim_element_id,
+                    update && update.action,
+                    index,
+                ].filter(Boolean).join(':');
+                const taskId = String(update && update.task_id || fallbackTaskId || `alignment-task-${index}`);
+                const existingEntry = latestByTask.get(taskId);
+                const existingSequence = Number(existingEntry && existingEntry.update && existingEntry.update.evidence_sequence);
+                const currentSequence = Number(update && update.evidence_sequence);
+                const currentOrder = index;
+                const existingOrder = existingEntry ? existingEntry.order : -1;
+                const replaceEntry = !existingEntry
+                    || (Number.isFinite(currentSequence) && (!Number.isFinite(existingSequence) || currentSequence >= existingSequence))
+                    || (!Number.isFinite(currentSequence) && currentOrder >= existingOrder);
+
+                if (replaceEntry) {
+                    latestByTask.set(taskId, { update, order: currentOrder });
+                }
+            });
+
+            return Array.from(latestByTask.values())
+                .map((entry) => entry.update)
+                .filter((update) => (
+                    String(update && update.resolution_status || '').trim().toLowerCase() === 'answered_pending_review'
                     && String(update && update.status || '').trim().toLowerCase() !== 'resolved'
                 ))
                 .sort((left, right) => {
@@ -2674,8 +2732,14 @@
                 ? intakeCaseSummary.alignment_task_update_history
                 : (Array.isArray(intakeCaseSummary.alignment_task_updates) ? intakeCaseSummary.alignment_task_updates : []);
             const manualReviewBlockers = summarizeAlignmentManualReviewBlockers(visibleAlignmentTaskUpdates);
+            const pendingReviewItems = summarizeAlignmentPendingReviewItems(visibleAlignmentTaskUpdates);
             const manualReviewClaims = new Set(
                 manualReviewBlockers
+                    .map((update) => String(update && update.claim_type || '').trim())
+                    .filter(Boolean)
+            );
+            const pendingReviewClaims = new Set(
+                pendingReviewItems
                     .map((update) => String(update && update.claim_type || '').trim())
                     .filter(Boolean)
             );
@@ -2695,6 +2759,41 @@
                     `Claims impacted: ${manualReviewClaims.size}`,
                     ...manualReviewBlockerLines,
                 ])}`
+                : '';
+            const pendingReviewLines = pendingReviewItems.slice(0, 3).map((update) => {
+                const claimLabel = humanizeKey(update.claim_type || 'claim');
+                const elementLabel = update.claim_element_label || update.claim_element_id || 'alignment task';
+                const fragments = [
+                    `${claimLabel}: ${elementLabel}`,
+                    update.action ? `action ${humanizeKey(update.action)}` : '',
+                    update.evidence_artifact_id ? `artifact ${update.evidence_artifact_id}` : '',
+                ].filter(Boolean);
+                return fragments.join(' | ');
+            });
+            const pendingReviewSnapshot = pendingReviewItems.length
+                ? `<div class="preview-meta"><strong>Pending Review Items</strong></div>${renderLines([
+                    `Pending review items: ${pendingReviewItems.length}`,
+                    `Claims impacted: ${pendingReviewClaims.size}`,
+                    ...pendingReviewLines,
+                ])}`
+                : '';
+            const pendingReviewLinks = Array.from(new Set(
+                pendingReviewItems
+                    .map((update) => String(update && update.claim_type || '').trim())
+                    .filter(Boolean)
+            )).map((claimType) => {
+                const reviewUrl = appendAlignmentTaskViewToReviewUrl(
+                    resolveClaimReviewUrl({ claim_type: claimType }, reviewLinks),
+                    'pending_review',
+                    'pending_review_first',
+                );
+                if (!reviewUrl) {
+                    return '';
+                }
+                return `<a class="inline-link" data-review-intent-link="true" href="${escapeHtml(reviewUrl)}">Open ${escapeHtml(humanizeKey(claimType))} Pending Review</a>`;
+            }).filter(Boolean);
+            const pendingReviewLinkRow = pendingReviewLinks.length
+                ? `<div class="inline-link-row">${pendingReviewLinks.join('')}</div>`
                 : '';
             const intakeEvidenceTriage = [
                 renderTriageChipRow('Question Goals', questionGoalChips),
@@ -2770,7 +2869,7 @@
                         ${renderChangeGroup('Rejected Changes', rejectedChangeLines, 'rejected')}
                         ${routerUsageLines.length ? `<div class="preview-meta"><strong>Router Usage</strong></div>${renderLines(routerUsageLines)}` : ''}
                         ${intakeConstraintLines.length ? `<div class="preview-meta"><strong>Intake Constraints</strong></div>${renderLines(intakeConstraintLines)}` : ''}
-                        ${intakeEvidenceLines.length ? `<div class="preview-meta"><strong>Intake Evidence Snapshot</strong></div>${renderLines(intakeEvidenceLines)}${manualReviewSnapshot}${intakeEvidenceTriage}${questionSectionLinkRow}${intakeEvidenceLinks}` : ''}
+                        ${intakeEvidenceLines.length ? `<div class="preview-meta"><strong>Intake Evidence Snapshot</strong></div>${renderLines(intakeEvidenceLines)}${manualReviewSnapshot}${pendingReviewSnapshot}${pendingReviewLinkRow}${intakeEvidenceTriage}${questionSectionLinkRow}${intakeEvidenceLinks}` : ''}
                         ${upstreamOptimizerLines.length ? `<div class="preview-meta"><strong>Upstream Optimizer</strong></div>${renderLines(upstreamOptimizerLines)}` : ''}
                         ${stageProviderLines.length ? `<div class="preview-meta"><strong>Stage Provider Selection</strong></div>${renderLines(stageProviderLines)}` : ''}
                         ${packetProjectionLines.length ? `<div class="preview-meta"><strong>Packet Projection</strong></div>${renderLines(packetProjectionLines)}` : ''}

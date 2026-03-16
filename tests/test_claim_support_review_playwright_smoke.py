@@ -716,6 +716,18 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
                         "status": "active",
                         "evidence_artifact_id": "artifact-conflict",
                         "evidence_sequence": 2,
+                    },
+                    {
+                        "task_id": "retaliation:proof_leads:await_operator_confirmation",
+                        "claim_type": "retaliation",
+                        "claim_element_id": "retaliation:3",
+                        "claim_element_label": "Proof Leads",
+                        "action": "await_operator_confirmation",
+                        "current_support_status": "partially_supported",
+                        "resolution_status": "answered_pending_review",
+                        "status": "active",
+                        "evidence_artifact_id": "artifact-pending",
+                        "evidence_sequence": 3,
                     }
                 ],
             },
@@ -771,6 +783,11 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
                     .filter((node) => node.textContent.includes('Intake Section Review'))
                     .map((node) => ({ text: node.textContent.trim(), href: node.getAttribute('href') || '' }))"""
             )
+            pending_review_links = page.evaluate(
+                """() => Array.from(document.querySelectorAll('#previewRoot a.inline-link'))
+                    .filter((node) => node.textContent.includes('Pending Review'))
+                    .map((node) => ({ text: node.textContent.trim(), href: node.getAttribute('href') || '' }))"""
+            )
             preview_text = page.locator("#previewRoot").inner_text()
 
             assert {
@@ -781,10 +798,17 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
                 "text": "Open Claims For Relief Intake Section Review",
                 "href": "/claim-support-review?section=claims_for_relief&follow_up_support_kind=authority&alignment_task_update_filter=manual_review&alignment_task_update_sort=manual_review_first",
             } in section_links
+            assert {
+                "text": "Open Retaliation Pending Review",
+                "href": "/claim-support-review?claim_type=retaliation&alignment_task_update_filter=pending_review&alignment_task_update_sort=pending_review_first",
+            } in pending_review_links
             assert "Manual Review Blockers" in preview_text
             assert "Manual review blockers: 1" in preview_text
             assert "Claims impacted: 1" in preview_text
             assert "Retaliation: Proof Leads | action Resolve Support Conflicts | artifact artifact-conflict" in preview_text
+            assert "Pending Review Items" in preview_text
+            assert "Pending review items: 1" in preview_text
+            assert "Retaliation: Proof Leads | action Await Operator Confirmation | artifact artifact-pending" in preview_text
 
             browser.close()
 
@@ -842,6 +866,7 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "current support: contradicted" in manual_review_list
                 assert "artifact: artifact-conflict" in manual_review_list
                 assert "latest evidence event: 2" in manual_review_list
+                assert "Load Into Resolution Form" in manual_review_list
                 assert "Alignment update for retaliation" in alignment_updates
                 assert "resolution: still_open" in alignment_updates
                 assert "resolution: needs_manual_review" in alignment_updates
@@ -852,6 +877,12 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "sort: newest_first" in alignment_update_filter_summary
                 assert "visible updates: 2" in alignment_update_filter_summary
                 assert alignment_updates.index("evidence event: 2") < alignment_updates.index("evidence event: 1")
+
+                page.locator("#alignment-task-manual-review-list").get_by_text("Load Into Resolution Form").click()
+
+                assert page.locator("#resolution-element-id").input_value() == "retaliation:3"
+                assert page.locator("#resolution-element-text").input_value() == "retaliation:3"
+                assert page.locator("#resolution-status").input_value() == "resolved_supported"
 
                 page.select_option("#alignment-task-update-filter", "manual_review")
                 page.wait_for_function(
@@ -933,6 +964,7 @@ def test_claim_support_review_dashboard_smoke_filters_pending_review_alignment_u
                 "resolution_status": "answered_pending_review",
                 "status": "active",
                 "evidence_artifact_id": "artifact-pending",
+                "answer_preview": "Supervisor confirmed the demotion after the complaint.",
                 "evidence_sequence": 1,
             }
         ]
@@ -960,6 +992,22 @@ def test_claim_support_review_dashboard_smoke_filters_pending_review_alignment_u
                 assert "current support: partially_supported" in pending_review_list
                 assert "artifact: artifact-pending" in pending_review_list
                 assert "latest evidence event: 1" in pending_review_list
+                assert "Load Into Testimony Form" in pending_review_list
+                assert "Load Into Document Form" in pending_review_list
+
+                page.locator("#alignment-task-pending-review-list").get_by_text("Load Into Testimony Form").click()
+
+                assert page.locator("#testimony-element-id").input_value() == "retaliation:2"
+                assert page.locator("#testimony-element-text").input_value() == "Adverse action"
+                assert page.locator("#testimony-narrative").input_value() == "Supervisor confirmed the demotion after the complaint."
+
+                page.click("#clear-testimony-button")
+                page.locator("#alignment-task-pending-review-list").get_by_text("Load Into Document Form").click()
+
+                assert page.locator("#document-element-id").input_value() == "retaliation:2"
+                assert page.locator("#document-element-text").input_value() == "Adverse action"
+                assert page.locator("#document-label").input_value() == "Adverse action"
+                assert page.locator("#document-text").input_value() == "Supervisor confirmed the demotion after the complaint."
 
                 page.select_option("#alignment-task-update-filter", "pending_review")
                 page.wait_for_function(
@@ -1157,6 +1205,18 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
                         "status": "active",
                         "evidence_artifact_id": "artifact-conflict",
                         "evidence_sequence": 2,
+                    },
+                    {
+                        "task_id": "retaliation:claims_for_relief:await_operator_confirmation",
+                        "claim_type": "retaliation",
+                        "claim_element_id": "retaliation:2",
+                        "claim_element_label": "Claims For Relief",
+                        "action": "await_operator_confirmation",
+                        "current_support_status": "partially_supported",
+                        "resolution_status": "answered_pending_review",
+                        "status": "active",
+                        "evidence_artifact_id": "artifact-pending",
+                        "evidence_sequence": 3,
                     }
                 ],
             },
@@ -1203,6 +1263,11 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
                     .filter((node) => node.textContent.includes('Intake Section Review'))
                     .map((node) => ({ text: node.textContent.trim(), href: node.getAttribute('href') || '' }))"""
             )
+            pending_review_links = page.evaluate(
+                """() => Array.from(document.querySelectorAll('#traceEvidenceLinks a.inline-link'))
+                    .filter((node) => node.textContent.includes('Pending Review'))
+                    .map((node) => ({ text: node.textContent.trim(), href: node.getAttribute('href') || '' }))"""
+            )
             trace_text = page.locator("#traceEvidenceManualReview").inner_text()
 
             assert {
@@ -1213,10 +1278,19 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
                 "text": "Open Claims For Relief Intake Section Review",
                 "href": "/claim-support-review?user_id=trace-smoke-user&section=claims_for_relief&follow_up_support_kind=authority&alignment_task_update_filter=manual_review&alignment_task_update_sort=manual_review_first",
             } in section_links
+            assert {
+                "text": "Open Retaliation Pending Review",
+                "href": "/claim-support-review?user_id=trace-smoke-user&claim_type=retaliation&alignment_task_update_filter=pending_review&alignment_task_update_sort=pending_review_first",
+            } in pending_review_links
             assert "Manual Review Blockers" in trace_text
             assert "Manual review blockers: 1" in trace_text
             assert "Claims impacted: 1" in trace_text
             assert "Retaliation: Claims For Relief | action Resolve Support Conflicts | artifact artifact-conflict" in trace_text
+            pending_trace_text = page.locator("#traceEvidencePendingReview").inner_text()
+            assert "Pending Review Items" in pending_trace_text
+            assert "Pending review items: 1" in pending_trace_text
+            assert "Claims impacted: 1" in pending_trace_text
+            assert "Retaliation: Claims For Relief | action Await Operator Confirmation | artifact artifact-pending" in pending_trace_text
 
             browser.close()
 
@@ -1352,6 +1426,276 @@ def test_document_builder_question_review_link_click_preserves_focus_on_review_p
                 assert page.locator("#alignment-task-update-sort").input_value() == "manual_review_first"
                 assert "Claims For Relief" in page.locator("#prefill-context-line").inner_text()
                 assert "Focused lane: Authority." in page.locator("#prefill-context-line").inner_text()
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+def test_document_builder_pending_review_link_click_preserves_queue_focus_on_review_page():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    payload = {
+        "generated_at": "2026-03-15T20:00:00+00:00",
+        "draft": {
+            "court_header": "IN THE UNITED STATES DISTRICT COURT",
+            "case_caption": {
+                "plaintiffs": ["Jane Doe"],
+                "defendants": ["Acme Corporation"],
+            },
+            "summary_of_facts": ["Plaintiff reported discrimination to HR."],
+            "factual_allegation_paragraphs": ["1. Plaintiff reported discrimination to HR."],
+            "legal_standards": ["Title VII prohibits retaliation."],
+            "claims_for_relief": [],
+            "requested_relief": ["Compensatory damages."],
+            "draft_text": "Sample draft text.",
+            "exhibits": [],
+        },
+        "drafting_readiness": {"sections": {}, "claims": [], "warnings": []},
+        "filing_checklist": [],
+        "review_links": {},
+        "document_optimization": {
+            "status": "optimized",
+            "method": "actor_mediator_critic_optimizer",
+            "optimizer_backend": "upstream_agentic",
+            "initial_score": 0.4,
+            "final_score": 0.7,
+            "accepted_iterations": 1,
+            "iteration_count": 1,
+            "optimized_sections": ["factual_allegations"],
+            "trace_storage": {"status": "available", "cid": "bafy-test", "size": 123, "pinned": True},
+            "intake_status": {
+                "current_phase": "intake",
+                "score": 0.5,
+                "remaining_gap_count": 1,
+                "contradiction_count": 0,
+                "ready_to_advance": False,
+                "blockers": ["collect_missing_support"],
+                "contradictions": [],
+            },
+            "intake_constraints": [],
+            "intake_case_summary": {
+                "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation"}],
+                "intake_sections": {
+                    "proof_leads": {"status": "partial", "missing_items": ["documents"]},
+                    "claims_for_relief": {"status": "partial", "missing_items": ["authority"]},
+                },
+                "canonical_fact_summary": {"count": 1, "facts": [{"fact_id": "fact_001"}]},
+                "proof_lead_summary": {"count": 1, "proof_leads": [{"lead_id": "lead_001"}]},
+                "question_candidate_summary": {
+                    "count": 2,
+                    "question_goal_counts": {
+                        "identify_supporting_proof": 1,
+                        "establish_element": 1,
+                    },
+                    "phase1_section_counts": {
+                        "proof_leads": 1,
+                        "claims_for_relief": 1,
+                    },
+                    "blocking_level_counts": {"blocking": 1, "non_blocking": 1},
+                },
+                "claim_support_packet_summary": {
+                    "claim_count": 1,
+                    "element_count": 2,
+                    "status_counts": {"unsupported": 2},
+                    "recommended_actions": ["collect_missing_support_kind"],
+                },
+                "alignment_task_update_history": [
+                    {
+                        "task_id": "retaliation:claims_for_relief:await_operator_confirmation",
+                        "claim_type": "retaliation",
+                        "claim_element_id": "retaliation:2",
+                        "claim_element_label": "Claims For Relief",
+                        "action": "await_operator_confirmation",
+                        "current_support_status": "partially_supported",
+                        "resolution_status": "answered_pending_review",
+                        "status": "active",
+                        "evidence_artifact_id": "artifact-pending",
+                        "evidence_sequence": 3,
+                    }
+                ],
+            },
+            "packet_projection": {
+                "title": "Complaint Packet",
+                "section_presence": {"factual_allegations": True},
+                "has_affidavit": False,
+                "has_certificate_of_service": False,
+            },
+            "section_history": [
+                {
+                    "iteration": 1,
+                    "focus_section": "factual_allegations",
+                    "accepted": True,
+                    "overall_score": 0.7,
+                }
+            ],
+            "initial_review": {},
+            "final_review": {},
+            "router_status": {},
+            "upstream_optimizer": {},
+        },
+    }
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for document pending-review click-through coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+
+        app = _build_document_review_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(f"{base_url}/document")
+                page.evaluate("payload => window.renderPreview(payload)", payload)
+                page.wait_for_function(
+                    "() => Array.from(document.querySelectorAll('#previewRoot a.inline-link')).some((node) => node.textContent.includes('Pending Review'))"
+                )
+
+                page.click("text=Open Retaliation Pending Review")
+                page.wait_for_url("**/claim-support-review?**")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                assert "claim_type=retaliation" in page.url
+                assert "alignment_task_update_filter=pending_review" in page.url
+                assert "alignment_task_update_sort=pending_review_first" in page.url
+                assert page.locator("#claim-type").input_value() == "retaliation"
+                assert page.locator("#alignment-task-update-filter").input_value() == "pending_review"
+                assert page.locator("#alignment-task-update-sort").input_value() == "pending_review_first"
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+def test_optimization_trace_pending_review_link_click_preserves_queue_focus_on_review_page():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    payload = {
+        "cid": "bafy-trace-smoke",
+        "size": 321,
+        "trace": {
+            "user_id": "browser-smoke-text-link",
+            "intake_status": {
+                "current_phase": "intake",
+                "score": 0.52,
+                "contradiction_count": 0,
+                "blockers": ["collect_missing_support"],
+                "contradictions": [],
+            },
+            "intake_constraints": [],
+            "intake_case_summary": {
+                "candidate_claims": [
+                    {"claim_type": "retaliation", "label": "Retaliation"},
+                ],
+                "intake_sections": {
+                    "proof_leads": {"status": "partial", "missing_items": ["documents"]},
+                    "claims_for_relief": {"status": "partial", "missing_items": ["authority"]},
+                },
+                "canonical_fact_summary": {"count": 1, "facts": [{"fact_id": "fact_001"}]},
+                "proof_lead_summary": {"count": 1, "proof_leads": [{"lead_id": "lead_001"}]},
+                "question_candidate_summary": {
+                    "count": 2,
+                    "question_goal_counts": {
+                        "identify_supporting_proof": 1,
+                        "establish_element": 1,
+                    },
+                    "phase1_section_counts": {
+                        "proof_leads": 1,
+                        "claims_for_relief": 1,
+                    },
+                    "blocking_level_counts": {
+                        "blocking": 1,
+                        "non_blocking": 1,
+                    },
+                },
+                "claim_support_packet_summary": {
+                    "claim_count": 1,
+                    "element_count": 2,
+                    "status_counts": {"unsupported": 2},
+                    "recommended_actions": ["collect_missing_support_kind"],
+                },
+                "alignment_task_update_history": [
+                    {
+                        "task_id": "retaliation:claims_for_relief:await_operator_confirmation",
+                        "claim_type": "retaliation",
+                        "claim_element_id": "retaliation:2",
+                        "claim_element_label": "Claims For Relief",
+                        "action": "await_operator_confirmation",
+                        "current_support_status": "partially_supported",
+                        "resolution_status": "answered_pending_review",
+                        "status": "active",
+                        "evidence_artifact_id": "artifact-pending",
+                        "evidence_sequence": 3,
+                    }
+                ],
+            },
+            "iterations": [
+                {
+                    "iteration": 1,
+                    "focus_section": "factual_allegations",
+                    "accepted": True,
+                    "critic": {"overall_score": 0.73},
+                }
+            ],
+            "initial_review": {"overall_score": 0.41},
+            "final_review": {"overall_score": 0.73, "recommended_focus": "claims_for_relief"},
+        },
+    }
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for trace pending-review click-through coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+
+        app = _build_document_review_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(f"{base_url}/document/optimization-trace")
+                page.evaluate("payload => window.renderTrace(payload)", payload)
+                page.wait_for_function(
+                    "() => Array.from(document.querySelectorAll('#traceEvidenceLinks a.inline-link')).some((node) => node.textContent.includes('Pending Review'))"
+                )
+
+                page.click("text=Open Retaliation Pending Review")
+                page.wait_for_url("**/claim-support-review?**")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                assert "user_id=browser-smoke-text-link" in page.url
+                assert "claim_type=retaliation" in page.url
+                assert "alignment_task_update_filter=pending_review" in page.url
+                assert "alignment_task_update_sort=pending_review_first" in page.url
+                assert page.locator("#claim-type").input_value() == "retaliation"
+                assert page.locator("#alignment-task-update-filter").input_value() == "pending_review"
+                assert page.locator("#alignment-task-update-sort").input_value() == "pending_review_first"
 
                 browser.close()
     finally:

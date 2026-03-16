@@ -1413,6 +1413,22 @@ class Mediator:
 			return 'adverse_authority_requires_review'
 		return 'manual_review_required'
 
+	def _normalized_fact_bundle(self, fact_bundle: Any) -> List[str]:
+		normalized: List[str] = []
+		for item in fact_bundle if isinstance(fact_bundle, list) else []:
+			text = str(item or '').strip()
+			if text and text not in normalized:
+				normalized.append(text)
+		return normalized
+
+	def _fact_bundle_query_terms(self, fact_bundle: Any) -> List[str]:
+		terms: List[str] = []
+		for item in self._normalized_fact_bundle(fact_bundle)[:2]:
+			normalized = self._normalize_rule_query_text(item)
+			if normalized:
+				terms.append(f'"{normalized}"')
+		return terms
+
 	def _build_follow_up_queries(
 		self,
 		claim_type: str,
@@ -1425,6 +1441,7 @@ class Mediator:
 		proof_decision_trace: Dict[str, Any] = None,
 		authority_treatment_summary: Dict[str, Any] = None,
 		rule_candidate_context: Dict[str, Any] = None,
+		missing_fact_bundle: List[str] = None,
 	) -> Dict[str, List[str]]:
 		queries: Dict[str, List[str]] = {}
 		proof_gap_types = self._extract_proof_gap_types(proof_gaps or [])
@@ -1442,6 +1459,9 @@ class Mediator:
 			if str(candidate.get('rule_type') or '') == 'exception' and candidate.get('rule_text'):
 				exception_rule_text = self._normalize_rule_query_text(candidate.get('rule_text'))
 				break
+		bundle_terms = self._fact_bundle_query_terms(missing_fact_bundle)
+		primary_bundle_term = bundle_terms[0] if bundle_terms else ''
+		secondary_bundle_term = bundle_terms[1] if len(bundle_terms) > 1 else ''
 		gap_focus = ' '.join(
 			gap_type.replace('_', ' ')
 			for gap_type in proof_gap_types
@@ -1479,9 +1499,9 @@ class Mediator:
 				]
 			elif fact_gap_targeted:
 				queries['evidence'] = [
-					_compose_query(f'"{claim_type}"', f'"{element_text}"', f'"{primary_rule_text}"' if primary_rule_text else '', 'supporting facts evidence'),
-					_compose_query(f'"{element_text}"', f'"{exception_rule_text}"' if exception_rule_text else '', 'fact pattern records witness timeline', claim_type),
-					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'documents showing predicate satisfaction', f'"{primary_rule_text}"' if primary_rule_text else ' '.join(rule_types[:2])),
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', primary_bundle_term, f'"{primary_rule_text}"' if primary_rule_text else '', 'supporting facts evidence'),
+					_compose_query(f'"{element_text}"', secondary_bundle_term or primary_bundle_term, f'"{exception_rule_text}"' if exception_rule_text else '', 'fact pattern records witness timeline', claim_type),
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', primary_bundle_term, 'documents showing predicate satisfaction', f'"{primary_rule_text}"' if primary_rule_text else ' '.join(rule_types[:2])),
 				]
 			elif reasoning_targeted:
 				queries['evidence'] = [
@@ -1497,9 +1517,9 @@ class Mediator:
 				]
 			else:
 				queries['evidence'] = [
-					f'"{claim_type}" "{element_text}" evidence',
-					f'"{element_text}" documentation {claim_type}',
-					f'"{element_text}" facts witness records {claim_type}',
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', primary_bundle_term, 'evidence'),
+					_compose_query(f'"{element_text}"', secondary_bundle_term or primary_bundle_term, 'documentation', claim_type),
+					_compose_query(f'"{element_text}"', primary_bundle_term, 'facts witness records', claim_type),
 				]
 		if 'authority' in target_support_kinds:
 			if contradiction_targeted:
@@ -1533,11 +1553,50 @@ class Mediator:
 				]
 			else:
 				queries['authority'] = [
-					f'"{claim_type}" "{element_text}" statute',
-					f'"{claim_type}" "{element_text}" case law',
-					f'"{element_text}" legal elements {claim_type}',
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', primary_bundle_term, 'statute'),
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', secondary_bundle_term or primary_bundle_term, 'case law'),
+					_compose_query(f'"{element_text}"', primary_bundle_term, 'legal elements', claim_type),
 				]
 		return queries
+
+	def _refresh_follow_up_task_queries(self, claim_type: str, task: Dict[str, Any]) -> Dict[str, Any]:
+		adaptive_retry_state = task.get('adaptive_retry_state') if isinstance(task.get('adaptive_retry_state'), dict) else {}
+		adaptive_standard = bool(adaptive_retry_state.get('applied')) and str(adaptive_retry_state.get('adaptive_query_strategy') or '') == 'standard_gap_targeted'
+		queries = self._build_follow_up_queries(
+			claim_type,
+			str(task.get('claim_element') or ''),
+			list(task.get('missing_support_kinds') or []),
+			support_by_kind=task.get('support_by_kind') if isinstance(task.get('support_by_kind'), dict) else {},
+			recommended_action='' if adaptive_standard else str(task.get('validation_recommended_action') or task.get('recommended_action') or ''),
+			validation_status='' if adaptive_standard else str(task.get('validation_status') or ''),
+			proof_gaps=[] if adaptive_standard else list(task.get('proof_gaps') or []),
+			proof_decision_trace={}
+			if adaptive_standard else {
+				'decision_source': str(task.get('proof_decision_source') or ''),
+				'logic_provable_count': int(task.get('logic_provable_count', 0) or 0),
+				'logic_unprovable_count': int(task.get('logic_unprovable_count', 0) or 0),
+				'ontology_validation_signal': str(task.get('ontology_validation_signal') or ''),
+			},
+			authority_treatment_summary=task.get('authority_treatment_summary') if isinstance(task.get('authority_treatment_summary'), dict) else {},
+			rule_candidate_context=task.get('rule_candidate_context') if isinstance(task.get('rule_candidate_context'), dict) else {},
+			missing_fact_bundle=list(task.get('missing_fact_bundle') or []),
+		)
+		recommended_queries = [
+			str(item).strip()
+			for item in (task.get('recommended_queries') or [])
+			if str(item).strip()
+		]
+		if recommended_queries:
+			preferred_support_kind = str(task.get('preferred_support_kind') or '').strip().lower()
+			lane = 'authority' if preferred_support_kind == 'authority' else 'evidence'
+			existing_queries = [
+				str(item).strip()
+				for item in (queries.get(lane) or [])
+				if str(item).strip()
+			]
+			queries[lane] = list(dict.fromkeys(recommended_queries + existing_queries))
+		task['queries'] = queries
+		return task
 
 	def _is_reasoning_gap_follow_up(
 		self,
@@ -1595,6 +1654,9 @@ class Mediator:
 			'proof_gap_count': int(task.get('proof_gap_count', 0) or 0),
 			'proof_gap_types': list(task.get('proof_gap_types') or []),
 			'missing_support_kinds': list(task.get('missing_support_kinds') or []),
+			'missing_fact_bundle': list(task.get('missing_fact_bundle') or []),
+			'satisfied_fact_bundle': list(task.get('satisfied_fact_bundle') or []),
+			'primary_missing_fact': next((str(item).strip() for item in (task.get('missing_fact_bundle') or []) if str(item).strip()), ''),
 			'follow_up_focus': task.get('follow_up_focus', ''),
 			'query_strategy': task.get('query_strategy', ''),
 			'adaptive_retry_applied': bool(adaptive_retry_state.get('applied', False)),
@@ -1869,6 +1931,7 @@ class Mediator:
 					'decision_source': task.get('proof_decision_source', ''),
 					'ontology_validation_signal': task.get('ontology_validation_signal', ''),
 				},
+				missing_fact_bundle=list(task.get('missing_fact_bundle') or []),
 			)
 			task['resolution_applied'] = 'manual_review_resolved'
 		return task
@@ -1902,6 +1965,7 @@ class Mediator:
 			proof_decision_trace=proof_decision_trace,
 			authority_treatment_summary=authority_treatment_summary,
 			rule_candidate_context=rule_candidate_context,
+			missing_fact_bundle=list(element.get('missing_fact_bundle', []) or []),
 		)
 		if validation_status == 'contradicted':
 			priority = 'high'
@@ -1956,6 +2020,7 @@ class Mediator:
 			'claim_element': element_text,
 			'status': status,
 			'validation_status': validation_status,
+			'support_by_kind': dict(support_by_kind or {}),
 			'proof_decision_source': str(proof_decision_trace.get('decision_source') or ''),
 			'logic_provable_count': int(proof_decision_trace.get('logic_provable_count', 0) or 0),
 			'logic_unprovable_count': int(proof_decision_trace.get('logic_unprovable_count', 0) or 0),
@@ -2462,6 +2527,7 @@ class Mediator:
 					'preferred_support_kind': task.get('preferred_support_kind'),
 					'preferred_evidence_classes': list(task.get('preferred_evidence_classes') or []),
 					'missing_fact_bundle': list(task.get('missing_fact_bundle') or []),
+					'satisfied_fact_bundle': list(task.get('satisfied_fact_bundle') or []),
 					'success_criteria': list(task.get('success_criteria') or []),
 					'recommended_action': task.get('recommended_action'),
 					'execution_mode': task.get('execution_mode', 'retrieve_support'),
@@ -4364,15 +4430,171 @@ class Mediator:
 		fallback_label = str(element_text or normalized_element_id or 'claim element').strip()
 		return [f'Facts establishing {fallback_label}']
 
-	def _summarize_supported_fact_bundle(self, support_facts: Any) -> List[str]:
-		supported: List[str] = []
+	def _support_bundle_text_entries(self, support_facts: Any, support_traces: Any) -> List[Dict[str, str]]:
+		entries: List[Dict[str, str]] = []
 		for fact in support_facts if isinstance(support_facts, list) else []:
 			if not isinstance(fact, dict):
 				continue
-			text = self._normalize_intake_text(fact.get('text'))
-			if text and text not in supported:
-				supported.append(text)
-		return supported[:4]
+			entry_text = ' '.join(
+				part
+				for part in (
+					self._normalize_intake_text(fact.get('text') or fact.get('fact_text')),
+					self._normalize_intake_text(fact.get('support_label')),
+					self._normalize_intake_text(fact.get('support_ref')),
+				)
+				if part
+			).strip()
+			entries.append(
+				{
+					'text': entry_text,
+					'support_kind': str(fact.get('support_kind') or '').strip().lower(),
+					'source_family': str(fact.get('source_family') or '').strip().lower(),
+				}
+			)
+		for trace in support_traces if isinstance(support_traces, list) else []:
+			if not isinstance(trace, dict):
+				continue
+			entry_text = ' '.join(
+				part
+				for part in (
+					self._normalize_intake_text(trace.get('fact_text')),
+					self._normalize_intake_text(trace.get('support_label')),
+					self._normalize_intake_text(trace.get('support_ref')),
+					self._normalize_intake_text(trace.get('source_ref')),
+				)
+				if part
+			).strip()
+			entries.append(
+				{
+					'text': entry_text,
+					'support_kind': str(trace.get('support_kind') or '').strip().lower(),
+					'source_family': str(trace.get('source_family') or '').strip().lower(),
+				}
+			)
+		return [entry for entry in entries if any(entry.values())]
+
+	def _bundle_significant_tokens(self, value: str) -> List[str]:
+		stop_words = {
+			'the', 'and', 'for', 'that', 'with', 'from', 'what', 'when', 'who', 'how', 'about', 'around',
+			'this', 'these', 'those', 'showing', 'facts', 'fact', 'occurred', 'applies', 'claim', 'element',
+			'can', 'only', 'their', 'there', 'which', 'where', 'while', 'through', 'between', 'resulted',
+			'concrete', 'into', 'made', 'were', 'was', 'being', 'have', 'been', 'your', 'does', 'did',
+		}
+		tokens = re.findall(r'[a-z0-9]+', str(value or '').lower())
+		return [token for token in tokens if len(token) > 3 and token not in stop_words]
+
+	def _text_has_temporal_markers(self, value: str) -> bool:
+		normalized = str(value or '').lower()
+		if re.search(r'\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b', normalized):
+			return True
+		if re.search(r'\b(?:19|20)\d{2}\b', normalized):
+			return True
+		return any(marker in normalized for marker in (
+			'before', 'after', 'later', 'earlier', 'timeline', 'same day', 'next day', 'that day',
+			'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'week', 'month',
+		))
+
+	def _text_has_actor_markers(self, value: str) -> bool:
+		normalized = str(value or '').lower()
+		return any(marker in normalized for marker in (
+			'manager', 'supervisor', 'director', 'hr', 'human resources', 'landlord', 'coworker', 'co-worker',
+			'witness', 'observer', 'recipient', 'decision-maker', 'decision maker', 'employer',
+		))
+
+	def _text_has_knowledge_markers(self, value: str) -> bool:
+		normalized = str(value or '').lower()
+		return any(marker in normalized for marker in (
+			'knew', 'know about', 'aware', 'told', 'informed', 'notified', 'received', 'reported to',
+			'complained to', 'observed', 'witnessed', 'saw', 'heard',
+		))
+
+	def _text_has_corroboration_markers(self, value: str, support_kind: str, source_family: str) -> bool:
+		normalized = str(value or '').lower()
+		if support_kind in {'authority', 'testimony'}:
+			return True
+		if source_family in {'claim_testimony', 'legal_authority', 'authority', 'testimony'}:
+			return True
+		return any(marker in normalized for marker in (
+			'email', 'text', 'message', 'record', 'document', 'report', 'note', 'attachment', 'policy', 'handbook',
+			'complaint', 'witness', 'photo', 'screenshot', 'letter', 'memo',
+		))
+
+	def _fact_bundle_item_matches_entry(self, bundle_item: str, entry: Dict[str, str]) -> bool:
+		item_text = str(bundle_item or '').strip()
+		entry_text = str((entry or {}).get('text') or '').strip()
+		support_kind = str((entry or {}).get('support_kind') or '').strip().lower()
+		source_family = str((entry or {}).get('source_family') or '').strip().lower()
+		if not item_text:
+			return False
+		item_lower = item_text.lower()
+		entry_lower = entry_text.lower()
+
+		if 'when ' in item_lower or ' timing ' in item_lower or ' timeline' in item_lower or 'sequence' in item_lower:
+			return self._text_has_temporal_markers(entry_lower)
+		if (
+			item_lower.startswith('what ')
+			and ('occurred' in item_lower or 'was requested' in item_lower or 'event' in item_lower)
+		):
+			return any(marker in entry_lower for marker in (
+				'complain', 'complaint', 'report', 'reported', 'request', 'requested', 'apply', 'applied',
+				'terminat', 'fired', 'denied', 'denial', 'refused', 'retaliat', 'discriminat', 'harass',
+				'demot', 'disciplin', 'dismiss',
+			))
+		if 'decision-maker knew' in item_lower or 'decision maker knew' in item_lower:
+			return self._text_has_knowledge_markers(entry_lower)
+		if 'who received or observed' in item_lower or 'who received it' in item_lower:
+			return self._text_has_knowledge_markers(entry_lower) or self._text_has_actor_markers(entry_lower)
+		if 'who made' in item_lower or 'who denied' in item_lower or 'who communicated' in item_lower or 'who carried out' in item_lower or 'who executed' in item_lower:
+			return self._text_has_actor_markers(entry_lower)
+		if 'documented or can be corroborated' in item_lower or 'communicated or documented' in item_lower:
+			return self._text_has_corroboration_markers(entry_lower, support_kind, source_family)
+		if 'concrete harm' in item_lower or 'loss resulted' in item_lower:
+			return any(marker in entry_lower for marker in ('lost', 'loss', 'harm', 'fired', 'terminated', 'demoted', 'disciplined', 'stress', 'wages', 'income', 'evicted'))
+		if 'protected trait' in item_lower or 'protected class' in item_lower:
+			return any(marker in entry_lower for marker in ('race', 'sex', 'gender', 'religion', 'disability', 'pregnan', 'national origin', 'age'))
+		if 'bias' in item_lower or 'differential treatment' in item_lower or 'discriminatory intent' in item_lower or 'comparator' in item_lower or 'pattern' in item_lower:
+			return any(marker in entry_lower for marker in ('bias', 'biased', 'slur', 'different treatment', 'treated differently', 'pattern', 'comparator', 'retaliat', 'discriminat'))
+		if 'relationship' in item_lower or 'workplace context' in item_lower or 'housing context' in item_lower:
+			return any(marker in entry_lower for marker in ('employer', 'employee', 'job', 'workplace', 'landlord', 'tenant', 'lease', 'application', 'accommodation'))
+		if 'request' in item_lower or 'application' in item_lower:
+			return any(marker in entry_lower for marker in ('request', 'requested', 'application', 'applied', 'asked for'))
+		if 'denied' in item_lower or 'ignored' in item_lower or 'refusal' in item_lower or 'failed to act' in item_lower:
+			return any(marker in entry_lower for marker in ('denied', 'ignored', 'refused', 'failed', 'no response', 'rejected'))
+		if 'reason' in item_lower or 'criteria' in item_lower or 'context' in item_lower:
+			return any(marker in entry_lower for marker in ('reason', 'because', 'policy', 'criteria', 'context', 'explain'))
+		if entry_lower:
+			item_tokens = set(self._bundle_significant_tokens(item_lower))
+			entry_tokens = set(self._bundle_significant_tokens(entry_lower))
+			overlap = item_tokens & entry_tokens
+			if len(overlap) >= 2:
+				return True
+			if len(overlap) == 1 and any(token in item_tokens for token in ('termination', 'complaint', 'request', 'accommodation', 'discrimination', 'retaliation')):
+				return True
+		return False
+
+	def _evaluate_fact_bundle_coverage(
+		self,
+		required_fact_bundle: Any,
+		support_facts: Any,
+		support_traces: Any,
+		support_status: str,
+	) -> tuple[List[str], List[str]]:
+		required_bundle = [
+			str(item).strip()
+			for item in (required_fact_bundle if isinstance(required_fact_bundle, list) else [])
+			if str(item).strip()
+		]
+		if not required_bundle:
+			return [], []
+		if support_status == 'supported':
+			return list(required_bundle), []
+		entries = self._support_bundle_text_entries(support_facts, support_traces)
+		satisfied_bundle = [
+			item for item in required_bundle
+			if any(self._fact_bundle_item_matches_entry(item, entry) for entry in entries)
+		]
+		missing_bundle = [item for item in required_bundle if item not in satisfied_bundle]
+		return satisfied_bundle, missing_bundle
 
 	def _resolve_task_preferred_support_kind(self, missing_support_kinds: List[str], evidence_classes: List[str]) -> str:
 		normalized_missing = [str(kind or '').strip().lower() for kind in (missing_support_kinds or []) if str(kind or '').strip()]
@@ -4447,7 +4669,7 @@ class Mediator:
 			task['preferred_support_kind'] = str(
 				task.get('preferred_support_kind') or self._default_preferred_support_kind(task.get('missing_support_kinds', []))
 			).strip().lower()
-			return task
+			return self._refresh_follow_up_task_queries(claim_type, task)
 
 		preferred_support_kind = str(
 			alignment_task.get('preferred_support_kind')
@@ -4468,16 +4690,7 @@ class Mediator:
 		]
 		if alignment_queries:
 			task['recommended_queries'] = alignment_queries
-			queries = dict(task.get('queries') or {}) if isinstance(task.get('queries'), dict) else {}
-			lane = 'authority' if preferred_support_kind == 'authority' else 'evidence'
-			existing_queries = [
-				str(item).strip()
-				for item in (queries.get(lane) or [])
-				if str(item).strip()
-			]
-			queries[lane] = list(dict.fromkeys(alignment_queries + existing_queries))
-			task['queries'] = queries
-		return task
+		return self._refresh_follow_up_task_queries(claim_type, task)
 
 	def _build_claim_support_packets(
 		self,
@@ -4529,9 +4742,13 @@ class Mediator:
 					registry_entry = self._claim_element_registry_entry(intake_case_file, claim_type, element_id)
 					evidence_classes = list(registry_entry.get('evidence_classes', []) or [])
 					required_fact_bundle = self._required_fact_bundle_for_element(claim_type, element_id, element_text)
-					satisfied_fact_bundle = self._summarize_supported_fact_bundle(support_facts)
 					support_status = self._normalize_support_status(element.get('validation_status'))
-					missing_fact_bundle = [] if support_status == 'supported' else list(required_fact_bundle)
+					satisfied_fact_bundle, missing_fact_bundle = self._evaluate_fact_bundle_coverage(
+						required_fact_bundle,
+						support_facts,
+						support_traces,
+						support_status,
+					)
 					elements.append({
 						'element_id': element_id,
 						'element_text': element_text,

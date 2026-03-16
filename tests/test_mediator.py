@@ -532,6 +532,7 @@ class TestMediatorWithMocks:
             assert task['success_criteria'] == ['Element Protected activity reaches supported status']
             assert task['intake_origin_refs'] == ['open_item:element:employment:1']
             assert task['queries']['authority'][0] == '"employment" "Protected activity" official policy complaint channel'
+            assert task['queries']['authority'][1] == '"employment" "Protected activity" "who received the complaint" statute'
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
@@ -1571,6 +1572,8 @@ class TestMediatorWithMocks:
                                 'validation_status': 'incomplete',
                                 'recommended_action': 'collect_initial_support',
                                 'support_by_kind': {},
+                                'missing_fact_bundle': ['Who received the complaint'],
+                                'satisfied_fact_bundle': [],
                                 'proof_gap_count': 1,
                                 'proof_gaps': [
                                     {'gap_type': 'logic_unprovable'},
@@ -1606,10 +1609,14 @@ class TestMediatorWithMocks:
 
             executed_call = mediator.claim_support.record_follow_up_execution.call_args_list[0]
             assert executed_call.kwargs['status'] == 'executed'
+            assert executed_call.kwargs['query_text'] == '"employment" "Protected activity" supporting evidence formal proof logic unprovable'
             assert executed_call.kwargs['metadata']['result_count'] == 0
             assert executed_call.kwargs['metadata']['stored_result_count'] == 0
             assert executed_call.kwargs['metadata']['zero_result'] is True
             assert executed_call.kwargs['metadata']['follow_up_focus'] == 'reasoning_gap_closure'
+            assert executed_call.kwargs['metadata']['missing_fact_bundle'] == ['Who received the complaint']
+            assert executed_call.kwargs['metadata']['satisfied_fact_bundle'] == []
+            assert executed_call.kwargs['metadata']['primary_missing_fact'] == 'Who received the complaint'
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 

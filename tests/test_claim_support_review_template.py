@@ -95,9 +95,15 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "parse_quality_recommendation" in content
     assert "authority_treatment_summary" in content
     assert "authority_search_program_summary" in content
+    assert "normalizeFactBundle" in content
+    assert "renderFactBundleChips" in content
+    assert "primary gap ${task.primary_missing_fact}" in content
+    assert "covered facts ${satisfiedFactBundle.length}" in content
     assert "authority program ${task.authority_search_program_summary.primary_program_type}" in content
     assert "authority bias ${task.authority_search_program_summary.primary_program_bias}" in content
     assert "rule bias ${task.authority_search_program_summary.primary_program_rule_bias}" in content
+    assert "primary gap: ${entry.primary_missing_fact}" in content
+    assert "covered facts: ${satisfiedFactBundle.length}" in content
     assert "History programs: ${selectedProgramTypes.map(([label, count]) => `${label}=${count}`).join(', ')}" in content
     assert "History biases: ${selectedProgramBiases.map(([label, count]) => `${label}=${count}`).join(', ')}" in content
     assert "History rule biases: ${selectedProgramRuleBiases.map(([label, count]) => `${label}=${count}`).join(', ')}" in content

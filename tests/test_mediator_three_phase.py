@@ -721,6 +721,180 @@ class TestMediatorThreePhaseIntegration:
         assert 'adverse_action' in alignment['packet_element_statuses']
         assert isinstance(alignment['shared_elements'], list)
 
+    def test_build_claim_support_packets_tracks_partial_fact_bundle_coverage(self):
+        """Packet construction should only clear the bundle prompts actually covered by support facts."""
+        from mediator.mediator import Mediator
+        from unittest.mock import Mock
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'intake_case_file',
+            {
+                'candidate_claims': [
+                    {
+                        'claim_type': 'retaliation',
+                        'required_elements': [
+                            {
+                                'element_id': 'protected_activity',
+                                'label': 'Protected activity',
+                                'blocking': True,
+                                'evidence_classes': ['email'],
+                            }
+                        ],
+                    }
+                ]
+            },
+        )
+        mediator.get_claim_support_validation = Mock(return_value={
+            'claims': {
+                'retaliation': {
+                    'elements': [
+                        {
+                            'element_id': 'protected_activity',
+                            'element_text': 'Protected activity',
+                            'validation_status': 'incomplete',
+                            'recommended_action': 'collect_documentary_support',
+                            'missing_support_kinds': ['evidence'],
+                            'contradiction_candidate_count': 0,
+                            'proof_diagnostics': {},
+                            'gap_context': {
+                                'support_facts': [
+                                    {
+                                        'fact_id': 'fact-pa-1',
+                                        'text': 'I complained about discrimination on March 3.',
+                                        'support_kind': 'evidence',
+                                        'source_family': 'evidence',
+                                    }
+                                ],
+                                'support_traces': [
+                                    {
+                                        'source_ref': 'artifact:complaint-note',
+                                        'support_ref': 'artifact:complaint-note',
+                                        'support_label': 'Complaint note',
+                                        'support_kind': 'evidence',
+                                        'source_family': 'evidence',
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            }
+        })
+        mediator.get_claim_support_gaps = Mock(return_value={
+            'claims': {
+                'retaliation': {
+                    'unresolved_elements': [
+                        {
+                            'element_id': 'protected_activity',
+                            'element_text': 'Protected activity',
+                            'recommended_action': 'collect_documentary_support',
+                            'missing_support_kinds': ['evidence'],
+                        }
+                    ]
+                }
+            }
+        })
+
+        packets = mediator._build_claim_support_packets(user_id='test-user')
+        protected_activity = packets['retaliation']['elements'][0]
+
+        assert protected_activity['support_status'] == 'partially_supported'
+        assert protected_activity['required_fact_bundle'] == [
+            'What protected activity occurred',
+            'When the protected activity occurred',
+            'Who received or observed the protected activity',
+            'How the protected activity was documented or can be corroborated',
+        ]
+        assert protected_activity['satisfied_fact_bundle'] == [
+            'What protected activity occurred',
+            'When the protected activity occurred',
+            'How the protected activity was documented or can be corroborated',
+        ]
+        assert protected_activity['missing_fact_bundle'] == [
+            'Who received or observed the protected activity',
+        ]
+
+    def test_build_claim_support_packets_clears_supported_bundle_without_fact_text(self):
+        """Supported elements should not retain a missing fact bundle just because the trace text is sparse."""
+        from mediator.mediator import Mediator
+        from unittest.mock import Mock
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'intake_case_file',
+            {
+                'candidate_claims': [
+                    {
+                        'claim_type': 'employment_discrimination',
+                        'required_elements': [
+                            {
+                                'element_id': 'adverse_action',
+                                'label': 'Adverse action',
+                                'blocking': True,
+                                'evidence_classes': ['termination_letter'],
+                            }
+                        ],
+                    }
+                ]
+            },
+        )
+        mediator.get_claim_support_validation = Mock(return_value={
+            'claims': {
+                'employment_discrimination': {
+                    'elements': [
+                        {
+                            'element_id': 'adverse_action',
+                            'element_text': 'Adverse action',
+                            'validation_status': 'supported',
+                            'recommended_action': '',
+                            'missing_support_kinds': [],
+                            'contradiction_candidate_count': 0,
+                            'proof_diagnostics': {},
+                            'gap_context': {
+                                'support_facts': [
+                                    {
+                                        'fact_id': 'fact-aa-1',
+                                    }
+                                ],
+                                'support_traces': [
+                                    {
+                                        'source_ref': 'artifact:termination-letter',
+                                        'support_ref': 'artifact:termination-letter',
+                                        'support_label': 'Termination letter',
+                                        'support_kind': 'evidence',
+                                        'source_family': 'evidence',
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            }
+        })
+        mediator.get_claim_support_gaps = Mock(return_value={'claims': {}})
+
+        packets = mediator._build_claim_support_packets(user_id='test-user')
+        adverse_action = packets['employment_discrimination']['elements'][0]
+
+        assert adverse_action['support_status'] == 'supported'
+        assert adverse_action['missing_fact_bundle'] == []
+        assert adverse_action['satisfied_fact_bundle'] == adverse_action['required_fact_bundle']
+
     def test_process_evidence_denoising_prioritizes_alignment_tasks_in_next_questions(self):
         """Evidence denoising should ask about unresolved shared ontology elements first."""
         from mediator.mediator import Mediator
@@ -875,6 +1049,71 @@ class TestMediatorThreePhaseIntegration:
         history = mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history')
         assert history[-1]['resolution_status'] == 'promoted_to_testimony'
         assert history[-1]['evidence_sequence'] == 2
+
+    def test_save_claim_support_document_promotes_answered_pending_review_update(self):
+        """Saving a document should advance matching answered-pending-review alignment updates."""
+        from mediator.mediator import Mediator
+        from unittest.mock import Mock
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_task_updates',
+            [
+                {
+                    'task_id': 'retaliation:protected_activity:fill_evidence_gaps',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'action': 'fill_evidence_gaps',
+                    'resolution_status': 'answered_pending_review',
+                    'status': 'resolved',
+                    'answer_preview': 'HR email attachment',
+                }
+            ],
+        )
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_task_update_history',
+            [
+                {
+                    'task_id': 'retaliation:protected_activity:fill_evidence_gaps',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'resolution_status': 'answered_pending_review',
+                    'status': 'resolved',
+                    'evidence_sequence': 3,
+                    'answer_preview': 'HR email attachment',
+                }
+            ],
+        )
+        mediator.submit_evidence = Mock(return_value={
+            'record_id': 'doc-record-1',
+            'artifact_id': 'artifact-1',
+            'claim_element_id': 'protected_activity',
+        })
+
+        result = mediator.save_claim_support_document(
+            claim_type='retaliation',
+            claim_element_id='protected_activity',
+            claim_element_text='Protected activity',
+            document_text='HR email attachment',
+            document_label='HR email',
+        )
+
+        assert result['recorded'] is True
+        current_updates = mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_updates')
+        assert current_updates[0]['resolution_status'] == 'promoted_to_document'
+        assert current_updates[0]['promotion_ref'] == 'doc-record-1'
+        history = mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history')
+        assert history[-1]['resolution_status'] == 'promoted_to_document'
+        assert history[-1]['evidence_sequence'] == 4
 
     def test_save_claim_support_document_promotes_answered_pending_review_update(self):
         """Saving a document should advance matching answered-pending-review alignment updates."""
