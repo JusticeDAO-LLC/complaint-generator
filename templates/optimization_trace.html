@@ -325,6 +325,7 @@
             <section class="panel">
                 <h2>Intake Evidence Snapshot</h2>
                 <ul id="traceEvidenceList"><li class="muted">No trace loaded.</li></ul>
+                <div id="traceEvidenceManualReview"></div>
                 <div id="traceEvidenceTriage"></div>
                 <div id="traceEvidenceQuestionTargets"></div>
                 <div id="traceEvidenceLinks" class="inline-link-row"></div>
@@ -691,6 +692,47 @@
             return '';
         }
 
+        function summarizeAlignmentManualReviewBlockers(updates) {
+            const updateList = Array.isArray(updates) ? updates : [];
+            const latestByTask = new Map();
+
+            updateList.forEach((update, index) => {
+                const fallbackTaskId = [
+                    update && update.claim_type,
+                    update && update.claim_element_id,
+                    update && update.action,
+                    index,
+                ].filter(Boolean).join(':');
+                const taskId = String(update && update.task_id || fallbackTaskId || `alignment-task-${index}`);
+                const existingEntry = latestByTask.get(taskId);
+                const existingSequence = Number(existingEntry && existingEntry.update && existingEntry.update.evidence_sequence);
+                const currentSequence = Number(update && update.evidence_sequence);
+                const currentOrder = index;
+                const existingOrder = existingEntry ? existingEntry.order : -1;
+                const replaceEntry = !existingEntry
+                    || (Number.isFinite(currentSequence) && (!Number.isFinite(existingSequence) || currentSequence >= existingSequence))
+                    || (!Number.isFinite(currentSequence) && currentOrder >= existingOrder);
+
+                if (replaceEntry) {
+                    latestByTask.set(taskId, { update, order: currentOrder });
+                }
+            });
+
+            return Array.from(latestByTask.values())
+                .map((entry) => entry.update)
+                .filter((update) => (
+                    String(update && update.resolution_status || '').trim().toLowerCase() === 'needs_manual_review'
+                    && String(update && update.status || '').trim().toLowerCase() !== 'resolved'
+                ))
+                .sort((left, right) => {
+                    const leftSequence = Number(left && left.evidence_sequence);
+                    const rightSequence = Number(right && right.evidence_sequence);
+                    const normalizedLeft = Number.isFinite(leftSequence) ? leftSequence : 0;
+                    const normalizedRight = Number.isFinite(rightSequence) ? rightSequence : 0;
+                    return normalizedRight - normalizedLeft;
+                });
+        }
+
         function renderTrace(payload) {
             activeTracePayload = payload;
             setExportEnabled(true);
@@ -715,6 +757,16 @@
             const focusSections = Array.from(new Set(iterations
                 .map((entry) => entry && typeof entry.focus_section === 'string' ? entry.focus_section : '')
                 .filter(Boolean)));
+            const visibleAlignmentTaskUpdates = Array.isArray(intakeCaseSummary.alignment_task_update_history)
+                && intakeCaseSummary.alignment_task_update_history.length
+                ? intakeCaseSummary.alignment_task_update_history
+                : (Array.isArray(intakeCaseSummary.alignment_task_updates) ? intakeCaseSummary.alignment_task_updates : []);
+            const manualReviewBlockers = summarizeAlignmentManualReviewBlockers(visibleAlignmentTaskUpdates);
+            const manualReviewClaims = new Set(
+                manualReviewBlockers
+                    .map((update) => String(update && update.claim_type || '').trim())
+                    .filter(Boolean)
+            );
             const reliefTargeted = focusSections.includes('requested_relief');
             const questionGoalChips = Object.entries(questionGoalCounts).map(([goal, count]) => ({
                 label: humanizeKey(goal),
@@ -836,6 +888,22 @@
                 renderTriageChipRow('Question Target Sections', questionSectionChips),
                 renderTriageChipRow('Question Blocking Levels', questionBlockingChips, (item) => item.tone),
             ].filter(Boolean).join('');
+            document.getElementById('traceEvidenceManualReview').innerHTML = manualReviewBlockers.length
+                ? `<div class="muted"><strong>Manual Review Blockers</strong></div><ul>${[
+                    `Manual review blockers: ${manualReviewBlockers.length}`,
+                    `Claims impacted: ${manualReviewClaims.size}`,
+                    ...manualReviewBlockers.slice(0, 3).map((update) => {
+                        const claimLabel = humanizeKey(update.claim_type || 'claim');
+                        const elementLabel = update.claim_element_label || update.claim_element_id || 'alignment task';
+                        const fragments = [
+                            `${claimLabel}: ${elementLabel}`,
+                            update.action ? `action ${humanizeKey(update.action)}` : '',
+                            update.evidence_artifact_id ? `artifact ${update.evidence_artifact_id}` : '',
+                        ].filter(Boolean);
+                        return fragments.join(' | ');
+                    }),
+                ].map((value) => `<li>${escapeHtml(value)}</li>`).join('')}</ul>`
+                : '';
             const questionTargetLinks = Object.keys(questionSectionCounts).map((sectionKey) => {
                 const supportKind = inferQuestionSupportKind(sectionKey, questionGoalCounts);
                 const reviewUrl = appendTaskUpdateIntentToReviewUrl(

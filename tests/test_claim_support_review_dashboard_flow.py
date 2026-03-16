@@ -730,6 +730,7 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert "Task Update Filter" in page_html
     assert "alignment-task-update-filter" in page_html
     assert "alignment-task-update-filter-summary" in page_html
+    assert "pending_review" in page_html
     assert "alignment-task-manual-review-summary" in page_html
     assert "alignment-task-manual-review-list" in page_html
     assert "manual review blockers: ${manualReviewBlockers.length}" in page_html
