@@ -711,6 +711,22 @@ def test_summary_with_selection_rationale_prefixes_tradeoff_note():
     assert combined.endswith("HACC policy says applicants must be informed at application that reasonable accommodation is available.")
 
 
+def test_summary_with_selection_rationale_mentions_when_relief_posture_is_materially_similar():
+    summary = "HACC policy says applicants must be informed at application that reasonable accommodation is available."
+    selection_rationale = {
+        "selected_preset": "accommodation_focus",
+        "tradeoff_note": "best for accommodation framing + protected-basis framing; runner-up is stronger on retaliation-heavy framing",
+        "winner_relief_overview": "Same relief overview.",
+        "runner_up_relief_overview": "Same relief overview.",
+        "shared_relief_families": ["other"],
+    }
+
+    combined = MODULE._summary_with_selection_rationale(summary, selection_rationale)
+
+    assert "Relief posture was materially similar across the winner and runner-up" in combined
+    assert combined.endswith("HACC policy says applicants must be informed at application that reasonable accommodation is available.")
+
+
 def test_annotate_causes_with_selection_rationale_marks_winner_unique_and_shared_roles():
     causes = [
         {
