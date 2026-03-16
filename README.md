@@ -1,17 +1,3 @@
-Adversarial autopatch can now be run non-interactively through the standard launcher using [config.adversarial_autopatch_demo.json](/home/barberb/complaint-generator/config.adversarial_autopatch_demo.json):
-
-```bash
-./.venv/bin/python run.py --config config.adversarial_autopatch_demo.json
-```
-
-That emits a summary JSON payload to stdout and writes patch artifacts under [tmp/run_py_adversarial_autopatch](/home/barberb/complaint-generator/tmp/run_py_adversarial_autopatch) by default.
-
-If the live `llm_router` stack is available, the same launcher path can prefer real configured backends with [config.adversarial_autopatch_live.json](/home/barberb/complaint-generator/config.adversarial_autopatch_live.json). The demo config sets `demo_backend=true`; the live config leaves demo mode off and now prefers the Hugging Face router first, which requires `HF_TOKEN` or `HUGGINGFACE_HUB_TOKEN` in the environment.
-
-For repeatable multi-session live runs, use [config.adversarial_autopatch_live_batch.json](/home/barberb/complaint-generator/config.adversarial_autopatch_live_batch.json), which sets `num_sessions=4` and `max_parallel=2` for a small batch benchmark through the standard launcher and uses the same Hugging Face-router-first backend choice.
-
-For environments with several possible routed providers, [config.adversarial_autopatch_live_multibackend.json](/home/barberb/complaint-generator/config.adversarial_autopatch_live_multibackend.json) lists multiple `MEDIATOR.backends`. It now probes `hf-router` first, then `codex_cli`, and leaves `accelerate` as a last fallback. The live runner records `runtime.selected_backend_id` plus `runtime.probe_attempts` in the output payload so missing tokens, missing CLIs, or accelerate fallback messages are visible directly.
-
 # Complaint Generator
 ### by JusticeDAO
 
@@ -43,7 +29,7 @@ A sophisticated workflow inspired by denoising diffusion:
 - **Phase 2: Evidence Gathering** - Identify and fill evidence gaps with intelligent web discovery
 - **Phase 3: Formalization** - Generate formal complaints using neurosymbolic legal matching
 
-Includes convergence detection, graph persistence, and 33 comprehensive tests.
+Includes convergence detection, graph persistence, and comprehensive tests.
 
 [Learn more →](docs/THREE_PHASE_SYSTEM.md) | [Example →](examples/three_phase_example.py)
 
@@ -60,7 +46,7 @@ Comprehensive support for:
 
 Each type includes 390+ domain keywords, 90+ legal patterns, and automated decision trees.
 
-[Complaint Analysis →](docs/COMPLAINT_ANALYSIS_INTEGRATION.md) | [DEI Analysis →](docs/HACC_INTEGRATION.md)
+[Complaint Analysis →](docs/COMPLAINT_ANALYSIS_INTEGRATION.md) | [DEI Analysis →](docs/HACC_INTEGRATION.md) | [Probate Integration →](docs/PROBATE_INTEGRATION.md)
 
 ### 🤖 Multi-Provider LLM Support
 
@@ -71,15 +57,16 @@ Flexible AI backend integration with automatic fallback:
 - Google Gemini
 - GitHub Copilot
 - Hugging Face local models and Hugging Face router/inference endpoints
+- Codex CLI
 
-[LLM Router Guide →](docs/LLM_ROUTER.md)
+[LLM Router Guide →](docs/LLM_ROUTER.md) | [Backends →](docs/BACKENDS.md)
 
 ### 🔍 Comprehensive Legal Research
 
 Automated research from authoritative sources:
 
 - **US Code** - Federal statutes
-- **Federal Register** - Regulations and notices  
+- **Federal Register** - Regulations and notices
 - **RECAP Archive** - Court decisions and case law
 - **Brave Search** - Current web content
 - **Common Crawl** - Historical web archives
@@ -107,6 +94,30 @@ Quality assurance through adversarial AI:
 - 18+ comprehensive tests
 
 [Adversarial Testing →](docs/ADVERSARIAL_HARNESS.md)
+
+### 📊 Claim Support Review Dashboard
+
+Operator workflow for testimony capture, document intake, and legal sufficiency review:
+
+- Coverage summaries and follow-up execution controls
+- Manual review resolution and recent history
+- Claim coverage summary, support gaps, and contradiction candidates
+- Claim reasoning review and proof-readiness scoring
+- Accessible at `/claim-support-review`
+
+[Dashboard Improvement Plan →](docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_IMPROVEMENT_PLAN.md) | [Execution Backlog →](docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md)
+
+### 🧠 GraphRAG Ontology Optimization
+
+Knowledge-graph-powered document analysis and reasoning:
+
+- `OntologyGenerator` for LLM-driven entity and relationship extraction
+- `QueryUnifiedOptimizer` and `WikipediaOptimizer` for corpus enrichment
+- `StreamingExtractor` for high-throughput pipelines
+- Pre-compiled regex patterns and entity position indexing for performance
+- Statistical methods: confidence bounds, percentiles, IQR, EWMA, kurtosis
+
+[GraphRAG API →](docs/API_REFERENCE_GRAPHRAG.md) | [Common Optimizer API →](docs/API_REFERENCE_COMMON.md) | [Agentic Optimizer API →](docs/API_REFERENCE_AGENTIC.md) | [Performance Tuning →](docs/PERFORMANCE_TUNING.md)
 
 ---
 
@@ -201,6 +212,24 @@ HF_TOKEN="$HF_TOKEN" .venv/bin/python -m pytest \
     -k review_surface_live_huggingface_router_optimization_smoke \
     --run-network --run-llm
 ```
+
+**Adversarial Autopatch (Non-Interactive):**
+```bash
+# Demo mode (no live LLM required)
+./.venv/bin/python run.py --config config.adversarial_autopatch_demo.json
+
+# Live mode with Hugging Face router (requires HF_TOKEN)
+export HF_TOKEN="your-huggingface-token"
+./.venv/bin/python run.py --config config.adversarial_autopatch_live.json
+
+# Batch mode: 4 sessions, 2 parallel
+./.venv/bin/python run.py --config config.adversarial_autopatch_live_batch.json
+
+# Multi-backend: hf-router → codex_cli → accelerate fallback
+./.venv/bin/python run.py --config config.adversarial_autopatch_live_multibackend.json
+```
+
+The demo config sets `demo_backend=true`. The live config prefers the Hugging Face router first (requires `HF_TOKEN` or `HUGGINGFACE_HUB_TOKEN`). All configs emit a summary JSON payload to stdout and write patch artifacts under `tmp/` by default. The live runner records `runtime.selected_backend_id` and `runtime.probe_attempts` in the output payload.
 
 The formal complaint builder and `/api/documents/formal-complaint` endpoint also support affidavit-specific exhibit controls. Use `affidavit_supporting_exhibits` to provide a curated affidavit exhibit list, or set `affidavit_include_complaint_exhibits=false` when the affidavit should not inherit the complaint's exhibit list by default.
 
@@ -301,7 +330,7 @@ The filing draft includes a traditional court header and caption, nature of the 
 jurisdiction and venue, factual allegations, claims for relief with legal standards,
 requested relief, and linked exhibits sourced from stored evidence.
 
-[More examples →](docs/EXAMPLES.md) - 21 complete examples
+[More examples →](docs/EXAMPLES.md) - 23 complete examples
 
 ---
 
@@ -336,12 +365,28 @@ User Interface (CLI/Web) → Mediator → LLM Router Backend
 - [Three-Phase System](docs/THREE_PHASE_SYSTEM.md) - Processing workflow
 - [LLM Router](docs/LLM_ROUTER.md) - Multi-provider integration
 - [Architecture](docs/ARCHITECTURE.md) - System design
+- [Backends](docs/BACKENDS.md) - LLM backend configuration
+
+### GraphRAG & Optimization APIs
+- [GraphRAG Optimizer API](docs/API_REFERENCE_GRAPHRAG.md) - OntologyGenerator, QueryUnifiedOptimizer, WikipediaOptimizer, StreamingExtractor
+- [Common Optimizer API](docs/API_REFERENCE_COMMON.md) - BaseOptimizer, OptimizerConfig, AsyncBatchProcessor
+- [Agentic Optimizer API](docs/API_REFERENCE_AGENTIC.md) - AgenticOptimizer, AgenticCLI, FeedbackLoop
+- [Usage Examples](docs/USAGE_EXAMPLES.md) - Complete optimizer examples
+- [Performance Tuning](docs/PERFORMANCE_TUNING.md) - GraphRAG pipeline optimization guide
+
+### Claim Support & Review
+- [Payload Contracts](docs/PAYLOAD_CONTRACTS.md) - Central reference for all response payloads
+- [Claim Support Review Dashboard](docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_IMPROVEMENT_PLAN.md) - Dashboard roadmap
+- [Dashboard Execution Backlog](docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md) - Implementation milestones
+- [Intake Evidence Plan](docs/INTAKE_EVIDENCE_IMPROVEMENT_PLAN.md) - Phase 1/2 improvement roadmap
 
 ### IPFS Datasets Py Roadmap
-- [Improvement Plan](docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md) - Comprehensive integration plan for legal scrapers, legal dataset search, graph databases, theorem provers, web archiving, search engines, and information organization
-- [Integration Guide](docs/IPFS_DATASETS_PY_INTEGRATION.md) - Current production integration model and adapter boundary
-- [Execution Backlog](docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md) - Workstream-by-workstream implementation backlog and sequencing
-- [Batch 1 Implementation Plan](docs/IPFS_DATASETS_PY_BATCH1_IMPLEMENTATION_PLAN.md) - Issue-sized execution plan for adapter contract stabilization, capability reporting, and import-boundary cleanup
+- [Improvement Plan](docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md) - Comprehensive integration plan
+- [Integration Guide](docs/IPFS_DATASETS_PY_INTEGRATION.md) - Current production integration model
+- [Execution Backlog](docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md) - Workstream-by-workstream backlog
+- [Batch 1 Implementation Plan](docs/IPFS_DATASETS_PY_BATCH1_IMPLEMENTATION_PLAN.md) - Issue-sized execution plan
+- [Dependency Map](docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md) - Runtime dependency map
+- [Capability Matrix](docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md) - Validated module map
 
 ### Features
 - [Complaint Analysis](docs/COMPLAINT_ANALYSIS_INTEGRATION.md) - 14 complaint types
@@ -350,15 +395,16 @@ User Interface (CLI/Web) → Mediator → LLM Router Backend
 - [Web Evidence](docs/WEB_EVIDENCE_DISCOVERY.md) - Automated discovery
 - [Adversarial Testing](docs/ADVERSARIAL_HARNESS.md) - Quality assurance
 - [DEI Analysis](docs/HACC_INTEGRATION.md) - Policy analysis
+- [Probate Integration](docs/PROBATE_INTEGRATION.md) - Probate & estate law
 
-[Complete documentation index →](DOCUMENTATION_INDEX.md) - 42+ guides, 250+ pages
+[Complete documentation index →](DOCUMENTATION_INDEX.md) - 60+ guides, 250+ pages
 
 ---
 
 ## 🧪 Testing
 
-- **150+ Tests** across all components
-- **60+ Test Classes** organized by feature
+- **100+ Test Files** across all components
+- **340+ Test Classes** organized by feature
 - **Unit & Integration Tests** with pytest
 
 ```bash
@@ -385,8 +431,8 @@ pytest --cov=. --cov-report=html  # With coverage
 
 ## 📊 System Requirements
 
-**Minimum:** Python 3.8+, 4 GB RAM, 10 GB storage  
-**Recommended:** Python 3.10+, 8 GB RAM, 50 GB SSD  
+**Minimum:** Python 3.8+, 4 GB RAM, 10 GB storage
+**Recommended:** Python 3.10+, 8 GB RAM, 50 GB SSD
 **For Local LLMs:** 16+ GB RAM, GPU with CUDA, 100+ GB storage
 
 ---
@@ -407,17 +453,24 @@ We welcome contributions! [Contributing Guidelines →](CONTRIBUTING.md)
 
 ```
 complaint-generator/
-├── adversarial_harness/    # Adversarial testing
-├── applications/            # CLI and web server
-├── backends/                # LLM integrations
-├── complaint_analysis/      # 14 complaint types
-├── complaint_phases/        # 3-phase processing
-├── docs/                    # 32 documentation files
-├── examples/                # 21 usage examples
-├── mediator/                # Core orchestration
-├── templates/               # Web UI
-├── tests/                   # 150+ tests
-└── config.llm_router.json   # Configuration
+├── adversarial_harness/    # Adversarial testing (complainant, critic, optimizer agents)
+├── applications/           # CLI, web server, document & review API/UI
+├── backends/               # LLM integrations (llm_router, huggingface, openai, workstation)
+├── complaint_analysis/     # 14 complaint types with keywords, patterns, decision trees
+├── complaint_phases/       # 3-phase processing (denoiser, knowledge/dependency/legal graphs)
+├── docs/                   # 61 documentation files
+├── examples/               # 23 usage example scripts
+├── integrations/           # IPFS datasets adapter layer
+├── lib/                    # Logging and shared utilities
+├── mediator/               # Core orchestration, hooks, state, formal documents
+├── scripts/                # 13 CLI and utility scripts
+├── statefiles/             # DuckDB state and evidence databases
+├── templates/              # Web UI (HTML/Jinja2)
+├── tests/                  # 100+ test files, 340+ test classes
+├── config.llm_router.json          # Main LLM router configuration
+├── config.huggingface_router.json  # HF router configuration
+├── config.review_surface.json      # Review surface configuration
+└── run.py                          # Application entry point
 ```
 
 ---
@@ -443,9 +496,14 @@ rm statefiles/*.duckdb-wal
 
 ## 📈 Project Status
 
-✅ Core systems implemented  
-✅ 150+ tests passing  
-🚧 Web UI polish (in progress)  
+✅ Core systems implemented
+✅ 100+ test files, 340+ test classes passing
+✅ GraphRAG ontology optimization APIs
+✅ Claim Support Review Dashboard
+✅ Agentic document optimization with HF router
+✅ Adversarial autopatch (demo and live modes)
+🚧 Web UI polish (in progress)
+🚧 IPFS Datasets Py full integration (in progress)
 📋 Mobile app (planned)
 
 ---
@@ -465,5 +523,5 @@ The Complaint Generator helps organize information and generate documents. It do
 
 ---
 
-**Developed by JusticeDAO** | Built with [ipfs_datasets_py](https://github.com/endomorphosis/ipfs_datasets_py)  
-**Version 1.0** | Last Updated: 2026-02-10
+**Developed by JusticeDAO** | Built with [ipfs_datasets_py](https://github.com/endomorphosis/ipfs_datasets_py)
+**Version 1.0** | Last Updated: 2026-03-16
