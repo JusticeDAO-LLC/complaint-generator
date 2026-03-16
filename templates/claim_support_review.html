@@ -1990,6 +1990,30 @@
                     if (update.evidence_artifact_id) {
                         chips.push(`<span class="chip">artifact: ${update.evidence_artifact_id}</span>`);
                     }
+                    if (update.answer_preview) {
+                        chips.push(`<span class="chip">answer: ${update.answer_preview}</span>`);
+                    }
+                    const prefillButtons = normalizedResolutionStatus === 'answered_pending_review'
+                        ? `
+                            <div class="button-row" style="margin-top: 12px;">
+                                <button
+                                    class="button-tertiary prefill-testimony-update-button"
+                                    type="button"
+                                    data-claim-element-id="${update.claim_element_id || ''}"
+                                    data-claim-element-text="${update.claim_element_label || update.claim_element_id || ''}"
+                                    data-question-text="${(update.answer_preview || '').replace(/"/g, '&quot;')}"
+                                >Load Into Testimony Form</button>
+                                <button
+                                    class="button-tertiary prefill-document-update-button"
+                                    type="button"
+                                    data-claim-element-id="${update.claim_element_id || ''}"
+                                    data-claim-element-text="${update.claim_element_label || update.claim_element_id || ''}"
+                                    data-document-label="${(update.claim_element_label || update.claim_element_id || 'Alignment update').replace(/"/g, '&quot;')}"
+                                    data-document-text="${(update.answer_preview || '').replace(/"/g, '&quot;')}"
+                                >Load Into Document Form</button>
+                            </div>
+                        `
+                        : '';
                     return `
                         <article class="task-card">
                             <div class="row-head">
@@ -2002,6 +2026,7 @@
                             <div class="chip-row" style="margin-top: 10px;">
                                 ${chips.join('')}
                             </div>
+                            ${prefillButtons}
                         </article>
                     `;
                 }).join('');
@@ -3068,6 +3093,24 @@
             document.getElementById('document-file-input').value = '';
         }
 
+        function prefillDocumentForm(values) {
+            if (values.claimElementId) {
+                document.getElementById('document-element-id').value = values.claimElementId;
+            }
+            if (values.claimElementText) {
+                document.getElementById('document-element-text').value = values.claimElementText;
+            }
+            if (values.documentLabel) {
+                document.getElementById('document-label').value = values.documentLabel;
+            }
+            if (values.documentText) {
+                const documentText = document.getElementById('document-text');
+                if (!documentText.value.trim()) {
+                    documentText.value = values.documentText;
+                }
+            }
+        }
+
         function buildDocumentRequest() {
             return {
                 claim_type: document.getElementById('claim-type').value.trim() || null,
@@ -3312,13 +3355,35 @@
                 return;
             }
             const testimonyButton = event.target.closest('.prefill-testimony-button');
-            if (!testimonyButton) return;
-            prefillTestimonyForm({
-                claimElementId: testimonyButton.dataset.claimElementId || '',
-                claimElementText: testimonyButton.dataset.claimElementText || '',
-                questionText: testimonyButton.dataset.questionText || '',
-            });
-            setStatus('Testimony form prefilled from selected question.');
+            if (testimonyButton) {
+                prefillTestimonyForm({
+                    claimElementId: testimonyButton.dataset.claimElementId || '',
+                    claimElementText: testimonyButton.dataset.claimElementText || '',
+                    questionText: testimonyButton.dataset.questionText || '',
+                });
+                setStatus('Testimony form prefilled from selected question.');
+                return;
+            }
+            const testimonyUpdateButton = event.target.closest('.prefill-testimony-update-button');
+            if (testimonyUpdateButton) {
+                prefillTestimonyForm({
+                    claimElementId: testimonyUpdateButton.dataset.claimElementId || '',
+                    claimElementText: testimonyUpdateButton.dataset.claimElementText || '',
+                    questionText: testimonyUpdateButton.dataset.questionText || '',
+                });
+                setStatus('Testimony form prefilled from pending-review alignment update.');
+                return;
+            }
+            const documentUpdateButton = event.target.closest('.prefill-document-update-button');
+            if (documentUpdateButton) {
+                prefillDocumentForm({
+                    claimElementId: documentUpdateButton.dataset.claimElementId || '',
+                    claimElementText: documentUpdateButton.dataset.claimElementText || '',
+                    documentLabel: documentUpdateButton.dataset.documentLabel || '',
+                    documentText: documentUpdateButton.dataset.documentText || '',
+                });
+                setStatus('Document form prefilled from pending-review alignment update.');
+            }
         });
         if (applyQueryPrefill()) {
             setStatus('Review prefilled from document workflow.');

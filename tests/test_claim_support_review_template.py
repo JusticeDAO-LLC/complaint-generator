@@ -44,6 +44,12 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "answered_pending_review" in content
     assert "answered, pending review" in content
     assert "review state: awaiting support validation" in content
+    assert "prefill-testimony-update-button" in content
+    assert "prefill-document-update-button" in content
+    assert "Load Into Document Form" in content
+    assert "prefillDocumentForm" in content
+    assert "Testimony form prefilled from pending-review alignment update." in content
+    assert "Document form prefilled from pending-review alignment update." in content
     assert "intake only:" in content
     assert "evidence only:" in content
     assert "testimony-list" in content
