@@ -543,8 +543,15 @@ def test_selection_rationale_from_matrix_captures_tradeoff_metadata():
             "winner_only_theory_families": ["accommodation", "protected_basis"],
             "runner_up_only_theory_families": ["retaliation"],
             "shared_theory_families": ["process"],
+            "winner_relief_overview": "winner relief overview",
+            "runner_up_relief_overview": "runner relief overview",
+            "winner_only_relief_families": ["protected_basis"],
+            "runner_up_only_relief_families": ["retaliation"],
+            "shared_relief_families": ["process"],
             "winner_only_claims": ["Fair Housing Act / Section 504 Accommodation Theory"],
             "runner_up_only_claims": ["Retaliation for Protected Fair Housing Activity"],
+            "winner_only_relief": ["Protected-basis remedies."],
+            "runner_up_only_relief": ["Retaliation remedies."],
         },
     }
 
@@ -555,6 +562,8 @@ def test_selection_rationale_from_matrix_captures_tradeoff_metadata():
     assert rationale["tradeoff_note"].startswith("best for accommodation framing")
     assert rationale["runner_up_preset"] == "administrative_plan_retaliation"
     assert rationale["winner_only_theory_families"] == ["accommodation", "protected_basis"]
+    assert rationale["winner_only_relief_families"] == ["protected_basis"]
+    assert rationale["winner_only_relief"] == ["Protected-basis remedies."]
 
 
 def test_markdown_includes_selection_rationale_section():
@@ -573,6 +582,13 @@ def test_markdown_includes_selection_rationale_section():
             "winner_only_theory_families": ["accommodation", "protected_basis"],
             "runner_up_only_theory_families": ["retaliation"],
             "shared_theory_families": ["process"],
+            "winner_relief_overview": "winner relief overview",
+            "runner_up_relief_overview": "runner relief overview",
+            "winner_only_relief_families": ["protected_basis"],
+            "runner_up_only_relief_families": ["retaliation"],
+            "shared_relief_families": ["process"],
+            "winner_only_relief": ["Protected-basis remedies."],
+            "runner_up_only_relief": ["Retaliation remedies."],
         },
         "caption": {
             "court": "HUD",
@@ -624,6 +640,13 @@ def test_markdown_includes_selection_rationale_section():
     assert "- Selected preset: accommodation_focus" in markdown
     assert "- Why this preset won: best for accommodation framing + protected-basis framing; runner-up is stronger on retaliation-heavy framing" in markdown
     assert "- Runner-up preset: administrative_plan_retaliation" in markdown
+    assert "- Winner relief overview: winner relief overview" in markdown
+    assert "- Runner-up relief overview: runner relief overview" in markdown
+    assert "- Winner-only relief families: protected_basis" in markdown
+    assert "- Runner-up-only relief families: retaliation" in markdown
+    assert "- Shared relief families: process" in markdown
+    assert "- Winner-only relief items: Protected-basis remedies." in markdown
+    assert "- Runner-up-only relief items: Retaliation remedies." in markdown
     assert "## Relief Selection Summary" in markdown
     assert "families=process; role=shared_baseline; related_claims=Cause" in markdown
     assert "## Requested Administrative Relief" in markdown

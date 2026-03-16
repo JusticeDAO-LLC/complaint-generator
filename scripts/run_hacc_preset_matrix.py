@@ -271,16 +271,36 @@ def _write_markdown_report(
             runner_only_families = list(delta.get("runner_up_only_theory_families") or [])
             shared_families = list(delta.get("shared_theory_families") or [])
             changed_shared = list(delta.get("changed_shared_claims") or [])
+            winner_only_relief = list(delta.get("winner_only_relief") or [])
+            runner_only_relief = list(delta.get("runner_up_only_relief") or [])
+            winner_only_relief_families = list(delta.get("winner_only_relief_families") or [])
+            runner_only_relief_families = list(delta.get("runner_up_only_relief_families") or [])
+            shared_relief_families = list(delta.get("shared_relief_families") or [])
+            changed_shared_relief = list(delta.get("changed_shared_relief") or [])
             if winner_only_families:
                 lines.append(f"- Winner-only theory families: {', '.join(winner_only_families)}")
             if runner_only_families:
                 lines.append(f"- Runner-up-only theory families: {', '.join(runner_only_families)}")
             if shared_families:
                 lines.append(f"- Shared theory families: {', '.join(shared_families)}")
+            if delta.get("winner_relief_overview"):
+                lines.append(f"- Winner relief overview: {delta['winner_relief_overview']}")
+            if delta.get("runner_up_relief_overview"):
+                lines.append(f"- Runner-up relief overview: {delta['runner_up_relief_overview']}")
+            if winner_only_relief_families:
+                lines.append(f"- Winner-only relief families: {', '.join(winner_only_relief_families)}")
+            if runner_only_relief_families:
+                lines.append(f"- Runner-up-only relief families: {', '.join(runner_only_relief_families)}")
+            if shared_relief_families:
+                lines.append(f"- Shared relief families: {', '.join(shared_relief_families)}")
             if winner_only:
                 lines.append(f"- Winner-only claims: {', '.join(winner_only)}")
             if runner_only:
                 lines.append(f"- Runner-up-only claims: {', '.join(runner_only)}")
+            if winner_only_relief:
+                lines.append(f"- Winner-only relief items: {', '.join(winner_only_relief)}")
+            if runner_only_relief:
+                lines.append(f"- Runner-up-only relief items: {', '.join(runner_only_relief)}")
             for item in changed_shared:
                 lines.append(
                     "- Shared claim changed: {title} | winner tags={winner_tags} | runner-up tags={runner_tags} | winner exhibits={winner_exhibits} | runner-up exhibits={runner_up_exhibits}".format(
@@ -289,6 +309,16 @@ def _write_markdown_report(
                         runner_tags=", ".join(item.get("runner_up_tags") or []) or "none",
                         winner_exhibits="; ".join(item.get("winner_exhibits") or []) or "none",
                         runner_up_exhibits="; ".join(item.get("runner_up_exhibits") or []) or "none",
+                    )
+                )
+            for item in changed_shared_relief:
+                lines.append(
+                    "- Shared relief changed: {text} | winner families={winner_families} | runner-up families={runner_up_families} | winner role={winner_role} | runner-up role={runner_up_role}".format(
+                        text=item.get("text") or "",
+                        winner_families=", ".join(item.get("winner_families") or []) or "none",
+                        runner_up_families=", ".join(item.get("runner_up_families") or []) or "none",
+                        winner_role=item.get("winner_role") or "none",
+                        runner_up_role=item.get("runner_up_role") or "none",
                     )
                 )
             lines.extend(["",])
@@ -368,16 +398,36 @@ def _write_markdown_report(
             runner_only_families = list(champion_delta.get("runner_up_only_theory_families") or [])
             shared_families = list(champion_delta.get("shared_theory_families") or [])
             changed_shared = list(champion_delta.get("changed_shared_claims") or [])
+            winner_only_relief = list(champion_delta.get("winner_only_relief") or [])
+            runner_only_relief = list(champion_delta.get("runner_up_only_relief") or [])
+            winner_only_relief_families = list(champion_delta.get("winner_only_relief_families") or [])
+            runner_only_relief_families = list(champion_delta.get("runner_up_only_relief_families") or [])
+            shared_relief_families = list(champion_delta.get("shared_relief_families") or [])
+            changed_shared_relief = list(champion_delta.get("changed_shared_relief") or [])
             if winner_only_families:
                 lines.append(f"- Winner-only theory families: {', '.join(winner_only_families)}")
             if runner_only_families:
                 lines.append(f"- Runner-up-only theory families: {', '.join(runner_only_families)}")
             if shared_families:
                 lines.append(f"- Shared theory families: {', '.join(shared_families)}")
+            if champion_delta.get("winner_relief_overview"):
+                lines.append(f"- Winner relief overview: {champion_delta['winner_relief_overview']}")
+            if champion_delta.get("runner_up_relief_overview"):
+                lines.append(f"- Runner-up relief overview: {champion_delta['runner_up_relief_overview']}")
+            if winner_only_relief_families:
+                lines.append(f"- Winner-only relief families: {', '.join(winner_only_relief_families)}")
+            if runner_only_relief_families:
+                lines.append(f"- Runner-up-only relief families: {', '.join(runner_only_relief_families)}")
+            if shared_relief_families:
+                lines.append(f"- Shared relief families: {', '.join(shared_relief_families)}")
             if winner_only:
                 lines.append(f"- Winner-only claims: {', '.join(winner_only)}")
             if runner_only:
                 lines.append(f"- Runner-up-only claims: {', '.join(runner_only)}")
+            if winner_only_relief:
+                lines.append(f"- Winner-only relief items: {', '.join(winner_only_relief)}")
+            if runner_only_relief:
+                lines.append(f"- Runner-up-only relief items: {', '.join(runner_only_relief)}")
             for item in changed_shared:
                 lines.append(
                     "- Shared claim changed: {title} | winner tags={winner_tags} | runner-up tags={runner_tags} | winner exhibits={winner_exhibits} | runner-up exhibits={runner_up_exhibits}".format(
@@ -386,6 +436,16 @@ def _write_markdown_report(
                         runner_tags=", ".join(item.get("runner_up_tags") or []) or "none",
                         winner_exhibits="; ".join(item.get("winner_exhibits") or []) or "none",
                         runner_up_exhibits="; ".join(item.get("runner_up_exhibits") or []) or "none",
+                    )
+                )
+            for item in changed_shared_relief:
+                lines.append(
+                    "- Shared relief changed: {text} | winner families={winner_families} | runner-up families={runner_up_families} | winner role={winner_role} | runner-up role={runner_up_role}".format(
+                        text=item.get("text") or "",
+                        winner_families=", ".join(item.get("winner_families") or []) or "none",
+                        runner_up_families=", ".join(item.get("runner_up_families") or []) or "none",
+                        winner_role=item.get("winner_role") or "none",
+                        runner_up_role=item.get("runner_up_role") or "none",
                     )
                 )
         lines.append("")
@@ -489,6 +549,19 @@ def _claim_selection_theory_families(summary: List[Dict[str, Any]]) -> List[str]
     return sorted({label for item in summary for label in _semantic_theory_labels(item)})
 
 
+def _relief_summary_text_map(summary: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    return {
+        str(item.get("text") or "").strip(): dict(item)
+        for item in summary
+        if str(item.get("text") or "").strip()
+    }
+
+
+def _relief_semantic_families(item: Dict[str, Any]) -> List[str]:
+    families = [str(value) for value in list(item.get("strategic_families") or []) if str(value)]
+    return sorted(set(families)) or ["other"]
+
+
 def _build_claim_snapshot_delta(
     rows: List[Dict[str, Any]],
     details: List[Dict[str, Any]],
@@ -512,6 +585,8 @@ def _build_claim_snapshot_delta(
     runner_summary = list(runner_detail.get("claim_selection_summary") or [])
     if not winner_summary and not runner_summary:
         return {}
+    winner_relief_summary = list(winner_detail.get("relief_selection_summary") or [])
+    runner_relief_summary = list(runner_detail.get("relief_selection_summary") or [])
 
     winner_map = _claim_summary_title_map(winner_summary)
     runner_map = _claim_summary_title_map(runner_summary)
@@ -540,17 +615,52 @@ def _build_claim_snapshot_delta(
                 }
             )
 
+    winner_relief_map = _relief_summary_text_map(winner_relief_summary)
+    runner_relief_map = _relief_summary_text_map(runner_relief_summary)
+    winner_relief_texts = set(winner_relief_map)
+    runner_relief_texts = set(runner_relief_map)
+    shared_relief_texts = sorted(winner_relief_texts & runner_relief_texts)
+    winner_relief_semantic = sorted({label for item in winner_relief_summary for label in _relief_semantic_families(item)})
+    runner_relief_semantic = sorted({label for item in runner_relief_summary for label in _relief_semantic_families(item)})
+
+    changed_shared_relief: List[Dict[str, Any]] = []
+    for text in shared_relief_texts:
+        winner_item = winner_relief_map[text]
+        runner_item = runner_relief_map[text]
+        winner_families = [str(value) for value in list(winner_item.get("strategic_families") or []) if str(value)]
+        runner_families = [str(value) for value in list(runner_item.get("strategic_families") or []) if str(value)]
+        winner_role = str(winner_item.get("strategic_role") or "")
+        runner_role = str(runner_item.get("strategic_role") or "")
+        if winner_families != runner_families or winner_role != runner_role:
+            changed_shared_relief.append(
+                {
+                    "text": text,
+                    "winner_families": winner_families,
+                    "runner_up_families": runner_families,
+                    "winner_role": winner_role,
+                    "runner_up_role": runner_role,
+                }
+            )
+
     return {
         "winner_preset": winner_preset,
         "runner_up_preset": str(runner_up_row.get("preset") or ""),
         "winner_overview": winner_detail.get("claim_selection_overview") or "",
         "runner_up_overview": runner_detail.get("claim_selection_overview") or "",
+        "winner_relief_overview": winner_detail.get("relief_selection_overview") or "",
+        "runner_up_relief_overview": runner_detail.get("relief_selection_overview") or "",
         "winner_only_claims": sorted(winner_titles - runner_titles),
         "runner_up_only_claims": sorted(runner_titles - winner_titles),
         "winner_only_theory_families": sorted(set(winner_semantic) - set(runner_semantic)),
         "runner_up_only_theory_families": sorted(set(runner_semantic) - set(winner_semantic)),
         "shared_theory_families": sorted(set(winner_semantic) & set(runner_semantic)),
         "changed_shared_claims": changed_shared_claims,
+        "winner_only_relief": sorted(winner_relief_texts - runner_relief_texts),
+        "runner_up_only_relief": sorted(runner_relief_texts - winner_relief_texts),
+        "winner_only_relief_families": sorted(set(winner_relief_semantic) - set(runner_relief_semantic)),
+        "runner_up_only_relief_families": sorted(set(runner_relief_semantic) - set(winner_relief_semantic)),
+        "shared_relief_families": sorted(set(winner_relief_semantic) & set(runner_relief_semantic)),
+        "changed_shared_relief": changed_shared_relief,
     }
 
 

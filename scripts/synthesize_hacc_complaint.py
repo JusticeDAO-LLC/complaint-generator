@@ -82,6 +82,13 @@ def _selection_rationale_from_matrix(matrix_payload: Dict[str, Any], selection_s
         "shared_theory_families": [str(item) for item in list(winner_delta.get("shared_theory_families") or []) if str(item)],
         "winner_only_claims": [str(item) for item in list(winner_delta.get("winner_only_claims") or []) if str(item)],
         "runner_up_only_claims": [str(item) for item in list(winner_delta.get("runner_up_only_claims") or []) if str(item)],
+        "winner_relief_overview": str(winner_delta.get("winner_relief_overview") or "").strip(),
+        "runner_up_relief_overview": str(winner_delta.get("runner_up_relief_overview") or "").strip(),
+        "winner_only_relief_families": [str(item) for item in list(winner_delta.get("winner_only_relief_families") or []) if str(item)],
+        "runner_up_only_relief_families": [str(item) for item in list(winner_delta.get("runner_up_only_relief_families") or []) if str(item)],
+        "shared_relief_families": [str(item) for item in list(winner_delta.get("shared_relief_families") or []) if str(item)],
+        "winner_only_relief": [str(item) for item in list(winner_delta.get("winner_only_relief") or []) if str(item)],
+        "runner_up_only_relief": [str(item) for item in list(winner_delta.get("runner_up_only_relief") or []) if str(item)],
     }
     return {key: value for key, value in rationale.items() if value}
 
@@ -2032,10 +2039,24 @@ def _render_markdown(package: Dict[str, Any]) -> str:
             lines.append(f"- Runner-up-only theory families: {', '.join(selection_rationale['runner_up_only_theory_families'])}")
         if selection_rationale.get("shared_theory_families"):
             lines.append(f"- Shared theory families: {', '.join(selection_rationale['shared_theory_families'])}")
+        if selection_rationale.get("winner_relief_overview"):
+            lines.append(f"- Winner relief overview: {selection_rationale['winner_relief_overview']}")
+        if selection_rationale.get("runner_up_relief_overview"):
+            lines.append(f"- Runner-up relief overview: {selection_rationale['runner_up_relief_overview']}")
+        if selection_rationale.get("winner_only_relief_families"):
+            lines.append(f"- Winner-only relief families: {', '.join(selection_rationale['winner_only_relief_families'])}")
+        if selection_rationale.get("runner_up_only_relief_families"):
+            lines.append(f"- Runner-up-only relief families: {', '.join(selection_rationale['runner_up_only_relief_families'])}")
+        if selection_rationale.get("shared_relief_families"):
+            lines.append(f"- Shared relief families: {', '.join(selection_rationale['shared_relief_families'])}")
         if selection_rationale.get("winner_only_claims"):
             lines.append(f"- Winner-only claims: {', '.join(selection_rationale['winner_only_claims'])}")
         if selection_rationale.get("runner_up_only_claims"):
             lines.append(f"- Runner-up-only claims: {', '.join(selection_rationale['runner_up_only_claims'])}")
+        if selection_rationale.get("winner_only_relief"):
+            lines.append(f"- Winner-only relief items: {', '.join(selection_rationale['winner_only_relief'])}")
+        if selection_rationale.get("runner_up_only_relief"):
+            lines.append(f"- Runner-up-only relief items: {', '.join(selection_rationale['runner_up_only_relief'])}")
         lines.extend([
             "",
         ])

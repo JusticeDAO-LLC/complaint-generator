@@ -161,6 +161,7 @@ def test_build_claim_snapshot_delta_identifies_winner_only_and_changed_shared_cl
         {
             "preset": "accommodation_focus",
             "claim_selection_overview": "winner overview",
+            "relief_selection_overview": "winner relief overview",
             "claim_selection_summary": [
                 {
                     "title": "Accommodation Theory",
@@ -173,10 +174,23 @@ def test_build_claim_snapshot_delta_identifies_winner_only_and_changed_shared_cl
                     "selected_exhibits": [{"exhibit_id": "Exhibit B", "label": "ADMINISTRATIVE PLAN"}],
                 },
             ],
+            "relief_selection_summary": [
+                {
+                    "text": "Corrective action requiring clear notice.",
+                    "strategic_families": ["process"],
+                    "strategic_role": "winner_unique_strength",
+                },
+                {
+                    "text": "Protected-basis remedies.",
+                    "strategic_families": ["protected_basis"],
+                    "strategic_role": "winner_unique_strength",
+                },
+            ],
         },
         {
             "preset": "administrative_plan_retaliation",
             "claim_selection_overview": "runner overview",
+            "relief_selection_overview": "runner relief overview",
             "claim_selection_summary": [
                 {
                     "title": "Accommodation Theory",
@@ -187,6 +201,18 @@ def test_build_claim_snapshot_delta_identifies_winner_only_and_changed_shared_cl
                     "title": "Retaliation for Protected Fair Housing Activity",
                     "selection_tags": ["retaliation"],
                     "selected_exhibits": [{"exhibit_id": "Exhibit A", "label": "ADMINISTRATIVE PLAN"}],
+                },
+            ],
+            "relief_selection_summary": [
+                {
+                    "text": "Corrective action requiring clear notice.",
+                    "strategic_families": ["process", "retaliation"],
+                    "strategic_role": "runner_up_emphasis",
+                },
+                {
+                    "text": "Retaliation remedies.",
+                    "strategic_families": ["retaliation"],
+                    "strategic_role": "runner_up_emphasis",
                 },
             ],
         },
@@ -202,6 +228,16 @@ def test_build_claim_snapshot_delta_identifies_winner_only_and_changed_shared_cl
     assert delta["winner_only_theory_families"] == ["protected_basis"]
     assert delta["runner_up_only_theory_families"] == ["retaliation"]
     assert delta["shared_theory_families"] == ["accommodation"]
+    assert delta["winner_relief_overview"] == "winner relief overview"
+    assert delta["runner_up_relief_overview"] == "runner relief overview"
+    assert delta["winner_only_relief"] == ["Protected-basis remedies."]
+    assert delta["runner_up_only_relief"] == ["Retaliation remedies."]
+    assert delta["winner_only_relief_families"] == ["protected_basis"]
+    assert delta["runner_up_only_relief_families"] == ["retaliation"]
+    assert delta["shared_relief_families"] == ["process"]
+    assert delta["changed_shared_relief"][0]["text"] == "Corrective action requiring clear notice."
+    assert delta["changed_shared_relief"][0]["winner_families"] == ["process"]
+    assert delta["changed_shared_relief"][0]["runner_up_families"] == ["process", "retaliation"]
     assert delta["changed_shared_claims"][0]["title"] == "Accommodation Theory"
     assert delta["changed_shared_claims"][0]["winner_exhibits"] == ["Exhibit B: ADMINISTRATIVE PLAN"]
     assert delta["changed_shared_claims"][0]["runner_up_exhibits"] == ["Exhibit A: ACOP"]
@@ -305,8 +341,15 @@ def test_markdown_report_includes_winner_vs_runner_up_delta(tmp_path):
         "winner_only_theory_families": ["protected_basis"],
         "runner_up_only_theory_families": ["retaliation"],
         "shared_theory_families": ["accommodation"],
+        "winner_relief_overview": "winner relief overview",
+        "runner_up_relief_overview": "runner relief overview",
+        "winner_only_relief_families": ["protected_basis"],
+        "runner_up_only_relief_families": ["retaliation"],
+        "shared_relief_families": ["process"],
         "winner_only_claims": ["Protected-Basis Administrative Theory"],
         "runner_up_only_claims": ["Retaliation for Protected Fair Housing Activity"],
+        "winner_only_relief": ["Protected-basis remedies."],
+        "runner_up_only_relief": ["Retaliation remedies."],
         "changed_shared_claims": [
             {
                 "title": "Accommodation Theory",
@@ -314,6 +357,15 @@ def test_markdown_report_includes_winner_vs_runner_up_delta(tmp_path):
                 "runner_up_tags": ["reasonable_accommodation"],
                 "winner_exhibits": ["Exhibit B: ADMINISTRATIVE PLAN"],
                 "runner_up_exhibits": ["Exhibit A: ACOP"],
+            }
+        ],
+        "changed_shared_relief": [
+            {
+                "text": "Corrective action requiring clear notice.",
+                "winner_families": ["process"],
+                "runner_up_families": ["process", "retaliation"],
+                "winner_role": "shared_baseline",
+                "runner_up_role": "runner_up_emphasis",
             }
         ],
     }
@@ -327,6 +379,14 @@ def test_markdown_report_includes_winner_vs_runner_up_delta(tmp_path):
     assert "- Winner-only theory families: protected_basis" in report
     assert "- Runner-up-only theory families: retaliation" in report
     assert "- Shared theory families: accommodation" in report
+    assert "- Winner relief overview: winner relief overview" in report
+    assert "- Runner-up relief overview: runner relief overview" in report
+    assert "- Winner-only relief families: protected_basis" in report
+    assert "- Runner-up-only relief families: retaliation" in report
+    assert "- Shared relief families: process" in report
     assert "- Winner-only claims: Protected-Basis Administrative Theory" in report
     assert "- Runner-up-only claims: Retaliation for Protected Fair Housing Activity" in report
+    assert "- Winner-only relief items: Protected-basis remedies." in report
+    assert "- Runner-up-only relief items: Retaliation remedies." in report
     assert "Shared claim changed: Accommodation Theory | winner tags=reasonable_accommodation, contact" in report
+    assert "Shared relief changed: Corrective action requiring clear notice. | winner families=process | runner-up families=process, retaliation" in report
