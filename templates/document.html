@@ -2066,6 +2066,19 @@
             return reviewUrl;
         }
 
+        function appendSectionReviewIntentToReviewUrl(reviewUrl, sectionKey) {
+            const normalizedSectionKey = String(sectionKey || '').trim().toLowerCase();
+            if (!normalizedSectionKey) {
+                return reviewUrl;
+            }
+            const supportKind = defaultSupportKindForSection(normalizedSectionKey);
+            return appendTaskUpdateIntentToReviewUrl(
+                appendSupportKindToReviewUrl(reviewUrl, supportKind),
+                normalizedSectionKey,
+                supportKind,
+            );
+        }
+
         function appendTaskUpdateIntentToReviewUrl(reviewUrl, sectionKey, supportKind) {
             const normalizedUrl = String(reviewUrl || '').trim();
             if (!normalizedUrl) {
@@ -2373,7 +2386,10 @@
                 return '<div class="preview-meta">No section-level filing readiness data is available.</div>';
             }
             const cards = values.map(([key, section]) => {
-                const reviewUrl = resolveSectionReviewUrl(key, section, reviewLinks);
+                const reviewUrl = appendSectionReviewIntentToReviewUrl(
+                    resolveSectionReviewUrl(key, section, reviewLinks),
+                    key,
+                );
                 return `
                 <article class="readiness-detail-card">
                     <div class="readiness-card-header">
@@ -2468,12 +2484,27 @@
             `;
         }
 
-        function renderFilingChecklist(items) {
+        function renderFilingChecklist(items, manualReviewClaims, pendingReviewClaims) {
             const values = Array.isArray(items) ? items.filter((item) => item && typeof item === 'object') : [];
             if (!values.length) {
                 return '';
             }
-            const cards = values.map((item) => `
+            const cards = values.map((item) => {
+                const checklistSectionKey = String(item.section_key || item.section || '').trim().toLowerCase();
+                const checklistClaimType = String(item.claim_type || '').trim();
+                let checklistReviewUrl = String(item.review_url || '').trim();
+                if (checklistSectionKey) {
+                    checklistReviewUrl = appendSectionReviewIntentToReviewUrl(checklistReviewUrl, checklistSectionKey);
+                }
+                if (checklistClaimType) {
+                    checklistReviewUrl = appendClaimQueueIntentToReviewUrl(
+                        checklistReviewUrl,
+                        checklistClaimType,
+                        manualReviewClaims,
+                        pendingReviewClaims,
+                    );
+                }
+                return `
                 <article class="checklist-card">
                     <div class="checklist-card-header">
                         <div>
@@ -2510,9 +2541,10 @@
                             ${contradictionSummary}
                         `;
                     })()}
-                    ${item.review_url ? `<div class="inline-link-row"><a class="inline-link" data-review-intent-link="true" href="${escapeHtml(item.review_url)}">Open Checklist Review</a></div>` : ''}
+                    ${checklistReviewUrl ? `<div class="inline-link-row"><a class="inline-link" data-review-intent-link="true" href="${escapeHtml(checklistReviewUrl)}">Open Checklist Review</a></div>` : ''}
                 </article>
-            `).join('');
+            `;
+            }).join('');
             return `<section><h2>Pre-Filing Checklist</h2><div class="checklist-stack">${cards}</div></section>`;
         }
 
@@ -3034,6 +3066,7 @@
             const filingChecklist = payload.filing_checklist || draft.filing_checklist || [];
             const reviewLinks = payload.review_links || {};
             const optimizationReport = payload.document_optimization || null;
+            const { manualReviewClaims, pendingReviewClaims } = buildClaimQueueIntentSets(optimizationReport && optimizationReport.intake_case_summary);
             const payloadReviewIntent = normalizeReviewIntent(payload.review_intent);
             if (payloadReviewIntent) {
                 persistReviewIntent(payloadReviewIntent);
@@ -3063,6 +3096,7 @@
                 ${renderArtifacts(payload.artifacts || {})}
                 <div class="draft-shell">
                     ${renderReadiness(readiness, draft.exhibits || [], reviewLinks, optimizationReport && optimizationReport.intake_case_summary)}
+                    ${renderFilingChecklist(filingChecklist, manualReviewClaims, pendingReviewClaims)}
                     ${renderOptimizationReport(optimizationReport, reviewLinks)}
                     <div class="court-header">${escapeHtml(draft.court_header || '')}</div>
                     <div class="caption-block">
@@ -3105,8 +3139,6 @@
                     </div>
 
                     ${renderClaims(draft.claims_for_relief || [], readiness.claims || [])}
-
-                    ${renderFilingChecklist(filingChecklist)}
 
                     <section>
                         <h2>Requested Relief</h2>

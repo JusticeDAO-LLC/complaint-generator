@@ -275,6 +275,7 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "follow_up_support_kind" in content
     assert "appendAlignmentTaskViewToReviewUrl" in content
     assert "appendClaimQueueIntentToReviewUrl" in content
+    assert "appendSectionReviewIntentToReviewUrl" in content
     assert "Manual Review Blockers" in content
     assert "Pending Review Items" in content
     assert "Open ${escapeHtml(humanizeKey(claimType))} Manual Review" in content
@@ -291,6 +292,7 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "resolveSectionReviewUrl" in content
     assert "getSectionReviewLinkMap" in content
     assert "renderSectionClaimLinks" in content
+    assert "renderFilingChecklist(items, manualReviewClaims, pendingReviewClaims)" in content
     assert "Section Review</a>" in content
     assert "renderReviewLinks" in content
     assert "review_links" in content
