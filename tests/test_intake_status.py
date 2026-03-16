@@ -156,9 +156,15 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
             "element_count": 2,
             "status_counts": {"supported": 1, "unsupported": 1},
             "recommended_actions": ["collect_documentary_support"],
+            "supported_blocking_element_ratio": 0.5,
             "credible_support_ratio": 0.5,
             "draft_ready_element_ratio": 0.5,
+            "high_quality_parse_ratio": 0.5,
+            "reviewable_escalation_ratio": 0.0,
+            "claim_support_reviewable_escalation_count": 0,
+            "claim_support_unresolved_without_review_path_count": 1,
             "proof_readiness_score": 0.5,
+            "evidence_completion_ready": False,
         },
     }
 
@@ -183,4 +189,7 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["question_candidate_summary"]["count"] == 1
     assert summary["question_candidate_summary"]["source_counts"]["intake_proof_gap"] == 1
     assert summary["claim_support_packet_summary"]["claim_count"] == 1
+    assert summary["claim_support_packet_summary"]["supported_blocking_element_ratio"] == 0.5
     assert summary["claim_support_packet_summary"]["proof_readiness_score"] == 0.5
+    assert summary["claim_support_packet_summary"]["claim_support_unresolved_without_review_path_count"] == 1
+    assert summary["claim_support_packet_summary"]["evidence_completion_ready"] is False

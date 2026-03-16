@@ -1889,6 +1889,33 @@
             const recommendedActions = Array.isArray(claimSupportPacketSummary.recommended_actions)
                 ? claimSupportPacketSummary.recommended_actions
                 : [];
+            if (claimSupportPacketSummary.supported_blocking_element_ratio !== undefined) {
+                packetChips.push(`<span class="chip">packet blocking covered: ${Number(claimSupportPacketSummary.supported_blocking_element_ratio || 0).toFixed(2)}</span>`);
+            }
+            if (claimSupportPacketSummary.credible_support_ratio !== undefined) {
+                packetChips.push(`<span class="chip">packet credible support: ${Number(claimSupportPacketSummary.credible_support_ratio || 0).toFixed(2)}</span>`);
+            }
+            if (claimSupportPacketSummary.draft_ready_element_ratio !== undefined) {
+                packetChips.push(`<span class="chip">packet draft ready: ${Number(claimSupportPacketSummary.draft_ready_element_ratio || 0).toFixed(2)}</span>`);
+            }
+            if (claimSupportPacketSummary.high_quality_parse_ratio !== undefined) {
+                packetChips.push(`<span class="chip">packet parse quality: ${Number(claimSupportPacketSummary.high_quality_parse_ratio || 0).toFixed(2)}</span>`);
+            }
+            if (claimSupportPacketSummary.reviewable_escalation_ratio !== undefined) {
+                packetChips.push(`<span class="chip">packet review escalations: ${Number(claimSupportPacketSummary.reviewable_escalation_ratio || 0).toFixed(2)}</span>`);
+            }
+            if (claimSupportPacketSummary.claim_support_reviewable_escalation_count !== undefined) {
+                packetChips.push(`<span class="chip">packet escalations: ${Number(claimSupportPacketSummary.claim_support_reviewable_escalation_count || 0)}</span>`);
+            }
+            if (claimSupportPacketSummary.claim_support_unresolved_without_review_path_count !== undefined) {
+                packetChips.push(`<span class="chip">packet unresolved without path: ${Number(claimSupportPacketSummary.claim_support_unresolved_without_review_path_count || 0)}</span>`);
+            }
+            if (claimSupportPacketSummary.proof_readiness_score !== undefined) {
+                packetChips.push(`<span class="chip">packet proof readiness: ${Number(claimSupportPacketSummary.proof_readiness_score || 0).toFixed(2)}</span>`);
+            }
+            if (claimSupportPacketSummary.evidence_completion_ready !== undefined) {
+                packetChips.push(`<span class="chip">packet completion ready: ${claimSupportPacketSummary.evidence_completion_ready ? 'yes' : 'no'}</span>`);
+            }
             recommendedActions.forEach((action) => {
                 packetChips.push(`<span class="chip">packet next: ${action}</span>`);
             });

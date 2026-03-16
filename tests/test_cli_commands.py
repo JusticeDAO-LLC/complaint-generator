@@ -128,6 +128,16 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
                 'content_origin_counts': {
                     'authority_reference_fallback': 1,
                 },
+                'primary_missing_fact_counts': {
+                    'Manager knowledge': 1,
+                },
+                'missing_fact_bundle_counts': {
+                    'Event sequence': 1,
+                    'Manager knowledge': 1,
+                },
+                'satisfied_fact_bundle_counts': {
+                    'Protected activity': 1,
+                },
             }
         },
         'follow_up_history': {
@@ -182,6 +192,16 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
                 'artifact_family_counts': {
                     'legal_authority_reference': 1,
                 },
+                'primary_missing_fact_counts': {
+                    'Manager knowledge': 1,
+                },
+                'missing_fact_bundle_counts': {
+                    'Event sequence': 1,
+                    'Manager knowledge': 1,
+                },
+                'satisfied_fact_bundle_counts': {
+                    'Protected activity': 1,
+                },
             }
         }
     }
@@ -206,6 +226,10 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
     assert 'primary_biases: uncertain=1' in rendered
     assert 'primary_rule_biases: exception=1' in rendered
     assert 'source_context: lane authority=1; family legal_authority=1; artifact legal_authority_reference=1' in rendered
+    assert 'follow-up plan fact-target summary:' in rendered
+    assert 'primary_gaps: Manager knowledge=1' in rendered
+    assert 'missing_bundle: Event sequence=1, Manager knowledge=1' in rendered
+    assert 'covered_bundle: Protected activity=1' in rendered
     assert 'follow-up history fact targeting:' in rendered
     assert 'follow-up history authority search summary:' in rendered
     assert '- retaliation: history_program_entries=1' in rendered
@@ -213,6 +237,7 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
     assert 'selected_biases: adverse=1' in rendered
     assert 'selected_rule_biases: exception=1' in rendered
     assert 'source_context: family legal_authority=1; artifact legal_authority_reference=1' in rendered
+    assert 'follow-up history fact-target summary:' in rendered
     assert '"claim_coverage_summary"' in rendered
 
 
@@ -293,6 +318,16 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
                 'artifact_family_counts': {
                     'legal_authority_reference': 1,
                 },
+                'primary_missing_fact_counts': {
+                    'Manager knowledge': 1,
+                },
+                'missing_fact_bundle_counts': {
+                    'Event sequence': 1,
+                    'Manager knowledge': 1,
+                },
+                'satisfied_fact_bundle_counts': {
+                    'Protected activity': 1,
+                },
             }
         },
         'post_execution_review': {
@@ -326,6 +361,16 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
                     'content_origin_counts': {
                         'authority_reference_fallback': 1,
                     },
+                    'primary_missing_fact_counts': {
+                        'Manager knowledge': 1,
+                    },
+                    'missing_fact_bundle_counts': {
+                        'Event sequence': 1,
+                        'Manager knowledge': 1,
+                    },
+                    'satisfied_fact_bundle_counts': {
+                        'Protected activity': 1,
+                    },
                 }
             }
         },
@@ -358,6 +403,10 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
     assert 'primary_biases: adverse=1' in rendered
     assert 'primary_rule_biases: procedural_prerequisite=1' in rendered
     assert 'source_context: lane authority=1; family legal_authority=1; artifact legal_authority_reference=1' in rendered
+    assert 'follow-up execution fact-target summary:' in rendered
+    assert 'primary_gaps: Manager knowledge=1' in rendered
+    assert 'missing_bundle: Event sequence=1, Manager knowledge=1' in rendered
+    assert 'covered_bundle: Protected activity=1' in rendered
     assert 'follow-up history fact targeting:' in rendered
     assert 'follow-up history authority search summary:' in rendered
     assert '- retaliation: history_program_entries=1' in rendered
@@ -365,6 +414,7 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
     assert 'selected_biases: uncertain=1' in rendered
     assert 'selected_rule_biases: procedural_prerequisite=1' in rendered
     assert 'source_context: family legal_authority=1; artifact legal_authority_reference=1' in rendered
+    assert 'follow-up history fact-target summary:' in rendered
     assert '"execution_quality_summary"' in rendered
 
 

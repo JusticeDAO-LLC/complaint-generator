@@ -78,6 +78,15 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "source_fact_ids" in content
     assert "Contradiction pairs" in content
     assert "contradiction-pair-details" in content
+    assert "packet blocking covered:" in content
+    assert "packet credible support:" in content
+    assert "packet draft ready:" in content
+    assert "packet parse quality:" in content
+    assert "packet review escalations:" in content
+    assert "packet escalations:" in content
+    assert "packet unresolved without path:" in content
+    assert "packet proof readiness:" in content
+    assert "packet completion ready:" in content
     assert "buildTestimonyRequest" in content
     assert "saveTestimony" in content
     assert "buildDocumentRequest" in content

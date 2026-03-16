@@ -155,7 +155,21 @@ def _build_hook_backed_browser_mediator(db_path: str):
             }
         ],
         "question_candidate_summary": {},
-        "claim_support_packet_summary": {},
+        "claim_support_packet_summary": {
+            "claim_count": 1,
+            "element_count": 2,
+            "status_counts": {"unsupported": 2},
+            "recommended_actions": ["collect_missing_support_kind"],
+            "supported_blocking_element_ratio": 0.5,
+            "credible_support_ratio": 0.5,
+            "draft_ready_element_ratio": 0.0,
+            "high_quality_parse_ratio": 0.0,
+            "reviewable_escalation_ratio": 0.5,
+            "claim_support_reviewable_escalation_count": 1,
+            "claim_support_unresolved_without_review_path_count": 1,
+            "proof_readiness_score": 0.225,
+            "evidence_completion_ready": False,
+        },
     }
 
     hook = ClaimSupportHook(mediator, db_path=db_path)
@@ -770,6 +784,15 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
                     "element_count": 2,
                     "status_counts": {"unsupported": 2},
                     "recommended_actions": ["collect_missing_support_kind"],
+                    "supported_blocking_element_ratio": 0.5,
+                    "credible_support_ratio": 0.5,
+                    "draft_ready_element_ratio": 0.0,
+                    "high_quality_parse_ratio": 0.0,
+                    "reviewable_escalation_ratio": 0.5,
+                    "claim_support_reviewable_escalation_count": 1,
+                    "claim_support_unresolved_without_review_path_count": 1,
+                    "proof_readiness_score": 0.225,
+                    "evidence_completion_ready": False,
                 },
                 "alignment_task_update_history": [
                     {
@@ -934,6 +957,7 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 manual_review_list = page.locator("#alignment-task-manual-review-list").inner_text()
                 alignment_updates = page.locator("#alignment-task-update-list").inner_text()
                 alignment_update_filter_summary = page.locator("#alignment-task-update-filter-summary").inner_text()
+                packet_summary = page.locator("#claim-support-packet-summary-chips").inner_text()
                 task_summary = page.locator("#task-summary-chips").inner_text()
                 follow_up_tasks = page.locator("#task-list").inner_text()
                 history_summary = page.locator("#history-summary-chips").inner_text()
@@ -966,6 +990,15 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "sort: newest_first" in alignment_update_filter_summary
                 assert "visible updates: 2" in alignment_update_filter_summary
                 assert alignment_updates.index("evidence event: 2") < alignment_updates.index("evidence event: 1")
+                assert "packet blocking covered: 0.50" in packet_summary
+                assert "packet credible support: 0.50" in packet_summary
+                assert "packet draft ready: 0.00" in packet_summary
+                assert "packet parse quality: 0.00" in packet_summary
+                assert "packet review escalations: 0.50" in packet_summary
+                assert "packet escalations: 1" in packet_summary
+                assert "packet unresolved without path: 1" in packet_summary
+                assert "packet proof readiness: 0.23" in packet_summary
+                assert "packet completion ready: no" in packet_summary
                 assert "Tasks: 1" in task_summary
                 assert "Primary gaps: Manager knowledge=1" in task_summary
                 assert "Gap coverage: Event sequence=1, Manager knowledge=1" in task_summary

@@ -173,11 +173,23 @@ class CLI:
 					follow_up_plan_summary,
 				)
 			)
+			sections.append(
+				self._format_follow_up_fact_targeting_summary(
+					'follow-up plan fact-target summary:',
+					follow_up_plan_summary,
+				)
+			)
 		follow_up_history_summary = payload.get('follow_up_history_summary', {}) if isinstance(payload, dict) else {}
 		if isinstance(follow_up_history_summary, dict) and follow_up_history_summary:
 			sections.append(
 				self._format_authority_search_history_summary(
 					'follow-up history authority search summary:',
+					follow_up_history_summary,
+				)
+			)
+			sections.append(
+				self._format_follow_up_fact_targeting_summary(
+					'follow-up history fact-target summary:',
 					follow_up_history_summary,
 				)
 			)
@@ -344,6 +356,35 @@ class CLI:
 			)
 		return '; '.join(segments)
 
+	def _format_follow_up_fact_targeting_summary(self, title, follow_up_summary):
+		lines = [title]
+		for claim_type in sorted(follow_up_summary.keys()):
+			summary = follow_up_summary.get(claim_type, {})
+			if not isinstance(summary, dict):
+				continue
+			primary_missing_fact_counts = summary.get('primary_missing_fact_counts', {}) if isinstance(summary.get('primary_missing_fact_counts'), dict) else {}
+			missing_fact_bundle_counts = summary.get('missing_fact_bundle_counts', {}) if isinstance(summary.get('missing_fact_bundle_counts'), dict) else {}
+			satisfied_fact_bundle_counts = summary.get('satisfied_fact_bundle_counts', {}) if isinstance(summary.get('satisfied_fact_bundle_counts'), dict) else {}
+			if not (primary_missing_fact_counts or missing_fact_bundle_counts or satisfied_fact_bundle_counts):
+				continue
+			lines.append(f'- {claim_type}:')
+			if primary_missing_fact_counts:
+				primary_labels = ', '.join(
+					f"{label}={count}" for label, count in sorted(primary_missing_fact_counts.items())
+				)
+				lines.append(f'  primary_gaps: {primary_labels}')
+			if missing_fact_bundle_counts:
+				missing_labels = ', '.join(
+					f"{label}={count}" for label, count in sorted(missing_fact_bundle_counts.items())
+				)
+				lines.append(f'  missing_bundle: {missing_labels}')
+			if satisfied_fact_bundle_counts:
+				satisfied_labels = ', '.join(
+					f"{label}={count}" for label, count in sorted(satisfied_fact_bundle_counts.items())
+				)
+				lines.append(f'  covered_bundle: {satisfied_labels}')
+		return '' if len(lines) == 1 else '\n'.join(lines)
+
 	def _format_follow_up_fact_targeting(self, title, follow_up_claims, entries_key=None):
 		lines = [title]
 		for claim_type in sorted(follow_up_claims.keys()):
@@ -435,6 +476,12 @@ class CLI:
 					follow_up_execution_summary,
 				)
 			)
+			sections.append(
+				self._format_follow_up_fact_targeting_summary(
+					'follow-up execution fact-target summary:',
+					follow_up_execution_summary,
+				)
+			)
 		post_execution_review = payload.get('post_execution_review', {}) if isinstance(payload, dict) else {}
 		post_execution_history = post_execution_review.get('follow_up_history', {}) if isinstance(post_execution_review, dict) else {}
 		if isinstance(post_execution_history, dict) and post_execution_history:
@@ -449,6 +496,12 @@ class CLI:
 			sections.append(
 				self._format_authority_search_history_summary(
 					'follow-up history authority search summary:',
+					post_execution_history_summary,
+				)
+			)
+			sections.append(
+				self._format_follow_up_fact_targeting_summary(
+					'follow-up history fact-target summary:',
 					post_execution_history_summary,
 				)
 			)

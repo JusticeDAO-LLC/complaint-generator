@@ -830,10 +830,22 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert claim_support_packet_summary["recommended_actions"] == ["collect_missing_support_kind"]
         if "credible_support_ratio" in claim_support_packet_summary:
             assert claim_support_packet_summary["credible_support_ratio"] == 0.667
+        if "supported_blocking_element_ratio" in claim_support_packet_summary:
+            assert claim_support_packet_summary["supported_blocking_element_ratio"] == 0.333
         if "draft_ready_element_ratio" in claim_support_packet_summary:
             assert claim_support_packet_summary["draft_ready_element_ratio"] == 0.333
+        if "high_quality_parse_ratio" in claim_support_packet_summary:
+            assert claim_support_packet_summary["high_quality_parse_ratio"] == 0.333
+        if "reviewable_escalation_ratio" in claim_support_packet_summary:
+            assert claim_support_packet_summary["reviewable_escalation_ratio"] == 0.0
+        if "claim_support_reviewable_escalation_count" in claim_support_packet_summary:
+            assert claim_support_packet_summary["claim_support_reviewable_escalation_count"] == 0
+        if "claim_support_unresolved_without_review_path_count" in claim_support_packet_summary:
+            assert claim_support_packet_summary["claim_support_unresolved_without_review_path_count"] == 2
         if "proof_readiness_score" in claim_support_packet_summary:
             assert claim_support_packet_summary["proof_readiness_score"] == 0.45
+        if "evidence_completion_ready" in claim_support_packet_summary:
+            assert claim_support_packet_summary["evidence_completion_ready"] is False
         assert (
             payload["claim_coverage_matrix"]["retaliation"]["status_counts"]["covered"]
             == 1
