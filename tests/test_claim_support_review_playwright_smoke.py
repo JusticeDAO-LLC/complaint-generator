@@ -788,6 +788,7 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 alignment_summary = page.locator("#intake-evidence-alignment-summary-list").inner_text()
                 alignment_tasks = page.locator("#alignment-evidence-task-list").inner_text()
                 alignment_updates = page.locator("#alignment-task-update-list").inner_text()
+                alignment_update_filter_summary = page.locator("#alignment-task-update-filter-summary").inner_text()
 
                 assert "Cross-phase element alignment for retaliation" in alignment_summary
                 assert "aligned retaliation:1: supported" in alignment_summary
@@ -804,6 +805,52 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "evidence event: 1" in alignment_updates
                 assert "evidence event: 2" in alignment_updates
                 assert "artifact: artifact-conflict" in alignment_updates
+                assert "filter: all" in alignment_update_filter_summary
+                assert "sort: newest_first" in alignment_update_filter_summary
+                assert "visible updates: 2" in alignment_update_filter_summary
+                assert alignment_updates.index("evidence event: 2") < alignment_updates.index("evidence event: 1")
+
+                page.select_option("#alignment-task-update-filter", "manual_review")
+                page.wait_for_function(
+                    "() => document.getElementById('alignment-task-update-filter-summary').textContent.includes('filter: manual_review')"
+                )
+
+                filtered_alignment_updates = page.locator("#alignment-task-update-list").inner_text()
+                filtered_alignment_summary = page.locator("#alignment-task-update-filter-summary").inner_text()
+
+                assert "alignment_task_update_filter=manual_review" in page.url
+                assert "visible updates: 1" in filtered_alignment_summary
+                assert "resolution: needs_manual_review" in filtered_alignment_updates
+                assert "evidence event: 2" in filtered_alignment_updates
+                assert "artifact: artifact-conflict" in filtered_alignment_updates
+                assert "resolution: still_open" not in filtered_alignment_updates
+                assert "evidence event: 1" not in filtered_alignment_updates
+
+                page.select_option("#alignment-task-update-filter", "all")
+                page.select_option("#alignment-task-update-sort", "oldest_first")
+                page.wait_for_function(
+                    "() => document.getElementById('alignment-task-update-filter-summary').textContent.includes('sort: oldest_first')"
+                )
+
+                oldest_first_updates = page.locator("#alignment-task-update-list").inner_text()
+                oldest_first_summary = page.locator("#alignment-task-update-filter-summary").inner_text()
+
+                assert "alignment_task_update_sort=oldest_first" in page.url
+                assert "sort: oldest_first" in oldest_first_summary
+                assert oldest_first_updates.index("evidence event: 1") < oldest_first_updates.index("evidence event: 2")
+
+                page.reload()
+                page.wait_for_function(
+                    "() => document.getElementById('alignment-task-update-filter-summary').textContent.includes('sort: oldest_first')"
+                )
+
+                reloaded_alignment_updates = page.locator("#alignment-task-update-list").inner_text()
+                reloaded_alignment_summary = page.locator("#alignment-task-update-filter-summary").inner_text()
+                assert page.locator("#alignment-task-update-filter").input_value() == "all"
+                assert page.locator("#alignment-task-update-sort").input_value() == "oldest_first"
+                assert "alignment_task_update_sort=oldest_first" in page.url
+                assert "sort: oldest_first" in reloaded_alignment_summary
+                assert reloaded_alignment_updates.index("evidence event: 1") < reloaded_alignment_updates.index("evidence event: 2")
 
                 browser.close()
     finally:

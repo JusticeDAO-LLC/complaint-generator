@@ -727,8 +727,19 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert "renderTestimonyRecords" in page_html
     assert "renderDocumentArtifacts" in page_html
     assert "Alignment Task Updates" in page_html
+    assert "Task Update Filter" in page_html
+    assert "alignment-task-update-filter" in page_html
+    assert "alignment-task-update-filter-summary" in page_html
+    assert "alignment_task_update_filter" in page_html
+    assert "Task Update Sort" in page_html
+    assert "alignment-task-update-sort" in page_html
+    assert "alignment_task_update_sort" in page_html
     assert "alignment-task-update-list" in page_html
     assert "Alignment task updates: no recent evidence-driven task changes recorded." in page_html
+    assert "filter: ${taskUpdateFilterValue}" in page_html
+    assert "sort: ${taskUpdateSortValue}" in page_html
+    assert "visible updates: ${filteredAlignmentTaskUpdates.length}" in page_html
+    assert "total updates: ${visibleAlignmentTaskUpdates.length}" in page_html
     assert "Alignment update for ${update.claim_type || 'claim'}" in page_html
     assert "evidence event: ${update.evidence_sequence}" in page_html
     assert "previous support: ${update.previous_support_status}" in page_html
@@ -736,6 +747,8 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert "previous gap: ${factNeed}" in page_html
     assert "current gap: ${factNeed}" in page_html
     assert "artifact: ${update.evidence_artifact_id}" in page_html
+    assert "filterAlignmentTaskUpdates" in page_html
+    assert "sortAlignmentTaskUpdates" in page_html
     assert "prefill-testimony-button" in page_html
 
     review_payload = await review_route.endpoint(

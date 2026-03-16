@@ -905,6 +905,26 @@
                     <h2 style="margin-top: 18px;">Alignment Evidence Tasks</h2>
                     <div class="question-list" id="alignment-evidence-task-list"></div>
                     <h2 style="margin-top: 18px;">Alignment Task Updates</h2>
+                    <div class="control-grid" style="margin-top: 10px;">
+                        <div>
+                            <label for="alignment-task-update-filter">Task Update Filter</label>
+                            <select id="alignment-task-update-filter">
+                                <option value="all">all</option>
+                                <option value="active">active</option>
+                                <option value="resolved">resolved</option>
+                                <option value="manual_review">manual_review</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="alignment-task-update-sort">Task Update Sort</label>
+                            <select id="alignment-task-update-sort">
+                                <option value="newest_first">newest_first</option>
+                                <option value="oldest_first">oldest_first</option>
+                                <option value="manual_review_first">manual_review_first</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="chip-row" id="alignment-task-update-filter-summary" style="margin-top: 10px;"></div>
                     <div class="question-list" id="alignment-task-update-list"></div>
                 </div>
 
@@ -1060,6 +1080,49 @@
         const sectionFocusState = {
             sectionKey: null,
         };
+        const reviewRenderState = {
+            payload: null,
+        };
+
+        function filterAlignmentTaskUpdates(updates, filterValue) {
+            const normalizedFilter = String(filterValue || 'all').trim().toLowerCase();
+            const updateList = Array.isArray(updates) ? updates : [];
+            if (normalizedFilter === 'active') {
+                return updateList.filter((update) => String(update && update.status || '').trim().toLowerCase() === 'active');
+            }
+            if (normalizedFilter === 'resolved') {
+                return updateList.filter((update) => String(update && update.status || '').trim().toLowerCase() === 'resolved');
+            }
+            if (normalizedFilter === 'manual_review') {
+                return updateList.filter((update) => String(update && update.resolution_status || '').trim().toLowerCase() === 'needs_manual_review');
+            }
+            return updateList;
+        }
+
+        function sortAlignmentTaskUpdates(updates, sortValue) {
+            const normalizedSort = String(sortValue || 'newest_first').trim().toLowerCase();
+            const updateList = [...(Array.isArray(updates) ? updates : [])];
+            const sequenceValue = (update) => {
+                const value = Number(update && update.evidence_sequence);
+                return Number.isFinite(value) ? value : 0;
+            };
+            const manualReviewRank = (update) => (
+                String(update && update.resolution_status || '').trim().toLowerCase() === 'needs_manual_review' ? 0 : 1
+            );
+            if (normalizedSort === 'oldest_first') {
+                return updateList.sort((left, right) => sequenceValue(left) - sequenceValue(right));
+            }
+            if (normalizedSort === 'manual_review_first') {
+                return updateList.sort((left, right) => {
+                    const rankDifference = manualReviewRank(left) - manualReviewRank(right);
+                    if (rankDifference !== 0) {
+                        return rankDifference;
+                    }
+                    return sequenceValue(right) - sequenceValue(left);
+                });
+            }
+            return updateList.sort((left, right) => sequenceValue(right) - sequenceValue(left));
+        }
 
         function getLocalStorage() {
             try {
@@ -1085,6 +1148,16 @@
             const userId = String(payload.user_id || document.getElementById('user-id').value || '').trim() || null;
             const sectionKey = String(payload.section || sectionFocusState.sectionKey || '').trim() || null;
             const supportKind = String(payload.follow_up_support_kind || document.getElementById('support-kind').value || '').trim() || null;
+            const alignmentTaskUpdateFilter = String(
+                payload.alignment_task_update_filter
+                || document.getElementById('alignment-task-update-filter').value
+                || ''
+            ).trim() || 'all';
+            const alignmentTaskUpdateSort = String(
+                payload.alignment_task_update_sort
+                || document.getElementById('alignment-task-update-sort').value
+                || ''
+            ).trim() || 'newest_first';
             const params = new URLSearchParams();
             if (claimType) {
                 params.set('claim_type', claimType);
@@ -1098,12 +1171,20 @@
             if (supportKind) {
                 params.set('follow_up_support_kind', supportKind);
             }
+            if (alignmentTaskUpdateFilter && alignmentTaskUpdateFilter !== 'all') {
+                params.set('alignment_task_update_filter', alignmentTaskUpdateFilter);
+            }
+            if (alignmentTaskUpdateSort && alignmentTaskUpdateSort !== 'newest_first') {
+                params.set('alignment_task_update_sort', alignmentTaskUpdateSort);
+            }
             const query = params.toString();
             return {
                 claim_type: claimType,
                 user_id: userId,
                 section: sectionKey,
                 follow_up_support_kind: supportKind,
+                alignment_task_update_filter: alignmentTaskUpdateFilter,
+                alignment_task_update_sort: alignmentTaskUpdateSort,
                 review_url: query ? `/claim-support-review?${query}` : '/claim-support-review',
             };
         }
@@ -1538,6 +1619,8 @@
             const packetContainer = document.getElementById('claim-support-packet-summary-chips');
             const alignmentContainer = document.getElementById('intake-evidence-alignment-summary-list');
             const alignmentTaskContainer = document.getElementById('alignment-evidence-task-list');
+            const alignmentTaskUpdateFilter = document.getElementById('alignment-task-update-filter');
+            const alignmentTaskUpdateFilterSummary = document.getElementById('alignment-task-update-filter-summary');
             const alignmentTaskUpdateContainer = document.getElementById('alignment-task-update-list');
             const intakeCaseSummary = summary && typeof summary === 'object' ? summary : {};
             const candidateClaims = Array.isArray(intakeCaseSummary.candidate_claims) ? intakeCaseSummary.candidate_claims : [];
@@ -1571,6 +1654,12 @@
             const visibleAlignmentTaskUpdates = alignmentTaskUpdateHistory.length
                 ? alignmentTaskUpdateHistory
                 : alignmentTaskUpdates;
+            const taskUpdateFilterValue = alignmentTaskUpdateFilter && alignmentTaskUpdateFilter.value
+                ? alignmentTaskUpdateFilter.value
+                : 'all';
+            const taskUpdateSortValue = document.getElementById('alignment-task-update-sort').value || 'newest_first';
+            const filteredAlignmentTaskUpdates = filterAlignmentTaskUpdates(visibleAlignmentTaskUpdates, taskUpdateFilterValue);
+            const orderedAlignmentTaskUpdates = sortAlignmentTaskUpdates(filteredAlignmentTaskUpdates, taskUpdateSortValue);
             const questionCandidateSummary = intakeCaseSummary.question_candidate_summary && typeof intakeCaseSummary.question_candidate_summary === 'object'
                 ? intakeCaseSummary.question_candidate_summary
                 : {};
@@ -1751,10 +1840,17 @@
                 `).join('');
             }
 
-            if (!visibleAlignmentTaskUpdates.length) {
+            alignmentTaskUpdateFilterSummary.innerHTML = [
+                `<span class="chip">filter: ${taskUpdateFilterValue}</span>`,
+                `<span class="chip">sort: ${taskUpdateSortValue}</span>`,
+                `<span class="chip">visible updates: ${filteredAlignmentTaskUpdates.length}</span>`,
+                `<span class="chip">total updates: ${visibleAlignmentTaskUpdates.length}</span>`,
+            ].join('');
+
+            if (!orderedAlignmentTaskUpdates.length) {
                 alignmentTaskUpdateContainer.innerHTML = '<div class="task-card">Alignment task updates: no recent evidence-driven task changes recorded.</div>';
             } else {
-                alignmentTaskUpdateContainer.innerHTML = visibleAlignmentTaskUpdates.map((update) => {
+                alignmentTaskUpdateContainer.innerHTML = orderedAlignmentTaskUpdates.map((update) => {
                     const chips = [
                         `<span class="chip">element: ${update.claim_element_id || 'unknown'}</span>`,
                         `<span class="chip">status: ${update.status || 'active'}</span>`,
@@ -2003,6 +2099,8 @@
             const userId = params.get('user_id') || storedIntent.user_id;
             const section = params.get('section') || storedIntent.section;
             const supportKind = params.get('follow_up_support_kind') || storedIntent.follow_up_support_kind || null;
+            const alignmentTaskUpdateFilter = params.get('alignment_task_update_filter') || storedIntent.alignment_task_update_filter || 'all';
+            const alignmentTaskUpdateSort = params.get('alignment_task_update_sort') || storedIntent.alignment_task_update_sort || 'newest_first';
             if (claimType) {
                 document.getElementById('claim-type').value = claimType;
             }
@@ -2013,11 +2111,20 @@
             if (supportKind) {
                 document.getElementById('support-kind').value = supportKind;
             }
+            document.getElementById('alignment-task-update-filter').value = alignmentTaskUpdateFilter;
+            document.getElementById('alignment-task-update-sort').value = alignmentTaskUpdateSort;
             setPrefillContext(section, sectionConfig);
-            const intent = persistReviewIntent({ claim_type: claimType, user_id: userId, section, follow_up_support_kind: document.getElementById('support-kind').value || null });
+            const intent = persistReviewIntent({
+                claim_type: claimType,
+                user_id: userId,
+                section,
+                follow_up_support_kind: document.getElementById('support-kind').value || null,
+                alignment_task_update_filter: document.getElementById('alignment-task-update-filter').value || 'all',
+                alignment_task_update_sort: document.getElementById('alignment-task-update-sort').value || 'newest_first',
+            });
             syncReviewIntentUrl(intent);
             finalizeSectionFocus();
-            return Boolean(claimType || userId || section || supportKind);
+            return Boolean(claimType || userId || section || supportKind || alignmentTaskUpdateFilter !== 'all' || alignmentTaskUpdateSort !== 'newest_first');
         }
 
         function prefillResolutionForm(values) {
@@ -2936,6 +3043,7 @@
         }
 
         function renderPayload(payload) {
+            reviewRenderState.payload = payload;
             const primary = extractPrimaryClaim(payload);
             const claimType = primary.claimType;
             const summary = primary.coverageClaims[claimType] || { status_counts: {} };
@@ -3034,6 +3142,26 @@
         document.getElementById('clear-testimony-button').addEventListener('click', clearTestimonyForm);
         document.getElementById('save-document-button').addEventListener('click', saveDocument);
         document.getElementById('clear-document-button').addEventListener('click', clearDocumentForm);
+        document.getElementById('alignment-task-update-filter').addEventListener('change', () => {
+            syncReviewIntentUrl(persistReviewIntent({
+                alignment_task_update_filter: document.getElementById('alignment-task-update-filter').value || 'all',
+                alignment_task_update_sort: document.getElementById('alignment-task-update-sort').value || 'newest_first',
+            }));
+            if (!reviewRenderState.payload) {
+                return;
+            }
+            renderIntakeCaseSummary(reviewRenderState.payload.intake_case_summary || null);
+        });
+        document.getElementById('alignment-task-update-sort').addEventListener('change', () => {
+            syncReviewIntentUrl(persistReviewIntent({
+                alignment_task_update_filter: document.getElementById('alignment-task-update-filter').value || 'all',
+                alignment_task_update_sort: document.getElementById('alignment-task-update-sort').value || 'newest_first',
+            }));
+            if (!reviewRenderState.payload) {
+                return;
+            }
+            renderIntakeCaseSummary(reviewRenderState.payload.intake_case_summary || null);
+        });
         document.addEventListener('click', (event) => {
             const urlActionButton = event.target.closest('[data-packet-url-action]');
             if (urlActionButton) {
