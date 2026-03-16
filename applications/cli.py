@@ -156,6 +156,15 @@ class CLI:
 		claim_coverage_summary = payload.get('claim_coverage_summary', {}) if isinstance(payload, dict) else {}
 		if isinstance(claim_coverage_summary, dict) and claim_coverage_summary:
 			sections.append(self._format_claim_review_quality_summary(claim_coverage_summary))
+		follow_up_plan = payload.get('follow_up_plan', {}) if isinstance(payload, dict) else {}
+		if isinstance(follow_up_plan, dict) and follow_up_plan:
+			sections.append(
+				self._format_follow_up_fact_targeting(
+					'follow-up plan fact targeting:',
+					follow_up_plan,
+					entries_key='tasks',
+				)
+			)
 		follow_up_plan_summary = payload.get('follow_up_plan_summary', {}) if isinstance(payload, dict) else {}
 		if isinstance(follow_up_plan_summary, dict) and follow_up_plan_summary:
 			sections.append(
@@ -170,6 +179,14 @@ class CLI:
 				self._format_authority_search_history_summary(
 					'follow-up history authority search summary:',
 					follow_up_history_summary,
+				)
+			)
+		follow_up_history = payload.get('follow_up_history', {}) if isinstance(payload, dict) else {}
+		if isinstance(follow_up_history, dict) and follow_up_history:
+			sections.append(
+				self._format_follow_up_fact_targeting(
+					'follow-up history fact targeting:',
+					follow_up_history,
 				)
 			)
 		sections.append(json.dumps(payload, indent=2, default=str))
@@ -327,6 +344,55 @@ class CLI:
 			)
 		return '; '.join(segments)
 
+	def _format_follow_up_fact_targeting(self, title, follow_up_claims, entries_key=None):
+		lines = [title]
+		for claim_type in sorted(follow_up_claims.keys()):
+			claim_payload = follow_up_claims.get(claim_type, {})
+			if entries_key is None:
+				entries = claim_payload if isinstance(claim_payload, list) else []
+			else:
+				entries = claim_payload.get(entries_key, []) if isinstance(claim_payload, dict) else []
+			if not isinstance(entries, list):
+				continue
+			formatted_entries = []
+			for entry in entries:
+				if not isinstance(entry, dict):
+					continue
+				primary_gap = str(entry.get('primary_missing_fact') or '').strip()
+				missing_bundle = [
+					str(item).strip() for item in (entry.get('missing_fact_bundle') or [])
+					if str(item).strip()
+				]
+				satisfied_bundle = [
+					str(item).strip() for item in (entry.get('satisfied_fact_bundle') or [])
+					if str(item).strip()
+				]
+				if not (primary_gap or missing_bundle or satisfied_bundle):
+					continue
+				entry_label = str(
+					entry.get('claim_element')
+					or entry.get('claim_element_text')
+					or entry.get('claim_element_id')
+					or 'unknown element'
+				)
+				segments = [entry_label]
+				if primary_gap:
+					segments.append(f'primary_gap={primary_gap}')
+				if missing_bundle:
+					segments.append('missing=' + ', '.join(missing_bundle[:2]))
+				if len(missing_bundle) > 2:
+					segments.append(f'missing_more={len(missing_bundle) - 2}')
+				if satisfied_bundle:
+					segments.append('covered=' + ', '.join(satisfied_bundle[:2]))
+				if len(satisfied_bundle) > 2:
+					segments.append(f'covered_more={len(satisfied_bundle) - 2}')
+				formatted_entries.append(' | '.join(segments))
+			if formatted_entries:
+				lines.append(f'- {claim_type}:')
+				for formatted_entry in formatted_entries:
+					lines.append(f'  {formatted_entry}')
+		return '' if len(lines) == 1 else '\n'.join(lines)
+
 	def execute_follow_up(self, args):
 		positionals, options = self._parse_command_options(args)
 		claim_type = options.get('claim_type')
@@ -352,6 +418,15 @@ class CLI:
 		execution_quality_summary = payload.get('execution_quality_summary', {}) if isinstance(payload, dict) else {}
 		if isinstance(execution_quality_summary, dict) and execution_quality_summary:
 			sections.append(self._format_execution_quality_summary(execution_quality_summary))
+		follow_up_execution = payload.get('follow_up_execution', {}) if isinstance(payload, dict) else {}
+		if isinstance(follow_up_execution, dict) and follow_up_execution:
+			sections.append(
+				self._format_follow_up_fact_targeting(
+					'follow-up execution fact targeting:',
+					follow_up_execution,
+					entries_key='tasks',
+				)
+			)
 		follow_up_execution_summary = payload.get('follow_up_execution_summary', {}) if isinstance(payload, dict) else {}
 		if isinstance(follow_up_execution_summary, dict) and follow_up_execution_summary:
 			sections.append(
@@ -361,6 +436,14 @@ class CLI:
 				)
 			)
 		post_execution_review = payload.get('post_execution_review', {}) if isinstance(payload, dict) else {}
+		post_execution_history = post_execution_review.get('follow_up_history', {}) if isinstance(post_execution_review, dict) else {}
+		if isinstance(post_execution_history, dict) and post_execution_history:
+			sections.append(
+				self._format_follow_up_fact_targeting(
+					'follow-up history fact targeting:',
+					post_execution_history,
+				)
+			)
 		post_execution_history_summary = post_execution_review.get('follow_up_history_summary', {}) if isinstance(post_execution_review, dict) else {}
 		if isinstance(post_execution_history_summary, dict) and post_execution_history_summary:
 			sections.append(

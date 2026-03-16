@@ -130,6 +130,28 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
                 },
             }
         },
+        'follow_up_history': {
+            'retaliation': [
+                {
+                    'claim_element_text': 'Causal connection',
+                    'primary_missing_fact': 'Manager knowledge',
+                    'missing_fact_bundle': ['Manager knowledge', 'Event sequence'],
+                    'satisfied_fact_bundle': ['Protected activity'],
+                }
+            ]
+        },
+        'follow_up_plan': {
+            'retaliation': {
+                'tasks': [
+                    {
+                        'claim_element': 'Causal connection',
+                        'primary_missing_fact': 'Manager knowledge',
+                        'missing_fact_bundle': ['Manager knowledge', 'Event sequence'],
+                        'satisfied_fact_bundle': ['Protected activity'],
+                    }
+                ]
+            }
+        },
         'follow_up_plan_summary': {
             'retaliation': {
                 'authority_search_program_task_count': 1,
@@ -173,6 +195,9 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
     assert 'refresh: Causal connection' in rendered
     assert 'authority_treatments: limits=1, questioned=1' in rendered
     assert 'recommendation: improve_parse_quality' in rendered
+    assert 'follow-up plan fact targeting:' in rendered
+    assert '- retaliation:' in rendered
+    assert 'Causal connection | primary_gap=Manager knowledge | missing=Manager knowledge, Event sequence | covered=Protected activity' in rendered
     assert 'follow-up plan authority search summary:' in rendered
     assert '- retaliation: authority_program_tasks=1 authority_programs=2' in rendered
     assert 'program_types: fact_pattern_search=1, treatment_check_search=1' in rendered
@@ -181,6 +206,7 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
     assert 'primary_biases: uncertain=1' in rendered
     assert 'primary_rule_biases: exception=1' in rendered
     assert 'source_context: lane authority=1; family legal_authority=1; artifact legal_authority_reference=1' in rendered
+    assert 'follow-up history fact targeting:' in rendered
     assert 'follow-up history authority search summary:' in rendered
     assert '- retaliation: history_program_entries=1' in rendered
     assert 'selected_programs: adverse_authority_search=1' in rendered
@@ -224,6 +250,19 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
     mediator = Mock()
     mediator.build_claim_support_follow_up_execution_payload.return_value = {
         'follow_up_execution': {'retaliation': {'task_count': 1}},
+        'follow_up_execution': {
+            'retaliation': {
+                'task_count': 1,
+                'tasks': [
+                    {
+                        'claim_element': 'Causal connection',
+                        'primary_missing_fact': 'Manager knowledge',
+                        'missing_fact_bundle': ['Manager knowledge', 'Event sequence'],
+                        'satisfied_fact_bundle': ['Protected activity'],
+                    }
+                ],
+            }
+        },
         'follow_up_execution_summary': {
             'retaliation': {
                 'authority_search_program_task_count': 1,
@@ -257,6 +296,16 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
             }
         },
         'post_execution_review': {
+            'follow_up_history': {
+                'retaliation': [
+                    {
+                        'claim_element_text': 'Causal connection',
+                        'primary_missing_fact': 'Manager knowledge',
+                        'missing_fact_bundle': ['Manager knowledge', 'Event sequence'],
+                        'satisfied_fact_bundle': ['Protected activity'],
+                    }
+                ]
+            },
             'follow_up_history_summary': {
                 'retaliation': {
                     'selected_authority_program_type_counts': {
@@ -299,6 +348,8 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
     assert 'follow-up execution quality summary:' in rendered
     assert '- retaliation: status=improved low_quality=1->0 parse_tasks=1' in rendered
     assert 'resolved: Causal connection' in rendered
+    assert 'follow-up execution fact targeting:' in rendered
+    assert 'Causal connection | primary_gap=Manager knowledge | missing=Manager knowledge, Event sequence | covered=Protected activity' in rendered
     assert 'follow-up execution authority search summary:' in rendered
     assert '- retaliation: authority_program_tasks=1 authority_programs=2' in rendered
     assert 'program_types: adverse_authority_search=1, treatment_check_search=1' in rendered
@@ -307,6 +358,7 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
     assert 'primary_biases: adverse=1' in rendered
     assert 'primary_rule_biases: procedural_prerequisite=1' in rendered
     assert 'source_context: lane authority=1; family legal_authority=1; artifact legal_authority_reference=1' in rendered
+    assert 'follow-up history fact targeting:' in rendered
     assert 'follow-up history authority search summary:' in rendered
     assert '- retaliation: history_program_entries=1' in rendered
     assert 'selected_programs: element_definition_search=1' in rendered
