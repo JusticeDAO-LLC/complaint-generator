@@ -113,6 +113,33 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
                 "blocking": True,
             }
         ],
+        "alignment_task_updates": [
+            {
+                "task_id": "retaliation:protected_activity:fill_evidence_gaps",
+                "claim_type": "retaliation",
+                "claim_element_id": "protected_activity",
+                "resolution_status": "partially_addressed",
+                "status": "active",
+            }
+        ],
+        "alignment_task_update_history": [
+            {
+                "task_id": "retaliation:protected_activity:fill_evidence_gaps",
+                "claim_type": "retaliation",
+                "claim_element_id": "protected_activity",
+                "resolution_status": "still_open",
+                "status": "active",
+                "evidence_sequence": 1,
+            },
+            {
+                "task_id": "retaliation:protected_activity:fill_evidence_gaps",
+                "claim_type": "retaliation",
+                "claim_element_id": "protected_activity",
+                "resolution_status": "partially_addressed",
+                "status": "active",
+                "evidence_sequence": 2,
+            }
+        ],
         "question_candidate_summary": {
             "count": 1,
             "candidates": [{"candidate_source": "intake_proof_gap"}],
@@ -142,6 +169,8 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["intake_evidence_alignment_summary"]["aligned_element_count"] == 1
     assert summary["intake_evidence_alignment_summary"]["claims"]["retaliation"]["intake_only_element_ids"] == ["causation"]
     assert summary["alignment_evidence_tasks"][0]["claim_element_id"] == "protected_activity"
+    assert summary["alignment_task_updates"][0]["resolution_status"] == "partially_addressed"
+    assert summary["alignment_task_update_history"][1]["evidence_sequence"] == 2
     assert summary["question_candidate_summary"]["count"] == 1
     assert summary["question_candidate_summary"]["source_counts"]["intake_proof_gap"] == 1
     assert summary["claim_support_packet_summary"]["claim_count"] == 1

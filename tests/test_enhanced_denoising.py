@@ -67,6 +67,44 @@ class TestPhase2Denoising:
         quality_questions = [q for q in questions if q['type'] == 'evidence_quality']
         assert len(quality_questions) > 0
 
+    def test_evidence_questions_use_alignment_task_preferences(self):
+        """Alignment tasks should produce task-aware evidence questions and context."""
+        kg_builder = KnowledgeGraphBuilder()
+        dg_builder = DependencyGraphBuilder()
+        denoiser = ComplaintDenoiser()
+
+        kg = kg_builder.build_from_text("I complained to HR and was later terminated.")
+        dg = dg_builder.build_from_claims([{'name': 'Retaliation', 'type': 'retaliation'}])
+
+        questions = denoiser.generate_evidence_questions(
+            kg,
+            dg,
+            [],
+            alignment_evidence_tasks=[
+                {
+                    'action': 'fill_evidence_gaps',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'claim_element_label': 'Protected activity',
+                    'support_status': 'unsupported',
+                    'blocking': True,
+                    'preferred_support_kind': 'evidence',
+                    'preferred_evidence_classes': ['email', 'hr_complaint', 'text_message'],
+                    'missing_fact_bundle': ['who received the complaint'],
+                    'success_criteria': ['Element Protected activity reaches supported status'],
+                    'recommended_queries': ['"retaliation" "Protected activity" who received the complaint'],
+                }
+            ],
+            max_questions=3,
+        )
+
+        assert questions
+        assert 'email, hr complaint, text message' in questions[0]['question'].lower()
+        assert 'who received the complaint' in questions[0]['question'].lower()
+        assert questions[0]['context']['preferred_support_kind'] == 'evidence'
+        assert questions[0]['context']['preferred_evidence_classes'] == ['email', 'hr_complaint', 'text_message']
+        assert questions[0]['context']['missing_fact_bundle'] == ['who received the complaint']
+
 
 class TestPhase3Denoising:
     """Test denoising in formalization phase."""

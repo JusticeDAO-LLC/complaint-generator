@@ -455,6 +455,86 @@ class TestMediatorWithMocks:
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
+    def test_follow_up_plan_inherits_alignment_task_preferences(self):
+        """Follow-up planning should inherit preferred support lane and query hints from evidence-phase alignment tasks."""
+        try:
+            from mediator import Mediator
+            from complaint_phases import ComplaintPhase
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
+                'claims': {'employment': []}
+            })
+            mediator.claim_support.get_follow_up_execution_status = Mock(return_value={
+                'in_cooldown': False,
+            })
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'required_support_kinds': ['evidence', 'authority'],
+                        'elements': [
+                            {
+                                'element_id': 'employment:1',
+                                'element_text': 'Protected activity',
+                                'coverage_status': 'missing',
+                                'validation_status': 'incomplete',
+                                'recommended_action': 'collect_initial_support',
+                                'support_by_kind': {},
+                                'proof_gap_count': 0,
+                                'proof_gaps': [],
+                                'proof_decision_trace': {
+                                    'decision_source': 'missing_support',
+                                    'logic_provable_count': 0,
+                                    'logic_unprovable_count': 0,
+                                    'ontology_validation_signal': 'unknown',
+                                },
+                                'reasoning_diagnostics': {
+                                    'backend_available_count': 0,
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value=_make_graph_support_payload())
+            mediator.phase_manager.update_phase_data(
+                ComplaintPhase.EVIDENCE,
+                'alignment_evidence_tasks',
+                [
+                    {
+                        'claim_type': 'employment',
+                        'claim_element_id': 'employment:1',
+                        'preferred_support_kind': 'authority',
+                        'preferred_evidence_classes': ['policy'],
+                        'missing_fact_bundle': ['who received the complaint'],
+                        'recommended_queries': ['"employment" "Protected activity" official policy complaint channel'],
+                        'success_criteria': ['Element Protected activity reaches supported status'],
+                        'intake_origin_refs': ['open_item:element:employment:1'],
+                    }
+                ],
+            )
+            mediator.legal_authority_search.build_search_programs = Mock(return_value=[])
+
+            plan = mediator.get_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                required_support_kinds=['evidence', 'authority'],
+            )
+            task = plan['claims']['employment']['tasks'][0]
+
+            assert task['preferred_support_kind'] == 'authority'
+            assert task['preferred_evidence_classes'] == ['policy']
+            assert task['missing_fact_bundle'] == ['who received the complaint']
+            assert task['success_criteria'] == ['Element Protected activity reaches supported status']
+            assert task['intake_origin_refs'] == ['open_item:element:employment:1']
+            assert task['queries']['authority'][0] == '"employment" "Protected activity" official policy complaint channel'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
     def test_follow_up_plan_uses_rule_candidate_queries_for_fact_gaps(self):
         """When the law is already structured into rule candidates, evidence retrieval should target those predicates and exceptions."""
         try:
@@ -1810,5 +1890,428 @@ class TestMediatorWithMocks:
             assert 'insufficiently_parsed' in result['evidence_outcomes']
             assert result['claim_support_packet_summary']['status_counts']['contradicted'] == 1
             assert result['next_action']['action'] == 'resolve_support_conflicts'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_add_evidence_to_graphs_records_resolved_alignment_task_updates(self):
+        """Evidence ingestion should report when a previously open alignment task is now supported."""
+        try:
+            from mediator import Mediator
+            from complaint_phases import KnowledgeGraph, Entity, DependencyGraph, DependencyNode, NodeType, ComplaintPhase
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+
+            kg = KnowledgeGraph()
+            kg.add_entity(Entity(
+                id='claim-1',
+                type='claim',
+                name='Retaliation Claim',
+                attributes={'claim_type': 'retaliation'},
+                confidence=0.9,
+                source='complaint',
+            ))
+            dg = DependencyGraph()
+            dg.add_node(DependencyNode(
+                id='claim-1',
+                node_type=NodeType.CLAIM,
+                name='Retaliation Claim',
+                satisfied=False,
+                confidence=0.9,
+            ))
+            mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+            mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', kg)
+            mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', dg)
+            mediator.phase_manager.update_phase_data(
+                ComplaintPhase.EVIDENCE,
+                'alignment_evidence_tasks',
+                [
+                    {
+                        'task_id': 'retaliation:protected_activity:fill_evidence_gaps',
+                        'action': 'fill_evidence_gaps',
+                        'claim_type': 'retaliation',
+                        'claim_element_id': 'protected_activity',
+                        'claim_element_label': 'Protected activity',
+                        'support_status': 'unsupported',
+                        'missing_fact_bundle': ['Date of complaint'],
+                        'resolution_status': 'still_open',
+                    }
+                ],
+            )
+            mediator._build_claim_support_packets = Mock(return_value={
+                'retaliation': {
+                    'claim_type': 'retaliation',
+                    'elements': [
+                        {
+                            'element_id': 'protected_activity',
+                            'support_status': 'supported',
+                            'missing_fact_bundle': [],
+                        }
+                    ],
+                }
+            })
+            mediator._summarize_intake_evidence_alignment = Mock(return_value={
+                'claims': {
+                    'retaliation': {
+                        'shared_elements': [
+                            {
+                                'element_id': 'protected_activity',
+                                'label': 'Protected activity',
+                                'blocking': True,
+                                'support_status': 'supported',
+                                'preferred_evidence_classes': ['email'],
+                                'required_fact_bundle': ['Date of complaint'],
+                                'satisfied_fact_bundle': ['Date of complaint'],
+                                'missing_fact_bundle': [],
+                                'missing_support_kinds': [],
+                                'recommended_next_step': '',
+                                'intake_open_item_ids': [],
+                                'intake_proof_lead_ids': [],
+                            }
+                        ],
+                    }
+                }
+            })
+
+            result = mediator.add_evidence_to_graphs({
+                'artifact_id': 'artifact-email',
+                'name': 'HR complaint email',
+                'description': 'Email complaining about discrimination',
+                'confidence': 0.85,
+                'supports_claims': ['claim-1'],
+                'record_created': True,
+                'record_reused': False,
+                'support_link_created': True,
+                'support_link_reused': False,
+            })
+
+            assert result['alignment_evidence_tasks'] == []
+            assert result['alignment_task_updates']
+            assert result['alignment_task_updates'][0]['resolution_status'] == 'resolved_supported'
+            assert result['alignment_task_updates'][0]['status'] == 'resolved'
+            assert mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_updates')[0]['resolution_status'] == 'resolved_supported'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_add_evidence_to_graphs_marks_remaining_alignment_task_partially_addressed(self):
+        """Evidence ingestion should downgrade a surviving task when the missing fact bundle shrinks."""
+        try:
+            from mediator import Mediator
+            from complaint_phases import KnowledgeGraph, Entity, DependencyGraph, DependencyNode, NodeType, ComplaintPhase
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+
+            kg = KnowledgeGraph()
+            kg.add_entity(Entity(
+                id='claim-1',
+                type='claim',
+                name='Retaliation Claim',
+                attributes={'claim_type': 'retaliation'},
+                confidence=0.9,
+                source='complaint',
+            ))
+            dg = DependencyGraph()
+            dg.add_node(DependencyNode(
+                id='claim-1',
+                node_type=NodeType.CLAIM,
+                name='Retaliation Claim',
+                satisfied=False,
+                confidence=0.9,
+            ))
+            mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+            mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', kg)
+            mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', dg)
+            mediator.phase_manager.update_phase_data(
+                ComplaintPhase.EVIDENCE,
+                'alignment_evidence_tasks',
+                [
+                    {
+                        'task_id': 'retaliation:causation:fill_evidence_gaps',
+                        'action': 'fill_evidence_gaps',
+                        'claim_type': 'retaliation',
+                        'claim_element_id': 'causation',
+                        'claim_element_label': 'Causation',
+                        'support_status': 'unsupported',
+                        'missing_fact_bundle': ['Decision timing', 'Decision maker knowledge'],
+                        'resolution_status': 'still_open',
+                    }
+                ],
+            )
+            mediator._build_claim_support_packets = Mock(return_value={
+                'retaliation': {
+                    'claim_type': 'retaliation',
+                    'elements': [
+                        {
+                            'element_id': 'causation',
+                            'support_status': 'partially_supported',
+                            'missing_fact_bundle': ['Decision maker knowledge'],
+                        }
+                    ],
+                }
+            })
+            mediator._summarize_intake_evidence_alignment = Mock(return_value={
+                'claims': {
+                    'retaliation': {
+                        'shared_elements': [
+                            {
+                                'element_id': 'causation',
+                                'label': 'Causation',
+                                'blocking': True,
+                                'support_status': 'partially_supported',
+                                'preferred_evidence_classes': ['timeline', 'email'],
+                                'required_fact_bundle': ['Decision timing', 'Decision maker knowledge'],
+                                'satisfied_fact_bundle': ['Decision timing'],
+                                'missing_fact_bundle': ['Decision maker knowledge'],
+                                'missing_support_kinds': ['evidence'],
+                                'recommended_next_step': 'fill_evidence_gaps',
+                                'intake_open_item_ids': [],
+                                'intake_proof_lead_ids': [],
+                            }
+                        ],
+                    }
+                }
+            })
+
+            result = mediator.add_evidence_to_graphs({
+                'artifact_id': 'artifact-timeline',
+                'name': 'Timeline note',
+                'description': 'Timeline showing complaint before firing',
+                'confidence': 0.8,
+                'supports_claims': ['claim-1'],
+                'record_created': True,
+                'record_reused': False,
+                'support_link_created': True,
+                'support_link_reused': False,
+            })
+
+            assert result['alignment_evidence_tasks']
+            assert result['alignment_evidence_tasks'][0]['resolution_status'] == 'partially_addressed'
+            assert result['alignment_task_updates']
+            assert result['alignment_task_updates'][0]['resolution_status'] == 'partially_addressed'
+            assert result['alignment_task_updates'][0]['status'] == 'active'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_add_evidence_to_graphs_marks_contradicted_alignment_task_for_manual_review(self):
+        """Evidence ingestion should flag contradicted alignment tasks as needing manual review."""
+        try:
+            from mediator import Mediator
+            from complaint_phases import KnowledgeGraph, Entity, DependencyGraph, DependencyNode, NodeType, ComplaintPhase
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+
+            kg = KnowledgeGraph()
+            kg.add_entity(Entity(
+                id='claim-1',
+                type='claim',
+                name='Retaliation Claim',
+                attributes={'claim_type': 'retaliation'},
+                confidence=0.9,
+                source='complaint',
+            ))
+            dg = DependencyGraph()
+            dg.add_node(DependencyNode(
+                id='claim-1',
+                node_type=NodeType.CLAIM,
+                name='Retaliation Claim',
+                satisfied=False,
+                confidence=0.9,
+            ))
+            mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+            mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', kg)
+            mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', dg)
+            mediator.phase_manager.update_phase_data(
+                ComplaintPhase.EVIDENCE,
+                'alignment_evidence_tasks',
+                [
+                    {
+                        'task_id': 'retaliation:causation:resolve_support_conflicts',
+                        'action': 'resolve_support_conflicts',
+                        'claim_type': 'retaliation',
+                        'claim_element_id': 'causation',
+                        'claim_element_label': 'Causation',
+                        'support_status': 'contradicted',
+                        'missing_fact_bundle': ['Event sequence'],
+                        'resolution_status': 'needs_manual_review',
+                    }
+                ],
+            )
+            mediator._build_claim_support_packets = Mock(return_value={
+                'retaliation': {
+                    'claim_type': 'retaliation',
+                    'elements': [
+                        {
+                            'element_id': 'causation',
+                            'support_status': 'contradicted',
+                            'missing_fact_bundle': ['Event sequence'],
+                            'parse_quality_flags': ['improve_parse_quality'],
+                            'recommended_next_step': 'resolve_support_conflicts',
+                            'contradiction_count': 1,
+                        }
+                    ],
+                }
+            })
+            mediator._summarize_intake_evidence_alignment = Mock(return_value={
+                'claims': {
+                    'retaliation': {
+                        'shared_elements': [
+                            {
+                                'element_id': 'causation',
+                                'label': 'Causation',
+                                'blocking': True,
+                                'support_status': 'contradicted',
+                                'preferred_evidence_classes': ['timeline', 'memo'],
+                                'required_fact_bundle': ['Event sequence'],
+                                'satisfied_fact_bundle': [],
+                                'missing_fact_bundle': ['Event sequence'],
+                                'missing_support_kinds': ['evidence'],
+                                'recommended_next_step': 'resolve_support_conflicts',
+                                'intake_open_item_ids': [],
+                                'intake_proof_lead_ids': [],
+                            }
+                        ],
+                    }
+                }
+            })
+
+            result = mediator.add_evidence_to_graphs({
+                'artifact_id': 'artifact-conflict',
+                'name': 'Conflicting witness note',
+                'description': 'Witness note conflicts on event order',
+                'confidence': 0.7,
+                'supports_claims': ['claim-1'],
+                'record_created': True,
+                'record_reused': False,
+                'support_link_created': True,
+                'support_link_reused': False,
+                'contradicts_existing_fact': True,
+            })
+
+            assert result['alignment_evidence_tasks']
+            assert result['alignment_evidence_tasks'][0]['resolution_status'] == 'needs_manual_review'
+            assert result['alignment_task_updates']
+            assert result['alignment_task_updates'][0]['resolution_status'] == 'needs_manual_review'
+            assert result['alignment_task_updates'][0]['status'] == 'active'
+            assert 'contradicts_fact' in result['evidence_outcomes']
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_add_evidence_to_graphs_keeps_bounded_alignment_task_update_history(self):
+        """Evidence ingestion should append task updates to a bounded rolling history."""
+        try:
+            from mediator import Mediator
+            from complaint_phases import KnowledgeGraph, Entity, DependencyGraph, DependencyNode, NodeType, ComplaintPhase
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+
+            kg = KnowledgeGraph()
+            kg.add_entity(Entity(
+                id='claim-1',
+                type='claim',
+                name='Retaliation Claim',
+                attributes={'claim_type': 'retaliation'},
+                confidence=0.9,
+                source='complaint',
+            ))
+            dg = DependencyGraph()
+            dg.add_node(DependencyNode(
+                id='claim-1',
+                node_type=NodeType.CLAIM,
+                name='Retaliation Claim',
+                satisfied=False,
+                confidence=0.9,
+            ))
+            mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+            mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', kg)
+            mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', dg)
+            mediator.phase_manager.update_phase_data(
+                ComplaintPhase.EVIDENCE,
+                'alignment_evidence_tasks',
+                [
+                    {
+                        'task_id': 'retaliation:causation:fill_evidence_gaps',
+                        'action': 'fill_evidence_gaps',
+                        'claim_type': 'retaliation',
+                        'claim_element_id': 'causation',
+                        'support_status': 'unsupported',
+                        'missing_fact_bundle': ['Timeline'],
+                    }
+                ],
+            )
+            mediator.phase_manager.update_phase_data(
+                ComplaintPhase.EVIDENCE,
+                'alignment_task_update_history',
+                [
+                    {
+                        'task_id': f'old-task-{index}',
+                        'claim_type': 'retaliation',
+                        'claim_element_id': f'element-{index}',
+                        'resolution_status': 'still_open',
+                        'status': 'active',
+                        'evidence_sequence': index,
+                    }
+                    for index in range(1, 26)
+                ],
+            )
+            mediator._build_claim_support_packets = Mock(return_value={
+                'retaliation': {
+                    'claim_type': 'retaliation',
+                    'elements': [
+                        {
+                            'element_id': 'causation',
+                            'support_status': 'supported',
+                            'missing_fact_bundle': [],
+                        }
+                    ],
+                }
+            })
+            mediator._summarize_intake_evidence_alignment = Mock(return_value={
+                'claims': {
+                    'retaliation': {
+                        'shared_elements': [
+                            {
+                                'element_id': 'causation',
+                                'label': 'Causation',
+                                'blocking': True,
+                                'support_status': 'supported',
+                                'preferred_evidence_classes': ['timeline'],
+                                'required_fact_bundle': ['Timeline'],
+                                'satisfied_fact_bundle': ['Timeline'],
+                                'missing_fact_bundle': [],
+                                'missing_support_kinds': [],
+                                'recommended_next_step': '',
+                                'intake_open_item_ids': [],
+                                'intake_proof_lead_ids': [],
+                            }
+                        ],
+                    }
+                }
+            })
+
+            result = mediator.add_evidence_to_graphs({
+                'artifact_id': 'artifact-history',
+                'name': 'Timeline exhibit',
+                'description': 'Exhibit confirming timeline',
+                'confidence': 0.88,
+                'supports_claims': ['claim-1'],
+                'record_created': True,
+                'record_reused': False,
+                'support_link_created': True,
+                'support_link_reused': False,
+            })
+
+            history = result['alignment_task_update_history']
+            assert len(history) == 25
+            assert history[0]['task_id'] == 'old-task-2'
+            assert history[-1]['task_id'] == 'retaliation:causation:fill_evidence_gaps'
+            assert history[-1]['evidence_sequence'] == result['evidence_count']
+            assert mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history')[-1]['evidence_artifact_id'] == 'artifact-history'
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")

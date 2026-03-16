@@ -127,6 +127,33 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 },
                 "recommended_actions": ["collect_missing_support_kind"],
             },
+            "alignment_task_updates": [
+                {
+                    "task_id": "retaliation:adverse_action:fill_evidence_gaps",
+                    "claim_type": "retaliation",
+                    "claim_element_id": "adverse_action",
+                    "resolution_status": "partially_addressed",
+                    "status": "active",
+                }
+            ],
+            "alignment_task_update_history": [
+                {
+                    "task_id": "retaliation:adverse_action:fill_evidence_gaps",
+                    "claim_type": "retaliation",
+                    "claim_element_id": "adverse_action",
+                    "resolution_status": "still_open",
+                    "status": "active",
+                    "evidence_sequence": 1,
+                },
+                {
+                    "task_id": "retaliation:adverse_action:fill_evidence_gaps",
+                    "claim_type": "retaliation",
+                    "claim_element_id": "adverse_action",
+                    "resolution_status": "partially_addressed",
+                    "status": "active",
+                    "evidence_sequence": 2,
+                }
+            ],
         }
         mediator.get_claim_coverage_matrix.return_value = {
             "claims": {
@@ -766,6 +793,16 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert intake_case_summary.get("intake_matching_summary") == {}
         assert intake_case_summary.get("intake_legal_targeting_summary") == {}
         assert intake_case_summary.get("intake_evidence_alignment_summary") == {}
+        assert intake_case_summary["alignment_task_updates"] == [
+            {
+                "task_id": "retaliation:adverse_action:fill_evidence_gaps",
+                "claim_type": "retaliation",
+                "claim_element_id": "adverse_action",
+                "resolution_status": "partially_addressed",
+                "status": "active",
+            }
+        ]
+        assert intake_case_summary["alignment_task_update_history"][1]["evidence_sequence"] == 2
         assert intake_case_summary["claim_support_packet_summary"] == {
             "claim_count": 1,
             "element_count": 3,

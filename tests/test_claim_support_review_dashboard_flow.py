@@ -50,6 +50,51 @@ def _build_dashboard_mediator() -> Mock:
                 "category": "timeline",
             }
         ],
+        "alignment_task_updates": [
+            {
+                "task_id": "retaliation:causation:resolve_support_conflicts",
+                "claim_type": "retaliation",
+                "claim_element_id": "causal_connection",
+                "action": "resolve_support_conflicts",
+                "previous_support_status": "unsupported",
+                "current_support_status": "contradicted",
+                "previous_missing_fact_bundle": ["Event sequence", "Manager knowledge"],
+                "current_missing_fact_bundle": ["Event sequence"],
+                "resolution_status": "needs_manual_review",
+                "status": "active",
+                "evidence_artifact_id": "artifact-conflict",
+            }
+        ],
+        "alignment_task_update_history": [
+            {
+                "task_id": "retaliation:causation:fill_evidence_gaps",
+                "claim_type": "retaliation",
+                "claim_element_id": "causal_connection",
+                "action": "fill_evidence_gaps",
+                "previous_support_status": "",
+                "current_support_status": "unsupported",
+                "previous_missing_fact_bundle": [],
+                "current_missing_fact_bundle": ["Event sequence", "Manager knowledge"],
+                "resolution_status": "still_open",
+                "status": "active",
+                "evidence_artifact_id": "artifact-open",
+                "evidence_sequence": 1,
+            },
+            {
+                "task_id": "retaliation:causation:resolve_support_conflicts",
+                "claim_type": "retaliation",
+                "claim_element_id": "causal_connection",
+                "action": "resolve_support_conflicts",
+                "previous_support_status": "unsupported",
+                "current_support_status": "contradicted",
+                "previous_missing_fact_bundle": ["Event sequence", "Manager knowledge"],
+                "current_missing_fact_bundle": ["Event sequence"],
+                "resolution_status": "needs_manual_review",
+                "status": "active",
+                "evidence_artifact_id": "artifact-conflict",
+                "evidence_sequence": 2,
+            }
+        ],
     }
     mediator.get_claim_coverage_matrix.return_value = {
         "claims": {
@@ -681,6 +726,16 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert "renderQuestionRecommendations" in page_html
     assert "renderTestimonyRecords" in page_html
     assert "renderDocumentArtifacts" in page_html
+    assert "Alignment Task Updates" in page_html
+    assert "alignment-task-update-list" in page_html
+    assert "Alignment task updates: no recent evidence-driven task changes recorded." in page_html
+    assert "Alignment update for ${update.claim_type || 'claim'}" in page_html
+    assert "evidence event: ${update.evidence_sequence}" in page_html
+    assert "previous support: ${update.previous_support_status}" in page_html
+    assert "current support: ${update.current_support_status}" in page_html
+    assert "previous gap: ${factNeed}" in page_html
+    assert "current gap: ${factNeed}" in page_html
+    assert "artifact: ${update.evidence_artifact_id}" in page_html
     assert "prefill-testimony-button" in page_html
 
     review_payload = await review_route.endpoint(
@@ -703,6 +758,23 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
         "resolve_contradictions",
         "collect_missing_timeline_details",
     ]
+    assert review_payload["intake_case_summary"]["alignment_task_updates"] == [
+        {
+            "task_id": "retaliation:causation:resolve_support_conflicts",
+            "claim_type": "retaliation",
+            "claim_element_id": "causal_connection",
+            "action": "resolve_support_conflicts",
+            "previous_support_status": "unsupported",
+            "current_support_status": "contradicted",
+            "previous_missing_fact_bundle": ["Event sequence", "Manager knowledge"],
+            "current_missing_fact_bundle": ["Event sequence"],
+            "resolution_status": "needs_manual_review",
+            "status": "active",
+            "evidence_artifact_id": "artifact-conflict",
+        }
+    ]
+    assert review_payload["intake_case_summary"]["alignment_task_update_history"][0]["evidence_sequence"] == 1
+    assert review_payload["intake_case_summary"]["alignment_task_update_history"][1]["evidence_sequence"] == 2
     assert review_payload["intake_status"]["contradictions"][0]["question"] == (
         "What were the exact dates for the complaint and the schedule change?"
     )

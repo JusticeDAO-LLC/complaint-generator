@@ -904,6 +904,8 @@
                     <div class="question-list" id="intake-evidence-alignment-summary-list"></div>
                     <h2 style="margin-top: 18px;">Alignment Evidence Tasks</h2>
                     <div class="question-list" id="alignment-evidence-task-list"></div>
+                    <h2 style="margin-top: 18px;">Alignment Task Updates</h2>
+                    <div class="question-list" id="alignment-task-update-list"></div>
                 </div>
 
                 <div class="focus-block" data-section-focus-target="claims_for_relief requested_relief">
@@ -1536,6 +1538,7 @@
             const packetContainer = document.getElementById('claim-support-packet-summary-chips');
             const alignmentContainer = document.getElementById('intake-evidence-alignment-summary-list');
             const alignmentTaskContainer = document.getElementById('alignment-evidence-task-list');
+            const alignmentTaskUpdateContainer = document.getElementById('alignment-task-update-list');
             const intakeCaseSummary = summary && typeof summary === 'object' ? summary : {};
             const candidateClaims = Array.isArray(intakeCaseSummary.candidate_claims) ? intakeCaseSummary.candidate_claims : [];
             const intakeSections = intakeCaseSummary.intake_sections && typeof intakeCaseSummary.intake_sections === 'object'
@@ -1559,6 +1562,15 @@
             const alignmentEvidenceTasks = Array.isArray(intakeCaseSummary.alignment_evidence_tasks)
                 ? intakeCaseSummary.alignment_evidence_tasks
                 : [];
+            const alignmentTaskUpdates = Array.isArray(intakeCaseSummary.alignment_task_updates)
+                ? intakeCaseSummary.alignment_task_updates
+                : [];
+            const alignmentTaskUpdateHistory = Array.isArray(intakeCaseSummary.alignment_task_update_history)
+                ? intakeCaseSummary.alignment_task_update_history
+                : [];
+            const visibleAlignmentTaskUpdates = alignmentTaskUpdateHistory.length
+                ? alignmentTaskUpdateHistory
+                : alignmentTaskUpdates;
             const questionCandidateSummary = intakeCaseSummary.question_candidate_summary && typeof intakeCaseSummary.question_candidate_summary === 'object'
                 ? intakeCaseSummary.question_candidate_summary
                 : {};
@@ -1737,6 +1749,56 @@
                         </div>
                     </article>
                 `).join('');
+            }
+
+            if (!visibleAlignmentTaskUpdates.length) {
+                alignmentTaskUpdateContainer.innerHTML = '<div class="task-card">Alignment task updates: no recent evidence-driven task changes recorded.</div>';
+            } else {
+                alignmentTaskUpdateContainer.innerHTML = visibleAlignmentTaskUpdates.map((update) => {
+                    const chips = [
+                        `<span class="chip">element: ${update.claim_element_id || 'unknown'}</span>`,
+                        `<span class="chip">status: ${update.status || 'active'}</span>`,
+                        `<span class="chip">resolution: ${update.resolution_status || 'still_open'}</span>`,
+                    ];
+                    if (update.evidence_sequence !== undefined && update.evidence_sequence !== null && update.evidence_sequence !== '') {
+                        chips.push(`<span class="chip">evidence event: ${update.evidence_sequence}</span>`);
+                    }
+                    if (update.previous_support_status) {
+                        chips.push(`<span class="chip">previous support: ${update.previous_support_status}</span>`);
+                    }
+                    if (update.current_support_status) {
+                        chips.push(`<span class="chip">current support: ${update.current_support_status}</span>`);
+                    }
+                    const previousMissingFactBundle = Array.isArray(update.previous_missing_fact_bundle)
+                        ? update.previous_missing_fact_bundle
+                        : [];
+                    const currentMissingFactBundle = Array.isArray(update.current_missing_fact_bundle)
+                        ? update.current_missing_fact_bundle
+                        : [];
+                    previousMissingFactBundle.slice(0, 2).forEach((factNeed) => {
+                        chips.push(`<span class="chip">previous gap: ${factNeed}</span>`);
+                    });
+                    currentMissingFactBundle.slice(0, 2).forEach((factNeed) => {
+                        chips.push(`<span class="chip">current gap: ${factNeed}</span>`);
+                    });
+                    if (update.evidence_artifact_id) {
+                        chips.push(`<span class="chip">artifact: ${update.evidence_artifact_id}</span>`);
+                    }
+                    return `
+                        <article class="task-card">
+                            <div class="row-head">
+                                <div>
+                                    <div class="row-title">Alignment update for ${update.claim_type || 'claim'}</div>
+                                    <div class="meta">${update.action || 'fill_evidence_gaps'}</div>
+                                </div>
+                                <span class="badge ${update.status === 'resolved' ? 'covered' : (update.resolution_status === 'needs_manual_review' ? 'contradicted' : '')}">${update.resolution_status || 'still_open'}</span>
+                            </div>
+                            <div class="chip-row" style="margin-top: 10px;">
+                                ${chips.join('')}
+                            </div>
+                        </article>
+                    `;
+                }).join('');
             }
         }
 

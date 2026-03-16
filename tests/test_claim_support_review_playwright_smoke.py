@@ -45,6 +45,15 @@ def _build_document_browser_smoke_app() -> FastAPI:
     return app
 
 
+def _build_document_review_browser_smoke_app(mediator: Mock) -> FastAPI:
+    app = FastAPI(title="Document Review Flow Smoke")
+    attach_document_ui_routes(app)
+    attach_claim_support_review_routes(app, mediator)
+    attach_claim_support_review_ui_routes(app)
+    attach_review_health_routes(app, "document-review-flow-smoke")
+    return app
+
+
 def _build_hook_backed_browser_mediator(db_path: str):
     try:
         from mediator.claim_support_hooks import ClaimSupportHook
@@ -98,6 +107,51 @@ def _build_hook_backed_browser_mediator(db_path: str):
                 "support_status": "missing",
                 "action": "fill_evidence_gaps",
                 "blocking": True,
+            }
+        ],
+        "alignment_task_updates": [
+            {
+                "task_id": "retaliation:retaliation:3:fill_evidence_gaps",
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:3",
+                "action": "fill_evidence_gaps",
+                "previous_support_status": "",
+                "current_support_status": "missing",
+                "previous_missing_fact_bundle": [],
+                "current_missing_fact_bundle": ["Timeline evidence"],
+                "resolution_status": "still_open",
+                "status": "active",
+                "evidence_artifact_id": "artifact-open",
+            }
+        ],
+        "alignment_task_update_history": [
+            {
+                "task_id": "retaliation:retaliation:3:fill_evidence_gaps",
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:3",
+                "action": "fill_evidence_gaps",
+                "previous_support_status": "",
+                "current_support_status": "missing",
+                "previous_missing_fact_bundle": [],
+                "current_missing_fact_bundle": ["Timeline evidence"],
+                "resolution_status": "still_open",
+                "status": "active",
+                "evidence_artifact_id": "artifact-open",
+                "evidence_sequence": 1,
+            },
+            {
+                "task_id": "retaliation:retaliation:3:resolve_support_conflicts",
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:3",
+                "action": "resolve_support_conflicts",
+                "previous_support_status": "missing",
+                "current_support_status": "contradicted",
+                "previous_missing_fact_bundle": ["Timeline evidence"],
+                "current_missing_fact_bundle": ["Timeline evidence"],
+                "resolution_status": "needs_manual_review",
+                "status": "active",
+                "evidence_artifact_id": "artifact-conflict",
+                "evidence_sequence": 2,
             }
         ],
         "question_candidate_summary": {},
@@ -733,6 +787,7 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
 
                 alignment_summary = page.locator("#intake-evidence-alignment-summary-list").inner_text()
                 alignment_tasks = page.locator("#alignment-evidence-task-list").inner_text()
+                alignment_updates = page.locator("#alignment-task-update-list").inner_text()
 
                 assert "Cross-phase element alignment for retaliation" in alignment_summary
                 assert "aligned retaliation:1: supported" in alignment_summary
@@ -743,6 +798,12 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "element: retaliation:3" in alignment_tasks
                 assert "label: Causal connection" in alignment_tasks
                 assert "blocking: yes" in alignment_tasks
+                assert "Alignment update for retaliation" in alignment_updates
+                assert "resolution: still_open" in alignment_updates
+                assert "resolution: needs_manual_review" in alignment_updates
+                assert "evidence event: 1" in alignment_updates
+                assert "evidence event: 2" in alignment_updates
+                assert "artifact: artifact-conflict" in alignment_updates
 
                 browser.close()
     finally:
@@ -923,3 +984,243 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
             } in question_links
 
             browser.close()
+
+
+def test_document_builder_question_review_link_click_preserves_focus_on_review_page():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    payload = {
+        "generated_at": "2026-03-15T20:00:00+00:00",
+        "draft": {
+            "court_header": "IN THE UNITED STATES DISTRICT COURT",
+            "case_caption": {
+                "plaintiffs": ["Jane Doe"],
+                "defendants": ["Acme Corporation"],
+            },
+            "summary_of_facts": ["Plaintiff reported discrimination to HR."],
+            "factual_allegation_paragraphs": ["1. Plaintiff reported discrimination to HR."],
+            "legal_standards": ["Title VII prohibits retaliation."],
+            "claims_for_relief": [],
+            "requested_relief": ["Compensatory damages."],
+            "draft_text": "Sample draft text.",
+            "exhibits": [],
+        },
+        "drafting_readiness": {"sections": {}, "claims": [], "warnings": []},
+        "filing_checklist": [],
+        "review_links": {},
+        "document_optimization": {
+            "status": "optimized",
+            "method": "actor_mediator_critic_optimizer",
+            "optimizer_backend": "upstream_agentic",
+            "initial_score": 0.4,
+            "final_score": 0.7,
+            "accepted_iterations": 1,
+            "iteration_count": 1,
+            "optimized_sections": ["factual_allegations"],
+            "trace_storage": {"status": "available", "cid": "bafy-test", "size": 123, "pinned": True},
+            "intake_status": {
+                "current_phase": "intake",
+                "score": 0.5,
+                "remaining_gap_count": 1,
+                "contradiction_count": 0,
+                "ready_to_advance": False,
+                "blockers": ["collect_missing_support"],
+                "contradictions": [],
+            },
+            "intake_constraints": [],
+            "intake_case_summary": {
+                "candidate_claims": [],
+                "intake_sections": {
+                    "proof_leads": {"status": "partial", "missing_items": ["documents"]},
+                    "claims_for_relief": {"status": "partial", "missing_items": ["authority"]},
+                },
+                "canonical_fact_summary": {"count": 1, "facts": [{"fact_id": "fact_001"}]},
+                "proof_lead_summary": {"count": 1, "proof_leads": [{"lead_id": "lead_001"}]},
+                "question_candidate_summary": {
+                    "count": 2,
+                    "question_goal_counts": {
+                        "identify_supporting_proof": 1,
+                        "establish_element": 1,
+                    },
+                    "phase1_section_counts": {
+                        "proof_leads": 1,
+                        "claims_for_relief": 1,
+                    },
+                    "blocking_level_counts": {"blocking": 1, "non_blocking": 1},
+                },
+                "claim_support_packet_summary": {
+                    "claim_count": 1,
+                    "element_count": 2,
+                    "status_counts": {"unsupported": 2},
+                    "recommended_actions": ["collect_missing_support_kind"],
+                },
+            },
+            "packet_projection": {
+                "title": "Complaint Packet",
+                "section_presence": {"factual_allegations": True},
+                "has_affidavit": False,
+                "has_certificate_of_service": False,
+            },
+            "section_history": [
+                {
+                    "iteration": 1,
+                    "focus_section": "factual_allegations",
+                    "accepted": True,
+                    "overall_score": 0.7,
+                }
+            ],
+            "initial_review": {},
+            "final_review": {},
+            "router_status": {},
+            "upstream_optimizer": {},
+        },
+    }
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for document-to-review click-through coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+
+        app = _build_document_review_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(f"{base_url}/document")
+                page.evaluate("payload => window.renderPreview(payload)", payload)
+                page.wait_for_function(
+                    "() => Array.from(document.querySelectorAll('#previewRoot a.inline-link')).some((node) => node.textContent.includes('Claims For Relief Question Review'))"
+                )
+
+                page.click("text=Open Claims For Relief Question Review (1)")
+                page.wait_for_url("**/claim-support-review?**")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                assert "section=claims_for_relief" in page.url
+                assert "follow_up_support_kind=authority" in page.url
+                assert page.locator("#support-kind").input_value() == "authority"
+                assert "Claims For Relief" in page.locator("#prefill-context-line").inner_text()
+                assert "Focused lane: Authority." in page.locator("#prefill-context-line").inner_text()
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+def test_optimization_trace_question_review_link_click_preserves_focus_on_review_page():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    payload = {
+        "cid": "bafy-trace-smoke",
+        "size": 321,
+        "trace": {
+            "user_id": "browser-smoke-text-link",
+            "intake_status": {
+                "current_phase": "intake",
+                "score": 0.52,
+                "contradiction_count": 0,
+                "blockers": ["collect_missing_support"],
+                "contradictions": [],
+            },
+            "intake_constraints": [],
+            "intake_case_summary": {
+                "candidate_claims": [
+                    {"claim_type": "retaliation", "label": "Retaliation"},
+                ],
+                "intake_sections": {
+                    "proof_leads": {"status": "partial", "missing_items": ["documents"]},
+                    "claims_for_relief": {"status": "partial", "missing_items": ["authority"]},
+                },
+                "canonical_fact_summary": {"count": 1, "facts": [{"fact_id": "fact_001"}]},
+                "proof_lead_summary": {"count": 1, "proof_leads": [{"lead_id": "lead_001"}]},
+                "question_candidate_summary": {
+                    "count": 2,
+                    "question_goal_counts": {
+                        "identify_supporting_proof": 1,
+                        "establish_element": 1,
+                    },
+                    "phase1_section_counts": {
+                        "proof_leads": 1,
+                        "claims_for_relief": 1,
+                    },
+                    "blocking_level_counts": {
+                        "blocking": 1,
+                        "non_blocking": 1,
+                    },
+                },
+                "claim_support_packet_summary": {
+                    "claim_count": 1,
+                    "element_count": 2,
+                    "status_counts": {"unsupported": 2},
+                    "recommended_actions": ["collect_missing_support_kind"],
+                },
+            },
+            "iterations": [
+                {
+                    "iteration": 1,
+                    "focus_section": "factual_allegations",
+                    "accepted": True,
+                    "critic": {"overall_score": 0.73},
+                }
+            ],
+            "initial_review": {"overall_score": 0.41},
+            "final_review": {"overall_score": 0.73, "recommended_focus": "claims_for_relief"},
+        },
+    }
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for trace-to-review click-through coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+
+        app = _build_document_review_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(f"{base_url}/document/optimization-trace")
+                page.evaluate("payload => window.renderTrace(payload)", payload)
+                page.wait_for_function(
+                    "() => Array.from(document.querySelectorAll('#traceEvidenceQuestionTargets a.inline-link')).some((node) => node.textContent.includes('Claims For Relief Question Review'))"
+                )
+
+                page.click("text=Open Claims For Relief Question Review (1)")
+                page.wait_for_url("**/claim-support-review?**")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                assert "user_id=browser-smoke-text-link" in page.url
+                assert "section=claims_for_relief" in page.url
+                assert "follow_up_support_kind=authority" in page.url
+                assert page.locator("#support-kind").input_value() == "authority"
+                assert "Claims For Relief" in page.locator("#prefill-context-line").inner_text()
+                assert "Focused lane: Authority." in page.locator("#prefill-context-line").inner_text()
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)

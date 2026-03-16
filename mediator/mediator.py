@@ -45,6 +45,9 @@ from claim_support_review import (
 )
 from document_pipeline import FormalComplaintDocumentBuilder
 
+
+ALIGNMENT_TASK_UPDATE_HISTORY_LIMIT = 25
+
 # Import three-phase complaint processing
 from complaint_phases import (
 	CLAIM_INTAKE_REQUIREMENTS,
@@ -1925,6 +1928,10 @@ class Mediator:
 			query_strategy = 'reasoning_gap_targeted'
 		elif follow_up_focus == 'parse_quality_improvement':
 			query_strategy = 'quality_gap_targeted'
+		preferred_support_kind = str(
+			element.get('preferred_support_kind')
+			or self._default_preferred_support_kind(missing_support_kinds)
+		).strip().lower()
 		return {
 			'claim_type': claim_type,
 			'claim_element_id': element.get('element_id'),
@@ -1951,6 +1958,14 @@ class Mediator:
 			'priority_score': 3 if priority == 'high' else 2,
 			'recommended_action': recommended_action,
 			'missing_support_kinds': missing_support_kinds,
+			'preferred_support_kind': preferred_support_kind,
+			'preferred_evidence_classes': list(element.get('preferred_evidence_classes', []) or []),
+			'fallback_support_kinds': list(element.get('fallback_support_kinds', []) or []),
+			'missing_fact_bundle': list(element.get('missing_fact_bundle', []) or []),
+			'satisfied_fact_bundle': list(element.get('satisfied_fact_bundle', []) or []),
+			'intake_origin_refs': list(element.get('intake_origin_refs', []) or []),
+			'success_criteria': list(element.get('success_criteria', []) or []),
+			'recommended_queries': list(element.get('recommended_queries', []) or []),
 			'queries': queries,
 		}
 
@@ -2245,6 +2260,7 @@ class Mediator:
 			'required_support_kinds': required_support_kinds or ['evidence', 'authority'],
 			'claims': {},
 		}
+		alignment_lookup = self._build_alignment_task_lookup()
 		for current_claim, claim_data in validation.get('claims', {}).items():
 			manual_review_history = self.claim_support.get_recent_follow_up_execution(
 				user_id,
@@ -2289,6 +2305,7 @@ class Mediator:
 					task,
 					retrieval_feedback_state_map,
 				)
+				task = self._merge_alignment_task_preferences_into_follow_up_task(task, alignment_lookup)
 				tasks.append(task)
 			for task in tasks:
 				execution_status: Dict[str, Any] = {}
@@ -2424,6 +2441,10 @@ class Mediator:
 					'claim_element': task.get('claim_element'),
 					'status': task.get('status'),
 					'priority': task.get('priority'),
+					'preferred_support_kind': task.get('preferred_support_kind'),
+					'preferred_evidence_classes': list(task.get('preferred_evidence_classes') or []),
+					'missing_fact_bundle': list(task.get('missing_fact_bundle') or []),
+					'success_criteria': list(task.get('success_criteria') or []),
 					'recommended_action': task.get('recommended_action'),
 					'execution_mode': task.get('execution_mode', 'retrieve_support'),
 					'requires_manual_review': task.get('requires_manual_review', False),
@@ -2476,7 +2497,26 @@ class Mediator:
 						},
 					})
 					continue
-				if support_kind in (None, 'evidence') and 'evidence' in task.get('missing_support_kinds', []):
+				preferred_support_kind = str(task.get('preferred_support_kind') or '').strip().lower()
+				run_evidence_lane = (
+					support_kind in (None, 'evidence')
+					and 'evidence' in task.get('missing_support_kinds', [])
+					and not (
+						support_kind is None
+						and preferred_support_kind == 'authority'
+						and 'authority' in task.get('missing_support_kinds', [])
+					)
+				)
+				run_authority_lane = (
+					support_kind in (None, 'authority')
+					and 'authority' in task.get('missing_support_kinds', [])
+					and not (
+						support_kind is None
+						and preferred_support_kind == 'evidence'
+						and 'evidence' in task.get('missing_support_kinds', [])
+					)
+				)
+				if run_evidence_lane:
 					evidence_query = task.get('queries', {}).get('evidence', [])
 					query_text = evidence_query[0] if evidence_query else f'{current_claim} {task.get("claim_element", "")} evidence'
 					if not force and self.claim_support.was_follow_up_executed(
@@ -2541,7 +2581,7 @@ class Mediator:
 							'keywords': keywords,
 							'result': discovery_result,
 						}
-				if support_kind in (None, 'authority') and 'authority' in task.get('missing_support_kinds', []):
+				if run_authority_lane:
 					authority_query = task.get('queries', {}).get('authority', [])
 					task_query_text = authority_query[0] if authority_query else f'{current_claim} {task.get("claim_element", "")} statute'
 					primary_program = self._select_primary_authority_search_program(task)
@@ -4221,6 +4261,75 @@ class Mediator:
 		queries.append(f'"{claim_phrase}" "{element_phrase}" supporting evidence')
 		return [query for query in queries if query]
 
+	def _default_preferred_support_kind(self, missing_support_kinds: List[str]) -> str:
+		normalized = [
+			str(kind or '').strip().lower()
+			for kind in (missing_support_kinds or [])
+			if str(kind or '').strip()
+		]
+		if 'evidence' in normalized:
+			return 'evidence'
+		if 'authority' in normalized:
+			return 'authority'
+		return normalized[0] if normalized else 'evidence'
+
+	def _build_alignment_task_lookup(self) -> Dict[str, Dict[str, Any]]:
+		lookup: Dict[str, Dict[str, Any]] = {}
+		alignment_tasks = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks') or []
+		for task in alignment_tasks if isinstance(alignment_tasks, list) else []:
+			if not isinstance(task, dict):
+				continue
+			claim_type = str(task.get('claim_type') or '').strip().lower()
+			element_id = str(task.get('claim_element_id') or '').strip().lower()
+			if not claim_type or not element_id:
+				continue
+			lookup[f'{claim_type}:{element_id}'] = task
+		return lookup
+
+	def _merge_alignment_task_preferences_into_follow_up_task(
+		self,
+		task: Dict[str, Any],
+		alignment_lookup: Dict[str, Dict[str, Any]],
+	) -> Dict[str, Any]:
+		claim_type = str(task.get('claim_type') or '').strip().lower()
+		element_id = str(task.get('claim_element_id') or '').strip().lower()
+		alignment_task = alignment_lookup.get(f'{claim_type}:{element_id}', {}) if isinstance(alignment_lookup, dict) else {}
+		if not isinstance(alignment_task, dict) or not alignment_task:
+			task['preferred_support_kind'] = str(
+				task.get('preferred_support_kind') or self._default_preferred_support_kind(task.get('missing_support_kinds', []))
+			).strip().lower()
+			return task
+
+		preferred_support_kind = str(
+			alignment_task.get('preferred_support_kind')
+			or task.get('preferred_support_kind')
+			or self._default_preferred_support_kind(task.get('missing_support_kinds', []))
+		).strip().lower()
+		task['preferred_support_kind'] = preferred_support_kind
+		task['preferred_evidence_classes'] = list(alignment_task.get('preferred_evidence_classes', []) or task.get('preferred_evidence_classes', []) or [])
+		task['fallback_support_kinds'] = list(alignment_task.get('fallback_support_kinds', []) or task.get('fallback_support_kinds', []) or [])
+		task['missing_fact_bundle'] = list(alignment_task.get('missing_fact_bundle', []) or task.get('missing_fact_bundle', []) or [])
+		task['satisfied_fact_bundle'] = list(alignment_task.get('satisfied_fact_bundle', []) or task.get('satisfied_fact_bundle', []) or [])
+		task['intake_origin_refs'] = list(alignment_task.get('intake_origin_refs', []) or task.get('intake_origin_refs', []) or [])
+		task['success_criteria'] = list(alignment_task.get('success_criteria', []) or task.get('success_criteria', []) or [])
+		alignment_queries = [
+			str(item).strip()
+			for item in (alignment_task.get('recommended_queries') or [])
+			if str(item).strip()
+		]
+		if alignment_queries:
+			task['recommended_queries'] = alignment_queries
+			queries = dict(task.get('queries') or {}) if isinstance(task.get('queries'), dict) else {}
+			lane = 'authority' if preferred_support_kind == 'authority' else 'evidence'
+			existing_queries = [
+				str(item).strip()
+				for item in (queries.get(lane) or [])
+				if str(item).strip()
+			]
+			queries[lane] = list(dict.fromkeys(alignment_queries + existing_queries))
+			task['queries'] = queries
+		return task
+
 	def _build_claim_support_packets(
 		self,
 		user_id: str = None,
@@ -4722,6 +4831,10 @@ class Mediator:
 				]
 				if missing_fact_bundle:
 					success_criteria.append(f'Collect support addressing: {missing_fact_bundle[0]}')
+				resolution_status = self._derive_alignment_task_resolution_status(
+					support_status,
+					missing_fact_bundle,
+				)
 				tasks.append(
 					{
 						'task_id': f'{claim_type}:{claim_element_id}:{action}',
@@ -4749,7 +4862,7 @@ class Mediator:
 							missing_fact_bundle,
 						),
 						'success_criteria': success_criteria,
-						'resolution_status': 'queued',
+						'resolution_status': resolution_status,
 					}
 				)
 
@@ -4762,6 +4875,164 @@ class Mediator:
 			)
 		)
 		return tasks
+
+	def _derive_alignment_task_resolution_status(
+		self,
+		support_status: Any,
+		missing_fact_bundle: Any,
+	) -> str:
+		normalized_support_status = str(support_status or '').strip().lower()
+		missing_bundle = [
+			str(item).strip()
+			for item in (missing_fact_bundle if isinstance(missing_fact_bundle, list) else [])
+			if str(item).strip()
+		]
+		if normalized_support_status == 'contradicted':
+			return 'needs_manual_review'
+		if normalized_support_status == 'partially_supported':
+			return 'partially_addressed'
+		if normalized_support_status == 'supported' and not missing_bundle:
+			return 'resolved_supported'
+		return 'still_open'
+
+	def _alignment_packet_status_map(self, claim_support_packets: Any) -> Dict[tuple, Dict[str, Any]]:
+		status_map: Dict[tuple, Dict[str, Any]] = {}
+		if not isinstance(claim_support_packets, dict):
+			return status_map
+		for claim_type, packet in claim_support_packets.items():
+			if not isinstance(packet, dict):
+				continue
+			for element in packet.get('elements', []) or []:
+				if not isinstance(element, dict):
+					continue
+				element_id = str(element.get('element_id') or '').strip()
+				if not element_id:
+					continue
+				status_map[(str(claim_type), element_id)] = element
+		return status_map
+
+	def _summarize_alignment_task_updates(
+		self,
+		prior_tasks: Any,
+		refreshed_tasks: Any,
+		claim_support_packets: Any,
+		evidence_data: Dict[str, Any],
+	) -> List[Dict[str, Any]]:
+		updates: List[Dict[str, Any]] = []
+		previous_tasks = [dict(task) for task in (prior_tasks if isinstance(prior_tasks, list) else []) if isinstance(task, dict)]
+		current_tasks = [dict(task) for task in (refreshed_tasks if isinstance(refreshed_tasks, list) else []) if isinstance(task, dict)]
+		if not previous_tasks and not current_tasks:
+			return updates
+
+		current_task_map = {
+			(str(task.get('claim_type') or ''), str(task.get('claim_element_id') or '')): task
+			for task in current_tasks
+			if str(task.get('claim_type') or '').strip() and str(task.get('claim_element_id') or '').strip()
+		}
+		packet_status_map = self._alignment_packet_status_map(claim_support_packets)
+		seen_keys = set()
+		artifact_id = evidence_data.get('artifact_id') or evidence_data.get('cid') or evidence_data.get('id')
+
+		for prior_task in previous_tasks:
+			claim_type = str(prior_task.get('claim_type') or '').strip()
+			claim_element_id = str(prior_task.get('claim_element_id') or '').strip()
+			if not claim_type or not claim_element_id:
+				continue
+			key = (claim_type, claim_element_id)
+			seen_keys.add(key)
+			current_task = current_task_map.get(key)
+			packet_element = packet_status_map.get(key, {}) if isinstance(packet_status_map.get(key), dict) else {}
+			current_support_status = str(
+				(current_task or {}).get('support_status')
+				or packet_element.get('support_status')
+				or prior_task.get('support_status')
+				or ''
+			).strip().lower()
+			current_missing_fact_bundle = list(
+				(current_task or {}).get('missing_fact_bundle')
+				or packet_element.get('missing_fact_bundle')
+				or []
+			)
+			previous_missing_fact_bundle = list(prior_task.get('missing_fact_bundle') or [])
+			resolution_status = self._derive_alignment_task_resolution_status(
+				current_support_status,
+				current_missing_fact_bundle,
+			)
+			if resolution_status == 'still_open' and len(current_missing_fact_bundle) < len(previous_missing_fact_bundle):
+				resolution_status = 'partially_addressed'
+			status = 'resolved' if resolution_status == 'resolved_supported' and current_task is None else 'active'
+			updates.append(
+				{
+					'task_id': str(prior_task.get('task_id') or f'{claim_type}:{claim_element_id}'),
+					'claim_type': claim_type,
+					'claim_element_id': claim_element_id,
+					'action': str(prior_task.get('action') or ''),
+					'previous_support_status': str(prior_task.get('support_status') or '').strip().lower(),
+					'current_support_status': current_support_status,
+					'previous_missing_fact_bundle': previous_missing_fact_bundle,
+					'current_missing_fact_bundle': current_missing_fact_bundle,
+					'resolution_status': resolution_status,
+					'status': status,
+					'evidence_artifact_id': artifact_id,
+				}
+			)
+
+		for current_task in current_tasks:
+			claim_type = str(current_task.get('claim_type') or '').strip()
+			claim_element_id = str(current_task.get('claim_element_id') or '').strip()
+			key = (claim_type, claim_element_id)
+			if not claim_type or not claim_element_id or key in seen_keys:
+				continue
+			updates.append(
+				{
+					'task_id': str(current_task.get('task_id') or f'{claim_type}:{claim_element_id}'),
+					'claim_type': claim_type,
+					'claim_element_id': claim_element_id,
+					'action': str(current_task.get('action') or ''),
+					'previous_support_status': '',
+					'current_support_status': str(current_task.get('support_status') or '').strip().lower(),
+					'previous_missing_fact_bundle': [],
+					'current_missing_fact_bundle': list(current_task.get('missing_fact_bundle') or []),
+					'resolution_status': str(current_task.get('resolution_status') or 'still_open'),
+					'status': 'active',
+					'evidence_artifact_id': artifact_id,
+				}
+			)
+
+		updates.sort(
+			key=lambda update: (
+				0 if update.get('status') == 'resolved' else 1,
+				str(update.get('claim_type') or ''),
+				str(update.get('claim_element_id') or ''),
+			)
+		)
+		return updates
+
+	def _merge_alignment_task_update_history(
+		self,
+		existing_history: Any,
+		updates: Any,
+		*,
+		evidence_sequence: int,
+		max_entries: int = ALIGNMENT_TASK_UPDATE_HISTORY_LIMIT,
+	) -> List[Dict[str, Any]]:
+		history = [
+			dict(entry)
+			for entry in (existing_history if isinstance(existing_history, list) else [])
+			if isinstance(entry, dict)
+		]
+		new_updates = [
+			{
+				**dict(update),
+				'evidence_sequence': int(evidence_sequence),
+			}
+			for update in (updates if isinstance(updates, list) else [])
+			if isinstance(update, dict)
+		]
+		if not new_updates:
+			return history[-max_entries:] if max_entries > 0 else []
+		merged = history + new_updates
+		return merged[-max_entries:] if max_entries > 0 else merged
 
 	def _retire_answered_alignment_evidence_tasks(
 		self,
@@ -4871,6 +5142,8 @@ class Mediator:
 		alignment_tasks = self._build_alignment_evidence_tasks(alignment_summary)
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'intake_evidence_alignment_summary', alignment_summary)
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks', alignment_tasks)
+		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_updates', [])
+		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history', [])
 		
 		return {
 			'phase': ComplaintPhase.EVIDENCE.value,
@@ -5101,13 +5374,28 @@ class Mediator:
 		readiness = dg.get_claim_readiness() if dg else {'overall_readiness': 0.0}
 		gap_ratio = 1.0 - readiness['overall_readiness'] if dg else 1.0
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_gap_ratio', gap_ratio)
+		prior_alignment_tasks = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks') or []
+		prior_alignment_task_history = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history') or []
 		claim_support_packets = self._build_claim_support_packets()
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packets', claim_support_packets)
 		intake_case_file = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
 		alignment_summary = self._summarize_intake_evidence_alignment(intake_case_file, claim_support_packets)
 		alignment_tasks = self._build_alignment_evidence_tasks(alignment_summary)
+		alignment_task_updates = self._summarize_alignment_task_updates(
+			prior_alignment_tasks,
+			alignment_tasks,
+			claim_support_packets,
+			evidence_data,
+		)
+		alignment_task_update_history = self._merge_alignment_task_update_history(
+			prior_alignment_task_history,
+			alignment_task_updates,
+			evidence_sequence=updated_evidence_count,
+		)
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'intake_evidence_alignment_summary', alignment_summary)
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks', alignment_tasks)
+		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_updates', alignment_task_updates)
+		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history', alignment_task_update_history)
 		packet_summary = self._summarize_claim_support_packets(claim_support_packets)
 		evidence_outcomes = self._classify_evidence_ingestion_outcomes(
 			evidence_data,
@@ -5126,6 +5414,8 @@ class Mediator:
 			'claim_support_packet_summary': packet_summary,
 			'intake_evidence_alignment_summary': alignment_summary,
 			'alignment_evidence_tasks': alignment_tasks,
+			'alignment_task_updates': alignment_task_updates,
+			'alignment_task_update_history': alignment_task_update_history,
 			'evidence_outcomes': evidence_outcomes,
 			'graph_projection': projection_summary,
 			'next_action': next_action,
@@ -5476,6 +5766,8 @@ class Mediator:
 		intake_matching_pressure = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_matching_pressure') or {}
 		claim_support_packets = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packets') or {}
 		alignment_evidence_tasks = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks') or []
+		alignment_task_updates = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_updates') or []
+		alignment_task_update_history = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history') or []
 		return {
 			'current_phase': self.phase_manager.get_current_phase().value,
 			'iteration_count': self.phase_manager.iteration_count,
@@ -5504,6 +5796,8 @@ class Mediator:
 				claim_support_packets,
 			),
 			'alignment_evidence_tasks': alignment_evidence_tasks if isinstance(alignment_evidence_tasks, list) else [],
+			'alignment_task_updates': alignment_task_updates if isinstance(alignment_task_updates, list) else [],
+			'alignment_task_update_history': alignment_task_update_history if isinstance(alignment_task_update_history, list) else [],
 			'intake_contradictions': {
 				'candidate_count': intake_readiness.get('contradiction_count', 0),
 				'candidates': intake_readiness.get('contradictions', []),

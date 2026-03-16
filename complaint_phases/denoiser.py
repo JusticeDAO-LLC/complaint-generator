@@ -1717,18 +1717,49 @@ class ComplaintDenoiser:
             ).strip()
             support_status = str(task.get('support_status') or '').strip().lower()
             action = str(task.get('action') or 'fill_evidence_gaps').strip().lower()
+            preferred_support_kind = str(task.get('preferred_support_kind') or '').strip().lower()
+            preferred_evidence_classes = [
+                str(item).strip().replace('_', ' ')
+                for item in (task.get('preferred_evidence_classes') or [])
+                if str(item).strip()
+            ]
+            missing_fact_bundle = [
+                str(item).strip()
+                for item in (task.get('missing_fact_bundle') or [])
+                if str(item).strip()
+            ]
+            recommended_queries = [
+                str(item).strip()
+                for item in (task.get('recommended_queries') or [])
+                if str(item).strip()
+            ]
+            evidence_hint = ''
+            if preferred_evidence_classes:
+                evidence_hint = f" such as {', '.join(preferred_evidence_classes[:3])}"
+            bundle_hint = f" I still need facts about {missing_fact_bundle[0]}." if missing_fact_bundle else ''
             if support_status == 'contradicted' or action == 'resolve_support_conflicts':
                 question_text = (
                     f"What evidence best resolves the conflict around {claim_element_label} "
-                    f"for {claim_type}?"
+                    f"for {claim_type}?{bundle_hint}"
                 )
                 question_type = 'evidence_conflict'
                 priority = 'high'
             else:
-                question_text = (
-                    f"What evidence do you have to support {claim_element_label} "
-                    f"for {claim_type}?"
-                )
+                if preferred_support_kind == 'authority':
+                    question_text = (
+                        f"What legal authority or official policy material do you have to support "
+                        f"{claim_element_label} for {claim_type}?{bundle_hint}"
+                    )
+                elif preferred_support_kind == 'testimony':
+                    question_text = (
+                        f"What first-hand testimony or witness account can support {claim_element_label} "
+                        f"for {claim_type}?{bundle_hint}"
+                    )
+                else:
+                    question_text = (
+                        f"What evidence{evidence_hint} do you have to support {claim_element_label} "
+                        f"for {claim_type}?{bundle_hint}"
+                    )
                 question_type = 'evidence_clarification'
                 priority = 'high' if bool(task.get('blocking')) else 'medium'
             questions.append({
@@ -1740,6 +1771,11 @@ class ComplaintDenoiser:
                     'claim_element_label': claim_element_label,
                     'support_status': support_status,
                     'alignment_task': True,
+                    'preferred_support_kind': preferred_support_kind,
+                    'preferred_evidence_classes': list(task.get('preferred_evidence_classes') or []),
+                    'missing_fact_bundle': list(task.get('missing_fact_bundle') or []),
+                    'success_criteria': list(task.get('success_criteria') or []),
+                    'recommended_queries': recommended_queries,
                 },
                 'priority': priority,
             })
