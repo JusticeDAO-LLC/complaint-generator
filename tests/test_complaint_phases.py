@@ -815,6 +815,12 @@ class TestPhaseManager:
                 'candidate_claims': [{'claim_type': 'employment_discrimination'}],
                 'canonical_facts': [{'fact_id': 'fact_1'}],
                 'proof_leads': [{'lead_id': 'lead_1'}],
+                'summary_snapshots': [{'candidate_claim_count': 1, 'proof_lead_count': 1}],
+                'complainant_summary_confirmation': {
+                    'confirmed': True,
+                    'confirmed_summary_snapshot': {'candidate_claim_count': 1, 'proof_lead_count': 1},
+                    'current_summary_snapshot': {'candidate_claim_count': 1, 'proof_lead_count': 1},
+                },
                 'contradiction_queue': [
                     {
                         'contradiction_id': 'ctr_1',
@@ -844,7 +850,96 @@ class TestPhaseManager:
         assert readiness['contradictions'][0]['recommended_resolution_lane'] == 'request_document'
         assert 'blocking_contradiction' in readiness['blockers']
         assert readiness['criteria']['blocking_contradictions_resolved'] is False
+        assert readiness['criteria']['blocking_contradictions_resolved_or_escalated'] is False
         assert readiness['criteria']['minimum_proof_path_present'] is True
+
+    def test_intake_readiness_allows_escalated_blocking_contradictions_when_summary_confirmed(self):
+        """Escalated blocking contradictions should not block intake handoff once the summary is confirmed."""
+        pm = PhaseManager()
+
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', {})
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', {})
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', 0)
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'denoising_converged', True)
+        pm.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'intake_case_file',
+            {
+                'candidate_claims': [{'claim_type': 'employment_discrimination'}],
+                'canonical_facts': [{'fact_id': 'fact_1'}],
+                'proof_leads': [{'lead_id': 'lead_1'}],
+                'summary_snapshots': [{'candidate_claim_count': 1, 'proof_lead_count': 1}],
+                'complainant_summary_confirmation': {
+                    'confirmed': True,
+                    'confirmed_summary_snapshot': {'candidate_claim_count': 1, 'proof_lead_count': 1},
+                    'current_summary_snapshot': {'candidate_claim_count': 1, 'proof_lead_count': 1},
+                },
+                'contradiction_queue': [
+                    {
+                        'contradiction_id': 'ctr_2',
+                        'severity': 'blocking',
+                        'current_resolution_status': 'awaiting_third_party_record',
+                        'recommended_resolution_lane': 'seek_external_record',
+                    }
+                ],
+                'intake_sections': {
+                    'chronology': {'status': 'complete', 'missing_items': []},
+                    'actors': {'status': 'complete', 'missing_items': []},
+                    'conduct': {'status': 'complete', 'missing_items': []},
+                    'harm': {'status': 'complete', 'missing_items': []},
+                    'remedy': {'status': 'complete', 'missing_items': []},
+                    'proof_leads': {'status': 'complete', 'missing_items': []},
+                    'claim_elements': {'status': 'complete', 'missing_items': []},
+                },
+            },
+        )
+
+        readiness = pm.get_intake_readiness()
+
+        assert readiness['blocking_contradictions'] == []
+        assert readiness['escalated_blocking_contradictions'][0]['contradiction_id'] == 'ctr_2'
+        assert 'blocking_contradiction' not in readiness['blockers']
+        assert 'complainant_summary_confirmation_required' not in readiness['blockers']
+        assert readiness['criteria']['blocking_contradictions_resolved_or_escalated'] is True
+        assert readiness['criteria']['complainant_summary_confirmed'] is True
+
+    def test_intake_readiness_requires_complainant_summary_confirmation_for_structured_case_file(self):
+        """Structured intake handoff should stay blocked until the complainant confirms the latest summary snapshot."""
+        pm = PhaseManager()
+
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', {})
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', {})
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', 0)
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'denoising_converged', True)
+        pm.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'intake_case_file',
+            {
+                'candidate_claims': [{'claim_type': 'employment_discrimination'}],
+                'canonical_facts': [{'fact_id': 'fact_1'}],
+                'proof_leads': [{'lead_id': 'lead_1'}],
+                'summary_snapshots': [{'candidate_claim_count': 1, 'proof_lead_count': 1}],
+                'complainant_summary_confirmation': {
+                    'confirmed': False,
+                    'current_summary_snapshot': {'candidate_claim_count': 1, 'proof_lead_count': 1},
+                },
+                'contradiction_queue': [],
+                'intake_sections': {
+                    'chronology': {'status': 'complete', 'missing_items': []},
+                    'actors': {'status': 'complete', 'missing_items': []},
+                    'conduct': {'status': 'complete', 'missing_items': []},
+                    'harm': {'status': 'complete', 'missing_items': []},
+                    'remedy': {'status': 'complete', 'missing_items': []},
+                    'proof_leads': {'status': 'complete', 'missing_items': []},
+                    'claim_elements': {'status': 'complete', 'missing_items': []},
+                },
+            },
+        )
+
+        readiness = pm.get_intake_readiness()
+
+        assert readiness['criteria']['complainant_summary_confirmed'] is False
+        assert 'complainant_summary_confirmation_required' in readiness['blockers']
 
     def test_evidence_phase_blocks_on_unresolved_claim_support_packets_without_review_path(self):
         """Unresolved packet elements should block evidence completion until support or escalation is explicit."""

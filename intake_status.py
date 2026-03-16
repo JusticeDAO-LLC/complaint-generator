@@ -254,6 +254,7 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
     contradiction_summary = summarize_intake_contradictions(
         _extract_normalized_intake_contradictions(raw_status)
     )
+    complainant_summary_confirmation = raw_status.get("complainant_summary_confirmation")
 
     return {
         "candidate_claims": candidate_claims if isinstance(candidate_claims, list) else [],
@@ -310,6 +311,11 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
             question_candidate_summary if isinstance(question_candidate_summary, dict) else {}
         ),
         "contradiction_summary": contradiction_summary,
+        "complainant_summary_confirmation": (
+            complainant_summary_confirmation
+            if isinstance(complainant_summary_confirmation, dict)
+            else {}
+        ),
         "claim_support_packet_summary": (
             claim_support_packet_summary
             if isinstance(claim_support_packet_summary, dict)

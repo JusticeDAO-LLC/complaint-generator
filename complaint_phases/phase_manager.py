@@ -22,6 +22,21 @@ _EVIDENCE_REVIEWABLE_ESCALATION_STATUSES = {
     'insufficient_support_after_search',
     'needs_manual_review',
 }
+_INTAKE_ESCALATED_CONTRADICTION_STATUSES = {
+    'awaiting_complainant_record',
+    'awaiting_third_party_record',
+    'awaiting_testimony',
+    'needs_manual_legal_review',
+    'needs_manual_review',
+    'manual_review_pending',
+    'escalated',
+}
+_INTAKE_RESOLVED_CONTRADICTION_STATUSES = {
+    'resolved',
+    'closed',
+    'dismissed',
+    'superseded',
+}
 
 
 def _utc_now_isoformat() -> str:
@@ -117,8 +132,27 @@ class PhaseManager:
         return [
             item for item in contradiction_queue
             if isinstance(item, dict)
-            and str(item.get('status') or 'open').strip().lower() != 'resolved'
+            and not self._is_intake_contradiction_resolved(item)
         ]
+
+    def _is_intake_contradiction_resolved(self, contradiction: Dict[str, Any]) -> bool:
+        status_value = str(
+            contradiction.get('current_resolution_status')
+            or contradiction.get('status')
+            or 'open'
+        ).strip().lower()
+        return status_value in _INTAKE_RESOLVED_CONTRADICTION_STATUSES
+
+    def _is_intake_contradiction_resolved_or_escalated(self, contradiction: Dict[str, Any]) -> bool:
+        status_value = str(
+            contradiction.get('current_resolution_status')
+            or contradiction.get('status')
+            or 'open'
+        ).strip().lower()
+        return (
+            status_value in _INTAKE_RESOLVED_CONTRADICTION_STATUSES
+            or status_value in _INTAKE_ESCALATED_CONTRADICTION_STATUSES
+        )
 
     def _extract_intake_case_file(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Return the structured intake case file when present."""
@@ -165,6 +199,13 @@ class PhaseManager:
             item for item in active_contradictions
             if isinstance(item, dict)
             and str(item.get('severity') or 'important').strip().lower() == 'blocking'
+            and not self._is_intake_contradiction_resolved_or_escalated(item)
+        ]
+        escalated_blocking_contradictions = [
+            item for item in active_contradictions
+            if isinstance(item, dict)
+            and str(item.get('severity') or 'important').strip().lower() == 'blocking'
+            and self._is_intake_contradiction_resolved_or_escalated(item)
         ]
         if blocking_contradictions:
             blockers.append('blocking_contradiction')
@@ -178,6 +219,13 @@ class PhaseManager:
         proof_leads = intake_case_file.get('proof_leads')
         if not isinstance(proof_leads, list):
             proof_leads = []
+        summary_confirmation = intake_case_file.get('complainant_summary_confirmation')
+        summary_confirmation = summary_confirmation if isinstance(summary_confirmation, dict) else {}
+        summary_snapshots = intake_case_file.get('summary_snapshots')
+        summary_snapshots = summary_snapshots if isinstance(summary_snapshots, list) else []
+        complainant_summary_confirmed = bool(summary_confirmation.get('confirmed', False))
+        if summary_snapshots and not complainant_summary_confirmed:
+            blockers.append('complainant_summary_confirmation_required')
 
         criteria = {
             'candidate_claim_identified': bool(candidate_claims),
@@ -189,6 +237,8 @@ class PhaseManager:
             'proof_leads_captured': normalized_sections.get('proof_leads', {}).get('status') != 'missing',
             'claim_elements_captured': normalized_sections.get('claim_elements', {}).get('status') != 'missing',
             'blocking_contradictions_resolved': not bool(blocking_contradictions),
+            'blocking_contradictions_resolved_or_escalated': not bool(blocking_contradictions),
+            'complainant_summary_confirmed': complainant_summary_confirmed or not bool(summary_snapshots),
         }
 
         coherence_required_sections = ('chronology', 'actors', 'conduct', 'harm')
@@ -227,7 +277,9 @@ class PhaseManager:
             'canonical_fact_count': len(canonical_facts),
             'proof_lead_count': len(proof_leads),
             'blocking_contradictions': blocking_contradictions,
+            'escalated_blocking_contradictions': escalated_blocking_contradictions,
             'active_contradictions': active_contradictions,
+            'complainant_summary_confirmation': summary_confirmation,
         }
 
     def _build_intake_readiness(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -314,6 +366,8 @@ class PhaseManager:
             'canonical_fact_count': structured_readiness['canonical_fact_count'] if structured_readiness else 0,
             'proof_lead_count': structured_readiness['proof_lead_count'] if structured_readiness else 0,
             'blocking_contradictions': structured_readiness['blocking_contradictions'] if structured_readiness else [],
+            'escalated_blocking_contradictions': structured_readiness['escalated_blocking_contradictions'] if structured_readiness else [],
+            'complainant_summary_confirmation': structured_readiness['complainant_summary_confirmation'] if structured_readiness else {},
         }
 
     def _refresh_phase_derived_state(self, phase: ComplaintPhase):
@@ -341,6 +395,8 @@ class PhaseManager:
             'canonical_fact_count': int(data.get('canonical_fact_count', 0) or 0),
             'proof_lead_count': int(data.get('proof_lead_count', 0) or 0),
             'blocking_contradictions': list(data.get('blocking_contradictions', [])),
+            'escalated_blocking_contradictions': list(data.get('escalated_blocking_contradictions', [])),
+            'complainant_summary_confirmation': dict(data.get('complainant_summary_confirmation', {})),
         }
 
     def _build_evidence_packet_summary(self, data: Dict[str, Any]) -> Dict[str, Any]:

@@ -4,6 +4,7 @@ Helpers for building and summarizing the structured intake case file.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any, Dict, List
 
 from .intake_claim_registry import normalize_claim_type, refresh_required_elements, registry_for_claim_type
@@ -23,6 +24,20 @@ def _coerce_list(value: Any) -> List[Any]:
 
 def _coerce_dict(value: Any) -> Dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _coerce_confirmation_record(value: Any) -> Dict[str, Any]:
+    record = _coerce_dict(value)
+    return {
+        "status": _normalize_text(record.get("status") or ""),
+        "confirmed": bool(record.get("confirmed", False)),
+        "confirmed_at": _normalize_text(record.get("confirmed_at") or "") or None,
+        "confirmation_source": _normalize_text(record.get("confirmation_source") or "complainant") or "complainant",
+        "confirmation_note": _normalize_text(record.get("confirmation_note") or ""),
+        "summary_snapshot_index": record.get("summary_snapshot_index"),
+        "current_summary_snapshot": _coerce_dict(record.get("current_summary_snapshot")),
+        "confirmed_summary_snapshot": _coerce_dict(record.get("confirmed_summary_snapshot")),
+    }
 
 
 def _contradiction_support_kind(resolution_lane: str) -> str:
@@ -296,6 +311,56 @@ def build_summary_snapshot(intake_case_file: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def refresh_summary_confirmation(intake_case_file: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep the complainant summary confirmation aligned with the latest snapshot."""
+    case_file = _coerce_dict(intake_case_file)
+    summary_snapshots = _coerce_list(case_file.get("summary_snapshots"))
+    current_summary_snapshot = _coerce_dict(summary_snapshots[-1]) if summary_snapshots else {}
+    existing = _coerce_confirmation_record(case_file.get("complainant_summary_confirmation"))
+    confirmed_snapshot = existing.get("confirmed_summary_snapshot") or {}
+    summary_confirmed = bool(existing.get("confirmed")) and bool(current_summary_snapshot) and confirmed_snapshot == current_summary_snapshot
+
+    case_file["complainant_summary_confirmation"] = {
+        "status": "confirmed" if summary_confirmed else ("pending" if current_summary_snapshot else "not_available"),
+        "confirmed": summary_confirmed,
+        "confirmed_at": existing.get("confirmed_at") if summary_confirmed else None,
+        "confirmation_source": existing.get("confirmation_source") or "complainant",
+        "confirmation_note": existing.get("confirmation_note") or "",
+        "summary_snapshot_index": (len(summary_snapshots) - 1) if current_summary_snapshot else None,
+        "current_summary_snapshot": current_summary_snapshot,
+        "confirmed_summary_snapshot": confirmed_snapshot if summary_confirmed else {},
+    }
+    return case_file
+
+
+def confirm_intake_summary(
+    intake_case_file: Dict[str, Any],
+    *,
+    confirmation_source: str = "complainant",
+    confirmation_note: str = "",
+) -> Dict[str, Any]:
+    """Mark the latest intake summary snapshot as confirmed by the complainant."""
+    case_file = _coerce_dict(intake_case_file)
+    snapshot = build_summary_snapshot(case_file)
+    summary_snapshots = _coerce_list(case_file.get("summary_snapshots"))
+    if not summary_snapshots:
+        summary_snapshots = [snapshot]
+    else:
+        summary_snapshots[-1] = snapshot
+    case_file["summary_snapshots"] = summary_snapshots
+    case_file["complainant_summary_confirmation"] = {
+        "status": "confirmed",
+        "confirmed": True,
+        "confirmed_at": datetime.now(UTC).isoformat(),
+        "confirmation_source": _normalize_text(confirmation_source) or "complainant",
+        "confirmation_note": _normalize_text(confirmation_note),
+        "summary_snapshot_index": len(summary_snapshots) - 1,
+        "current_summary_snapshot": snapshot,
+        "confirmed_summary_snapshot": snapshot,
+    }
+    return case_file
+
+
 def build_timeline_anchors(canonical_facts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     anchors: List[Dict[str, Any]] = []
     seen_keys = set()
@@ -491,11 +556,12 @@ def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[st
         "contradiction_queue": [],
         "open_items": [],
         "summary_snapshots": [],
+        "complainant_summary_confirmation": {},
         "source_complaint_text": normalized_complaint_text,
     }
     intake_case_file["open_items"] = build_open_items(intake_case_file)
     intake_case_file["summary_snapshots"] = [build_summary_snapshot(intake_case_file)]
-    return intake_case_file
+    return refresh_summary_confirmation(intake_case_file)
 
 
 def refresh_intake_sections(intake_case_file: Dict[str, Any], knowledge_graph) -> Dict[str, Dict[str, Any]]:
@@ -532,4 +598,4 @@ def refresh_intake_case_file(intake_case_file: Dict[str, Any], knowledge_graph, 
     else:
         summary_snapshots[-1] = snapshot
     case_file["summary_snapshots"] = summary_snapshots
-    return case_file
+    return refresh_summary_confirmation(case_file)

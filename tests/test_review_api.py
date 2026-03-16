@@ -891,6 +891,7 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "proof_leads": [{"lead_id": "lead_001"}],
         }
         assert intake_case_summary["proof_lead_intent_summary"] == {}
+        assert intake_case_summary["complainant_summary_confirmation"] == {}
         assert intake_case_summary["contradiction_summary"] == {
             "count": 1,
             "lane_counts": {},

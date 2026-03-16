@@ -22,7 +22,12 @@ from .dependency_graph import (
     DependencyType
 )
 from .denoiser import ComplaintDenoiser
-from .intake_case_file import build_intake_case_file, refresh_intake_case_file, refresh_intake_sections
+from .intake_case_file import (
+    build_intake_case_file,
+    confirm_intake_summary,
+    refresh_intake_case_file,
+    refresh_intake_sections,
+)
 from .intake_claim_registry import (
     CLAIM_INTAKE_REQUIREMENTS,
     build_claim_element_question_intent,
@@ -55,6 +60,7 @@ __all__ = [
     'DependencyType',
     'ComplaintDenoiser',
     'build_intake_case_file',
+    'confirm_intake_summary',
     'refresh_intake_case_file',
     'refresh_intake_sections',
     'CLAIM_INTAKE_REQUIREMENTS',

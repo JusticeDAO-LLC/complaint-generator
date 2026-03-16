@@ -65,6 +65,7 @@ from complaint_phases import (
 	DependencyGraphBuilder,
 	ComplaintDenoiser,
 	build_intake_case_file,
+	confirm_intake_summary as confirm_intake_case_summary,
 	match_required_element_id,
 	refresh_intake_case_file,
 	refresh_intake_sections,
@@ -3693,6 +3694,20 @@ class Mediator:
 		"""Build the initial structured intake case file from the current knowledge graph."""
 		return build_intake_case_file(knowledge_graph, complaint_text)
 
+	def confirm_intake_summary(self, confirmation_note: str = '', confirmation_source: str = 'complainant') -> Dict[str, Any]:
+		"""Mark the latest intake summary snapshot as confirmed for evidence handoff."""
+		kg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
+		intake_case_file = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
+		intake_case_file = confirm_intake_case_summary(
+			intake_case_file,
+			confirmation_source=confirmation_source,
+			confirmation_note=confirmation_note,
+		)
+		if kg is not None:
+			intake_case_file = refresh_intake_case_file(intake_case_file, kg, append_snapshot=False)
+		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_case_file', intake_case_file)
+		return self.get_three_phase_status()
+
 	def _normalize_intake_text(self, value: Any) -> str:
 		return " ".join(str(value or "").strip().split())
 
@@ -6777,6 +6792,7 @@ class Mediator:
 		timeline_anchors = intake_case_file.get('timeline_anchors', []) if isinstance(intake_case_file, dict) else []
 		harm_profile = intake_case_file.get('harm_profile', {}) if isinstance(intake_case_file, dict) else {}
 		remedy_profile = intake_case_file.get('remedy_profile', {}) if isinstance(intake_case_file, dict) else {}
+		complainant_summary_confirmation = intake_case_file.get('complainant_summary_confirmation', {}) if isinstance(intake_case_file, dict) else {}
 		return {
 			'current_phase': self.phase_manager.get_current_phase().value,
 			'iteration_count': self.phase_manager.iteration_count,
@@ -6801,6 +6817,7 @@ class Mediator:
 			},
 			'harm_profile': harm_profile if isinstance(harm_profile, dict) else {},
 			'remedy_profile': remedy_profile if isinstance(remedy_profile, dict) else {},
+			'complainant_summary_confirmation': complainant_summary_confirmation if isinstance(complainant_summary_confirmation, dict) else {},
 			'intake_matching_summary': self._summarize_intake_matching_pressure(intake_matching_pressure),
 			'intake_legal_targeting_summary': self._summarize_intake_legal_targeting(
 				intake_matching_pressure,

@@ -341,7 +341,29 @@ class TestMediatorThreePhaseIntegration:
         assert any(lead['lead_type'] == 'email communication' for lead in intake_case_file['proof_leads'])
         assert intake_case_file['open_items']
         assert intake_case_file['summary_snapshots']
+        assert intake_case_file['complainant_summary_confirmation']['confirmed'] is False
         assert intake_case_file['summary_snapshots'][0]['candidate_claim_count'] >= 1
+
+    def test_confirm_intake_summary_marks_latest_snapshot_confirmed(self):
+        """Confirming intake summary should persist complainant confirmation against the latest snapshot."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process("My employer discriminated against me and I have emails.")
+
+        status = mediator.confirm_intake_summary("summary reviewed with complainant")
+        intake_case_file = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file')
+
+        assert status['complainant_summary_confirmation']['confirmed'] is True
+        assert status['intake_readiness']['criteria']['complainant_summary_confirmed'] is True
+        assert intake_case_file['complainant_summary_confirmation']['confirmation_note'] == 'summary reviewed with complainant'
+        assert intake_case_file['complainant_summary_confirmation']['confirmed_summary_snapshot'] == intake_case_file['summary_snapshots'][-1]
 
     def test_process_denoising_answer_updates_timeline_fact_in_intake_case_file(self):
         """Timeline answers should update canonical facts and section coverage in the intake case file."""
