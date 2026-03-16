@@ -844,6 +844,64 @@ def _run_preset_batch(
     }
 
 
+def _write_matrix_outputs(
+    *,
+    output_dir: Path,
+    requested_presets: List[str],
+    matrix_rows: List[Dict[str, Any]],
+    full_results: List[Dict[str, Any]],
+    recommendations: Dict[str, Dict[str, Any]],
+    winner_delta: Dict[str, Any],
+    challenger_summary: Dict[str, Any] | None,
+    preset_errors: List[Dict[str, str]],
+) -> None:
+    summary_json = output_dir / "preset_matrix_summary.json"
+    summary_csv = output_dir / "preset_matrix_summary.csv"
+    summary_md = output_dir / "preset_matrix_summary.md"
+
+    with open(summary_json, "w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "presets": requested_presets,
+                "recommendations": recommendations,
+                "winner_delta": winner_delta,
+                "rows": matrix_rows,
+                "details": full_results,
+                "champion_challenger": challenger_summary,
+                "errors": preset_errors,
+            },
+            handle,
+            indent=2,
+        )
+
+    with open(summary_csv, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "preset",
+                "backend_id",
+                "average_score",
+                "successful_sessions",
+                "total_sessions",
+                "anchor_coverage",
+                "router_status",
+                "top_missing_sections",
+                "missing_sections",
+                "output_dir",
+                "claim_selection_overview",
+                "relief_selection_overview",
+                "claim_theory_families",
+                "synthesis_output_dir",
+            ],
+        )
+        writer.writeheader()
+        for row in matrix_rows:
+            writer.writerow(row)
+
+    _write_markdown_report(summary_md, matrix_rows, recommendations, challenger_summary, winner_delta)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run multiple HACC adversarial presets and write a comparison report."
@@ -987,6 +1045,23 @@ def main() -> int:
                 "synthesis_output_dir": batch_result["synthesis_output_dir"],
             }
         )
+        current_rows = sorted(matrix_rows, key=lambda row: (-row["average_score"], -row["anchor_coverage"], row["preset"]))
+        current_recommendations = _attach_recommendation_claim_snapshots(
+            _select_matrix_recommendations(current_rows),
+            current_rows,
+        )
+        current_winner_delta = _build_claim_snapshot_delta(current_rows, full_results, current_recommendations)
+        current_recommendations = _attach_recommendation_tradeoff_notes(current_recommendations, current_winner_delta)
+        _write_matrix_outputs(
+            output_dir=output_dir,
+            requested_presets=requested_presets,
+            matrix_rows=current_rows,
+            full_results=full_results,
+            recommendations=current_recommendations,
+            winner_delta=current_winner_delta,
+            challenger_summary=None,
+            preset_errors=preset_errors,
+        )
 
     matrix_rows.sort(key=lambda row: (-row["average_score"], -row["anchor_coverage"], row["preset"]))
     if not matrix_rows:
@@ -999,9 +1074,6 @@ def main() -> int:
     winner_delta = _build_claim_snapshot_delta(matrix_rows, full_results, recommendations)
     recommendations = _attach_recommendation_tradeoff_notes(recommendations, winner_delta)
 
-    summary_json = output_dir / "preset_matrix_summary.json"
-    summary_csv = output_dir / "preset_matrix_summary.csv"
-    summary_md = output_dir / "preset_matrix_summary.md"
     challenger_summary = None
 
     if args.top_k_rerun > 0 and args.champion_sessions > 0 and matrix_rows:
@@ -1081,47 +1153,16 @@ def main() -> int:
             challenger_summary["winner_delta"],
         )
 
-    with open(summary_json, "w", encoding="utf-8") as handle:
-        json.dump(
-            {
-                "timestamp": datetime.now(UTC).isoformat(),
-                "presets": requested_presets,
-                "recommendations": recommendations,
-                "winner_delta": winner_delta,
-                "rows": matrix_rows,
-                "details": full_results,
-                "champion_challenger": challenger_summary,
-                "errors": preset_errors,
-            },
-            handle,
-            indent=2,
-        )
-
-    with open(summary_csv, "w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(
-            handle,
-            fieldnames=[
-                "preset",
-                "backend_id",
-                "average_score",
-                "successful_sessions",
-                "total_sessions",
-                "anchor_coverage",
-                "router_status",
-                "top_missing_sections",
-                "missing_sections",
-                "output_dir",
-                "claim_selection_overview",
-                "relief_selection_overview",
-                "claim_theory_families",
-                "synthesis_output_dir",
-            ],
-        )
-        writer.writeheader()
-        for row in matrix_rows:
-            writer.writerow(row)
-
-    _write_markdown_report(summary_md, matrix_rows, recommendations, challenger_summary, winner_delta)
+    _write_matrix_outputs(
+        output_dir=output_dir,
+        requested_presets=requested_presets,
+        matrix_rows=matrix_rows,
+        full_results=full_results,
+        recommendations=recommendations,
+        winner_delta=winner_delta,
+        challenger_summary=challenger_summary,
+        preset_errors=preset_errors,
+    )
 
     print(f"Saved preset matrix outputs to {output_dir}")
     if preset_errors:
