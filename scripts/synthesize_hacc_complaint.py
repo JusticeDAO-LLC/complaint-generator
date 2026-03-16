@@ -1135,10 +1135,23 @@ def _specific_refresh_terms(
     preferred_terms: List[str] = []
     if title:
         preferred_terms.append(title)
+    title_lower = title.lower()
     for label in list(section_labels or []):
         humanized = _humanize_section(str(label))
         if humanized:
             preferred_terms.append(humanized)
+    if "administrative plan" in title_lower and any(
+        label in {"grievance_hearing", "appeal_rights", "adverse_action"} for label in list(section_labels or [])
+    ):
+        preferred_terms.extend(
+            [
+                "Notice to the Applicant",
+                "Scheduling an Informal Review",
+                "Informal Review Procedures",
+                "Informal Review Decision",
+                "Notice of Denial or Termination of Assistance",
+            ]
+        )
     for term in list(anchor_terms or []):
         normalized = str(term).strip()
         if not normalized:

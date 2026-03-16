@@ -18,12 +18,24 @@ VS Code task:
 HACC Grounding Regression
 ```
 
+Related smoke-matrix task:
+
+```text
+HACC Preset Matrix Smoke
+```
+
 Useful options:
 
 ```bash
 ./.venv/bin/python scripts/run_hacc_grounding_regression.py --list
 ./.venv/bin/python scripts/run_hacc_grounding_regression.py --skip-smoke
 ./.venv/bin/python scripts/run_hacc_grounding_regression.py --smoke-output-dir ../research_results/adversarial_runs/core_hacc_policies_regression_manual
+```
+
+Small preset matrix example:
+
+```bash
+./.venv/bin/python scripts/run_hacc_preset_matrix.py --presets core_hacc_policies,accommodation_focus --num-sessions 1 --hacc-count 1 --max-turns 2 --max-parallel 1 --output-dir ../research_results/adversarial_runs/hacc_preset_matrix_smoke --continue-on-error
 ```
 
 The script fails if the live smoke does not produce:

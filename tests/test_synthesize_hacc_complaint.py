@@ -1034,6 +1034,20 @@ def test_specific_refresh_terms_drop_generic_one_word_anchor_terms():
     assert "appeal" not in [term.lower() for term in terms]
 
 
+def test_specific_refresh_terms_add_notice_headings_for_admin_plan_toc_seed():
+    terms = MODULE._specific_refresh_terms(
+        "16-11 Scheduling an Informal Review ................................................... 16-11",
+        title="ADMINISTRATIVE PLAN",
+        section_labels=["grievance_hearing", "appeal_rights", "adverse_action"],
+        anchor_terms=["grievance", "hearing", "appeal", "informal hearing", "due process"],
+    )
+
+    lowered = [term.lower() for term in terms]
+    assert "notice to the applicant" in lowered
+    assert "scheduling an informal review" in lowered
+    assert "informal review procedures" in lowered
+
+
 def test_best_grounding_result_excerpt_avoids_admin_plan_vawa_complaint_text(tmp_path):
     source_path = tmp_path / "admin-plan.txt"
     source_path.write_text(
