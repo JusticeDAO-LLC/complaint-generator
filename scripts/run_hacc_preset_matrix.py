@@ -169,6 +169,49 @@ def _recommendation_use_note(families: List[str]) -> str:
     return f"best for {', '.join(labels[:-1])}, and {labels[-1]}"
 
 
+def _family_focus_phrase(families: List[str]) -> str:
+    note = _recommendation_use_note(families)
+    return note.replace("best for ", "", 1) if note.startswith("best for ") else note
+
+
+def _recommendation_tradeoff_note(winner_delta: Dict[str, Any]) -> str:
+    winner_only = list(winner_delta.get("winner_only_theory_families") or [])
+    runner_only = list(winner_delta.get("runner_up_only_theory_families") or [])
+    winner_phrase = _family_focus_phrase(winner_only)
+    runner_phrase = _family_focus_phrase(runner_only)
+    if winner_phrase and runner_phrase:
+        return f"best for {winner_phrase}; runner-up is stronger on {runner_phrase}"
+    if winner_phrase:
+        return f"best for {winner_phrase}"
+    if runner_phrase:
+        return f"runner-up is stronger on {runner_phrase}"
+    return ""
+
+
+def _attach_recommendation_tradeoff_notes(
+    recommendations: Dict[str, Dict[str, Any]],
+    winner_delta: Dict[str, Any],
+) -> Dict[str, Dict[str, Any]]:
+    if not recommendations or not winner_delta:
+        return recommendations
+
+    winner_preset = str(winner_delta.get("winner_preset") or "")
+    if not winner_preset:
+        return recommendations
+
+    tradeoff_note = _recommendation_tradeoff_note(winner_delta)
+    if not tradeoff_note:
+        return recommendations
+
+    enriched: Dict[str, Dict[str, Any]] = {}
+    for key, payload in recommendations.items():
+        item = dict(payload or {})
+        if str(item.get("preset") or "") == winner_preset:
+            item["tradeoff_note"] = tradeoff_note
+        enriched[key] = item
+    return enriched
+
+
 def _write_markdown_report(
     filepath: Path,
     rows: List[Dict[str, Any]],
@@ -184,7 +227,9 @@ def _write_markdown_report(
         def _recommendation_label(key: str, payload: Dict[str, Any]) -> str:
             family_list = list(payload.get("claim_theory_families") or [])
             families = ", ".join(family_list)
-            use_note = _recommendation_use_note(family_list)
+            use_note = str(payload.get("tradeoff_note") or "")
+            if not use_note:
+                use_note = _recommendation_use_note(family_list)
             suffix = f" ({families})" if families else ""
             if use_note:
                 suffix += f" - {use_note}"
