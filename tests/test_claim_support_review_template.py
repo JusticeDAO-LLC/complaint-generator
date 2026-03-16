@@ -26,6 +26,20 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Save Document" in content
     assert "question-list" in content
     assert "Intake Case Summary" in content
+    assert "intake-readiness-criteria-chips" in content
+    assert "intake-claim-summary-chips" in content
+    assert "intake-context-chips" in content
+    assert "${satisfied ? 'ready' : 'needs'} ${humanizeQueryValue(criterion)}" in content
+    assert "candidate claims: ${Number(intakeStatus.candidate_claim_count || 0)}" in content
+    assert "canonical facts: ${Number(intakeStatus.canonical_fact_count || 0)}" in content
+    assert "proof leads: ${Number(intakeStatus.proof_lead_count || 0)}" in content
+    assert "confidence: ${confidenceValue.toFixed(2)}" in content
+    assert "ambiguity: ${humanizeQueryValue(flag)}" in content
+    assert "average confidence: ${Number(candidateClaimSummary.average_confidence || 0).toFixed(2)}" in content
+    assert "claim disambiguation: ${candidateClaimSummary.close_leading_claims ? 'needed' : 'stable'}" in content
+    assert "timeline anchors: ${Number(timelineAnchorSummary.count || 0)}" in content
+    assert "harm profile: ${harmCategories.map((item) => humanizeQueryValue(item)).join(', ')}" in content
+    assert "remedy profile: ${remedyCategories.map((item) => humanizeQueryValue(item)).join(', ')}" in content
     assert "Intake matching summary" in content
     assert "Unresolved legal elements for" in content
     assert "intake-matching-summary-list" in content
@@ -289,6 +303,8 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Open Persisted Trace" in content
     assert "Checklist Intake Signals" in content
     assert "Checklist intake blockers:" in content
+    assert "Contradiction lanes:" in content
+    assert "Corroboration-required contradictions:" in content
     assert "Source Context:" in content
     assert "Source families:" in content
     assert "follow_up_support_kind" in content
@@ -335,6 +351,15 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Intake Constraints" in content
     assert "Intake Evidence Snapshot" in content
     assert "Candidate claims:" in content
+    assert "Candidate claim count:" in content
+    assert "Candidate claim average confidence:" in content
+    assert "Leading claim:" in content
+    assert "Claim disambiguation:" in content
+    assert "Claim ambiguity flags:" in content
+    assert "Claim ambiguity details:" in content
+    assert "Timeline anchors:" in content
+    assert "Harm profile:" in content
+    assert "Remedy profile:" in content
     assert "Canonical facts:" in content
     assert "Proof leads:" in content
     assert "Question candidates:" in content
@@ -366,6 +391,9 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Intake readiness score:" in content
     assert "Persisted intake phase:" in content
     assert "Persisted intake contradictions:" in content
+    assert "Persisted contradiction lanes:" in content
+    assert "Persisted corroboration-required contradictions:" in content
+    assert "Persisted intake criteria:" in content
 
 
 def test_chat_and_results_templates_link_to_document_workflow():
@@ -497,6 +525,15 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "traceEvidenceList" in content
     assert "Intake Evidence Snapshot" in content
     assert "Candidate claims:" in content
+    assert "Candidate claim count:" in content
+    assert "Candidate claim average confidence:" in content
+    assert "Leading claim:" in content
+    assert "Claim disambiguation:" in content
+    assert "Claim ambiguity flags:" in content
+    assert "Claim ambiguity details:" in content
+    assert "Timeline anchors:" in content
+    assert "Harm profile:" in content
+    assert "Remedy profile:" in content
     assert "Canonical facts:" in content
     assert "Question candidates:" in content
     assert "Question candidate sources:" in content

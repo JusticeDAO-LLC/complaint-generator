@@ -91,6 +91,14 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 "remaining_gap_count": 1,
                 "contradiction_count": 1,
                 "blockers": ["resolve_contradictions"],
+                "criteria": {
+                    "case_theory_coherent": True,
+                    "minimum_proof_path_present": True,
+                    "claim_disambiguation_resolved": False,
+                },
+                "candidate_claim_count": 2,
+                "canonical_fact_count": 2,
+                "proof_lead_count": 1,
             },
             "intake_contradictions": [
                 {
@@ -102,7 +110,17 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 }
             ],
             "candidate_claims": [
-                {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.8}
+                {
+                    "claim_type": "retaliation",
+                    "label": "Retaliation",
+                    "confidence": 0.8,
+                    "ambiguity_flags": ["timing_overlap"],
+                },
+                {
+                    "claim_type": "wrongful_termination",
+                    "label": "Wrongful Termination",
+                    "confidence": 0.72,
+                },
             ],
             "intake_sections": {
                 "chronology": {"status": "complete", "missing_items": []},
@@ -115,6 +133,18 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "proof_lead_summary": {
                 "count": 1,
                 "proof_leads": [{"lead_id": "lead_001"}],
+            },
+            "timeline_anchor_summary": {
+                "count": 1,
+                "anchors": [{"anchor_id": "timeline_anchor_001"}],
+            },
+            "harm_profile": {
+                "count": 1,
+                "categories": ["economic"],
+            },
+            "remedy_profile": {
+                "count": 1,
+                "categories": ["monetary"],
             },
             "claim_support_packet_summary": {
                 "claim_count": 1,
@@ -783,22 +813,70 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "score": 0.5,
             "remaining_gap_count": 1,
             "contradiction_count": 1,
+            "contradiction_summary": {
+                "count": 1,
+                "lane_counts": {},
+                "status_counts": {},
+                "severity_counts": {"high": 1},
+                "corroboration_required_count": 0,
+                "affected_claim_type_counts": {},
+            },
             "blockers": ["resolve_contradictions"],
+            "criteria": {
+                "case_theory_coherent": True,
+                "minimum_proof_path_present": True,
+                "claim_disambiguation_resolved": False,
+            },
             "contradictions": [
                 {
+                    "contradiction_id": "",
                     "summary": "Complaint timing conflicts with employer timeline",
                     "left_text": "The complaint came first.",
                     "right_text": "The schedule cut came first.",
                     "category": "",
                     "severity": "high",
                     "question": "Which event happened first?",
+                    "recommended_resolution_lane": "",
+                    "current_resolution_status": "",
+                    "external_corroboration_required": False,
+                    "affected_claim_types": [],
+                    "affected_element_ids": [],
                 }
             ],
+            "blocking_contradictions": [],
+            "candidate_claim_count": 2,
+            "canonical_fact_count": 2,
+            "proof_lead_count": 1,
+        }
+        assert payload["intake_contradiction_summary"] == {
+            "count": 1,
+            "lane_counts": {},
+            "status_counts": {},
+            "severity_counts": {"high": 1},
+            "corroboration_required_count": 0,
+            "affected_claim_type_counts": {},
         }
         intake_case_summary = payload["intake_case_summary"]
         assert intake_case_summary["candidate_claims"] == [
-            {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.8}
+            {
+                "claim_type": "retaliation",
+                "label": "Retaliation",
+                "confidence": 0.8,
+                "ambiguity_flags": ["timing_overlap"],
+            },
+            {"claim_type": "wrongful_termination", "label": "Wrongful Termination", "confidence": 0.72},
         ]
+        assert intake_case_summary["candidate_claim_summary"] == {
+            "count": 2,
+            "claim_types": ["retaliation", "wrongful_termination"],
+            "average_confidence": 0.76,
+            "top_claim_type": "retaliation",
+            "top_confidence": 0.8,
+            "ambiguous_claim_count": 1,
+            "ambiguity_flag_count": 1,
+            "ambiguity_flag_counts": {"timing_overlap": 1},
+            "close_leading_claims": True,
+        }
         assert intake_case_summary["intake_sections"] == {
             "chronology": {"status": "complete", "missing_items": []},
             "proof_leads": {"status": "partial", "missing_items": ["documents"]},
@@ -807,9 +885,31 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "count": 2,
             "facts": [{"fact_id": "fact_001"}, {"fact_id": "fact_002"}],
         }
+        assert intake_case_summary["canonical_fact_intent_summary"] == {}
         assert intake_case_summary["proof_lead_summary"] == {
             "count": 1,
             "proof_leads": [{"lead_id": "lead_001"}],
+        }
+        assert intake_case_summary["proof_lead_intent_summary"] == {}
+        assert intake_case_summary["contradiction_summary"] == {
+            "count": 1,
+            "lane_counts": {},
+            "status_counts": {},
+            "severity_counts": {"high": 1},
+            "corroboration_required_count": 0,
+            "affected_claim_type_counts": {},
+        }
+        assert intake_case_summary["timeline_anchor_summary"] == {
+            "count": 1,
+            "anchors": [{"anchor_id": "timeline_anchor_001"}],
+        }
+        assert intake_case_summary["harm_profile"] == {
+            "count": 1,
+            "categories": ["economic"],
+        }
+        assert intake_case_summary["remedy_profile"] == {
+            "count": 1,
+            "categories": ["monetary"],
         }
         assert intake_case_summary["question_candidate_summary"] == {}
         assert intake_case_summary.get("intake_matching_summary") == {}
@@ -1866,6 +1966,7 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
             "logic_unprovable": 1,
             "contradiction_candidates": 1,
         },
+        "resolution_status_counts": {},
         "resolution_applied_counts": {},
         "adaptive_retry_task_count": 0,
         "priority_penalized_task_count": 0,

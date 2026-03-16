@@ -357,7 +357,15 @@ class TestMediatorThreePhaseIntegration:
         mediator.start_three_phase_process("My employer discriminated against me.")
 
         result = mediator.process_denoising_answer(
-            {'type': 'timeline', 'question': 'When did this happen?', 'context': {}},
+            {
+                'type': 'timeline',
+                'question': 'When did this happen?',
+                'question_objective': 'establish_chronology',
+                'expected_update_kind': 'timeline_anchor',
+                'target_claim_type': 'employment_discrimination',
+                'target_element_id': 'adverse_action',
+                'context': {'target_element_id': 'adverse_action'},
+            },
             'It happened on January 20, 2026 at the Dallas office.',
         )
         intake_case_file = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file')
@@ -367,6 +375,10 @@ class TestMediatorThreePhaseIntegration:
         assert timeline_fact['event_date_or_range'] == 'January 20, 2026'
         assert timeline_fact['location'] == 'Dallas office'
         assert timeline_fact['fact_participants']['location'] == 'Dallas office'
+        assert timeline_fact['intake_question_intent']['question_objective'] == 'establish_chronology'
+        assert timeline_fact['intake_question_intent']['expected_update_kind'] == 'timeline_anchor'
+        assert timeline_fact['intake_question_intent']['target_claim_type'] == 'employment_discrimination'
+        assert timeline_fact['intake_question_intent']['target_element_id'] == 'adverse_action'
         assert intake_case_file['timeline_anchors'][0]['anchor_text'] == 'January 20, 2026'
         assert intake_case_file['intake_sections']['chronology']['status'] == 'complete'
         assert result['intake_readiness']['canonical_fact_count'] >= 1
@@ -490,6 +502,9 @@ class TestMediatorThreePhaseIntegration:
         assert matching_lead['expected_format'] == 'email'
         assert matching_lead['retrieval_path'] == 'complainant_email_account'
         assert matching_lead['priority'] == 'high'
+        assert matching_lead['intake_question_intent']['target_claim_type'] == 'retaliation'
+        assert matching_lead['intake_question_intent']['target_element_id'] == 'protected_activity'
+        assert matching_lead['intake_question_intent']['question_type'] == 'evidence'
 
     def test_process_denoising_answer_marks_witness_support_as_testimony_lane(self):
         """Witness-oriented evidence answers should set testimony-oriented proof lead metadata."""
@@ -579,7 +594,68 @@ class TestMediatorThreePhaseIntegration:
 
         assert intake_case_file['contradiction_queue']
         assert intake_case_file['contradiction_queue'][0]['topic'] == 'timeline'
+        assert intake_case_file['contradiction_queue'][0]['recommended_resolution_lane'] == 'clarify_with_complainant'
+        assert intake_case_file['contradiction_queue'][0]['external_corroboration_required'] is False
+        assert intake_case_file['contradiction_queue'][0]['current_resolution_status'] == 'open'
         assert 'blocking_contradiction' in result['intake_readiness']['blockers']
+
+    def test_get_three_phase_status_summarizes_intake_intent_metadata_for_facts_and_leads(self):
+        """Three-phase status should expose compact intent counts for stored facts and proof leads."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process("I was fired after I complained about discrimination.")
+
+        mediator.process_denoising_answer(
+            {
+                'type': 'requirement',
+                'question': 'What protected activity did you engage in?',
+                'question_objective': 'satisfy_claim_requirement',
+                'expected_update_kind': 'claim_element_fact',
+                'target_claim_type': 'retaliation',
+                'target_element_id': 'protected_activity',
+                'context': {
+                    'claim_type': 'retaliation',
+                    'requirement_id': 'protected_activity',
+                    'target_element_id': 'protected_activity',
+                    'requirement_name': 'Protected activity',
+                },
+            },
+            'I complained to HR about discrimination.',
+        )
+        mediator.process_denoising_answer(
+            {
+                'type': 'evidence',
+                'question': 'What evidence supports that complaint?',
+                'question_objective': 'identify_supporting_evidence',
+                'expected_update_kind': 'proof_lead',
+                'target_claim_type': 'retaliation',
+                'target_element_id': 'protected_activity',
+                'context': {
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'target_element_id': 'protected_activity',
+                },
+            },
+            'I have emails to HR confirming the complaint.',
+        )
+
+        status = mediator.get_three_phase_status()
+
+        assert status['canonical_fact_intent_summary']['question_objective_counts']['satisfy_claim_requirement'] >= 1
+        assert status['canonical_fact_intent_summary']['expected_update_kind_counts']['claim_element_fact'] >= 1
+        assert status['canonical_fact_intent_summary']['target_claim_type_counts']['retaliation'] >= 1
+        assert status['canonical_fact_intent_summary']['target_element_id_counts']['protected_activity'] >= 1
+        assert status['proof_lead_intent_summary']['question_objective_counts']['identify_supporting_evidence'] >= 1
+        assert status['proof_lead_intent_summary']['expected_update_kind_counts']['proof_lead'] >= 1
+        assert status['proof_lead_intent_summary']['target_claim_type_counts']['retaliation'] >= 1
+        assert status['proof_lead_intent_summary']['target_element_id_counts']['protected_activity'] >= 1
 
     def test_advance_to_evidence_phase_builds_claim_support_packets(self):
         """Evidence phase initialization should normalize claim-support validation into packets."""

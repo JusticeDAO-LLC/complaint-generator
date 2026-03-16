@@ -40,7 +40,11 @@ except ModuleNotFoundError:
             }
 
 from complaint_phases.denoiser import ComplaintDenoiser
-from intake_status import build_intake_case_review_summary, build_intake_status_summary
+from intake_status import (
+    build_intake_case_review_summary,
+    build_intake_status_summary,
+    summarize_intake_contradictions,
+)
 
 
 DEFAULT_REQUIRED_SUPPORT_KINDS = ["evidence", "authority"]
@@ -2226,12 +2230,19 @@ def build_claim_support_review_payload(
             claim_document_summary.get("graph_ready_record_count", 0) or 0
         )
 
+    intake_status = build_intake_status_summary(mediator, include_iteration_count=True)
+    intake_case_summary = build_intake_case_review_summary(mediator)
+    intake_contradiction_summary = summarize_intake_contradictions(
+        intake_status.get("contradictions")
+    )
+
     payload: Dict[str, Any] = {
         "user_id": resolved_user_id,
         "claim_type": request.claim_type,
         "required_support_kinds": required_support_kinds,
-        "intake_status": build_intake_status_summary(mediator, include_iteration_count=True),
-        "intake_case_summary": build_intake_case_review_summary(mediator),
+        "intake_status": intake_status,
+        "intake_case_summary": intake_case_summary,
+        "intake_contradiction_summary": intake_contradiction_summary,
         "claim_coverage_matrix": coverage_claims,
         "claim_coverage_summary": coverage_summary,
         "claim_support_gaps": gap_claims,

@@ -816,7 +816,13 @@ class TestPhaseManager:
                 'canonical_facts': [{'fact_id': 'fact_1'}],
                 'proof_leads': [{'lead_id': 'lead_1'}],
                 'contradiction_queue': [
-                    {'contradiction_id': 'ctr_1', 'severity': 'blocking', 'status': 'open'}
+                    {
+                        'contradiction_id': 'ctr_1',
+                        'severity': 'blocking',
+                        'status': 'open',
+                        'recommended_resolution_lane': 'request_document',
+                        'external_corroboration_required': True,
+                    }
                 ],
                 'intake_sections': {
                     'chronology': {'status': 'complete', 'missing_items': []},
@@ -833,6 +839,9 @@ class TestPhaseManager:
         readiness = pm.get_intake_readiness()
 
         assert readiness['blocking_contradictions'][0]['contradiction_id'] == 'ctr_1'
+        assert readiness['blocking_contradictions'][0]['recommended_resolution_lane'] == 'request_document'
+        assert readiness['blocking_contradictions'][0]['external_corroboration_required'] is True
+        assert readiness['contradictions'][0]['recommended_resolution_lane'] == 'request_document'
         assert 'blocking_contradiction' in readiness['blockers']
         assert readiness['criteria']['blocking_contradictions_resolved'] is False
         assert readiness['criteria']['minimum_proof_path_present'] is True

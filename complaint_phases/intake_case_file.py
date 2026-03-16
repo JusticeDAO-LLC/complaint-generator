@@ -25,6 +25,17 @@ def _coerce_dict(value: Any) -> Dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _contradiction_support_kind(resolution_lane: str) -> str:
+    normalized = _normalize_text(resolution_lane).lower()
+    if normalized == "capture_testimony":
+        return "testimony"
+    if normalized in {"request_document", "seek_external_record"}:
+        return "evidence"
+    if normalized == "manual_review":
+        return "manual_review"
+    return "intake_clarification"
+
+
 def _derive_expected_format(lead_type: str) -> str:
     normalized = _normalize_text(lead_type).lower()
     if "email" in normalized:
@@ -218,6 +229,12 @@ def build_open_items(intake_case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
             continue
         contradiction_id = _normalize_text(contradiction_dict.get("contradiction_id") or "contradiction")
         topic = _normalize_text(contradiction_dict.get("topic") or "intake contradiction")
+        resolution_lane = _normalize_text(
+            contradiction_dict.get("recommended_resolution_lane") or "clarify_with_complainant"
+        ).lower() or "clarify_with_complainant"
+        external_corroboration_required = bool(
+            contradiction_dict.get("external_corroboration_required", False)
+        )
         open_items.append(
             {
                 "open_item_id": f"contradiction:{contradiction_id}",
@@ -228,9 +245,11 @@ def build_open_items(intake_case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "reason": f"Resolve contradiction about {topic}.",
                 "target_claim_type": "",
                 "target_element_id": "",
-                "next_question_strategy": "resolve_contradiction",
-                "recommended_support_kind": "testimony",
-                "proof_path_status": "conflicted",
+                "next_question_strategy": resolution_lane,
+                "recommended_support_kind": _contradiction_support_kind(resolution_lane),
+                "recommended_resolution_lane": resolution_lane,
+                "external_corroboration_required": external_corroboration_required,
+                "proof_path_status": "conflicted_external_corroboration_required" if external_corroboration_required else "conflicted",
             }
         )
 

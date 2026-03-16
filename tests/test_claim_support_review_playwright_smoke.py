@@ -70,11 +70,39 @@ def _build_hook_backed_browser_mediator(db_path: str):
             "score": 0.41,
             "ready_to_advance": False,
             "remaining_gap_count": 2,
-            "contradiction_count": 0,
+            "contradiction_count": 1,
             "blockers": ["collect_missing_support"],
+            "criteria": {
+                "case_theory_coherent": True,
+                "minimum_proof_path_present": True,
+                "claim_disambiguation_resolved": False,
+            },
+            "contradictions": [
+                {
+                    "summary": "Termination date conflicts with reported complaint timeline",
+                    "question": "Which date is supported by the termination notice?",
+                    "recommended_resolution_lane": "request_document",
+                    "current_resolution_status": "open",
+                    "external_corroboration_required": True,
+                    "affected_claim_types": ["retaliation"],
+                }
+            ],
+            "candidate_claim_count": 2,
+            "canonical_fact_count": 1,
+            "proof_lead_count": 1,
         },
         "candidate_claims": [
-            {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.87},
+            {
+                "claim_type": "retaliation",
+                "label": "Retaliation",
+                "confidence": 0.87,
+                "ambiguity_flags": ["timing_overlap"],
+            },
+            {
+                "claim_type": "wrongful_termination",
+                "label": "Wrongful Termination",
+                "confidence": 0.79,
+            },
         ],
         "intake_sections": {
             "proof_leads": {"status": "partial", "missing_items": ["documents"]},
@@ -83,9 +111,35 @@ def _build_hook_backed_browser_mediator(db_path: str):
             "count": 1,
             "facts": [{"fact_id": "fact_001", "text": "Protected activity timeline recorded."}],
         },
+        "canonical_fact_intent_summary": {
+            "count": 1,
+            "question_objective_counts": {"establish_chronology": 1},
+            "expected_update_kind_counts": {"timeline_anchor": 1},
+            "target_claim_type_counts": {"retaliation": 1},
+            "target_element_id_counts": {"retaliation:1": 1},
+        },
         "proof_lead_summary": {
             "count": 1,
             "proof_leads": [{"lead_id": "lead_001", "description": "Archived HR complaint email"}],
+        },
+        "proof_lead_intent_summary": {
+            "count": 1,
+            "question_objective_counts": {"identify_supporting_evidence": 1},
+            "expected_update_kind_counts": {"proof_lead": 1},
+            "target_claim_type_counts": {"retaliation": 1},
+            "target_element_id_counts": {"retaliation:3": 1},
+        },
+        "timeline_anchor_summary": {
+            "count": 1,
+            "anchors": [{"anchor_id": "timeline_anchor_001", "anchor_text": "2026-02-03 complaint email"}],
+        },
+        "harm_profile": {
+            "count": 1,
+            "categories": ["economic"],
+        },
+        "remedy_profile": {
+            "count": 1,
+            "categories": ["monetary"],
         },
         "intake_evidence_alignment_summary": {
             "aligned_element_count": 1,
@@ -778,20 +832,54 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
                 "current_phase": "intake",
                 "score": 0.5,
                 "remaining_gap_count": 1,
-                "contradiction_count": 0,
+                "contradiction_count": 1,
                 "ready_to_advance": False,
                 "blockers": ["collect_missing_support"],
-                "contradictions": [],
+                "criteria": {
+                    "case_theory_coherent": True,
+                    "minimum_proof_path_present": True,
+                    "claim_disambiguation_resolved": False,
+                },
+                "contradictions": [
+                    {
+                        "summary": "Termination date conflicts with reported complaint timeline",
+                        "question": "Which date is supported by the termination notice?",
+                        "recommended_resolution_lane": "request_document",
+                        "current_resolution_status": "open",
+                        "external_corroboration_required": True,
+                        "affected_claim_types": ["retaliation"],
+                    }
+                ],
             },
             "intake_constraints": [],
             "intake_case_summary": {
-                "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation"}],
+                "candidate_claims": [
+                    {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.87, "ambiguity_flags": ["timing_overlap"]},
+                    {"claim_type": "wrongful_termination", "label": "Wrongful Termination", "confidence": 0.79},
+                ],
                 "intake_sections": {
                     "proof_leads": {"status": "partial", "missing_items": ["documents"]},
                     "claims_for_relief": {"status": "partial", "missing_items": ["authority"]},
                 },
                 "canonical_fact_summary": {"count": 1, "facts": [{"fact_id": "fact_001"}]},
+                "canonical_fact_intent_summary": {
+                    "count": 1,
+                    "question_objective_counts": {"establish_chronology": 1},
+                    "expected_update_kind_counts": {"timeline_anchor": 1},
+                    "target_claim_type_counts": {"retaliation": 1},
+                    "target_element_id_counts": {"retaliation:1": 1},
+                },
                 "proof_lead_summary": {"count": 1, "proof_leads": [{"lead_id": "lead_001"}]},
+                "proof_lead_intent_summary": {
+                    "count": 1,
+                    "question_objective_counts": {"identify_supporting_evidence": 1},
+                    "expected_update_kind_counts": {"proof_lead": 1},
+                    "target_claim_type_counts": {"retaliation": 1},
+                    "target_element_id_counts": {"retaliation:3": 1},
+                },
+                "timeline_anchor_summary": {"count": 1, "anchors": [{"anchor_id": "timeline_anchor_001"}]},
+                "harm_profile": {"count": 1, "categories": ["economic"]},
+                "remedy_profile": {"count": 1, "categories": ["monetary"]},
                 "question_candidate_summary": {
                     "count": 2,
                     "question_goal_counts": {
@@ -804,6 +892,26 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
                     },
                     "blocking_level_counts": {"blocking": 1, "non_blocking": 1},
                 },
+                "alignment_evidence_tasks": [
+                    {
+                        "task_id": "retaliation:proof_leads:collect_complainant_record",
+                        "claim_type": "retaliation",
+                        "claim_element_id": "retaliation:3",
+                        "claim_element_label": "Proof Leads",
+                        "preferred_support_kind": "evidence",
+                        "fallback_lanes": ["authority", "testimony"],
+                        "source_quality_target": "high_quality_document",
+                        "resolution_status": "awaiting_complainant_record",
+                        "intake_proof_leads": [
+                            {
+                                "lead_id": "lead:complainant:record",
+                                "owner": "complainant",
+                                "recommended_support_kind": "evidence",
+                                "description": "Termination email held by complainant",
+                            }
+                        ],
+                    }
+                ],
                 "claim_support_packet_summary": {
                     "claim_count": 1,
                     "element_count": 2,
@@ -935,9 +1043,31 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
                 "text": "Open Retaliation Pending Review",
                 "href": "/claim-support-review?claim_type=retaliation&alignment_task_update_filter=pending_review&alignment_task_update_sort=pending_review_first",
             } in pending_review_links
+            assert "Candidate claim count: 2" in preview_text
+            assert "Candidate claim average confidence: 0.83" in preview_text
+            assert "Leading claim: Retaliation 0.87" in preview_text
+            assert "Claim disambiguation: needed" in preview_text
+            assert "Claim ambiguity flags: 1" in preview_text
+            assert "Claim ambiguity details: Timing Overlap 1" in preview_text
+            assert "Timeline anchors: 1" in preview_text
+            assert "Harm profile: Economic" in preview_text
+            assert "Remedy profile: Monetary" in preview_text
+            assert "Canonical fact intent records: 1" in preview_text
+            assert "Canonical fact objectives: Establish Chronology 1" in preview_text
+            assert "Proof lead intent records: 1" in preview_text
+            assert "Proof lead update kinds: Proof Lead 1" in preview_text
+            assert "Persisted intake criteria: Case Theory Coherent ready, Minimum Proof Path Present ready, Claim Disambiguation Resolved needs work" in preview_text
+            assert "Corroboration-required contradictions: 1" in preview_text
+            assert "Contradiction lanes: Request Document 1" in preview_text
+            assert "Termination date conflicts with reported complaint timeline | ask Which date is supported by the termination notice? | lane Request Document | status Open | external corroboration required | claims Retaliation" in preview_text
+            assert "Persisted contradiction lanes: Request Document 1" in preview_text
+            assert "Persisted corroboration-required contradictions: 1" in preview_text
             assert "Manual Review Blockers" in preview_text
             assert "Manual review blockers: 1" in preview_text
             assert "Claims impacted: 1" in preview_text
+            assert "Evidence Handoffs" in preview_text
+            assert "Evidence handoffs: 1" in preview_text
+            assert "Retaliation: Proof Leads | status Awaiting Complainant Record | preferred lane Evidence | quality target High Quality Document | proof lead complainant / evidence / Termination email held by complainant" in preview_text
             assert "Retaliation: Proof Leads | action Resolve Support Conflicts | artifact artifact-conflict" in preview_text
             assert "Pending Review Items" in preview_text
             assert "Pending review items: 1" in preview_text
@@ -985,6 +1115,13 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                     "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
                 )
 
+                intake_status = page.locator("#intake-status-chips").inner_text()
+                intake_readiness = page.locator("#intake-readiness-criteria-chips").inner_text()
+                intake_claims = page.locator("#intake-case-claim-chips").inner_text()
+                intake_claim_summary = page.locator("#intake-claim-summary-chips").inner_text()
+                intake_context = page.locator("#intake-context-chips").inner_text()
+                intake_facts = page.locator("#intake-canonical-fact-list").inner_text()
+                intake_proof_leads = page.locator("#intake-proof-lead-chips").inner_text()
                 alignment_summary = page.locator("#intake-evidence-alignment-summary-list").inner_text()
                 alignment_tasks = page.locator("#alignment-evidence-task-list").inner_text()
                 manual_review_summary = page.locator("#alignment-task-manual-review-summary").inner_text()
@@ -997,6 +1134,36 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 history_summary = page.locator("#history-summary-chips").inner_text()
                 follow_up_history = page.locator("#history-list").inner_text()
 
+                assert "phase: intake" in intake_status
+                assert "score: 0.41" in intake_status
+                assert "remaining gaps: 2" in intake_status
+                assert "ready Case Theory Coherent" in intake_readiness
+                assert "ready Minimum Proof Path Present" in intake_readiness
+                assert "needs Claim Disambiguation Resolved" in intake_readiness
+                assert "candidate claims: 2" in intake_readiness
+                assert "canonical facts: 1" in intake_readiness
+                assert "proof leads: 1" in intake_readiness
+                assert "claim: Retaliation" in intake_claims
+                assert "confidence: 0.87" in intake_claims
+                assert "ambiguity: Timing Overlap" in intake_claims
+                assert "claim: Wrongful Termination" in intake_claims
+                assert "claim count: 2" in intake_claim_summary
+                assert "average confidence: 0.83" in intake_claim_summary
+                assert "leading claim: Retaliation" in intake_claim_summary
+                assert "leading confidence: 0.87" in intake_claim_summary
+                assert "ambiguity flags: 1" in intake_claim_summary
+                assert "ambiguous claims: 1" in intake_claim_summary
+                assert "claim disambiguation: needed" in intake_claim_summary
+                assert "Timing Overlap: 1" in intake_claim_summary
+                assert "timeline anchors: 1" in intake_context
+                assert "harm profile: Economic" in intake_context
+                assert "remedy profile: Monetary" in intake_context
+                assert "corroboration-required contradictions: 1" in intake_readiness
+                assert "contradiction lanes: Request Document=1" in intake_readiness
+                assert "lane: Request Document" in page.locator("#intake-contradiction-list").inner_text()
+                assert "Canonical Fact Intake Intent" in intake_facts
+                assert "canonical fact objectives: Establish Chronology=1" in intake_facts
+                assert "proof lead objectives: Identify Supporting Evidence=1" in intake_proof_leads
                 assert "Cross-phase element alignment for retaliation" in alignment_summary
                 assert "aligned retaliation:1: supported" in alignment_summary
                 assert "intake only: retaliation:3" in alignment_summary
@@ -1348,19 +1515,42 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
                 "score": 0.52,
                 "contradiction_count": 0,
                 "blockers": ["collect_missing_support"],
+                "criteria": {
+                    "case_theory_coherent": True,
+                    "minimum_proof_path_present": True,
+                    "claim_disambiguation_resolved": False,
+                },
                 "contradictions": [],
             },
             "intake_constraints": [],
             "intake_case_summary": {
                 "candidate_claims": [
-                    {"claim_type": "retaliation", "label": "Retaliation"},
+                    {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.87, "ambiguity_flags": ["timing_overlap"]},
+                    {"claim_type": "wrongful_termination", "label": "Wrongful Termination", "confidence": 0.79},
                 ],
                 "intake_sections": {
                     "proof_leads": {"status": "partial", "missing_items": ["documents"]},
                     "claims_for_relief": {"status": "partial", "missing_items": ["authority"]},
                 },
                 "canonical_fact_summary": {"count": 1, "facts": [{"fact_id": "fact_001"}]},
+                "canonical_fact_intent_summary": {
+                    "count": 1,
+                    "question_objective_counts": {"establish_chronology": 1},
+                    "expected_update_kind_counts": {"timeline_anchor": 1},
+                    "target_claim_type_counts": {"retaliation": 1},
+                    "target_element_id_counts": {"retaliation:1": 1},
+                },
                 "proof_lead_summary": {"count": 1, "proof_leads": [{"lead_id": "lead_001"}]},
+                "proof_lead_intent_summary": {
+                    "count": 1,
+                    "question_objective_counts": {"identify_supporting_evidence": 1},
+                    "expected_update_kind_counts": {"proof_lead": 1},
+                    "target_claim_type_counts": {"retaliation": 1},
+                    "target_element_id_counts": {"retaliation:2": 1},
+                },
+                "timeline_anchor_summary": {"count": 1, "anchors": [{"anchor_id": "timeline_anchor_001"}]},
+                "harm_profile": {"count": 1, "categories": ["economic"]},
+                "remedy_profile": {"count": 1, "categories": ["monetary"]},
                 "question_candidate_summary": {
                     "count": 2,
                     "question_goal_counts": {
@@ -1385,8 +1575,16 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
                         "preferred_support_kind": "evidence",
                         "fallback_lanes": ["authority", "testimony"],
                         "source_quality_target": "high_quality_document",
-                        "resolution_status": "still_open",
+                        "resolution_status": "awaiting_complainant_record",
                         "resolution_notes": "",
+                        "intake_proof_leads": [
+                            {
+                                "lead_id": "lead:complainant:record",
+                                "owner": "complainant",
+                                "recommended_support_kind": "evidence",
+                                "description": "Termination email held by complainant",
+                            }
+                        ],
                     }
                 ],
                 "claim_support_packet_summary": {
@@ -1513,9 +1711,23 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
                 "href": "/claim-support-review?user_id=trace-smoke-user&claim_type=retaliation&alignment_task_update_filter=pending_review&alignment_task_update_sort=pending_review_first",
             } in pending_review_links
             assert "Alignment tasks: 1" in trace_evidence
+            assert "Candidate claim count: 2" in trace_evidence
+            assert "Candidate claim average confidence: 0.83" in trace_evidence
+            assert "Leading claim: Retaliation 0.87" in trace_evidence
+            assert "Claim disambiguation: needed" in trace_evidence
+            assert "Claim ambiguity flags: 1" in trace_evidence
+            assert "Claim ambiguity details: Timing Overlap 1" in trace_evidence
+            assert "Timeline anchors: 1" in trace_evidence
+            assert "Harm profile: Economic" in trace_evidence
+            assert "Remedy profile: Monetary" in trace_evidence
+            assert "Canonical fact intent records: 1" in trace_evidence
+            assert "Canonical fact target claims: Retaliation 1" in trace_evidence
+            assert "Proof lead intent records: 1" in trace_evidence
+            assert "Proof lead target elements: Retaliation:2 1" in trace_evidence
             assert "Alignment preferred lanes: Evidence 1" in trace_evidence
             assert "Alignment fallback lanes: Authority 1, Testimony 1" in trace_evidence
             assert "Alignment quality targets: High Quality Document 1" in trace_evidence
+            assert "Alignment handoffs: Awaiting Complainant Record 1" in trace_evidence
             assert "Packet blocking covered: 0.50" in trace_evidence
             assert "Packet credible support: 0.50" in trace_evidence
             assert "Packet draft ready: 0.00" in trace_evidence
@@ -1525,6 +1737,10 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
             assert "Packet proof readiness: 0.23" in trace_evidence
             assert "Packet unresolved without path: 1" in trace_evidence
             assert "Packet completion ready: no" in trace_evidence
+            handoff_trace_text = page.locator("#traceEvidenceHandoffs").inner_text()
+            assert "Evidence Handoffs" in handoff_trace_text
+            assert "Evidence handoffs: 1" in handoff_trace_text
+            assert "Retaliation: Claims For Relief | status Awaiting Complainant Record | preferred lane Evidence | quality target High Quality Document | proof lead complainant / evidence / Termination email held by complainant" in handoff_trace_text
             assert "Manual Review Blockers" in trace_text
             assert "Manual review blockers: 1" in trace_text
             assert "Claims impacted: 1" in trace_text
@@ -2296,12 +2512,18 @@ def test_optimization_trace_pending_review_link_click_preserves_queue_focus_on_r
                 "score": 0.52,
                 "contradiction_count": 0,
                 "blockers": ["collect_missing_support"],
+                "criteria": {
+                    "case_theory_coherent": True,
+                    "minimum_proof_path_present": True,
+                    "claim_disambiguation_resolved": False,
+                },
                 "contradictions": [],
             },
             "intake_constraints": [],
             "intake_case_summary": {
                 "candidate_claims": [
-                    {"claim_type": "retaliation", "label": "Retaliation"},
+                    {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.87, "ambiguity_flags": ["timing_overlap"]},
+                    {"claim_type": "wrongful_termination", "label": "Wrongful Termination", "confidence": 0.79},
                 ],
                 "intake_sections": {
                     "proof_leads": {"status": "partial", "missing_items": ["documents"]},
@@ -2309,6 +2531,9 @@ def test_optimization_trace_pending_review_link_click_preserves_queue_focus_on_r
                 },
                 "canonical_fact_summary": {"count": 1, "facts": [{"fact_id": "fact_001"}]},
                 "proof_lead_summary": {"count": 1, "proof_leads": [{"lead_id": "lead_001"}]},
+                "timeline_anchor_summary": {"count": 1, "anchors": [{"anchor_id": "timeline_anchor_001"}]},
+                "harm_profile": {"count": 1, "categories": ["economic"]},
+                "remedy_profile": {"count": 1, "categories": ["monetary"]},
                 "question_candidate_summary": {
                     "count": 2,
                     "question_goal_counts": {
@@ -2960,10 +3185,19 @@ def test_document_builder_checklist_review_link_preserves_focus_on_review_page()
                 "intake_status": {
                     "score": 0.5,
                     "remaining_gap_count": 1,
-                    "contradiction_count": 0,
+                    "contradiction_count": 1,
                     "ready_to_advance": False,
                     "blockers": ["collect_missing_support"],
-                    "contradictions": [],
+                    "contradictions": [
+                        {
+                            "summary": "Complaint date conflicts with HR intake record",
+                            "question": "Which date is reflected in the HR complaint email?",
+                            "recommended_resolution_lane": "request_document",
+                            "current_resolution_status": "open",
+                            "external_corroboration_required": True,
+                            "affected_claim_types": ["retaliation"],
+                        }
+                    ],
                 },
             }
         ],
@@ -2982,10 +3216,19 @@ def test_document_builder_checklist_review_link_preserves_focus_on_review_page()
                 "current_phase": "intake",
                 "score": 0.5,
                 "remaining_gap_count": 1,
-                "contradiction_count": 0,
+                "contradiction_count": 1,
                 "ready_to_advance": False,
                 "blockers": ["collect_missing_support"],
-                "contradictions": [],
+                "contradictions": [
+                    {
+                        "summary": "Complaint date conflicts with HR intake record",
+                        "question": "Which date is reflected in the HR complaint email?",
+                        "recommended_resolution_lane": "request_document",
+                        "current_resolution_status": "open",
+                        "external_corroboration_required": True,
+                        "affected_claim_types": ["retaliation"],
+                    }
+                ],
             },
             "intake_constraints": [],
             "intake_case_summary": {
@@ -3060,6 +3303,13 @@ def test_document_builder_checklist_review_link_preserves_focus_on_review_page()
                 page.wait_for_function(
                     "() => document.querySelectorAll('.checklist-card a.inline-link').length > 0"
                 )
+                checklist_text = page.locator('.checklist-card').first.inner_text()
+                normalized_checklist_text = checklist_text.lower()
+
+                assert "checklist intake signals" in normalized_checklist_text
+                assert "corroboration-required contradictions: 1" in normalized_checklist_text
+                assert "contradiction lanes: request document 1" in normalized_checklist_text
+                assert "complaint date conflicts with hr intake record | ask which date is reflected in the hr complaint email? | lane request document | status open | external corroboration required | claims retaliation" in normalized_checklist_text
 
                 page.locator('.checklist-card').get_by_text('Open Checklist Review').click()
                 page.wait_for_url("**/claim-support-review?**")

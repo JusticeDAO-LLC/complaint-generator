@@ -1689,6 +1689,73 @@
             return `<div class="preview-meta"><strong>${escapeHtml(title)}</strong></div><div class="triage-chip-row">${chips.join('')}</div>`;
         }
 
+        function summarizeIntentCountMap(prefix, values) {
+            const entries = Object.entries(values && typeof values === 'object' ? values : {}).filter(([, count]) => Number(count || 0) > 0);
+            if (!entries.length) {
+                return '';
+            }
+            return `${prefix}: ${entries.map(([label, count]) => `${humanizeKey(label)} ${count}`).join(', ')}`;
+        }
+
+        function summarizeIntakeIntentLines(summary, labelPrefix) {
+            const intentSummary = summary && typeof summary === 'object' ? summary : {};
+            return [
+                intentSummary.count !== undefined ? `${labelPrefix} intent records: ${Number(intentSummary.count || 0)}` : '',
+                summarizeIntentCountMap(`${labelPrefix} objectives`, intentSummary.question_objective_counts),
+                summarizeIntentCountMap(`${labelPrefix} update kinds`, intentSummary.expected_update_kind_counts),
+                summarizeIntentCountMap(`${labelPrefix} target claims`, intentSummary.target_claim_type_counts),
+                summarizeIntentCountMap(`${labelPrefix} target elements`, intentSummary.target_element_id_counts),
+            ].filter(Boolean);
+        }
+
+        function summarizeContradictionMetadata(contradictions, summary = null) {
+            const normalizedSummary = summary && typeof summary === 'object' ? summary : {};
+            const laneCountsFromSummary = normalizedSummary.lane_counts && typeof normalizedSummary.lane_counts === 'object'
+                ? normalizedSummary.lane_counts
+                : null;
+            if (laneCountsFromSummary || normalizedSummary.corroboration_required_count !== undefined) {
+                return {
+                    laneCounts: laneCountsFromSummary || {},
+                    corroborationRequiredCount: Number(normalizedSummary.corroboration_required_count || 0),
+                };
+            }
+            const items = Array.isArray(contradictions) ? contradictions.filter((item) => item && typeof item === 'object') : [];
+            const laneCounts = {};
+            let corroborationRequiredCount = 0;
+            items.forEach((item) => {
+                const lane = String(item.recommended_resolution_lane || '').trim();
+                if (lane) {
+                    laneCounts[lane] = (laneCounts[lane] || 0) + 1;
+                }
+                if (item.external_corroboration_required) {
+                    corroborationRequiredCount += 1;
+                }
+            });
+            return { laneCounts, corroborationRequiredCount };
+        }
+
+        function formatContradictionSummary(entry) {
+            const contradiction = entry && typeof entry === 'object' ? entry : {};
+            const fragments = [String(contradiction.summary || 'Unresolved contradiction').trim()];
+            if (contradiction.question) {
+                fragments.push(`ask ${String(contradiction.question).trim()}`);
+            }
+            if (contradiction.recommended_resolution_lane) {
+                fragments.push(`lane ${humanizeKey(contradiction.recommended_resolution_lane)}`);
+            }
+            if (contradiction.current_resolution_status) {
+                fragments.push(`status ${humanizeKey(contradiction.current_resolution_status)}`);
+            }
+            if (contradiction.external_corroboration_required) {
+                fragments.push('external corroboration required');
+            }
+            const affectedClaimTypes = Array.isArray(contradiction.affected_claim_types) ? contradiction.affected_claim_types : [];
+            if (affectedClaimTypes.length) {
+                fragments.push(`claims ${affectedClaimTypes.map((claimType) => humanizeKey(claimType)).join(', ')}`);
+            }
+            return fragments.filter(Boolean).join(' | ');
+        }
+
         function renderPleadingParagraphs(lines, startNumber = 1) {
             if (!Array.isArray(lines) || lines.length === 0) {
                 return '<div class="preview-meta">No content available.</div>';
@@ -1873,6 +1940,43 @@
                 .replace(/\b\w/g, (char) => char.toUpperCase());
         }
 
+        const FOLLOW_UP_HANDOFF_STATUSES = new Set([
+            'awaiting_complainant_record',
+            'awaiting_third_party_record',
+            'awaiting_testimony',
+            'needs_manual_legal_review',
+            'needs_manual_review',
+        ]);
+
+        function isFollowUpHandoffStatus(value) {
+            return FOLLOW_UP_HANDOFF_STATUSES.has(String(value || '').trim().toLowerCase());
+        }
+
+        function summarizeProofLeadLabels(leads, maxItems = 1) {
+            const proofLeads = Array.isArray(leads) ? leads : [];
+            const labels = proofLeads.map((lead) => {
+                if (!lead || typeof lead !== 'object') {
+                    return '';
+                }
+                const owner = String(lead.owner || lead.custodian || '').trim();
+                const supportKind = String(lead.recommended_support_kind || '').trim();
+                const descriptor = String(lead.description || lead.lead_type || lead.lead_id || '').trim();
+                return [owner, supportKind, descriptor].filter(Boolean).join(' / ');
+            }).filter(Boolean);
+            if (labels.length <= maxItems) {
+                return labels;
+            }
+            return labels.slice(0, maxItems).concat(`+${labels.length - maxItems} more proof leads`);
+        }
+
+        function summarizeAlignmentEvidenceHandoffs(tasks) {
+            return (Array.isArray(tasks) ? tasks : []).filter((task) => (
+                task && typeof task === 'object'
+                && isFollowUpHandoffStatus(task.resolution_status)
+                && String(task.status || '').trim().toLowerCase() !== 'resolved'
+            ));
+        }
+
         function renderStatusPill(status) {
             const normalized = String(status || 'ready').toLowerCase();
             return `<span class="status-pill" data-status="${escapeHtml(normalized)}">${escapeHtml(normalized)}</span>`;
@@ -1976,6 +2080,7 @@
                 if (!Object.keys(intakeStatus).length) {
                     return '';
                 }
+                const contradictionMetadata = summarizeContradictionMetadata(contradictions, intakeStatus.contradiction_summary);
                 const chips = [];
                 if (intakeStatus.current_phase) chips.push(`<span class="readiness-chip"><strong>Phase:</strong> ${escapeHtml(intakeStatus.current_phase)}</span>`);
                 chips.push(`<span class="readiness-chip"><strong>Intake score:</strong> ${escapeHtml(Number(intakeStatus.score || 0).toFixed(2))}</span>`);
@@ -1985,8 +2090,12 @@
                 const blockerSummary = blockers.length
                     ? `<div class="preview-meta"><strong>Intake blockers:</strong> ${escapeHtml(blockers.join(', '))}</div>`
                     : '<div class="preview-meta">No current intake blockers reported.</div>';
+                const contradictionMetaLines = [
+                    contradictionMetadata.corroborationRequiredCount ? `Corroboration-required contradictions: ${contradictionMetadata.corroborationRequiredCount}` : '',
+                    Object.keys(contradictionMetadata.laneCounts).length ? `Contradiction lanes: ${Object.entries(contradictionMetadata.laneCounts).map(([lane, count]) => `${humanizeKey(lane)} ${count}`).join(', ')}` : '',
+                ].filter(Boolean);
                 const contradictionSummary = contradictions.length
-                    ? `<ul class="provenance-list">${contradictions.slice(0, 3).map((item) => `<li>${escapeHtml(item.summary || 'Unresolved contradiction')}${item.question ? ` | ask ${escapeHtml(item.question)}` : ''}</li>`).join('')}</ul>`
+                    ? `${contradictionMetaLines.length ? `<div class="preview-meta">${contradictionMetaLines.map((line) => `<div>${escapeHtml(line)}</div>`).join('')}</div>` : ''}<ul class="provenance-list">${contradictions.slice(0, 3).map((item) => `<li>${escapeHtml(formatContradictionSummary(item))}</li>`).join('')}</ul>`
                     : '<div class="preview-meta">No intake contradictions are currently tracked.</div>';
                 return `
                     <div class="readiness-subtitle">Intake Review Signals</div>
@@ -2220,6 +2329,99 @@
                     const normalizedRight = Number.isFinite(rightSequence) ? rightSequence : 0;
                     return normalizedRight - normalizedLeft;
                 });
+        }
+
+
+        function buildCandidateClaimSummary(candidateClaims, precomputedSummary) {
+            if (precomputedSummary && typeof precomputedSummary === 'object' && Object.keys(precomputedSummary).length) {
+                return precomputedSummary;
+            }
+            const claims = Array.isArray(candidateClaims) ? candidateClaims.filter((claim) => claim && typeof claim === 'object') : [];
+            const ambiguityFlagCounts = {};
+            let totalConfidence = 0;
+            const confidencePairs = [];
+
+            claims.forEach((claim) => {
+                const claimType = String(claim.claim_type || '').trim();
+                const ambiguityFlags = Array.isArray(claim.ambiguity_flags) ? claim.ambiguity_flags : [];
+                ambiguityFlags.forEach((flag) => {
+                    const normalizedFlag = String(flag || '').trim();
+                    if (normalizedFlag) {
+                        ambiguityFlagCounts[normalizedFlag] = (ambiguityFlagCounts[normalizedFlag] || 0) + 1;
+                    }
+                });
+                const confidenceValue = Number(claim.confidence || 0);
+                const normalizedConfidence = Number.isFinite(confidenceValue) ? confidenceValue : 0;
+                totalConfidence += normalizedConfidence;
+                confidencePairs.push([normalizedConfidence, claimType]);
+            });
+
+            confidencePairs.sort((left, right) => right[0] - left[0]);
+            const topConfidencePair = confidencePairs[0] || [0, ''];
+            const closeLeadingClaims = (
+                confidencePairs.length > 1
+                && topConfidencePair[0] >= 0.5
+                && (topConfidencePair[0] - confidencePairs[1][0]) < 0.15
+            );
+
+            return {
+                count: claims.length,
+                average_confidence: claims.length ? Number((totalConfidence / claims.length).toFixed(3)) : 0,
+                top_claim_type: topConfidencePair[1] || '',
+                top_confidence: Number((topConfidencePair[0] || 0).toFixed(3)),
+                ambiguity_flag_counts: ambiguityFlagCounts,
+                ambiguity_flag_count: Object.values(ambiguityFlagCounts).reduce((total, value) => total + Number(value || 0), 0),
+                ambiguous_claim_count: claims.filter((claim) => Array.isArray(claim.ambiguity_flags) && claim.ambiguity_flags.length).length,
+                close_leading_claims: closeLeadingClaims,
+            };
+        }
+
+
+        function summarizeIntakeContradictions(contradictions) {
+            const values = Array.isArray(contradictions) ? contradictions.filter((entry) => entry && typeof entry === 'object') : [];
+            const laneCounts = {};
+            let externalCorroborationCount = 0;
+
+            values.forEach((entry) => {
+                const lane = String(entry.recommended_resolution_lane || '').trim();
+                if (lane) {
+                    laneCounts[lane] = (laneCounts[lane] || 0) + 1;
+                }
+                if (entry.external_corroboration_required) {
+                    externalCorroborationCount += 1;
+                }
+            });
+
+            return { laneCounts, externalCorroborationCount };
+        }
+
+        function formatContradictionLaneCounts(laneCounts) {
+            return Object.entries(laneCounts || {})
+                .map(([lane, count]) => `${humanizeKey(lane)} ${count}`)
+                .join(', ');
+        }
+
+        function formatIntakeContradictionSummary(entry) {
+            const contradiction = entry && typeof entry === 'object' ? entry : {};
+            const segments = [String(contradiction.summary || 'Unresolved contradiction').trim() || 'Unresolved contradiction'];
+
+            if (contradiction.question) {
+                segments.push(`ask ${String(contradiction.question).trim()}`);
+            }
+            if (contradiction.recommended_resolution_lane) {
+                segments.push(`lane ${humanizeKey(contradiction.recommended_resolution_lane)}`);
+            }
+            if (contradiction.current_resolution_status) {
+                segments.push(`status ${humanizeKey(contradiction.current_resolution_status)}`);
+            }
+            if (contradiction.external_corroboration_required) {
+                segments.push('external corroboration required');
+            }
+            if (Array.isArray(contradiction.affected_claim_types) && contradiction.affected_claim_types.length) {
+                segments.push(`claims ${contradiction.affected_claim_types.map((claimType) => humanizeKey(claimType)).join(', ')}`);
+            }
+
+            return escapeHtml(segments.join(' | '));
         }
 
         function buildClaimQueueIntentSets(intakeCaseSummary) {
@@ -2519,6 +2721,7 @@
                         const intakeStatus = item && typeof item.intake_status === 'object' ? item.intake_status : {};
                         const blockers = Array.isArray(intakeStatus.blockers) ? intakeStatus.blockers : [];
                         const contradictions = Array.isArray(intakeStatus.contradictions) ? intakeStatus.contradictions : [];
+                        const contradictionMetadata = summarizeContradictionMetadata(contradictions);
                         if (!Object.keys(intakeStatus).length) {
                             return '';
                         }
@@ -2531,8 +2734,12 @@
                         const blockerSummary = blockers.length
                             ? `<div class="preview-meta" style="margin-top: 8px;"><strong>Checklist intake blockers:</strong> ${escapeHtml(blockers.join(', '))}</div>`
                             : '';
+                        const contradictionMetaLines = [
+                            contradictionMetadata.corroborationRequiredCount ? `Corroboration-required contradictions: ${contradictionMetadata.corroborationRequiredCount}` : '',
+                            Object.keys(contradictionMetadata.laneCounts).length ? `Contradiction lanes: ${Object.entries(contradictionMetadata.laneCounts).map(([lane, count]) => `${humanizeKey(lane)} ${count}`).join(', ')}` : '',
+                        ].filter(Boolean);
                         const contradictionSummary = contradictions.length
-                            ? `<ul class="provenance-list">${contradictions.map((entry) => `<li>${escapeHtml(entry.summary || 'Unresolved contradiction')}${entry.question ? ` | ask ${escapeHtml(entry.question)}` : ''}</li>`).join('')}</ul>`
+                            ? `${contradictionMetaLines.length ? `<div class="preview-meta" style="margin-top: 8px;">${contradictionMetaLines.map((line) => `<div>${escapeHtml(line)}</div>`).join('')}</div>` : ''}<ul class="provenance-list">${contradictions.map((entry) => `<li>${escapeHtml(formatContradictionSummary(entry))}</li>`).join('')}</ul>`
                             : '';
                         return `
                             <div class="readiness-subtitle">Checklist Intake Signals</div>
@@ -2573,10 +2780,20 @@
             const intakeConstraints = Array.isArray(report.intake_constraints) ? report.intake_constraints : [];
             const intakeCaseSummary = report.intake_case_summary && typeof report.intake_case_summary === 'object' ? report.intake_case_summary : {};
             const intakeCandidateClaims = Array.isArray(intakeCaseSummary.candidate_claims) ? intakeCaseSummary.candidate_claims : [];
+            const candidateClaimSummary = buildCandidateClaimSummary(
+                intakeCandidateClaims,
+                intakeCaseSummary.candidate_claim_summary,
+            );
             const intakeSections = intakeCaseSummary.intake_sections && typeof intakeCaseSummary.intake_sections === 'object' ? intakeCaseSummary.intake_sections : {};
             const canonicalFactSummary = intakeCaseSummary.canonical_fact_summary && typeof intakeCaseSummary.canonical_fact_summary === 'object' ? intakeCaseSummary.canonical_fact_summary : {};
+            const canonicalFactIntentSummary = intakeCaseSummary.canonical_fact_intent_summary && typeof intakeCaseSummary.canonical_fact_intent_summary === 'object' ? intakeCaseSummary.canonical_fact_intent_summary : {};
             const proofLeadSummary = intakeCaseSummary.proof_lead_summary && typeof intakeCaseSummary.proof_lead_summary === 'object' ? intakeCaseSummary.proof_lead_summary : {};
+            const proofLeadIntentSummary = intakeCaseSummary.proof_lead_intent_summary && typeof intakeCaseSummary.proof_lead_intent_summary === 'object' ? intakeCaseSummary.proof_lead_intent_summary : {};
+            const timelineAnchorSummary = intakeCaseSummary.timeline_anchor_summary && typeof intakeCaseSummary.timeline_anchor_summary === 'object' ? intakeCaseSummary.timeline_anchor_summary : {};
+            const harmProfile = intakeCaseSummary.harm_profile && typeof intakeCaseSummary.harm_profile === 'object' ? intakeCaseSummary.harm_profile : {};
+            const remedyProfile = intakeCaseSummary.remedy_profile && typeof intakeCaseSummary.remedy_profile === 'object' ? intakeCaseSummary.remedy_profile : {};
             const questionCandidateSummary = intakeCaseSummary.question_candidate_summary && typeof intakeCaseSummary.question_candidate_summary === 'object' ? intakeCaseSummary.question_candidate_summary : {};
+            const alignmentEvidenceTasks = Array.isArray(intakeCaseSummary.alignment_evidence_tasks) ? intakeCaseSummary.alignment_evidence_tasks : [];
             const claimSupportPacketSummary = intakeCaseSummary.claim_support_packet_summary && typeof intakeCaseSummary.claim_support_packet_summary === 'object' ? intakeCaseSummary.claim_support_packet_summary : {};
             const questionSourceCounts = questionCandidateSummary.source_counts && typeof questionCandidateSummary.source_counts === 'object' ? questionCandidateSummary.source_counts : {};
             const questionGoalCounts = questionCandidateSummary.question_goal_counts && typeof questionCandidateSummary.question_goal_counts === 'object' ? questionCandidateSummary.question_goal_counts : {};
@@ -2731,9 +2948,24 @@
                 intakeStatus.current_phase ? `Persisted intake phase: ${humanizeKey(intakeStatus.current_phase)}` : '',
                 Array.isArray(intakeStatus.blockers) ? `Persisted intake blockers: ${intakeStatus.blockers.length}` : '',
                 intakeStatus.contradiction_count != null ? `Persisted intake contradictions: ${intakeStatus.contradiction_count}` : '',
+                intakeStatus.criteria && typeof intakeStatus.criteria === 'object' && Object.keys(intakeStatus.criteria).length
+                    ? `Persisted intake criteria: ${Object.entries(intakeStatus.criteria).map(([criterion, satisfied]) => `${humanizeKey(criterion)} ${satisfied ? 'ready' : 'needs work'}`).join(', ')}`
+                    : '',
                 Array.isArray(intakeStatus.contradictions) && intakeStatus.contradictions.length
                     ? `Persisted contradiction summaries: ${intakeStatus.contradictions.map((entry) => entry.summary || 'Unresolved contradiction').join(' | ')}`
                     : '',
+                (() => {
+                        const contradictionMetadata = summarizeContradictionMetadata(intakeStatus.contradictions, intakeStatus.contradiction_summary);
+                    return Object.keys(contradictionMetadata.laneCounts).length
+                        ? `Persisted contradiction lanes: ${Object.entries(contradictionMetadata.laneCounts).map(([lane, count]) => `${humanizeKey(lane)} ${count}`).join(', ')}`
+                        : '';
+                })(),
+                (() => {
+                    const contradictionMetadata = summarizeContradictionMetadata(intakeStatus.contradictions, intakeStatus.contradiction_summary);
+                    return contradictionMetadata.corroborationRequiredCount
+                        ? `Persisted corroboration-required contradictions: ${contradictionMetadata.corroborationRequiredCount}`
+                        : '';
+                })(),
                 traceStorage.size != null ? `Persisted trace size: ${traceStorage.size}` : '',
                 traceStorage.pinned != null ? `Persisted trace pinned: ${traceStorage.pinned ? 'yes' : 'no'}` : '',
             ].filter(Boolean);
@@ -2746,21 +2978,65 @@
                 Array.isArray(intakeStatus.blockers) && intakeStatus.blockers.length
                     ? `Intake blockers: ${intakeStatus.blockers.join(' | ')}`
                     : '',
+                (() => {
+                    const contradictionMetadata = summarizeContradictionMetadata(intakeStatus.contradictions, intakeStatus.contradiction_summary);
+                    return contradictionMetadata.corroborationRequiredCount
+                        ? `Corroboration-required contradictions: ${contradictionMetadata.corroborationRequiredCount}`
+                        : '';
+                })(),
+                (() => {
+                    const contradictionMetadata = summarizeContradictionMetadata(intakeStatus.contradictions);
+                    return Object.keys(contradictionMetadata.laneCounts).length
+                        ? `Contradiction lanes: ${Object.entries(contradictionMetadata.laneCounts).map(([lane, count]) => `${humanizeKey(lane)} ${count}`).join(', ')}`
+                        : '';
+                })(),
+                ...(Array.isArray(intakeStatus.contradictions)
+                    ? intakeStatus.contradictions.slice(0, 3).map((entry) => formatContradictionSummary(entry))
+                    : []),
                 ...intakeConstraints.map((warning) => `${humanizeKey(warning.code || 'intake_constraint')}: ${warning.message || 'constraint reported'}`),
             ].filter(Boolean);
             const intakeEvidenceLines = [
                 intakeCandidateClaims.length
                     ? `Candidate claims: ${intakeCandidateClaims.map((claim) => claim.label || humanizeKey(claim.claim_type || 'unknown')).join(' | ')}`
                     : '',
+                candidateClaimSummary.count != null
+                    ? `Candidate claim count: ${candidateClaimSummary.count}`
+                    : '',
+                candidateClaimSummary.average_confidence != null
+                    ? `Candidate claim average confidence: ${Number(candidateClaimSummary.average_confidence || 0).toFixed(2)}`
+                    : '',
+                candidateClaimSummary.top_claim_type
+                    ? `Leading claim: ${humanizeKey(candidateClaimSummary.top_claim_type)} ${Number(candidateClaimSummary.top_confidence || 0).toFixed(2)}`
+                    : '',
+                candidateClaimSummary.close_leading_claims != null
+                    ? `Claim disambiguation: ${candidateClaimSummary.close_leading_claims ? 'needed' : 'stable'}`
+                    : '',
+                candidateClaimSummary.ambiguity_flag_count != null
+                    ? `Claim ambiguity flags: ${candidateClaimSummary.ambiguity_flag_count}`
+                    : '',
+                Object.keys(candidateClaimSummary.ambiguity_flag_counts || {}).length
+                    ? `Claim ambiguity details: ${Object.entries(candidateClaimSummary.ambiguity_flag_counts).map(([flag, count]) => `${humanizeKey(flag)} ${count}`).join(', ')}`
+                    : '',
                 Object.keys(intakeSections).length
                     ? `Intake sections: ${Object.entries(intakeSections).map(([sectionName, section]) => `${humanizeKey(sectionName)} ${section && section.status ? section.status : 'missing'}`).join(', ')}`
+                    : '',
+                timelineAnchorSummary.count != null
+                    ? `Timeline anchors: ${Number(timelineAnchorSummary.count || 0)}`
+                    : '',
+                Array.isArray(harmProfile.categories) && harmProfile.categories.length
+                    ? `Harm profile: ${harmProfile.categories.map((item) => humanizeKey(item)).join(', ')}`
+                    : '',
+                Array.isArray(remedyProfile.categories) && remedyProfile.categories.length
+                    ? `Remedy profile: ${remedyProfile.categories.map((item) => humanizeKey(item)).join(', ')}`
                     : '',
                 (canonicalFactSummary.count != null || Array.isArray(canonicalFactSummary.facts))
                     ? `Canonical facts: ${canonicalFactSummary.count != null ? canonicalFactSummary.count : canonicalFactSummary.facts.length}`
                     : '',
+                ...summarizeIntakeIntentLines(canonicalFactIntentSummary, 'Canonical fact'),
                 (proofLeadSummary.count != null || Array.isArray(proofLeadSummary.proof_leads))
                     ? `Proof leads: ${proofLeadSummary.count != null ? proofLeadSummary.count : proofLeadSummary.proof_leads.length}`
                     : '',
+                ...summarizeIntakeIntentLines(proofLeadIntentSummary, 'Proof lead'),
                 (questionCandidateSummary.count != null || Array.isArray(questionCandidateSummary.candidates))
                     ? `Question candidates: ${questionCandidateSummary.count != null ? questionCandidateSummary.count : questionCandidateSummary.candidates.length}`
                     : '',
@@ -2836,6 +3112,7 @@
                 : (Array.isArray(intakeCaseSummary.alignment_task_updates) ? intakeCaseSummary.alignment_task_updates : []);
             const manualReviewBlockers = summarizeAlignmentManualReviewBlockers(visibleAlignmentTaskUpdates);
             const pendingReviewItems = summarizeAlignmentPendingReviewItems(visibleAlignmentTaskUpdates);
+            const handoffItems = summarizeAlignmentEvidenceHandoffs(alignmentEvidenceTasks);
             const manualReviewClaims = new Set(
                 manualReviewBlockers
                     .map((update) => String(update && update.claim_type || '').trim())
@@ -2844,6 +3121,11 @@
             const pendingReviewClaims = new Set(
                 pendingReviewItems
                     .map((update) => String(update && update.claim_type || '').trim())
+                    .filter(Boolean)
+            );
+            const handoffClaims = new Set(
+                handoffItems
+                    .map((task) => String(task && task.claim_type || '').trim())
                     .filter(Boolean)
             );
             const manualReviewBlockerLines = manualReviewBlockers.slice(0, 3).map((update) => {
@@ -2856,11 +3138,30 @@
                 ].filter(Boolean);
                 return fragments.join(' | ');
             });
+            const handoffLines = handoffItems.slice(0, 3).map((task) => {
+                const claimLabel = humanizeKey(task.claim_type || 'claim');
+                const elementLabel = task.claim_element_label || task.claim_element || task.claim_element_id || 'alignment task';
+                const fragments = [
+                    `${claimLabel}: ${elementLabel}`,
+                    task.resolution_status ? `status ${humanizeKey(task.resolution_status)}` : '',
+                    task.preferred_support_kind ? `preferred lane ${humanizeKey(task.preferred_support_kind)}` : '',
+                    task.source_quality_target ? `quality target ${humanizeKey(task.source_quality_target)}` : '',
+                    ...summarizeProofLeadLabels(task.intake_proof_leads, 1).map((label) => `proof lead ${label}`),
+                ].filter(Boolean);
+                return fragments.join(' | ');
+            });
             const manualReviewSnapshot = manualReviewBlockers.length
                 ? `<div class="preview-meta"><strong>Manual Review Blockers</strong></div>${renderLines([
                     `Manual review blockers: ${manualReviewBlockers.length}`,
                     `Claims impacted: ${manualReviewClaims.size}`,
                     ...manualReviewBlockerLines,
+                ])}`
+                : '';
+            const handoffSnapshot = handoffItems.length
+                ? `<div class="preview-meta"><strong>Evidence Handoffs</strong></div>${renderLines([
+                    `Evidence handoffs: ${handoffItems.length}`,
+                    `Claims impacted: ${handoffClaims.size}`,
+                    ...handoffLines,
                 ])}`
                 : '';
             const pendingReviewLines = pendingReviewItems.slice(0, 3).map((update) => {
@@ -2996,7 +3297,7 @@
                         ${renderChangeGroup('Rejected Changes', rejectedChangeLines, 'rejected')}
                         ${routerUsageLines.length ? `<div class="preview-meta"><strong>Router Usage</strong></div>${renderLines(routerUsageLines)}` : ''}
                         ${intakeConstraintLines.length ? `<div class="preview-meta"><strong>Intake Constraints</strong></div>${renderLines(intakeConstraintLines)}` : ''}
-                        ${intakeEvidenceLines.length ? `<div class="preview-meta"><strong>Intake Evidence Snapshot</strong></div>${renderLines(intakeEvidenceLines)}${manualReviewSnapshot}${manualReviewLinkRow}${pendingReviewSnapshot}${pendingReviewLinkRow}${intakeEvidenceTriage}${questionSectionLinkRow}${intakeEvidenceLinks}` : ''}
+                        ${intakeEvidenceLines.length ? `<div class="preview-meta"><strong>Intake Evidence Snapshot</strong></div>${renderLines(intakeEvidenceLines)}${handoffSnapshot}${manualReviewSnapshot}${manualReviewLinkRow}${pendingReviewSnapshot}${pendingReviewLinkRow}${intakeEvidenceTriage}${questionSectionLinkRow}${intakeEvidenceLinks}` : ''}
                         ${upstreamOptimizerLines.length ? `<div class="preview-meta"><strong>Upstream Optimizer</strong></div>${renderLines(upstreamOptimizerLines)}` : ''}
                         ${stageProviderLines.length ? `<div class="preview-meta"><strong>Stage Provider Selection</strong></div>${renderLines(stageProviderLines)}` : ''}
                         ${packetProjectionLines.length ? `<div class="preview-meta"><strong>Packet Projection</strong></div>${renderLines(packetProjectionLines)}` : ''}

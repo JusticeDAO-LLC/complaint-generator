@@ -885,13 +885,16 @@
                 <div class="focus-block" data-section-focus-target="summary_of_facts claims_for_relief requested_relief">
                     <h2 style="margin-top: 18px;">Intake Status</h2>
                     <div class="chip-row" id="intake-status-chips"></div>
+                    <div class="chip-row" id="intake-readiness-criteria-chips" style="margin-top: 10px;"></div>
                     <div class="question-list" id="intake-contradiction-list"></div>
                 </div>
 
                 <div class="focus-block" data-section-focus-target="summary_of_facts claims_for_relief requested_relief">
                     <h2 style="margin-top: 18px;">Intake Case Summary</h2>
                     <div class="chip-row" id="intake-case-claim-chips"></div>
+                    <div class="chip-row" id="intake-claim-summary-chips" style="margin-top: 10px;"></div>
                     <div class="chip-row" id="intake-section-chips" style="margin-top: 10px;"></div>
+                    <div class="chip-row" id="intake-context-chips" style="margin-top: 10px;"></div>
                     <div class="question-list" id="intake-canonical-fact-list"></div>
                     <div class="chip-row" id="intake-proof-lead-chips" style="margin-top: 10px;"></div>
                     <div class="question-list" id="intake-matching-summary-list"></div>
@@ -1718,12 +1721,79 @@
                 : `<span class="chip">${emptyLabel}</span>`;
         }
 
+        function summarizeIntentCountMap(prefix, values, humanizer) {
+            const entries = Object.entries(values && typeof values === 'object' ? values : {}).filter(([, count]) => Number(count || 0) > 0);
+            if (!entries.length) {
+                return '';
+            }
+            return `${prefix}: ${entries.map(([label, count]) => `${humanizer(label)}=${count}`).join(', ')}`;
+        }
+
+        function summarizeIntakeIntentLines(summary, labelPrefix = 'intake') {
+            const intentSummary = summary && typeof summary === 'object' ? summary : {};
+            const lines = [];
+            if (intentSummary.count !== undefined) {
+                lines.push(`${labelPrefix} intent records: ${Number(intentSummary.count || 0)}`);
+            }
+            const objectiveLine = summarizeIntentCountMap(`${labelPrefix} objectives`, intentSummary.question_objective_counts, humanizeQueryValue);
+            if (objectiveLine) {
+                lines.push(objectiveLine);
+            }
+            const updateLine = summarizeIntentCountMap(`${labelPrefix} update kinds`, intentSummary.expected_update_kind_counts, humanizeQueryValue);
+            if (updateLine) {
+                lines.push(updateLine);
+            }
+            const claimLine = summarizeIntentCountMap(`${labelPrefix} target claims`, intentSummary.target_claim_type_counts, humanizeQueryValue);
+            if (claimLine) {
+                lines.push(claimLine);
+            }
+            const elementLine = summarizeIntentCountMap(`${labelPrefix} target elements`, intentSummary.target_element_id_counts, humanizeQueryValue);
+            if (elementLine) {
+                lines.push(elementLine);
+            }
+            return lines;
+        }
+
+        function summarizeContradictionMetadata(contradictions, summary = null) {
+            const normalizedSummary = summary && typeof summary === 'object' ? summary : {};
+            const laneCountsFromSummary = normalizedSummary.lane_counts && typeof normalizedSummary.lane_counts === 'object'
+                ? normalizedSummary.lane_counts
+                : null;
+            if (laneCountsFromSummary || normalizedSummary.corroboration_required_count !== undefined) {
+                return {
+                    laneCounts: laneCountsFromSummary || {},
+                    corroborationRequiredCount: Number(normalizedSummary.corroboration_required_count || 0),
+                };
+            }
+            const items = Array.isArray(contradictions) ? contradictions.filter((item) => item && typeof item === 'object') : [];
+            const laneCounts = {};
+            let corroborationRequiredCount = 0;
+            items.forEach((item) => {
+                const lane = String(item.recommended_resolution_lane || '').trim();
+                if (lane) {
+                    laneCounts[lane] = (laneCounts[lane] || 0) + 1;
+                }
+                if (item.external_corroboration_required) {
+                    corroborationRequiredCount += 1;
+                }
+            });
+            return { laneCounts, corroborationRequiredCount };
+        }
+
         function renderIntakeStatus(status) {
             const chipContainer = document.getElementById('intake-status-chips');
+            const criteriaContainer = document.getElementById('intake-readiness-criteria-chips');
             const contradictionContainer = document.getElementById('intake-contradiction-list');
             const intakeStatus = status && typeof status === 'object' ? status : {};
             const blockers = Array.isArray(intakeStatus.blockers) ? intakeStatus.blockers : [];
             const contradictions = Array.isArray(intakeStatus.contradictions) ? intakeStatus.contradictions : [];
+            const criteria = intakeStatus.criteria && typeof intakeStatus.criteria === 'object'
+                ? intakeStatus.criteria
+                : {};
+            const blockingContradictions = Array.isArray(intakeStatus.blocking_contradictions)
+                ? intakeStatus.blocking_contradictions
+                : [];
+            const contradictionMetadata = summarizeContradictionMetadata(contradictions, intakeStatus.contradiction_summary);
             const scoreValue = Number(intakeStatus.score || 0);
             const scoreLabel = Number.isFinite(scoreValue) ? scoreValue.toFixed(2) : '0.00';
 
@@ -1742,6 +1812,32 @@
                 ? chips.join('')
                 : '<span class="chip">No intake status available.</span>';
 
+            const criteriaChips = [];
+            Object.entries(criteria).forEach(([criterion, satisfied]) => {
+                criteriaChips.push(`<span class="chip">${satisfied ? 'ready' : 'needs'} ${humanizeQueryValue(criterion)}</span>`);
+            });
+            if (intakeStatus.candidate_claim_count !== undefined) {
+                criteriaChips.push(`<span class="chip">candidate claims: ${Number(intakeStatus.candidate_claim_count || 0)}</span>`);
+            }
+            if (intakeStatus.canonical_fact_count !== undefined) {
+                criteriaChips.push(`<span class="chip">canonical facts: ${Number(intakeStatus.canonical_fact_count || 0)}</span>`);
+            }
+            if (intakeStatus.proof_lead_count !== undefined) {
+                criteriaChips.push(`<span class="chip">proof leads: ${Number(intakeStatus.proof_lead_count || 0)}</span>`);
+            }
+            if (blockingContradictions.length) {
+                criteriaChips.push(`<span class="chip">blocking contradictions: ${blockingContradictions.length}</span>`);
+            }
+            if (contradictionMetadata.corroborationRequiredCount) {
+                criteriaChips.push(`<span class="chip">corroboration-required contradictions: ${contradictionMetadata.corroborationRequiredCount}</span>`);
+            }
+            if (Object.keys(contradictionMetadata.laneCounts).length) {
+                criteriaChips.push(`<span class="chip">contradiction lanes: ${Object.entries(contradictionMetadata.laneCounts).map(([lane, count]) => `${humanizeQueryValue(lane)}=${count}`).join(', ')}</span>`);
+            }
+            criteriaContainer.innerHTML = criteriaChips.length
+                ? criteriaChips.join('')
+                : '<span class="chip">No intake readiness criteria available.</span>';
+
             if (!contradictions.length) {
                 contradictionContainer.innerHTML = '<div class="task-card">No intake contradictions are currently tracked.</div>';
                 return;
@@ -1752,6 +1848,11 @@
                 if (item.category) detailChips.push(`<span class="chip">${item.category}</span>`);
                 if (item.severity) detailChips.push(`<span class="chip">severity ${item.severity}</span>`);
                 if (item.question) detailChips.push(`<span class="chip">ask: ${item.question}</span>`);
+                if (item.recommended_resolution_lane) detailChips.push(`<span class="chip">lane: ${humanizeQueryValue(item.recommended_resolution_lane)}</span>`);
+                if (item.current_resolution_status) detailChips.push(`<span class="chip">status: ${humanizeQueryValue(item.current_resolution_status)}</span>`);
+                if (item.external_corroboration_required) detailChips.push('<span class="chip">external corroboration required</span>');
+                const affectedClaimTypes = Array.isArray(item.affected_claim_types) ? item.affected_claim_types : [];
+                if (affectedClaimTypes.length) detailChips.push(`<span class="chip">claims: ${affectedClaimTypes.map(humanizeQueryValue).join(', ')}</span>`);
                 return `
                     <article class="task-card">
                         <div class="row-head">
@@ -1759,7 +1860,7 @@
                                 <div class="row-title">${item.summary || 'Unresolved contradiction'}</div>
                                 <div class="meta">${item.left_text || 'left statement unavailable'}${item.right_text ? ` <> ${item.right_text}` : ''}</div>
                             </div>
-                            <span class="badge contradicted">open</span>
+                            <span class="badge contradicted">${humanizeQueryValue(item.current_resolution_status || 'open')}</span>
                         </div>
                         <div class="chip-row" style="margin-top: 10px;">
                             ${detailChips.length ? detailChips.join('') : '<span class="chip">Needs intake clarification.</span>'}
@@ -1771,7 +1872,9 @@
 
         function renderIntakeCaseSummary(summary) {
             const claimContainer = document.getElementById('intake-case-claim-chips');
+            const claimSummaryContainer = document.getElementById('intake-claim-summary-chips');
             const sectionContainer = document.getElementById('intake-section-chips');
+            const contextContainer = document.getElementById('intake-context-chips');
             const factContainer = document.getElementById('intake-canonical-fact-list');
             const proofLeadContainer = document.getElementById('intake-proof-lead-chips');
             const intakeMatchingContainer = document.getElementById('intake-matching-summary-list');
@@ -1793,8 +1896,26 @@
             const canonicalFactSummary = intakeCaseSummary.canonical_fact_summary && typeof intakeCaseSummary.canonical_fact_summary === 'object'
                 ? intakeCaseSummary.canonical_fact_summary
                 : {};
+            const canonicalFactIntentSummary = intakeCaseSummary.canonical_fact_intent_summary && typeof intakeCaseSummary.canonical_fact_intent_summary === 'object'
+                ? intakeCaseSummary.canonical_fact_intent_summary
+                : {};
             const proofLeadSummary = intakeCaseSummary.proof_lead_summary && typeof intakeCaseSummary.proof_lead_summary === 'object'
                 ? intakeCaseSummary.proof_lead_summary
+                : {};
+            const proofLeadIntentSummary = intakeCaseSummary.proof_lead_intent_summary && typeof intakeCaseSummary.proof_lead_intent_summary === 'object'
+                ? intakeCaseSummary.proof_lead_intent_summary
+                : {};
+            const timelineAnchorSummary = intakeCaseSummary.timeline_anchor_summary && typeof intakeCaseSummary.timeline_anchor_summary === 'object'
+                ? intakeCaseSummary.timeline_anchor_summary
+                : {};
+            const harmProfile = intakeCaseSummary.harm_profile && typeof intakeCaseSummary.harm_profile === 'object'
+                ? intakeCaseSummary.harm_profile
+                : {};
+            const remedyProfile = intakeCaseSummary.remedy_profile && typeof intakeCaseSummary.remedy_profile === 'object'
+                ? intakeCaseSummary.remedy_profile
+                : {};
+            const candidateClaimSummary = intakeCaseSummary.candidate_claim_summary && typeof intakeCaseSummary.candidate_claim_summary === 'object'
+                ? intakeCaseSummary.candidate_claim_summary
                 : {};
             const intakeMatchingSummary = intakeCaseSummary.intake_matching_summary && typeof intakeCaseSummary.intake_matching_summary === 'object'
                 ? intakeCaseSummary.intake_matching_summary
@@ -1833,19 +1954,90 @@
                 : {};
 
             claimContainer.innerHTML = candidateClaims.length
-                ? candidateClaims.map((claim) => `<span class="chip">claim: ${claim.label || claim.claim_type || 'unknown'}</span>`).join('')
+                ? candidateClaims.map((claim) => {
+                    const claimChips = [`<span class="chip">claim: ${claim.label || claim.claim_type || 'unknown'}</span>`];
+                    const confidenceValue = Number(claim && claim.confidence);
+                    if (Number.isFinite(confidenceValue) && confidenceValue > 0) {
+                        claimChips.push(`<span class="chip">confidence: ${confidenceValue.toFixed(2)}</span>`);
+                    }
+                    const ambiguityFlags = Array.isArray(claim && claim.ambiguity_flags) ? claim.ambiguity_flags : [];
+                    ambiguityFlags.forEach((flag) => {
+                        claimChips.push(`<span class="chip">ambiguity: ${humanizeQueryValue(flag)}</span>`);
+                    });
+                    return claimChips.join('');
+                }).join('')
                 : '<span class="chip">No candidate claims identified.</span>';
+
+            const claimSummaryChips = [];
+            if (candidateClaimSummary.count !== undefined) {
+                claimSummaryChips.push(`<span class="chip">claim count: ${Number(candidateClaimSummary.count || 0)}</span>`);
+            }
+            if (candidateClaimSummary.average_confidence !== undefined) {
+                claimSummaryChips.push(`<span class="chip">average confidence: ${Number(candidateClaimSummary.average_confidence || 0).toFixed(2)}</span>`);
+            }
+            if (candidateClaimSummary.top_claim_type) {
+                claimSummaryChips.push(`<span class="chip">leading claim: ${humanizeQueryValue(candidateClaimSummary.top_claim_type)}</span>`);
+            }
+            if (candidateClaimSummary.top_confidence !== undefined && Number(candidateClaimSummary.top_confidence || 0) > 0) {
+                claimSummaryChips.push(`<span class="chip">leading confidence: ${Number(candidateClaimSummary.top_confidence || 0).toFixed(2)}</span>`);
+            }
+            if (candidateClaimSummary.ambiguity_flag_count !== undefined) {
+                claimSummaryChips.push(`<span class="chip">ambiguity flags: ${Number(candidateClaimSummary.ambiguity_flag_count || 0)}</span>`);
+            }
+            if (candidateClaimSummary.ambiguous_claim_count !== undefined) {
+                claimSummaryChips.push(`<span class="chip">ambiguous claims: ${Number(candidateClaimSummary.ambiguous_claim_count || 0)}</span>`);
+            }
+            if (candidateClaimSummary.close_leading_claims !== undefined) {
+                claimSummaryChips.push(`<span class="chip">claim disambiguation: ${candidateClaimSummary.close_leading_claims ? 'needed' : 'stable'}</span>`);
+            }
+            Object.entries(candidateClaimSummary.ambiguity_flag_counts || {}).forEach(([flag, count]) => {
+                claimSummaryChips.push(`<span class="chip">${humanizeQueryValue(flag)}: ${count}</span>`);
+            });
+            claimSummaryContainer.innerHTML = claimSummaryChips.length
+                ? claimSummaryChips.join('')
+                : '<span class="chip">No candidate-claim confidence summary available.</span>';
 
             const sectionEntries = Object.entries(intakeSections);
             sectionContainer.innerHTML = sectionEntries.length
                 ? sectionEntries.map(([sectionName, section]) => `<span class="chip">${sectionName}: ${(section && section.status) || 'missing'}</span>`).join('')
                 : '<span class="chip">No intake sections available.</span>';
 
+            const contextChips = [];
+            if (timelineAnchorSummary.count !== undefined) {
+                contextChips.push(`<span class="chip">timeline anchors: ${Number(timelineAnchorSummary.count || 0)}</span>`);
+            }
+            const harmCategories = Array.isArray(harmProfile.categories) ? harmProfile.categories : [];
+            if (harmCategories.length) {
+                contextChips.push(`<span class="chip">harm profile: ${harmCategories.map((item) => humanizeQueryValue(item)).join(', ')}</span>`);
+            }
+            const remedyCategories = Array.isArray(remedyProfile.categories) ? remedyProfile.categories : [];
+            if (remedyCategories.length) {
+                contextChips.push(`<span class="chip">remedy profile: ${remedyCategories.map((item) => humanizeQueryValue(item)).join(', ')}</span>`);
+            }
+            contextContainer.innerHTML = contextChips.length
+                ? contextChips.join('')
+                : '<span class="chip">No structured intake context available.</span>';
+
             const canonicalFacts = Array.isArray(canonicalFactSummary.facts) ? canonicalFactSummary.facts : [];
-            if (!canonicalFacts.length) {
+            const canonicalFactIntentLines = summarizeIntakeIntentLines(canonicalFactIntentSummary, 'canonical fact');
+            if (!canonicalFacts.length && !canonicalFactIntentLines.length) {
                 factContainer.innerHTML = '<div class="task-card">Canonical Fact Table: no structured facts available.</div>';
             } else {
-                factContainer.innerHTML = canonicalFacts.map((fact) => `
+                const intentCard = canonicalFactIntentLines.length ? `
+                    <article class="task-card">
+                        <div class="row-head">
+                            <div>
+                                <div class="row-title">Canonical Fact Intake Intent</div>
+                                <div class="meta">Accepted-answer objective profile</div>
+                            </div>
+                            <span class="badge">${Number(canonicalFactIntentSummary.count || 0)}</span>
+                        </div>
+                        <div class="chip-row" style="margin-top: 10px;">
+                            ${canonicalFactIntentLines.map((line) => `<span class="chip">${line}</span>`).join('')}
+                        </div>
+                    </article>
+                ` : '';
+                factContainer.innerHTML = intentCard + canonicalFacts.map((fact) => `
                     <article class="task-card">
                         <div class="row-head">
                             <div>
@@ -1859,8 +2051,13 @@
             }
 
             const proofLeads = Array.isArray(proofLeadSummary.proof_leads) ? proofLeadSummary.proof_leads : [];
-            proofLeadContainer.innerHTML = proofLeads.length
-                ? proofLeads.map((lead) => `<span class="chip">proof lead: ${lead.description || lead.lead_type || 'support'}</span>`).join('')
+            const proofLeadIntentLines = summarizeIntakeIntentLines(proofLeadIntentSummary, 'proof lead');
+            const proofLeadChips = [
+                ...proofLeadIntentLines.map((line) => `<span class="chip">${line}</span>`),
+                ...proofLeads.map((lead) => `<span class="chip">proof lead: ${lead.description || lead.lead_type || 'support'}</span>`),
+            ];
+            proofLeadContainer.innerHTML = proofLeadChips.length
+                ? proofLeadChips.join('')
                 : '<span class="chip">No proof leads captured.</span>';
 
             const matchingClaims = intakeMatchingSummary.claims && typeof intakeMatchingSummary.claims === 'object'

@@ -16,7 +16,15 @@ def test_build_intake_status_summary_preserves_legacy_alias_fields():
             "remaining_gap_count": 2,
             "contradiction_count": 1,
             "blockers": ["missing_proof_leads"],
+            "criteria": {
+                "case_theory_coherent": True,
+                "minimum_proof_path_present": False,
+            },
             "contradictions": [{"summary": "Timeline conflict"}],
+            "blocking_contradictions": [{"summary": "Timeline conflict"}],
+            "candidate_claim_count": 1,
+            "canonical_fact_count": 2,
+            "proof_lead_count": 0,
         },
     }
 
@@ -29,27 +37,73 @@ def test_build_intake_status_summary_preserves_legacy_alias_fields():
         "score": 0.75,
         "remaining_gap_count": 2,
         "contradiction_count": 1,
+        "contradiction_summary": {
+            "count": 1,
+            "lane_counts": {},
+            "status_counts": {},
+            "severity_counts": {},
+            "corroboration_required_count": 0,
+            "affected_claim_type_counts": {},
+        },
         "blockers": ["missing_proof_leads"],
+        "criteria": {
+            "case_theory_coherent": True,
+            "minimum_proof_path_present": False,
+        },
         "contradictions": [
             {
+                "contradiction_id": "",
                 "summary": "Timeline conflict",
                 "left_text": "",
                 "right_text": "",
                 "question": "",
                 "severity": "",
                 "category": "",
+                "recommended_resolution_lane": "",
+                "current_resolution_status": "",
+                "external_corroboration_required": False,
+                "affected_claim_types": [],
+                "affected_element_ids": [],
             }
         ],
+        "blocking_contradictions": [{"summary": "Timeline conflict"}],
+        "candidate_claim_count": 1,
+        "canonical_fact_count": 2,
+        "proof_lead_count": 0,
     }
 
 
 def test_build_intake_case_review_summary_returns_additive_structured_fields():
     mediator = Mock()
     mediator.get_three_phase_status.return_value = {
-        "candidate_claims": [{"claim_type": "retaliation"}],
+        "candidate_claims": [
+            {
+                "claim_type": "retaliation",
+                "confidence": 0.82,
+                "ambiguity_flags": ["actor_identity"],
+            },
+            {
+                "claim_type": "discrimination",
+                "confidence": 0.74,
+            },
+        ],
         "intake_sections": {"chronology": {"status": "complete", "missing_items": []}},
         "canonical_fact_summary": {"count": 2, "facts": [{"fact_id": "fact_1"}]},
+        "canonical_fact_intent_summary": {
+            "count": 2,
+            "question_objective_counts": {"satisfy_claim_requirement": 1},
+            "expected_update_kind_counts": {"claim_element_fact": 1},
+            "target_claim_type_counts": {"retaliation": 1},
+            "target_element_id_counts": {"protected_activity": 1},
+        },
         "proof_lead_summary": {"count": 1, "proof_leads": [{"lead_id": "lead_1"}]},
+        "proof_lead_intent_summary": {
+            "count": 1,
+            "question_objective_counts": {"identify_supporting_evidence": 1},
+            "expected_update_kind_counts": {"proof_lead": 1},
+            "target_claim_type_counts": {"retaliation": 1},
+            "target_element_id_counts": {"protected_activity": 1},
+        },
         "timeline_anchor_summary": {"count": 1, "anchors": [{"anchor_id": "timeline_anchor_001"}]},
         "harm_profile": {"count": 1, "categories": ["economic"]},
         "remedy_profile": {"count": 1, "categories": ["monetary"]},
@@ -156,6 +210,19 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
             "phase1_section_counts": {"proof_leads": 1},
             "blocking_level_counts": {"important": 1},
         },
+        "intake_readiness": {
+            "contradictions": [
+                {
+                    "contradiction_id": "ctr_1",
+                    "summary": "Timeline conflict",
+                    "recommended_resolution_lane": "request_document",
+                    "current_resolution_status": "open",
+                    "external_corroboration_required": True,
+                    "affected_claim_types": ["retaliation"],
+                    "severity": "blocking",
+                }
+            ]
+        },
         "claim_support_packet_summary": {
             "claim_count": 1,
             "element_count": 2,
@@ -175,10 +242,23 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
 
     summary = build_intake_case_review_summary(mediator)
 
-    assert summary["candidate_claims"] == [{"claim_type": "retaliation"}]
+    assert summary["candidate_claims"][0]["claim_type"] == "retaliation"
+    assert summary["candidate_claim_summary"] == {
+        "count": 2,
+        "claim_types": ["retaliation", "discrimination"],
+        "average_confidence": 0.78,
+        "top_claim_type": "retaliation",
+        "top_confidence": 0.82,
+        "ambiguous_claim_count": 1,
+        "ambiguity_flag_count": 1,
+        "ambiguity_flag_counts": {"actor_identity": 1},
+        "close_leading_claims": True,
+    }
     assert summary["intake_sections"]["chronology"]["status"] == "complete"
     assert summary["canonical_fact_summary"]["count"] == 2
+    assert summary["canonical_fact_intent_summary"]["question_objective_counts"]["satisfy_claim_requirement"] == 1
     assert summary["proof_lead_summary"]["count"] == 1
+    assert summary["proof_lead_intent_summary"]["question_objective_counts"]["identify_supporting_evidence"] == 1
     assert summary["timeline_anchor_summary"]["count"] == 1
     assert summary["harm_profile"]["categories"] == ["economic"]
     assert summary["remedy_profile"]["categories"] == ["monetary"]
@@ -195,8 +275,61 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["alignment_task_update_history"][1]["evidence_sequence"] == 2
     assert summary["question_candidate_summary"]["count"] == 1
     assert summary["question_candidate_summary"]["source_counts"]["intake_proof_gap"] == 1
+    assert summary["contradiction_summary"] == {
+        "count": 1,
+        "lane_counts": {"request_document": 1},
+        "status_counts": {"open": 1},
+        "severity_counts": {"blocking": 1},
+        "corroboration_required_count": 1,
+        "affected_claim_type_counts": {"retaliation": 1},
+    }
     assert summary["claim_support_packet_summary"]["claim_count"] == 1
     assert summary["claim_support_packet_summary"]["supported_blocking_element_ratio"] == 0.5
     assert summary["claim_support_packet_summary"]["proof_readiness_score"] == 0.5
     assert summary["claim_support_packet_summary"]["claim_support_unresolved_without_review_path_count"] == 1
     assert summary["claim_support_packet_summary"]["evidence_completion_ready"] is False
+
+
+def test_build_intake_status_summary_preserves_rich_contradiction_workflow_fields():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "intake_readiness": {
+            "score": 0.5,
+            "ready_to_advance": False,
+            "remaining_gap_count": 1,
+            "contradiction_count": 1,
+            "blockers": ["blocking_contradiction"],
+            "contradictions": [
+                {
+                    "contradiction_id": "ctr_1",
+                    "topic": "timeline",
+                    "existing_text": "It happened on January 20, 2026.",
+                    "new_text": "It happened on February 2, 2026.",
+                    "severity": "blocking",
+                    "recommended_resolution_lane": "request_document",
+                    "current_resolution_status": "open",
+                    "external_corroboration_required": True,
+                    "affected_claim_types": ["retaliation"],
+                    "affected_element_ids": ["causation"],
+                }
+            ],
+        },
+    }
+
+    summary = build_intake_status_summary(mediator)
+
+    assert summary["contradictions"][0]["contradiction_id"] == "ctr_1"
+    assert summary["contradiction_summary"] == {
+        "count": 1,
+        "lane_counts": {"request_document": 1},
+        "status_counts": {"open": 1},
+        "severity_counts": {"blocking": 1},
+        "corroboration_required_count": 1,
+        "affected_claim_type_counts": {"retaliation": 1},
+    }
+    assert summary["contradictions"][0]["recommended_resolution_lane"] == "request_document"
+    assert summary["contradictions"][0]["current_resolution_status"] == "open"
+    assert summary["contradictions"][0]["external_corroboration_required"] is True
+    assert summary["contradictions"][0]["affected_claim_types"] == ["retaliation"]
+    assert summary["contradictions"][0]["affected_element_ids"] == ["causation"]

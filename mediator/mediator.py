@@ -3837,6 +3837,38 @@ class Mediator:
 			return 'complainant_mobile_device'
 		return 'complainant'
 
+	def _infer_contradiction_resolution_lane(
+		self,
+		*,
+		topic: str,
+		left_fact: Dict[str, Any],
+		right_text: str,
+	) -> str:
+		normalized_topic = self._normalize_intake_text(topic).lower()
+		fact_type = self._normalize_intake_text(left_fact.get('fact_type')).lower()
+		normalized_right_text = self._normalize_intake_text(right_text).lower()
+		if fact_type == 'timeline' or normalized_topic == 'timeline':
+			return 'clarify_with_complainant'
+		if any(token in normalized_right_text for token in ('witness', 'coworker', 'co-worker', 'supervisor can confirm', 'saw it', 'heard it')):
+			return 'capture_testimony'
+		if fact_type in {'supporting_evidence', 'responsible_party'} or any(token in normalized_right_text for token in ('email', 'text', 'message', 'letter', 'notice', 'record', 'document')):
+			return 'request_document'
+		if any(token in normalized_right_text for token in ('court', 'agency', 'police', 'hr file', 'personnel file', 'medical record', 'pay stub')):
+			return 'seek_external_record'
+		if fact_type in {'claim_element', 'contradiction_resolution'}:
+			return 'manual_review'
+		return 'clarify_with_complainant'
+
+	def _contradiction_requires_external_corroboration(
+		self,
+		*,
+		resolution_lane: str,
+		left_fact: Dict[str, Any],
+	) -> bool:
+		if resolution_lane in {'request_document', 'seek_external_record', 'manual_review'}:
+			return True
+		return bool(left_fact.get('needs_corroboration', False)) and resolution_lane == 'capture_testimony'
+
 	def _resolve_answer_claim_types(self, intake_case_file: Dict[str, Any], context: Dict[str, Any]) -> List[str]:
 		claim_types: List[str] = []
 		context_claim_type = self._normalize_intake_text(context.get('claim_type') or context.get('target_claim_type')).lower()
@@ -3897,6 +3929,127 @@ class Mediator:
 				return fact
 		return None
 
+	def _build_intake_question_intent_snapshot(self, question: Any) -> Dict[str, Any]:
+		question_payload = question if isinstance(question, dict) else {}
+		question_intent = question_payload.get('question_intent') if isinstance(question_payload.get('question_intent'), dict) else {}
+		ranking_explanation = question_payload.get('ranking_explanation') if isinstance(question_payload.get('ranking_explanation'), dict) else {}
+
+		def _pick_str(*values: Any) -> str:
+			for value in values:
+				normalized = str(value or '').strip()
+				if normalized:
+					return normalized
+			return ''
+
+		snapshot: Dict[str, Any] = {
+			'question_type': _pick_str(question_payload.get('type')),
+			'question_text': _pick_str(question_payload.get('question')),
+			'question_objective': _pick_str(
+				question_payload.get('question_objective'),
+				question_intent.get('question_objective'),
+			),
+			'question_goal': _pick_str(
+				question_payload.get('question_goal'),
+				question_intent.get('question_goal'),
+				ranking_explanation.get('question_goal'),
+			),
+			'target_claim_type': _pick_str(
+				question_payload.get('target_claim_type'),
+				question_payload.get('context', {}).get('claim_type') if isinstance(question_payload.get('context'), dict) else '',
+				question_intent.get('claim_type'),
+				ranking_explanation.get('target_claim_type'),
+			),
+			'target_element_id': _pick_str(
+				question_payload.get('target_element_id'),
+				question_payload.get('context', {}).get('target_element_id') if isinstance(question_payload.get('context'), dict) else '',
+				question_intent.get('target_element_id'),
+				ranking_explanation.get('target_element_id'),
+			),
+			'expected_update_kind': _pick_str(question_payload.get('expected_update_kind')),
+			'priority_reason': _pick_str(question_payload.get('priority_reason')),
+			'expected_proof_gain': _pick_str(question_payload.get('expected_proof_gain')),
+			'phase1_section': _pick_str(
+				question_payload.get('phase1_section'),
+				ranking_explanation.get('phase1_section'),
+			),
+			'blocking_level': _pick_str(
+				question_payload.get('blocking_level'),
+				ranking_explanation.get('blocking_level'),
+			),
+			'candidate_source': _pick_str(
+				question_payload.get('candidate_source'),
+				ranking_explanation.get('candidate_source'),
+			),
+			'intent_type': _pick_str(question_intent.get('intent_type')),
+			'question_strategy': _pick_str(question_intent.get('question_strategy')),
+		}
+		try:
+			novelty_score = float(question_payload.get('novelty_score'))
+		except (TypeError, ValueError):
+			novelty_score = None
+		if novelty_score is not None:
+			snapshot['novelty_score'] = novelty_score
+		actor_roles = [
+			str(role).strip()
+			for role in (question_intent.get('actor_roles') or [])
+			if str(role).strip()
+		]
+		if actor_roles:
+			snapshot['actor_roles'] = actor_roles
+		evidence_classes = [
+			str(evidence_class).strip()
+			for evidence_class in (question_intent.get('evidence_classes') or [])
+			if str(evidence_class).strip()
+		]
+		if evidence_classes:
+			snapshot['evidence_classes'] = evidence_classes
+		return {key: value for key, value in snapshot.items() if value not in ('', [], None)}
+
+	def _merge_intake_question_intent(
+		self,
+		existing_intent: Any,
+		incoming_intent: Any,
+	) -> Dict[str, Any]:
+		existing = dict(existing_intent) if isinstance(existing_intent, dict) else {}
+		incoming = dict(incoming_intent) if isinstance(incoming_intent, dict) else {}
+		for key, value in incoming.items():
+			if value in ('', None):
+				continue
+			if isinstance(value, list):
+				existing[key] = list(dict.fromkeys([
+					*[str(item).strip() for item in (existing.get(key) or []) if str(item).strip()],
+					*[str(item).strip() for item in value if str(item).strip()],
+				]))
+				continue
+			existing[key] = value
+		return existing
+
+	def _summarize_intake_record_intents(self, records: Any) -> Dict[str, Any]:
+		summary = {
+			'count': 0,
+			'question_objective_counts': {},
+			'expected_update_kind_counts': {},
+			'target_claim_type_counts': {},
+			'target_element_id_counts': {},
+		}
+		normalized_records = [record for record in records if isinstance(record, dict)] if isinstance(records, list) else []
+		summary['count'] = len(normalized_records)
+		for record in normalized_records:
+			intent = record.get('intake_question_intent') if isinstance(record.get('intake_question_intent'), dict) else {}
+			question_objective = str(intent.get('question_objective') or '').strip()
+			expected_update_kind = str(intent.get('expected_update_kind') or '').strip()
+			target_claim_type = str(intent.get('target_claim_type') or '').strip()
+			target_element_id = str(intent.get('target_element_id') or '').strip()
+			if question_objective:
+				summary['question_objective_counts'][question_objective] = summary['question_objective_counts'].get(question_objective, 0) + 1
+			if expected_update_kind:
+				summary['expected_update_kind_counts'][expected_update_kind] = summary['expected_update_kind_counts'].get(expected_update_kind, 0) + 1
+			if target_claim_type:
+				summary['target_claim_type_counts'][target_claim_type] = summary['target_claim_type_counts'].get(target_claim_type, 0) + 1
+			if target_element_id:
+				summary['target_element_id_counts'][target_element_id] = summary['target_element_id_counts'].get(target_element_id, 0) + 1
+		return summary
+
 	def _append_canonical_fact(
 		self,
 		intake_case_file: Dict[str, Any],
@@ -3913,6 +4066,7 @@ class Mediator:
 		materiality: str | None = None,
 		corroboration_priority: str | None = None,
 		fact_participants: Dict[str, Any] | None = None,
+		intake_question_intent: Dict[str, Any] | None = None,
 	) -> Dict[str, Any]:
 		canonical_facts = intake_case_file.setdefault('canonical_facts', [])
 		if not isinstance(canonical_facts, list):
@@ -3939,6 +4093,10 @@ class Mediator:
 				existing['materiality'] = materiality
 			if corroboration_priority:
 				existing['corroboration_priority'] = corroboration_priority
+			existing['intake_question_intent'] = self._merge_intake_question_intent(
+				existing.get('intake_question_intent'),
+				intake_question_intent,
+			)
 			return existing
 
 		fact_record = {
@@ -3960,6 +4118,7 @@ class Mediator:
 			'materiality': materiality or self._question_materiality(question_type),
 			'fact_participants': fact_participants if isinstance(fact_participants, dict) else {},
 			'contradiction_group_id': None,
+			'intake_question_intent': self._merge_intake_question_intent({}, intake_question_intent),
 		}
 		canonical_facts.append(fact_record)
 		return fact_record
@@ -3984,6 +4143,7 @@ class Mediator:
 		custodian: str | None = None,
 		recommended_support_kind: str | None = None,
 		source_quality_target: str | None = None,
+		intake_question_intent: Dict[str, Any] | None = None,
 	) -> Dict[str, Any]:
 		proof_leads = intake_case_file.setdefault('proof_leads', [])
 		if not isinstance(proof_leads, list):
@@ -4006,6 +4166,10 @@ class Mediator:
 					lead['recommended_support_kind'] = recommended_support_kind
 				if source_quality_target and not lead.get('source_quality_target'):
 					lead['source_quality_target'] = source_quality_target
+				lead['intake_question_intent'] = self._merge_intake_question_intent(
+					lead.get('intake_question_intent'),
+					intake_question_intent,
+				)
 				return lead
 		lead_record = {
 			'lead_id': self._next_intake_record_id('lead', proof_leads),
@@ -4028,6 +4192,7 @@ class Mediator:
 			'source_quality_target': source_quality_target or ('credible' if 'witness' in lead_type.lower() else 'high_quality_document'),
 			'source_kind': 'complainant_answer',
 			'source_ref': lead_type,
+			'intake_question_intent': self._merge_intake_question_intent({}, intake_question_intent),
 		}
 		proof_leads.append(lead_record)
 		return lead_record
@@ -4054,15 +4219,28 @@ class Mediator:
 				return
 		left_fact['status'] = 'contradicted'
 		left_fact['needs_corroboration'] = True
+		resolution_lane = self._infer_contradiction_resolution_lane(
+			topic=normalized_topic,
+			left_fact=left_fact,
+			right_text=normalized_right_text,
+		)
 		contradiction_id = self._next_intake_record_id('ctr', contradiction_queue)
 		left_fact['contradiction_group_id'] = contradiction_id
 		contradiction_queue.append({
 			'contradiction_id': contradiction_id,
 			'severity': severity,
 			'fact_ids': [left_fact.get('fact_id')],
+			'affected_claim_types': list(left_fact.get('claim_types', []) or []),
 			'affected_element_ids': list(left_fact.get('element_tags', []) or []),
 			'topic': normalized_topic,
 			'status': 'open',
+			'current_resolution_status': 'open',
+			'recommended_resolution_lane': resolution_lane,
+			'external_corroboration_required': self._contradiction_requires_external_corroboration(
+				resolution_lane=resolution_lane,
+				left_fact=left_fact,
+			),
+			'resolution_notes': '',
 			'existing_text': self._normalize_intake_text(left_fact.get('text')),
 			'new_text': normalized_right_text,
 		})
@@ -4097,6 +4275,7 @@ class Mediator:
 
 		question_type = str(question.get('type') or '').strip().lower()
 		context = question.get('context', {}) if isinstance(question.get('context'), dict) else {}
+		intake_question_intent = self._build_intake_question_intent_snapshot(question)
 		resolved_claim_types = self._resolve_answer_claim_types(intake_case_file, context)
 		resolved_element_targets = self._resolve_answer_element_targets(context)
 		created_fact: Dict[str, Any] | None = None
@@ -4124,6 +4303,7 @@ class Mediator:
 				materiality='high',
 				corroboration_priority='high',
 				fact_participants=fact_participants,
+				intake_question_intent=intake_question_intent,
 			)
 			for existing_fact in existing_timeline_facts:
 				existing_text = self._normalize_intake_text(existing_fact.get('text'))
@@ -4146,6 +4326,7 @@ class Mediator:
 				claim_types=resolved_claim_types,
 				element_tags=resolved_element_targets,
 				materiality='high',
+				intake_question_intent=intake_question_intent,
 			)
 			if question_type == 'impact' and self._normalize_intake_text(answer):
 				lower_answer = normalized_answer.lower()
@@ -4155,6 +4336,7 @@ class Mediator:
 						text=normalized_answer,
 						fact_type='remedy',
 						question_type='remedy',
+						intake_question_intent=intake_question_intent,
 					)
 		elif question_type == 'evidence':
 			support_kind = self._infer_support_kind_from_answer(answer, self._extract_proof_lead_type(answer))
@@ -4171,6 +4353,7 @@ class Mediator:
 				materiality='high',
 				corroboration_priority='high',
 				fact_participants=fact_participants,
+				intake_question_intent=intake_question_intent,
 			)
 			evidence_classes = self._resolve_evidence_classes_for_context(intake_case_file, context)
 			lead_type = self._extract_proof_lead_type(answer)
@@ -4186,6 +4369,7 @@ class Mediator:
 				custodian=self._infer_proof_lead_custodian(answer, lead_type),
 				recommended_support_kind=support_kind,
 				source_quality_target=self._infer_source_quality_target(support_kind),
+				intake_question_intent=intake_question_intent,
 			)
 		elif question_type == 'responsible_party':
 			created_fact = self._append_canonical_fact(
@@ -4203,6 +4387,7 @@ class Mediator:
 					'actor': actor_ref or normalized_answer,
 				},
 				materiality='high',
+				intake_question_intent=intake_question_intent,
 			)
 		elif question_type == 'requirement':
 			created_fact = self._append_canonical_fact(
@@ -4218,6 +4403,7 @@ class Mediator:
 				materiality='high',
 				corroboration_priority='high',
 				fact_participants=fact_participants,
+				intake_question_intent=intake_question_intent,
 			)
 			target_element_id = self._normalize_intake_text(context.get('requirement_id'))
 			requirement_name = self._normalize_intake_text(context.get('requirement_name'))
@@ -4243,6 +4429,7 @@ class Mediator:
 				question_type=question_type,
 				claim_types=resolved_claim_types,
 				element_tags=resolved_element_targets,
+				intake_question_intent=intake_question_intent,
 			)
 		elif question_type == 'contradiction':
 			contradiction_queue = intake_case_file.setdefault('contradiction_queue', [])
@@ -4253,7 +4440,9 @@ class Mediator:
 						continue
 					if contradiction_label and self._normalize_intake_text(entry.get('topic')) == contradiction_label:
 						entry['status'] = 'resolved'
+						entry['current_resolution_status'] = 'resolved'
 						entry['resolution'] = normalized_answer
+						entry['resolution_notes'] = normalized_answer
 						break
 			created_fact = self._append_canonical_fact(
 				intake_case_file,
@@ -4264,6 +4453,7 @@ class Mediator:
 				element_tags=resolved_element_targets,
 				materiality='high',
 				corroboration_priority='high',
+				intake_question_intent=intake_question_intent,
 			)
 
 		if created_fact and intake_case_file.get('candidate_claims'):
@@ -6599,10 +6789,12 @@ class Mediator:
 				'count': len(canonical_facts),
 				'facts': canonical_facts,
 			},
+			'canonical_fact_intent_summary': self._summarize_intake_record_intents(canonical_facts),
 			'proof_lead_summary': {
 				'count': len(proof_leads),
 				'proof_leads': proof_leads,
 			},
+			'proof_lead_intent_summary': self._summarize_intake_record_intents(proof_leads),
 			'timeline_anchor_summary': {
 				'count': len(timeline_anchors) if isinstance(timeline_anchors, list) else 0,
 				'anchors': timeline_anchors if isinstance(timeline_anchors, list) else [],

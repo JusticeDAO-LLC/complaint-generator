@@ -111,6 +111,15 @@ class PhaseManager:
             return [candidate for candidate in contradictions if isinstance(candidate, dict)]
         return []
 
+    def _active_intake_contradictions(self, contradiction_queue: Any) -> List[Dict[str, Any]]:
+        if not isinstance(contradiction_queue, list):
+            return []
+        return [
+            item for item in contradiction_queue
+            if isinstance(item, dict)
+            and str(item.get('status') or 'open').strip().lower() != 'resolved'
+        ]
+
     def _extract_intake_case_file(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Return the structured intake case file when present."""
         intake_case_file = data.get('intake_case_file')
@@ -151,12 +160,10 @@ class PhaseManager:
                     blockers.append(blocker)
 
         contradiction_queue = intake_case_file.get('contradiction_queue')
-        if not isinstance(contradiction_queue, list):
-            contradiction_queue = []
+        active_contradictions = self._active_intake_contradictions(contradiction_queue)
         blocking_contradictions = [
-            item for item in contradiction_queue
+            item for item in active_contradictions
             if isinstance(item, dict)
-            and str(item.get('status') or 'open').strip().lower() != 'resolved'
             and str(item.get('severity') or 'important').strip().lower() == 'blocking'
         ]
         if blocking_contradictions:
@@ -220,6 +227,7 @@ class PhaseManager:
             'canonical_fact_count': len(canonical_facts),
             'proof_lead_count': len(proof_leads),
             'blocking_contradictions': blocking_contradictions,
+            'active_contradictions': active_contradictions,
         }
 
     def _build_intake_readiness(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -230,10 +238,12 @@ class PhaseManager:
         converged = data.get('denoising_converged', False)
         gap_types = self._extract_intake_gap_types(data)
         contradiction_candidates = self._extract_intake_contradictions(data)
-        contradiction_count = len(contradiction_candidates)
-        has_contradictions = bool(data.get('contradictions_unresolved') or contradiction_count)
         intake_case_file = self._extract_intake_case_file(data)
         structured_readiness = self._collect_intake_section_blockers(intake_case_file) if intake_case_file else None
+        if not contradiction_candidates and structured_readiness:
+            contradiction_candidates = list(structured_readiness.get('active_contradictions', []))
+        contradiction_count = len(contradiction_candidates)
+        has_contradictions = bool(data.get('contradictions_unresolved') or contradiction_count)
 
         criteria: Dict[str, bool] = {
             'knowledge_graph_ready': has_knowledge_graph,
