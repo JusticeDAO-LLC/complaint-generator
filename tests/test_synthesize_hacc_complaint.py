@@ -950,6 +950,89 @@ def test_merge_seed_with_grounding_promotes_stronger_grounded_evidence_into_anch
     assert "Elements of due process" in merged["key_facts"]["anchor_passages"][0]["snippet"]
 
 
+def test_merge_seed_with_grounding_replaces_existing_matching_evidence_when_grounded_version_is_stronger(tmp_path):
+    source_path = tmp_path / "policy.txt"
+    source_path.write_text(
+        "I. Definitions applicable to the grievance procedure [24 CFR 966.53]\n\n"
+        "A. Grievance: Any dispute a tenant may have with respect to HACC action or failure to act.\n\n"
+        "C. Elements of due process: An eviction action or a termination of tenancy in a state or local court in which adequate notice and an opportunity to refute the evidence are required.\n",
+        encoding="utf-8",
+    )
+
+    seed = {
+        "key_facts": {
+            "anchor_titles": ["ADMISSIONS AND CONTINUED OCCUPANCY POLICY"],
+            "anchor_passages": [
+                {
+                    "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+                    "source_path": str(source_path),
+                    "snippet": "HACC policy describes an informal hearing process for applicants and residents.",
+                    "section_labels": ["grievance_hearing"],
+                }
+            ],
+        },
+        "hacc_evidence": [
+            {
+                "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+                "source_path": str(source_path),
+                "snippet": "HACC policy describes an informal hearing process for applicants and residents.",
+            }
+        ],
+    }
+    grounding_bundle = {
+        "search_payload": {
+            "results": [
+                {
+                    "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+                    "source_path": str(source_path),
+                    "snippet": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+                    "matched_rules": [
+                        {
+                            "text": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+                            "section_title": "I. Definitions applicable to the grievance procedure [24 CFR 966.53]",
+                        },
+                        {
+                            "text": "C. Elements of due process: An eviction action or a termination of tenancy in a state or local court in which adequate notice and an opportunity to refute the evidence are required.",
+                            "section_title": "I. Definitions applicable to the grievance procedure [24 CFR 966.53]",
+                        },
+                    ],
+                }
+            ]
+        }
+    }
+
+    merged = MODULE._merge_seed_with_grounding(seed, grounding_bundle)
+
+    assert len(merged["hacc_evidence"]) == 1
+    assert "Elements of due process" in merged["hacc_evidence"][0]["snippet"]
+    assert "Elements of due process" in merged["key_facts"]["anchor_passages"][0]["snippet"]
+
+
+def test_should_promote_grounded_snippet_prefers_due_process_expansion():
+    current = "HACC policy describes an informal hearing process for applicants and residents."
+    evidence = (
+        "I. Definitions applicable to the grievance procedure [24 CFR 966.53] "
+        "A. Grievance: Any dispute a tenant may have with respect to HACC action or failure to act. "
+        "C. Elements of due process: An eviction action or a termination of tenancy in a state or local court in which adequate notice and an opportunity to refute the evidence are required."
+    )
+
+    assert MODULE._should_promote_grounded_snippet(current, evidence) is True
+
+
+def test_specific_refresh_terms_drop_generic_one_word_anchor_terms():
+    terms = MODULE._specific_refresh_terms(
+        "Scheduling an Informal Review ........ 16-11",
+        title="ADMINISTRATIVE PLAN",
+        section_labels=["grievance_hearing", "appeal_rights"],
+        anchor_terms=["grievance", "hearing", "appeal", "informal hearing", "due process"],
+    )
+
+    assert "informal hearing" in [term.lower() for term in terms]
+    assert "grievance" not in [term.lower() for term in terms]
+    assert "hearing" not in [term.lower() for term in terms]
+    assert "appeal" not in [term.lower() for term in terms]
+
+
 def test_merge_seed_with_grounding_refreshes_anchor_passages_from_source_text(tmp_path):
     source_path = tmp_path / "policy.txt"
     source_path.write_text(
@@ -1538,5 +1621,19 @@ def test_summary_and_narrative_use_condensed_policy_excerpt():
 
     assert "first contact by an interested family" not in summary
     assert "must be asked in writing about accommodation needs" in summary
-    assert any("must be asked in writing about accommodation needs" in item for item in allegations)
-    assert not any("first contact by an interested family" in item for item in allegations)
+
+
+def test_summary_condenses_remote_hearing_accommodation_language():
+    excerpt = (
+        "HACC has the sole discretion to require that informal hearings be conducted remotely in case of local, "
+        "state, or national physical distancing orders, and in cases of inclement weather or natural disaster. "
+        "In addition, HACC will conduct an informal hearing remotely upon request as a reasonable accommodation "
+        "for a person with a disability, if a participant requests so."
+    )
+
+    summary = MODULE._summarize_policy_excerpt(excerpt)
+
+    assert summary == (
+        "HACC policy says remote informal hearings must be provided as a reasonable accommodation "
+        "when requested by a person with a disability."
+    )

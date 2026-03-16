@@ -4,7 +4,7 @@ import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Sequence
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -402,6 +402,10 @@ def _summarize_policy_excerpt(text: Any, max_sentences: int = 2, max_chars: int 
         (
             r"A specific name and phone number of designated staff will be provided to process requests for accommodation",
             "HACC policy says designated staff contact information must be provided for accommodation requests.",
+        ),
+        (
+            r"HACC will conduct an informal hearing remotely upon request as a reasonable accommodation for a person with a disability",
+            "HACC policy says remote informal hearings must be provided as a reasonable accommodation when requested by a person with a disability.",
         ),
         (
             r"Written notice",
@@ -1121,6 +1125,32 @@ def _refresh_anchor_terms(anchor_terms: List[str], fallback_snippet: str) -> Lis
     return deduped
 
 
+def _specific_refresh_terms(
+    fallback_snippet: str,
+    *,
+    title: str = "",
+    section_labels: Sequence[str] | None = None,
+    anchor_terms: Sequence[str] | None = None,
+) -> List[str]:
+    preferred_terms: List[str] = []
+    if title:
+        preferred_terms.append(title)
+    for label in list(section_labels or []):
+        humanized = _humanize_section(str(label))
+        if humanized:
+            preferred_terms.append(humanized)
+    for term in list(anchor_terms or []):
+        normalized = str(term).strip()
+        if not normalized:
+            continue
+        if len(normalized.split()) >= 2 or len(normalized) >= 12:
+            preferred_terms.append(normalized)
+    terms = _refresh_anchor_terms(preferred_terms, fallback_snippet)
+    if terms:
+        return terms
+    return _refresh_anchor_terms([str(term).strip() for term in list(anchor_terms or []) if str(term).strip()], fallback_snippet)
+
+
 def _policy_text_quality(text: str) -> int:
     cleaned = _clean_policy_text(text)
     if not cleaned:
@@ -1205,6 +1235,22 @@ def _should_replace_snippet(current_snippet: str, refreshed_snippet: str) -> boo
     return False
 
 
+def _should_promote_grounded_snippet(current_snippet: str, evidence_snippet: str) -> bool:
+    current_clean = _clean_policy_text(current_snippet)
+    evidence_clean = _clean_policy_text(evidence_snippet)
+    if not evidence_clean or evidence_clean == current_clean:
+        return False
+    if _should_replace_snippet(current_snippet, evidence_snippet):
+        return True
+    if "elements of due process" in evidence_clean.lower() and "elements of due process" not in current_clean.lower():
+        return True
+    if _policy_text_quality(evidence_clean) > _policy_text_quality(current_clean):
+        return True
+    if len(evidence_clean) >= len(current_clean) + 80 and not _is_probably_toc_text(evidence_clean):
+        return True
+    return False
+
+
 def _refresh_seed_source_snippets(seed: Dict[str, Any]) -> Dict[str, Any]:
     refreshed_seed = dict(seed or {})
     key_facts = dict(refreshed_seed.get("key_facts") or {})
@@ -1217,9 +1263,15 @@ def _refresh_seed_source_snippets(seed: Dict[str, Any]) -> Dict[str, Any]:
     for passage in list(key_facts.get("anchor_passages") or []):
         updated = dict(passage)
         current_snippet = str(updated.get("snippet") or "")
+        refresh_terms = _specific_refresh_terms(
+            current_snippet,
+            title=str(updated.get("title") or ""),
+            section_labels=list(updated.get("section_labels") or []),
+            anchor_terms=anchor_terms,
+        )
         refreshed_snippet = _refresh_snippet_from_source(
             str(updated.get("source_path") or ""),
-            anchor_terms=anchor_terms,
+            anchor_terms=refresh_terms,
             fallback_snippet=current_snippet,
         )
         if _should_replace_snippet(current_snippet, refreshed_snippet):
@@ -1232,9 +1284,14 @@ def _refresh_seed_source_snippets(seed: Dict[str, Any]) -> Dict[str, Any]:
     for item in list(refreshed_seed.get("hacc_evidence") or []):
         updated = dict(item)
         current_snippet = str(updated.get("snippet") or "")
+        refresh_terms = _specific_refresh_terms(
+            current_snippet,
+            title=str(updated.get("title") or ""),
+            anchor_terms=anchor_terms,
+        )
         refreshed_snippet = _refresh_snippet_from_source(
             str(updated.get("source_path") or ""),
-            anchor_terms=anchor_terms,
+            anchor_terms=refresh_terms,
             fallback_snippet=current_snippet,
         )
         if _should_replace_snippet(current_snippet, refreshed_snippet):
@@ -1263,7 +1320,7 @@ def _refresh_seed_source_snippets(seed: Dict[str, Any]) -> Dict[str, Any]:
                 str(updated.get("source_path") or "").strip().lower(),
             )
             evidence_snippet = evidence_by_key.get(key, "")
-            if evidence_snippet and _policy_text_quality(evidence_snippet) > _policy_text_quality(str(updated.get("snippet") or "")):
+            if evidence_snippet and _should_promote_grounded_snippet(str(updated.get("snippet") or ""), evidence_snippet):
                 updated["snippet"] = evidence_snippet
             updated_passages.append(updated)
         key_facts["anchor_passages"] = updated_passages
@@ -1546,17 +1603,27 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
 
     existing_evidence = list(merged.get("hacc_evidence") or [])
     if grounding_evidence:
-        normalized_existing = {
-            (str(item.get("title") or "").strip().lower(), str(item.get("source_path") or "").strip().lower())
+        existing_by_key = {
+            (
+                str(item.get("title") or "").strip().lower(),
+                str(item.get("source_path") or "").strip().lower(),
+            ): dict(item)
             for item in existing_evidence
         }
-        refreshed_evidence: List[Dict[str, Any]] = []
         for item in grounding_evidence:
             key = (str(item.get("title") or "").strip().lower(), str(item.get("source_path") or "").strip().lower())
-            if key not in normalized_existing:
-                refreshed_evidence.append(item)
-        merged["hacc_evidence"] = refreshed_evidence + existing_evidence
-        if refreshed_evidence:
+            current_item = existing_by_key.get(key)
+            if current_item is None:
+                existing_by_key[key] = dict(item)
+                continue
+            if _should_promote_grounded_snippet(str(current_item.get("snippet") or ""), str(item.get("snippet") or "")):
+                updated_item = dict(current_item)
+                updated_item["snippet"] = str(item.get("snippet") or "")
+                if item.get("matched_rules"):
+                    updated_item["matched_rules"] = list(item.get("matched_rules") or [])
+                existing_by_key[key] = updated_item
+        merged["hacc_evidence"] = list(existing_by_key.values())
+        if merged["hacc_evidence"]:
             refreshed_by_key = {
                 (
                     str(item.get("title") or "").strip().lower(),
@@ -1572,7 +1639,7 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
                     str(updated.get("source_path") or "").strip().lower(),
                 )
                 evidence_snippet = refreshed_by_key.get(key, "")
-                if evidence_snippet and _policy_text_quality(evidence_snippet) > _policy_text_quality(str(updated.get("snippet") or "")):
+                if evidence_snippet and _should_promote_grounded_snippet(str(updated.get("snippet") or ""), evidence_snippet):
                     updated["snippet"] = evidence_snippet
                 updated_passages.append(updated)
             if updated_passages:

@@ -563,6 +563,7 @@ def _extract_source_window(
     anchor_terms: Sequence[str],
     fallback_snippet: str,
     window_chars: int = 520,
+    max_matches_per_needle: int = 12,
 ) -> str:
     normalized_fallback = _clean_extracted_excerpt(fallback_snippet)
     if not source_path:
@@ -599,6 +600,7 @@ def _extract_source_window(
         for needle in search_needles:
             needle_lower = str(needle).lower()
             search_from = 0
+            matches_seen = 0
             while True:
                 raw_idx = source_text_lower.find(needle_lower, search_from)
                 if raw_idx >= 0:
@@ -646,6 +648,9 @@ def _extract_source_window(
                     trimmed_excerpt = _clean_extracted_excerpt(normalized_source[idx:end])
                     consider_excerpt(trimmed_excerpt)
                 search_from = max(idx, raw_idx if raw_idx >= 0 else idx) + max(1, len(needle_lower))
+                matches_seen += 1
+                if matches_seen >= max_matches_per_needle:
+                    break
 
     if best_excerpt:
         return best_excerpt
