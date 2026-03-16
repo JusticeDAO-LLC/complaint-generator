@@ -640,6 +640,7 @@ def test_markdown_includes_selection_rationale_section():
     assert "- Selected preset: accommodation_focus" in markdown
     assert "- Why this preset won: best for accommodation framing + protected-basis framing; runner-up is stronger on retaliation-heavy framing" in markdown
     assert "- Runner-up preset: administrative_plan_retaliation" in markdown
+    assert "- Claim posture note: The winner added stronger accommodation and protected-basis theories, while the runner-up leaned more heavily on retaliation theories." in markdown
     assert "- Winner relief overview: winner relief overview" in markdown
     assert "- Runner-up relief overview: runner relief overview" in markdown
     assert "- Winner-only relief families: protected_basis" in markdown
@@ -726,6 +727,20 @@ def test_summary_with_selection_rationale_mentions_when_relief_posture_is_materi
 
     assert "Relief posture was materially similar across the winner and runner-up" in combined
     assert combined.endswith("HACC policy says applicants must be informed at application that reasonable accommodation is available.")
+
+
+def test_summary_with_selection_rationale_mentions_claim_posture_difference():
+    summary = "HACC policy says applicants must be informed at application that reasonable accommodation is available."
+    selection_rationale = {
+        "selected_preset": "accommodation_focus",
+        "tradeoff_note": "best for accommodation framing + protected-basis framing; runner-up is stronger on retaliation-heavy framing",
+        "winner_only_theory_families": ["accommodation", "protected_basis"],
+        "runner_up_only_theory_families": ["retaliation"],
+    }
+
+    combined = MODULE._summary_with_selection_rationale(summary, selection_rationale)
+
+    assert "The winner added stronger accommodation and protected-basis theories, while the runner-up leaned more heavily on retaliation theories." in combined
 
 
 def test_annotate_causes_with_selection_rationale_marks_winner_unique_and_shared_roles():

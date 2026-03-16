@@ -102,6 +102,9 @@ def _summary_with_selection_rationale(summary: str, selection_rationale: Dict[st
     if not tradeoff_note:
         return base
     prefix = f"This draft follows the `{selected_preset}` path because {tradeoff_note}." if selected_preset else f"This draft was selected because {tradeoff_note}."
+    claim_posture_note = _selection_claim_posture_note(selection_rationale)
+    if claim_posture_note:
+        prefix = f"{prefix} {claim_posture_note}"
     relief_similarity_note = _selection_relief_similarity_note(selection_rationale)
     if relief_similarity_note:
         prefix = f"{prefix} {relief_similarity_note}"
@@ -129,6 +132,20 @@ def _selection_relief_similarity_note(selection_rationale: Dict[str, Any]) -> st
     ):
         return "Relief posture was materially similar across the winner and runner-up, so the selection difference was driven mainly by claim posture."
     return ""
+
+
+def _selection_claim_posture_note(selection_rationale: Dict[str, Any]) -> str:
+    winner_only_families = [str(item) for item in list(selection_rationale.get("winner_only_theory_families") or []) if str(item)]
+    runner_up_only_families = [str(item) for item in list(selection_rationale.get("runner_up_only_theory_families") or []) if str(item)]
+    if not winner_only_families and not runner_up_only_families:
+        return ""
+    winner_phrase = _families_phrase(winner_only_families)
+    runner_phrase = _families_phrase(runner_up_only_families)
+    if winner_phrase and runner_phrase:
+        return f"The winner added stronger {winner_phrase} theories, while the runner-up leaned more heavily on {runner_phrase} theories."
+    if winner_phrase:
+        return f"The winner added stronger {winner_phrase} theories."
+    return f"The runner-up leaned more heavily on {runner_phrase} theories."
 
 
 def _cause_semantic_families(cause: Dict[str, Any]) -> List[str]:
@@ -1143,15 +1160,27 @@ def _specific_refresh_terms(
     if "administrative plan" in title_lower and any(
         label in {"grievance_hearing", "appeal_rights", "adverse_action"} for label in list(section_labels or [])
     ):
-        preferred_terms.extend(
-            [
-                "Notice to the Applicant",
-                "Scheduling an Informal Review",
-                "Informal Review Procedures",
-                "Informal Review Decision",
-                "Notice of Denial or Termination of Assistance",
-            ]
-        )
+        curated_terms = [
+            "Notice to the Applicant",
+            "Scheduling an Informal Review",
+            "Informal Review Procedures",
+            "Informal Review Decision",
+            "Notice of Denial or Termination of Assistance",
+        ]
+        for term in list(anchor_terms or []):
+            normalized = str(term).strip()
+            if not normalized:
+                continue
+            if len(normalized.split()) >= 2 or len(normalized) >= 12:
+                curated_terms.append(normalized)
+        deduped: List[str] = []
+        seen = set()
+        for term in curated_terms:
+            normalized = term.lower()
+            if normalized not in seen:
+                seen.add(normalized)
+                deduped.append(term)
+        return deduped
     for term in list(anchor_terms or []):
         normalized = str(term).strip()
         if not normalized:
@@ -1516,12 +1545,29 @@ def _grounding_item_anchor_terms(item: Dict[str, Any], fallback_excerpt: str) ->
     anchor_terms: List[str] = []
     title = str(item.get("title") or "").strip().lower()
     admin_plan_complaint_fallback = "administrative plan" in title and _is_complaint_process_text(fallback_excerpt)
+    if admin_plan_complaint_fallback:
+        curated_terms = [
+            "Notice to the Applicant",
+            "Scheduling an Informal Review",
+            "Informal Review Procedures",
+            "Informal Review Decision",
+            "Notice of Denial or Termination of Assistance",
+        ]
+        deduped: List[str] = []
+        seen = set()
+        for term in curated_terms:
+            normalized = term.lower()
+            if normalized not in seen:
+                seen.add(normalized)
+                deduped.append(term)
+        return deduped
+
     for rule in list(item.get("matched_rules") or [])[:4]:
         section_title = str(rule.get("section_title") or "").strip()
         rule_text = str(rule.get("text") or "").strip()
-        if section_title and not admin_plan_complaint_fallback:
+        if section_title:
             anchor_terms.append(section_title)
-        if rule_text and not admin_plan_complaint_fallback:
+        if rule_text:
             anchor_terms.append(rule_text)
 
     if not anchor_terms:
@@ -1534,17 +1580,6 @@ def _grounding_item_anchor_terms(item: Dict[str, Any], fallback_excerpt: str) ->
                     "Informal Hearing Process",
                 ]
             )
-
-    if admin_plan_complaint_fallback:
-        anchor_terms.extend(
-            [
-                "Notice to the Applicant",
-                "Scheduling an Informal Review",
-                "Informal Review Procedures",
-                "Informal Review Decision",
-                "Notice of Denial or Termination of Assistance",
-            ]
-        )
 
     return _refresh_anchor_terms(anchor_terms, fallback_excerpt)
 
@@ -2225,6 +2260,9 @@ def _render_markdown(package: Dict[str, Any]) -> str:
             lines.append(f"- Runner-up-only theory families: {', '.join(selection_rationale['runner_up_only_theory_families'])}")
         if selection_rationale.get("shared_theory_families"):
             lines.append(f"- Shared theory families: {', '.join(selection_rationale['shared_theory_families'])}")
+        claim_posture_note = _selection_claim_posture_note(selection_rationale)
+        if claim_posture_note:
+            lines.append(f"- Claim posture note: {claim_posture_note}")
         relief_similarity_note = _selection_relief_similarity_note(selection_rationale)
         if relief_similarity_note:
             lines.append(f"- Relief posture note: {relief_similarity_note}")

@@ -477,7 +477,7 @@ def _score_excerpt_match(excerpt: str, anchor_terms: Sequence[str]) -> tuple[int
     matched_terms = {term for term in normalized_terms if term in lowered}
     substantive = 1 if _is_substantive_policy_text(normalized_excerpt) else 0
     non_toc = 1 if not _is_probably_toc_text(normalized_excerpt) else 0
-    return (len(matched_terms), substantive, non_toc, len(normalized_excerpt))
+    return (substantive, non_toc, len(matched_terms), len(normalized_excerpt))
 
 
 def _candidate_text_paths(source_path: str) -> List[Path]:

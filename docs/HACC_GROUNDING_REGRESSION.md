@@ -24,6 +24,12 @@ Related smoke-matrix task:
 HACC Preset Matrix Smoke
 ```
 
+Related comparison task:
+
+```text
+HACC Preset Matrix Compare
+```
+
 Useful options:
 
 ```bash
@@ -36,6 +42,12 @@ Small preset matrix example:
 
 ```bash
 ./.venv/bin/python scripts/run_hacc_preset_matrix.py --presets core_hacc_policies,accommodation_focus --num-sessions 1 --hacc-count 1 --max-turns 2 --max-parallel 1 --output-dir ../research_results/adversarial_runs/hacc_preset_matrix_smoke --continue-on-error
+```
+
+Deeper preset comparison example:
+
+```bash
+./.venv/bin/python scripts/run_hacc_preset_matrix.py --presets core_hacc_policies,accommodation_focus,administrative_plan_retaliation --num-sessions 2 --hacc-count 2 --max-turns 4 --max-parallel 1 --output-dir ../research_results/adversarial_runs/hacc_preset_matrix_compare --continue-on-error
 ```
 
 The script fails if the live smoke does not produce:
