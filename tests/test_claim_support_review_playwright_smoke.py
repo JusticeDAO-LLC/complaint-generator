@@ -745,11 +745,11 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
 
             assert {
                 "text": "Open Proof Leads Question Review (1)",
-                "href": "/claim-support-review?section=proof_leads&follow_up_support_kind=evidence",
+                "href": "/claim-support-review?section=proof_leads&follow_up_support_kind=evidence&alignment_task_update_filter=active&alignment_task_update_sort=newest_first",
             } in question_links
             assert {
                 "text": "Open Claims For Relief Question Review (1)",
-                "href": "/claim-support-review?section=claims_for_relief&follow_up_support_kind=authority",
+                "href": "/claim-support-review?section=claims_for_relief&follow_up_support_kind=authority&alignment_task_update_filter=manual_review&alignment_task_update_sort=manual_review_first",
             } in question_links
 
             browser.close()
@@ -1023,11 +1023,11 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
 
             assert {
                 "text": "Open Proof Leads Question Review (1)",
-                "href": "/claim-support-review?user_id=trace-smoke-user&section=proof_leads&follow_up_support_kind=evidence",
+                "href": "/claim-support-review?user_id=trace-smoke-user&section=proof_leads&follow_up_support_kind=evidence&alignment_task_update_filter=active&alignment_task_update_sort=newest_first",
             } in question_links
             assert {
                 "text": "Open Claims For Relief Question Review (1)",
-                "href": "/claim-support-review?user_id=trace-smoke-user&section=claims_for_relief&follow_up_support_kind=authority",
+                "href": "/claim-support-review?user_id=trace-smoke-user&section=claims_for_relief&follow_up_support_kind=authority&alignment_task_update_filter=manual_review&alignment_task_update_sort=manual_review_first",
             } in question_links
 
             browser.close()
@@ -1157,7 +1157,11 @@ def test_document_builder_question_review_link_click_preserves_focus_on_review_p
 
                 assert "section=claims_for_relief" in page.url
                 assert "follow_up_support_kind=authority" in page.url
+                assert "alignment_task_update_filter=manual_review" in page.url
+                assert "alignment_task_update_sort=manual_review_first" in page.url
                 assert page.locator("#support-kind").input_value() == "authority"
+                assert page.locator("#alignment-task-update-filter").input_value() == "manual_review"
+                assert page.locator("#alignment-task-update-sort").input_value() == "manual_review_first"
                 assert "Claims For Relief" in page.locator("#prefill-context-line").inner_text()
                 assert "Focused lane: Authority." in page.locator("#prefill-context-line").inner_text()
 
@@ -1263,7 +1267,11 @@ def test_optimization_trace_question_review_link_click_preserves_focus_on_review
                 assert "user_id=browser-smoke-text-link" in page.url
                 assert "section=claims_for_relief" in page.url
                 assert "follow_up_support_kind=authority" in page.url
+                assert "alignment_task_update_filter=manual_review" in page.url
+                assert "alignment_task_update_sort=manual_review_first" in page.url
                 assert page.locator("#support-kind").input_value() == "authority"
+                assert page.locator("#alignment-task-update-filter").input_value() == "manual_review"
+                assert page.locator("#alignment-task-update-sort").input_value() == "manual_review_first"
                 assert "Claims For Relief" in page.locator("#prefill-context-line").inner_text()
                 assert "Focused lane: Authority." in page.locator("#prefill-context-line").inner_text()
 

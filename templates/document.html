@@ -2035,6 +2035,30 @@
             return `${parsedUrl.pathname}${parsedUrl.search}`;
         }
 
+        function appendTaskUpdateIntentToReviewUrl(reviewUrl, sectionKey, supportKind) {
+            const normalizedUrl = String(reviewUrl || '').trim();
+            if (!normalizedUrl) {
+                return normalizedUrl;
+            }
+            const normalizedSectionKey = String(sectionKey || '').trim().toLowerCase();
+            const normalizedSupportKind = String(supportKind || '').trim().toLowerCase();
+            const parsedUrl = new URL(normalizedUrl, window.location.origin);
+            const authorityFocused = normalizedSupportKind === 'authority'
+                || ['claims_for_relief', 'jurisdiction_and_venue'].includes(normalizedSectionKey);
+            const evidenceFocused = normalizedSupportKind === 'evidence'
+                || ['summary_of_facts', 'chronology', 'proof_leads', 'exhibits'].includes(normalizedSectionKey);
+
+            if (authorityFocused) {
+                parsedUrl.searchParams.set('alignment_task_update_filter', 'manual_review');
+                parsedUrl.searchParams.set('alignment_task_update_sort', 'manual_review_first');
+            } else if (evidenceFocused) {
+                parsedUrl.searchParams.set('alignment_task_update_filter', 'active');
+                parsedUrl.searchParams.set('alignment_task_update_sort', 'newest_first');
+            }
+
+            return `${parsedUrl.pathname}${parsedUrl.search}`;
+        }
+
         function defaultSupportKindForSection(sectionKey) {
             const normalizedSectionKey = String(sectionKey || '').trim().toLowerCase();
             if (!normalizedSectionKey) {
@@ -2610,9 +2634,14 @@
                 renderTriageChipRow('Question Blocking Levels', questionBlockingChips, (item) => item.tone),
             ].filter(Boolean).join('');
             const questionSectionLinks = Object.keys(questionSectionCounts).map((sectionKey) => {
-                const reviewUrl = appendSupportKindToReviewUrl(
-                    resolveSectionReviewUrl(sectionKey, intakeSections[sectionKey] || {}, reviewLinks),
-                    inferQuestionSupportKind(sectionKey, questionGoalCounts),
+                const supportKind = inferQuestionSupportKind(sectionKey, questionGoalCounts);
+                const reviewUrl = appendTaskUpdateIntentToReviewUrl(
+                    appendSupportKindToReviewUrl(
+                        resolveSectionReviewUrl(sectionKey, intakeSections[sectionKey] || {}, reviewLinks),
+                        supportKind,
+                    ),
+                    sectionKey,
+                    supportKind,
                 );
                 const label = humanizeKey(sectionKey);
                 const count = questionSectionCounts[sectionKey];
