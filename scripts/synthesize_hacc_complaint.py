@@ -1137,6 +1137,35 @@ def _looks_truncated_rule_text(text: str) -> bool:
     return bool(re.search(r"\b(?:may|must|shall|of|to|from|for|on|with|that|which|if|when|because|under)\.?$", cleaned, flags=re.IGNORECASE))
 
 
+def _expand_grounding_result_from_source(item: Dict[str, Any], fallback_excerpt: str) -> str:
+    source_path = str(item.get("source_path") or "").strip()
+    if not source_path:
+        return ""
+
+    anchor_terms: List[str] = []
+    for rule in list(item.get("matched_rules") or [])[:4]:
+        section_title = str(rule.get("section_title") or "").strip()
+        rule_text = str(rule.get("text") or "").strip()
+        if section_title:
+            anchor_terms.append(section_title)
+        if rule_text:
+            anchor_terms.append(rule_text)
+
+    anchor_terms = _refresh_anchor_terms(anchor_terms, fallback_excerpt)
+    if not anchor_terms:
+        return ""
+
+    expanded = _extract_grounded_source_window(
+        source_path=source_path,
+        anchor_terms=anchor_terms,
+        fallback_snippet=fallback_excerpt,
+    )
+    expanded = _clean_policy_text(expanded)
+    if not expanded or _is_probably_toc_text(expanded) or _is_placeholder_policy_text(expanded):
+        return ""
+    return expanded
+
+
 def _best_grounding_result_excerpt(item: Dict[str, Any], max_chars: int = 420) -> str:
     snippet = " ".join(str(item.get("snippet") or "").split()).strip()
     rule_texts = [
@@ -1160,6 +1189,11 @@ def _best_grounding_result_excerpt(item: Dict[str, Any], max_chars: int = 420) -
         combined = candidate_parts[0]
     else:
         combined = ""
+
+    if combined and (_looks_truncated_rule_text(combined) or _is_probably_toc_text(combined)):
+        expanded = _expand_grounding_result_from_source(item, combined)
+        if expanded and len(expanded) > len(combined):
+            combined = expanded
 
     combined = re.sub(r"\s{2,}", " ", combined).strip(" ;,")
     if len(combined) > max_chars:

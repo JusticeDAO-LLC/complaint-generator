@@ -753,6 +753,32 @@ def test_best_grounding_result_excerpt_combines_truncated_rule_with_followup_rul
 
     assert "Grievance: Any dispute" in excerpt
     assert "must grant opportunity for grievance hearings" in excerpt
+
+
+def test_best_grounding_result_excerpt_expands_truncated_rule_from_source(tmp_path):
+    source_path = tmp_path / "policy.txt"
+    source_path.write_text(
+        "EXHIBIT 14-1: SAMPLE GRIEVANCE PROCEDURE\n\n"
+        "I. Definitions applicable to the grievance procedure [24 CFR 966.53]\n\n"
+        "A. Grievance: Any dispute a tenant may have with respect to HACC action or failure to act in accordance with the individual tenant's lease or HACC regulations that adversely affects the individual tenant's rights, duties, welfare, or status.\n",
+        encoding="utf-8",
+    )
+
+    item = {
+        "source_path": str(source_path),
+        "snippet": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+        "matched_rules": [
+            {
+                "text": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+                "section_title": "EXHIBIT 14-1: SAMPLE GRIEVANCE PROCEDURE",
+            }
+        ],
+    }
+
+    excerpt = MODULE._best_grounding_result_excerpt(item)
+
+    assert "Definitions applicable to the grievance procedure" in excerpt
+    assert "adversely affects the individual tenant's rights" in excerpt
 def test_filter_grounding_evidence_for_seed_prefers_anchor_titles():
     seed = {
         "key_facts": {
