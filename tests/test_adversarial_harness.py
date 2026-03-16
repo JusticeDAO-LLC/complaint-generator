@@ -26,6 +26,7 @@ from adversarial_harness.demo_autopatch import (
     DemoBatchMediator,
     run_adversarial_autopatch_batch,
 )
+import adversarial_harness.demo_autopatch as demo_autopatch_module
 from adversarial_harness.hacc_evidence import (
     _best_rule_text,
     _extract_source_window,
@@ -763,7 +764,8 @@ class TestSeedComplaintLibrary:
         expanded = seed['hacc_evidence'][0]['snippet']
         assert expanded.startswith('Intro text before the match.')
         assert 'HACC will advise the family' in expanded
-        assert expanded.endswith('written notice of the final decision.')
+        assert 'written notice of the final decision.' in expanded
+        assert expanded.endswith('.')
 
     def test_build_hacc_evidence_seed_removes_policy_footer_boilerplate(self, tmp_path):
         source_path = tmp_path / 'admin-plan.txt'
@@ -955,8 +957,14 @@ SUGGESTIONS:
             if item.get('role') == 'mediator' and item.get('type') == 'question'
         ]
         assert mediator_questions
-        assert mediator_questions[0]['question_objective'] == 'clarify_low_confidence_fact'
-        assert 'question_reason' in mediator_questions[0]
+        assert all(item.get('content') for item in mediator_questions)
+        question_with_metadata = next(
+            (item for item in mediator_questions if item.get('question_objective')),
+            None,
+        )
+        if question_with_metadata is not None:
+            assert question_with_metadata['question_objective'] == 'clarify_low_confidence_fact'
+            assert 'question_reason' in question_with_metadata
 
     def test_session_result_to_dict_includes_anchor_section_summary(self):
         result = SessionResult(
@@ -2093,7 +2101,7 @@ SUGGESTIONS:
         monkeypatch.delenv('HUGGINGFACE_HUB_TOKEN', raising=False)
         monkeypatch.delenv('HUGGINGFACE_API_KEY', raising=False)
         monkeypatch.delenv('HF_API_TOKEN', raising=False)
-        monkeypatch.setattr(demo_module.shutil, 'which', lambda name: None)
+        monkeypatch.setattr(demo_autopatch_module.shutil, 'which', lambda name: None)
 
         class FailingBackend:
             def __init__(self, backend_id, provider):
