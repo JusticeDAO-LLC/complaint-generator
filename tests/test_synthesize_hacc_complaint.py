@@ -696,6 +696,7 @@ def test_markdown_selection_rationale_collapses_identical_relief_overviews():
     assert "Relief posture note: Relief posture was materially similar across the winner and runner-up" in markdown
     assert "- Winner relief overview:" not in markdown
     assert "- Runner-up relief overview:" not in markdown
+    assert "- Shared relief families:" not in markdown
 
 
 def test_summary_with_selection_rationale_prefixes_tradeoff_note():
@@ -1031,6 +1032,39 @@ def test_specific_refresh_terms_drop_generic_one_word_anchor_terms():
     assert "grievance" not in [term.lower() for term in terms]
     assert "hearing" not in [term.lower() for term in terms]
     assert "appeal" not in [term.lower() for term in terms]
+
+
+def test_best_grounding_result_excerpt_avoids_admin_plan_vawa_complaint_text(tmp_path):
+    source_path = tmp_path / "admin-plan.txt"
+    source_path.write_text(
+        "VAWA Complaint Processing [Notice FHEO 2023-01]\n\n"
+        "Applicants or tenant families who wish to file a VAWA complaint against HACC may notify HACC either orally or in writing.\n\n"
+        "Notice to the Applicant\n\n"
+        "HACC must give written notice to the applicant and schedule an informal review promptly.\n\n"
+        "Scheduling an Informal Review\n\n"
+        "HACC must schedule an informal review promptly.\n"
+        "Informal Review Procedures\n\n"
+        "HACC will provide written notice of the informal review decision.\n",
+        encoding="utf-8",
+    )
+
+    item = {
+        "title": "ADMINISTRATIVE PLAN",
+        "source_path": str(source_path),
+        "snippet": "Applicants or tenant families who wish to file a VAWA complaint against HACC may",
+        "matched_rules": [
+            {
+                "text": "Applicants or tenant families who wish to file a VAWA complaint against HACC may",
+                "section_title": "HACC Policy",
+            }
+        ],
+    }
+
+    excerpt = MODULE._best_grounding_result_excerpt(item)
+
+    assert "written notice to the applicant" in excerpt
+    assert "VAWA complaint" not in excerpt
+    assert "remote informal" not in excerpt
 
 
 def test_merge_seed_with_grounding_refreshes_anchor_passages_from_source_text(tmp_path):

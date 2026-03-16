@@ -1161,6 +1161,8 @@ def _policy_text_quality(text: str) -> int:
         score -= 8
     if _is_placeholder_policy_text(cleaned):
         score -= 6
+    if _is_complaint_process_text(cleaned):
+        score -= 5
     if _is_generic_chapter_intro_text(cleaned):
         score -= 4
     if "HACC Policy" in str(text):
@@ -1186,6 +1188,23 @@ def _is_placeholder_policy_text(text: str) -> bool:
     )
 
 
+def _is_complaint_process_text(text: str) -> bool:
+    normalized = _clean_policy_text(text)
+    if not normalized:
+        return False
+    lowered = normalized.lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "vawa complaint",
+            "file a complaint with fheo",
+            "office of fair housing and equal opportunity",
+            "fheo",
+            "equal access final rule",
+        )
+    )
+
+
 def _is_generic_chapter_intro_text(text: str) -> bool:
     normalized = _clean_policy_text(text)
     if not normalized:
@@ -1197,6 +1216,28 @@ def _is_generic_chapter_intro_text(text: str) -> bool:
             flags=re.IGNORECASE,
         )
     )
+
+
+def _trim_admin_plan_complaint_preamble(text: str) -> str:
+    cleaned = _clean_policy_text(text)
+    if not cleaned or not _is_complaint_process_text(cleaned):
+        return cleaned
+    heading_matches = [
+        cleaned.lower().find(term.lower())
+        for term in (
+            "Scheduling an Informal Review",
+            "Informal Review Procedures",
+            "Notice to the Applicant",
+            "Notice of Denial or Termination of Assistance",
+            "Informal Hearing Procedures",
+        )
+    ]
+    heading_matches = [idx for idx in heading_matches if idx >= 0]
+    if not heading_matches:
+        return cleaned
+    start = min(heading_matches)
+    trimmed = cleaned[start:].strip()
+    return trimmed or cleaned
 
 
 def _refresh_snippet_from_source(
@@ -1460,12 +1501,14 @@ def _looks_truncated_rule_text(text: str) -> bool:
 
 def _grounding_item_anchor_terms(item: Dict[str, Any], fallback_excerpt: str) -> List[str]:
     anchor_terms: List[str] = []
+    title = str(item.get("title") or "").strip().lower()
+    admin_plan_complaint_fallback = "administrative plan" in title and _is_complaint_process_text(fallback_excerpt)
     for rule in list(item.get("matched_rules") or [])[:4]:
         section_title = str(rule.get("section_title") or "").strip()
         rule_text = str(rule.get("text") or "").strip()
-        if section_title:
+        if section_title and not admin_plan_complaint_fallback:
             anchor_terms.append(section_title)
-        if rule_text:
+        if rule_text and not admin_plan_complaint_fallback:
             anchor_terms.append(rule_text)
 
     if not anchor_terms:
@@ -1478,6 +1521,17 @@ def _grounding_item_anchor_terms(item: Dict[str, Any], fallback_excerpt: str) ->
                     "Informal Hearing Process",
                 ]
             )
+
+    if admin_plan_complaint_fallback:
+        anchor_terms.extend(
+            [
+                "Notice to the Applicant",
+                "Scheduling an Informal Review",
+                "Informal Review Procedures",
+                "Informal Review Decision",
+                "Notice of Denial or Termination of Assistance",
+            ]
+        )
 
     return _refresh_anchor_terms(anchor_terms, fallback_excerpt)
 
@@ -1496,7 +1550,7 @@ def _expand_grounding_result_from_source(item: Dict[str, Any], fallback_excerpt:
         anchor_terms=anchor_terms,
         fallback_snippet=fallback_excerpt,
     )
-    expanded = _clean_policy_text(expanded)
+    expanded = _trim_admin_plan_complaint_preamble(expanded)
     if not expanded or _is_probably_toc_text(expanded) or _is_placeholder_policy_text(expanded):
         return ""
     return expanded
@@ -2170,8 +2224,9 @@ def _render_markdown(package: Dict[str, Any]) -> str:
             lines.append(f"- Winner-only relief families: {', '.join(selection_rationale['winner_only_relief_families'])}")
         if selection_rationale.get("runner_up_only_relief_families"):
             lines.append(f"- Runner-up-only relief families: {', '.join(selection_rationale['runner_up_only_relief_families'])}")
-        if selection_rationale.get("shared_relief_families"):
-            lines.append(f"- Shared relief families: {', '.join(selection_rationale['shared_relief_families'])}")
+        shared_relief_families = [str(item) for item in list(selection_rationale.get("shared_relief_families") or []) if str(item)]
+        if shared_relief_families and shared_relief_families != ["other"]:
+            lines.append(f"- Shared relief families: {', '.join(shared_relief_families)}")
         if selection_rationale.get("winner_only_claims"):
             lines.append(f"- Winner-only claims: {', '.join(selection_rationale['winner_only_claims'])}")
         if selection_rationale.get("runner_up_only_claims"):
