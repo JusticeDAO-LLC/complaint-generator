@@ -1,5 +1,6 @@
 import argparse
 import csv
+import importlib
 import json
 import logging
 import sys
@@ -11,6 +12,13 @@ from typing import Any, Dict, List
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+
+def _load_synthesis_module():
+    scripts_dir = Path(__file__).resolve().parent
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    return importlib.import_module("synthesize_hacc_complaint")
 
 
 def _load_config(path: str) -> Dict[str, Any]:
@@ -151,6 +159,23 @@ def _write_markdown_report(filepath: Path, rows: List[Dict[str, Any]], recommend
                 output_dir=row["output_dir"],
             )
         )
+    claim_snapshot_rows = [row for row in rows if row.get("claim_selection_overview")]
+    if claim_snapshot_rows:
+        lines.extend([
+            "",
+            "## Claim Selection Snapshots",
+            "",
+        ])
+        for row in claim_snapshot_rows:
+            lines.extend([
+                f"### {row['preset']}",
+                "",
+                f"- Overview: {row['claim_selection_overview']}",
+            ])
+            synthesis_dir = row.get("synthesis_output_dir")
+            if synthesis_dir:
+                lines.append(f"- Complaint synthesis: `{synthesis_dir}`")
+            lines.append("")
     filepath.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -162,6 +187,89 @@ def _top_missing_sections(anchor_sections: Dict[str, Any], limit: int = 3) -> st
     )
     top = ranked[:limit]
     return ", ".join(f"{section} ({count})" for section, count in top)
+
+
+def _compact_claim_selection_summary(summary: List[Dict[str, Any]], limit: int = 3) -> str:
+    parts: List[str] = []
+    for item in summary[:limit]:
+        title = str(item.get("title") or "Untitled claim").strip()
+        tags = [str(tag) for tag in list(item.get("selection_tags") or []) if str(tag)]
+        exhibits = [
+            f"{entry.get('exhibit_id')}: {entry.get('label')}"
+            for entry in list(item.get("selected_exhibits") or [])
+            if entry.get("exhibit_id") and entry.get("label")
+        ]
+        rationale = str(item.get("selection_rationale") or "").strip()
+        detail_parts = []
+        if tags:
+            detail_parts.append(f"tags={','.join(tags)}")
+        if exhibits:
+            detail_parts.append(f"exhibits={'; '.join(exhibits)}")
+        if rationale:
+            detail_parts.append(f"rationale={rationale}")
+        if detail_parts:
+            parts.append(f"{title} [{'; '.join(detail_parts)}]")
+        else:
+            parts.append(title)
+    return " | ".join(parts)
+
+
+def _synthesize_claim_selection_snapshot(
+    *,
+    preset: str,
+    preset_dir: Path,
+    filing_forum: str,
+) -> Dict[str, Any]:
+    synthesis = _load_synthesis_module()
+    results_path = preset_dir / "adversarial_results.json"
+    results_payload = synthesis._load_json(results_path)
+    best_session = synthesis._pick_best_session(results_payload, preset=preset)
+    seed = dict(best_session.get("seed_complaint") or {})
+    key_facts = dict(seed.get("key_facts") or {})
+    anchor_sections = [str(item) for item in list(key_facts.get("anchor_sections") or []) if str(item)]
+    cleaned_summary = synthesis._summarize_policy_excerpt(
+        key_facts.get("evidence_summary") or seed.get("summary") or "No summary available."
+    )
+
+    package = {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "preset": preset or ((seed.get("_meta", {}) or {}).get("hacc_preset")) or "unknown",
+        "filing_forum": filing_forum,
+        "session_id": best_session.get("session_id"),
+        "critic_score": float((best_session.get("critic_score") or {}).get("overall_score", 0.0) or 0.0),
+        "summary": cleaned_summary,
+        "caption": synthesis._draft_caption(seed, filing_forum),
+        "parties": synthesis._draft_parties(filing_forum),
+        "jurisdiction_and_venue": synthesis._jurisdiction_and_venue(seed, filing_forum),
+        "legal_theory_summary": synthesis._legal_theory_summary(seed, filing_forum),
+        "anchor_sections": anchor_sections,
+        "factual_allegations": synthesis._factual_allegations(seed, best_session),
+        "claims_theory": synthesis._claims_theory(seed, best_session, filing_forum),
+        "policy_basis": synthesis._policy_basis(seed),
+        "causes_of_action": synthesis._causes_of_action(seed, best_session, filing_forum),
+        "anchor_passages": synthesis._anchor_passage_lines(seed),
+        "supporting_evidence": synthesis._evidence_lines(seed),
+        "proposed_allegations": synthesis._proposed_allegations(seed, best_session, filing_forum),
+        "requested_relief": synthesis._requested_relief_for_forum(filing_forum),
+        "source_artifacts": {
+            "results_json": str(results_path),
+            "matrix_summary": None,
+            "selection_source": "matrix_preset_best_session",
+        },
+    }
+    synthesis._inject_exhibit_references(package)
+    package["claim_selection_summary"] = synthesis._claim_selection_summary(list(package.get("causes_of_action") or []))
+
+    output_dir = preset_dir / "complaint_synthesis"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "draft_complaint_package.json").write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
+    (output_dir / "draft_complaint_package.md").write_text(synthesis._render_markdown(package), encoding="utf-8")
+
+    return {
+        "claim_selection_summary": package["claim_selection_summary"],
+        "claim_selection_overview": _compact_claim_selection_summary(package["claim_selection_summary"]),
+        "synthesis_output_dir": str(output_dir),
+    }
 
 
 def _run_preset_batch(
@@ -181,6 +289,7 @@ def _run_preset_batch(
     probe_llm_router: bool,
     probe_embeddings_router: bool,
     disable_local_ipfs_fallback: bool,
+    synthesis_filing_forum: str,
 ) -> Dict[str, Any]:
     from adversarial_harness import AdversarialHarness, Optimizer
     from backends import LLMRouterBackend
@@ -241,6 +350,11 @@ def _run_preset_batch(
     avg_anchor_coverage = sum(coverage_rates) / len(coverage_rates) if coverage_rates else 0.0
     missing_sections = ",".join(sorted((anchor_sections.get("missing_counts", {}) or {}).keys()))
     top_missing_sections = _top_missing_sections(anchor_sections)
+    synthesis_snapshot = _synthesize_claim_selection_snapshot(
+        preset=preset,
+        preset_dir=preset_dir,
+        filing_forum=synthesis_filing_forum,
+    )
 
     return {
         "preset": preset,
@@ -258,6 +372,9 @@ def _run_preset_batch(
         "router_report": router_report,
         "statistics": statistics,
         "optimizer_report": optimizer_report,
+        "claim_selection_summary": synthesis_snapshot["claim_selection_summary"],
+        "claim_selection_overview": synthesis_snapshot["claim_selection_overview"],
+        "synthesis_output_dir": synthesis_snapshot["synthesis_output_dir"],
     }
 
 
@@ -292,6 +409,12 @@ def main() -> int:
         help="If > 0, use this session count for the champion/challenger rerun",
     )
     parser.add_argument("--use-vector-search", action="store_true")
+    parser.add_argument(
+        "--synthesis-filing-forum",
+        default="hud",
+        choices=("court", "hud", "state_agency"),
+        help="Forum style used for the per-preset synthesized complaint snapshots.",
+    )
     parser.add_argument(
         "--output-dir",
         default=None,
@@ -342,22 +465,21 @@ def main() -> int:
             probe_llm_router=args.probe_llm_router,
             probe_embeddings_router=args.probe_embeddings_router,
             disable_local_ipfs_fallback=args.disable_local_ipfs_fallback,
+            synthesis_filing_forum=args.synthesis_filing_forum,
         )
         row = {
-            key: batch_result[key]
-            for key in (
-                "preset",
-                "backend_id",
-                "average_score",
-                "successful_sessions",
-                "total_sessions",
-                "anchor_coverage",
-                "router_status",
-                "top_missing_sections",
-                "missing_sections",
-                "output_dir",
-                "router_status",
-            )
+            "preset": batch_result["preset"],
+            "backend_id": batch_result["backend_id"],
+            "average_score": batch_result["average_score"],
+            "successful_sessions": batch_result["successful_sessions"],
+            "total_sessions": batch_result["total_sessions"],
+            "anchor_coverage": batch_result["anchor_coverage"],
+            "router_status": batch_result["router_status"],
+            "top_missing_sections": batch_result["top_missing_sections"],
+            "missing_sections": batch_result["missing_sections"],
+            "output_dir": batch_result["output_dir"],
+            "claim_selection_overview": batch_result["claim_selection_overview"],
+            "synthesis_output_dir": batch_result["synthesis_output_dir"],
         }
         matrix_rows.append(row)
         full_results.append(
@@ -370,6 +492,9 @@ def main() -> int:
                 "optimizer_report": batch_result["optimizer_report"],
                 "output_dir": batch_result["output_dir"],
                 "router_report": batch_result["router_report"],
+                "claim_selection_summary": batch_result["claim_selection_summary"],
+                "claim_selection_overview": batch_result["claim_selection_overview"],
+                "synthesis_output_dir": batch_result["synthesis_output_dir"],
             }
         )
 
@@ -403,6 +528,7 @@ def main() -> int:
                 probe_llm_router=args.probe_llm_router,
                 probe_embeddings_router=args.probe_embeddings_router,
                 disable_local_ipfs_fallback=args.disable_local_ipfs_fallback,
+                synthesis_filing_forum=args.synthesis_filing_forum,
             )
             challenger_rows.append(
                 {
@@ -418,6 +544,8 @@ def main() -> int:
                         "missing_sections",
                         "output_dir",
                         "router_status",
+                        "claim_selection_overview",
+                        "synthesis_output_dir",
                     )
                 }
             )
@@ -458,6 +586,8 @@ def main() -> int:
                 "top_missing_sections",
                 "missing_sections",
                 "output_dir",
+                "claim_selection_overview",
+                "synthesis_output_dir",
             ],
         )
         writer.writeheader()

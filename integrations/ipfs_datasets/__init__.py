@@ -40,6 +40,8 @@ from .search import (
 	search_multi_engine_web,
 )
 from .documents import (
+	DOCUMENTS_AVAILABLE,
+	DOCUMENTS_ERROR,
 	extract_text_content,
 	ingest_download_manifest,
 	ingest_local_document,
@@ -141,6 +143,8 @@ __all__ = [
 	"search_brave_web",
 	"search_multi_engine_web",
 	"extract_text_content",
+	"DOCUMENTS_AVAILABLE",
+	"DOCUMENTS_ERROR",
 	"ingest_download_manifest",
 	"ingest_local_document",
 	"parse_pdf_to_record",

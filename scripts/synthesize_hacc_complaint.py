@@ -686,6 +686,26 @@ def _inject_exhibit_references(package: Dict[str, Any]) -> None:
     package["causes_of_action"] = causes
 
 
+def _claim_selection_summary(causes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    summary: List[Dict[str, Any]] = []
+    for cause in causes:
+        summary.append(
+            {
+                "title": str(cause.get("title") or ""),
+                "selection_tags": [str(item) for item in list(cause.get("selection_tags") or []) if str(item)],
+                "selected_exhibits": [
+                    {
+                        "exhibit_id": str(item.get("exhibit_id") or ""),
+                        "label": str(item.get("label") or ""),
+                    }
+                    for item in list(cause.get("selected_exhibits") or [])
+                ],
+                "selection_rationale": str(cause.get("selection_rationale") or ""),
+            }
+        )
+    return summary
+
+
 def _render_grouped_lines(lines: List[str], section_kind: str, exhibit_index: Dict[str, str]) -> List[str]:
     rendered: List[str] = []
     grouped = _group_lines_by_tag(lines)
@@ -753,6 +773,98 @@ def _evidence_lines(seed: Dict[str, Any], limit: int = 5) -> List[str]:
         if source_path:
             line += f" ({source_path})"
         lines.append(line)
+    return lines
+
+
+def _load_optional_json(path: Path | None) -> Dict[str, Any]:
+    if path is None or not path.exists() or not path.is_file():
+        return {}
+    return _load_json(path)
+
+
+def _auto_discover_grounded_artifacts(results_path: Path) -> Dict[str, Path]:
+    candidates = []
+    parent = results_path.parent
+    candidates.append(parent)
+    if parent.name == "adversarial":
+        candidates.append(parent.parent)
+
+    discovered: Dict[str, Path] = {}
+    for base in candidates:
+        grounding = base / "grounding_bundle.json"
+        upload = base / "evidence_upload_report.json"
+        if grounding.exists():
+            discovered["grounding_bundle"] = grounding
+        if upload.exists():
+            discovered["evidence_upload_report"] = upload
+    return discovered
+
+
+def _grounded_supporting_evidence(
+    grounding_bundle: Dict[str, Any],
+    upload_report: Dict[str, Any],
+    *,
+    limit: int = 5,
+) -> List[str]:
+    lines: List[str] = []
+    for packet in list(grounding_bundle.get("mediator_evidence_packets") or [])[:limit]:
+        label = str(packet.get("document_label") or packet.get("filename") or "Mediator evidence packet")
+        relative_path = str(packet.get("relative_path") or packet.get("filename") or "").strip()
+        source_path = str(packet.get("source_path") or "").strip()
+        line = f"{label}: mediator evidence packet prepared for grounded intake"
+        if relative_path:
+            line += f" ({relative_path})"
+        elif source_path:
+            line += f" ({source_path})"
+        lines.append(line)
+
+    for upload in list(upload_report.get("uploads") or [])[:limit]:
+        title = str(upload.get("title") or upload.get("relative_path") or "Uploaded evidence")
+        relative_path = str(upload.get("relative_path") or "").strip()
+        result = dict(upload.get("result") or {})
+        claim_type = str(result.get("claim_type") or "").strip()
+        line = f"{title}: uploaded into mediator evidence store"
+        if claim_type:
+            line += f" for {claim_type}"
+        if relative_path:
+            line += f" ({relative_path})"
+        lines.append(line)
+
+    deduped: List[str] = []
+    seen = set()
+    for line in lines:
+        normalized = re.sub(r"[^a-z0-9]+", " ", line.lower()).strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(line)
+        if len(deduped) >= limit:
+            break
+    return deduped
+
+
+def _grounded_summary_lines(
+    grounding_bundle: Dict[str, Any],
+    upload_report: Dict[str, Any],
+) -> List[str]:
+    lines: List[str] = []
+    query = str(grounding_bundle.get("query") or "").strip()
+    claim_type = str(grounding_bundle.get("claim_type") or "").strip()
+    if query:
+        lines.append(f"Grounding query: {query}")
+    if claim_type:
+        lines.append(f"Grounding claim type: {claim_type}")
+    upload_count = int(upload_report.get("upload_count") or 0)
+    if upload_count:
+        lines.append(f"Mediator preload / upload count: {upload_count}")
+    support_summary = dict(upload_report.get("support_summary") or {})
+    total_links = support_summary.get("total_links")
+    if total_links not in (None, ""):
+        lines.append(f"Claim-support links recorded: {total_links}")
+    synthetic_prompts = dict(grounding_bundle.get("synthetic_prompts") or {})
+    complaint_chatbot_prompt = str(synthetic_prompts.get("complaint_chatbot_prompt") or "").strip()
+    if complaint_chatbot_prompt:
+        lines.append(complaint_chatbot_prompt)
     return lines
 
 
@@ -1272,13 +1384,32 @@ def _render_markdown(package: Dict[str, Any]) -> str:
     lines.extend([f"- Theory Labels: {', '.join(theory_labels) if theory_labels else 'None identified'}"])
     lines.extend([f"- Protected Bases: {', '.join(protected_bases) if protected_bases else 'None identified'}"])
     lines.extend([f"- Authority Hints: {', '.join(authority_hints) if authority_hints else 'None identified'}"])
+    grounded_summary = list(package.get("grounded_evidence_summary") or [])
+    if grounded_summary:
+        lines.extend([
+            "",
+            "## Grounded Evidence Run",
+            "",
+        ])
+        lines.extend(f"- {item}" for item in grounded_summary)
     ordered_exhibits = _ordered_exhibit_index(all_exhibit_lines)
+    claim_selection_summary = list(package.get("claim_selection_summary") or [])
     lines.extend([
         "",
         "## Exhibit Index",
         "",
     ])
     lines.extend(f"- {exhibit_id}: {label}" for exhibit_id, label in ordered_exhibits)
+    lines.extend([
+        "",
+        "## Claim Selection Summary",
+        "",
+    ])
+    for item in claim_selection_summary:
+        exhibits = [f"{entry.get('exhibit_id')}: {entry.get('label')}" for entry in list(item.get("selected_exhibits") or [])]
+        tags = ", ".join(list(item.get("selection_tags") or [])) or "none"
+        rationale = str(item.get("selection_rationale") or "none")
+        lines.append(f"- {item.get('title', '')}: tags={tags}; exhibits={'; '.join(exhibits) if exhibits else 'none'}; rationale={rationale}")
     lines.extend([
         "",
     ])
@@ -1338,7 +1469,7 @@ def _render_markdown(package: Dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def main() -> int:
+def main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Synthesize a draft complaint package from HACC adversarial matrix or results artifacts."
     )
@@ -1364,7 +1495,10 @@ def main() -> int:
         default=None,
         help="Directory for outputs; defaults next to the source artifact.",
     )
-    args = parser.parse_args()
+    parser.add_argument("--grounded-run-dir", default=None, help="Optional grounded pipeline run directory containing grounding_bundle.json and evidence_upload_report.json.")
+    parser.add_argument("--grounding-bundle", default=None, help="Optional explicit grounding_bundle.json path.")
+    parser.add_argument("--evidence-upload-report", default=None, help="Optional explicit evidence_upload_report.json path.")
+    args = parser.parse_args(argv)
 
     matrix_payload = {}
     selection_source = "results_json"
@@ -1386,6 +1520,20 @@ def main() -> int:
 
     results_path = Path(args.results_json).resolve()
     results_payload = _load_json(results_path)
+    grounded_run_dir = Path(args.grounded_run_dir).resolve() if args.grounded_run_dir else None
+    auto_discovered = _auto_discover_grounded_artifacts(results_path if grounded_run_dir is None else grounded_run_dir / "adversarial" / "adversarial_results.json")
+    grounding_bundle_path = (
+        Path(args.grounding_bundle).resolve()
+        if args.grounding_bundle
+        else (grounded_run_dir / "grounding_bundle.json" if grounded_run_dir else auto_discovered.get("grounding_bundle"))
+    )
+    evidence_upload_report_path = (
+        Path(args.evidence_upload_report).resolve()
+        if args.evidence_upload_report
+        else (grounded_run_dir / "evidence_upload_report.json" if grounded_run_dir else auto_discovered.get("evidence_upload_report"))
+    )
+    grounding_bundle = _load_optional_json(grounding_bundle_path)
+    evidence_upload_report = _load_optional_json(evidence_upload_report_path)
     best_session = _pick_best_session(results_payload, preset=args.preset)
     seed = dict(best_session.get("seed_complaint") or {})
     key_facts = dict(seed.get("key_facts") or {})
@@ -1411,16 +1559,24 @@ def main() -> int:
         "policy_basis": _policy_basis(seed),
         "causes_of_action": _causes_of_action(seed, best_session, args.filing_forum),
         "anchor_passages": _anchor_passage_lines(seed),
-        "supporting_evidence": _evidence_lines(seed),
+        "supporting_evidence": _dedupe_sentences(
+            _evidence_lines(seed) + _grounded_supporting_evidence(grounding_bundle, evidence_upload_report),
+            limit=8,
+        ),
         "proposed_allegations": _proposed_allegations(seed, best_session, args.filing_forum),
         "requested_relief": _requested_relief_for_forum(args.filing_forum),
+        "grounded_evidence_summary": _grounded_summary_lines(grounding_bundle, evidence_upload_report),
         "source_artifacts": {
             "results_json": str(results_path),
             "matrix_summary": str(Path(args.matrix_summary).resolve()) if args.matrix_summary else None,
             "selection_source": selection_source,
+            "grounded_run_dir": str(grounded_run_dir) if grounded_run_dir else None,
+            "grounding_bundle_json": str(grounding_bundle_path) if grounding_bundle_path else None,
+            "evidence_upload_report_json": str(evidence_upload_report_path) if evidence_upload_report_path else None,
         },
     }
     _inject_exhibit_references(package)
+    package["claim_selection_summary"] = _claim_selection_summary(list(package.get("causes_of_action") or []))
 
     output_dir = Path(args.output_dir).resolve() if args.output_dir else results_path.parent / "complaint_synthesis"
     output_dir.mkdir(parents=True, exist_ok=True)

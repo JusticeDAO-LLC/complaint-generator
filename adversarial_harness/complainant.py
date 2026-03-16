@@ -136,6 +136,9 @@ class ComplaintContext:
     dynamic_evidence_summary: str = ""
     dynamic_anchor_passages: List[Dict[str, Any]] = field(default_factory=list)
     dynamic_anchor_sections: List[str] = field(default_factory=list)
+    repository_evidence_candidates: List[Dict[str, Any]] = field(default_factory=list)
+    synthetic_prompts: Dict[str, Any] = field(default_factory=dict)
+    complainant_story_facts: List[str] = field(default_factory=list)
 
 
 class Complainant:
@@ -181,6 +184,9 @@ class Complainant:
             context_depth=int(profile.get("context_depth", 1)),
             evidence_items=evidence_items,
             evidence_summary=evidence_summary,
+            repository_evidence_candidates=list(key_facts.get("repository_evidence_candidates") or []),
+            synthetic_prompts=dict(key_facts.get("synthetic_prompts") or {}),
+            complainant_story_facts=list(key_facts.get("complainant_story_facts") or []),
         )
     
     def set_context(self, context: ComplaintContext):
@@ -251,10 +257,19 @@ class Complainant:
         """Build prompt for generating initial complaint."""
         instructions = "\n".join([f"- {x}" for x in (self.personality_profile.get("instructions") or [])])
         evidence_text = self._format_seed_evidence(seed_data)
+        grounded_facts_text = self._format_grounded_case_digest(
+            key_facts=seed_data.get("key_facts") if isinstance(seed_data.get("key_facts"), dict) else {},
+            story_facts=((seed_data.get("key_facts") or {}).get("complainant_story_facts") if isinstance(seed_data.get("key_facts"), dict) else None),
+            repository_candidates=((seed_data.get("key_facts") or {}).get("repository_evidence_candidates") if isinstance(seed_data.get("key_facts"), dict) else None),
+            synthetic_prompts=((seed_data.get("key_facts") or {}).get("synthetic_prompts") if isinstance(seed_data.get("key_facts"), dict) else None),
+        )
         prompt = f"""You are a person filing a complaint. Based on the following situation, write a detailed but natural complaint as if you were experiencing this issue.
 
 Situation:
 {json.dumps(seed_data, indent=2)}
+
+Grounded complainant facts:
+{grounded_facts_text}
 
 Evidence grounding:
 {evidence_text}
@@ -269,7 +284,9 @@ Generate a complaint that:
 2. Expresses how this affected you
 3. Mentions key facts but doesn't over-explain
 4. Sounds like a real person telling their story
-5. When evidence is provided, use it as grounding without sounding like a brief
+5. Prefer the grounded complainant facts and anchor passages over generic filler
+6. When evidence is provided, use it as grounding without sounding like a brief
+7. If a detail is not shown directly in the evidence, phrase it as your understanding or concern rather than as certain fact
 
 Complaint:"""
         return prompt
@@ -288,11 +305,20 @@ Complaint:"""
 
         instructions = "\n".join([f"- {x}" for x in (self.personality_profile.get("instructions") or [])])
         evidence_text = self._format_context_evidence()
+        grounded_facts_text = self._format_grounded_case_digest(
+            key_facts=self.context.key_facts if isinstance(self.context.key_facts, dict) else {},
+            story_facts=self.context.complainant_story_facts,
+            repository_candidates=self.context.repository_evidence_candidates,
+            synthetic_prompts=self.context.synthetic_prompts,
+        )
         
         prompt = f"""You are a complainant in a legal matter. You are {cooperation_desc} and your personality is {self.personality}.
 
 Your situation involves:
 {json.dumps(self.context.key_facts, indent=2)}
+
+Grounded complainant facts:
+{grounded_facts_text}
 
 Evidence you can draw from:
 {evidence_text}
@@ -308,6 +334,7 @@ Respond naturally as this person would. Your response should:
 3. Be honest but not overly detailed unless asked
 4. Sound like a real person, not a legal document
 5. Use the evidence when it supports the answer, and say when something is only an inference
+6. Prefer grounded complainant facts, anchor passages, and repository evidence when answering
 
 Behavioral constraints:
 {instructions}
@@ -387,6 +414,38 @@ Response:"""
                 line += f" (source: {source_path})"
             lines.append(line)
         return "\n".join(lines) if lines else "No external evidence was provided."
+
+    def _format_grounded_case_digest(
+        self,
+        *,
+        key_facts: Dict[str, Any],
+        story_facts: List[str] | None,
+        repository_candidates: List[Dict[str, Any]] | None,
+        synthetic_prompts: Dict[str, Any] | None,
+    ) -> str:
+        lines: List[str] = []
+        incident_summary = str((key_facts or {}).get("incident_summary") or "").strip()
+        if incident_summary:
+            lines.append(f"Incident summary: {incident_summary}")
+
+        for index, fact in enumerate(list(story_facts or [])[:5], start=1):
+            cleaned = str(fact).strip()
+            if cleaned:
+                lines.append(f"Fact {index}: {cleaned}")
+
+        for index, candidate in enumerate(list(repository_candidates or [])[:2], start=1):
+            title = str(candidate.get("title") or candidate.get("relative_path") or f"candidate_{index}").strip()
+            snippet = str(candidate.get("snippet") or "").strip()
+            line = f"Repository evidence {index}: {title}"
+            if snippet:
+                line += f" - {snippet}"
+            lines.append(line)
+
+        synthetic_prompt_text = str((synthetic_prompts or {}).get("complaint_chatbot_prompt") or "").strip()
+        if synthetic_prompt_text:
+            lines.append(f"Prompt guidance: {synthetic_prompt_text}")
+
+        return "\n".join(lines) if lines else "No grounded case digest was provided."
 
     def _refresh_dynamic_evidence(self, question: str) -> None:
         if not self.context:
