@@ -985,6 +985,24 @@
                     }),
                 ].map((value) => `<li>${escapeHtml(value)}</li>`).join('')}</ul>`
                 : '';
+            const manualReviewLinks = Array.from(new Set(
+                manualReviewBlockers
+                    .map((update) => String(update && update.claim_type || '').trim())
+                    .filter(Boolean)
+            )).map((claimType) => {
+                const reviewUrl = appendAlignmentTaskViewToReviewUrl(
+                    buildTraceClaimReviewUrl(claimType, traceUserId),
+                    'manual_review',
+                    'manual_review_first',
+                );
+                if (!reviewUrl) {
+                    return '';
+                }
+                return `<a class="inline-link" href="${escapeHtml(reviewUrl)}">Open ${escapeHtml(humanizeKey(claimType))} Manual Review</a>`;
+            }).filter(Boolean);
+            const manualReviewLinkRow = manualReviewLinks.length
+                ? `<div class="inline-link-row">${manualReviewLinks.join('')}</div>`
+                : '';
             const pendingReviewLinks = Array.from(new Set(
                 pendingReviewItems
                     .map((update) => String(update && update.claim_type || '').trim())
@@ -1053,7 +1071,7 @@
                     return `<a class="inline-link" href="${escapeHtml(reviewUrl)}">Open ${escapeHtml(sectionLabel)} Intake Section Review</a>`;
                 }).filter(Boolean),
             ];
-            document.getElementById('traceEvidenceLinks').innerHTML = `${pendingReviewLinkRow}${evidenceLinks.join('')}`;
+            document.getElementById('traceEvidenceLinks').innerHTML = `${manualReviewLinkRow}${pendingReviewLinkRow}${evidenceLinks.join('')}`;
         }
 
         async function loadTrace(cid) {

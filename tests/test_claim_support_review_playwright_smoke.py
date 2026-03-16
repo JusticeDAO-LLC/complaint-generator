@@ -398,14 +398,81 @@ def _build_hook_backed_browser_mediator(db_path: str):
     }
     mediator.get_claim_support_facts.side_effect = lambda **kwargs: []
     mediator.get_recent_claim_follow_up_execution.return_value = {
-        "claims": {"retaliation": []}
+        "claims": {
+            "retaliation": [
+                {
+                    "execution_id": 44,
+                    "claim_type": "retaliation",
+                    "claim_element_id": "retaliation:3",
+                    "claim_element_text": "Causal connection",
+                    "support_kind": "authority",
+                    "query_text": '"retaliation" "causal connection" statute',
+                    "status": "executed",
+                    "timestamp": "2026-03-12T12:30:00",
+                    "execution_mode": "retrieve_support",
+                    "follow_up_focus": "standard_gap_closure",
+                    "query_strategy": "standard_gap_targeted",
+                    "primary_missing_fact": "Manager knowledge",
+                    "missing_fact_bundle": ["Manager knowledge", "Event sequence"],
+                    "satisfied_fact_bundle": ["Protected activity"],
+                    "resolution_applied": "manual_review_resolved",
+                    "source_family": "legal_authority",
+                    "record_scope": "legal_authority",
+                    "artifact_family": "legal_authority_reference",
+                    "corpus_family": "legal_authority",
+                    "content_origin": "authority_reference_fallback",
+                    "selected_search_program_type": "element_definition_search",
+                    "selected_search_program_bias": "uncertain",
+                    "selected_search_program_rule_bias": "procedural_prerequisite",
+                }
+            ]
+        }
     }
     mediator.get_claim_follow_up_plan.side_effect = lambda **kwargs: {
         "claims": {
             "retaliation": {
                 "claim_type": "retaliation",
                 "task_count": 3,
-                "tasks": [],
+                "tasks": [
+                    {
+                        "claim_element_id": "retaliation:3",
+                        "claim_element": "Causal connection",
+                        "status": "missing",
+                        "priority": "high",
+                        "recommended_action": "collect_initial_support",
+                        "follow_up_focus": "standard_gap_closure",
+                        "query_strategy": "standard_gap_targeted",
+                        "primary_missing_fact": "Manager knowledge",
+                        "missing_fact_bundle": ["Manager knowledge", "Event sequence"],
+                        "satisfied_fact_bundle": ["Protected activity"],
+                        "missing_support_kinds": ["authority"],
+                        "blocked_by_cooldown": False,
+                        "should_suppress_retrieval": False,
+                        "resolution_applied": "manual_review_resolved",
+                        "authority_search_program_summary": {
+                            "program_count": 1,
+                            "primary_program_type": "element_definition_search",
+                            "primary_program_bias": "uncertain",
+                            "primary_program_rule_bias": "procedural_prerequisite",
+                        },
+                        "graph_support": {
+                            "summary": {
+                                "support_by_kind": {
+                                    "authority": 1,
+                                },
+                            },
+                            "results": [
+                                {
+                                    "source_family": "legal_authority",
+                                    "record_scope": "legal_authority",
+                                    "artifact_family": "legal_authority_reference",
+                                    "corpus_family": "legal_authority",
+                                    "content_origin": "authority_reference_fallback",
+                                }
+                            ],
+                        },
+                    }
+                ],
             }
         }
     }
@@ -783,6 +850,11 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
                     .filter((node) => node.textContent.includes('Intake Section Review'))
                     .map((node) => ({ text: node.textContent.trim(), href: node.getAttribute('href') || '' }))"""
             )
+            manual_review_links = page.evaluate(
+                """() => Array.from(document.querySelectorAll('#previewRoot a.inline-link'))
+                    .filter((node) => node.textContent.includes('Manual Review'))
+                    .map((node) => ({ text: node.textContent.trim(), href: node.getAttribute('href') || '' }))"""
+            )
             pending_review_links = page.evaluate(
                 """() => Array.from(document.querySelectorAll('#previewRoot a.inline-link'))
                     .filter((node) => node.textContent.includes('Pending Review'))
@@ -798,6 +870,10 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
                 "text": "Open Claims For Relief Intake Section Review",
                 "href": "/claim-support-review?section=claims_for_relief&follow_up_support_kind=authority&alignment_task_update_filter=manual_review&alignment_task_update_sort=manual_review_first",
             } in section_links
+            assert {
+                "text": "Open Retaliation Manual Review",
+                "href": "/claim-support-review?claim_type=retaliation&alignment_task_update_filter=manual_review&alignment_task_update_sort=manual_review_first",
+            } in manual_review_links
             assert {
                 "text": "Open Retaliation Pending Review",
                 "href": "/claim-support-review?claim_type=retaliation&alignment_task_update_filter=pending_review&alignment_task_update_sort=pending_review_first",
@@ -849,6 +925,8 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 manual_review_list = page.locator("#alignment-task-manual-review-list").inner_text()
                 alignment_updates = page.locator("#alignment-task-update-list").inner_text()
                 alignment_update_filter_summary = page.locator("#alignment-task-update-filter-summary").inner_text()
+                follow_up_tasks = page.locator("#task-list").inner_text()
+                follow_up_history = page.locator("#history-list").inner_text()
 
                 assert "Cross-phase element alignment for retaliation" in alignment_summary
                 assert "aligned retaliation:1: supported" in alignment_summary
@@ -877,6 +955,18 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "sort: newest_first" in alignment_update_filter_summary
                 assert "visible updates: 2" in alignment_update_filter_summary
                 assert alignment_updates.index("evidence event: 2") < alignment_updates.index("evidence event: 1")
+                assert "Causal connection" in follow_up_tasks
+                assert "primary gap Manager knowledge" in follow_up_tasks
+                assert "gap: Manager knowledge" in follow_up_tasks
+                assert "gap: Event sequence" in follow_up_tasks
+                assert "covered facts 1" in follow_up_tasks
+                assert "authority program element_definition_search" in follow_up_tasks
+                assert "Causal connection" in follow_up_history
+                assert "primary gap: Manager knowledge" in follow_up_history
+                assert "gap: Manager knowledge" in follow_up_history
+                assert "gap: Event sequence" in follow_up_history
+                assert "covered facts: 1" in follow_up_history
+                assert "program: element_definition_search" in follow_up_history
 
                 page.locator("#alignment-task-manual-review-list").get_by_text("Load Into Resolution Form").click()
 
@@ -1263,6 +1353,11 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
                     .filter((node) => node.textContent.includes('Intake Section Review'))
                     .map((node) => ({ text: node.textContent.trim(), href: node.getAttribute('href') || '' }))"""
             )
+            manual_review_links = page.evaluate(
+                """() => Array.from(document.querySelectorAll('#traceEvidenceLinks a.inline-link'))
+                    .filter((node) => node.textContent.includes('Manual Review'))
+                    .map((node) => ({ text: node.textContent.trim(), href: node.getAttribute('href') || '' }))"""
+            )
             pending_review_links = page.evaluate(
                 """() => Array.from(document.querySelectorAll('#traceEvidenceLinks a.inline-link'))
                     .filter((node) => node.textContent.includes('Pending Review'))
@@ -1278,6 +1373,10 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
                 "text": "Open Claims For Relief Intake Section Review",
                 "href": "/claim-support-review?user_id=trace-smoke-user&section=claims_for_relief&follow_up_support_kind=authority&alignment_task_update_filter=manual_review&alignment_task_update_sort=manual_review_first",
             } in section_links
+            assert {
+                "text": "Open Retaliation Manual Review",
+                "href": "/claim-support-review?user_id=trace-smoke-user&claim_type=retaliation&alignment_task_update_filter=manual_review&alignment_task_update_sort=manual_review_first",
+            } in manual_review_links
             assert {
                 "text": "Open Retaliation Pending Review",
                 "href": "/claim-support-review?user_id=trace-smoke-user&claim_type=retaliation&alignment_task_update_filter=pending_review&alignment_task_update_sort=pending_review_first",
@@ -1582,6 +1681,155 @@ def test_document_builder_pending_review_link_click_preserves_queue_focus_on_rev
             os.unlink(db_path)
 
 
+def test_document_builder_manual_review_link_click_preserves_queue_focus_on_review_page():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    payload = {
+        "generated_at": "2026-03-15T20:00:00+00:00",
+        "draft": {
+            "court_header": "IN THE UNITED STATES DISTRICT COURT",
+            "case_caption": {
+                "plaintiffs": ["Jane Doe"],
+                "defendants": ["Acme Corporation"],
+            },
+            "summary_of_facts": ["Plaintiff reported discrimination to HR."],
+            "factual_allegation_paragraphs": ["1. Plaintiff reported discrimination to HR."],
+            "legal_standards": ["Title VII prohibits retaliation."],
+            "claims_for_relief": [],
+            "requested_relief": ["Compensatory damages."],
+            "draft_text": "Sample draft text.",
+            "exhibits": [],
+        },
+        "drafting_readiness": {"sections": {}, "claims": [], "warnings": []},
+        "filing_checklist": [],
+        "review_links": {},
+        "document_optimization": {
+            "status": "optimized",
+            "method": "actor_mediator_critic_optimizer",
+            "optimizer_backend": "upstream_agentic",
+            "initial_score": 0.4,
+            "final_score": 0.7,
+            "accepted_iterations": 1,
+            "iteration_count": 1,
+            "optimized_sections": ["factual_allegations"],
+            "trace_storage": {"status": "available", "cid": "bafy-test", "size": 123, "pinned": True},
+            "intake_status": {
+                "current_phase": "intake",
+                "score": 0.5,
+                "remaining_gap_count": 1,
+                "contradiction_count": 0,
+                "ready_to_advance": False,
+                "blockers": ["collect_missing_support"],
+                "contradictions": [],
+            },
+            "intake_constraints": [],
+            "intake_case_summary": {
+                "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation"}],
+                "intake_sections": {
+                    "proof_leads": {"status": "partial", "missing_items": ["documents"]},
+                    "claims_for_relief": {"status": "partial", "missing_items": ["authority"]},
+                },
+                "canonical_fact_summary": {"count": 1, "facts": [{"fact_id": "fact_001"}]},
+                "proof_lead_summary": {"count": 1, "proof_leads": [{"lead_id": "lead_001"}]},
+                "question_candidate_summary": {
+                    "count": 2,
+                    "question_goal_counts": {
+                        "identify_supporting_proof": 1,
+                        "establish_element": 1,
+                    },
+                    "phase1_section_counts": {
+                        "proof_leads": 1,
+                        "claims_for_relief": 1,
+                    },
+                    "blocking_level_counts": {"blocking": 1, "non_blocking": 1},
+                },
+                "claim_support_packet_summary": {
+                    "claim_count": 1,
+                    "element_count": 2,
+                    "status_counts": {"unsupported": 2},
+                    "recommended_actions": ["collect_missing_support_kind"],
+                },
+                "alignment_task_update_history": [
+                    {
+                        "task_id": "retaliation:claims_for_relief:resolve_support_conflicts",
+                        "claim_type": "retaliation",
+                        "claim_element_id": "retaliation:2",
+                        "claim_element_label": "Claims For Relief",
+                        "action": "resolve_support_conflicts",
+                        "current_support_status": "contradicted",
+                        "resolution_status": "needs_manual_review",
+                        "status": "active",
+                        "evidence_artifact_id": "artifact-conflict",
+                        "evidence_sequence": 2,
+                    }
+                ],
+            },
+            "packet_projection": {
+                "title": "Complaint Packet",
+                "section_presence": {"factual_allegations": True},
+                "has_affidavit": False,
+                "has_certificate_of_service": False,
+            },
+            "section_history": [
+                {
+                    "iteration": 1,
+                    "focus_section": "factual_allegations",
+                    "accepted": True,
+                    "overall_score": 0.7,
+                }
+            ],
+            "initial_review": {},
+            "final_review": {},
+            "router_status": {},
+            "upstream_optimizer": {},
+        },
+    }
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for document manual-review click-through coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+
+        app = _build_document_review_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(f"{base_url}/document")
+                page.evaluate("payload => window.renderPreview(payload)", payload)
+                page.wait_for_function(
+                    "() => Array.from(document.querySelectorAll('#previewRoot a.inline-link')).some((node) => node.textContent.includes('Manual Review'))"
+                )
+
+                page.click("text=Open Retaliation Manual Review")
+                page.wait_for_url("**/claim-support-review?**")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                assert "claim_type=retaliation" in page.url
+                assert "alignment_task_update_filter=manual_review" in page.url
+                assert "alignment_task_update_sort=manual_review_first" in page.url
+                assert page.locator("#claim-type").input_value() == "retaliation"
+                assert page.locator("#alignment-task-update-filter").input_value() == "manual_review"
+                assert page.locator("#alignment-task-update-sort").input_value() == "manual_review_first"
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
 def test_optimization_trace_pending_review_link_click_preserves_queue_focus_on_review_page():
     if not PLAYWRIGHT_AVAILABLE:
         pytest.skip("Playwright not available")
@@ -1696,6 +1944,127 @@ def test_optimization_trace_pending_review_link_click_preserves_queue_focus_on_r
                 assert page.locator("#claim-type").input_value() == "retaliation"
                 assert page.locator("#alignment-task-update-filter").input_value() == "pending_review"
                 assert page.locator("#alignment-task-update-sort").input_value() == "pending_review_first"
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+def test_optimization_trace_manual_review_link_click_preserves_queue_focus_on_review_page():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    payload = {
+        "cid": "bafy-trace-smoke",
+        "size": 321,
+        "trace": {
+            "user_id": "browser-smoke-text-link",
+            "intake_status": {
+                "current_phase": "intake",
+                "score": 0.52,
+                "contradiction_count": 0,
+                "blockers": ["collect_missing_support"],
+                "contradictions": [],
+            },
+            "intake_constraints": [],
+            "intake_case_summary": {
+                "candidate_claims": [
+                    {"claim_type": "retaliation", "label": "Retaliation"},
+                ],
+                "intake_sections": {
+                    "proof_leads": {"status": "partial", "missing_items": ["documents"]},
+                    "claims_for_relief": {"status": "partial", "missing_items": ["authority"]},
+                },
+                "canonical_fact_summary": {"count": 1, "facts": [{"fact_id": "fact_001"}]},
+                "proof_lead_summary": {"count": 1, "proof_leads": [{"lead_id": "lead_001"}]},
+                "question_candidate_summary": {
+                    "count": 2,
+                    "question_goal_counts": {
+                        "identify_supporting_proof": 1,
+                        "establish_element": 1,
+                    },
+                    "phase1_section_counts": {
+                        "proof_leads": 1,
+                        "claims_for_relief": 1,
+                    },
+                    "blocking_level_counts": {
+                        "blocking": 1,
+                        "non_blocking": 1,
+                    },
+                },
+                "claim_support_packet_summary": {
+                    "claim_count": 1,
+                    "element_count": 2,
+                    "status_counts": {"unsupported": 2},
+                    "recommended_actions": ["collect_missing_support_kind"],
+                },
+                "alignment_task_update_history": [
+                    {
+                        "task_id": "retaliation:claims_for_relief:resolve_support_conflicts",
+                        "claim_type": "retaliation",
+                        "claim_element_id": "retaliation:2",
+                        "claim_element_label": "Claims For Relief",
+                        "action": "resolve_support_conflicts",
+                        "current_support_status": "contradicted",
+                        "resolution_status": "needs_manual_review",
+                        "status": "active",
+                        "evidence_artifact_id": "artifact-conflict",
+                        "evidence_sequence": 2,
+                    }
+                ],
+            },
+            "iterations": [
+                {
+                    "iteration": 1,
+                    "focus_section": "factual_allegations",
+                    "accepted": True,
+                    "critic": {"overall_score": 0.73},
+                }
+            ],
+            "initial_review": {"overall_score": 0.41},
+            "final_review": {"overall_score": 0.73, "recommended_focus": "claims_for_relief"},
+        },
+    }
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for trace manual-review click-through coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+
+        app = _build_document_review_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(f"{base_url}/document/optimization-trace")
+                page.evaluate("payload => window.renderTrace(payload)", payload)
+                page.wait_for_function(
+                    "() => Array.from(document.querySelectorAll('#traceEvidenceLinks a.inline-link')).some((node) => node.textContent.includes('Manual Review'))"
+                )
+
+                page.click("text=Open Retaliation Manual Review")
+                page.wait_for_url("**/claim-support-review?**")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                assert "user_id=browser-smoke-text-link" in page.url
+                assert "claim_type=retaliation" in page.url
+                assert "alignment_task_update_filter=manual_review" in page.url
+                assert "alignment_task_update_sort=manual_review_first" in page.url
+                assert page.locator("#claim-type").input_value() == "retaliation"
+                assert page.locator("#alignment-task-update-filter").input_value() == "manual_review"
+                assert page.locator("#alignment-task-update-sort").input_value() == "manual_review_first"
 
                 browser.close()
     finally:
