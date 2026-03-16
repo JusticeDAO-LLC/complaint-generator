@@ -1042,6 +1042,7 @@
 
                 <div class="focus-block" data-section-focus-target="claims_for_relief requested_relief">
                     <h2 style="margin-top: 18px;">Follow-Up Plan</h2>
+                    <div class="chip-row" id="task-summary-chips"></div>
                     <div class="task-list" id="task-list"></div>
                 </div>
             </div>
@@ -2247,6 +2248,24 @@
             return visibleItems.join('');
         }
 
+        function buildCountSummaryLabel(title, countMap, maxItems = 2) {
+            const entries = Object.entries(countMap || {}).filter(([, count]) => Number(count || 0) > 0);
+            if (!entries.length) {
+                return '';
+            }
+            entries.sort((left, right) => {
+                const countDifference = Number(right[1] || 0) - Number(left[1] || 0);
+                if (countDifference !== 0) {
+                    return countDifference;
+                }
+                return String(left[0] || '').localeCompare(String(right[0] || ''));
+            });
+            const visibleEntries = entries.slice(0, maxItems).map(([label, count]) => `${label}=${count}`);
+            const moreCount = entries.length - maxItems;
+            const suffix = moreCount > 0 ? ` (+${moreCount} more)` : '';
+            return `${title}: ${visibleEntries.join(', ')}${suffix}`;
+        }
+
         async function copyPacketUrl(url, label) {
             if (!url) {
                 throw new Error('No packet URL available to copy.');
@@ -2824,8 +2843,23 @@
         }
 
         function renderTasks(plan, planSummary) {
+            const summaryChips = document.getElementById('task-summary-chips');
             const container = document.getElementById('task-list');
             const tasks = (plan && plan.tasks) || [];
+            const summaryLabels = [];
+            if (planSummary) {
+                summaryLabels.push(`Tasks: ${planSummary.task_count || 0}`);
+                summaryLabels.push(`Suppressed: ${planSummary.suppressed_task_count || 0}`);
+                const primaryGapLabel = buildCountSummaryLabel('Primary gaps', planSummary.primary_missing_fact_counts || {});
+                const missingGapLabel = buildCountSummaryLabel('Gap coverage', planSummary.missing_fact_bundle_counts || {});
+                const coveredFactLabel = buildCountSummaryLabel('Covered facts', planSummary.satisfied_fact_bundle_counts || {});
+                if (primaryGapLabel) summaryLabels.push(primaryGapLabel);
+                if (missingGapLabel) summaryLabels.push(missingGapLabel);
+                if (coveredFactLabel) summaryLabels.push(coveredFactLabel);
+            }
+            summaryChips.innerHTML = summaryLabels.length
+                ? summaryLabels.map((label) => `<span class="chip">${label}</span>`).join('')
+                : '<span class="chip">No follow-up plan summary available.</span>';
             if (!tasks.length) {
                 const summaryText = planSummary
                     ? `task_count=${planSummary.task_count || 0} suppressed=${planSummary.suppressed_task_count || 0}`
@@ -2914,6 +2948,12 @@
                 if (historySourceEntries.length) {
                     summaryLabels.push(`History source context: ${historySourceEntries.map(([label, count]) => `${label}=${count}`).join(', ')}`);
                 }
+                const primaryGapLabel = buildCountSummaryLabel('Primary gaps', historySummary.primary_missing_fact_counts || {});
+                const missingGapLabel = buildCountSummaryLabel('Gap coverage', historySummary.missing_fact_bundle_counts || {});
+                const coveredFactLabel = buildCountSummaryLabel('Covered facts', historySummary.satisfied_fact_bundle_counts || {});
+                if (primaryGapLabel) summaryLabels.push(primaryGapLabel);
+                if (missingGapLabel) summaryLabels.push(missingGapLabel);
+                if (coveredFactLabel) summaryLabels.push(coveredFactLabel);
             }
             summaryChips.innerHTML = summaryLabels.length
                 ? summaryLabels.map((label) => `<span class="chip">${label}</span>`).join('')

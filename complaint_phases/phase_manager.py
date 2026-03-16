@@ -14,6 +14,14 @@ logger = logging.getLogger(__name__)
 _INTAKE_GAPS_THRESHOLD = 3
 _EVIDENCE_GAP_RATIO_THRESHOLD = 0.3
 _DENOISING_MAX_ITERATIONS = 20
+_EVIDENCE_REVIEWABLE_ESCALATION_STATUSES = {
+    'awaiting_complainant_record',
+    'awaiting_third_party_record',
+    'awaiting_testimony',
+    'needs_manual_legal_review',
+    'insufficient_support_after_search',
+    'needs_manual_review',
+}
 
 
 def _utc_now_isoformat() -> str:
@@ -331,6 +339,19 @@ class PhaseManager:
         if not isinstance(packets, dict):
             packets = {}
 
+        alignment_tasks = data.get('alignment_evidence_tasks')
+        task_resolution_by_element: Dict[tuple[str, str], str] = {}
+        for task in alignment_tasks if isinstance(alignment_tasks, list) else []:
+            if not isinstance(task, dict):
+                continue
+            claim_type = str(task.get('claim_type') or '').strip().lower()
+            element_id = str(task.get('claim_element_id') or '').strip().lower()
+            if not claim_type or not element_id:
+                continue
+            task_resolution_by_element[(claim_type, element_id)] = self._normalize_evidence_escalation_status(
+                task.get('resolution_status')
+            )
+
         total_claims = 0
         total_elements = 0
         explicit_status_elements = 0
@@ -340,11 +361,14 @@ class PhaseManager:
         blocking_contradictions = 0
         next_steps: List[str] = []
         high_quality_ready_elements = 0
+        reviewable_escalation_count = 0
+        unresolved_without_review_path_count = 0
 
-        for claim_packet in packets.values():
+        for claim_key, claim_packet in packets.items():
             if not isinstance(claim_packet, dict):
                 continue
             total_claims += 1
+            claim_type = str(claim_packet.get('claim_type') or claim_key or '').strip().lower()
             elements = claim_packet.get('elements')
             if not isinstance(elements, list):
                 continue
@@ -367,6 +391,14 @@ class PhaseManager:
                 parse_quality_flags = element.get('parse_quality_flags', [])
                 if status == 'supported' and not (parse_quality_flags if isinstance(parse_quality_flags, list) else []):
                     high_quality_ready_elements += 1
+                element_id = str(element.get('element_id') or '').strip().lower()
+                task_resolution_status = task_resolution_by_element.get((claim_type, element_id), '')
+                escalation_status = self._resolve_evidence_escalation_status(element, task_resolution_status)
+                if status in {'unsupported', 'partially_supported', 'contradicted'}:
+                    if escalation_status in _EVIDENCE_REVIEWABLE_ESCALATION_STATUSES:
+                        reviewable_escalation_count += 1
+                    elif status != 'contradicted':
+                        unresolved_without_review_path_count += 1
                 next_step = str(element.get('recommended_next_step') or '').strip()
                 if next_step and next_step not in next_steps:
                     next_steps.append(next_step)
@@ -374,14 +406,24 @@ class PhaseManager:
         credible_support_ratio = 0.0
         draft_ready_element_ratio = 0.0
         high_quality_parse_ratio = 0.0
+        supported_blocking_element_ratio = 0.0
+        reviewable_escalation_ratio = 0.0
         if total_elements > 0:
             credible_support_ratio = round((supported_elements + partially_supported_elements) / total_elements, 3)
             draft_ready_element_ratio = round(supported_elements / total_elements, 3)
             high_quality_parse_ratio = round(high_quality_ready_elements / total_elements, 3)
+            supported_blocking_element_ratio = round((supported_elements + reviewable_escalation_count) / total_elements, 3)
+            reviewable_escalation_ratio = round(reviewable_escalation_count / total_elements, 3)
         contradiction_penalty = 0.15 if blocking_contradictions > 0 else 0.0
         proof_readiness_score = round(
             max(0.0, min(1.0, (credible_support_ratio * 0.45) + (draft_ready_element_ratio * 0.4) + (high_quality_parse_ratio * 0.15) - contradiction_penalty)),
             3,
+        )
+        evidence_completion_ready = (
+            total_elements > 0
+            and explicit_status_elements == total_elements
+            and blocking_contradictions == 0
+            and unresolved_without_review_path_count == 0
         )
 
         return {
@@ -391,11 +433,88 @@ class PhaseManager:
             'claim_support_unsupported_count': unsupported_elements,
             'claim_support_blocking_contradictions': blocking_contradictions,
             'claim_support_recommended_actions': next_steps,
+            'supported_blocking_element_ratio': supported_blocking_element_ratio,
             'credible_support_ratio': credible_support_ratio,
             'draft_ready_element_ratio': draft_ready_element_ratio,
             'high_quality_parse_ratio': high_quality_parse_ratio,
+            'reviewable_escalation_ratio': reviewable_escalation_ratio,
+            'claim_support_reviewable_escalation_count': reviewable_escalation_count,
+            'claim_support_unresolved_without_review_path_count': unresolved_without_review_path_count,
             'proof_readiness_score': proof_readiness_score,
+            'evidence_completion_ready': evidence_completion_ready,
         }
+
+    def _normalize_evidence_escalation_status(self, value: Any) -> str:
+        return str(value or '').strip().lower()
+
+    def _resolve_evidence_escalation_status(self, element: Dict[str, Any], task_resolution_status: str = '') -> str:
+        for candidate in (
+            element.get('escalation_status'),
+            element.get('resolution_status'),
+            task_resolution_status,
+            element.get('recommended_next_step'),
+        ):
+            normalized = self._normalize_evidence_escalation_status(candidate)
+            if normalized:
+                return normalized
+        return ''
+
+    def _get_actionable_alignment_tasks(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        alignment_tasks = data.get('alignment_evidence_tasks')
+        actionable_tasks: List[Dict[str, Any]] = []
+        for task in alignment_tasks if isinstance(alignment_tasks, list) else []:
+            if not isinstance(task, dict):
+                continue
+            support_status = str(task.get('support_status') or '').strip().lower()
+            resolution_status = self._normalize_evidence_escalation_status(task.get('resolution_status'))
+            if support_status not in {'unsupported', 'partially_supported', 'contradicted'}:
+                continue
+            if support_status != 'contradicted' and resolution_status in _EVIDENCE_REVIEWABLE_ESCALATION_STATUSES:
+                continue
+            actionable_tasks.append(task)
+        return actionable_tasks
+
+    def _get_next_packet_evidence_action(self, packets: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any] | None:
+        alignment_tasks = data.get('alignment_evidence_tasks')
+        task_resolution_by_element: Dict[tuple[str, str], str] = {}
+        for task in alignment_tasks if isinstance(alignment_tasks, list) else []:
+            if not isinstance(task, dict):
+                continue
+            claim_type = str(task.get('claim_type') or '').strip().lower()
+            element_id = str(task.get('claim_element_id') or '').strip().lower()
+            if claim_type and element_id:
+                task_resolution_by_element[(claim_type, element_id)] = self._normalize_evidence_escalation_status(
+                    task.get('resolution_status')
+                )
+
+        for claim_key, claim_packet in packets.items():
+            if not isinstance(claim_packet, dict):
+                continue
+            claim_type = str(claim_packet.get('claim_type') or claim_key or '').strip()
+            for element in claim_packet.get('elements', []) or []:
+                if not isinstance(element, dict):
+                    continue
+                support_status = str(element.get('support_status') or '').strip().lower()
+                if support_status == 'supported':
+                    continue
+                task_resolution_status = task_resolution_by_element.get(
+                    (claim_type.lower(), str(element.get('element_id') or '').strip().lower()),
+                    '',
+                )
+                escalation_status = self._resolve_evidence_escalation_status(element, task_resolution_status)
+                if support_status != 'contradicted' and escalation_status in _EVIDENCE_REVIEWABLE_ESCALATION_STATUSES:
+                    continue
+                action = str(element.get('recommended_next_step') or '').strip() or (
+                    'resolve_support_conflicts' if support_status == 'contradicted' else 'fill_evidence_gaps'
+                )
+                return {
+                    'action': action,
+                    'claim_type': claim_type,
+                    'claim_element_id': str(element.get('element_id') or '').strip(),
+                    'support_status': support_status,
+                    'recommended_actions': list(data.get('claim_support_recommended_actions', [])),
+                }
+        return None
     
     def get_current_phase(self) -> ComplaintPhase:
         """Get the current phase."""
@@ -490,33 +609,14 @@ class PhaseManager:
             total_elements = int(data.get('claim_support_element_count', 0) or 0)
             explicit_status_count = int(data.get('claim_support_explicit_status_count', 0) or 0)
             blocking_contradictions = int(data.get('claim_support_blocking_contradictions', 0) or 0)
-            alignment_tasks = data.get('alignment_evidence_tasks')
-            unresolved_alignment_tasks = [
-                task
-                for task in (alignment_tasks if isinstance(alignment_tasks, list) else [])
-                if isinstance(task, dict)
-                and str(task.get('support_status') or '').strip().lower()
-                in {'unsupported', 'partially_supported', 'contradicted'}
-            ]
-            unsupported_missing_next_step = False
-            for claim_packet in packets.values():
-                if not isinstance(claim_packet, dict):
-                    continue
-                for element in claim_packet.get('elements', []) or []:
-                    if not isinstance(element, dict):
-                        continue
-                    status = str(element.get('support_status') or '').strip().lower()
-                    if status == 'unsupported' and not str(element.get('recommended_next_step') or '').strip():
-                        unsupported_missing_next_step = True
-                        break
-                if unsupported_missing_next_step:
-                    break
+            unresolved_alignment_tasks = self._get_actionable_alignment_tasks(data)
+            unresolved_without_review_path_count = int(data.get('claim_support_unresolved_without_review_path_count', 0) or 0)
             return (
                 total_elements > 0
                 and explicit_status_count == total_elements
                 and blocking_contradictions == 0
+                and unresolved_without_review_path_count == 0
                 and not unresolved_alignment_tasks
-                and not unsupported_missing_next_step
             )
 
         return evidence_gathered and kg_enhanced and gap_ratio < _EVIDENCE_GAP_RATIO_THRESHOLD
@@ -680,14 +780,7 @@ class PhaseManager:
         """Get next action for evidence phase."""
         data = self.phase_data[ComplaintPhase.EVIDENCE]
         packets = data.get('claim_support_packets')
-        alignment_tasks = data.get('alignment_evidence_tasks')
-        prioritized_alignment_tasks = [
-            task
-            for task in (alignment_tasks if isinstance(alignment_tasks, list) else [])
-            if isinstance(task, dict)
-            and str(task.get('support_status') or '').strip().lower()
-            in {'unsupported', 'partially_supported', 'contradicted'}
-        ]
+        prioritized_alignment_tasks = self._get_actionable_alignment_tasks(data)
 
         if isinstance(packets, dict) and packets:
             total_elements = int(data.get('claim_support_element_count', 0) or 0)
@@ -713,6 +806,9 @@ class PhaseManager:
                     'recommended_actions': list(data.get('claim_support_recommended_actions', [])),
                     'alignment_tasks': prioritized_alignment_tasks,
                 }
+            packet_action = self._get_next_packet_evidence_action(packets, data)
+            if packet_action is not None:
+                return packet_action
             if self._is_evidence_complete():
                 return {
                     'action': 'complete_evidence',

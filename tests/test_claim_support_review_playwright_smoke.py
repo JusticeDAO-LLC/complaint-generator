@@ -934,7 +934,9 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 manual_review_list = page.locator("#alignment-task-manual-review-list").inner_text()
                 alignment_updates = page.locator("#alignment-task-update-list").inner_text()
                 alignment_update_filter_summary = page.locator("#alignment-task-update-filter-summary").inner_text()
+                task_summary = page.locator("#task-summary-chips").inner_text()
                 follow_up_tasks = page.locator("#task-list").inner_text()
+                history_summary = page.locator("#history-summary-chips").inner_text()
                 follow_up_history = page.locator("#history-list").inner_text()
 
                 assert "Cross-phase element alignment for retaliation" in alignment_summary
@@ -964,12 +966,19 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "sort: newest_first" in alignment_update_filter_summary
                 assert "visible updates: 2" in alignment_update_filter_summary
                 assert alignment_updates.index("evidence event: 2") < alignment_updates.index("evidence event: 1")
+                assert "Tasks: 1" in task_summary
+                assert "Primary gaps: Manager knowledge=1" in task_summary
+                assert "Gap coverage: Event sequence=1, Manager knowledge=1" in task_summary
+                assert "Covered facts: Protected activity=1" in task_summary
                 assert "Causal connection" in follow_up_tasks
                 assert "primary gap Manager knowledge" in follow_up_tasks
                 assert "gap: Manager knowledge" in follow_up_tasks
                 assert "gap: Event sequence" in follow_up_tasks
                 assert "covered facts 1" in follow_up_tasks
                 assert "authority program element_definition_search" in follow_up_tasks
+                assert "Primary gaps: Manager knowledge=1" in history_summary
+                assert "Gap coverage: Event sequence=1, Manager knowledge=1" in history_summary
+                assert "Covered facts: Protected activity=1" in history_summary
                 assert "Causal connection" in follow_up_history
                 assert "primary gap: Manager knowledge" in follow_up_history
                 assert "gap: Manager knowledge" in follow_up_history

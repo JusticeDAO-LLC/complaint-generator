@@ -837,8 +837,8 @@ class TestPhaseManager:
         assert readiness['criteria']['blocking_contradictions_resolved'] is False
         assert readiness['criteria']['minimum_proof_path_present'] is True
 
-    def test_evidence_phase_uses_claim_support_packets_for_completion(self):
-        """Evidence completeness should be driven by explicit claim-support packet coverage when available."""
+    def test_evidence_phase_blocks_on_unresolved_claim_support_packets_without_review_path(self):
+        """Unresolved packet elements should block evidence completion until support or escalation is explicit."""
         pm = PhaseManager()
         pm.current_phase = ComplaintPhase.EVIDENCE
 
@@ -866,10 +866,47 @@ class TestPhaseManager:
             },
         )
 
+        assert pm.is_phase_complete(ComplaintPhase.EVIDENCE) is False
+        action = pm.get_next_action()
+        assert action['action'] == 'collect_documentary_support'
+        assert action['claim_element_id'] == 'causation'
+        assert 'collect_documentary_support' in action['recommended_actions']
+
+    def test_evidence_phase_completes_with_reviewable_escalation_path(self):
+        """Explicit reviewable escalation paths should allow evidence completion without pretending support is present."""
+        pm = PhaseManager()
+        pm.current_phase = ComplaintPhase.EVIDENCE
+
+        pm.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'claim_support_packets',
+            {
+                'employment_discrimination': {
+                    'claim_type': 'employment_discrimination',
+                    'elements': [
+                        {
+                            'element_id': 'adverse_action',
+                            'support_status': 'supported',
+                            'recommended_next_step': '',
+                            'contradiction_count': 0,
+                        },
+                        {
+                            'element_id': 'causation',
+                            'support_status': 'unsupported',
+                            'recommended_next_step': 'awaiting_complainant_record',
+                            'resolution_status': 'awaiting_complainant_record',
+                            'contradiction_count': 0,
+                        },
+                    ],
+                }
+            },
+        )
+
         assert pm.is_phase_complete(ComplaintPhase.EVIDENCE)
         action = pm.get_next_action()
         assert action['action'] == 'complete_evidence'
-        assert 'collect_documentary_support' in action['recommended_actions']
+        assert pm.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_unresolved_without_review_path_count') == 0
+        assert pm.get_phase_data(ComplaintPhase.EVIDENCE, 'reviewable_escalation_ratio') == 0.5
 
     def test_evidence_phase_blocks_on_contradicted_claim_support_packets(self):
         """Contradicted support packets should prevent evidence completion and suggest conflict resolution."""

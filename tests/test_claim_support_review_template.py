@@ -59,6 +59,7 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "document-file-input" in content
     assert "testimony-summary-chips" in content
     assert "document-summary-chips" in content
+    assert "task-summary-chips" in content
     assert "prefill-testimony-button" in content
     assert "renderQuestionRecommendations" in content
     assert "renderTestimonyRecords" in content
@@ -97,8 +98,12 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "authority_search_program_summary" in content
     assert "normalizeFactBundle" in content
     assert "renderFactBundleChips" in content
+    assert "buildCountSummaryLabel" in content
     assert "primary gap ${task.primary_missing_fact}" in content
     assert "covered facts ${satisfiedFactBundle.length}" in content
+    assert "Primary gaps" in content
+    assert "Gap coverage" in content
+    assert "Covered facts" in content
     assert "authority program ${task.authority_search_program_summary.primary_program_type}" in content
     assert "authority bias ${task.authority_search_program_summary.primary_program_bias}" in content
     assert "rule bias ${task.authority_search_program_summary.primary_program_rule_bias}" in content
