@@ -697,7 +697,9 @@ class TestMediatorThreePhaseIntegration:
         packets = result['claim_support_packets']
         assert 'employment_discrimination' in packets
         assert packets['employment_discrimination']['elements'][0]['support_status'] == 'supported'
+        assert packets['employment_discrimination']['elements'][0]['support_quality'] == 'draft_ready'
         assert packets['employment_discrimination']['elements'][1]['support_status'] == 'unsupported'
+        assert packets['employment_discrimination']['elements'][1]['support_quality'] == 'unsupported'
         assert packets['employment_discrimination']['elements'][1]['missing_fact_bundle']
         assert packets['employment_discrimination']['elements'][1]['preferred_evidence_classes'] == []
         assert result['alignment_evidence_tasks']
@@ -724,6 +726,7 @@ class TestMediatorThreePhaseIntegration:
         alignment = status['intake_evidence_alignment_summary']['claims']['employment_discrimination']
         assert 'adverse_action' in alignment['packet_element_statuses']
         assert isinstance(alignment['shared_elements'], list)
+        assert alignment['shared_elements'][0]['support_quality'] == 'draft_ready'
 
     def test_advance_to_evidence_phase_prefers_testimony_for_testimony_only_elements(self):
         """Evidence-phase tasks should start in the testimony lane when the element only points to witness testimony."""
@@ -835,9 +838,129 @@ class TestMediatorThreePhaseIntegration:
 
         assert result['alignment_evidence_tasks']
         assert result['alignment_evidence_tasks'][0]['preferred_support_kind'] == 'testimony'
+        assert result['alignment_evidence_tasks'][0]['resolution_status'] == 'awaiting_testimony'
         assert result['alignment_evidence_tasks'][0]['source_quality_target'] == 'credible_testimony'
         assert result['alignment_evidence_tasks'][0]['preferred_evidence_classes'] == ['witness_testimony']
+        assert result['alignment_evidence_tasks'][0]['intake_proof_leads'][0]['lead_id'] == 'lead_witness_001'
         assert result['alignment_evidence_tasks'][0]['recommended_witness_prompts']
+        assert result['next_action']['action'] == 'complete_evidence'
+
+    def test_advance_to_evidence_phase_marks_complainant_owned_document_tasks_as_awaiting_record(self):
+        """Evidence-phase tasks should mark complainant-controlled records as explicit follow-up escalations."""
+        from mediator.mediator import Mediator
+        from unittest.mock import Mock
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process(
+            "I was fired after complaining, and I have the email chain but have not uploaded it yet."
+        )
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', 0)
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'denoising_converged', True)
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'current_gaps', [])
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_gap_types', [])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'intake_case_file',
+            {
+                'candidate_claims': [
+                    {
+                        'claim_type': 'retaliation',
+                        'required_elements': [
+                            {
+                                'element_id': 'protected_activity',
+                                'label': 'Protected activity',
+                                'blocking': True,
+                                'evidence_classes': ['email'],
+                            },
+                        ],
+                    }
+                ],
+                'canonical_facts': [{'fact_id': 'fact_001'}],
+                'proof_leads': [
+                    {
+                        'lead_id': 'lead_email_001',
+                        'lead_type': 'email',
+                        'description': 'The complainant has the HR complaint email.',
+                        'element_targets': ['protected_activity'],
+                        'recommended_support_kind': 'evidence',
+                        'source_quality_target': 'high_quality_document',
+                        'owner': 'complainant',
+                        'custodian': 'complainant',
+                        'availability': 'available_from_complainant',
+                    }
+                ],
+                'contradiction_queue': [],
+                'open_items': [
+                    {
+                        'open_item_id': 'element:retaliation:protected_activity',
+                        'target_claim_type': 'retaliation',
+                        'target_element_id': 'protected_activity',
+                    }
+                ],
+                'intake_sections': {
+                    'chronology': {'status': 'complete', 'missing_items': []},
+                    'actors': {'status': 'complete', 'missing_items': []},
+                    'conduct': {'status': 'complete', 'missing_items': []},
+                    'harm': {'status': 'complete', 'missing_items': []},
+                    'remedy': {'status': 'complete', 'missing_items': []},
+                    'proof_leads': {'status': 'complete', 'missing_items': []},
+                    'claim_elements': {'status': 'complete', 'missing_items': []},
+                },
+            },
+        )
+        mediator.get_claim_support_validation = Mock(return_value={
+            'claims': {
+                'retaliation': {
+                    'claim_type': 'retaliation',
+                    'validation_status': 'incomplete',
+                    'elements': [
+                        {
+                            'element_id': 'protected_activity',
+                            'element_text': 'Protected activity',
+                            'validation_status': 'missing',
+                            'recommended_action': 'collect_documentary_support',
+                            'missing_support_kinds': ['evidence'],
+                            'contradiction_candidate_count': 0,
+                            'proof_diagnostics': {},
+                            'gap_context': {
+                                'support_facts': [],
+                                'support_traces': [],
+                            },
+                        },
+                    ],
+                }
+            }
+        })
+        mediator.get_claim_support_gaps = Mock(return_value={
+            'claims': {
+                'retaliation': {
+                    'claim_type': 'retaliation',
+                    'unresolved_count': 1,
+                    'unresolved_elements': [
+                        {
+                            'element_id': 'protected_activity',
+                            'element_text': 'Protected activity',
+                            'recommended_action': 'collect_documentary_support',
+                            'missing_support_kinds': ['evidence'],
+                        }
+                    ],
+                }
+            }
+        })
+
+        result = mediator.advance_to_evidence_phase()
+
+        assert result['alignment_evidence_tasks']
+        assert result['alignment_evidence_tasks'][0]['preferred_support_kind'] == 'evidence'
+        assert result['alignment_evidence_tasks'][0]['resolution_status'] == 'awaiting_complainant_record'
+        assert result['alignment_evidence_tasks'][0]['intake_proof_leads'][0]['availability'] == 'available_from_complainant'
+        assert result['next_action']['action'] == 'complete_evidence'
 
     def test_build_claim_support_packets_tracks_partial_fact_bundle_coverage(self):
         """Packet construction should only clear the bundle prompts actually covered by support facts."""
@@ -925,6 +1048,7 @@ class TestMediatorThreePhaseIntegration:
         protected_activity = packets['retaliation']['elements'][0]
 
         assert protected_activity['support_status'] == 'partially_supported'
+        assert protected_activity['support_quality'] == 'credible'
         assert protected_activity['required_fact_bundle'] == [
             'What protected activity occurred',
             'When the protected activity occurred',
@@ -1010,6 +1134,7 @@ class TestMediatorThreePhaseIntegration:
         adverse_action = packets['employment_discrimination']['elements'][0]
 
         assert adverse_action['support_status'] == 'supported'
+        assert adverse_action['support_quality'] == 'draft_ready'
         assert adverse_action['missing_fact_bundle'] == []
         assert adverse_action['satisfied_fact_bundle'] == adverse_action['required_fact_bundle']
 

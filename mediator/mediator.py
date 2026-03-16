@@ -4761,7 +4761,7 @@ class Mediator:
 						support_traces,
 						support_status,
 					)
-					elements.append({
+					packet_element = {
 						'element_id': element_id,
 						'element_text': element_text,
 						'support_status': support_status,
@@ -4798,7 +4798,9 @@ class Mediator:
 						'parse_quality_flags': self._extract_parse_quality_flags(element),
 						'recommended_next_step': str(element.get('recommended_action') or ''),
 						'contradiction_count': int(element.get('contradiction_candidate_count', 0) or 0),
-					})
+					}
+					packet_element['support_quality'] = self._derive_packet_support_quality(packet_element)
+					elements.append(packet_element)
 			else:
 				for gap_element in gap_claim.get('unresolved_elements', []) if isinstance(gap_claim, dict) else []:
 					if not isinstance(gap_element, dict):
@@ -4808,7 +4810,7 @@ class Mediator:
 					registry_entry = self._claim_element_registry_entry(intake_case_file, claim_type, element_id)
 					evidence_classes = list(registry_entry.get('evidence_classes', []) or [])
 					required_fact_bundle = self._required_fact_bundle_for_element(claim_type, element_id, element_text)
-					elements.append({
+					packet_element = {
 						'element_id': element_id,
 						'element_text': element_text,
 						'support_status': 'unsupported',
@@ -4828,7 +4830,9 @@ class Mediator:
 						'parse_quality_flags': [],
 						'recommended_next_step': str(gap_element.get('recommended_action') or ''),
 						'contradiction_count': 0,
-					})
+					}
+					packet_element['support_quality'] = self._derive_packet_support_quality(packet_element)
+					elements.append(packet_element)
 			packets[claim_type] = {
 				'claim_type': claim_type,
 				'overall_status': str(validation_claim.get('validation_status') or 'missing'),
@@ -4863,6 +4867,39 @@ class Mediator:
 			flags.append('improve_parse_quality')
 		return flags
 
+	def _derive_packet_support_quality(self, element: Dict[str, Any]) -> str:
+		if not isinstance(element, dict):
+			return 'unsupported'
+		status = str(element.get('support_status') or '').strip().lower()
+		if status == 'contradicted':
+			return 'contradicted'
+		parse_quality_flags = [
+			str(flag).strip()
+			for flag in (element.get('parse_quality_flags') or [])
+			if str(flag).strip()
+		]
+		has_material_support = any(
+			bool(element.get(key))
+			for key in (
+				'canonical_fact_ids',
+				'supporting_artifact_ids',
+				'supporting_testimony_ids',
+				'supporting_authority_ids',
+			)
+		)
+		satisfied_fact_bundle = [
+			str(item).strip()
+			for item in (element.get('satisfied_fact_bundle') or [])
+			if str(item).strip()
+		]
+		if status == 'supported':
+			return 'draft_ready' if not parse_quality_flags else 'credible'
+		if status == 'partially_supported':
+			return 'credible' if (has_material_support or satisfied_fact_bundle) else 'suggestive'
+		if status == 'unsupported' and (has_material_support or satisfied_fact_bundle):
+			return 'suggestive'
+		return 'unsupported'
+
 	def _summarize_claim_support_packets(self, packets: Dict[str, Any]) -> Dict[str, Any]:
 		summary = {
 			'claim_count': 0,
@@ -4873,6 +4910,13 @@ class Mediator:
 				'unsupported': 0,
 				'contradicted': 0,
 			},
+			'support_quality_counts': {
+				'draft_ready': 0,
+				'credible': 0,
+				'suggestive': 0,
+				'unsupported': 0,
+				'contradicted': 0,
+			},
 			'recommended_actions': [],
 			'credible_support_ratio': 0.0,
 			'draft_ready_element_ratio': 0.0,
@@ -4880,8 +4924,8 @@ class Mediator:
 		}
 		if not isinstance(packets, dict):
 			return summary
-		supported_count = 0
-		partial_count = 0
+		credible_count = 0
+		draft_ready_count = 0
 		high_quality_supported_count = 0
 		for packet in packets.values():
 			if not isinstance(packet, dict):
@@ -4894,19 +4938,26 @@ class Mediator:
 				status = str(element.get('support_status') or '').strip().lower()
 				if status in summary['status_counts']:
 					summary['status_counts'][status] += 1
+				support_quality = str(
+					element.get('support_quality') or self._derive_packet_support_quality(element)
+				).strip().lower()
+				if support_quality in summary['support_quality_counts']:
+					summary['support_quality_counts'][support_quality] += 1
+				if support_quality == 'draft_ready':
+					draft_ready_count += 1
+					credible_count += 1
+				elif support_quality == 'credible':
+					credible_count += 1
 				if status == 'supported':
-					supported_count += 1
 					parse_quality_flags = element.get('parse_quality_flags', [])
 					if not (parse_quality_flags if isinstance(parse_quality_flags, list) else []):
 						high_quality_supported_count += 1
-				elif status == 'partially_supported':
-					partial_count += 1
 				next_step = str(element.get('recommended_next_step') or '').strip()
 				if next_step and next_step not in summary['recommended_actions']:
 					summary['recommended_actions'].append(next_step)
 		if summary['element_count']:
-			summary['credible_support_ratio'] = round((supported_count + partial_count) / summary['element_count'], 3)
-			summary['draft_ready_element_ratio'] = round(supported_count / summary['element_count'], 3)
+			summary['credible_support_ratio'] = round(credible_count / summary['element_count'], 3)
+			summary['draft_ready_element_ratio'] = round(draft_ready_count / summary['element_count'], 3)
 			high_quality_parse_ratio = high_quality_supported_count / summary['element_count']
 			contradiction_penalty = 0.15 if summary['status_counts'].get('contradicted', 0) else 0.0
 			summary['proof_readiness_score'] = round(
@@ -5093,6 +5144,11 @@ class Mediator:
 		candidate_claims = intake_case.get('candidate_claims', []) if isinstance(intake_case.get('candidate_claims'), list) else []
 		proof_leads = intake_case.get('proof_leads', []) if isinstance(intake_case.get('proof_leads'), list) else []
 		open_items = intake_case.get('open_items', []) if isinstance(intake_case.get('open_items'), list) else []
+		proof_lead_map = {
+			str(lead.get('lead_id') or '').strip(): lead
+			for lead in proof_leads
+			if isinstance(lead, dict) and str(lead.get('lead_id') or '').strip()
+		}
 
 		claim_types = set(packets.keys())
 		for claim in candidate_claims:
@@ -5160,12 +5216,30 @@ class Mediator:
 						element_id.lower() in [str(item).strip().lower() for item in (lead.get('element_targets') or []) if str(item).strip()]
 					)
 				]
+				matching_proof_leads = []
+				for lead_id in matching_proof_lead_ids:
+					lead = proof_lead_map.get(lead_id)
+					if not isinstance(lead, dict):
+						continue
+					matching_proof_leads.append(
+						{
+							'lead_id': lead_id,
+							'lead_type': str(lead.get('lead_type') or '').strip(),
+							'owner': str(lead.get('owner') or '').strip(),
+							'custodian': str(lead.get('custodian') or '').strip(),
+							'availability': str(lead.get('availability') or '').strip(),
+							'availability_details': str(lead.get('availability_details') or '').strip(),
+							'recommended_support_kind': str(lead.get('recommended_support_kind') or '').strip(),
+							'source_quality_target': str(lead.get('source_quality_target') or '').strip(),
+						}
+					)
 				shared_elements.append(
 					{
 						'element_id': element_id,
 						'label': intake_element['label'],
 						'blocking': intake_element['blocking'],
 						'support_status': support_status,
+						'support_quality': str(packet_element.get('support_quality') or self._derive_packet_support_quality(packet_element)).strip().lower(),
 						'preferred_evidence_classes': list(packet_element.get('preferred_evidence_classes', []) or intake_element.get('evidence_classes', []) or []),
 						'required_fact_bundle': list(packet_element.get('required_fact_bundle', []) or []),
 						'satisfied_fact_bundle': list(packet_element.get('satisfied_fact_bundle', []) or []),
@@ -5174,6 +5248,7 @@ class Mediator:
 						'recommended_next_step': str(packet_element.get('recommended_next_step') or '').strip(),
 						'intake_open_item_ids': [item_id for item_id in matching_open_item_ids if item_id],
 						'intake_proof_lead_ids': [lead_id for lead_id in matching_proof_lead_ids if lead_id],
+						'intake_proof_leads': matching_proof_leads,
 					}
 				)
 				summary['aligned_element_count'] += 1
@@ -5224,6 +5299,11 @@ class Mediator:
 				missing_fact_bundle = list(element.get('missing_fact_bundle', []) or [])
 				satisfied_fact_bundle = list(element.get('satisfied_fact_bundle', []) or [])
 				missing_support_kinds = list(element.get('missing_support_kinds', []) or [])
+				intake_proof_leads = [
+					dict(lead)
+					for lead in (element.get('intake_proof_leads', []) or [])
+					if isinstance(lead, dict)
+				]
 				preferred_support_kind = self._resolve_task_preferred_support_kind(missing_support_kinds, preferred_evidence_classes)
 				fallback_support_kinds = self._resolve_task_fallback_support_kinds(preferred_support_kind, preferred_evidence_classes)
 				source_quality_target = 'credible_testimony' if preferred_support_kind == 'testimony' else 'high_quality_document'
@@ -5240,6 +5320,8 @@ class Mediator:
 				resolution_status = self._derive_alignment_task_resolution_status(
 					support_status,
 					missing_fact_bundle,
+					preferred_support_kind=preferred_support_kind,
+					intake_proof_leads=intake_proof_leads,
 				)
 				tasks.append(
 					{
@@ -5265,6 +5347,7 @@ class Mediator:
 							f'proof_lead:{lead_id}'
 							for lead_id in (element.get('intake_proof_lead_ids', []) or [])
 						],
+						'intake_proof_leads': intake_proof_leads,
 						'recommended_queries': self._recommended_task_queries(
 							str(claim_type),
 							claim_element_label,
@@ -5291,6 +5374,9 @@ class Mediator:
 		self,
 		support_status: Any,
 		missing_fact_bundle: Any,
+		*,
+		preferred_support_kind: Any = '',
+		intake_proof_leads: Any = None,
 	) -> str:
 		normalized_support_status = str(support_status or '').strip().lower()
 		missing_bundle = [
@@ -5298,12 +5384,41 @@ class Mediator:
 			for item in (missing_fact_bundle if isinstance(missing_fact_bundle, list) else [])
 			if str(item).strip()
 		]
+		normalized_preferred_support_kind = str(preferred_support_kind or '').strip().lower()
+		proof_leads = [
+			lead
+			for lead in (intake_proof_leads if isinstance(intake_proof_leads, list) else [])
+			if isinstance(lead, dict)
+		]
 		if normalized_support_status == 'contradicted':
 			return 'needs_manual_review'
-		if normalized_support_status == 'partially_supported':
-			return 'partially_addressed'
 		if normalized_support_status == 'supported' and not missing_bundle:
 			return 'resolved_supported'
+		if normalized_preferred_support_kind == 'testimony' and normalized_support_status in {'unsupported', 'partially_supported'}:
+			return 'awaiting_testimony'
+		lead_owner_markers = {
+			str(lead.get('owner') or '').strip().lower()
+			for lead in proof_leads
+			if str(lead.get('owner') or '').strip()
+		} | {
+			str(lead.get('custodian') or '').strip().lower()
+			for lead in proof_leads
+			if str(lead.get('custodian') or '').strip()
+		}
+		lead_availability_markers = {
+			str(lead.get('availability') or '').strip().lower()
+			for lead in proof_leads
+			if str(lead.get('availability') or '').strip()
+		}
+		if normalized_support_status in {'unsupported', 'partially_supported'} and proof_leads:
+			if lead_owner_markers & {'complainant', 'claimant', 'self'}:
+				return 'awaiting_complainant_record'
+			if any('complainant' in marker for marker in lead_availability_markers):
+				return 'awaiting_complainant_record'
+			if lead_owner_markers:
+				return 'awaiting_third_party_record'
+		if normalized_support_status == 'partially_supported':
+			return 'partially_addressed'
 		return 'still_open'
 
 	def _alignment_packet_status_map(self, claim_support_packets: Any) -> Dict[tuple, Dict[str, Any]]:
@@ -5365,9 +5480,12 @@ class Mediator:
 				or []
 			)
 			previous_missing_fact_bundle = list(prior_task.get('missing_fact_bundle') or [])
-			resolution_status = self._derive_alignment_task_resolution_status(
+			current_task_resolution_status = str((current_task or {}).get('resolution_status') or '').strip().lower()
+			resolution_status = current_task_resolution_status or self._derive_alignment_task_resolution_status(
 				current_support_status,
 				current_missing_fact_bundle,
+				preferred_support_kind=(current_task or {}).get('preferred_support_kind') or prior_task.get('preferred_support_kind'),
+				intake_proof_leads=(current_task or {}).get('intake_proof_leads') or prior_task.get('intake_proof_leads'),
 			)
 			if resolution_status == 'still_open' and len(current_missing_fact_bundle) < len(previous_missing_fact_bundle):
 				resolution_status = 'partially_addressed'

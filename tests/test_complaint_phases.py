@@ -908,6 +908,48 @@ class TestPhaseManager:
         assert pm.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_unresolved_without_review_path_count') == 0
         assert pm.get_phase_data(ComplaintPhase.EVIDENCE, 'reviewable_escalation_ratio') == 0.5
 
+    def test_evidence_phase_completes_with_task_level_awaiting_testimony_status(self):
+        """Task-level awaiting_testimony should count as a reviewable escalation even when the packet element is still unsupported."""
+        pm = PhaseManager()
+        pm.current_phase = ComplaintPhase.EVIDENCE
+
+        pm.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'claim_support_packets',
+            {
+                'retaliation': {
+                    'claim_type': 'retaliation',
+                    'elements': [
+                        {
+                            'element_id': 'causation',
+                            'support_status': 'unsupported',
+                            'recommended_next_step': 'collect_witness_support',
+                            'contradiction_count': 0,
+                        },
+                    ],
+                }
+            },
+        )
+        pm.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_evidence_tasks',
+            [
+                {
+                    'task_id': 'retaliation:causation:fill_evidence_gaps',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'causation',
+                    'support_status': 'unsupported',
+                    'resolution_status': 'awaiting_testimony',
+                }
+            ],
+        )
+
+        assert pm.is_phase_complete(ComplaintPhase.EVIDENCE)
+        action = pm.get_next_action()
+        assert action['action'] == 'complete_evidence'
+        assert pm.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_unresolved_without_review_path_count') == 0
+        assert pm.get_phase_data(ComplaintPhase.EVIDENCE, 'reviewable_escalation_ratio') == 1.0
+
     def test_evidence_phase_blocks_on_contradicted_claim_support_packets(self):
         """Contradicted support packets should prevent evidence completion and suggest conflict resolution."""
         pm = PhaseManager()

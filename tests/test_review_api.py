@@ -125,6 +125,13 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                     "unsupported": 1,
                     "contradicted": 0,
                 },
+                "support_quality_counts": {
+                    "draft_ready": 1,
+                    "credible": 1,
+                    "suggestive": 0,
+                    "unsupported": 1,
+                    "contradicted": 0,
+                },
                 "recommended_actions": ["collect_missing_support_kind"],
             },
             "alignment_task_updates": [
@@ -824,6 +831,13 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert claim_support_packet_summary["status_counts"] == {
             "supported": 1,
             "partially_supported": 1,
+            "unsupported": 1,
+            "contradicted": 0,
+        }
+        assert claim_support_packet_summary["support_quality_counts"] == {
+            "draft_ready": 1,
+            "credible": 1,
+            "suggestive": 0,
             "unsupported": 1,
             "contradicted": 0,
         }
