@@ -12,6 +12,12 @@ Command:
 ./.venv/bin/python scripts/run_hacc_grounding_regression.py
 ```
 
+VS Code task:
+
+```text
+HACC Grounding Regression
+```
+
 Useful options:
 
 ```bash

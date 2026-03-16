@@ -109,6 +109,25 @@ def _summary_with_selection_rationale(summary: str, selection_rationale: Dict[st
     return f"{prefix} {base}"
 
 
+def _selection_relief_similarity_note(selection_rationale: Dict[str, Any]) -> str:
+    winner_overview = str(selection_rationale.get("winner_relief_overview") or "").strip()
+    runner_up_overview = str(selection_rationale.get("runner_up_relief_overview") or "").strip()
+    winner_only_relief = [str(item) for item in list(selection_rationale.get("winner_only_relief") or []) if str(item)]
+    runner_up_only_relief = [str(item) for item in list(selection_rationale.get("runner_up_only_relief") or []) if str(item)]
+    winner_only_relief_families = [str(item) for item in list(selection_rationale.get("winner_only_relief_families") or []) if str(item)]
+    runner_up_only_relief_families = [str(item) for item in list(selection_rationale.get("runner_up_only_relief_families") or []) if str(item)]
+    if (
+        winner_overview
+        and winner_overview == runner_up_overview
+        and not winner_only_relief
+        and not runner_up_only_relief
+        and not winner_only_relief_families
+        and not runner_up_only_relief_families
+    ):
+        return "Relief posture was materially similar across the winner and runner-up, so the selection difference was driven mainly by claim posture."
+    return ""
+
+
 def _cause_semantic_families(cause: Dict[str, Any]) -> List[str]:
     combined = " ".join(
         [
@@ -1534,6 +1553,27 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
             if key not in normalized_existing:
                 refreshed_evidence.append(item)
         merged["hacc_evidence"] = refreshed_evidence + existing_evidence
+        if refreshed_evidence:
+            refreshed_by_key = {
+                (
+                    str(item.get("title") or "").strip().lower(),
+                    str(item.get("source_path") or "").strip().lower(),
+                ): str(item.get("snippet") or "")
+                for item in merged["hacc_evidence"]
+            }
+            updated_passages: List[Dict[str, Any]] = []
+            for passage in list(key_facts.get("anchor_passages") or []):
+                updated = dict(passage)
+                key = (
+                    str(updated.get("title") or "").strip().lower(),
+                    str(updated.get("source_path") or "").strip().lower(),
+                )
+                evidence_snippet = refreshed_by_key.get(key, "")
+                if evidence_snippet and _policy_text_quality(evidence_snippet) > _policy_text_quality(str(updated.get("snippet") or "")):
+                    updated["snippet"] = evidence_snippet
+                updated_passages.append(updated)
+            if updated_passages:
+                key_facts["anchor_passages"] = updated_passages
 
     merged["key_facts"] = key_facts
     return merged
@@ -2048,10 +2088,14 @@ def _render_markdown(package: Dict[str, Any]) -> str:
             lines.append(f"- Runner-up-only theory families: {', '.join(selection_rationale['runner_up_only_theory_families'])}")
         if selection_rationale.get("shared_theory_families"):
             lines.append(f"- Shared theory families: {', '.join(selection_rationale['shared_theory_families'])}")
-        if selection_rationale.get("winner_relief_overview"):
-            lines.append(f"- Winner relief overview: {selection_rationale['winner_relief_overview']}")
-        if selection_rationale.get("runner_up_relief_overview"):
-            lines.append(f"- Runner-up relief overview: {selection_rationale['runner_up_relief_overview']}")
+        relief_similarity_note = _selection_relief_similarity_note(selection_rationale)
+        if relief_similarity_note:
+            lines.append(f"- Relief posture note: {relief_similarity_note}")
+        else:
+            if selection_rationale.get("winner_relief_overview"):
+                lines.append(f"- Winner relief overview: {selection_rationale['winner_relief_overview']}")
+            if selection_rationale.get("runner_up_relief_overview"):
+                lines.append(f"- Runner-up relief overview: {selection_rationale['runner_up_relief_overview']}")
         if selection_rationale.get("winner_only_relief_families"):
             lines.append(f"- Winner-only relief families: {', '.join(selection_rationale['winner_only_relief_families'])}")
         if selection_rationale.get("runner_up_only_relief_families"):

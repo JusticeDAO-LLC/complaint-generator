@@ -653,6 +653,51 @@ def test_markdown_includes_selection_rationale_section():
     assert "This relief item tracks the shared process baseline that appeared in both the selected preset and the runner-up." in markdown
 
 
+def test_markdown_selection_rationale_collapses_identical_relief_overviews():
+    package = {
+        "generated_at": "2026-03-15T00:00:00+00:00",
+        "preset": "accommodation_focus",
+        "filing_forum": "hud",
+        "session_id": "session_1",
+        "critic_score": 0.5,
+        "summary": "Summary.",
+        "selection_rationale": {
+            "selected_preset": "accommodation_focus",
+            "claim_theory_families": ["accommodation", "process", "protected_basis"],
+            "tradeoff_note": "best for accommodation framing + protected-basis framing; runner-up is stronger on retaliation-heavy framing",
+            "runner_up_preset": "administrative_plan_retaliation",
+            "winner_only_theory_families": ["accommodation", "protected_basis"],
+            "runner_up_only_theory_families": ["retaliation"],
+            "shared_theory_families": ["process"],
+            "winner_relief_overview": "Same relief overview.",
+            "runner_up_relief_overview": "Same relief overview.",
+            "shared_relief_families": ["other"],
+        },
+        "caption": {"court": "HUD", "case_title": "Title", "document_title": "Doc", "caption_note": "Note"},
+        "parties": {"plaintiff": "Complainant", "defendant": "HACC"},
+        "jurisdiction_and_venue": ["Venue."],
+        "legal_theory_summary": {"theory_labels": [], "protected_bases": [], "authority_hints": []},
+        "grounded_evidence_summary": [],
+        "factual_allegations": ["Fact."],
+        "claims_theory": ["Theory."],
+        "policy_basis": ["Policy."],
+        "causes_of_action": [{"title": "Cause", "theory": "Theory", "support": ["Support"]}],
+        "claim_selection_summary": [],
+        "relief_selection_summary": [],
+        "proposed_allegations": ["Proposed."],
+        "anchor_sections": [],
+        "anchor_passages": ["Passage"],
+        "supporting_evidence": ["Evidence"],
+        "requested_relief": ["Relief"],
+    }
+
+    markdown = MODULE._render_markdown(package)
+
+    assert "Relief posture note: Relief posture was materially similar across the winner and runner-up" in markdown
+    assert "- Winner relief overview:" not in markdown
+    assert "- Runner-up relief overview:" not in markdown
+
+
 def test_summary_with_selection_rationale_prefixes_tradeoff_note():
     summary = "HACC policy says applicants must be informed at application that reasonable accommodation is available."
     selection_rationale = {
@@ -835,6 +880,58 @@ def test_merge_seed_with_grounding_replaces_toc_summary_with_grounded_snippet():
     assert merged["summary"].startswith("Applicants or tenant families")
     assert merged["key_facts"]["evidence_summary"].startswith("Applicants or tenant families")
     assert merged["hacc_evidence"][0]["title"] == "ADMINISTRATIVE PLAN"
+
+
+def test_merge_seed_with_grounding_promotes_stronger_grounded_evidence_into_anchor_passages(tmp_path):
+    source_path = tmp_path / "policy.txt"
+    source_path.write_text(
+        "I. Definitions applicable to the grievance procedure [24 CFR 966.53]\n\n"
+        "A. Grievance: Any dispute a tenant may have with respect to HACC action or failure to act in accordance with the individual tenant's lease or HACC regulations that adversely affects the individual tenant's rights, duties, welfare, or status.\n\n"
+        "C. Elements of due process: An eviction action or a termination of tenancy in a state or local court in which adequate notice and an opportunity to refute the evidence are required.\n",
+        encoding="utf-8",
+    )
+
+    seed = {
+        "key_facts": {
+            "anchor_titles": ["ADMISSIONS AND CONTINUED OCCUPANCY POLICY"],
+            "anchor_source_paths": [str(source_path)],
+            "anchor_passages": [
+                {
+                    "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+                    "source_path": str(source_path),
+                    "snippet": "HACC policy describes an informal hearing process for applicants and residents.",
+                    "section_labels": ["grievance_hearing"],
+                }
+            ],
+        },
+        "hacc_evidence": [],
+    }
+    grounding_bundle = {
+        "search_payload": {
+            "results": [
+                {
+                    "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+                    "source_path": str(source_path),
+                    "snippet": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+                    "matched_rules": [
+                        {
+                            "text": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+                            "section_title": "I. Definitions applicable to the grievance procedure [24 CFR 966.53]",
+                        },
+                        {
+                            "text": "C. Elements of due process: An eviction action or a termination of tenancy in a state or local court in which adequate notice and an opportunity to refute the evidence are required.",
+                            "section_title": "I. Definitions applicable to the grievance procedure [24 CFR 966.53]",
+                        },
+                    ],
+                }
+            ]
+        }
+    }
+
+    merged = MODULE._merge_seed_with_grounding(seed, grounding_bundle)
+
+    assert "Elements of due process" in merged["hacc_evidence"][0]["snippet"]
+    assert "Elements of due process" in merged["key_facts"]["anchor_passages"][0]["snippet"]
 
 
 def test_merge_seed_with_grounding_refreshes_anchor_passages_from_source_text(tmp_path):

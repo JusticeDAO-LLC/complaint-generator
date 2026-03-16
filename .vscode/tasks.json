@@ -58,6 +58,23 @@
       "options": {
         "cwd": "${workspaceFolder}"
       }
+    },
+    {
+      "label": "HACC Grounding Regression",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/run_hacc_grounding_regression.py"
+      ],
+      "group": "test",
+      "isBackground": false,
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
     }
   ]
 }

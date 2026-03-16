@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import re
 import sys
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -482,11 +483,15 @@ def _score_excerpt_match(excerpt: str, anchor_terms: Sequence[str]) -> tuple[int
 def _candidate_text_paths(source_path: str) -> List[Path]:
     path = Path(source_path)
     candidates: List[Path] = []
+    alternate_text_candidates: List[Path] = []
     if source_path:
-        candidates.append(path)
-        candidates.append(Path(f"{source_path}.txt"))
+        alternate_text_candidates.append(Path(f"{source_path}.txt"))
         knowledge_graph_text = _repo_root() / "hacc_website" / "knowledge_graph" / "texts" / f"{path.name}.txt"
-        candidates.append(knowledge_graph_text)
+        alternate_text_candidates.append(knowledge_graph_text)
+        candidates.extend(alternate_text_candidates)
+        raw_path_is_probably_blob = not path.suffix
+        if not raw_path_is_probably_blob or not any(candidate.exists() for candidate in alternate_text_candidates):
+            candidates.append(path)
 
     deduped: List[Path] = []
     seen = set()
@@ -496,6 +501,16 @@ def _candidate_text_paths(source_path: str) -> List[Path]:
             seen.add(key)
             deduped.append(candidate)
     return deduped
+
+
+@lru_cache(maxsize=64)
+def _load_candidate_source_text(path_str: str) -> tuple[str, str]:
+    path = Path(path_str)
+    try:
+        source_text = path.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return ("", "")
+    return (source_text, _normalize_match_text(source_text))
 
 
 def _extract_paragraph_excerpt(
@@ -575,13 +590,8 @@ def _extract_source_window(
     for path in _candidate_text_paths(source_path):
         if not path.exists():
             continue
-        try:
-            source_text = path.read_text(encoding="utf-8", errors="ignore")
-        except Exception:
-            continue
-
-        normalized_source = _normalize_match_text(source_text)
-        if not normalized_source:
+        source_text, normalized_source = _load_candidate_source_text(str(path))
+        if not source_text or not normalized_source:
             continue
 
         source_text_lower = source_text.lower()
