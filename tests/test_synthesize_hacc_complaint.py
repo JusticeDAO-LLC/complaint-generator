@@ -600,6 +600,46 @@ def test_markdown_includes_selection_rationale_section():
     assert "- Runner-up preset: administrative_plan_retaliation" in markdown
 
 
+def test_summary_with_selection_rationale_prefixes_tradeoff_note():
+    summary = "HACC policy says applicants must be informed at application that reasonable accommodation is available."
+    selection_rationale = {
+        "selected_preset": "accommodation_focus",
+        "tradeoff_note": "best for accommodation framing + protected-basis framing; runner-up is stronger on retaliation-heavy framing",
+    }
+
+    combined = MODULE._summary_with_selection_rationale(summary, selection_rationale)
+
+    assert combined.startswith("This draft follows the `accommodation_focus` path because best for accommodation framing + protected-basis framing; runner-up is stronger on retaliation-heavy framing.")
+    assert combined.endswith("HACC policy says applicants must be informed at application that reasonable accommodation is available.")
+
+
+def test_annotate_causes_with_selection_rationale_marks_winner_unique_and_shared_roles():
+    causes = [
+        {
+            "title": "Fair Housing Act / Section 504 Accommodation Theory",
+            "theory": "Accommodation theory.",
+            "selection_tags": ["reasonable_accommodation", "contact"],
+        },
+        {
+            "title": "Administrative Fair Housing Process Failure",
+            "theory": "Notice and hearing theory.",
+            "selection_tags": ["notice", "hearing", "adverse_action"],
+        },
+    ]
+    selection_rationale = {
+        "winner_only_claims": ["Fair Housing Act / Section 504 Accommodation Theory"],
+        "shared_theory_families": ["process"],
+        "winner_only_theory_families": ["accommodation", "protected_basis"],
+    }
+
+    annotated = MODULE._annotate_causes_with_selection_rationale(causes, selection_rationale)
+
+    assert annotated[0]["strategic_role"] == "winner_unique_strength"
+    assert "winner-specific strength" in annotated[0]["strategic_note"]
+    assert annotated[1]["strategic_role"] == "shared_baseline"
+    assert "shared baseline theory" in annotated[1]["strategic_note"]
+
+
 def test_grounded_supporting_evidence_merges_packets_and_uploads():
     grounding_bundle = {
         "query": "reasonable accommodation hearing rights",
@@ -740,6 +780,42 @@ def test_merge_seed_with_grounding_uses_matched_rule_when_refresh_hits_placehold
     assert "must grant opportunity for grievance hearings" in merged["key_facts"]["anchor_passages"][0]["snippet"]
 
 
+def test_merge_seed_with_grounding_uses_matched_rule_when_snippet_is_generic_chapter_intro():
+    seed = {
+        "key_facts": {
+            "anchor_terms": ["grievance", "hearing", "appeal"],
+            "anchor_passages": [
+                {
+                    "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+                    "source_path": "/tmp/acop.txt",
+                    "snippet": "GRIEVANCES AND APPEALS INTRODUCTION This chapter discusses grievances and appeals pertaining to HACC actions or failures to act that adversely affect public housing applicants or residents.",
+                    "section_labels": ["grievance_hearing"],
+                }
+            ],
+        },
+        "hacc_evidence": [
+            {
+                "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+                "source_path": "/tmp/acop.txt",
+                "snippet": "GRIEVANCES AND APPEALS INTRODUCTION This chapter discusses grievances and appeals pertaining to HACC actions or failures to act that adversely affect public housing applicants or residents.",
+                "matched_rules": [
+                    {
+                        "text": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+                    },
+                    {
+                        "text": "If HUD has issued a due process determination, HACC may exclude from HACC grievance",
+                    },
+                ],
+            }
+        ],
+    }
+
+    merged = MODULE._merge_seed_with_grounding(seed, {})
+
+    assert "Grievance: Any dispute" in merged["hacc_evidence"][0]["snippet"]
+    assert "If HUD has issued a due process determination" in merged["key_facts"]["anchor_passages"][0]["snippet"]
+
+
 def test_best_grounding_result_excerpt_combines_truncated_rule_with_followup_rule():
     item = {
         "snippet": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
@@ -854,6 +930,25 @@ def test_anchor_passage_lines_omit_full_passage_for_toc_like_snippet():
     assert len(lines) == 1
     assert "Full passage:" not in lines[0]
     assert "describes scheduling and procedures for informal review" in lines[0]
+
+
+def test_anchor_passage_lines_omit_full_passage_for_generic_chapter_intro():
+    seed = {
+        "key_facts": {
+            "anchor_passages": [
+                {
+                    "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+                    "section_labels": ["grievance_hearing"],
+                    "snippet": "GRIEVANCES AND APPEALS INTRODUCTION This chapter discusses grievances and appeals pertaining to HACC actions or failures to act that adversely affect public housing applicants or residents. The policies are discussed in the following three parts: Part I: Informal Hearings for Public Housing Applicants.",
+                }
+            ]
+        }
+    }
+
+    lines = MODULE._anchor_passage_lines(seed)
+
+    assert len(lines) == 1
+    assert "Full passage:" not in lines[0]
 def test_filter_grounding_evidence_for_seed_prefers_anchor_titles():
     seed = {
         "key_facts": {

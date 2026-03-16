@@ -86,6 +86,158 @@ def _selection_rationale_from_matrix(matrix_payload: Dict[str, Any], selection_s
     return {key: value for key, value in rationale.items() if value}
 
 
+def _summary_with_selection_rationale(summary: str, selection_rationale: Dict[str, Any]) -> str:
+    base = str(summary or "").strip()
+    if not selection_rationale:
+        return base
+    tradeoff_note = str(selection_rationale.get("tradeoff_note") or "").strip()
+    selected_preset = str(selection_rationale.get("selected_preset") or "").strip()
+    if not tradeoff_note:
+        return base
+    prefix = f"This draft follows the `{selected_preset}` path because {tradeoff_note}." if selected_preset else f"This draft was selected because {tradeoff_note}."
+    if not base:
+        return prefix
+    if prefix in base:
+        return base
+    return f"{prefix} {base}"
+
+
+def _cause_semantic_families(cause: Dict[str, Any]) -> List[str]:
+    combined = " ".join(
+        [
+            str(cause.get("title") or ""),
+            str(cause.get("theory") or ""),
+            " ".join(str(tag) for tag in list(cause.get("selection_tags") or [])),
+        ]
+    ).lower()
+    families: List[str] = []
+    checks = (
+        ("process", ("process", "notice", "hearing", "appeal", "adverse action", "adverse_action")),
+        ("accommodation", ("accommodation", "reasonable accommodation", "reasonable_accommodation", "contact", "section 504", "ada")),
+        ("protected_basis", ("protected-basis", "protected basis", "protected_basis", "discrimination")),
+        ("retaliation", ("retaliation", "retaliat")),
+        ("selection_criteria", ("selection criteria", "selection_criteria", "criteria", "proxy")),
+    )
+    for label, patterns in checks:
+        if any(pattern in combined for pattern in patterns):
+            families.append(label)
+    return families or ["other"]
+
+
+def _annotate_causes_with_selection_rationale(
+    causes: List[Dict[str, Any]],
+    selection_rationale: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    if not selection_rationale:
+        return causes
+
+    winner_only_claims = {str(item) for item in list(selection_rationale.get("winner_only_claims") or []) if str(item)}
+    runner_up_only_claims = {str(item) for item in list(selection_rationale.get("runner_up_only_claims") or []) if str(item)}
+    shared_families = {str(item) for item in list(selection_rationale.get("shared_theory_families") or []) if str(item)}
+    winner_only_families = {str(item) for item in list(selection_rationale.get("winner_only_theory_families") or []) if str(item)}
+
+    annotated: List[Dict[str, Any]] = []
+    for cause in causes:
+        enriched = dict(cause)
+        title = str(enriched.get("title") or "")
+        families = _cause_semantic_families(enriched)
+        enriched["strategic_families"] = families
+        if title in winner_only_claims:
+            enriched["strategic_role"] = "winner_unique_strength"
+            enriched["strategic_note"] = "This claim reflects a winner-specific strength that helped this preset beat the runner-up."
+        elif title in runner_up_only_claims:
+            enriched["strategic_role"] = "runner_up_emphasis"
+            enriched["strategic_note"] = "This claim more closely matches a runner-up emphasis and should be reviewed carefully in this selected draft."
+        elif shared_families.intersection(families):
+            enriched["strategic_role"] = "shared_baseline"
+            enriched["strategic_note"] = "This claim reflects a shared baseline theory that appeared in both the selected preset and the runner-up."
+        elif winner_only_families.intersection(families):
+            enriched["strategic_role"] = "winner_family_strength"
+            enriched["strategic_note"] = "This claim supports a theory family that was stronger in the selected preset than in the runner-up."
+        annotated.append(enriched)
+    return annotated
+
+
+def _families_phrase(families: List[str]) -> str:
+    labels = {
+        "process": "process",
+        "accommodation": "accommodation",
+        "protected_basis": "protected-basis",
+        "retaliation": "retaliation",
+        "selection_criteria": "selection-criteria",
+        "other": "supporting",
+    }
+    parts = [labels.get(item, str(item).replace("_", "-")) for item in families if item]
+    if not parts:
+        return "supporting"
+    if len(parts) == 1:
+        return parts[0]
+    if len(parts) == 2:
+        return f"{parts[0]} and {parts[1]}"
+    return f"{', '.join(parts[:-1])}, and {parts[-1]}"
+
+
+def _relief_target_families(relief_text: str) -> List[str]:
+    combined = str(relief_text or "").lower()
+    families: List[str] = []
+    checks = (
+        ("process", ("investigation", "adverse-action", "adverse action", "clear notice", "fair review", "process", "hearing", "appeal")),
+        ("accommodation", ("accommodation", "disability", "contact", "request-processing", "request processing")),
+        ("protected_basis", ("fair housing law", "fair housing", "protected basis", "discrimination", "section 504", "ada")),
+        ("retaliation", ("retaliation", "non-retaliation")),
+        ("selection_criteria", ("eligibility", "criteria", "preference", "proxy")),
+    )
+    for label, patterns in checks:
+        if any(pattern in combined for pattern in patterns):
+            families.append(label)
+    return families or ["other"]
+
+
+def _annotate_requested_relief_with_selection_rationale(
+    relief_items: List[str],
+    causes: List[Dict[str, Any]],
+    selection_rationale: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    if not selection_rationale:
+        return [{"text": str(item)} for item in relief_items]
+
+    annotations: List[Dict[str, Any]] = []
+    for item in relief_items:
+        relief_text = str(item or "").strip()
+        families = _relief_target_families(relief_text)
+        related_causes = []
+        for cause in causes:
+            cause_families = [str(value) for value in list(cause.get("strategic_families") or []) if str(value)]
+            if set(cause_families).intersection(families):
+                related_causes.append(cause)
+
+        role = ""
+        note = ""
+        if any(str(cause.get("strategic_role") or "") == "winner_unique_strength" for cause in related_causes):
+            role = "winner_unique_strength"
+            note = f"This relief item tracks the winner-specific { _families_phrase(families) } advantage that helped the selected preset beat the runner-up."
+        elif any(str(cause.get("strategic_role") or "") == "winner_family_strength" for cause in related_causes):
+            role = "winner_family_strength"
+            note = f"This relief item supports a { _families_phrase(families) } theory family that was stronger in the selected preset than in the runner-up."
+        elif any(str(cause.get("strategic_role") or "") == "shared_baseline" for cause in related_causes):
+            role = "shared_baseline"
+            note = f"This relief item tracks the shared { _families_phrase(families) } baseline that appeared in both the selected preset and the runner-up."
+        elif any(str(cause.get("strategic_role") or "") == "runner_up_emphasis" for cause in related_causes):
+            role = "runner_up_emphasis"
+            note = f"This relief item aligns more closely with the runner-up's { _families_phrase(families) } emphasis and should be reviewed carefully in this selected draft."
+
+        annotations.append(
+            {
+                "text": relief_text,
+                "strategic_families": families,
+                "strategic_role": role,
+                "strategic_note": note,
+                "related_claims": [str(cause.get("title") or "") for cause in related_causes if str(cause.get("title") or "")],
+            }
+        )
+    return annotations
+
+
 def _conversation_facts(conversation_history: List[Dict[str, Any]], limit: int = 8) -> List[str]:
     facts: List[str] = []
     for entry in conversation_history:
@@ -821,7 +973,7 @@ def _should_include_full_passage(snippet: str, summary: str) -> bool:
     cleaned_summary = _clean_policy_text(summary)
     if not cleaned_snippet or cleaned_snippet == cleaned_summary:
         return False
-    if _is_probably_toc_text(cleaned_snippet) or _is_placeholder_policy_text(cleaned_snippet):
+    if _is_probably_toc_text(cleaned_snippet) or _is_placeholder_policy_text(cleaned_snippet) or _is_generic_chapter_intro_text(cleaned_snippet):
         return False
     return True
 
@@ -914,6 +1066,8 @@ def _policy_text_quality(text: str) -> int:
         score -= 8
     if _is_placeholder_policy_text(cleaned):
         score -= 6
+    if _is_generic_chapter_intro_text(cleaned):
+        score -= 4
     if "HACC Policy" in str(text):
         score += 4
     if re.search(r"\b(?:must|shall|will|may request|written notice|informal review|informal hearing|grievance)\b", cleaned, flags=re.IGNORECASE):
@@ -931,6 +1085,19 @@ def _is_placeholder_policy_text(text: str) -> bool:
     return bool(
         re.search(
             r"\[(?:INSERT|The following is an optional section|Optional)",
+            normalized,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _is_generic_chapter_intro_text(text: str) -> bool:
+    normalized = _clean_policy_text(text)
+    if not normalized:
+        return False
+    return bool(
+        re.search(
+            r"\b(?:GRIEVANCES AND APPEALS INTRODUCTION|This chapter discusses grievances and appeals|The policies are discussed in the following three parts)\b",
             normalized,
             flags=re.IGNORECASE,
         )
@@ -1002,7 +1169,7 @@ def _refresh_seed_source_snippets(seed: Dict[str, Any]) -> Dict[str, Any]:
         )
         if _should_replace_snippet(current_snippet, refreshed_snippet):
             updated["snippet"] = refreshed_snippet
-        if _is_placeholder_policy_text(str(updated.get("snippet") or "")):
+        if _is_placeholder_policy_text(str(updated.get("snippet") or "")) or _is_generic_chapter_intro_text(str(updated.get("snippet") or "")):
             matched_rule_excerpt = _clean_policy_text(_best_grounding_result_excerpt(updated))
             if matched_rule_excerpt and not _is_placeholder_policy_text(matched_rule_excerpt):
                 updated["snippet"] = matched_rule_excerpt
@@ -1216,7 +1383,7 @@ def _best_grounding_result_excerpt(item: Dict[str, Any], max_chars: int = 420) -
         if str(rule.get("text") or "").strip()
     ]
     candidate_parts: List[str] = []
-    if snippet and not _is_probably_toc_text(snippet) and not _is_placeholder_policy_text(snippet):
+    if snippet and not _is_probably_toc_text(snippet) and not _is_placeholder_policy_text(snippet) and not _is_generic_chapter_intro_text(snippet):
         candidate_parts.append(snippet)
     for rule_text in rule_texts[:4]:
         if rule_text and rule_text not in candidate_parts:
@@ -1918,6 +2085,9 @@ def _render_markdown(package: Dict[str, Any]) -> str:
     ])
     for cause in package["causes_of_action"]:
         lines.append(f"- {cause['title']}: {cause['theory']}")
+        strategic_note = str(cause.get("strategic_note") or "").strip()
+        if strategic_note:
+            lines.append(f"  - Selection role: {strategic_note}")
         for support in list(cause.get("support") or []):
             lines.append(f"  - Support: {support}")
     lines.extend([
@@ -2020,9 +2190,11 @@ def main(argv: List[str] | None = None) -> int:
     seed = _merge_seed_with_grounding(dict(best_session.get("seed_complaint") or {}), grounding_bundle)
     key_facts = dict(seed.get("key_facts") or {})
     anchor_sections = [str(item) for item in list(key_facts.get("anchor_sections") or []) if str(item)]
+    selection_rationale = _selection_rationale_from_matrix(matrix_payload, selection_source) if matrix_payload else {}
     cleaned_summary = _summarize_policy_excerpt(
         key_facts.get("evidence_summary") or seed.get("summary") or "No summary available."
     )
+    cleaned_summary = _summary_with_selection_rationale(cleaned_summary, selection_rationale)
 
     package = {
         "generated_at": datetime.now(UTC).isoformat(),
@@ -2048,7 +2220,7 @@ def main(argv: List[str] | None = None) -> int:
         "proposed_allegations": _proposed_allegations(seed, best_session, args.filing_forum),
         "requested_relief": _requested_relief_for_forum(args.filing_forum),
         "grounded_evidence_summary": _grounded_summary_lines(grounding_bundle, evidence_upload_report),
-        "selection_rationale": _selection_rationale_from_matrix(matrix_payload, selection_source) if matrix_payload else {},
+        "selection_rationale": selection_rationale,
         "source_artifacts": {
             "results_json": str(results_path),
             "matrix_summary": str(Path(args.matrix_summary).resolve()) if args.matrix_summary else None,
@@ -2059,6 +2231,10 @@ def main(argv: List[str] | None = None) -> int:
         },
     }
     _inject_exhibit_references(package)
+    package["causes_of_action"] = _annotate_causes_with_selection_rationale(
+        list(package.get("causes_of_action") or []),
+        selection_rationale,
+    )
     package["claim_selection_summary"] = _claim_selection_summary(list(package.get("causes_of_action") or []))
 
     output_dir = Path(args.output_dir).resolve() if args.output_dir else results_path.parent / "complaint_synthesis"
