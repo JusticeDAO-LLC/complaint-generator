@@ -114,6 +114,11 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
                 "claim_element_label": "Protected activity",
                 "support_status": "unsupported",
                 "blocking": True,
+                "preferred_support_kind": "evidence",
+                "fallback_lanes": ["authority", "testimony"],
+                "source_quality_target": "high_quality_document",
+                "resolution_status": "still_open",
+                "resolution_notes": "",
             }
         ],
         "alignment_task_updates": [
@@ -184,6 +189,8 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["intake_evidence_alignment_summary"]["aligned_element_count"] == 1
     assert summary["intake_evidence_alignment_summary"]["claims"]["retaliation"]["intake_only_element_ids"] == ["causation"]
     assert summary["alignment_evidence_tasks"][0]["claim_element_id"] == "protected_activity"
+    assert summary["alignment_evidence_tasks"][0]["fallback_lanes"] == ["authority", "testimony"]
+    assert summary["alignment_evidence_tasks"][0]["source_quality_target"] == "high_quality_document"
     assert summary["alignment_task_updates"][0]["resolution_status"] == "partially_addressed"
     assert summary["alignment_task_update_history"][1]["evidence_sequence"] == 2
     assert summary["question_candidate_summary"]["count"] == 1

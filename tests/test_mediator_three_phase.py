@@ -709,11 +709,15 @@ class TestMediatorThreePhaseIntegration:
         assert result['alignment_evidence_tasks'][0]['recommended_witness_prompts']
         assert result['alignment_evidence_tasks'][0]['success_criteria']
         assert result['alignment_evidence_tasks'][0]['source_quality_target'] == 'high_quality_document'
+        assert result['alignment_evidence_tasks'][0]['fallback_lanes']
+        assert 'authority' in result['alignment_evidence_tasks'][0]['fallback_lanes']
+        assert result['alignment_evidence_tasks'][0]['resolution_notes'] == ''
         assert result['next_action']['action'] == 'fill_evidence_gaps'
         assert result['next_action']['claim_element_id'] == 'causation'
         status = mediator.get_three_phase_status()
         assert status['alignment_evidence_tasks']
         assert status['alignment_evidence_tasks'][0]['claim_element_id'] == 'causation'
+        assert 'fallback_lanes' in status['alignment_evidence_tasks'][0]
         assert status['claim_support_packet_summary']['claim_count'] == 1
         assert status['claim_support_packet_summary']['status_counts']['unsupported'] == 1
         assert 'proof_readiness_score' in status['claim_support_packet_summary']

@@ -5241,6 +5241,7 @@ class Mediator:
 						'preferred_support_kind': preferred_support_kind,
 						'preferred_evidence_classes': preferred_evidence_classes,
 						'fallback_support_kinds': fallback_support_kinds,
+						'fallback_lanes': list(fallback_support_kinds),
 						'source_quality_target': source_quality_target,
 						'task_priority': task_priority,
 						'missing_fact_bundle': missing_fact_bundle,
@@ -5260,6 +5261,7 @@ class Mediator:
 						'recommended_witness_prompts': recommended_witness_prompts,
 						'success_criteria': success_criteria,
 						'resolution_status': resolution_status,
+						'resolution_notes': '',
 					}
 				)
 

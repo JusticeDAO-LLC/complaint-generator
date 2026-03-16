@@ -87,6 +87,11 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "packet unresolved without path:" in content
     assert "packet proof readiness:" in content
     assert "packet completion ready:" in content
+    assert "preferred lane:" in content
+    assert "fallback lane:" in content
+    assert "quality target:" in content
+    assert "priority:" in content
+    assert "resolution:" in content
     assert "buildTestimonyRequest" in content
     assert "saveTestimony" in content
     assert "buildDocumentRequest" in content

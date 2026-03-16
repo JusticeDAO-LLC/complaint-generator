@@ -107,6 +107,12 @@ def _build_hook_backed_browser_mediator(db_path: str):
                 "support_status": "missing",
                 "action": "fill_evidence_gaps",
                 "blocking": True,
+                "preferred_support_kind": "evidence",
+                "fallback_lanes": ["authority", "testimony"],
+                "source_quality_target": "high_quality_document",
+                "task_priority": "high",
+                "resolution_status": "still_open",
+                "resolution_notes": "",
             }
         ],
         "alignment_task_updates": [
@@ -972,6 +978,12 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "element: retaliation:3" in alignment_tasks
                 assert "label: Causal connection" in alignment_tasks
                 assert "blocking: yes" in alignment_tasks
+                assert "preferred lane: evidence" in alignment_tasks
+                assert "fallback lane: authority" in alignment_tasks
+                assert "fallback lane: testimony" in alignment_tasks
+                assert "quality target: high_quality_document" in alignment_tasks
+                assert "priority: high" in alignment_tasks
+                assert "resolution: still_open" in alignment_tasks
                 assert "manual review blockers: 1" in manual_review_summary
                 assert "claims impacted: 1" in manual_review_summary
                 assert "Manual review blocker for retaliation" in manual_review_list

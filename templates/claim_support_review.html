@@ -1964,22 +1964,48 @@
             if (!alignmentEvidenceTasks.length) {
                 alignmentTaskContainer.innerHTML = '<div class="task-card">Alignment evidence tasks: no shared unsupported element tasks available.</div>';
             } else {
-                alignmentTaskContainer.innerHTML = alignmentEvidenceTasks.map((task) => `
-                    <article class="task-card">
-                        <div class="row-head">
-                            <div>
-                                <div class="row-title">Alignment task for ${task.claim_type || 'claim'}</div>
-                                <div class="meta">evidence action ${task.action || 'fill_evidence_gaps'}</div>
+                alignmentTaskContainer.innerHTML = alignmentEvidenceTasks.map((task) => {
+                    const chips = [
+                        `<span class="chip">element: ${task.claim_element_id || 'unknown'}</span>`,
+                        `<span class="chip">label: ${task.claim_element_label || task.claim_element_id || 'unknown'}</span>`,
+                        `<span class="chip">blocking: ${task.blocking ? 'yes' : 'no'}</span>`,
+                    ];
+                    if (task.preferred_support_kind) {
+                        chips.push(`<span class="chip">preferred lane: ${task.preferred_support_kind}</span>`);
+                    }
+                    const fallbackLanes = Array.isArray(task.fallback_lanes)
+                        ? task.fallback_lanes
+                        : (Array.isArray(task.fallback_support_kinds) ? task.fallback_support_kinds : []);
+                    fallbackLanes.slice(0, 2).forEach((lane) => {
+                        chips.push(`<span class="chip">fallback lane: ${lane}</span>`);
+                    });
+                    if (task.source_quality_target) {
+                        chips.push(`<span class="chip">quality target: ${task.source_quality_target}</span>`);
+                    }
+                    if (task.task_priority) {
+                        chips.push(`<span class="chip">priority: ${task.task_priority}</span>`);
+                    }
+                    if (task.resolution_status) {
+                        chips.push(`<span class="chip">resolution: ${task.resolution_status}</span>`);
+                    }
+                    if (task.resolution_notes) {
+                        chips.push(`<span class="chip">notes: ${task.resolution_notes}</span>`);
+                    }
+                    return `
+                        <article class="task-card">
+                            <div class="row-head">
+                                <div>
+                                    <div class="row-title">Alignment task for ${task.claim_type || 'claim'}</div>
+                                    <div class="meta">evidence action ${task.action || 'fill_evidence_gaps'}</div>
+                                </div>
+                                <span class="badge">${task.support_status || 'unknown'}</span>
                             </div>
-                            <span class="badge">${task.support_status || 'unknown'}</span>
-                        </div>
-                        <div class="chip-row" style="margin-top: 10px;">
-                            <span class="chip">element: ${task.claim_element_id || 'unknown'}</span>
-                            <span class="chip">label: ${task.claim_element_label || task.claim_element_id || 'unknown'}</span>
-                            <span class="chip">blocking: ${task.blocking ? 'yes' : 'no'}</span>
-                        </div>
-                    </article>
-                `).join('');
+                            <div class="chip-row" style="margin-top: 10px;">
+                                ${chips.join('')}
+                            </div>
+                        </article>
+                    `;
+                }).join('');
             }
 
             alignmentTaskUpdateFilterSummary.innerHTML = [
