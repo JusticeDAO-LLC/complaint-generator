@@ -585,6 +585,15 @@ def test_markdown_includes_selection_rationale_section():
         "policy_basis": ["Policy one."],
         "causes_of_action": [{"title": "Cause", "theory": "Theory", "support": ["Support"]}],
         "claim_selection_summary": [],
+        "relief_selection_summary": [
+            {
+                "text": "Relief",
+                "strategic_families": ["process"],
+                "strategic_role": "shared_baseline",
+                "strategic_note": "This relief item tracks the shared process baseline that appeared in both the selected preset and the runner-up.",
+                "related_claims": ["Cause"],
+            }
+        ],
         "proposed_allegations": ["Proposed."],
         "anchor_sections": ["reasonable_accommodation"],
         "anchor_passages": ["Passage"],
@@ -604,6 +613,8 @@ def test_markdown_includes_selection_rationale_section():
     assert "- Selected preset: accommodation_focus" in markdown
     assert "- Why this preset won: best for accommodation framing + protected-basis framing; runner-up is stronger on retaliation-heavy framing" in markdown
     assert "- Runner-up preset: administrative_plan_retaliation" in markdown
+    assert "## Relief Selection Summary" in markdown
+    assert "families=process; role=shared_baseline; related_claims=Cause" in markdown
     assert "## Requested Administrative Relief" in markdown
     assert "This relief item tracks the shared process baseline that appeared in both the selected preset and the runner-up." in markdown
 
