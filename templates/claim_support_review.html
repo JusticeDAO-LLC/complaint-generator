@@ -907,6 +907,8 @@
                     <h2 style="margin-top: 18px;">Alignment Task Updates</h2>
                     <div class="chip-row" id="alignment-task-manual-review-summary" style="margin-top: 10px;"></div>
                     <div class="question-list" id="alignment-task-manual-review-list"></div>
+                    <div class="chip-row" id="alignment-task-pending-review-summary" style="margin-top: 10px;"></div>
+                    <div class="question-list" id="alignment-task-pending-review-list"></div>
                     <div class="control-grid" style="margin-top: 10px;">
                         <div>
                             <label for="alignment-task-update-filter">Task Update Filter</label>
@@ -923,6 +925,7 @@
                             <select id="alignment-task-update-sort">
                                 <option value="newest_first">newest_first</option>
                                 <option value="oldest_first">oldest_first</option>
+                                <option value="pending_review_first">pending_review_first</option>
                                 <option value="manual_review_first">manual_review_first</option>
                             </select>
                         </div>
@@ -1112,11 +1115,23 @@
                 const value = Number(update && update.evidence_sequence);
                 return Number.isFinite(value) ? value : 0;
             };
+            const pendingReviewRank = (update) => (
+                String(update && update.resolution_status || '').trim().toLowerCase() === 'answered_pending_review' ? 0 : 1
+            );
             const manualReviewRank = (update) => (
                 String(update && update.resolution_status || '').trim().toLowerCase() === 'needs_manual_review' ? 0 : 1
             );
             if (normalizedSort === 'oldest_first') {
                 return updateList.sort((left, right) => sequenceValue(left) - sequenceValue(right));
+            }
+            if (normalizedSort === 'pending_review_first') {
+                return updateList.sort((left, right) => {
+                    const rankDifference = pendingReviewRank(left) - pendingReviewRank(right);
+                    if (rankDifference !== 0) {
+                        return rankDifference;
+                    }
+                    return sequenceValue(right) - sequenceValue(left);
+                });
             }
             if (normalizedSort === 'manual_review_first') {
                 return updateList.sort((left, right) => {
@@ -1160,6 +1175,47 @@
                 .map((entry) => entry.update)
                 .filter((update) => (
                     String(update && update.resolution_status || '').trim().toLowerCase() === 'needs_manual_review'
+                    && String(update && update.status || '').trim().toLowerCase() !== 'resolved'
+                ))
+                .sort((left, right) => {
+                    const leftSequence = Number(left && left.evidence_sequence);
+                    const rightSequence = Number(right && right.evidence_sequence);
+                    const normalizedLeft = Number.isFinite(leftSequence) ? leftSequence : 0;
+                    const normalizedRight = Number.isFinite(rightSequence) ? rightSequence : 0;
+                    return normalizedRight - normalizedLeft;
+                });
+        }
+
+        function summarizeAlignmentPendingReviewItems(updates) {
+            const updateList = Array.isArray(updates) ? updates : [];
+            const latestByTask = new Map();
+
+            updateList.forEach((update, index) => {
+                const fallbackTaskId = [
+                    update && update.claim_type,
+                    update && update.claim_element_id,
+                    update && update.action,
+                    index,
+                ].filter(Boolean).join(':');
+                const taskId = String(update && update.task_id || fallbackTaskId || `alignment-task-${index}`);
+                const existingEntry = latestByTask.get(taskId);
+                const existingSequence = Number(existingEntry && existingEntry.update && existingEntry.update.evidence_sequence);
+                const currentSequence = Number(update && update.evidence_sequence);
+                const currentOrder = index;
+                const existingOrder = existingEntry ? existingEntry.order : -1;
+                const replaceEntry = !existingEntry
+                    || (Number.isFinite(currentSequence) && (!Number.isFinite(existingSequence) || currentSequence >= existingSequence))
+                    || (!Number.isFinite(currentSequence) && currentOrder >= existingOrder);
+
+                if (replaceEntry) {
+                    latestByTask.set(taskId, { update, order: currentOrder });
+                }
+            });
+
+            return Array.from(latestByTask.values())
+                .map((entry) => entry.update)
+                .filter((update) => (
+                    String(update && update.resolution_status || '').trim().toLowerCase() === 'answered_pending_review'
                     && String(update && update.status || '').trim().toLowerCase() !== 'resolved'
                 ))
                 .sort((left, right) => {
@@ -1675,6 +1731,8 @@
             const alignmentTaskUpdateFilterSummary = document.getElementById('alignment-task-update-filter-summary');
             const alignmentTaskManualReviewSummary = document.getElementById('alignment-task-manual-review-summary');
             const alignmentTaskManualReviewList = document.getElementById('alignment-task-manual-review-list');
+            const alignmentTaskPendingReviewSummary = document.getElementById('alignment-task-pending-review-summary');
+            const alignmentTaskPendingReviewList = document.getElementById('alignment-task-pending-review-list');
             const alignmentTaskUpdateContainer = document.getElementById('alignment-task-update-list');
             const intakeCaseSummary = summary && typeof summary === 'object' ? summary : {};
             const candidateClaims = Array.isArray(intakeCaseSummary.candidate_claims) ? intakeCaseSummary.candidate_claims : [];
@@ -1715,6 +1773,7 @@
             const filteredAlignmentTaskUpdates = filterAlignmentTaskUpdates(visibleAlignmentTaskUpdates, taskUpdateFilterValue);
             const orderedAlignmentTaskUpdates = sortAlignmentTaskUpdates(filteredAlignmentTaskUpdates, taskUpdateSortValue);
             const manualReviewBlockers = summarizeAlignmentManualReviewBlockers(visibleAlignmentTaskUpdates);
+            const pendingReviewItems = summarizeAlignmentPendingReviewItems(visibleAlignmentTaskUpdates);
             const questionCandidateSummary = intakeCaseSummary.question_candidate_summary && typeof intakeCaseSummary.question_candidate_summary === 'object'
                 ? intakeCaseSummary.question_candidate_summary
                 : {};
@@ -1937,6 +1996,50 @@
                                     <div class="meta">${update.claim_element_label || update.claim_element_id || 'alignment task'} requires operator review</div>
                                 </div>
                                 <span class="badge contradicted">needs_manual_review</span>
+                            </div>
+                            <div class="chip-row" style="margin-top: 10px;">
+                                ${chips.join('')}
+                            </div>
+                        </article>
+                    `;
+                }).join('');
+            }
+
+            const pendingReviewClaims = new Set(
+                pendingReviewItems
+                    .map((update) => String(update && update.claim_type || '').trim())
+                    .filter(Boolean)
+            );
+            alignmentTaskPendingReviewSummary.innerHTML = [
+                `<span class="chip">pending review items: ${pendingReviewItems.length}</span>`,
+                `<span class="chip">claims impacted: ${pendingReviewClaims.size}</span>`,
+            ].join('');
+
+            if (!pendingReviewItems.length) {
+                alignmentTaskPendingReviewList.innerHTML = '<div class="task-card">Pending review items: none currently awaiting operator confirmation.</div>';
+            } else {
+                alignmentTaskPendingReviewList.innerHTML = pendingReviewItems.map((update) => {
+                    const chips = [
+                        `<span class="chip">element: ${update.claim_element_id || 'unknown'}</span>`,
+                        `<span class="chip">action: ${update.action || 'await_operator_confirmation'}</span>`,
+                    ];
+                    if (update.current_support_status) {
+                        chips.push(`<span class="chip">current support: ${update.current_support_status}</span>`);
+                    }
+                    if (update.evidence_artifact_id) {
+                        chips.push(`<span class="chip">artifact: ${update.evidence_artifact_id}</span>`);
+                    }
+                    if (update.evidence_sequence !== undefined && update.evidence_sequence !== null && update.evidence_sequence !== '') {
+                        chips.push(`<span class="chip">latest evidence event: ${update.evidence_sequence}</span>`);
+                    }
+                    return `
+                        <article class="task-card">
+                            <div class="row-head">
+                                <div>
+                                    <div class="row-title">Pending review item for ${update.claim_type || 'claim'}</div>
+                                    <div class="meta">${update.claim_element_label || update.claim_element_id || 'alignment task'} is awaiting operator confirmation</div>
+                                </div>
+                                <span class="badge">answered_pending_review</span>
                             </div>
                             <div class="chip-row" style="margin-top: 10px;">
                                 ${chips.join('')}

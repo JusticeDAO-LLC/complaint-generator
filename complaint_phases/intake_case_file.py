@@ -251,8 +251,11 @@ def build_summary_snapshot(intake_case_file: Dict[str, Any]) -> Dict[str, Any]:
     candidate_claims = _coerce_list(case_file.get("candidate_claims"))
     canonical_facts = _coerce_list(case_file.get("canonical_facts"))
     proof_leads = _coerce_list(case_file.get("proof_leads"))
+    timeline_anchors = _coerce_list(case_file.get("timeline_anchors"))
     open_items = _coerce_list(case_file.get("open_items"))
     contradiction_queue = _coerce_list(case_file.get("contradiction_queue"))
+    harm_profile = _coerce_dict(case_file.get("harm_profile"))
+    remedy_profile = _coerce_dict(case_file.get("remedy_profile"))
     sections = _coerce_dict(case_file.get("intake_sections"))
     unresolved_contradictions = [
         item for item in contradiction_queue
@@ -262,12 +265,118 @@ def build_summary_snapshot(intake_case_file: Dict[str, Any]) -> Dict[str, Any]:
         "candidate_claim_count": len(candidate_claims),
         "canonical_fact_count": len(canonical_facts),
         "proof_lead_count": len(proof_leads),
+        "timeline_anchor_count": len(timeline_anchors),
         "open_item_count": len(open_items),
         "unresolved_contradiction_count": len(unresolved_contradictions),
+        "harm_category_count": len(_coerce_list(harm_profile.get("categories"))),
+        "remedy_category_count": len(_coerce_list(remedy_profile.get("categories"))),
         "section_statuses": {
             name: _normalize_text(_coerce_dict(section).get("status") or "missing").lower() or "missing"
             for name, section in sections.items()
         },
+    }
+
+
+def build_timeline_anchors(canonical_facts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    anchors: List[Dict[str, Any]] = []
+    seen_keys = set()
+    for fact in canonical_facts if isinstance(canonical_facts, list) else []:
+        if not isinstance(fact, dict):
+            continue
+        fact_type = _normalize_text(fact.get("fact_type") or "").lower()
+        event_date = _normalize_text(fact.get("event_date_or_range") or "")
+        if fact_type != "timeline" and not event_date:
+            continue
+        anchor_text = event_date or _normalize_text(fact.get("text") or "")
+        if not anchor_text:
+            continue
+        key = (anchor_text.lower(), _normalize_text(fact.get("location") or "").lower())
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        anchors.append(
+            {
+                "anchor_id": f"timeline_anchor_{len(anchors) + 1:03d}",
+                "fact_id": _normalize_text(fact.get("fact_id") or ""),
+                "anchor_text": anchor_text,
+                "location": _normalize_text(fact.get("location") or "") or None,
+                "fact_type": fact_type or "timeline",
+            }
+        )
+    return anchors
+
+
+def _classify_harm_text(text: str) -> List[str]:
+    normalized = _normalize_text(text).lower()
+    categories: List[str] = []
+    if any(token in normalized for token in ("wages", "salary", "pay", "income", "money", "rent", "cost")):
+        categories.append("economic")
+    if any(token in normalized for token in ("job", "career", "promotion", "termination", "fired", "discipline")):
+        categories.append("professional")
+    if any(token in normalized for token in ("stress", "anxiety", "humiliation", "emotional", "distress")):
+        categories.append("emotional")
+    if any(token in normalized for token in ("injury", "pain", "medical", "hospital", "physical")):
+        categories.append("physical")
+    if any(token in normalized for token in ("process", "hearing", "appeal", "complaint handling", "procedure")):
+        categories.append("procedural")
+    return categories or ["general"]
+
+
+def build_harm_profile(canonical_facts: List[Dict[str, Any]]) -> Dict[str, Any]:
+    impact_facts = [
+        fact for fact in (canonical_facts if isinstance(canonical_facts, list) else [])
+        if isinstance(fact, dict) and _normalize_text(fact.get("fact_type") or "").lower() == "impact"
+    ]
+    categories: List[str] = []
+    for fact in impact_facts:
+        for category in _classify_harm_text(_normalize_text(fact.get("text") or "")):
+            if category not in categories:
+                categories.append(category)
+    return {
+        "count": len(impact_facts),
+        "categories": categories,
+        "fact_ids": [
+            _normalize_text(fact.get("fact_id") or "")
+            for fact in impact_facts
+            if _normalize_text(fact.get("fact_id") or "")
+        ],
+    }
+
+
+def _classify_remedy_text(text: str) -> List[str]:
+    normalized = _normalize_text(text).lower()
+    categories: List[str] = []
+    if any(token in normalized for token in ("damages", "compensation", "money", "lost wages", "refund")):
+        categories.append("monetary")
+    if any(token in normalized for token in ("reinstatement", "job back", "return to work")):
+        categories.append("reinstatement")
+    if any(token in normalized for token in ("injunction", "stop", "prevent", "order")):
+        categories.append("injunctive")
+    if any(token in normalized for token in ("correct", "records", "expunge", "remove discipline")):
+        categories.append("records_correction")
+    if any(token in normalized for token in ("declare", "declaratory", "finding")):
+        categories.append("declaratory")
+    return categories or ["general"]
+
+
+def build_remedy_profile(canonical_facts: List[Dict[str, Any]]) -> Dict[str, Any]:
+    remedy_facts = [
+        fact for fact in (canonical_facts if isinstance(canonical_facts, list) else [])
+        if isinstance(fact, dict) and _normalize_text(fact.get("fact_type") or "").lower() == "remedy"
+    ]
+    categories: List[str] = []
+    for fact in remedy_facts:
+        for category in _classify_remedy_text(_normalize_text(fact.get("text") or "")):
+            if category not in categories:
+                categories.append(category)
+    return {
+        "count": len(remedy_facts),
+        "categories": categories,
+        "fact_ids": [
+            _normalize_text(fact.get("fact_id") or "")
+            for fact in remedy_facts
+            if _normalize_text(fact.get("fact_id") or "")
+        ],
     }
 
 
@@ -356,6 +465,9 @@ def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[st
         "candidate_claims": candidate_claims,
         "intake_sections": intake_sections,
         "canonical_facts": canonical_facts,
+        "timeline_anchors": build_timeline_anchors(canonical_facts),
+        "harm_profile": build_harm_profile(canonical_facts),
+        "remedy_profile": build_remedy_profile(canonical_facts),
         "proof_leads": proof_leads,
         "contradiction_queue": [],
         "open_items": [],
@@ -386,6 +498,9 @@ def refresh_intake_case_file(intake_case_file: Dict[str, Any], knowledge_graph, 
     """Refresh derived intake sections, open items, and summary snapshots."""
     case_file = _coerce_dict(intake_case_file)
     case_file["intake_sections"] = refresh_intake_sections(case_file, knowledge_graph)
+    case_file["timeline_anchors"] = build_timeline_anchors(_coerce_list(case_file.get("canonical_facts")))
+    case_file["harm_profile"] = build_harm_profile(_coerce_list(case_file.get("canonical_facts")))
+    case_file["remedy_profile"] = build_remedy_profile(_coerce_list(case_file.get("canonical_facts")))
     case_file["open_items"] = build_open_items(case_file)
 
     summary_snapshots = _coerce_list(case_file.get("summary_snapshots"))

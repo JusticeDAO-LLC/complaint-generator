@@ -358,15 +358,49 @@ class TestMediatorThreePhaseIntegration:
 
         result = mediator.process_denoising_answer(
             {'type': 'timeline', 'question': 'When did this happen?', 'context': {}},
-            'It happened on January 20, 2026.',
+            'It happened on January 20, 2026 at the Dallas office.',
         )
         intake_case_file = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file')
+        timeline_fact = next(fact for fact in intake_case_file['canonical_facts'] if fact['fact_type'] == 'timeline')
 
         assert any(fact['fact_type'] == 'timeline' for fact in intake_case_file['canonical_facts'])
+        assert timeline_fact['event_date_or_range'] == 'January 20, 2026'
+        assert timeline_fact['location'] == 'Dallas office'
+        assert timeline_fact['fact_participants']['location'] == 'Dallas office'
+        assert intake_case_file['timeline_anchors'][0]['anchor_text'] == 'January 20, 2026'
         assert intake_case_file['intake_sections']['chronology']['status'] == 'complete'
         assert result['intake_readiness']['canonical_fact_count'] >= 1
         assert result['question_candidates']
         assert mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'question_candidates')
+
+    def test_process_denoising_answer_extracts_actor_target_and_location_for_responsible_party(self):
+        """Responsible-party answers should populate actor, target, and location-oriented fact fields."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process("My employer discriminated against me.")
+
+        mediator.process_denoising_answer(
+            {'type': 'responsible_party', 'question': 'Who did this?', 'context': {}},
+            'My supervisor John Smith fired me at the Dallas office.',
+        )
+        intake_case_file = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file')
+        responsible_party_fact = next(
+            fact for fact in intake_case_file['canonical_facts']
+            if fact['fact_type'] == 'responsible_party'
+        )
+
+        assert responsible_party_fact['actor_ids'] == ['My supervisor John Smith']
+        assert responsible_party_fact['target_ids'] == ['complainant']
+        assert responsible_party_fact['location'] == 'Dallas office'
+        assert responsible_party_fact['fact_participants']['actor'] == 'My supervisor John Smith'
+        assert responsible_party_fact['fact_participants']['target'] == 'complainant'
 
     def test_process_denoising_answer_updates_proof_leads_in_intake_case_file(self):
         """Evidence answers should create proof leads in the structured intake record."""
@@ -390,6 +424,35 @@ class TestMediatorThreePhaseIntegration:
         assert intake_case_file['proof_leads']
         assert intake_case_file['intake_sections']['proof_leads']['status'] == 'complete'
         assert any('emails' in lead['description'].lower() for lead in intake_case_file['proof_leads'])
+
+    def test_process_denoising_answer_updates_harm_and_remedy_profiles(self):
+        """Impact and remedy answers should populate structured harm and remedy profiles in the intake case file."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process("I was fired after discrimination.")
+
+        mediator.process_denoising_answer(
+            {'type': 'impact', 'question': 'What harm did you suffer?', 'context': {}},
+            'I lost wages, my job, and suffered severe stress.',
+        )
+        mediator.process_denoising_answer(
+            {'type': 'remedy', 'question': 'What do you want?', 'context': {}},
+            'I want damages and reinstatement.',
+        )
+        intake_case_file = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file')
+
+        assert 'economic' in intake_case_file['harm_profile']['categories']
+        assert 'professional' in intake_case_file['harm_profile']['categories']
+        assert 'emotional' in intake_case_file['harm_profile']['categories']
+        assert 'monetary' in intake_case_file['remedy_profile']['categories']
+        assert 'reinstatement' in intake_case_file['remedy_profile']['categories']
 
     def test_process_denoising_answer_enriches_proof_lead_metadata_for_targeted_element(self):
         """Evidence answers should preserve claim-element targeting and retrieval metadata on proof leads."""
@@ -427,6 +490,41 @@ class TestMediatorThreePhaseIntegration:
         assert matching_lead['expected_format'] == 'email'
         assert matching_lead['retrieval_path'] == 'complainant_email_account'
         assert matching_lead['priority'] == 'high'
+
+    def test_process_denoising_answer_marks_witness_support_as_testimony_lane(self):
+        """Witness-oriented evidence answers should set testimony-oriented proof lead metadata."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process("I was fired after I complained about discrimination.")
+
+        mediator.process_denoising_answer(
+            {
+                'type': 'evidence',
+                'question': 'Who can support this?',
+                'context': {
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'causation',
+                    'target_element_id': 'causation',
+                },
+            },
+            'My coworker Jane Doe witnessed the retaliation and can confirm the timeline.',
+        )
+        intake_case_file = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file')
+        witness_lead = next(
+            lead for lead in intake_case_file['proof_leads']
+            if 'coworker jane doe' in lead['description'].lower()
+        )
+
+        assert witness_lead['recommended_support_kind'] == 'testimony'
+        assert witness_lead['source_quality_target'] == 'credible_testimony'
+        assert witness_lead['custodian'] == 'witness_follow_up'
 
     def test_process_denoising_answer_refreshes_open_items_and_summary_snapshots(self):
         """Structured intake refresh should keep unresolved work and snapshots current after answers."""
@@ -714,6 +812,134 @@ class TestMediatorThreePhaseIntegration:
         assert result['alignment_task_update_history'][0]['evidence_sequence'] >= 1
         assert mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks') == []
         assert mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history')
+
+    def test_save_claim_testimony_record_promotes_answered_pending_review_update(self):
+        """Saving testimony should advance matching answered-pending-review alignment updates."""
+        from mediator.mediator import Mediator
+        from unittest.mock import Mock
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_task_updates',
+            [
+                {
+                    'task_id': 'retaliation:protected_activity:fill_evidence_gaps',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'action': 'fill_evidence_gaps',
+                    'resolution_status': 'answered_pending_review',
+                    'status': 'resolved',
+                    'answer_preview': 'HR email',
+                }
+            ],
+        )
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_task_update_history',
+            [
+                {
+                    'task_id': 'retaliation:protected_activity:fill_evidence_gaps',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'resolution_status': 'answered_pending_review',
+                    'status': 'resolved',
+                    'evidence_sequence': 1,
+                    'answer_preview': 'HR email',
+                }
+            ],
+        )
+        mediator.claim_support.save_testimony_record = Mock(return_value={
+            'recorded': True,
+            'testimony_id': 'testimony:retaliation:1',
+        })
+
+        result = mediator.save_claim_testimony_record(
+            claim_type='retaliation',
+            claim_element_id='protected_activity',
+            claim_element_text='Protected activity',
+            raw_narrative='HR email',
+        )
+
+        assert result['recorded'] is True
+        current_updates = mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_updates')
+        assert current_updates[0]['resolution_status'] == 'promoted_to_testimony'
+        assert current_updates[0]['promotion_ref'] == 'testimony:retaliation:1'
+        history = mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history')
+        assert history[-1]['resolution_status'] == 'promoted_to_testimony'
+        assert history[-1]['evidence_sequence'] == 2
+
+    def test_save_claim_support_document_promotes_answered_pending_review_update(self):
+        """Saving a document should advance matching answered-pending-review alignment updates."""
+        from mediator.mediator import Mediator
+        from unittest.mock import Mock
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_task_updates',
+            [
+                {
+                    'task_id': 'retaliation:protected_activity:fill_evidence_gaps',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'action': 'fill_evidence_gaps',
+                    'resolution_status': 'answered_pending_review',
+                    'status': 'resolved',
+                    'answer_preview': 'Complaint email attachment',
+                }
+            ],
+        )
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_task_update_history',
+            [
+                {
+                    'task_id': 'retaliation:protected_activity:fill_evidence_gaps',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'resolution_status': 'answered_pending_review',
+                    'status': 'resolved',
+                    'evidence_sequence': 3,
+                    'answer_preview': 'Complaint email attachment',
+                }
+            ],
+        )
+        mediator.submit_evidence = Mock(return_value={
+            'record_id': 'doc:retaliation:1',
+            'artifact_id': 'artifact:retaliation:1',
+            'claim_element_id': 'protected_activity',
+        })
+
+        result = mediator.save_claim_support_document(
+            claim_type='retaliation',
+            claim_element_id='protected_activity',
+            claim_element_text='Protected activity',
+            document_text='Complaint email attachment',
+            document_label='Complaint email',
+        )
+
+        assert result['recorded'] is True
+        current_updates = mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_updates')
+        assert current_updates[0]['resolution_status'] == 'promoted_to_document'
+        assert current_updates[0]['promotion_ref'] == 'doc:retaliation:1'
+        history = mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history')
+        assert history[-1]['resolution_status'] == 'promoted_to_document'
+        assert history[-1]['evidence_sequence'] == 4
 
     def test_requirement_answer_can_satisfy_registry_backed_claim_element(self):
         """Requirement answers should tag and satisfy registry-backed claim elements when the requirement name is recognizable."""

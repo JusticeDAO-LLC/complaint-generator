@@ -50,6 +50,9 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
         "intake_sections": {"chronology": {"status": "complete", "missing_items": []}},
         "canonical_fact_summary": {"count": 2, "facts": [{"fact_id": "fact_1"}]},
         "proof_lead_summary": {"count": 1, "proof_leads": [{"lead_id": "lead_1"}]},
+        "timeline_anchor_summary": {"count": 1, "anchors": [{"anchor_id": "timeline_anchor_001"}]},
+        "harm_profile": {"count": 1, "categories": ["economic"]},
+        "remedy_profile": {"count": 1, "categories": ["monetary"]},
         "intake_matching_summary": {
             "claim_count": 1,
             "claims": {"retaliation": {"missing_requirement_count": 2, "matcher_confidence": 0.0}},
@@ -165,6 +168,9 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["intake_sections"]["chronology"]["status"] == "complete"
     assert summary["canonical_fact_summary"]["count"] == 2
     assert summary["proof_lead_summary"]["count"] == 1
+    assert summary["timeline_anchor_summary"]["count"] == 1
+    assert summary["harm_profile"]["categories"] == ["economic"]
+    assert summary["remedy_profile"]["categories"] == ["monetary"]
     assert summary["intake_matching_summary"]["claim_count"] == 1
     assert summary["intake_legal_targeting_summary"]["claim_count"] == 1
     assert summary["intake_legal_targeting_summary"]["mapped_question_count"] == 1

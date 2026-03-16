@@ -733,13 +733,20 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert "pending_review" in page_html
     assert "alignment-task-manual-review-summary" in page_html
     assert "alignment-task-manual-review-list" in page_html
+    assert "alignment-task-pending-review-summary" in page_html
+    assert "alignment-task-pending-review-list" in page_html
     assert "manual review blockers: ${manualReviewBlockers.length}" in page_html
     assert "claims impacted: ${manualReviewClaims.size}" in page_html
     assert "Manual review blocker for ${update.claim_type || 'claim'}" in page_html
     assert "Manual review blockers: none currently escalated." in page_html
+    assert "pending review items: ${pendingReviewItems.length}" in page_html
+    assert "claims impacted: ${pendingReviewClaims.size}" in page_html
+    assert "Pending review item for ${update.claim_type || 'claim'}" in page_html
+    assert "Pending review items: none currently awaiting operator confirmation." in page_html
     assert "alignment_task_update_filter" in page_html
     assert "Task Update Sort" in page_html
     assert "alignment-task-update-sort" in page_html
+    assert "pending_review_first" in page_html
     assert "alignment_task_update_sort" in page_html
     assert "alignment-task-update-list" in page_html
     assert "Alignment task updates: no recent evidence-driven task changes recorded." in page_html

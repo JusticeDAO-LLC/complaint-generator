@@ -1043,7 +1043,7 @@ class Mediator:
 		"""Persist a testimony record linked to claim-support review."""
 		if user_id is None:
 			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
-		return self.claim_support.save_testimony_record(
+		result = self.claim_support.save_testimony_record(
 			user_id,
 			claim_type=claim_type or '',
 			claim_element_id=claim_element_id,
@@ -1058,6 +1058,15 @@ class Mediator:
 			source_confidence=source_confidence,
 			metadata=metadata,
 		)
+		if bool((result or {}).get('recorded')):
+			self._promote_alignment_task_update(
+				claim_type=claim_type or '',
+				claim_element_id=claim_element_id or '',
+				promotion_kind='testimony',
+				promotion_ref=str((result or {}).get('testimony_id') or ''),
+				answer_preview=str(raw_narrative or ''),
+			)
+		return result
 
 	def get_claim_testimony_records(
 		self,
@@ -1129,12 +1138,21 @@ class Mediator:
 			claim_element=claim_element_text,
 			metadata=storage_metadata,
 		)
-		return {
+		payload = {
 			**result,
 			'recorded': bool(result.get('record_id')),
 			'claim_element_id': claim_element_id or result.get('claim_element_id'),
 			'claim_element_text': claim_element_text or result.get('claim_element_text'),
 		}
+		if payload['recorded']:
+			self._promote_alignment_task_update(
+				claim_type=claim_type or '',
+				claim_element_id=str(payload.get('claim_element_id') or ''),
+				promotion_kind='document',
+				promotion_ref=str(payload.get('record_id') or payload.get('artifact_id') or ''),
+				answer_preview=normalized_text,
+			)
+		return payload
 
 	def get_claim_contradiction_candidates(
 		self,
@@ -3571,6 +3589,95 @@ class Mediator:
 			return 'witness_follow_up'
 		return 'complainant_possession'
 
+	def _extract_location_from_text(self, value: str) -> str | None:
+		normalized = self._normalize_intake_text(value)
+		if not normalized:
+			return None
+		location_match = re.search(
+			r'\b(?:at|in)\s+(?:the\s+)?([A-Za-z0-9][A-Za-z0-9\s\-]{1,60}?(?:office|store|branch|facility|school|hospital|warehouse|workplace|department))\b',
+			normalized,
+			re.IGNORECASE,
+		)
+		if location_match:
+			return self._normalize_intake_text(location_match.group(1))
+		return None
+
+	def _extract_actor_reference_from_text(self, value: str) -> str | None:
+		normalized = self._normalize_intake_text(value)
+		if not normalized:
+			return None
+		verb_match = re.search(
+			r'\b((?:my|the)\s+[A-Za-z][A-Za-z\s]{1,40}|[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+(?:fired|terminated|harassed|retaliated|demoted|disciplined|denied|rejected|cut|reported|ignored)\b',
+			normalized,
+			re.IGNORECASE,
+		)
+		if verb_match:
+			return self._normalize_intake_text(verb_match.group(1))
+		by_match = re.search(
+			r'\bby\s+((?:my|the)\s+[A-Za-z][A-Za-z\s]{1,40}|[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\b',
+			normalized,
+			re.IGNORECASE,
+		)
+		if by_match:
+			return self._normalize_intake_text(by_match.group(1))
+		return None
+
+	def _extract_target_reference_from_text(self, value: str) -> str | None:
+		normalized = self._normalize_intake_text(value)
+		if not normalized:
+			return None
+		lower_value = normalized.lower()
+		if re.search(r'\b(me|my|mine|us|our|we)\b', lower_value):
+			return 'complainant'
+		against_match = re.search(
+			r'\bagainst\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\b',
+			normalized,
+		)
+		if against_match:
+			return self._normalize_intake_text(against_match.group(1))
+		return None
+
+	def _extract_fact_participants_from_answer(self, answer: str) -> Dict[str, Any]:
+		actor = self._extract_actor_reference_from_text(answer)
+		target = self._extract_target_reference_from_text(answer)
+		location = self._extract_location_from_text(answer)
+		participants: Dict[str, Any] = {}
+		if actor:
+			participants['actor'] = actor
+		if target:
+			participants['target'] = target
+		if location:
+			participants['location'] = location
+		return participants
+
+	def _infer_support_kind_from_answer(self, answer: str, lead_type: str) -> str:
+		lower_answer = self._normalize_intake_text(answer).lower()
+		lower_lead_type = self._normalize_intake_text(lead_type).lower()
+		if any(token in lower_answer for token in ('witness', 'coworker', 'co-worker', 'saw it', 'heard it', 'first-hand')):
+			return 'testimony'
+		if any(token in lower_answer for token in ('policy', 'handbook', 'rule', 'official notice')):
+			return 'authority'
+		if 'witness' in lower_lead_type:
+			return 'testimony'
+		return 'evidence'
+
+	def _infer_source_quality_target(self, support_kind: str) -> str:
+		if support_kind == 'testimony':
+			return 'credible_testimony'
+		if support_kind == 'authority':
+			return 'authoritative_source'
+		return 'high_quality_document'
+
+	def _infer_proof_lead_custodian(self, answer: str, lead_type: str) -> str:
+		support_kind = self._infer_support_kind_from_answer(answer, lead_type)
+		if support_kind == 'testimony':
+			return 'witness_follow_up'
+		if 'email' in lead_type.lower():
+			return 'complainant_email_account'
+		if 'text' in lead_type.lower() or 'message' in lead_type.lower():
+			return 'complainant_mobile_device'
+		return 'complainant'
+
 	def _resolve_answer_claim_types(self, intake_case_file: Dict[str, Any], context: Dict[str, Any]) -> List[str]:
 		claim_types: List[str] = []
 		context_claim_type = self._normalize_intake_text(context.get('claim_type') or context.get('target_claim_type')).lower()
@@ -3834,6 +3941,10 @@ class Mediator:
 		resolved_claim_types = self._resolve_answer_claim_types(intake_case_file, context)
 		resolved_element_targets = self._resolve_answer_element_targets(context)
 		created_fact: Dict[str, Any] | None = None
+		fact_participants = self._extract_fact_participants_from_answer(normalized_answer)
+		actor_ref = str(fact_participants.get('actor') or '').strip()
+		target_ref = str(fact_participants.get('target') or '').strip()
+		location_ref = str(fact_participants.get('location') or '').strip() or self._extract_location_from_text(normalized_answer)
 
 		if question_type == 'timeline':
 			existing_timeline_facts = [
@@ -3846,10 +3957,14 @@ class Mediator:
 				fact_type='timeline',
 				question_type=question_type,
 				event_date_or_range=self._extract_date_or_range_from_text(normalized_answer),
+				actor_ids=[actor_ref] if actor_ref else None,
+				target_ids=[target_ref] if target_ref else None,
+				location=location_ref,
 				claim_types=resolved_claim_types,
 				element_tags=resolved_element_targets,
 				materiality='high',
 				corroboration_priority='high',
+				fact_participants=fact_participants,
 			)
 			for existing_fact in existing_timeline_facts:
 				existing_text = self._normalize_intake_text(existing_fact.get('text'))
@@ -3883,27 +3998,35 @@ class Mediator:
 						question_type='remedy',
 					)
 		elif question_type == 'evidence':
+			support_kind = self._infer_support_kind_from_answer(answer, self._extract_proof_lead_type(answer))
 			created_fact = self._append_canonical_fact(
 				intake_case_file,
 				text=normalized_answer,
 				fact_type='supporting_evidence',
 				question_type=question_type,
+				actor_ids=[actor_ref] if actor_ref else None,
+				target_ids=[target_ref] if target_ref else None,
+				location=location_ref,
 				claim_types=resolved_claim_types,
 				element_tags=resolved_element_targets,
 				materiality='high',
 				corroboration_priority='high',
+				fact_participants=fact_participants,
 			)
 			evidence_classes = self._resolve_evidence_classes_for_context(intake_case_file, context)
+			lead_type = self._extract_proof_lead_type(answer)
 			self._append_proof_lead(
 				intake_case_file,
 				text=normalized_answer,
-				lead_type=self._extract_proof_lead_type(answer),
+				lead_type=lead_type,
 				related_fact_ids=[created_fact['fact_id']],
 				fact_targets=[created_fact['fact_id']],
 				element_targets=resolved_element_targets,
 				priority='high' if question.get('priority') == 'high' else 'medium',
 				evidence_classes=evidence_classes,
-				recommended_support_kind='testimony' if 'witness' in normalized_answer.lower() else 'evidence',
+				custodian=self._infer_proof_lead_custodian(answer, lead_type),
+				recommended_support_kind=support_kind,
+				source_quality_target=self._infer_source_quality_target(support_kind),
 			)
 		elif question_type == 'responsible_party':
 			created_fact = self._append_canonical_fact(
@@ -3911,10 +4034,15 @@ class Mediator:
 				text=normalized_answer,
 				fact_type='responsible_party',
 				question_type=question_type,
-				actor_ids=[normalized_answer],
+				actor_ids=[actor_ref or normalized_answer],
+				target_ids=[target_ref] if target_ref else None,
+				location=location_ref,
 				claim_types=resolved_claim_types,
 				element_tags=resolved_element_targets,
-				fact_participants={'actor': normalized_answer},
+				fact_participants={
+					**fact_participants,
+					'actor': actor_ref or normalized_answer,
+				},
 				materiality='high',
 			)
 		elif question_type == 'requirement':
@@ -3923,10 +4051,14 @@ class Mediator:
 				text=normalized_answer,
 				fact_type='claim_element',
 				question_type=question_type,
+				actor_ids=[actor_ref] if actor_ref else None,
+				target_ids=[target_ref] if target_ref else None,
+				location=location_ref,
 				claim_types=resolved_claim_types,
 				element_tags=list(resolved_element_targets),
 				materiality='high',
 				corroboration_priority='high',
+				fact_participants=fact_participants,
 			)
 			target_element_id = self._normalize_intake_text(context.get('requirement_id'))
 			requirement_name = self._normalize_intake_text(context.get('requirement_name'))
@@ -5174,6 +5306,92 @@ class Mediator:
 			)
 		return updates
 
+	def _promote_alignment_task_update(
+		self,
+		*,
+		claim_type: str,
+		claim_element_id: str,
+		promotion_kind: str,
+		promotion_ref: str = '',
+		answer_preview: str = '',
+	) -> Dict[str, Any] | None:
+		current_updates = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_updates') or []
+		history = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history') or []
+		normalized_claim_type = str(claim_type or '').strip().lower()
+		normalized_element_id = str(claim_element_id or '').strip().lower()
+		if not normalized_claim_type or not normalized_element_id:
+			return None
+
+		matched_update = None
+		retained_updates: List[Dict[str, Any]] = []
+		for update in current_updates if isinstance(current_updates, list) else []:
+			if not isinstance(update, dict):
+				continue
+			update_claim_type = str(update.get('claim_type') or '').strip().lower()
+			update_element_id = str(update.get('claim_element_id') or '').strip().lower()
+			resolution_status = str(update.get('resolution_status') or '').strip().lower()
+			if (
+				update_claim_type == normalized_claim_type
+				and update_element_id == normalized_element_id
+				and resolution_status == 'answered_pending_review'
+				and matched_update is None
+			):
+				matched_update = dict(update)
+				continue
+			retained_updates.append(dict(update))
+
+		if matched_update is None:
+			for update in reversed(history if isinstance(history, list) else []):
+				if not isinstance(update, dict):
+					continue
+				update_claim_type = str(update.get('claim_type') or '').strip().lower()
+				update_element_id = str(update.get('claim_element_id') or '').strip().lower()
+				resolution_status = str(update.get('resolution_status') or '').strip().lower()
+				if (
+					update_claim_type == normalized_claim_type
+					and update_element_id == normalized_element_id
+					and resolution_status == 'answered_pending_review'
+				):
+					matched_update = dict(update)
+					break
+
+		if matched_update is None:
+			return None
+
+		promoted_update = {
+			**matched_update,
+			'resolution_status': f'promoted_to_{promotion_kind}',
+			'status': 'resolved',
+			'current_support_status': str(matched_update.get('current_support_status') or '').strip().lower(),
+			'promotion_kind': promotion_kind,
+			'promotion_ref': str(promotion_ref or '').strip(),
+			'answer_preview': str(answer_preview or matched_update.get('answer_preview') or '').strip(),
+		}
+		last_sequence = 0
+		for entry in history if isinstance(history, list) else []:
+			if not isinstance(entry, dict):
+				continue
+			try:
+				last_sequence = max(last_sequence, int(entry.get('evidence_sequence', 0) or 0))
+			except (TypeError, ValueError):
+				continue
+		updated_history = self._merge_alignment_task_update_history(
+			history,
+			[promoted_update],
+			evidence_sequence=last_sequence + 1,
+		)
+		self.phase_manager.update_phase_data(
+			ComplaintPhase.EVIDENCE,
+			'alignment_task_updates',
+			[promoted_update] + retained_updates,
+		)
+		self.phase_manager.update_phase_data(
+			ComplaintPhase.EVIDENCE,
+			'alignment_task_update_history',
+			updated_history,
+		)
+		return promoted_update
+
 	def _classify_evidence_ingestion_outcomes(
 		self,
 		evidence_data: Dict[str, Any],
@@ -5915,6 +6133,9 @@ class Mediator:
 		alignment_evidence_tasks = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks') or []
 		alignment_task_updates = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_updates') or []
 		alignment_task_update_history = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history') or []
+		timeline_anchors = intake_case_file.get('timeline_anchors', []) if isinstance(intake_case_file, dict) else []
+		harm_profile = intake_case_file.get('harm_profile', {}) if isinstance(intake_case_file, dict) else {}
+		remedy_profile = intake_case_file.get('remedy_profile', {}) if isinstance(intake_case_file, dict) else {}
 		return {
 			'current_phase': self.phase_manager.get_current_phase().value,
 			'iteration_count': self.phase_manager.iteration_count,
@@ -5931,6 +6152,12 @@ class Mediator:
 				'count': len(proof_leads),
 				'proof_leads': proof_leads,
 			},
+			'timeline_anchor_summary': {
+				'count': len(timeline_anchors) if isinstance(timeline_anchors, list) else 0,
+				'anchors': timeline_anchors if isinstance(timeline_anchors, list) else [],
+			},
+			'harm_profile': harm_profile if isinstance(harm_profile, dict) else {},
+			'remedy_profile': remedy_profile if isinstance(remedy_profile, dict) else {},
 			'intake_matching_summary': self._summarize_intake_matching_pressure(intake_matching_pressure),
 			'intake_legal_targeting_summary': self._summarize_intake_legal_targeting(
 				intake_matching_pressure,

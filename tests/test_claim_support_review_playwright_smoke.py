@@ -933,7 +933,7 @@ def test_claim_support_review_dashboard_smoke_filters_pending_review_alignment_u
                 "resolution_status": "answered_pending_review",
                 "status": "active",
                 "evidence_artifact_id": "artifact-pending",
-                "evidence_sequence": 3,
+                "evidence_sequence": 1,
             }
         ]
 
@@ -949,6 +949,18 @@ def test_claim_support_review_dashboard_smoke_filters_pending_review_alignment_u
                     "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
                 )
 
+                pending_review_summary = page.locator("#alignment-task-pending-review-summary").inner_text()
+                pending_review_list = page.locator("#alignment-task-pending-review-list").inner_text()
+
+                assert "pending review items: 1" in pending_review_summary
+                assert "claims impacted: 1" in pending_review_summary
+                assert "Pending review item for retaliation" in pending_review_list
+                assert "element: retaliation:2" in pending_review_list
+                assert "action: await_operator_confirmation" in pending_review_list
+                assert "current support: partially_supported" in pending_review_list
+                assert "artifact: artifact-pending" in pending_review_list
+                assert "latest evidence event: 1" in pending_review_list
+
                 page.select_option("#alignment-task-update-filter", "pending_review")
                 page.wait_for_function(
                     "() => document.getElementById('alignment-task-update-filter-summary').textContent.includes('filter: pending_review')"
@@ -962,21 +974,37 @@ def test_claim_support_review_dashboard_smoke_filters_pending_review_alignment_u
                 assert "ANSWERED, PENDING REVIEW" in filtered_alignment_updates
                 assert "element: retaliation:2" in filtered_alignment_updates
                 assert "artifact: artifact-pending" in filtered_alignment_updates
-                assert "evidence event: 3" in filtered_alignment_updates
+                assert "evidence event: 1" in filtered_alignment_updates
                 assert "resolution: needs_manual_review" not in filtered_alignment_updates
                 assert "resolution: still_open" not in filtered_alignment_updates
 
+                page.select_option("#alignment-task-update-filter", "all")
+                page.select_option("#alignment-task-update-sort", "pending_review_first")
+                page.wait_for_function(
+                    "() => document.getElementById('alignment-task-update-filter-summary').textContent.includes('sort: pending_review_first')"
+                )
+
+                pending_first_updates = page.locator("#alignment-task-update-list").inner_text()
+                pending_first_summary = page.locator("#alignment-task-update-filter-summary").inner_text()
+
+                assert "alignment_task_update_sort=pending_review_first" in page.url
+                assert "sort: pending_review_first" in pending_first_summary
+                assert pending_first_updates.index("artifact: artifact-pending") < pending_first_updates.index("artifact: artifact-conflict")
+                assert pending_first_updates.index("artifact: artifact-pending") < pending_first_updates.index("artifact: artifact-open")
+
                 page.reload()
                 page.wait_for_function(
-                    "() => document.getElementById('alignment-task-update-filter-summary').textContent.includes('filter: pending_review')"
+                    "() => document.getElementById('alignment-task-update-filter-summary').textContent.includes('sort: pending_review_first')"
                 )
 
                 reloaded_alignment_updates = page.locator("#alignment-task-update-list").inner_text()
                 reloaded_alignment_summary = page.locator("#alignment-task-update-filter-summary").inner_text()
-                assert page.locator("#alignment-task-update-filter").input_value() == "pending_review"
-                assert "alignment_task_update_filter=pending_review" in page.url
-                assert "visible updates: 1" in reloaded_alignment_summary
-                assert "ANSWERED, PENDING REVIEW" in reloaded_alignment_updates
+                assert page.locator("#alignment-task-update-filter").input_value() == "all"
+                assert page.locator("#alignment-task-update-sort").input_value() == "pending_review_first"
+                assert "alignment_task_update_sort=pending_review_first" in page.url
+                assert "sort: pending_review_first" in reloaded_alignment_summary
+                assert reloaded_alignment_updates.index("artifact: artifact-pending") < reloaded_alignment_updates.index("artifact: artifact-conflict")
+                assert reloaded_alignment_updates.index("artifact: artifact-pending") < reloaded_alignment_updates.index("artifact: artifact-open")
 
                 browser.close()
     finally:
