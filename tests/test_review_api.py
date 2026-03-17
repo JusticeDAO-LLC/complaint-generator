@@ -189,6 +189,24 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 "count": 1,
                 "anchors": [{"anchor_id": "timeline_anchor_001"}],
             },
+            "timeline_relation_summary": {
+                "count": 1,
+                "relations": [{"relation_id": "timeline_relation_001", "relation_type": "before"}],
+            },
+            "timeline_consistency_summary": {
+                "event_count": 2,
+                "anchor_count": 1,
+                "ordered_fact_count": 2,
+                "unsequenced_fact_count": 0,
+                "approximate_fact_count": 0,
+                "range_fact_count": 0,
+                "relation_count": 1,
+                "relation_type_counts": {"before": 1},
+                "missing_temporal_fact_ids": [],
+                "relative_only_fact_ids": [],
+                "warnings": [],
+                "partial_order_ready": True,
+            },
             "harm_profile": {
                 "count": 1,
                 "categories": ["economic"],
@@ -957,6 +975,24 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert intake_case_summary["timeline_anchor_summary"] == {
             "count": 1,
             "anchors": [{"anchor_id": "timeline_anchor_001"}],
+        }
+        assert intake_case_summary["timeline_relation_summary"] == {
+            "count": 1,
+            "relations": [{"relation_id": "timeline_relation_001", "relation_type": "before"}],
+        }
+        assert intake_case_summary["timeline_consistency_summary"] == {
+            "event_count": 2,
+            "anchor_count": 1,
+            "ordered_fact_count": 2,
+            "unsequenced_fact_count": 0,
+            "approximate_fact_count": 0,
+            "range_fact_count": 0,
+            "relation_count": 1,
+            "relation_type_counts": {"before": 1},
+            "missing_temporal_fact_ids": [],
+            "relative_only_fact_ids": [],
+            "warnings": [],
+            "partial_order_ready": True,
         }
         assert intake_case_summary["harm_profile"] == {
             "count": 1,
