@@ -563,8 +563,42 @@ class AdversarialSession:
                     covered.add(section)
         return covered
 
+    @staticmethod
+    def _extract_intake_prompt_candidates(seed_complaint: Dict[str, Any]) -> List[tuple[str, str]]:
+        key_facts = seed_complaint.get('key_facts') if isinstance(seed_complaint.get('key_facts'), dict) else {}
+        synthetic_prompts = key_facts.get('synthetic_prompts') if isinstance(key_facts, dict) else {}
+        if not isinstance(synthetic_prompts, dict):
+            return []
+        candidates: List[tuple[str, str]] = []
+        for raw_question in list(synthetic_prompts.get('intake_questions') or []):
+            question_text = str(raw_question or '').strip()
+            if not question_text:
+                continue
+            lowered = question_text.lower()
+            probe_type = 'intake_follow_up'
+            if any(token in lowered for token in ('when', 'date', 'timeline')):
+                probe_type = 'timeline'
+            elif any(token in lowered for token in ('harm', 'remedy', 'loss', 'relief')):
+                probe_type = 'harm_remedy'
+            elif any(token in lowered for token in ('who', 'which person', 'made, communicated', 'carried out', 'decision')):
+                probe_type = 'actors'
+            elif any(token in lowered for token in ('written notice', 'informal review', 'grievance hearing', 'appeal', 'requested or denied')):
+                probe_type = 'anchor_appeal_rights'
+            elif any(token in lowered for token in ('adverse action', 'denial', 'termination', 'loss of assistance')):
+                probe_type = 'anchor_adverse_action'
+            candidates.append((question_text, probe_type))
+        deduped: List[tuple[str, str]] = []
+        seen = set()
+        for item in candidates:
+            key = item[0].strip().lower()
+            if key and key not in seen:
+                seen.add(key)
+                deduped.append(item)
+        return deduped
+
     def _build_fallback_probe(
         self,
+        seed_complaint: Dict[str, Any],
         asked_question_counts: Dict[str, int],
         asked_intent_counts: Dict[str, int],
         need_timeline: bool,
@@ -578,6 +612,19 @@ class AdversarialSession:
         missing_anchor_sections: Set[str],
     ) -> Dict[str, Any] | None:
         probe_candidates: List[tuple[str, str]] = []
+        intake_prompt_candidates = self._extract_intake_prompt_candidates(seed_complaint)
+        for probe_text, probe_type in intake_prompt_candidates:
+            if probe_type == 'timeline' and not need_timeline:
+                continue
+            if probe_type == 'harm_remedy' and not need_harm_remedy:
+                continue
+            if probe_type == 'actors' and not need_actor_decisionmaker:
+                continue
+            if probe_type == 'anchor_appeal_rights' and 'appeal_rights' not in missing_anchor_sections:
+                continue
+            if probe_type == 'anchor_adverse_action' and 'adverse_action' not in missing_anchor_sections:
+                continue
+            probe_candidates.append((probe_text, probe_type))
         anchor_probe_map = {
             'grievance_hearing': (
                 "What grievance or informal hearing process were you told was available, whether you requested it, and who was supposed to handle it?",
@@ -958,6 +1005,7 @@ class AdversarialSession:
 
                 if question is None:
                     question = self._build_fallback_probe(
+                        seed_complaint,
                         asked_question_counts=asked_question_counts,
                         asked_intent_counts=asked_intent_counts,
                         need_timeline=need_timeline,
