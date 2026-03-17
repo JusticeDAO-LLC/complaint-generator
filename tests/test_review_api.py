@@ -1018,13 +1018,13 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert intake_case_summary["alignment_task_update_history"][1]["evidence_sequence"] == 2
         assert intake_case_summary["alignment_task_update_summary"] == {
             "count": 2,
-            "status_counts": {"active": 1, "resolved": 1},
+            "status_counts": {"active": 2},
             "resolution_status_counts": {
+                "still_open": 1,
                 "partially_addressed": 1,
-                "promoted_to_document": 1,
             },
             "promoted_testimony_count": 0,
-            "promoted_document_count": 1,
+            "promoted_document_count": 0,
         }
         claim_support_packet_summary = intake_case_summary["claim_support_packet_summary"]
         assert claim_support_packet_summary["claim_count"] == 1
@@ -1094,6 +1094,9 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert payload["claim_coverage_summary"]["retaliation"]["reasoning_ontology_entity_count"] == 5
         assert payload["claim_coverage_summary"]["retaliation"]["reasoning_ontology_relationship_count"] == 4
         assert payload["claim_coverage_summary"]["retaliation"]["reasoning_fallback_ontology_count"] == 1
+        assert payload["claim_coverage_summary"]["retaliation"]["reasoning_hybrid_bridge_available_count"] == 0
+        assert payload["claim_coverage_summary"]["retaliation"]["reasoning_hybrid_tdfol_formula_count"] == 0
+        assert payload["claim_coverage_summary"]["retaliation"]["reasoning_hybrid_dcec_formula_count"] == 0
         assert payload["claim_coverage_summary"]["retaliation"]["decision_source_counts"] == {
             "heuristic_contradictions": 1,
             "partial_support": 1,
@@ -1276,6 +1279,10 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert reasoning_review["fallback_ontology_element_count"] == 1
         assert reasoning_review["unavailable_backend_element_count"] == 1
         assert reasoning_review["degraded_adapter_element_count"] == 1
+        assert reasoning_review["hybrid_bridge_element_count"] == 0
+        assert reasoning_review["hybrid_bridge_available_element_count"] == 0
+        assert reasoning_review["hybrid_tdfol_formula_count"] == 0
+        assert reasoning_review["hybrid_dcec_formula_count"] == 0
         assert any(
             item == {
                 "element_id": "retaliation:1",
@@ -1286,6 +1293,10 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 "backend_available_count": 3,
                 "unavailable_adapters": ["logic_contradictions"],
                 "degraded_adapters": ["logic_contradictions", "logic_proof"],
+                "hybrid_bridge_used": False,
+                "hybrid_bridge_available": False,
+                "hybrid_tdfol_formula_count": 0,
+                "hybrid_dcec_formula_count": 0,
             }
             for item in reasoning_review["flagged_elements"]
         )
@@ -1706,6 +1717,10 @@ def test_claim_support_review_payload_reuses_persisted_diagnostic_snapshots():
         "fallback_ontology_element_count": 0,
         "unavailable_backend_element_count": 0,
         "degraded_adapter_element_count": 0,
+        "hybrid_bridge_element_count": 0,
+        "hybrid_bridge_available_element_count": 0,
+        "hybrid_tdfol_formula_count": 0,
+        "hybrid_dcec_formula_count": 0,
         "flagged_elements": [],
     }
     mediator.get_claim_support_diagnostic_snapshots.assert_called_once_with(
@@ -1810,6 +1825,10 @@ def test_claim_support_review_payload_recomputes_stale_diagnostic_snapshots():
         "fallback_ontology_element_count": 0,
         "unavailable_backend_element_count": 0,
         "degraded_adapter_element_count": 0,
+        "hybrid_bridge_element_count": 0,
+        "hybrid_bridge_available_element_count": 0,
+        "hybrid_tdfol_formula_count": 0,
+        "hybrid_dcec_formula_count": 0,
         "flagged_elements": [],
     }
     mediator.get_claim_support_gaps.assert_called_once_with(
