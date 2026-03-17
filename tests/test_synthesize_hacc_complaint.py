@@ -57,6 +57,21 @@ def test_normalize_incident_summary_rewrites_hacc_scaffold_description():
     assert summary == "a retaliation and grievance-related housing complaint involving HACC notice and review protections"
 
 
+def test_proposed_allegations_use_section_specific_housing_process_language():
+    seed = {
+        "description": "Retaliation complaint anchored to HACC core housing policies.",
+        "key_facts": {
+            "anchor_sections": ["grievance_hearing", "appeal_rights", "adverse_action"],
+            "evidence_summary": "HACC policy defines a grievance as a tenant dispute concerning HACC action or inaction.",
+        },
+    }
+
+    allegations = MODULE._proposed_allegations(seed, {"conversation_history": []}, "hud")
+
+    assert any("grievance, appeal, and due-process protections" in item for item in allegations)
+    assert not any("The intake record suggests a dispute involving grievance hearing." == item for item in allegations)
+
+
 def test_summarize_policy_excerpt_normalizes_hacc_grievance_fragments():
     text = (
         "Grievance: Any dispute a tenant may have with respect to HACC action or failure to "

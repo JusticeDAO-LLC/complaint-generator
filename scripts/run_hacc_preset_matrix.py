@@ -127,6 +127,42 @@ def _select_matrix_recommendations(rows: List[Dict[str, Any]]) -> Dict[str, Dict
     }
 
 
+def _result_value(payload, *path, default=None):
+    current = payload
+    for key in path:
+        if not isinstance(current, dict):
+            return default
+        current = current.get(key)
+    return current if current is not None else default
+
+
+def _summarize_runtime_health(results: Dict[str, Any] | List[Dict[str, Any]]) -> Dict[str, Any]:
+    if isinstance(results, list):
+        sessions = [session for session in results if isinstance(session, dict)]
+    else:
+        sessions = list((results or {}).get("results") or [])
+    critic_fallback_sessions = 0
+    complainant_error_sessions = 0
+    session_errors: List[str] = []
+
+    for session in sessions:
+        critic_feedback = str(_result_value(session, "critic_score", "feedback", default="") or "")
+        if "fallback" in critic_feedback.lower():
+            critic_fallback_sessions += 1
+
+        error_texts = [str(item) for item in list(session.get("errors") or []) if str(item)]
+        session_errors.extend(error_texts)
+        if any("llm_router_error" in item.lower() for item in error_texts):
+            complainant_error_sessions += 1
+
+    return {
+        "degraded": bool(critic_fallback_sessions or complainant_error_sessions or session_errors),
+        "critic_fallback_sessions": critic_fallback_sessions,
+        "complainant_error_sessions": complainant_error_sessions,
+        "session_errors": session_errors,
+    }
+
+
 def _attach_recommendation_claim_snapshots(
     recommendations: Dict[str, Dict[str, Any]],
     rows: List[Dict[str, Any]],
@@ -205,6 +241,29 @@ def _claim_posture_note(winner_delta: Dict[str, Any]) -> str:
     return ""
 
 
+def _meaningful_shared_relief_families(values: List[str]) -> List[str]:
+    return [value for value in values if value and value != "other"]
+
+
+def _relief_posture_note(winner_delta: Dict[str, Any]) -> str:
+    winner_overview = str(winner_delta.get("winner_relief_overview") or "").strip()
+    runner_up_overview = str(winner_delta.get("runner_up_relief_overview") or "").strip()
+    winner_only_relief = [str(item) for item in list(winner_delta.get("winner_only_relief") or []) if str(item)]
+    runner_up_only_relief = [str(item) for item in list(winner_delta.get("runner_up_only_relief") or []) if str(item)]
+    winner_only_relief_families = [str(item) for item in list(winner_delta.get("winner_only_relief_families") or []) if str(item)]
+    runner_up_only_relief_families = [str(item) for item in list(winner_delta.get("runner_up_only_relief_families") or []) if str(item)]
+    if (
+        winner_overview
+        and winner_overview == runner_up_overview
+        and not winner_only_relief
+        and not runner_up_only_relief
+        and not winner_only_relief_families
+        and not runner_up_only_relief_families
+    ):
+        return "Relief posture was materially similar across the winner and runner-up, so the selection difference was driven mainly by claim posture."
+    return ""
+
+
 def _attach_recommendation_tradeoff_notes(
     recommendations: Dict[str, Dict[str, Any]],
     winner_delta: Dict[str, Any],
@@ -279,6 +338,7 @@ def _write_markdown_report(
         delta = dict(winner_delta or {})
         if delta:
             claim_posture_note = _claim_posture_note(delta)
+            relief_posture_note = _relief_posture_note(delta)
             lines.extend([
                 "### Winner Vs Runner-Up",
                 "",
@@ -295,7 +355,9 @@ def _write_markdown_report(
             runner_only_relief = list(delta.get("runner_up_only_relief") or [])
             winner_only_relief_families = list(delta.get("winner_only_relief_families") or [])
             runner_only_relief_families = list(delta.get("runner_up_only_relief_families") or [])
-            shared_relief_families = list(delta.get("shared_relief_families") or [])
+            shared_relief_families = _meaningful_shared_relief_families(
+                list(delta.get("shared_relief_families") or [])
+            )
             changed_shared_relief = list(delta.get("changed_shared_relief") or [])
             if winner_only_families:
                 lines.append(f"- Winner-only theory families: {', '.join(winner_only_families)}")
@@ -305,10 +367,12 @@ def _write_markdown_report(
                 lines.append(f"- Shared theory families: {', '.join(shared_families)}")
             if claim_posture_note:
                 lines.append(f"- Claim posture note: {claim_posture_note}")
-            if delta.get("winner_relief_overview"):
+            if relief_posture_note:
+                lines.append(f"- Relief posture note: {relief_posture_note}")
+            elif delta.get("winner_relief_overview"):
                 lines.append(f"- Winner relief overview: {delta['winner_relief_overview']}")
-            if delta.get("runner_up_relief_overview"):
-                lines.append(f"- Runner-up relief overview: {delta['runner_up_relief_overview']}")
+                if delta.get("runner_up_relief_overview"):
+                    lines.append(f"- Runner-up relief overview: {delta['runner_up_relief_overview']}")
             if winner_only_relief_families:
                 lines.append(f"- Winner-only relief families: {', '.join(winner_only_relief_families)}")
             if runner_only_relief_families:
@@ -408,6 +472,7 @@ def _write_markdown_report(
         champion_delta = dict(champion.get("winner_delta") or {})
         if champion_delta:
             champion_claim_posture_note = _claim_posture_note(champion_delta)
+            champion_relief_posture_note = _relief_posture_note(champion_delta)
             lines.extend([
                 "",
                 "### Champion Delta",
@@ -425,7 +490,9 @@ def _write_markdown_report(
             runner_only_relief = list(champion_delta.get("runner_up_only_relief") or [])
             winner_only_relief_families = list(champion_delta.get("winner_only_relief_families") or [])
             runner_only_relief_families = list(champion_delta.get("runner_up_only_relief_families") or [])
-            shared_relief_families = list(champion_delta.get("shared_relief_families") or [])
+            shared_relief_families = _meaningful_shared_relief_families(
+                list(champion_delta.get("shared_relief_families") or [])
+            )
             changed_shared_relief = list(champion_delta.get("changed_shared_relief") or [])
             if winner_only_families:
                 lines.append(f"- Winner-only theory families: {', '.join(winner_only_families)}")
@@ -435,10 +502,12 @@ def _write_markdown_report(
                 lines.append(f"- Shared theory families: {', '.join(shared_families)}")
             if champion_claim_posture_note:
                 lines.append(f"- Claim posture note: {champion_claim_posture_note}")
-            if champion_delta.get("winner_relief_overview"):
+            if champion_relief_posture_note:
+                lines.append(f"- Relief posture note: {champion_relief_posture_note}")
+            elif champion_delta.get("winner_relief_overview"):
                 lines.append(f"- Winner relief overview: {champion_delta['winner_relief_overview']}")
-            if champion_delta.get("runner_up_relief_overview"):
-                lines.append(f"- Runner-up relief overview: {champion_delta['runner_up_relief_overview']}")
+                if champion_delta.get("runner_up_relief_overview"):
+                    lines.append(f"- Runner-up relief overview: {champion_delta['runner_up_relief_overview']}")
             if winner_only_relief_families:
                 lines.append(f"- Winner-only relief families: {', '.join(winner_only_relief_families)}")
             if runner_only_relief_families:
@@ -827,6 +896,22 @@ def _run_preset_batch(
     with open(preset_dir / "optimizer_report.json", "w", encoding="utf-8") as handle:
         json.dump(optimizer_report, handle, indent=2)
 
+    runtime_health = _summarize_runtime_health(results)
+    router_status = str(router_report.get("status") or "")
+    if runtime_health.get("degraded") or not selected_backend_healthy:
+        router_status = "degraded"
+
+    run_summary_payload = {
+        "preset": preset,
+        "backend_id": backend_id,
+        "selected_backend_healthy": selected_backend_healthy,
+        "backend_probe_attempts": backend_probe_attempts,
+        "router_report": router_report,
+        "runtime": runtime_health,
+    }
+    with open(preset_dir / "run_summary.json", "w", encoding="utf-8") as handle:
+        json.dump(run_summary_payload, handle, indent=2)
+
     anchor_sections = statistics.get("anchor_sections", {}) or {}
     coverage_by_section = anchor_sections.get("coverage_by_section", {}) or {}
     coverage_rates = [
@@ -854,9 +939,10 @@ def _run_preset_batch(
         "top_missing_sections": top_missing_sections,
         "missing_sections": missing_sections,
         "output_dir": str(preset_dir),
-        "router_status": str(router_report.get("status") or ""),
+        "router_status": router_status,
         "backend_probe_attempts": backend_probe_attempts,
         "router_report": router_report,
+        "runtime": runtime_health,
         "statistics": statistics,
         "optimizer_report": optimizer_report,
         "claim_selection_summary": synthesis_snapshot["claim_selection_summary"],
@@ -1001,12 +1087,15 @@ def _rebuild_batch_result_from_preset_dir(
     }
 
     router_status = "unknown"
+    runtime_health: Dict[str, Any] = {}
     run_summary_path = preset_dir / "run_summary.json"
     if run_summary_path.exists():
         with run_summary_path.open("r", encoding="utf-8") as handle:
             run_summary = json.load(handle)
         router_status = str(((run_summary.get("router_report") or {}).get("status")) or router_status)
-
+        runtime_health = dict(run_summary.get("runtime") or {})
+        if runtime_health.get("degraded"):
+            router_status = "degraded"
     statistics = {
         "average_score": average_score,
         "successful_sessions": len(successful_sessions),
@@ -1030,6 +1119,7 @@ def _rebuild_batch_result_from_preset_dir(
         "router_status": router_status,
         "backend_probe_attempts": backend_probe_attempts,
         "router_report": {},
+        "runtime": runtime_health,
         "statistics": statistics,
         "optimizer_report": optimizer_report,
         "claim_selection_summary": synthesis_snapshot["claim_selection_summary"],
@@ -1191,6 +1281,7 @@ def main() -> int:
                 "optimizer_report": batch_result["optimizer_report"],
                 "output_dir": batch_result["output_dir"],
                 "router_report": batch_result["router_report"],
+                "runtime": batch_result.get("runtime", {}),
                 "claim_selection_summary": batch_result["claim_selection_summary"],
                 "claim_selection_overview": batch_result["claim_selection_overview"],
                 "relief_selection_summary": batch_result["relief_selection_summary"],

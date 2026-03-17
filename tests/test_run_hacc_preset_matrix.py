@@ -146,6 +146,29 @@ def test_claim_posture_note_compares_winner_to_runner_up():
         "The winner added stronger accommodation framing + protected-basis framing theories, "
         "while the runner-up leaned more heavily on retaliation-heavy framing theories."
     )
+
+
+def test_meaningful_shared_relief_families_drops_other_placeholder():
+    assert MODULE._meaningful_shared_relief_families(["other"]) == []
+    assert MODULE._meaningful_shared_relief_families(["process", "other"]) == ["process"]
+
+
+def test_relief_posture_note_detects_materially_similar_relief():
+    delta = {
+        "winner_relief_overview": "same relief overview",
+        "runner_up_relief_overview": "same relief overview",
+        "winner_only_relief": [],
+        "runner_up_only_relief": [],
+        "winner_only_relief_families": [],
+        "runner_up_only_relief_families": [],
+    }
+
+    note = MODULE._relief_posture_note(delta)
+
+    assert note == (
+        "Relief posture was materially similar across the winner and runner-up, "
+        "so the selection difference was driven mainly by claim posture."
+    )
 def test_claim_selection_theory_families_collects_unique_semantic_labels():
     summary = [
         {"title": "Administrative Fair Housing Process Failure", "selection_tags": ["notice", "hearing"]},
@@ -409,6 +432,111 @@ def test_markdown_report_includes_winner_vs_runner_up_delta(tmp_path):
     assert "- Runner-up-only relief items: Retaliation remedies." in report
     assert "Shared claim changed: Accommodation Theory | winner tags=reasonable_accommodation, contact" in report
     assert "Shared relief changed: Corrective action requiring clear notice. | winner families=process | runner-up families=process, retaliation" in report
+
+
+def test_markdown_report_suppresses_shared_relief_other_placeholder(tmp_path):
+    report_path = tmp_path / "preset_matrix_summary.md"
+    rows = [
+        {
+            "preset": "accommodation_focus",
+            "backend_id": "llm-router-codex",
+            "average_score": 0.75,
+            "successful_sessions": 1,
+            "total_sessions": 1,
+            "anchor_coverage": 1.0,
+            "router_status": "available",
+            "top_missing_sections": "",
+            "missing_sections": "",
+            "output_dir": "/tmp/accommodation_focus",
+        },
+        {
+            "preset": "administrative_plan_retaliation",
+            "backend_id": "llm-router-codex",
+            "average_score": 0.70,
+            "successful_sessions": 1,
+            "total_sessions": 1,
+            "anchor_coverage": 0.9,
+            "router_status": "available",
+            "top_missing_sections": "",
+            "missing_sections": "",
+            "output_dir": "/tmp/administrative_plan_retaliation",
+        },
+    ]
+    recommendations = {
+        "best_overall": {"preset": "accommodation_focus"},
+        "best_anchor_coverage": {"preset": "accommodation_focus"},
+        "best_balanced": {"preset": "accommodation_focus"},
+    }
+    winner_delta = {
+        "winner_preset": "accommodation_focus",
+        "runner_up_preset": "administrative_plan_retaliation",
+        "winner_only_theory_families": ["accommodation"],
+        "runner_up_only_theory_families": ["retaliation"],
+        "shared_theory_families": ["process"],
+        "shared_relief_families": ["other"],
+    }
+
+    MODULE._write_markdown_report(report_path, rows, recommendations, None, winner_delta)
+    report = report_path.read_text(encoding="utf-8")
+
+    assert "- Claim posture note: The winner added stronger accommodation framing theories, while the runner-up leaned more heavily on retaliation-heavy framing theories." in report
+    assert "- Shared relief families:" not in report
+
+
+def test_markdown_report_collapses_identical_relief_overviews_into_relief_posture_note(tmp_path):
+    report_path = tmp_path / "preset_matrix_summary.md"
+    rows = [
+        {
+            "preset": "accommodation_focus",
+            "backend_id": "llm-router-codex",
+            "average_score": 0.75,
+            "successful_sessions": 1,
+            "total_sessions": 1,
+            "anchor_coverage": 1.0,
+            "router_status": "available",
+            "top_missing_sections": "",
+            "missing_sections": "",
+            "output_dir": "/tmp/accommodation_focus",
+        },
+        {
+            "preset": "administrative_plan_retaliation",
+            "backend_id": "llm-router-codex",
+            "average_score": 0.70,
+            "successful_sessions": 1,
+            "total_sessions": 1,
+            "anchor_coverage": 0.9,
+            "router_status": "available",
+            "top_missing_sections": "",
+            "missing_sections": "",
+            "output_dir": "/tmp/administrative_plan_retaliation",
+        },
+    ]
+    recommendations = {
+        "best_overall": {"preset": "accommodation_focus"},
+        "best_anchor_coverage": {"preset": "accommodation_focus"},
+        "best_balanced": {"preset": "accommodation_focus"},
+    }
+    winner_delta = {
+        "winner_preset": "accommodation_focus",
+        "runner_up_preset": "administrative_plan_retaliation",
+        "winner_only_theory_families": ["accommodation", "protected_basis"],
+        "runner_up_only_theory_families": ["retaliation"],
+        "shared_theory_families": ["process"],
+        "winner_relief_overview": "same relief overview",
+        "runner_up_relief_overview": "same relief overview",
+        "winner_only_relief": [],
+        "runner_up_only_relief": [],
+        "winner_only_relief_families": [],
+        "runner_up_only_relief_families": [],
+        "shared_relief_families": ["other"],
+    }
+
+    MODULE._write_markdown_report(report_path, rows, recommendations, None, winner_delta)
+    report = report_path.read_text(encoding="utf-8")
+
+    assert "- Relief posture note: Relief posture was materially similar across the winner and runner-up, so the selection difference was driven mainly by claim posture." in report
+    assert "- Winner relief overview:" not in report
+    assert "- Runner-up relief overview:" not in report
 
 
 def test_summary_json_can_record_partial_preset_errors(tmp_path):

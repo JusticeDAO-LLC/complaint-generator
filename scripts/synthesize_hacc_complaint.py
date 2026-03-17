@@ -1854,16 +1854,9 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
         allegations.append(f"The intake and evidence record suggest a dispute implicating protected basis concerns related to {', '.join(protected_bases)}")
 
     for section in [str(item) for item in list(key_facts.get("anchor_sections") or []) if str(item)]:
-        if section == "appeal_rights":
-            allegations.append("The complainant contends that appeal rights and due-process protections were not clearly honored")
-        elif section == "grievance_hearing":
-            allegations.append("The complainant contends that the grievance or hearing process was not handled in the manner described by HACC policy")
-        elif section == "adverse_action":
-            allegations.append("The complainant contends that HACC moved toward denial or termination of assistance without clear notice and documented process")
-        elif section == "reasonable_accommodation":
-            allegations.append("The complainant contends that accommodation-related concerns were not fairly addressed")
-        elif section == "selection_criteria":
-            allegations.append("The complainant contends that HACC relied on opaque or inconsistently applied criteria")
+        allegation = _section_allegation(section)
+        if allegation:
+            allegations.append(allegation)
 
     timeline_summaries: List[str] = []
     for fact in _collect_timeline_points(list(session.get("conversation_history") or []), limit=3):
@@ -2068,6 +2061,47 @@ def _normalize_incident_summary(text: str) -> str:
             flags=re.IGNORECASE,
         )
     return cleaned
+
+
+def _section_allegation(section: str, *, narrative: bool = False) -> str:
+    if section == "appeal_rights":
+        if narrative:
+            return "The intake record suggests HACC did not clearly provide the appeal rights and due-process protections described by policy."
+        return "The complainant contends that appeal rights and due-process protections were not clearly honored"
+    if section == "grievance_hearing":
+        if narrative:
+            return "The intake record suggests the grievance or hearing process was not handled in the manner described by HACC policy."
+        return "The complainant contends that the grievance or hearing process was not handled in the manner described by HACC policy"
+    if section == "adverse_action":
+        if narrative:
+            return "The intake record suggests HACC moved toward denial or termination of assistance without clear notice and documented process."
+        return "The complainant contends that HACC moved toward denial or termination of assistance without clear notice and documented process"
+    if section == "reasonable_accommodation":
+        if narrative:
+            return "The intake record suggests accommodation-related concerns were not fairly addressed within the HACC process."
+        return "The complainant contends that accommodation-related concerns were not fairly addressed"
+    if section == "selection_criteria":
+        if narrative:
+            return "The intake record suggests HACC relied on opaque or inconsistently applied criteria."
+        return "The complainant contends that HACC relied on opaque or inconsistently applied criteria"
+    if narrative:
+        return f"The intake record suggests a dispute involving {_humanize_section(section)}."
+    return ""
+
+
+def _combined_section_narrative(sections: Sequence[str]) -> str:
+    section_set = {str(section) for section in sections if str(section)}
+    if {"grievance_hearing", "appeal_rights", "adverse_action"}.issubset(section_set):
+        return (
+            "The intake record suggests HACC moved toward denial or termination of assistance without clearly providing "
+            "the grievance, appeal, and due-process protections described by policy."
+        )
+    narrative_items = [_section_allegation(section, narrative=True) for section in sections if _section_allegation(section, narrative=True)]
+    if not narrative_items:
+        return ""
+    if len(narrative_items) == 1:
+        return narrative_items[0]
+    return narrative_items[0]
 
 
 def _legal_theory_summary(seed: Dict[str, Any], filing_forum: str = "court") -> Dict[str, List[str]]:
@@ -2320,8 +2354,9 @@ def _proposed_allegations(seed: Dict[str, Any], session: Dict[str, Any], filing_
         allegations.append(f"{complainant_label} alleges conduct arising from {incident_summary}.")
     if evidence_summary:
         allegations.append(f"{evidence_label} that {evidence_summary}")
-    for section in list(key_facts.get("anchor_sections") or []):
-        allegations.append(f"The intake record suggests a dispute involving {_humanize_section(section)}.")
+    combined_narrative = _combined_section_narrative(list(key_facts.get("anchor_sections") or []))
+    if combined_narrative:
+        allegations.append(combined_narrative)
     summarized_facts: List[str] = []
     for fact in _conversation_facts(list(session.get("conversation_history") or []), limit=5):
         summary = _summarize_intake_fact(fact)
