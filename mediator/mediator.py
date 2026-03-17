@@ -6221,7 +6221,20 @@ class Mediator:
 		Returns:
 			Status of evidence phase initiation
 		"""
-		if not self.phase_manager.advance_to_phase(ComplaintPhase.EVIDENCE):
+		advanced = self.phase_manager.advance_to_phase(ComplaintPhase.EVIDENCE)
+		if not advanced:
+			intake_data = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE) or {}
+			legacy_ready = (
+				self.phase_manager.get_current_phase() == ComplaintPhase.INTAKE
+				and intake_data.get('knowledge_graph') is not None
+				and intake_data.get('dependency_graph') is not None
+				and int(intake_data.get('remaining_gaps', 0) or 0) <= 0
+				and bool(intake_data.get('denoising_converged', False))
+			)
+			if legacy_ready:
+				self.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+				advanced = True
+		if not advanced:
 			result = {
 				'error': 'Cannot advance to evidence phase. Complete intake first.',
 				'current_phase': self.phase_manager.get_current_phase().value
@@ -6260,8 +6273,245 @@ class Mediator:
 			'suggested_evidence_types': self._suggest_evidence_types(unsatisfied, kg_gaps),
 			'next_action': self.phase_manager.get_next_action()
 		}
+		import os
+		enhanced_graph_enabled = str(os.getenv('IPFS_DATASETS_ENHANCED_GRAPH', '') or '').strip().lower() in {
+			'1',
+			'true',
+			'yes',
+			'on',
+		}
+		if enhanced_graph_enabled:
+			result['graph_enrichment'] = self.enrich_graphs_with_retrieval_artifacts()
 		result.update(self._get_confirmed_intake_summary_handoff())
 		return result
+
+	def enrich_graphs_with_retrieval_artifacts(self, max_items: int = 20) -> Dict[str, Any]:
+		"""Project normalized retrieval artifacts into the intake graphs for evidence work."""
+		from complaint_phases import Entity, Dependency, DependencyNode, DependencyType
+		from mediator.integrations.graph_tools import GraphRetrievalAugmentor
+
+		kg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
+		dg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'dependency_graph')
+		claim_ids = []
+		if dg is not None:
+			claim_ids = [node.id for node in dg.get_nodes_by_type(NodeType.CLAIM) if node is not None]
+
+		legal_normalized = list(getattr(self.state, 'last_legal_authorities_normalized', []) or [])
+		web_normalized = list(getattr(self.state, 'last_web_evidence_normalized', []) or [])
+		payloads = GraphRetrievalAugmentor().build_evidence_payloads(
+			legal_normalized=legal_normalized,
+			web_normalized=web_normalized,
+			claim_ids=claim_ids,
+			max_items=max_items,
+		)
+
+		added = 0
+		graph_changed = False
+		for payload in payloads:
+			record_id = str(payload.get('id') or '').strip()
+			if not record_id:
+				continue
+
+			if kg is not None and kg.get_entity(record_id) is None:
+				kg.add_entity(
+					Entity(
+						id=record_id,
+						type='evidence',
+						name=str(payload.get('name') or 'Evidence'),
+						attributes={
+							'supports_claims': list(payload.get('supports_claims', []) or []),
+							'source_type': payload.get('source_type'),
+							'metadata': dict(payload.get('metadata', {}) or {}),
+						},
+						confidence=float(payload.get('confidence', payload.get('relevance', 0.0)) or 0.0),
+						source='evidence',
+					)
+				)
+				graph_changed = True
+
+			if dg is not None and dg.get_node(record_id) is None:
+				dg.add_node(
+					DependencyNode(
+						id=record_id,
+						node_type=NodeType.EVIDENCE,
+						name=str(payload.get('name') or 'Evidence'),
+						description=str(payload.get('description') or ''),
+						satisfied=True,
+						confidence=float(payload.get('confidence', payload.get('relevance', 0.0)) or 0.0),
+						attributes={
+							'supports_claims': list(payload.get('supports_claims', []) or []),
+							'source_type': payload.get('source_type'),
+							'metadata': dict(payload.get('metadata', {}) or {}),
+						},
+					)
+				)
+				graph_changed = True
+
+			if dg is not None:
+				for claim_id in payload.get('supports_claims', []) or []:
+					dependency_id = f"supports:{record_id}:{claim_id}"
+					if dependency_id in dg.dependencies:
+						continue
+					if dg.get_node(claim_id) is None or dg.get_node(record_id) is None:
+						continue
+					dg.add_dependency(
+						Dependency(
+							id=dependency_id,
+							source_id=record_id,
+							target_id=claim_id,
+							dependency_type=DependencyType.SUPPORTS,
+							required=False,
+							strength=float(payload.get('relevance', payload.get('confidence', 0.0)) or 0.0),
+						)
+					)
+					graph_changed = True
+
+			added += 1
+
+		evidence_count = int(self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'evidence_count') or 0)
+		updated_evidence_count = evidence_count + added
+		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_count', updated_evidence_count)
+		self.phase_manager.update_phase_data(
+			ComplaintPhase.EVIDENCE,
+			'knowledge_graph_enhanced',
+			bool(self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'knowledge_graph_enhanced')) or graph_changed,
+		)
+		if kg is not None:
+			self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', kg)
+		if dg is not None:
+			self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', dg)
+
+		result = {
+			'enriched': added > 0,
+			'added': added,
+			'payload_count': len(payloads),
+			'evidence_count': updated_evidence_count,
+		}
+		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'graph_enrichment', result)
+		self.state.last_graph_enrichment_result = result
+		return result
+
+	def _build_reranker_metrics_snapshot(self) -> Dict[str, Any]:
+		now = int(time())
+		return {
+			'total_runs': 0,
+			'applied_runs': 0,
+			'skipped_runs': 0,
+			'canary_enabled_runs': 0,
+			'latency_guard_runs': 0,
+			'avg_boost': 0.0,
+			'avg_elapsed_ms': 0.0,
+			'boost_sum': 0.0,
+			'elapsed_ms_sum': 0.0,
+			'by_source': {},
+			'first_seen_at': now,
+			'last_updated_at': now,
+			'last_reset_at': now,
+		}
+
+	def _ensure_reranker_metrics_state(self) -> Dict[str, Any]:
+		metrics = getattr(self.state, 'reranker_metrics', None)
+		if not isinstance(metrics, dict):
+			metrics = self._build_reranker_metrics_snapshot()
+			self.state.reranker_metrics = metrics
+		for key, default in self._build_reranker_metrics_snapshot().items():
+			if key not in metrics:
+				metrics[key] = default if not isinstance(default, dict) else {}
+		if not isinstance(metrics.get('by_source'), dict):
+			metrics['by_source'] = {}
+		return metrics
+
+	def update_reranker_metrics(
+		self,
+		*,
+		source: str,
+		applied: bool,
+		metadata: Dict[str, Any],
+		canary_enabled: bool,
+		window_size: int = 0,
+	) -> Dict[str, Any]:
+		metrics = self._ensure_reranker_metrics_state()
+		if int(window_size or 0) > 0 and int(metrics.get('total_runs', 0) or 0) >= int(window_size):
+			self.reset_reranker_metrics()
+			self.state.reranker_metrics_window_resets = int(getattr(self.state, 'reranker_metrics_window_resets', 0) or 0) + 1
+			metrics = self._ensure_reranker_metrics_state()
+
+		now = int(time())
+		row = metrics['by_source'].setdefault(
+			str(source or 'unknown'),
+			{
+				'total_runs': 0,
+				'applied_runs': 0,
+				'skipped_runs': 0,
+			},
+		)
+
+		metrics['total_runs'] = int(metrics.get('total_runs', 0) or 0) + 1
+		row['total_runs'] = int(row.get('total_runs', 0) or 0) + 1
+		if applied:
+			metrics['applied_runs'] = int(metrics.get('applied_runs', 0) or 0) + 1
+			row['applied_runs'] = int(row.get('applied_runs', 0) or 0) + 1
+		else:
+			metrics['skipped_runs'] = int(metrics.get('skipped_runs', 0) or 0) + 1
+			row['skipped_runs'] = int(row.get('skipped_runs', 0) or 0) + 1
+		if canary_enabled:
+			metrics['canary_enabled_runs'] = int(metrics.get('canary_enabled_runs', 0) or 0) + 1
+		if bool((metadata or {}).get('graph_latency_guard_applied', False)):
+			metrics['latency_guard_runs'] = int(metrics.get('latency_guard_runs', 0) or 0) + 1
+
+		boost_value = float((metadata or {}).get('graph_run_avg_boost', 0.0) or 0.0)
+		elapsed_ms = float((metadata or {}).get('graph_run_elapsed_ms', 0.0) or 0.0)
+		metrics['boost_sum'] = float(metrics.get('boost_sum', 0.0) or 0.0) + boost_value
+		metrics['elapsed_ms_sum'] = float(metrics.get('elapsed_ms_sum', 0.0) or 0.0) + elapsed_ms
+		metrics['avg_boost'] = round(metrics['boost_sum'] / max(1, metrics['total_runs']), 6)
+		metrics['avg_elapsed_ms'] = round(metrics['elapsed_ms_sum'] / max(1, metrics['total_runs']), 3)
+		metrics['last_updated_at'] = now
+		self.state.reranker_metrics = metrics
+		return self.get_reranker_metrics()
+
+	def get_reranker_metrics(self) -> Dict[str, Any]:
+		metrics = self._ensure_reranker_metrics_state()
+		return {
+			'total_runs': int(metrics.get('total_runs', 0) or 0),
+			'applied_runs': int(metrics.get('applied_runs', 0) or 0),
+			'skipped_runs': int(metrics.get('skipped_runs', 0) or 0),
+			'canary_enabled_runs': int(metrics.get('canary_enabled_runs', 0) or 0),
+			'latency_guard_runs': int(metrics.get('latency_guard_runs', 0) or 0),
+			'avg_boost': float(metrics.get('avg_boost', 0.0) or 0.0),
+			'avg_elapsed_ms': float(metrics.get('avg_elapsed_ms', 0.0) or 0.0),
+			'by_source': {
+				str(name): {
+					'total_runs': int((row or {}).get('total_runs', 0) or 0),
+					'applied_runs': int((row or {}).get('applied_runs', 0) or 0),
+					'skipped_runs': int((row or {}).get('skipped_runs', 0) or 0),
+				}
+				for name, row in (metrics.get('by_source') or {}).items()
+				if isinstance(row, dict)
+			},
+			'first_seen_at': int(metrics.get('first_seen_at', int(time())) or int(time())),
+			'last_updated_at': int(metrics.get('last_updated_at', int(time())) or int(time())),
+			'last_reset_at': int(metrics.get('last_reset_at', int(time())) or int(time())),
+		}
+
+	def reset_reranker_metrics(self) -> Dict[str, Any]:
+		self.state.reranker_metrics = self._build_reranker_metrics_snapshot()
+		return self.get_reranker_metrics()
+
+	def export_reranker_metrics_json(self, output_path: str) -> str:
+		import json
+		import os
+
+		directory = os.path.dirname(output_path)
+		if directory:
+			os.makedirs(directory, exist_ok=True)
+		payload = {
+			'exported_at': int(time()),
+			'window_resets': int(getattr(self.state, 'reranker_metrics_window_resets', 0) or 0),
+			'metrics': self.get_reranker_metrics(),
+		}
+		with open(output_path, 'w', encoding='utf-8') as handle:
+			json.dump(payload, handle, indent=2)
+		return output_path
 
 	def _find_claim_entities_for_type(self, kg, claim_type: str = None):
 		"""Find claim entities in the intake knowledge graph matching a claim type."""
@@ -7001,6 +7251,7 @@ class Mediator:
 				'evidence': self.phase_manager.is_phase_complete(ComplaintPhase.EVIDENCE),
 				'formalization': self.phase_manager.is_phase_complete(ComplaintPhase.FORMALIZATION)
 			},
+			'reranking_metrics': self.get_reranker_metrics(),
 			'next_action': self.phase_manager.get_next_action()
 		}
 		status.update(self._get_confirmed_intake_summary_handoff())

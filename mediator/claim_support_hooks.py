@@ -1459,11 +1459,201 @@ class ClaimSupportHook:
             or ontology_validation_signal == 'invalid'
         )
 
+    def _normalize_reasoning_key(self, value: Any) -> str:
+        text = str(value or '').strip().lower()
+        return ''.join(ch if ch.isalnum() else '_' for ch in text).strip('_')
+
+    def _get_temporal_reasoning_context(
+        self,
+        claim_type: str,
+        element: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        status_getter = getattr(self.mediator, 'get_three_phase_status', None)
+        if not callable(status_getter):
+            return {}
+
+        try:
+            status = status_getter()
+        except Exception:
+            return {}
+        if not isinstance(status, dict):
+            return {}
+
+        canonical_fact_summary = status.get('canonical_fact_summary', {})
+        proof_lead_summary = status.get('proof_lead_summary', {})
+        timeline_relation_summary = status.get('timeline_relation_summary', {})
+        timeline_consistency_summary = status.get('timeline_consistency_summary', {})
+        intake_contradictions = status.get('intake_contradictions', {})
+
+        canonical_facts = canonical_fact_summary.get('facts', []) if isinstance(canonical_fact_summary, dict) else []
+        proof_leads = proof_lead_summary.get('proof_leads', []) if isinstance(proof_lead_summary, dict) else []
+        timeline_relations = timeline_relation_summary.get('relations', []) if isinstance(timeline_relation_summary, dict) else []
+        contradiction_candidates = intake_contradictions.get('candidates', []) if isinstance(intake_contradictions, dict) else []
+
+        claim_key = self._normalize_reasoning_key(claim_type)
+        element_keys = {
+            self._normalize_reasoning_key(element.get('element_id')),
+            self._normalize_reasoning_key(element.get('element_text')),
+        }
+        element_keys.discard('')
+
+        def _extract_temporal_context(record: Dict[str, Any]) -> Dict[str, Any]:
+            return record.get('temporal_context', {}) if isinstance(record.get('temporal_context'), dict) else {}
+
+        def _has_temporal_context(record: Dict[str, Any]) -> bool:
+            temporal_context = _extract_temporal_context(record)
+            return bool(
+                temporal_context.get('start_date')
+                or temporal_context.get('end_date')
+                or temporal_context.get('relative_markers')
+            )
+
+        def _matches_claim(record: Dict[str, Any]) -> bool:
+            if not claim_key or not isinstance(record, dict):
+                return False
+            intent = record.get('intake_question_intent', {}) if isinstance(record.get('intake_question_intent'), dict) else {}
+            values: List[Any] = []
+            values.extend(record.get('claim_types', []) if isinstance(record.get('claim_types'), list) else [])
+            values.append(record.get('claim_type'))
+            values.append(intent.get('target_claim_type'))
+            normalized_values = {
+                self._normalize_reasoning_key(item)
+                for item in values
+                if str(item or '').strip()
+            }
+            return claim_key in normalized_values
+
+        def _matches_element(record: Dict[str, Any], field_names: List[str]) -> bool:
+            if not element_keys or not isinstance(record, dict):
+                return False
+            intent = record.get('intake_question_intent', {}) if isinstance(record.get('intake_question_intent'), dict) else {}
+            values: List[Any] = []
+            for field_name in field_names:
+                field_value = record.get(field_name)
+                if isinstance(field_value, list):
+                    values.extend(field_value)
+                elif str(field_value or '').strip():
+                    values.append(field_value)
+            values.append(intent.get('target_element_id'))
+            normalized_values = {
+                self._normalize_reasoning_key(item)
+                for item in values
+                if str(item or '').strip()
+            }
+            return bool(element_keys & normalized_values)
+
+        element_temporal_facts: List[Dict[str, Any]] = []
+        claim_temporal_facts: List[Dict[str, Any]] = []
+        claim_fact_map: Dict[str, Dict[str, Any]] = {}
+        for fact in canonical_facts if isinstance(canonical_facts, list) else []:
+            if not isinstance(fact, dict) or not _has_temporal_context(fact):
+                continue
+            fact_id = str(fact.get('fact_id') or '').strip()
+            if fact_id:
+                claim_fact_map[fact_id] = fact
+            if _matches_element(fact, ['element_tags']):
+                element_temporal_facts.append(fact)
+            elif _matches_claim(fact):
+                claim_temporal_facts.append(fact)
+
+        selected_temporal_facts = element_temporal_facts or claim_temporal_facts
+        selected_fact_ids = {
+            str(fact.get('fact_id') or '').strip()
+            for fact in selected_temporal_facts
+            if isinstance(fact, dict) and str(fact.get('fact_id') or '').strip()
+        }
+
+        element_temporal_leads: List[Dict[str, Any]] = []
+        claim_temporal_leads: List[Dict[str, Any]] = []
+        for lead in proof_leads if isinstance(proof_leads, list) else []:
+            if not isinstance(lead, dict) or not _has_temporal_context(lead):
+                continue
+            if _matches_element(lead, ['element_targets', 'fact_targets']):
+                element_temporal_leads.append(lead)
+            elif _matches_claim(lead):
+                claim_temporal_leads.append(lead)
+
+        selected_temporal_leads = element_temporal_leads or claim_temporal_leads
+        for lead in selected_temporal_leads:
+            for fact_id in lead.get('related_fact_ids', []) if isinstance(lead.get('related_fact_ids'), list) else []:
+                normalized_fact_id = str(fact_id or '').strip()
+                if normalized_fact_id:
+                    selected_fact_ids.add(normalized_fact_id)
+
+        selected_temporal_relations: List[Dict[str, Any]] = []
+        for relation in timeline_relations if isinstance(timeline_relations, list) else []:
+            if not isinstance(relation, dict):
+                continue
+            source_fact_id = str(relation.get('source_fact_id') or '').strip()
+            target_fact_id = str(relation.get('target_fact_id') or '').strip()
+            if selected_fact_ids and (source_fact_id in selected_fact_ids or target_fact_id in selected_fact_ids):
+                selected_temporal_relations.append(relation)
+                if source_fact_id:
+                    selected_fact_ids.add(source_fact_id)
+                if target_fact_id:
+                    selected_fact_ids.add(target_fact_id)
+
+        if selected_fact_ids:
+            selected_temporal_facts = [
+                fact for fact in claim_fact_map.values()
+                if str(fact.get('fact_id') or '').strip() in selected_fact_ids
+            ]
+
+        selected_fact_labels = {
+            str(fact.get('text') or '').strip()
+            for fact in selected_temporal_facts
+            if isinstance(fact, dict) and str(fact.get('text') or '').strip()
+        }
+        selected_temporal_issues: List[Dict[str, Any]] = []
+        for candidate in contradiction_candidates if isinstance(contradiction_candidates, list) else []:
+            if not isinstance(candidate, dict):
+                continue
+            category = self._normalize_reasoning_key(candidate.get('category'))
+            if not category.startswith('temporal'):
+                continue
+            node_names = {
+                str(candidate.get('left_node_name') or '').strip(),
+                str(candidate.get('right_node_name') or '').strip(),
+            }
+            if selected_fact_labels and not (selected_fact_labels & node_names):
+                continue
+            selected_temporal_issues.append(candidate)
+
+        if not selected_temporal_facts and not selected_temporal_leads and not selected_temporal_relations and not selected_temporal_issues:
+            return {}
+
+        relation_type_counts: Dict[str, int] = {}
+        for relation in selected_temporal_relations:
+            relation_type = str(relation.get('relation_type') or '').strip()
+            if relation_type:
+                relation_type_counts[relation_type] = relation_type_counts.get(relation_type, 0) + 1
+
+        consistency_payload = timeline_consistency_summary if isinstance(timeline_consistency_summary, dict) else {}
+        consistency_summary = {
+            'event_count': len(selected_temporal_facts),
+            'proof_lead_count': len(selected_temporal_leads),
+            'relation_count': len(selected_temporal_relations),
+            'issue_count': len(selected_temporal_issues),
+            'partial_order_ready': bool(consistency_payload.get('partial_order_ready', not selected_temporal_issues)),
+            'warnings': list(consistency_payload.get('warnings', []) if isinstance(consistency_payload.get('warnings'), list) else []),
+            'relation_type_counts': relation_type_counts,
+        }
+        consistency_summary['warning_count'] = len(consistency_summary['warnings'])
+
+        return {
+            'temporal_facts': selected_temporal_facts,
+            'temporal_proof_leads': selected_temporal_leads,
+            'temporal_relations': selected_temporal_relations,
+            'temporal_issues': selected_temporal_issues,
+            'consistency_summary': consistency_summary,
+        }
+
     def _build_reasoning_predicates(
         self,
         claim_type: str,
         element: Dict[str, Any],
         contradiction_candidates: List[Dict[str, Any]],
+        temporal_context: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         predicates: List[Dict[str, Any]] = [
             {
@@ -1496,6 +1686,116 @@ class ClaimSupportHook:
                 }
             )
 
+        reasoning_temporal_context = temporal_context if isinstance(temporal_context, dict) else self._get_temporal_reasoning_context(claim_type, element)
+        for fact in reasoning_temporal_context.get('temporal_facts', []) or []:
+            if not isinstance(fact, dict):
+                continue
+            temporal_details = fact.get('temporal_context', {}) if isinstance(fact.get('temporal_context'), dict) else {}
+            predicates.append(
+                {
+                    'predicate_id': f"temporal_fact:{fact.get('fact_id') or fact.get('text') or ''}",
+                    'predicate_type': 'temporal_fact',
+                    'claim_type': claim_type,
+                    'claim_element_id': element.get('element_id'),
+                    'claim_element_text': element.get('element_text'),
+                    'fact_id': fact.get('fact_id'),
+                    'text': fact.get('text') or '',
+                    'fact_type': fact.get('fact_type'),
+                    'claim_types': list(fact.get('claim_types', []) or []),
+                    'element_tags': list(fact.get('element_tags', []) or []),
+                    'start_date': temporal_details.get('start_date'),
+                    'end_date': temporal_details.get('end_date'),
+                    'granularity': temporal_details.get('granularity'),
+                    'is_approximate': bool(temporal_details.get('is_approximate', False)),
+                    'is_range': bool(temporal_details.get('is_range', False)),
+                    'relative_markers': list(temporal_details.get('relative_markers', []) or []),
+                }
+            )
+
+        for lead in reasoning_temporal_context.get('temporal_proof_leads', []) or []:
+            if not isinstance(lead, dict):
+                continue
+            temporal_details = lead.get('temporal_context', {}) if isinstance(lead.get('temporal_context'), dict) else {}
+            predicates.append(
+                {
+                    'predicate_id': f"temporal_proof_lead:{lead.get('lead_id') or lead.get('description') or ''}",
+                    'predicate_type': 'temporal_proof_lead',
+                    'claim_type': claim_type,
+                    'claim_element_id': element.get('element_id'),
+                    'claim_element_text': element.get('element_text'),
+                    'lead_id': lead.get('lead_id'),
+                    'description': lead.get('description') or '',
+                    'related_fact_ids': list(lead.get('related_fact_ids', []) or []),
+                    'element_targets': list(lead.get('element_targets', []) or []),
+                    'temporal_scope': lead.get('temporal_scope'),
+                    'start_date': temporal_details.get('start_date'),
+                    'end_date': temporal_details.get('end_date'),
+                    'granularity': temporal_details.get('granularity'),
+                    'is_approximate': bool(temporal_details.get('is_approximate', False)),
+                    'is_range': bool(temporal_details.get('is_range', False)),
+                }
+            )
+
+        for relation in reasoning_temporal_context.get('temporal_relations', []) or []:
+            if not isinstance(relation, dict):
+                continue
+            predicates.append(
+                {
+                    'predicate_id': str(relation.get('relation_id') or ''),
+                    'predicate_type': 'temporal_relation',
+                    'claim_type': claim_type,
+                    'claim_element_id': element.get('element_id'),
+                    'claim_element_text': element.get('element_text'),
+                    'relation_type': relation.get('relation_type'),
+                    'source_fact_id': relation.get('source_fact_id'),
+                    'target_fact_id': relation.get('target_fact_id'),
+                    'source_start_date': relation.get('source_start_date'),
+                    'source_end_date': relation.get('source_end_date'),
+                    'target_start_date': relation.get('target_start_date'),
+                    'target_end_date': relation.get('target_end_date'),
+                    'confidence': relation.get('confidence'),
+                }
+            )
+
+        consistency_summary = reasoning_temporal_context.get('consistency_summary', {})
+        if isinstance(consistency_summary, dict) and consistency_summary:
+            predicates.append(
+                {
+                    'predicate_id': f"temporal_consistency:{element.get('element_id') or element.get('element_text') or claim_type}",
+                    'predicate_type': 'temporal_consistency',
+                    'claim_type': claim_type,
+                    'claim_element_id': element.get('element_id'),
+                    'claim_element_text': element.get('element_text'),
+                    'event_count': consistency_summary.get('event_count', 0),
+                    'proof_lead_count': consistency_summary.get('proof_lead_count', 0),
+                    'relation_count': consistency_summary.get('relation_count', 0),
+                    'issue_count': consistency_summary.get('issue_count', 0),
+                    'partial_order_ready': bool(consistency_summary.get('partial_order_ready', False)),
+                    'warning_count': consistency_summary.get('warning_count', 0),
+                    'warnings': list(consistency_summary.get('warnings', []) or []),
+                    'relation_type_counts': dict(consistency_summary.get('relation_type_counts', {}) or {}),
+                }
+            )
+
+        for issue in reasoning_temporal_context.get('temporal_issues', []) or []:
+            if not isinstance(issue, dict):
+                continue
+            predicates.append(
+                {
+                    'predicate_id': str(issue.get('contradiction_id') or issue.get('dependency_id') or issue.get('issue_id') or ''),
+                    'predicate_type': 'temporal_issue',
+                    'claim_type': claim_type,
+                    'claim_element_id': element.get('element_id'),
+                    'claim_element_text': element.get('element_text'),
+                    'issue_type': issue.get('category') or issue.get('issue_type'),
+                    'summary': issue.get('summary') or issue.get('label') or '',
+                    'severity': issue.get('severity'),
+                    'left_node_name': issue.get('left_node_name'),
+                    'right_node_name': issue.get('right_node_name'),
+                    'recommended_resolution_lane': issue.get('recommended_resolution_lane'),
+                }
+            )
+
         for index, candidate in enumerate(contradiction_candidates):
             if not isinstance(candidate, dict):
                 continue
@@ -1520,6 +1820,7 @@ class ClaimSupportHook:
         claim_type: str,
         element: Dict[str, Any],
         contradiction_candidates: List[Dict[str, Any]],
+        temporal_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         claim_entity_id = str(element.get('element_id') or element.get('element_text') or claim_type or 'claim-element')
         entities: List[Dict[str, Any]] = [
@@ -1530,6 +1831,7 @@ class ClaimSupportHook:
             }
         ]
         relationships: List[Dict[str, Any]] = []
+        entity_ids = {claim_entity_id}
 
         for trace in element.get('support_traces', []) or []:
             if not isinstance(trace, dict):
@@ -1537,18 +1839,61 @@ class ClaimSupportHook:
             support_id = str(trace.get('fact_id') or trace.get('support_ref') or '')
             if not support_id:
                 continue
-            entities.append(
-                {
-                    'id': support_id,
-                    'label': str(trace.get('fact_text') or trace.get('support_label') or support_id),
-                    'type': str(trace.get('support_kind') or 'support'),
-                }
-            )
+            if support_id not in entity_ids:
+                entities.append(
+                    {
+                        'id': support_id,
+                        'label': str(trace.get('fact_text') or trace.get('support_label') or support_id),
+                        'type': str(trace.get('support_kind') or 'support'),
+                    }
+                )
+                entity_ids.add(support_id)
             relationships.append(
                 {
                     'source': support_id,
                     'target': claim_entity_id,
                     'type': 'supports',
+                }
+            )
+
+        reasoning_temporal_context = temporal_context if isinstance(temporal_context, dict) else self._get_temporal_reasoning_context(claim_type, element)
+        for fact in reasoning_temporal_context.get('temporal_facts', []) or []:
+            if not isinstance(fact, dict):
+                continue
+            fact_id = f"temporal_fact:{fact.get('fact_id') or fact.get('text') or ''}"
+            if fact_id not in entity_ids:
+                entities.append(
+                    {
+                        'id': fact_id,
+                        'label': str(fact.get('text') or fact.get('fact_id') or fact_id),
+                        'type': 'temporal_fact',
+                    }
+                )
+                entity_ids.add(fact_id)
+            relationships.append(
+                {
+                    'source': fact_id,
+                    'target': claim_entity_id,
+                    'type': 'temporally_relevant_to',
+                }
+            )
+
+        for relation in reasoning_temporal_context.get('temporal_relations', []) or []:
+            if not isinstance(relation, dict):
+                continue
+            source_fact_id = f"temporal_fact:{relation.get('source_fact_id') or ''}"
+            target_fact_id = f"temporal_fact:{relation.get('target_fact_id') or ''}"
+            if source_fact_id not in entity_ids:
+                entities.append({'id': source_fact_id, 'label': source_fact_id, 'type': 'temporal_fact'})
+                entity_ids.add(source_fact_id)
+            if target_fact_id not in entity_ids:
+                entities.append({'id': target_fact_id, 'label': target_fact_id, 'type': 'temporal_fact'})
+                entity_ids.add(target_fact_id)
+            relationships.append(
+                {
+                    'source': source_fact_id,
+                    'target': target_fact_id,
+                    'type': str(relation.get('relation_type') or 'temporal_relation'),
                 }
             )
 
@@ -1618,9 +1963,48 @@ class ClaimSupportHook:
             ]
             if part
         )
-        predicates = self._build_reasoning_predicates(claim_type, element, contradiction_candidates)
+        temporal_context = self._get_temporal_reasoning_context(claim_type, element)
+        temporal_seed_lines: List[str] = []
+        for fact in temporal_context.get('temporal_facts', []) or []:
+            if not isinstance(fact, dict):
+                continue
+            temporal_details = fact.get('temporal_context', {}) if isinstance(fact.get('temporal_context'), dict) else {}
+            temporal_seed_lines.append(
+                f"Timeline fact: {fact.get('text') or fact.get('fact_id') or 'timeline_fact'} [{temporal_details.get('start_date') or '?'} -> {temporal_details.get('end_date') or '?'}]"
+            )
+        for relation in temporal_context.get('temporal_relations', []) or []:
+            if not isinstance(relation, dict):
+                continue
+            temporal_seed_lines.append(
+                f"Timeline relation: {relation.get('source_fact_id') or '?'} {relation.get('relation_type') or 'related_to'} {relation.get('target_fact_id') or '?'}"
+            )
+        consistency_summary = temporal_context.get('consistency_summary', {}) if isinstance(temporal_context.get('consistency_summary'), dict) else {}
+        if consistency_summary:
+            temporal_seed_lines.append(
+                f"Timeline consistency: partial_order_ready={bool(consistency_summary.get('partial_order_ready', False))}, warnings={int(consistency_summary.get('warning_count', 0) or 0)}"
+            )
+        for issue in temporal_context.get('temporal_issues', []) or []:
+            if not isinstance(issue, dict):
+                continue
+            temporal_seed_lines.append(
+                f"Temporal issue: {issue.get('summary') or issue.get('label') or issue.get('category') or 'temporal_issue'}"
+            )
+        if temporal_seed_lines:
+            ontology_seed_text = '\n'.join([ontology_seed_text, *temporal_seed_lines]) if ontology_seed_text else '\n'.join(temporal_seed_lines)
+
+        predicates = self._build_reasoning_predicates(
+            claim_type,
+            element,
+            contradiction_candidates,
+            temporal_context=temporal_context,
+        )
         ontology_build = build_ontology(ontology_seed_text)
-        fallback_ontology = self._build_reasoning_ontology_fallback(claim_type, element, contradiction_candidates)
+        fallback_ontology = self._build_reasoning_ontology_fallback(
+            claim_type,
+            element,
+            contradiction_candidates,
+            temporal_context=temporal_context,
+        )
         ontology_payload = ontology_build.get('ontology') if isinstance(ontology_build, dict) else None
         ontology_for_validation = ontology_payload if ontology_payload not in (None, '') else fallback_ontology
         logic_proof = prove_claim_elements(predicates)

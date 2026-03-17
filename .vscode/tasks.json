@@ -195,6 +195,74 @@
       "options": {
         "cwd": "${workspaceFolder}"
       }
+    },
+    {
+      "label": "Canary: Run + Export + Summarize Reranker Metrics",
+      "type": "shell",
+      "command": "/bin/sh",
+      "args": [
+        "-lc",
+        "ts=$(date +%Y%m%d_%H%M%S); metrics=statefiles/reranker_metrics_${ts}.json; summary=statefiles/reranker_metrics_${ts}.summary.json; .venv/bin/python run.py --export-reranker-metrics \"$metrics\"; .venv/bin/python scripts/summarize_reranker_metrics.py --input \"$metrics\" --summary-out \"$summary\"; echo \"Metrics: $metrics\"; echo \"Summary: $summary\""
+      ],
+      "group": "test",
+      "isBackground": false,
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "label": "Canary: Summarize Latest Reranker Metrics Export",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/summarize_reranker_metrics.py",
+        "--input",
+        "statefiles/reranker_metrics_latest.json",
+        "--summary-out",
+        "statefiles/reranker_metrics_latest.summary.json"
+      ],
+      "group": "test",
+      "isBackground": false,
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "label": "Canary: Generate Sample + Summarize Reranker Metrics",
+      "type": "shell",
+      "command": "/bin/sh",
+      "args": [
+        "-lc",
+        "ts=$(date +%Y%m%d_%H%M%S); metrics=statefiles/reranker_metrics_sample_${ts}.json; summary=statefiles/reranker_metrics_sample_${ts}.summary.json; METRICS_PATH=\"$metrics\" .venv/bin/python -c \"import os; from mediator import Mediator; from unittest.mock import Mock; backend=Mock(); backend.id='sample-backend'; mediator=Mediator(backends=[backend]); mediator.update_reranker_metrics(source='legal_authority', applied=True, metadata={'graph_run_avg_boost':0.05,'graph_run_elapsed_ms':2.0,'graph_latency_guard_applied':False}, canary_enabled=True); mediator.update_reranker_metrics(source='web_evidence', applied=False, metadata={}, canary_enabled=False); print(mediator.export_reranker_metrics_json(os.environ['METRICS_PATH']))\"; .venv/bin/python scripts/summarize_reranker_metrics.py --input \"$metrics\" --summary-out \"$summary\"; echo \"Metrics: $metrics\"; echo \"Summary: $summary\""
+      ],
+      "group": "test",
+      "isBackground": false,
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "label": "Canary: Validate Ops Wiring (CI-safe)",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/validate_canary_ops.py"
+      ],
+      "group": "test",
+      "isBackground": false,
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
     }
   ]
 }
