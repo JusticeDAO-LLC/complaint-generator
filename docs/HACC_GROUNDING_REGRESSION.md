@@ -36,6 +36,12 @@ Related comparison task:
 HACC Preset Matrix Compare
 ```
 
+Guarded comparison task:
+
+```text
+HACC Preset Matrix Compare (Fail Fast)
+```
+
 Useful options:
 
 ```bash
@@ -62,6 +68,12 @@ Deeper preset comparison example:
 
 ```bash
 ./.venv/bin/python scripts/run_hacc_preset_matrix.py --presets core_hacc_policies,accommodation_focus,administrative_plan_retaliation --num-sessions 2 --hacc-count 2 --max-turns 4 --max-parallel 1 --output-dir ../research_results/adversarial_runs/hacc_preset_matrix_compare --continue-on-error
+```
+
+Guarded comparison example:
+
+```bash
+./.venv/bin/python scripts/run_hacc_preset_matrix.py --presets core_hacc_policies,accommodation_focus,administrative_plan_retaliation --num-sessions 2 --hacc-count 2 --max-turns 4 --max-parallel 1 --output-dir ../research_results/adversarial_runs/hacc_preset_matrix_compare_failfast --fail-on-degraded-runtime
 ```
 
 If a stronger backend is available and properly provisioned, you can pin it explicitly with `--backend-id`. In the current environment, `llm-router-codex` is present but may be quota-limited, so the shared tasks intentionally leave backend selection automatic.

@@ -2123,6 +2123,26 @@ def _combined_process_claim(sections: Sequence[str]) -> str:
     return ""
 
 
+def _missing_case_facts_line(sections: Sequence[str]) -> str:
+    section_set = {str(section) for section in sections if str(section)}
+    prompts: List[str] = ["the date and nature of the adverse action"]
+    if "adverse_action" in section_set:
+        prompts.append("the exact denial, termination, or loss of assistance that occurred")
+    if {"grievance_hearing", "appeal_rights"} & section_set:
+        prompts.append("whether written notice, an informal review, a grievance hearing, or an appeal was requested or denied")
+    prompts.append("who at HACC made or communicated the decision")
+    prompts.append("the resulting housing harm and requested remedy")
+
+    ordered: List[str] = []
+    seen = set()
+    for item in prompts:
+        if item not in seen:
+            seen.add(item)
+            ordered.append(item)
+
+    return "Case-specific facts still need confirmation, including " + ", ".join(ordered) + "."
+
+
 def _authority_claim_line(authority_hints: Sequence[str], sections: Sequence[str], *, retaliation: bool = False) -> str:
     hints = [str(item) for item in authority_hints if str(item)]
     if not hints:
@@ -2397,6 +2417,8 @@ def _proposed_allegations(seed: Dict[str, Any], session: Dict[str, Any], filing_
         summary = _summarize_intake_fact(fact)
         if summary:
             summarized_facts.append(summary)
+    if not summarized_facts:
+        allegations.append(_missing_case_facts_line(list(key_facts.get("anchor_sections") or [])))
     for summary in _dedupe_fact_summaries(summarized_facts, limit=3):
         allegations.append(f"During intake, the complainant stated that {summary}")
 

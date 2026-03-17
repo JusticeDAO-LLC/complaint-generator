@@ -92,6 +92,21 @@ def test_claims_theory_links_authority_to_hacc_retaliation_process():
     assert not any("clearly documented and transparent adverse-action process" in item for item in claims)
 
 
+def test_proposed_allegations_add_missing_case_facts_prompt_when_intake_facts_absent():
+    seed = {
+        "description": "Retaliation complaint anchored to HACC core housing policies.",
+        "key_facts": {
+            "anchor_sections": ["grievance_hearing", "appeal_rights", "adverse_action"],
+            "evidence_summary": "HACC policy defines a grievance as a tenant dispute concerning HACC action or inaction.",
+        },
+    }
+
+    allegations = MODULE._proposed_allegations(seed, {"conversation_history": []}, "hud")
+
+    assert any("Case-specific facts still need confirmation" in item for item in allegations)
+    assert any("informal review, a grievance hearing, or an appeal was requested or denied" in item for item in allegations)
+
+
 def test_summarize_policy_excerpt_normalizes_hacc_grievance_fragments():
     text = (
         "Grievance: Any dispute a tenant may have with respect to HACC action or failure to "
