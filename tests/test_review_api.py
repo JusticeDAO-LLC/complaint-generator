@@ -1283,6 +1283,11 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert reasoning_review["hybrid_bridge_available_element_count"] == 0
         assert reasoning_review["hybrid_tdfol_formula_count"] == 0
         assert reasoning_review["hybrid_dcec_formula_count"] == 0
+        assert reasoning_review["hybrid_tdfol_formula_preview"] == []
+        assert reasoning_review["hybrid_dcec_formula_preview"] == []
+        assert reasoning_review["hybrid_formalism"] == ""
+        assert reasoning_review["hybrid_reasoning_mode"] == ""
+        assert reasoning_review["hybrid_compiler_bridge_path"] == ""
         assert any(
             item == {
                 "element_id": "retaliation:1",
@@ -1297,6 +1302,11 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 "hybrid_bridge_available": False,
                 "hybrid_tdfol_formula_count": 0,
                 "hybrid_dcec_formula_count": 0,
+                "hybrid_tdfol_formula_preview": [],
+                "hybrid_dcec_formula_preview": [],
+                "hybrid_formalism": "",
+                "hybrid_reasoning_mode": "",
+                "hybrid_compiler_bridge_path": "",
             }
             for item in reasoning_review["flagged_elements"]
         )
@@ -1721,6 +1731,11 @@ def test_claim_support_review_payload_reuses_persisted_diagnostic_snapshots():
         "hybrid_bridge_available_element_count": 0,
         "hybrid_tdfol_formula_count": 0,
         "hybrid_dcec_formula_count": 0,
+        "hybrid_tdfol_formula_preview": [],
+        "hybrid_dcec_formula_preview": [],
+        "hybrid_formalism": "",
+        "hybrid_reasoning_mode": "",
+        "hybrid_compiler_bridge_path": "",
         "flagged_elements": [],
     }
     mediator.get_claim_support_diagnostic_snapshots.assert_called_once_with(
@@ -1829,6 +1844,11 @@ def test_claim_support_review_payload_recomputes_stale_diagnostic_snapshots():
         "hybrid_bridge_available_element_count": 0,
         "hybrid_tdfol_formula_count": 0,
         "hybrid_dcec_formula_count": 0,
+        "hybrid_tdfol_formula_preview": [],
+        "hybrid_dcec_formula_preview": [],
+        "hybrid_formalism": "",
+        "hybrid_reasoning_mode": "",
+        "hybrid_compiler_bridge_path": "",
         "flagged_elements": [],
     }
     mediator.get_claim_support_gaps.assert_called_once_with(

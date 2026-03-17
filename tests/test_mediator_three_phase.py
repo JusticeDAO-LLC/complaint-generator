@@ -887,6 +887,21 @@ class TestMediatorThreePhaseIntegration:
                             'missing_support_kinds': [],
                             'contradiction_candidate_count': 0,
                             'proof_diagnostics': {},
+                            'reasoning_diagnostics': {
+                                'hybrid_reasoning': {
+                                    'status': 'success',
+                                    'result': {
+                                        'compiler_bridge_available': True,
+                                        'tdfol_formulas': [
+                                            'Before(fact_1,fact_2)',
+                                            'forall t (AtTime(t,t_2026_03_10) -> Fact(fact_1,t))',
+                                        ],
+                                        'dcec_formulas': [
+                                            'Happens(fact_1,t_2026_03_10)',
+                                        ],
+                                    },
+                                },
+                            },
                             'gap_context': {
                                 'support_facts': [{'fact_id': 'fact_001'}],
                                 'support_traces': [{'source_ref': 'artifact_001', 'source_family': 'evidence'}],
@@ -935,6 +950,10 @@ class TestMediatorThreePhaseIntegration:
         assert 'employment_discrimination' in packets
         assert packets['employment_discrimination']['elements'][0]['support_status'] == 'supported'
         assert packets['employment_discrimination']['elements'][0]['support_quality'] == 'draft_ready'
+        assert packets['employment_discrimination']['elements'][0]['hybrid_bridge_used'] is True
+        assert packets['employment_discrimination']['elements'][0]['hybrid_bridge_available'] is True
+        assert packets['employment_discrimination']['elements'][0]['hybrid_tdfol_formula_count'] == 2
+        assert packets['employment_discrimination']['elements'][0]['hybrid_dcec_formula_count'] == 1
         assert packets['employment_discrimination']['elements'][1]['support_status'] == 'unsupported'
         assert packets['employment_discrimination']['elements'][1]['support_quality'] == 'unsupported'
         assert packets['employment_discrimination']['elements'][1]['missing_fact_bundle']
@@ -961,6 +980,10 @@ class TestMediatorThreePhaseIntegration:
         assert status['claim_support_packet_summary']['claim_count'] == 1
         assert status['claim_support_packet_summary']['status_counts']['unsupported'] == 1
         assert 'proof_readiness_score' in status['claim_support_packet_summary']
+        assert status['claim_support_packet_summary']['hybrid_bridge_element_count'] == 1
+        assert status['claim_support_packet_summary']['hybrid_bridge_available_element_count'] == 1
+        assert status['claim_support_packet_summary']['hybrid_tdfol_formula_count'] == 2
+        assert status['claim_support_packet_summary']['hybrid_dcec_formula_count'] == 1
         alignment = status['intake_evidence_alignment_summary']['claims']['employment_discrimination']
         assert 'adverse_action' in alignment['packet_element_statuses']
         assert isinstance(alignment['shared_elements'], list)

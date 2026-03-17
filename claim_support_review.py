@@ -290,6 +290,8 @@ def summarize_claim_support_snapshot_lifecycle(
 def summarize_claim_reasoning_review(
     validation_claim: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
+    preview_limit = 3
+
     claim_validation = validation_claim if isinstance(validation_claim, dict) else {}
     elements = claim_validation.get("elements", [])
     if not isinstance(elements, list):
@@ -303,6 +305,11 @@ def summarize_claim_reasoning_review(
     hybrid_bridge_available_element_count = 0
     hybrid_tdfol_formula_count = 0
     hybrid_dcec_formula_count = 0
+    hybrid_tdfol_formula_preview: List[str] = []
+    hybrid_dcec_formula_preview: List[str] = []
+    hybrid_formalism = ""
+    hybrid_reasoning_mode = ""
+    hybrid_compiler_bridge_path = ""
 
     for element in elements:
         if not isinstance(element, dict):
@@ -337,8 +344,25 @@ def summarize_claim_reasoning_review(
             hybrid_result = {}
         hybrid_bridge_used = bool(hybrid_reasoning)
         hybrid_bridge_available = bool(hybrid_result.get("compiler_bridge_available", False))
-        hybrid_tdfol_count = len(hybrid_result.get("tdfol_formulas", []) or [])
-        hybrid_dcec_count = len(hybrid_result.get("dcec_formulas", []) or [])
+        element_formalism = str(hybrid_result.get("formalism") or "").strip()
+        element_reasoning_mode = str(hybrid_result.get("reasoning_mode") or "").strip()
+        element_compiler_bridge_path = str(
+            hybrid_result.get("compiler_bridge_path") or ""
+        ).strip()
+        hybrid_tdfol_formulas = [
+            str(formula)
+            for formula in (hybrid_result.get("tdfol_formulas", []) or [])
+            if str(formula).strip()
+        ]
+        hybrid_dcec_formulas = [
+            str(formula)
+            for formula in (hybrid_result.get("dcec_formulas", []) or [])
+            if str(formula).strip()
+        ]
+        hybrid_tdfol_count = len(hybrid_tdfol_formulas)
+        hybrid_dcec_count = len(hybrid_dcec_formulas)
+        element_tdfol_preview = hybrid_tdfol_formulas[:preview_limit]
+        element_dcec_preview = hybrid_dcec_formulas[:preview_limit]
 
         if used_fallback_ontology:
             fallback_ontology_element_count += 1
@@ -352,6 +376,22 @@ def summarize_claim_reasoning_review(
             hybrid_bridge_available_element_count += 1
         hybrid_tdfol_formula_count += hybrid_tdfol_count
         hybrid_dcec_formula_count += hybrid_dcec_count
+        if element_formalism and not hybrid_formalism:
+            hybrid_formalism = element_formalism
+        if element_reasoning_mode and not hybrid_reasoning_mode:
+            hybrid_reasoning_mode = element_reasoning_mode
+        if element_compiler_bridge_path and not hybrid_compiler_bridge_path:
+            hybrid_compiler_bridge_path = element_compiler_bridge_path
+        for formula in hybrid_tdfol_formulas:
+            if formula not in hybrid_tdfol_formula_preview:
+                hybrid_tdfol_formula_preview.append(formula)
+            if len(hybrid_tdfol_formula_preview) >= preview_limit:
+                break
+        for formula in hybrid_dcec_formulas:
+            if formula not in hybrid_dcec_formula_preview:
+                hybrid_dcec_formula_preview.append(formula)
+            if len(hybrid_dcec_formula_preview) >= preview_limit:
+                break
 
         if not (
             used_fallback_ontology
@@ -378,6 +418,11 @@ def summarize_claim_reasoning_review(
                 "hybrid_bridge_available": hybrid_bridge_available,
                 "hybrid_tdfol_formula_count": hybrid_tdfol_count,
                 "hybrid_dcec_formula_count": hybrid_dcec_count,
+                "hybrid_tdfol_formula_preview": element_tdfol_preview,
+                "hybrid_dcec_formula_preview": element_dcec_preview,
+                "hybrid_formalism": element_formalism,
+                "hybrid_reasoning_mode": element_reasoning_mode,
+                "hybrid_compiler_bridge_path": element_compiler_bridge_path,
             }
         )
 
@@ -394,6 +439,11 @@ def summarize_claim_reasoning_review(
         "hybrid_bridge_available_element_count": hybrid_bridge_available_element_count,
         "hybrid_tdfol_formula_count": hybrid_tdfol_formula_count,
         "hybrid_dcec_formula_count": hybrid_dcec_formula_count,
+        "hybrid_tdfol_formula_preview": hybrid_tdfol_formula_preview,
+        "hybrid_dcec_formula_preview": hybrid_dcec_formula_preview,
+        "hybrid_formalism": hybrid_formalism,
+        "hybrid_reasoning_mode": hybrid_reasoning_mode,
+        "hybrid_compiler_bridge_path": hybrid_compiler_bridge_path,
         "flagged_elements": flagged_elements,
     }
 

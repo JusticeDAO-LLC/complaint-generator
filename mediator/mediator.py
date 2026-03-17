@@ -5243,6 +5243,9 @@ class Mediator:
 					gap_context = element.get('gap_context', {}) if isinstance(element.get('gap_context'), dict) else {}
 					support_facts = gap_context.get('support_facts', []) if isinstance(gap_context, dict) else []
 					support_traces = gap_context.get('support_traces', []) if isinstance(gap_context, dict) else []
+					reasoning_diagnostics = element.get('reasoning_diagnostics', {}) if isinstance(element.get('reasoning_diagnostics'), dict) else {}
+					hybrid_reasoning = reasoning_diagnostics.get('hybrid_reasoning', {}) if isinstance(reasoning_diagnostics.get('hybrid_reasoning'), dict) else {}
+					hybrid_result = hybrid_reasoning.get('result', {}) if isinstance(hybrid_reasoning.get('result'), dict) else {}
 					element_id = element.get('element_id')
 					element_text = element.get('element_text')
 					registry_entry = self._claim_element_registry_entry(intake_case_file, claim_type, element_id)
@@ -5289,6 +5292,10 @@ class Mediator:
 						'required_fact_bundle': required_fact_bundle,
 						'satisfied_fact_bundle': satisfied_fact_bundle,
 						'missing_fact_bundle': missing_fact_bundle,
+						'hybrid_bridge_used': bool(hybrid_reasoning),
+						'hybrid_bridge_available': bool(hybrid_result.get('compiler_bridge_available', False)),
+						'hybrid_tdfol_formula_count': len(hybrid_result.get('tdfol_formulas', []) or []),
+						'hybrid_dcec_formula_count': len(hybrid_result.get('dcec_formulas', []) or []),
 						'parse_quality_flags': self._extract_parse_quality_flags(element),
 						'recommended_next_step': str(element.get('recommended_action') or ''),
 						'contradiction_count': int(element.get('contradiction_candidate_count', 0) or 0),
@@ -5415,6 +5422,10 @@ class Mediator:
 			'credible_support_ratio': 0.0,
 			'draft_ready_element_ratio': 0.0,
 			'proof_readiness_score': 0.0,
+			'hybrid_bridge_element_count': 0,
+			'hybrid_bridge_available_element_count': 0,
+			'hybrid_tdfol_formula_count': 0,
+			'hybrid_dcec_formula_count': 0,
 		}
 		if not isinstance(packets, dict):
 			return summary
@@ -5442,6 +5453,12 @@ class Mediator:
 					credible_count += 1
 				elif support_quality == 'credible':
 					credible_count += 1
+				if bool(element.get('hybrid_bridge_used')):
+					summary['hybrid_bridge_element_count'] += 1
+				if bool(element.get('hybrid_bridge_available')):
+					summary['hybrid_bridge_available_element_count'] += 1
+				summary['hybrid_tdfol_formula_count'] += int(element.get('hybrid_tdfol_formula_count', 0) or 0)
+				summary['hybrid_dcec_formula_count'] += int(element.get('hybrid_dcec_formula_count', 0) or 0)
 				if status == 'supported':
 					parse_quality_flags = element.get('parse_quality_flags', [])
 					if not (parse_quality_flags if isinstance(parse_quality_flags, list) else []):

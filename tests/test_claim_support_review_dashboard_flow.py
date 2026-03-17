@@ -359,7 +359,10 @@ def _build_dashboard_mediator() -> Mock:
                             "hybrid_reasoning": {
                                 "status": "success",
                                 "result": {
+                                    "formalism": "tdfol_dcec_bridge_v1",
+                                    "reasoning_mode": "temporal_bridge",
                                     "compiler_bridge_available": True,
+                                    "compiler_bridge_path": "ipfs_datasets_py.ipfs_datasets_py.processors.legal_data.reasoner.hybrid_v2_blueprint",
                                     "tdfol_formulas": [
                                         "Before(fact_1,fact_2)",
                                         "forall t (AtTime(t,t_2026_03_10) -> Fact(fact_1,t))",
@@ -935,7 +938,31 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert review_payload["claim_reasoning_review"]["retaliation"]["hybrid_bridge_available_element_count"] == 1
     assert review_payload["claim_reasoning_review"]["retaliation"]["hybrid_tdfol_formula_count"] == 2
     assert review_payload["claim_reasoning_review"]["retaliation"]["hybrid_dcec_formula_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["hybrid_tdfol_formula_preview"] == [
+        "Before(fact_1,fact_2)",
+        "forall t (AtTime(t,t_2026_03_10) -> Fact(fact_1,t))",
+    ]
+    assert review_payload["claim_reasoning_review"]["retaliation"]["hybrid_dcec_formula_preview"] == [
+        "Happens(fact_1,t_2026_03_10)",
+    ]
+    assert review_payload["claim_reasoning_review"]["retaliation"]["hybrid_formalism"] == "tdfol_dcec_bridge_v1"
+    assert review_payload["claim_reasoning_review"]["retaliation"]["hybrid_reasoning_mode"] == "temporal_bridge"
+    assert review_payload["claim_reasoning_review"]["retaliation"]["hybrid_compiler_bridge_path"] == (
+        "ipfs_datasets_py.ipfs_datasets_py.processors.legal_data.reasoner.hybrid_v2_blueprint"
+    )
     assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["hybrid_bridge_available"] is True
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["hybrid_tdfol_formula_preview"] == [
+        "Before(fact_1,fact_2)",
+        "forall t (AtTime(t,t_2026_03_10) -> Fact(fact_1,t))",
+    ]
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["hybrid_dcec_formula_preview"] == [
+        "Happens(fact_1,t_2026_03_10)",
+    ]
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["hybrid_formalism"] == "tdfol_dcec_bridge_v1"
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["hybrid_reasoning_mode"] == "temporal_bridge"
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["hybrid_compiler_bridge_path"] == (
+        "ipfs_datasets_py.ipfs_datasets_py.processors.legal_data.reasoner.hybrid_v2_blueprint"
+    )
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["validation_status"] == "supported"
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_fact_packet_count"] == 2
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_fact_status_counts"] == {
