@@ -3869,3 +3869,126 @@ def test_optimization_trace_intake_section_review_link_click_preserves_focus_on_
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
+
+
+def test_optimization_trace_intake_handoff_link_opens_review_dashboard_with_confirmation_context():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    payload = {
+        "cid": "bafy-trace-smoke",
+        "size": 321,
+        "trace": {
+            "user_id": "browser-smoke-text-link",
+            "intake_status": {
+                "current_phase": "intake",
+                "score": 0.52,
+                "contradiction_count": 1,
+                "blockers": ["collect_missing_support", "complainant_summary_confirmation_required"],
+                "contradictions": [
+                    {
+                        "summary": "Termination date conflicts with reported complaint timeline",
+                        "question": "Which date is supported by the termination notice?",
+                        "recommended_resolution_lane": "request_document",
+                        "current_resolution_status": "open",
+                        "external_corroboration_required": True,
+                        "affected_claim_types": ["retaliation"],
+                        "affected_element_ids": ["retaliation:2"],
+                    }
+                ],
+            },
+            "intake_constraints": [],
+            "intake_case_summary": {
+                "candidate_claims": [
+                    {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.87},
+                ],
+                "candidate_claim_summary": {
+                    "count": 1,
+                    "claim_types": ["retaliation"],
+                    "average_confidence": 0.87,
+                    "top_claim_type": "retaliation",
+                    "top_confidence": 0.87,
+                    "ambiguous_claim_count": 0,
+                    "ambiguity_flag_count": 0,
+                    "ambiguity_flag_counts": {},
+                    "close_leading_claims": False,
+                },
+                "complainant_summary_confirmation": {
+                    "status": "pending",
+                    "confirmed": False,
+                    "confirmation_source": "complainant",
+                    "confirmation_note": "",
+                    "summary_snapshot_index": 0,
+                    "current_summary_snapshot": {
+                        "candidate_claim_count": 1,
+                        "canonical_fact_count": 1,
+                        "proof_lead_count": 1,
+                    },
+                    "confirmed_summary_snapshot": {},
+                },
+                "intake_sections": {
+                    "proof_leads": {"status": "partial", "missing_items": ["documents"]},
+                },
+                "canonical_fact_summary": {"count": 1, "facts": [{"fact_id": "fact_001"}]},
+                "proof_lead_summary": {"count": 1, "proof_leads": [{"lead_id": "lead_001"}]},
+                "question_candidate_summary": {},
+                "claim_support_packet_summary": {
+                    "claim_count": 1,
+                    "element_count": 1,
+                    "status_counts": {"unsupported": 1},
+                    "recommended_actions": ["collect_missing_support_kind"],
+                },
+            },
+            "iterations": [
+                {
+                    "iteration": 1,
+                    "focus_section": "factual_allegations",
+                    "accepted": True,
+                    "critic": {"overall_score": 0.73},
+                }
+            ],
+            "initial_review": {"overall_score": 0.41},
+            "final_review": {"overall_score": 0.73, "recommended_focus": "claims_for_relief"},
+        },
+    }
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for trace handoff dashboard click-through coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+
+        app = _build_document_review_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(f"{base_url}/document/optimization-trace")
+                page.evaluate("payload => window.renderTrace(payload)", payload)
+                page.wait_for_function(
+                    "() => Array.from(document.querySelectorAll('#traceIntakeConfirmation a.inline-link')).some((node) => node.textContent.includes('Confirm on Review Dashboard'))"
+                )
+
+                page.click("text=Confirm on Review Dashboard")
+                page.wait_for_url("**/claim-support-review?**")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                assert "user_id=browser-smoke-text-link" in page.url
+                assert "claim_type=retaliation" in page.url
+                assert page.locator("#claim-type").input_value() == "retaliation"
+                assert "Latest intake summary snapshot is awaiting complainant confirmation." in page.locator("#confirm-intake-summary-status").inner_text()
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
