@@ -1,6 +1,6 @@
 import pytest
 
-from integrations.ipfs_datasets.logic import check_contradictions, prove_claim_elements
+from integrations.ipfs_datasets.logic import check_contradictions, prove_claim_elements, run_hybrid_reasoning
 
 
 pytestmark = pytest.mark.no_auto_network
@@ -110,3 +110,53 @@ def test_logic_stubbed_adapters_summarize_temporal_predicate_shapes():
         assert 'AvailableDuring(lead_1,t_2025_03_01,t_2025_03_31)' in reasoning_payload['dcec_formulas']
         assert 'Conflicts(employee_complained_to_hr,employee_was_terminated)' in reasoning_payload['dcec_formulas']
         assert result['metadata']['details']['temporal_reasoning_payload'] == reasoning_payload
+
+
+def test_run_hybrid_reasoning_returns_temporal_bridge_bundle():
+    predicates = [
+        {
+            'predicate_type': 'claim_element',
+            'claim_type': 'retaliation',
+            'predicate_id': 'retaliation:1',
+            'claim_element_id': 'retaliation:1',
+            'claim_element_text': 'Protected activity',
+        },
+        {
+            'predicate_type': 'temporal_fact',
+            'claim_type': 'retaliation',
+            'predicate_id': 'temporal_fact:fact_1',
+            'fact_id': 'fact_1',
+            'text': 'Employee complained to HR.',
+            'start_date': '2025-03-01',
+            'end_date': '2025-03-01',
+            'granularity': 'day',
+            'is_approximate': False,
+            'is_range': False,
+            'relative_markers': [],
+        },
+        {
+            'predicate_type': 'temporal_relation',
+            'claim_type': 'retaliation',
+            'predicate_id': 'timeline_relation_001',
+            'relation_type': 'before',
+            'source_fact_id': 'fact_1',
+            'target_fact_id': 'fact_2',
+        },
+    ]
+
+    result = run_hybrid_reasoning({'predicates': predicates})
+
+    assert result['status'] == 'success'
+    assert result['metadata']['operation'] == 'run_hybrid_reasoning'
+    assert result['metadata']['implementation_status'] == 'implemented'
+    assert result['metadata']['details']['reasoning_mode'] == 'temporal_bridge'
+    assert result['predicate_count'] == 3
+    assert result['result']['formalism'] == 'tdfol_dcec_bridge_v1'
+    assert result['result']['reasoning_mode'] == 'temporal_bridge'
+    assert result['result']['timeline_event_count'] == 1
+    assert result['result']['temporal_relation_count'] == 1
+    assert result['result']['contradiction_signal_count'] == 0
+    assert 'forall t (AtTime(t,t_2025_03_01) -> Fact(fact_1,t))' in result['result']['tdfol_formulas']
+    assert 'Before(fact_1,fact_2)' in result['result']['tdfol_formulas']
+    assert 'Happens(fact_1,t_2025_03_01)' in result['result']['dcec_formulas']
+    assert result['temporal_reasoning_payload']['tdfol_formulas'] == result['result']['tdfol_formulas']

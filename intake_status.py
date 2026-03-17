@@ -289,6 +289,10 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
         _extract_normalized_intake_contradictions(raw_status)
     )
     complainant_summary_confirmation = raw_status.get("complainant_summary_confirmation")
+    alignment_task_update_summary = _build_alignment_task_update_summary(
+        alignment_task_updates,
+        alignment_task_update_history,
+    )
 
     summary = {
         "candidate_claims": candidate_claims if isinstance(candidate_claims, list) else [],
@@ -347,6 +351,7 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
         "alignment_task_update_history": (
             alignment_task_update_history if isinstance(alignment_task_update_history, list) else []
         ),
+        "alignment_task_update_summary": alignment_task_update_summary,
         "question_candidate_summary": (
             question_candidate_summary if isinstance(question_candidate_summary, dict) else {}
         ),
@@ -370,6 +375,38 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
     handoff_metadata = _build_confirmed_intake_summary_handoff(raw_status)
     if handoff_metadata:
         summary["intake_summary_handoff"] = handoff_metadata
+    return summary
+
+
+def _build_alignment_task_update_summary(
+    alignment_task_updates: Any,
+    alignment_task_update_history: Any,
+) -> Dict[str, Any]:
+    visible_updates = [
+        dict(item)
+        for item in (alignment_task_update_history if isinstance(alignment_task_update_history, list) and alignment_task_update_history else alignment_task_updates if isinstance(alignment_task_updates, list) else [])
+        if isinstance(item, dict)
+    ]
+    summary = {
+        "count": len(visible_updates),
+        "status_counts": {},
+        "resolution_status_counts": {},
+        "promoted_testimony_count": 0,
+        "promoted_document_count": 0,
+    }
+    for item in visible_updates:
+        status = str(item.get("status") or "").strip().lower()
+        if status:
+            summary["status_counts"][status] = summary["status_counts"].get(status, 0) + 1
+        resolution_status = str(item.get("resolution_status") or "").strip().lower()
+        if resolution_status:
+            summary["resolution_status_counts"][resolution_status] = (
+                summary["resolution_status_counts"].get(resolution_status, 0) + 1
+            )
+        if resolution_status == "promoted_to_testimony":
+            summary["promoted_testimony_count"] += 1
+        if resolution_status == "promoted_to_document":
+            summary["promoted_document_count"] += 1
     return summary
 
 

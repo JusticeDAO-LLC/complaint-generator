@@ -219,6 +219,22 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
                 "resolution_status": "partially_addressed",
                 "status": "active",
                 "evidence_sequence": 2,
+            },
+            {
+                "task_id": "retaliation:protected_activity:fill_evidence_gaps",
+                "claim_type": "retaliation",
+                "claim_element_id": "protected_activity",
+                "resolution_status": "promoted_to_testimony",
+                "status": "resolved",
+                "evidence_sequence": 3,
+            },
+            {
+                "task_id": "retaliation:adverse_action:fill_evidence_gaps",
+                "claim_type": "retaliation",
+                "claim_element_id": "adverse_action",
+                "resolution_status": "promoted_to_document",
+                "status": "resolved",
+                "evidence_sequence": 4,
             }
         ],
         "question_candidate_summary": {
@@ -325,6 +341,10 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["alignment_evidence_tasks"][0]["source_quality_target"] == "high_quality_document"
     assert summary["alignment_task_updates"][0]["resolution_status"] == "partially_addressed"
     assert summary["alignment_task_update_history"][1]["evidence_sequence"] == 2
+    assert summary["alignment_task_update_summary"]["count"] == 4
+    assert summary["alignment_task_update_summary"]["promoted_testimony_count"] == 1
+    assert summary["alignment_task_update_summary"]["promoted_document_count"] == 1
+    assert summary["alignment_task_update_summary"]["resolution_status_counts"]["promoted_to_testimony"] == 1
     assert summary["question_candidate_summary"]["count"] == 1
     assert summary["question_candidate_summary"]["source_counts"]["intake_proof_gap"] == 1
     assert summary["question_candidate_summary"]["intake_priority_uncovered"] == ["timeline"]

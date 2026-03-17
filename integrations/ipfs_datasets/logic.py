@@ -14,12 +14,17 @@ _tdfol_module, _tdfol_error = import_module_optional("ipfs_datasets_py.logic.TDF
 _z3_module, _z3_error = import_module_optional(
     "ipfs_datasets_py.logic.external_provers.smt.z3_prover_bridge"
 )
+_reasoner_module, _reasoner_error = import_module_optional(
+    "ipfs_datasets_py.ipfs_datasets_py.processors.legal_data.reasoner.hybrid_v2_blueprint"
+)
 
 LOGIC_AVAILABLE = any(
     value is not None
     for value in (_logic_module, _fol_module, _deontic_module, _tdfol_module)
 )
 LOGIC_ERROR = _logic_error or _fol_error or _deontic_error or _tdfol_error or _z3_error
+REASONER_BRIDGE_AVAILABLE = _reasoner_module is not None
+REASONER_BRIDGE_ERROR = _reasoner_error
 
 
 def _normalize_logic_symbol(value: Any, *, prefix: str) -> str:
@@ -315,22 +320,62 @@ def check_contradictions(predicates: Iterable[Dict[str, Any]]) -> Dict[str, Any]
 
 
 def run_hybrid_reasoning(payload: Dict[str, Any]) -> Dict[str, Any]:
-    return with_adapter_metadata(
-        {
-            "status": "not_implemented" if LOGIC_AVAILABLE else "unavailable",
-            "result": None,
-            "payload_keys": sorted(payload.keys()),
+    normalized_payload = payload if isinstance(payload, dict) else {}
+    predicates = normalized_payload.get("predicates") if isinstance(normalized_payload.get("predicates"), list) else []
+    bridge_payload = normalized_payload.get("temporal_reasoning_payload")
+    predicate_summary = _summarize_predicates(predicates)
+
+    if isinstance(bridge_payload, dict) and bridge_payload:
+        temporal_reasoning_payload = bridge_payload
+    else:
+        temporal_reasoning_payload = _build_temporal_reasoning_payload(predicates)
+
+    result_payload = {
+        "status": "success",
+        "result": {
+            "formalism": temporal_reasoning_payload.get("formalism") or "tdfol_dcec_bridge_v1",
+            "claim_types": list(temporal_reasoning_payload.get("claim_types", []) or []),
+            "tdfol_formulas": list(temporal_reasoning_payload.get("tdfol_formulas", []) or []),
+            "dcec_formulas": list(temporal_reasoning_payload.get("dcec_formulas", []) or []),
+            "timeline_event_count": len(temporal_reasoning_payload.get("timeline_events", []) or []),
+            "temporal_relation_count": len(temporal_reasoning_payload.get("temporal_relations", []) or []),
+            "contradiction_signal_count": len(temporal_reasoning_payload.get("contradiction_signals", []) or []),
+            "reasoning_mode": "temporal_bridge",
+            "compiler_bridge_available": REASONER_BRIDGE_AVAILABLE,
+            "compiler_bridge_path": (
+                "ipfs_datasets_py.ipfs_datasets_py.processors.legal_data.reasoner.hybrid_v2_blueprint"
+                if REASONER_BRIDGE_AVAILABLE
+                else ""
+            ),
         },
+        "payload_keys": sorted(normalized_payload.keys()),
+        "predicate_count": predicate_summary.get("predicate_count", 0),
+        "temporal_reasoning_payload": temporal_reasoning_payload,
+    }
+    return with_adapter_metadata(
+        result_payload,
         operation="run_hybrid_reasoning",
-        backend_available=LOGIC_AVAILABLE,
-        degraded_reason=LOGIC_ERROR if not LOGIC_AVAILABLE else None,
-        implementation_status="not_implemented" if LOGIC_AVAILABLE else "unavailable",
+        backend_available=True,
+        degraded_reason=str(REASONER_BRIDGE_ERROR) if REASONER_BRIDGE_ERROR and not REASONER_BRIDGE_AVAILABLE else None,
+        implementation_status="implemented",
+        extra_metadata={
+            **predicate_summary,
+            "reasoning_mode": "temporal_bridge",
+            "compiler_bridge_available": REASONER_BRIDGE_AVAILABLE,
+            "compiler_bridge_path": (
+                "ipfs_datasets_py.ipfs_datasets_py.processors.legal_data.reasoner.hybrid_v2_blueprint"
+                if REASONER_BRIDGE_AVAILABLE
+                else ""
+            ),
+        },
     )
 
 
 __all__ = [
     "LOGIC_AVAILABLE",
     "LOGIC_ERROR",
+    "REASONER_BRIDGE_AVAILABLE",
+    "REASONER_BRIDGE_ERROR",
     "text_to_fol",
     "legal_text_to_deontic",
     "prove_claim_elements",
