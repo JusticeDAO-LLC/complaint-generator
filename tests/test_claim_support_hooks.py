@@ -2134,6 +2134,203 @@ class TestClaimSupportHook:
             if os.path.exists(db_path):
                 os.unlink(db_path)
 
+    def test_run_element_reasoning_diagnostics_includes_temporal_timeline_predicates(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.get_three_phase_status = Mock(return_value={
+            'canonical_fact_summary': {
+                'facts': [
+                    {
+                        'fact_id': 'fact_1',
+                        'text': 'Employee complained to HR.',
+                        'fact_type': 'timeline',
+                        'claim_types': ['retaliation'],
+                        'element_tags': ['protected_activity'],
+                        'temporal_context': {
+                            'start_date': '2025-03-01',
+                            'end_date': '2025-03-01',
+                            'granularity': 'day',
+                            'is_approximate': False,
+                            'is_range': False,
+                            'relative_markers': [],
+                        },
+                    },
+                    {
+                        'fact_id': 'fact_2',
+                        'text': 'Employee was terminated.',
+                        'fact_type': 'timeline',
+                        'claim_types': ['retaliation'],
+                        'element_tags': ['adverse_action'],
+                        'temporal_context': {
+                            'start_date': '2025-04-15',
+                            'end_date': '2025-04-15',
+                            'granularity': 'day',
+                            'is_approximate': False,
+                            'is_range': False,
+                            'relative_markers': [],
+                        },
+                    },
+                ],
+            },
+            'proof_lead_summary': {
+                'proof_leads': [
+                    {
+                        'lead_id': 'lead_1',
+                        'description': 'HR complaint email',
+                        'claim_type': 'retaliation',
+                        'element_targets': ['protected_activity'],
+                        'related_fact_ids': ['fact_1'],
+                        'temporal_scope': 'March 2025',
+                        'temporal_context': {
+                            'start_date': '2025-03-01',
+                            'end_date': '2025-03-31',
+                            'granularity': 'month',
+                            'is_approximate': False,
+                            'is_range': False,
+                            'relative_markers': [],
+                        },
+                    },
+                ],
+            },
+            'timeline_relation_summary': {
+                'relations': [
+                    {
+                        'relation_id': 'timeline_relation_001',
+                        'source_fact_id': 'fact_1',
+                        'target_fact_id': 'fact_2',
+                        'relation_type': 'before',
+                        'source_start_date': '2025-03-01',
+                        'source_end_date': '2025-03-01',
+                        'target_start_date': '2025-04-15',
+                        'target_end_date': '2025-04-15',
+                        'confidence': 'medium',
+                    },
+                ],
+            },
+            'timeline_consistency_summary': {
+                'event_count': 2,
+                'relation_count': 1,
+                'partial_order_ready': False,
+                'warnings': ['Timeline needs corroboration.'],
+            },
+            'intake_contradictions': {
+                'candidates': [
+                    {
+                        'contradiction_id': 'temporal_reverse_before_001',
+                        'category': 'temporal_reverse_before',
+                        'summary': 'Complaint and termination are ordered inconsistently.',
+                        'left_node_name': 'Employee complained to HR.',
+                        'right_node_name': 'Employee was terminated.',
+                        'severity': 'blocking',
+                        'recommended_resolution_lane': 'request_document',
+                    },
+                ],
+            },
+        })
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            element = {
+                'element_id': 'retaliation:1',
+                'element_text': 'Protected activity',
+                'status': 'supported',
+                'support_by_kind': {'evidence': 1},
+                'missing_support_kinds': [],
+                'support_traces': [
+                    {
+                        'fact_id': 'fact:support',
+                        'support_ref': 'QmEvidenceTemporal',
+                        'support_kind': 'evidence',
+                        'source_table': 'evidence',
+                        'fact_text': 'HR complaint email confirms the report.',
+                        'confidence': 0.91,
+                    },
+                ],
+            }
+            captured = {}
+
+            def _capture_build_ontology(seed_text):
+                captured['seed_text'] = seed_text
+                return {
+                    'status': 'not_implemented',
+                    'ontology': None,
+                    'metadata': {
+                        'operation': 'build_ontology',
+                        'backend_available': False,
+                        'implementation_status': 'not_implemented',
+                    },
+                }
+
+            def _capture_prove(predicates):
+                captured['predicates'] = predicates
+                return {
+                    'status': 'not_implemented',
+                    'provable_elements': [],
+                    'unprovable_elements': [],
+                    'predicate_count': len(predicates),
+                    'metadata': {
+                        'operation': 'prove_claim_elements',
+                        'backend_available': False,
+                        'implementation_status': 'not_implemented',
+                    },
+                }
+
+            def _capture_contradictions(predicates):
+                captured['contradiction_predicates'] = predicates
+                return {
+                    'status': 'not_implemented',
+                    'contradictions': [],
+                    'predicate_count': len(predicates),
+                    'metadata': {
+                        'operation': 'check_contradictions',
+                        'backend_available': False,
+                        'implementation_status': 'not_implemented',
+                    },
+                }
+
+            with patch('mediator.claim_support_hooks.build_ontology', side_effect=_capture_build_ontology), patch(
+                'mediator.claim_support_hooks.prove_claim_elements', side_effect=_capture_prove
+            ), patch(
+                'mediator.claim_support_hooks.check_contradictions', side_effect=_capture_contradictions
+            ), patch(
+                'mediator.claim_support_hooks.validate_ontology', return_value={
+                    'status': 'not_implemented',
+                    'result': {},
+                    'metadata': {
+                        'operation': 'validate_ontology',
+                        'backend_available': False,
+                        'implementation_status': 'not_implemented',
+                    },
+                }
+            ):
+                diagnostics = hook._run_element_reasoning_diagnostics('retaliation', element, [])
+
+            predicate_types = {
+                predicate['predicate_type']
+                for predicate in captured['predicates']
+                if isinstance(predicate, dict)
+            }
+
+            assert diagnostics['predicate_count'] == len(captured['predicates'])
+            assert len(captured['contradiction_predicates']) == len(captured['predicates'])
+            assert {'claim_element', 'support_trace', 'temporal_fact', 'temporal_proof_lead', 'temporal_relation', 'temporal_consistency', 'temporal_issue'} <= predicate_types
+            assert 'Timeline fact: Employee complained to HR.' in captured['seed_text']
+            assert 'Timeline relation: fact_1 before fact_2' in captured['seed_text']
+            assert 'Temporal issue: Complaint and termination are ordered inconsistently.' in captured['seed_text']
+            assert diagnostics['ontology_entity_count'] >= 4
+            assert diagnostics['ontology_relationship_count'] >= 4
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
     def test_resolve_follow_up_manual_review_appends_resolution_event(self):
         try:
             from mediator.claim_support_hooks import ClaimSupportHook
