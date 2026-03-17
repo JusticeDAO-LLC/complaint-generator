@@ -64,6 +64,8 @@ Fail-fast matrix example:
 
 In the current environment this guarded variant is expected to fail, because `llm-router` probes as available but falls back during live sessions and is now reported as degraded runtime.
 
+Normal matrix runs preserve degraded runtime in the summary artifacts as `router_status: degraded` plus a `runtime_note` field when the selected backend probes cleanly but the live session falls back during execution.
+
 Deeper preset comparison example:
 
 ```bash
