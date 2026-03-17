@@ -191,6 +191,20 @@ def _recommendation_tradeoff_note(winner_delta: Dict[str, Any]) -> str:
     return ""
 
 
+def _claim_posture_note(winner_delta: Dict[str, Any]) -> str:
+    winner_only = list(winner_delta.get("winner_only_theory_families") or [])
+    runner_only = list(winner_delta.get("runner_up_only_theory_families") or [])
+    winner_phrase = _family_focus_phrase(winner_only)
+    runner_phrase = _family_focus_phrase(runner_only)
+    if winner_phrase and runner_phrase:
+        return f"The winner added stronger {winner_phrase} theories, while the runner-up leaned more heavily on {runner_phrase} theories."
+    if winner_phrase:
+        return f"The winner added stronger {winner_phrase} theories."
+    if runner_phrase:
+        return f"The runner-up leaned more heavily on {runner_phrase} theories."
+    return ""
+
+
 def _attach_recommendation_tradeoff_notes(
     recommendations: Dict[str, Dict[str, Any]],
     winner_delta: Dict[str, Any],
@@ -203,14 +217,18 @@ def _attach_recommendation_tradeoff_notes(
         return recommendations
 
     tradeoff_note = _recommendation_tradeoff_note(winner_delta)
-    if not tradeoff_note:
+    claim_posture_note = _claim_posture_note(winner_delta)
+    if not tradeoff_note and not claim_posture_note:
         return recommendations
 
     enriched: Dict[str, Dict[str, Any]] = {}
     for key, payload in recommendations.items():
         item = dict(payload or {})
         if str(item.get("preset") or "") == winner_preset:
-            item["tradeoff_note"] = tradeoff_note
+            if tradeoff_note:
+                item["tradeoff_note"] = tradeoff_note
+            if claim_posture_note:
+                item["claim_posture_note"] = claim_posture_note
         enriched[key] = item
     return enriched
 
@@ -260,6 +278,7 @@ def _write_markdown_report(
             lines.extend(["",])
         delta = dict(winner_delta or {})
         if delta:
+            claim_posture_note = _claim_posture_note(delta)
             lines.extend([
                 "### Winner Vs Runner-Up",
                 "",
@@ -284,6 +303,8 @@ def _write_markdown_report(
                 lines.append(f"- Runner-up-only theory families: {', '.join(runner_only_families)}")
             if shared_families:
                 lines.append(f"- Shared theory families: {', '.join(shared_families)}")
+            if claim_posture_note:
+                lines.append(f"- Claim posture note: {claim_posture_note}")
             if delta.get("winner_relief_overview"):
                 lines.append(f"- Winner relief overview: {delta['winner_relief_overview']}")
             if delta.get("runner_up_relief_overview"):
@@ -386,6 +407,7 @@ def _write_markdown_report(
                 lines.append(f"- Complaint synthesis: `{champion_best['synthesis_output_dir']}`")
         champion_delta = dict(champion.get("winner_delta") or {})
         if champion_delta:
+            champion_claim_posture_note = _claim_posture_note(champion_delta)
             lines.extend([
                 "",
                 "### Champion Delta",
@@ -411,6 +433,8 @@ def _write_markdown_report(
                 lines.append(f"- Runner-up-only theory families: {', '.join(runner_only_families)}")
             if shared_families:
                 lines.append(f"- Shared theory families: {', '.join(shared_families)}")
+            if champion_claim_posture_note:
+                lines.append(f"- Claim posture note: {champion_claim_posture_note}")
             if champion_delta.get("winner_relief_overview"):
                 lines.append(f"- Winner relief overview: {champion_delta['winner_relief_overview']}")
             if champion_delta.get("runner_up_relief_overview"):

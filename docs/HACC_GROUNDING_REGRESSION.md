@@ -50,6 +50,8 @@ Deeper preset comparison example:
 ./.venv/bin/python scripts/run_hacc_preset_matrix.py --presets core_hacc_policies,accommodation_focus,administrative_plan_retaliation --num-sessions 2 --hacc-count 2 --max-turns 4 --max-parallel 1 --output-dir ../research_results/adversarial_runs/hacc_preset_matrix_compare --continue-on-error
 ```
 
+If a stronger backend is available and properly provisioned, you can pin it explicitly with `--backend-id`. In the current environment, `llm-router-codex` is present but may be quota-limited, so the shared tasks intentionally leave backend selection automatic.
+
 The script fails if the live smoke does not produce:
 
 - `anchor_sections == ["grievance_hearing", "appeal_rights"]`

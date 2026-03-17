@@ -26,6 +26,37 @@ def test_clean_policy_text_strips_acop_exhibit_boilerplate():
     assert MODULE._clean_policy_text(text) == "I. Definitions applicable to the grievance procedure [24 CFR 966.53]"
 
 
+def test_conversation_facts_excludes_irrelevant_employment_style_intake():
+    facts = MODULE._conversation_facts(
+        [
+            {
+                "role": "complainant",
+                "content": (
+                    "I reported discrimination to human resources after my supervisor denied a promotion and made repeated "
+                    "comments about women not being fit for leadership. Two days later I was terminated."
+                ),
+            },
+            {
+                "role": "complainant",
+                "content": (
+                    "I tried to use the HACC grievance process after the denial of assistance and did not receive clear "
+                    "notice or an informal review decision."
+                ),
+            },
+        ]
+    )
+
+    assert len(facts) == 1
+    assert "human resources" not in facts[0].lower()
+    assert "hacc grievance process" in facts[0].lower()
+
+
+def test_normalize_incident_summary_rewrites_hacc_scaffold_description():
+    summary = MODULE._normalize_incident_summary("Retaliation complaint anchored to HACC core housing policies.")
+
+    assert summary == "a retaliation and grievance-related housing complaint involving HACC notice and review protections"
+
+
 def test_summarize_policy_excerpt_normalizes_hacc_grievance_fragments():
     text = (
         "Grievance: Any dispute a tenant may have with respect to HACC action or failure to "
@@ -71,11 +102,29 @@ def test_trim_admin_plan_complaint_preamble_jumps_past_denial_leadin():
     assert "Denial of assistance includes" not in trimmed
 
 
+def test_refresh_snippet_from_source_trims_admin_plan_denial_leadin(tmp_path):
+    source_path = tmp_path / "admin-plan.txt"
+    source_path.write_text(
+        "Denial of assistance includes denying listing on HACC waiting list; denying or withdrawing a voucher.\n\n"
+        "Notice to the Applicant [24 CFR 982.554(a)] HACC must give an applicant prompt notice of a decision denying assistance.\n\n"
+        "Scheduling an Informal Review HACC Policy A request for an informal review must be made in writing.",
+        encoding="utf-8",
+    )
+
+    refreshed = MODULE._refresh_snippet_from_source(
+        str(source_path),
+        anchor_terms=["Notice to the Applicant", "Scheduling an Informal Review"],
+        fallback_snippet="Scheduling an Informal Review ........ 16-11",
+    )
+
+    assert refreshed.startswith("Notice to the Applicant")
+    assert "Denial of assistance includes" not in refreshed
+
+
 def test_specific_refresh_terms_add_notice_headings_for_admin_plan_toc_seed():
     terms = MODULE._specific_refresh_terms(
+        "16-11 Scheduling an Informal Review ................................................... 16-11",
         title="ADMINISTRATIVE PLAN",
-        source_path="/tmp/admin-plan.txt",
-        snippet="16-11 Scheduling an Informal Review ................................................... 16-11",
         section_labels=["grievance_hearing", "appeal_rights", "adverse_action"],
     )
 
@@ -91,6 +140,31 @@ def test_should_promote_grounded_snippet_prefers_due_process_expansion():
     )
 
     assert MODULE._should_promote_grounded_snippet(current, evidence) is True
+
+
+def test_single_exhibit_margin_for_retaliation_cause_is_narrow():
+    cause = {
+        "title": "Retaliation for Protected Fair Housing Activity",
+        "theory": "The complainant narrative suggests adverse treatment after raising concerns or invoking grievance protections.",
+    }
+
+    assert MODULE._single_exhibit_margin_for_cause(cause) == 1
+
+
+def test_exhibit_rationale_for_retaliation_mentions_grievance_activity():
+    cause = {
+        "title": "Retaliation for Protected Fair Housing Activity",
+        "theory": "The complainant narrative suggests adverse treatment after raising concerns or invoking grievance protections.",
+    }
+
+    rationale = MODULE._exhibit_rationale_for_cause(
+        cause,
+        [("Exhibit B", "ADMINISTRATIVE PLAN")],
+        [],
+    )
+
+    assert "grievance activity" in rationale
+    assert "retaliation theory" in rationale
 
 
 def test_merge_seed_with_grounding_replaces_existing_matching_evidence_when_grounded_version_is_stronger():

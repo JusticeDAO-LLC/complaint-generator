@@ -302,10 +302,48 @@ def _conversation_facts(conversation_history: List[Dict[str, Any]], limit: int =
         lowered = content.lower()
         if any(token in lowered for token in ("scores:", "feedback:", "strengths:", "weaknesses:", "suggestions:", "question_quality:", "information_extraction:", "coverage:")):
             continue
+        if _is_irrelevant_non_housing_fact(content):
+            continue
         facts.append(content)
         if len(facts) >= limit:
             break
     return facts
+
+
+def _is_irrelevant_non_housing_fact(text: str) -> bool:
+    lowered = " ".join(str(text or "").split()).lower()
+    if not lowered:
+        return False
+    employment_markers = (
+        "human resources",
+        "supervisor",
+        "promotion",
+        "leadership",
+        "coworker",
+        "manager",
+        "workplace",
+        "employee",
+        "employer",
+    )
+    housing_markers = (
+        "hacc",
+        "housing",
+        "tenant",
+        "voucher",
+        "lease",
+        "hud",
+        "grievance",
+        "informal review",
+        "informal hearing",
+        "assistance",
+        "adverse action",
+        "notice",
+        "termination of assistance",
+        "pha",
+    )
+    return any(marker in lowered for marker in employment_markers) and not any(
+        marker in lowered for marker in housing_markers
+    )
 
 
 def _clean_policy_text(text: Any) -> str:
@@ -832,6 +870,8 @@ def _cause_title_and_theory(cause: Dict[str, Any]) -> str:
 
 def _single_exhibit_margin_for_cause(cause: Dict[str, Any]) -> int:
     combined = _cause_text(cause)
+    if "retaliat" in combined:
+        return 1
     if any(term in combined for term in ("accommodation", "disability", "section 504", "ada", "protected-basis", "protected basis")):
         return 1
     if any(term in combined for term in ("notice", "process", "hearing", "review", "appeal", "adverse-action", "adverse action", "termination", "denial")):
@@ -912,6 +952,10 @@ def _exhibit_rationale_for_cause(cause: Dict[str, Any], selected_refs: List[tupl
         return ""
     if any(term in title_and_theory for term in ("protected-basis", "protected basis", "discrimination")):
         return "selected for strongest overlap with the protected-basis theory"
+    if "retaliat" in title_and_theory and any(
+        term in label_text for term in ("administrative plan", "grievance", "notice")
+    ):
+        return "selected for the strongest overlap with grievance activity and adverse-process protections tied to the retaliation theory"
     if "reasonable_accommodation" in tag_targets and any(
         term in label_text for term in ("administrative plan", "designated staff", "contact")
     ):
@@ -1276,7 +1320,9 @@ def _trim_admin_plan_complaint_preamble(text: str) -> str:
     if not heading_matches:
         return cleaned
     first_heading = min(heading_matches)
-    if not _is_complaint_process_text(cleaned) and first_heading > 160:
+    lowered = cleaned.lower()
+    has_denial_leadin = lowered.startswith("denial of assistance includes")
+    if not _is_complaint_process_text(cleaned) and not has_denial_leadin and first_heading > 160:
         return cleaned
     start = first_heading
     trimmed = cleaned[start:].strip()
@@ -1302,6 +1348,7 @@ def _refresh_snippet_from_source(
         fallback_snippet=fallback_snippet,
         window_chars=window_chars,
     )
+    refreshed = _trim_admin_plan_complaint_preamble(refreshed or fallback_snippet)
     return _clean_policy_text(refreshed or fallback_snippet)
 
 
@@ -1310,6 +1357,11 @@ def _should_replace_snippet(current_snippet: str, refreshed_snippet: str) -> boo
     refreshed_clean = _clean_policy_text(refreshed_snippet)
     if not refreshed_clean or refreshed_clean == current_clean:
         return False
+    if (
+        current_clean.lower().startswith("denial of assistance includes")
+        and refreshed_clean.lower().startswith("notice to the applicant")
+    ):
+        return True
     if _is_probably_toc_text(current_clean) and not _is_probably_toc_text(refreshed_clean):
         return True
     if "HACC Policy" in refreshed_snippet and "HACC Policy" not in current_snippet:
@@ -1794,7 +1846,7 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
 def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: int = 6) -> List[str]:
     key_facts = dict(seed.get("key_facts") or {})
     allegations: List[str] = []
-    description = str(seed.get("description") or key_facts.get("incident_summary") or "").strip()
+    description = _normalize_incident_summary(seed.get("description") or key_facts.get("incident_summary") or "")
     protected_bases = [str(item) for item in list(key_facts.get("protected_bases") or []) if str(item)]
     if description:
         allegations.append(f"The complaint centers on {description.rstrip('.')}")
@@ -1992,6 +2044,30 @@ def _dominant_authority_family(authority_hints: List[str], filing_forum: str) ->
             return "fha"
 
     return first
+
+
+def _normalize_incident_summary(text: str) -> str:
+    cleaned = " ".join(str(text or "").split()).strip().rstrip(".")
+    if not cleaned:
+        return ""
+    lowered = cleaned.lower()
+    if lowered == "retaliation complaint anchored to hacc core housing policies":
+        return "a retaliation and grievance-related housing complaint involving HACC notice and review protections"
+    if "anchored to hacc core housing policies" in lowered:
+        return re.sub(
+            r"\banchored to HACC core housing policies\b",
+            "concerning HACC notice, grievance, and hearing protections",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+    if "anchored to the hacc administrative plan" in lowered:
+        return re.sub(
+            r"\banchored to the HACC Administrative Plan\b",
+            "concerning HACC Administrative Plan grievance and notice protections",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+    return cleaned
 
 
 def _legal_theory_summary(seed: Dict[str, Any], filing_forum: str = "court") -> Dict[str, List[str]]:
@@ -2230,7 +2306,7 @@ def _requested_relief_for_forum(filing_forum: str) -> List[str]:
 def _proposed_allegations(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: str, limit: int = 8) -> List[str]:
     allegations: List[str] = []
     key_facts = dict(seed.get("key_facts") or {})
-    incident_summary = str(key_facts.get("incident_summary") or seed.get("description") or "").strip()
+    incident_summary = _normalize_incident_summary(key_facts.get("incident_summary") or seed.get("description") or "")
     evidence_summary = _summarize_policy_excerpt(key_facts.get("evidence_summary") or seed.get("summary") or "")
     complainant_label = "Plaintiff"
     evidence_label = "The available HACC materials indicate"

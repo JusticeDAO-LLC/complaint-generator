@@ -127,7 +127,25 @@ def test_attach_recommendation_tradeoff_notes_enriches_winner():
         "best for accommodation framing + protected-basis framing; "
         "runner-up is stronger on retaliation-heavy framing"
     )
+    assert enriched["best_overall"]["claim_posture_note"] == (
+        "The winner added stronger accommodation framing + protected-basis framing theories, "
+        "while the runner-up leaned more heavily on retaliation-heavy framing theories."
+    )
     assert "tradeoff_note" not in enriched["best_anchor_coverage"]
+
+
+def test_claim_posture_note_compares_winner_to_runner_up():
+    delta = {
+        "winner_only_theory_families": ["accommodation", "protected_basis"],
+        "runner_up_only_theory_families": ["retaliation"],
+    }
+
+    note = MODULE._claim_posture_note(delta)
+
+    assert note == (
+        "The winner added stronger accommodation framing + protected-basis framing theories, "
+        "while the runner-up leaned more heavily on retaliation-heavy framing theories."
+    )
 def test_claim_selection_theory_families_collects_unique_semantic_labels():
     summary = [
         {"title": "Administrative Fair Housing Process Failure", "selection_tags": ["notice", "hearing"]},
@@ -379,6 +397,7 @@ def test_markdown_report_includes_winner_vs_runner_up_delta(tmp_path):
     assert "- Winner-only theory families: protected_basis" in report
     assert "- Runner-up-only theory families: retaliation" in report
     assert "- Shared theory families: accommodation" in report
+    assert "- Claim posture note: The winner added stronger protected-basis framing theories, while the runner-up leaned more heavily on retaliation-heavy framing theories." in report
     assert "- Winner relief overview: winner relief overview" in report
     assert "- Runner-up relief overview: runner relief overview" in report
     assert "- Winner-only relief families: protected_basis" in report
