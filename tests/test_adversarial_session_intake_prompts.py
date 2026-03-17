@@ -95,3 +95,54 @@ def test_build_fallback_probe_prefers_intake_questionnaire_prompt():
     assert probe["question"].startswith("When did the key events happen")
     assert probe["question_objective"] == "timeline"
     assert probe["source"] == "harness_fallback"
+
+
+def test_inject_intake_prompt_questions_prepends_prioritized_candidates():
+    seed = {
+        "key_facts": {
+            "synthetic_prompts": {
+                "intake_questions": [
+                    "What remedy are you seeking now?",
+                    "Who at HACC made, communicated, or carried out each decision?",
+                    "What happened, and what adverse action did HACC take or threaten to take?",
+                ]
+            }
+        }
+    }
+
+    merged = AdversarialSession._inject_intake_prompt_questions(
+        seed,
+        [{"question": "Can you describe what documents you still have?", "type": "documents"}],
+    )
+
+    assert merged[0]["question"].startswith("What happened, and what adverse action")
+    assert merged[0]["source"] == "synthetic_intake_prompt"
+    assert merged[1]["question"].startswith("Who at HACC made")
+    assert merged[2]["question"].startswith("What remedy are you seeking now")
+    assert merged[3]["question"] == "Can you describe what documents you still have?"
+
+
+def test_inject_intake_prompt_questions_skips_semantic_duplicate_mediator_question():
+    seed = {
+        "key_facts": {
+            "synthetic_prompts": {
+                "intake_questions": [
+                    "When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?",
+                ]
+            }
+        }
+    }
+
+    merged = AdversarialSession._inject_intake_prompt_questions(
+        seed,
+        [
+            {
+                "question": "Can you walk me through when the complaint, notice, hearing request, and denial happened?",
+                "type": "timeline",
+                "question_objective": "timeline",
+            }
+        ],
+    )
+
+    assert len(merged) == 1
+    assert merged[0]["question"].startswith("Can you walk me through when the complaint")

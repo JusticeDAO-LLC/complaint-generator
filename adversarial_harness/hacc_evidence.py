@@ -953,6 +953,7 @@ def build_hacc_evidence_seeds(
     repo_root: Optional[str | Path] = None,
     use_vector: bool = False,
     search_top_k: int = 3,
+    search_mode: str = "package",
 ) -> List[Dict[str, Any]]:
     try:
         engine_cls = _load_hacc_engine()
@@ -970,11 +971,13 @@ def build_hacc_evidence_seeds(
             query,
             top_k=search_top_k,
             use_vector=use_vector,
+            search_mode=search_mode,
         )
         grounding_bundle = engine.build_grounding_bundle(
             query,
             top_k=max(1, search_top_k),
             claim_type=complaint_type,
+            search_mode=search_mode,
             use_vector=use_vector,
         )
         if isinstance(grounding_bundle, dict):
@@ -1012,6 +1015,7 @@ def resolve_hacc_question_evidence(
     repo_root: Optional[str | Path] = None,
     use_vector: bool = False,
     top_k: int = 4,
+    search_mode: str = "package",
 ) -> Dict[str, Any]:
     normalized_question = str(question or "").strip()
     facts = dict(key_facts or {})
@@ -1047,7 +1051,12 @@ def resolve_hacc_question_evidence(
         query_parts.append(" ".join(anchor_terms[:4]))
     search_query = " ".join(part for part in query_parts if part).strip()
 
-    payload = engine.search(search_query, top_k=top_k, use_vector=use_vector)
+    payload = engine.search(
+        search_query,
+        top_k=top_k,
+        use_vector=use_vector,
+        search_mode=search_mode,
+    )
     raw_hits = [_summarize_hit(hit) for hit in list(payload.get("results", []) or [])]
     hits = _filter_hits(
         raw_hits,

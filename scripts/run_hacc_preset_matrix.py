@@ -401,7 +401,8 @@ def _write_markdown_report(
             "## Recommendations",
             "",
         ])
-        if len(grouped_recommendations) == 1:
+        unified_recommendations = len(grouped_recommendations) == 1
+        if unified_recommendations:
             labels, payload = grouped_recommendations[0]
             payload = dict(recommendations.get("best_overall") or payload)
             label_names = ", ".join(label.replace("_", " ") for label in labels)
@@ -417,8 +418,9 @@ def _write_markdown_report(
             ])
         best_overall = dict(recommendations.get("best_overall") or {})
         if best_overall.get("claim_selection_overview"):
+            snapshot_heading = "### Unified Winner Snapshot" if unified_recommendations else "### Best Overall Claim Snapshot"
             lines.extend([
-                "### Best Overall Claim Snapshot",
+                snapshot_heading,
                 "",
                 f"- Overview: {best_overall['claim_selection_overview']}",
             ])
@@ -526,6 +528,7 @@ def _write_markdown_report(
                 output_dir=row["output_dir"],
             )
         )
+    best_overall_preset = str((recommendations.get("best_overall") or {}).get("preset") or "")
     claim_snapshot_rows = [row for row in rows if row.get("claim_selection_overview")]
     if claim_snapshot_rows:
         snapshot_notes_by_preset: Dict[str, Dict[str, Any]] = {}
@@ -541,49 +544,68 @@ def _write_markdown_report(
                 existing["claim_posture_note"] = item["claim_posture_note"]
             if item.get("relief_posture_note"):
                 existing["relief_posture_note"] = item["relief_posture_note"]
-        lines.extend([
-            "",
-            "## Claim Selection Snapshots",
-            "",
-        ])
-        for row in claim_snapshot_rows:
-            snapshot_notes = snapshot_notes_by_preset.get(str(row.get("preset") or ""), {})
+        if best_overall_preset:
+            claim_snapshot_rows = [
+                row for row in claim_snapshot_rows
+                if str(row.get("preset") or "") != best_overall_preset
+            ]
+        if claim_snapshot_rows:
             lines.extend([
-                f"### {row['preset']}",
                 "",
-                f"- Overview: {row['claim_selection_overview']}",
+                "## Claim Selection Snapshots",
+                "",
             ])
-            has_snapshot_strategy_summary = bool(snapshot_notes.get("strategy_summary"))
-            if has_snapshot_strategy_summary:
-                lines.append(f"- Strategy summary: {snapshot_notes['strategy_summary']}")
-            if not has_snapshot_strategy_summary and snapshot_notes.get("claim_posture_note"):
-                lines.append(f"- Claim posture note: {snapshot_notes['claim_posture_note']}")
-            if not has_snapshot_strategy_summary and snapshot_notes.get("relief_posture_note"):
-                lines.append(f"- Relief posture note: {snapshot_notes['relief_posture_note']}")
-            if row.get("relief_selection_overview"):
-                lines.append(f"- Relief overview: {row['relief_selection_overview']}")
-            if row.get("runtime_note"):
-                lines.append(f"- Runtime note: {row['runtime_note']}")
-            synthesis_dir = row.get("synthesis_output_dir")
-            if synthesis_dir:
-                lines.append(f"- Complaint synthesis: `{synthesis_dir}`")
-            lines.append("")
+            for row in claim_snapshot_rows:
+                snapshot_notes = snapshot_notes_by_preset.get(str(row.get("preset") or ""), {})
+                lines.extend([
+                    f"### {row['preset']}",
+                    "",
+                    f"- Overview: {row['claim_selection_overview']}",
+                ])
+                has_snapshot_strategy_summary = bool(snapshot_notes.get("strategy_summary"))
+                if has_snapshot_strategy_summary:
+                    lines.append(f"- Strategy summary: {snapshot_notes['strategy_summary']}")
+                if not has_snapshot_strategy_summary and snapshot_notes.get("claim_posture_note"):
+                    lines.append(f"- Claim posture note: {snapshot_notes['claim_posture_note']}")
+                if not has_snapshot_strategy_summary and snapshot_notes.get("relief_posture_note"):
+                    lines.append(f"- Relief posture note: {snapshot_notes['relief_posture_note']}")
+                if row.get("relief_selection_overview"):
+                    lines.append(f"- Relief overview: {row['relief_selection_overview']}")
+                if row.get("runtime_note"):
+                    lines.append(f"- Runtime note: {row['runtime_note']}")
+                synthesis_dir = row.get("synthesis_output_dir")
+                if synthesis_dir:
+                    lines.append(f"- Complaint synthesis: `{synthesis_dir}`")
+                lines.append("")
     champion = dict(champion_challenger or {})
     champion_recommendations = dict(champion.get("recommendations") or {})
     if champion_recommendations:
+        champion_groups = _recommendation_groups(champion_recommendations)
         lines.extend([
             "## Champion Challenger",
             "",
             f"- Reran top {champion.get('top_k_rerun')} presets with {champion.get('num_sessions')} sessions each.",
-            f"- Best overall: `{champion_recommendations['best_overall']['preset']}`",
-            f"- Best anchor coverage: `{champion_recommendations['best_anchor_coverage']['preset']}`",
-            f"- Best balanced: `{champion_recommendations['best_balanced']['preset']}`",
         ])
+        if len(champion_groups) == 1:
+            labels, payload = champion_groups[0]
+            payload = dict(champion_recommendations.get("best_overall") or payload)
+            label_names = ", ".join(label.replace("_", " ") for label in labels)
+            lines.append(_recommendation_label("Unified champion", payload))
+            lines.append(f"- Applies to: {label_names}")
+        else:
+            lines.extend([
+                f"- Best overall: `{champion_recommendations['best_overall']['preset']}`",
+                f"- Best anchor coverage: `{champion_recommendations['best_anchor_coverage']['preset']}`",
+                f"- Best balanced: `{champion_recommendations['best_balanced']['preset']}`",
+            ])
         champion_best = dict(champion_recommendations.get("best_overall") or {})
         if champion_best.get("claim_selection_overview"):
+            champion_snapshot_heading = (
+                "### Unified Champion Snapshot" if len(champion_groups) == 1 else "### Champion Claim Snapshot"
+            )
             lines.extend([
                 "",
-                "### Champion Claim Snapshot",
+                champion_snapshot_heading,
                 "",
                 f"- Overview: {champion_best['claim_selection_overview']}",
             ])

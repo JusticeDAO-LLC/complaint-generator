@@ -90,8 +90,9 @@ def test_markdown_report_includes_claim_selection_snapshots(tmp_path):
 
     assert "- Unified winner: `accommodation_focus` (accommodation, process) - best for accommodation framing + process framing" in report
     assert "- Applies to: best overall, best anchor coverage, best balanced" in report
-    assert "## Claim Selection Snapshots" in report
-    assert "### accommodation_focus" in report
+    assert "### Unified Winner Snapshot" in report
+    assert "## Claim Selection Snapshots" not in report
+    assert "### accommodation_focus" not in report
     assert "- Overview: Accommodation Theory [tags=reasonable_accommodation,contact;" in report
     assert "- Strategy summary: Best for accommodation framing + process framing." in report
     assert "- Claim posture note: The winner added stronger accommodation framing theories." not in report
@@ -403,10 +404,12 @@ def test_markdown_report_includes_champion_claim_snapshot(tmp_path):
     MODULE._write_markdown_report(report_path, rows, recommendations, champion_challenger)
     report = report_path.read_text(encoding="utf-8")
 
-    assert "### Best Overall Claim Snapshot" in report
+    assert "### Unified Winner Snapshot" in report
     assert "## Champion Challenger" in report
     assert "- Reran top 2 presets with 8 sessions each." in report
-    assert "### Champion Claim Snapshot" in report
+    assert "- Unified champion: `accommodation_focus`" in report
+    assert "- Applies to: best overall, best anchor coverage, best balanced" in report
+    assert "### Unified Champion Snapshot" in report
     assert "- Overview: Accommodation Theory [tags=reasonable_accommodation,contact]" in report
     assert "- Relief overview: Corrective action requiring clear notice [families=process]" in report
 

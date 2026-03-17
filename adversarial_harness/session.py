@@ -587,6 +587,15 @@ class AdversarialSession:
             elif any(token in lowered for token in ('adverse action', 'denial', 'termination', 'loss of assistance')):
                 probe_type = 'anchor_adverse_action'
             candidates.append((question_text, probe_type))
+        priority = {
+            'anchor_adverse_action': 0,
+            'timeline': 1,
+            'actors': 2,
+            'anchor_appeal_rights': 3,
+            'harm_remedy': 4,
+            'intake_follow_up': 5,
+        }
+        candidates.sort(key=lambda item: (priority.get(item[1], 99), item[0].lower()))
         deduped: List[tuple[str, str]] = []
         seen = set()
         for item in candidates:
@@ -595,6 +604,58 @@ class AdversarialSession:
                 seen.add(key)
                 deduped.append(item)
         return deduped
+
+    @classmethod
+    def _questions_substantially_overlap(cls, question_a: Any, question_b: Any) -> bool:
+        text_a = cls._extract_question_text(question_a)
+        text_b = cls._extract_question_text(question_b)
+        if not text_a or not text_b:
+            return False
+        key_a = cls._question_dedupe_key(text_a)
+        key_b = cls._question_dedupe_key(text_b)
+        if key_a and key_a == key_b:
+            return True
+        intent_a = cls._question_intent_key(text_a, question_a)
+        intent_b = cls._question_intent_key(text_b, question_b)
+        similarity = cls._question_similarity(text_a, text_b)
+        if intent_a and intent_b and intent_a == intent_b and similarity >= 0.35:
+            return True
+        return similarity >= 0.72
+
+    @classmethod
+    def _inject_intake_prompt_questions(
+        cls,
+        seed_complaint: Dict[str, Any],
+        questions: Sequence[Any],
+    ) -> List[Any]:
+        merged: List[Any] = []
+        seen = set()
+        existing_questions = list(questions or [])
+        for probe_text, probe_type in cls._extract_intake_prompt_candidates(seed_complaint):
+            key = cls._question_dedupe_key(probe_text)
+            synthetic_question = {
+                "question": probe_text,
+                "type": probe_type,
+                "question_objective": probe_type,
+                "question_reason": "Structured intake prompt imported from the grounding bundle.",
+                "source": "synthetic_intake_prompt",
+            }
+            if any(
+                cls._questions_substantially_overlap(synthetic_question, existing_question)
+                for existing_question in existing_questions
+            ):
+                continue
+            if key and key not in seen:
+                seen.add(key)
+                merged.append(synthetic_question)
+        for question in existing_questions:
+            key = cls._question_dedupe_key(cls._extract_question_text(question))
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            merged.append(question)
+        return merged
 
     def _build_fallback_probe(
         self,
@@ -951,6 +1012,11 @@ class AdversarialSession:
             
             # Step 2: Initialize mediator with complaint
             result = self.mediator.start_three_phase_process(initial_complaint)
+            if isinstance(result, dict):
+                result['initial_questions'] = self._inject_intake_prompt_questions(
+                    seed_complaint,
+                    result.get('initial_questions', []),
+                )
             
             # Step 3: Iteratively ask and answer questions
             questions_asked = 0
