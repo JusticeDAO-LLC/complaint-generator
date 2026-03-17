@@ -226,6 +226,30 @@ class TestLegalAuthorityStorageHook:
 
             try:
                 hook = LegalAuthorityStorageHook(mock_mediator, db_path=db_path)
+                mock_mediator.get_three_phase_status = Mock(return_value={
+                    'current_phase': 'intake',
+                    'intake_readiness': {
+                        'ready_to_advance': True,
+                    },
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T14:00:00+00:00',
+                        'confirmation_note': 'ready for authority graph persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                })
 
                 authority_data = {
                     'type': 'statute',
@@ -264,6 +288,30 @@ class TestLegalAuthorityStorageHook:
                 db_path = f.name
 
             try:
+                mock_mediator.get_three_phase_status = Mock(return_value={
+                    'current_phase': 'intake',
+                    'intake_readiness': {
+                        'ready_to_advance': True,
+                    },
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T14:00:00+00:00',
+                        'confirmation_note': 'ready for authority graph persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                })
                 hook = LegalAuthorityStorageHook(mock_mediator, db_path=db_path)
 
                 authority_data = {
@@ -598,6 +646,30 @@ class TestLegalAuthorityStorageHook:
                 db_path = f.name
 
             try:
+                mock_mediator.get_three_phase_status = Mock(return_value={
+                    'current_phase': 'intake',
+                    'intake_readiness': {
+                        'ready_to_advance': True,
+                    },
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T14:00:00+00:00',
+                        'confirmation_note': 'ready for authority graph persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                })
                 hook = LegalAuthorityStorageHook(mock_mediator, db_path=db_path)
 
                 authority_data = {
@@ -620,6 +692,28 @@ class TestLegalAuthorityStorageHook:
                 assert authority['graph_metadata']['graph_snapshot']['created'] is True
                 assert authority['graph_metadata']['graph_snapshot']['reused'] is False
                 assert authority['graph_metadata']['graph_snapshot']['metadata']['record_scope'] == 'legal_authority'
+                assert authority['graph_metadata']['graph_snapshot']['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T14:00:00+00:00',
+                        'confirmation_note': 'ready for authority graph persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
                 assert graph['status'] == 'available'
                 assert any(entity['type'] == 'fact' for entity in graph['entities'])
                 assert len(graph['relationships']) >= 1

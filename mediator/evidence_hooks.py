@@ -26,6 +26,7 @@ from integrations.ipfs_datasets.storage import (
     get_ipfs_backend,
     pin,
 )
+from claim_support_review import _merge_intake_summary_handoff_metadata
 
 try:
     import duckdb
@@ -845,10 +846,13 @@ class EvidenceStateHook:
                 document_graph,
                 graph_changed=bool(document_graph.get('entities') or document_graph.get('relationships')),
                 existing_graph=False,
-                persistence_metadata={
-                    'record_scope': 'evidence',
-                    'record_key': evidence_info.get('cid', ''),
-                },
+                persistence_metadata=_merge_intake_summary_handoff_metadata(
+                    {
+                        'record_scope': 'evidence',
+                        'record_key': evidence_info.get('cid', ''),
+                    },
+                    self.mediator,
+                ),
             )
             graph_metadata = {
                 **(document_graph.get('metadata', {}) or {}),
@@ -1262,6 +1266,10 @@ class EvidenceStateHook:
             coverage_ledger = run_result.get('coverage_ledger', {}) if isinstance(run_result.get('coverage_ledger'), dict) else {}
             quality_payload = run_result.get('final_quality', {}) if isinstance(run_result.get('final_quality'), dict) else {}
             stored_summary = stored_summary or {}
+            run_metadata = _merge_intake_summary_handoff_metadata(
+                {'tactic_history': run_result.get('tactic_history', {})},
+                self.mediator,
+            )
 
             row = conn.execute(
                 """
@@ -1287,7 +1295,7 @@ class EvidenceStateHook:
                     len(coverage_ledger),
                     json.dumps(quality_payload),
                     json.dumps(config or {}),
-                    json.dumps({'tactic_history': run_result.get('tactic_history', {})}),
+                    json.dumps(run_metadata),
                 ],
             ).fetchone()
             run_id = int(row[0])
@@ -1674,6 +1682,10 @@ class EvidenceStateHook:
             username = getattr(state, 'username', None) if state is not None else None
             if not isinstance(username, str) or not username:
                 username = user_id
+            queued_metadata = _merge_intake_summary_handoff_metadata(
+                metadata,
+                self.mediator,
+            )
 
             row = conn.execute(
                 """
@@ -1698,7 +1710,7 @@ class EvidenceStateHook:
                     bool(store_results),
                     int(priority),
                     available_at or datetime.now(UTC),
-                    json.dumps(metadata or {}),
+                    json.dumps(queued_metadata or {}),
                 ],
             ).fetchone()
             conn.close()
@@ -1864,6 +1876,10 @@ class EvidenceStateHook:
             merged_metadata = json.loads(current[0]) if current and current[0] else {}
             if metadata:
                 merged_metadata.update(metadata)
+            merged_metadata = _merge_intake_summary_handoff_metadata(
+                merged_metadata,
+                self.mediator,
+            )
 
             status = 'failed' if error else 'completed'
             row = conn.execute(

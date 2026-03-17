@@ -436,6 +436,7 @@ class TestEvidenceStateHook:
                 assert record['graph_metadata']['graph_snapshot']['created'] is True
                 assert record['graph_metadata']['graph_snapshot']['reused'] is False
                 assert record['graph_metadata']['graph_snapshot']['metadata']['record_scope'] == 'evidence'
+                assert 'intake_summary_handoff' not in record['graph_metadata']['graph_snapshot']['metadata']
                 assert record['graph_entity_count'] >= 1
                 assert record['graph_relationship_count'] >= 1
                 assert len(chunks) == 2
@@ -469,6 +470,30 @@ class TestEvidenceStateHook:
             mock_mediator.log = Mock()
             mock_mediator.state = Mock()
             mock_mediator.state.username = "testuser"
+            mock_mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T15:00:00+00:00',
+                    'confirmation_note': 'ready for scraper queue',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
 
             with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
                 db_path = f.name
@@ -495,6 +520,28 @@ class TestEvidenceStateHook:
 
                 assert queued['queued'] is True
                 assert queue_rows[0]['id'] == queued['job_id']
+                assert queue_rows[0]['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T15:00:00+00:00',
+                        'confirmation_note': 'ready for scraper queue',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
                 assert claimed['claimed'] is True
                 assert claimed['job']['status'] == 'running'
                 assert completed['updated'] is True
@@ -502,6 +549,132 @@ class TestEvidenceStateHook:
                 assert completed['job']['run_id'] == 21
                 assert detail['available'] is True
                 assert detail['job']['metadata']['storage_summary']['stored'] == 1
+                assert detail['job']['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T15:00:00+00:00',
+                        'confirmation_note': 'ready for scraper queue',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
+            finally:
+                if os.path.exists(db_path):
+                    os.unlink(db_path)
+
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_persist_scraper_run_stamps_confirmed_intake_handoff_metadata(self):
+        """Persisted scraper runs should carry confirmed intake handoff provenance in run metadata."""
+        try:
+            from mediator.evidence_hooks import EvidenceStateHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.state = Mock()
+            mock_mediator.state.username = 'testuser'
+            mock_mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T16:00:00+00:00',
+                    'confirmation_note': 'ready for scraper run persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 2,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 2,
+                    },
+                },
+            })
+
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                db_path = f.name
+
+            try:
+                hook = EvidenceStateHook(mock_mediator, db_path=db_path)
+                persisted = hook.persist_scraper_run(
+                    user_id='testuser',
+                    keywords=['employment discrimination'],
+                    domains=['example.com'],
+                    claim_type='employment discrimination',
+                    stored_summary={'stored': 1, 'total_new': 1, 'total_reused': 0},
+                    run_result={
+                        'iterations': [
+                            {
+                                'iteration': 1,
+                                'discovered_count': 2,
+                                'accepted_count': 1,
+                                'scraped_count': 1,
+                                'coverage': {'example.com': 1},
+                                'quality': {'score': 0.8},
+                                'critique': {},
+                                'tactics': [],
+                            }
+                        ],
+                        'final_results': [{'url': 'https://example.com/policy'}],
+                        'coverage_ledger': {
+                            'https://example.com/policy': {
+                                'domain': 'example.com',
+                                'source_type': 'web',
+                                'last_seen_iteration': 1,
+                            }
+                        },
+                        'tactic_history': {'multi_engine_search': [80.0]},
+                        'final_quality': {'data_quality_score': 80.0},
+                    },
+                )
+                detail = hook.get_scraper_run_details(persisted['run_id'])
+
+                assert persisted['persisted'] is True
+                assert detail['available'] is True
+                assert detail['run']['metadata']['tactic_history'] == {'multi_engine_search': [80.0]}
+                assert detail['run']['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T16:00:00+00:00',
+                        'confirmation_note': 'ready for scraper run persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 2,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 2,
+                        },
+                    },
+                }
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)
@@ -610,6 +783,30 @@ class TestMediatorEvidenceIntegration:
                     claim_support_db_path=claim_support_db_path,
                 )
                 mediator.state.username = 'testuser'
+                mediator.get_three_phase_status = Mock(return_value={
+                    'current_phase': 'intake',
+                    'intake_readiness': {
+                        'ready_to_advance': True,
+                    },
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T13:00:00+00:00',
+                        'confirmation_note': 'ready for graph persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                })
                 kg = KnowledgeGraph()
                 kg.add_entity(Entity(
                     id='claim-1',
@@ -647,6 +844,28 @@ class TestMediatorEvidenceIntegration:
                 assert result['graph_projection']['graph_changed'] is True
                 assert result['graph_projection']['graph_snapshot']['created'] is True
                 assert result['graph_projection']['graph_snapshot']['reused'] is False
+                assert result['graph_projection']['graph_snapshot']['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T13:00:00+00:00',
+                        'confirmation_note': 'ready for graph persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
                 assert result['graph_projection']['artifact_entity_added'] is True
                 assert result['graph_projection']['artifact_entity_already_present'] is False
                 assert result['graph_projection']['storage_record_created'] is True

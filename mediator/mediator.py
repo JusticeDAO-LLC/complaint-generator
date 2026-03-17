@@ -36,6 +36,7 @@ from claim_support_review import (
 	ClaimSupportFollowUpExecuteRequest,
 	ClaimSupportReviewRequest,
 	_build_confirmed_intake_summary_handoff_metadata,
+	_merge_intake_summary_handoff_metadata,
 	_summarize_follow_up_execution_claim,
 	_summarize_follow_up_plan_claim,
 	build_claim_support_follow_up_execution_payload,
@@ -6328,11 +6329,14 @@ class Mediator:
 			graph_snapshot_payload,
 			graph_changed=graph_changed,
 			existing_graph=artifact_present_before_projection,
-			persistence_metadata={
-				'projection_target': 'complaint_phase_knowledge_graph',
-				'storage_record_created': bool(evidence_data.get('record_created', False)),
-				'storage_record_reused': bool(evidence_data.get('record_reused', False)),
-			},
+			persistence_metadata=_merge_intake_summary_handoff_metadata(
+				{
+					'projection_target': 'complaint_phase_knowledge_graph',
+					'storage_record_created': bool(evidence_data.get('record_created', False)),
+					'storage_record_reused': bool(evidence_data.get('record_reused', False)),
+				},
+				self,
+			),
 		)
 		
 		# Add to dependency graph

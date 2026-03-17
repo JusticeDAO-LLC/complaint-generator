@@ -28,6 +28,7 @@ from integrations.ipfs_datasets.legal import (
     search_recap_documents,
     search_us_code,
 )
+from claim_support_review import _merge_intake_summary_handoff_metadata
 from integrations.ipfs_datasets.search import (
     COMMON_CRAWL_AVAILABLE as WEB_ARCHIVING_AVAILABLE,
     CommonCrawlSearchEngine,
@@ -1634,10 +1635,13 @@ class LegalAuthorityStorageHook:
                             graph_payload,
                             graph_changed=bool(graph_payload.get('entities') or graph_payload.get('relationships')),
                             existing_graph=False,
-                            persistence_metadata={
-                                'record_scope': 'legal_authority',
-                                'record_key': str(record_id),
-                            },
+                            persistence_metadata=_merge_intake_summary_handoff_metadata(
+                                {
+                                    'record_scope': 'legal_authority',
+                                    'record_key': str(record_id),
+                                },
+                                self.mediator,
+                            ),
                         ),
                     }),
                     record_id,
