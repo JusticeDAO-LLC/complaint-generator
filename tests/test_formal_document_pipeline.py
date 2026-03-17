@@ -14,6 +14,7 @@ from complaint_phases.knowledge_graph import Entity, KnowledgeGraph
 from complaint_phases.legal_graph import LegalElement, LegalGraph
 from complaint_phases.neurosymbolic_matcher import NeurosymbolicMatcher
 from applications.document_api import _annotate_review_links
+from document_pipeline import FormalComplaintDocumentBuilder
 from mediator import Mediator
 from mediator.formal_document import ComplaintDocumentBuilder, HAS_DOCX
 
@@ -426,6 +427,24 @@ def test_document_optimizer_report_promotes_confirmed_intake_handoff(monkeypatch
     assert stored_trace_payloads[0]['intake_summary_handoff'] == report['intake_summary_handoff']
     assert stored_trace_payloads[0]['intake_status']['intake_summary_handoff'] == report['intake_summary_handoff']
     assert stored_trace_payloads[0]['intake_case_summary']['intake_summary_handoff'] == report['intake_summary_handoff']
+
+
+def test_document_package_promotes_confirmed_intake_handoff(tmp_path):
+    mediator = _build_seeded_mediator()
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    result = builder.build_package(
+        district='New Mexico',
+        county='Santa Fe County',
+        plaintiff_names=['Jane Doe'],
+        defendant_names=['Acme Corporation'],
+        output_dir=str(tmp_path),
+        output_formats=['txt'],
+    )
+
+    assert result['intake_summary_handoff']['current_phase'] == ComplaintPhase.FORMALIZATION.value
+    assert result['intake_summary_handoff']['complainant_summary_confirmation']['confirmed'] is True
+    assert result['draft']['drafting_readiness'] == result['drafting_readiness']
 
 
 def test_factual_allegations_merge_overlapping_adverse_action_narratives():

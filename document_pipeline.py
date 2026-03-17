@@ -10,6 +10,7 @@ from urllib.parse import urlencode
 
 from complaint_phases import ComplaintPhase
 from document_optimization import AgenticDocumentOptimizer
+from intake_status import build_intake_case_review_summary, build_intake_status_summary
 
 
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "tmp" / "generated_documents"
@@ -265,12 +266,14 @@ class FormalComplaintDocumentBuilder:
             output_dir=output_dir,
             output_formats=formats,
         )
+        intake_summary_handoff = self._build_intake_summary_handoff(document_optimization)
         return {
             "draft": draft,
             "drafting_readiness": drafting_readiness,
             "filing_checklist": filing_checklist,
             "artifacts": artifacts,
             "document_optimization": document_optimization,
+            "intake_summary_handoff": intake_summary_handoff,
             "output_formats": formats,
             "generated_at": _utcnow().isoformat(),
         }
@@ -660,6 +663,28 @@ class FormalComplaintDocumentBuilder:
         optimized_draft["affidavit"] = self._build_affidavit(optimized_draft)
         optimized_draft["draft_text"] = self._render_draft_text(optimized_draft)
         return optimized_draft, report
+
+    def _build_intake_summary_handoff(self, document_optimization: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        optimization_report = document_optimization if isinstance(document_optimization, dict) else {}
+        optimization_handoff = optimization_report.get("intake_summary_handoff")
+        if isinstance(optimization_handoff, dict) and optimization_handoff:
+            return dict(optimization_handoff)
+
+        intake_status = build_intake_status_summary(self.mediator)
+        status_handoff = intake_status.get("intake_summary_handoff") if isinstance(intake_status, dict) else None
+        if isinstance(status_handoff, dict) and status_handoff:
+            return dict(status_handoff)
+
+        intake_case_summary = build_intake_case_review_summary(self.mediator)
+        case_handoff = (
+            intake_case_summary.get("intake_summary_handoff")
+            if isinstance(intake_case_summary, dict)
+            else None
+        )
+        if isinstance(case_handoff, dict) and case_handoff:
+            return dict(case_handoff)
+
+        return {}
 
     def _adapt_formal_complaint_to_package_draft(self, formal_complaint: Dict[str, Any]) -> Dict[str, Any]:
         caption = formal_complaint.get("caption", {}) if isinstance(formal_complaint.get("caption"), dict) else {}
