@@ -130,15 +130,18 @@ def _select_matrix_recommendations(rows: List[Dict[str, Any]]) -> Dict[str, Dict
 def _result_value(payload, *path, default=None):
     current = payload
     for key in path:
-        if not isinstance(current, dict):
+        if isinstance(current, dict):
+            current = current.get(key)
+        else:
+            current = getattr(current, key, None)
+        if current is None:
             return default
-        current = current.get(key)
-    return current if current is not None else default
+    return current
 
 
 def _summarize_runtime_health(results: Dict[str, Any] | List[Dict[str, Any]]) -> Dict[str, Any]:
     if isinstance(results, list):
-        sessions = [session for session in results if isinstance(session, dict)]
+        sessions = list(results)
     else:
         sessions = list((results or {}).get("results") or [])
     critic_fallback_sessions = 0
@@ -147,12 +150,16 @@ def _summarize_runtime_health(results: Dict[str, Any] | List[Dict[str, Any]]) ->
 
     for session in sessions:
         critic_feedback = str(_result_value(session, "critic_score", "feedback", default="") or "")
-        if "fallback" in critic_feedback.lower():
+        if "fallback" in critic_feedback.lower() or "unavailable" in critic_feedback.lower():
             critic_fallback_sessions += 1
 
-        error_texts = [str(item) for item in list(session.get("errors") or []) if str(item)]
+        raw_errors = _result_value(session, "errors", default=[]) or []
+        error_texts = [str(item) for item in list(raw_errors) if str(item)]
+        top_level_error = str(_result_value(session, "error", default="") or "").strip()
+        if top_level_error:
+            error_texts.append(top_level_error)
         session_errors.extend(error_texts)
-        if any("llm_router_error" in item.lower() for item in error_texts):
+        if any("llm_router_error" in item.lower() or "accelerate not available" in item.lower() for item in error_texts):
             complainant_error_sessions += 1
 
     return {
@@ -264,6 +271,20 @@ def _relief_posture_note(winner_delta: Dict[str, Any]) -> str:
     return ""
 
 
+def _recommendation_strategy_summary(payload: Dict[str, Any]) -> str:
+    parts: List[str] = []
+    tradeoff_note = str(payload.get("tradeoff_note") or "").strip()
+    claim_posture_note = str(payload.get("claim_posture_note") or "").strip()
+    relief_posture_note = str(payload.get("relief_posture_note") or "").strip()
+    if tradeoff_note:
+        parts.append(tradeoff_note[:1].upper() + tradeoff_note[1:])
+    if claim_posture_note:
+        parts.append(claim_posture_note)
+    if relief_posture_note:
+        parts.append(relief_posture_note)
+    return " ".join(part.strip() for part in parts if part.strip())
+
+
 def _attach_recommendation_tradeoff_notes(
     recommendations: Dict[str, Dict[str, Any]],
     winner_delta: Dict[str, Any],
@@ -291,6 +312,9 @@ def _attach_recommendation_tradeoff_notes(
                 item["claim_posture_note"] = claim_posture_note
             if relief_posture_note:
                 item["relief_posture_note"] = relief_posture_note
+            strategy_summary = _recommendation_strategy_summary(item)
+            if strategy_summary:
+                item["strategy_summary"] = strategy_summary
         enriched[key] = item
     return enriched
 
@@ -333,6 +357,8 @@ def _write_markdown_report(
                 "",
                 f"- Overview: {best_overall['claim_selection_overview']}",
             ])
+            if best_overall.get("strategy_summary"):
+                lines.append(f"- Strategy summary: {best_overall['strategy_summary']}")
             if best_overall.get("claim_posture_note"):
                 lines.append(f"- Claim posture note: {best_overall['claim_posture_note']}")
             if best_overall.get("relief_posture_note"):
@@ -437,6 +463,16 @@ def _write_markdown_report(
     claim_snapshot_rows = [row for row in rows if row.get("claim_selection_overview")]
     if claim_snapshot_rows:
         snapshot_notes_by_preset: Dict[str, Dict[str, Any]] = {}
+        for payload in claim_snapshot_rows:
+            item = dict(payload or {})
+            preset = str(item.get("preset") or "")
+            if not preset:
+                continue
+            existing = snapshot_notes_by_preset.setdefault(preset, {})
+            if item.get("claim_posture_note"):
+                existing["claim_posture_note"] = item["claim_posture_note"]
+            if item.get("relief_posture_note"):
+                existing["relief_posture_note"] = item["relief_posture_note"]
         for payload in recommendations.values():
             item = dict(payload or {})
             preset = str(item.get("preset") or "")
@@ -488,6 +524,8 @@ def _write_markdown_report(
                 "",
                 f"- Overview: {champion_best['claim_selection_overview']}",
             ])
+            if champion_best.get("strategy_summary"):
+                lines.append(f"- Strategy summary: {champion_best['strategy_summary']}")
             if champion_best.get("claim_posture_note"):
                 lines.append(f"- Claim posture note: {champion_best['claim_posture_note']}")
             if champion_best.get("relief_posture_note"):
