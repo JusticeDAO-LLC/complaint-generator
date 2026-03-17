@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from claim_support_review import (
+    _build_confirmed_intake_summary_handoff_metadata,
     _summarize_follow_up_execution_claim,
     _summarize_follow_up_plan_claim,
     summarize_claim_reasoning_review,
@@ -1210,11 +1211,15 @@ class WebEvidenceIntegrationHook:
         if user_id is None:
             user_id = getattr(self.mediator.state, 'username', None) or \
                      getattr(self.mediator.state, 'hashed_username', 'anonymous')
+        handoff_metadata = _build_confirmed_intake_summary_handoff_metadata(self.mediator)
         
         # First, analyze the complaint if not already done
         if not hasattr(self.mediator.state, 'legal_classification'):
             if not self.mediator.state.complaint:
-                return {'error': 'No complaint available. Generate complaint first.'}
+                return {
+                    'error': 'No complaint available. Generate complaint first.',
+                    **handoff_metadata,
+                }
             self.mediator.analyze_complaint_legal_issues()
         
         classification = self.mediator.state.legal_classification
@@ -1239,6 +1244,7 @@ class WebEvidenceIntegrationHook:
             'follow_up_history': {},
             'follow_up_history_summary': {},
             'claim_coverage_matrix': {},
+            **handoff_metadata,
         }
         
         # Discover evidence for each claim type

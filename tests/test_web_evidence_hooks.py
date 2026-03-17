@@ -938,6 +938,30 @@ class TestWebEvidenceIntegrationHook:
             mock_mediator.state.legal_classification = {
                 'claim_types': ['employment discrimination']
             }
+            mock_mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for case evidence discovery',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
             
             hook = WebEvidenceIntegrationHook(mock_mediator)
             
@@ -977,6 +1001,30 @@ class TestWebEvidenceIntegrationHook:
             mock_mediator.state.legal_classification = {
                 'claim_types': ['employment discrimination']
             }
+            mock_mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for case evidence discovery',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
             mock_mediator.summarize_claim_support = Mock(return_value={
                 'claims': {
                     'employment discrimination': {
@@ -1162,6 +1210,28 @@ class TestWebEvidenceIntegrationHook:
 
                 result = hook.discover_evidence_for_case(user_id='testuser')
 
+            assert result['intake_summary_handoff'] == {
+                'current_phase': 'intake',
+                'ready_to_advance': True,
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for case evidence discovery',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            }
             assert result['evidence_storage_summary']['employment discrimination']['total_records'] == 2
             assert result['evidence_storage_summary']['employment discrimination']['total_new'] == 1
             assert result['evidence_storage_summary']['employment discrimination']['total_reused'] == 1
@@ -1248,6 +1318,30 @@ class TestWebEvidenceIntegrationHook:
             mock_mediator.state.legal_classification = {
                 'claim_types': ['employment discrimination']
             }
+            mock_mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for case evidence discovery',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
             mock_mediator.summarize_claim_support = Mock(return_value={'claims': {}})
             mock_mediator.get_claim_coverage_matrix = Mock(return_value={'claims': {}})
             mock_mediator.get_claim_overview = Mock(return_value={'claims': {}})
@@ -1368,6 +1462,28 @@ class TestWebEvidenceIntegrationHook:
 
                 result = hook.discover_evidence_for_case(user_id='testuser', execute_follow_up=True)
 
+            assert result['intake_summary_handoff'] == {
+                'current_phase': 'intake',
+                'ready_to_advance': True,
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for case evidence discovery',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            }
             assert result['evidence_storage_summary']['employment discrimination']['total_records'] == 1
             assert result['follow_up_execution']['employment discrimination']['task_count'] == 1
             assert result['follow_up_execution_summary']['employment discrimination']['executed_task_count'] == 1

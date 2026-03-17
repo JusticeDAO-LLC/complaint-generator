@@ -2396,6 +2396,7 @@ class Mediator:
 			'required_support_kinds': required_support_kinds or ['evidence', 'authority'],
 			'claims': {},
 		}
+		handoff_metadata = _build_confirmed_intake_summary_handoff_metadata(self)
 		alignment_lookup = self._build_alignment_task_lookup()
 		for current_claim, claim_data in validation.get('claims', {}).items():
 			manual_review_history = self.claim_support.get_recent_follow_up_execution(
@@ -2536,6 +2537,8 @@ class Mediator:
 				'blocked_task_count': len([task for task in tasks if task.get('blocked_by_cooldown')]),
 				'tasks': tasks,
 			}
+		if handoff_metadata:
+			plan.update(handoff_metadata)
 		return plan
 
 	def _keywords_from_follow_up_query(self, query: str, claim_type: str, claim_element: str) -> List[str]:
@@ -2567,6 +2570,7 @@ class Mediator:
 			'support_kind': support_kind,
 			'claims': {},
 		}
+		handoff_metadata = _build_confirmed_intake_summary_handoff_metadata(self)
 
 		for current_claim, claim_plan in plan.get('claims', {}).items():
 			executed_tasks = []
@@ -2893,6 +2897,8 @@ class Mediator:
 				'updated_claim_overview': self.get_claim_overview(claim_type=current_claim, user_id=user_id).get('claims', {}).get(current_claim, {}),
 				'updated_follow_up_plan': self.get_claim_follow_up_plan(claim_type=current_claim, user_id=user_id).get('claims', {}).get(current_claim, {}),
 			}
+		if handoff_metadata:
+			results.update(handoff_metadata)
 		return results
 
 	def get_claim_element_view(

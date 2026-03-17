@@ -212,6 +212,30 @@ class TestMediatorWithMocks:
             mock_backend.id = 'test-backend'
             mediator = Mediator(backends=[mock_backend])
             mediator.state.username = 'testuser'
+            mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for follow-up plan review',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
             mediator.claim_support = Mock()
             mediator.phase_manager = Mock()
             mediator.phase_manager.get_phase_data = Mock(return_value=Mock(
@@ -295,6 +319,30 @@ class TestMediatorWithMocks:
             mock_backend.id = 'test-backend'
             mediator = Mediator(backends=[mock_backend])
             mediator.state.username = 'testuser'
+            mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for follow-up plan review',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
             mediator.claim_support = Mock()
             mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
                 'claims': {'employment': []}
@@ -350,6 +398,28 @@ class TestMediatorWithMocks:
             )
             task = plan['claims']['employment']['tasks'][0]
 
+            assert plan['intake_summary_handoff'] == {
+                'current_phase': 'intake',
+                'ready_to_advance': True,
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for follow-up plan review',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            }
             assert task['execution_mode'] == 'manual_review'
             assert task['follow_up_focus'] == 'reasoning_gap_closure'
             assert task['query_strategy'] == 'reasoning_gap_targeted'
@@ -371,6 +441,30 @@ class TestMediatorWithMocks:
             mock_backend.id = 'test-backend'
             mediator = Mediator(backends=[mock_backend])
             mediator.state.username = 'testuser'
+            mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for follow-up execution review',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
             mediator.claim_support = Mock()
             mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
                 'claims': {'employment': []}
@@ -465,6 +559,30 @@ class TestMediatorWithMocks:
             mock_backend.id = 'test-backend'
             mediator = Mediator(backends=[mock_backend])
             mediator.state.username = 'testuser'
+            mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for follow-up execution review',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
             mediator.claim_support = Mock()
             mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
                 'claims': {'employment': []}
@@ -545,6 +663,30 @@ class TestMediatorWithMocks:
             mock_backend.id = 'test-backend'
             mediator = Mediator(backends=[mock_backend])
             mediator.state.username = 'testuser'
+            mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for follow-up execution review',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
             mediator.claim_support = Mock()
             mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
                 'claims': {'employment': []}
@@ -651,6 +793,30 @@ class TestMediatorWithMocks:
             mock_backend.id = 'test-backend'
             mediator = Mediator(backends=[mock_backend])
             mediator.state.username = 'testuser'
+            mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for follow-up execution review',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
             mediator.claim_support = Mock()
             mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
                 'claims': {'employment': []}
@@ -763,6 +929,30 @@ class TestMediatorWithMocks:
             mock_backend.id = 'test-backend'
             mediator = Mediator(backends=[mock_backend])
             mediator.state.username = 'testuser'
+            mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for follow-up execution review',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
             mediator.claim_support = Mock()
             mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
                 'claims': {'employment': []}
@@ -1756,6 +1946,30 @@ class TestMediatorWithMocks:
             mock_backend.id = 'test-backend'
             mediator = Mediator(backends=[mock_backend])
             mediator.state.username = 'testuser'
+            mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for follow-up execution review',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
             mediator.claim_support = Mock()
             mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
                 'claims': {'employment': []}
@@ -1823,6 +2037,28 @@ class TestMediatorWithMocks:
                 max_tasks_per_claim=1,
             )
 
+            assert result['intake_summary_handoff'] == {
+                'current_phase': 'intake',
+                'ready_to_advance': True,
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for follow-up execution review',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            }
             executed_task = result['claims']['employment']['tasks'][0]
             mediator.search_legal_authorities.assert_called_once_with(
                 query='employment Protected activity element definition statute regulation rule',
