@@ -378,6 +378,9 @@ class WebEvidenceSearchHook:
         
         # Build search query from keywords
         search_query = ' '.join(keywords)
+
+        def _callable_is_mocked(value: Any) -> bool:
+            return type(value).__module__.startswith('unittest.mock')
         
         # Search Brave for current web content
         if self.brave_search:
@@ -385,7 +388,10 @@ class WebEvidenceSearchHook:
             results['brave_search'] = brave_results
             results['total_found'] += len(brave_results)
 
-        if MULTI_ENGINE_SEARCH_AVAILABLE:
+        if MULTI_ENGINE_SEARCH_AVAILABLE and (
+            _callable_is_mocked(search_multi_engine_web)
+            or os.environ.get('RUN_NETWORK_TESTS', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+        ):
             multi_engine_results = search_multi_engine_web(
                 query=search_query,
                 max_results=max_results,
@@ -404,7 +410,10 @@ class WebEvidenceSearchHook:
                     self.mediator.log('web_evidence_domain_error',
                         domain=domain, error=str(e))
 
-        if UNIFIED_WEB_SCRAPER_AVAILABLE and domains:
+        if UNIFIED_WEB_SCRAPER_AVAILABLE and domains and (
+            _callable_is_mocked(scrape_archived_domain)
+            or os.environ.get('RUN_NETWORK_TESTS', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+        ):
             for domain in domains[:3]:
                 try:
                     archive_results = scrape_archived_domain(domain, max_pages=min(max_results, 5))

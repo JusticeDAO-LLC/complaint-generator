@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from integrations.ipfs_datasets.graphrag import build_ontology, validate_ontology
-from integrations.ipfs_datasets.logic import check_contradictions, prove_claim_elements
+from integrations.ipfs_datasets.logic import check_contradictions, prove_claim_elements, run_hybrid_reasoning
 from claim_support_review import _merge_intake_summary_handoff_metadata
 
 try:
@@ -2009,6 +2009,7 @@ class ClaimSupportHook:
         ontology_for_validation = ontology_payload if ontology_payload not in (None, '') else fallback_ontology
         logic_proof = prove_claim_elements(predicates)
         logic_contradictions = check_contradictions(predicates)
+        hybrid_reasoning = run_hybrid_reasoning({'predicates': predicates})
         ontology_validation = validate_ontology(ontology_for_validation)
 
         adapter_statuses = {
@@ -2023,6 +2024,10 @@ class ClaimSupportHook:
             'logic_contradictions': self._summarize_adapter_result(
                 logic_contradictions,
                 count_fields=['predicate_count', 'contradictions'],
+            ),
+            'hybrid_reasoning': self._summarize_adapter_result(
+                hybrid_reasoning,
+                count_fields=['predicate_count', 'result', 'temporal_reasoning_payload'],
             ),
             'ontology_validation': self._summarize_adapter_result(
                 ontology_validation,
@@ -2042,6 +2047,7 @@ class ClaimSupportHook:
             'ontology_build': ontology_build,
             'logic_proof': logic_proof,
             'logic_contradictions': logic_contradictions,
+            'hybrid_reasoning': hybrid_reasoning,
             'ontology_validation': ontology_validation,
         }
 
@@ -2050,6 +2056,7 @@ class ClaimSupportHook:
             'ontology_build': {},
             'logic_proof': {},
             'logic_contradictions': {},
+            'hybrid_reasoning': {},
             'ontology_validation': {},
         }
         backend_available_count = 0

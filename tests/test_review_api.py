@@ -1016,6 +1016,16 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             }
         ]
         assert intake_case_summary["alignment_task_update_history"][1]["evidence_sequence"] == 2
+        assert intake_case_summary["alignment_task_update_summary"] == {
+            "count": 2,
+            "status_counts": {"active": 1, "resolved": 1},
+            "resolution_status_counts": {
+                "partially_addressed": 1,
+                "promoted_to_document": 1,
+            },
+            "promoted_testimony_count": 0,
+            "promoted_document_count": 1,
+        }
         claim_support_packet_summary = intake_case_summary["claim_support_packet_summary"]
         assert claim_support_packet_summary["claim_count"] == 1
         assert claim_support_packet_summary["element_count"] == 3

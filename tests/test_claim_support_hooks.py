@@ -1785,6 +1785,7 @@ class TestClaimSupportHook:
             )
             assert protected_activity['reasoning_diagnostics']['adapter_statuses']['logic_proof']['operation'] == 'prove_claim_elements'
             assert protected_activity['reasoning_diagnostics']['adapter_statuses']['logic_contradictions']['operation'] == 'check_contradictions'
+            assert protected_activity['reasoning_diagnostics']['adapter_statuses']['hybrid_reasoning']['operation'] == 'run_hybrid_reasoning'
             assert protected_activity['reasoning_diagnostics']['adapter_statuses']['ontology_build']['operation'] == 'build_ontology'
             assert protected_activity['reasoning_diagnostics']['adapter_statuses']['ontology_validation']['operation'] == 'validate_ontology'
             assert protected_activity['proof_decision_trace']['decision_source'] == 'heuristic_contradictions'
@@ -2296,10 +2297,35 @@ class TestClaimSupportHook:
                     },
                 }
 
+            def _capture_hybrid_reasoning(payload):
+                captured['hybrid_payload'] = payload
+                predicates = payload.get('predicates', []) if isinstance(payload, dict) else []
+                return {
+                    'status': 'success',
+                    'result': {
+                        'formalism': 'tdfol_dcec_bridge_v1',
+                        'tdfol_formulas': ['Before(fact_1,fact_2)'],
+                        'dcec_formulas': ['Conflicts(employee_complained_to_hr,employee_was_terminated)'],
+                    },
+                    'predicate_count': len(predicates),
+                    'temporal_reasoning_payload': {
+                        'formalism': 'tdfol_dcec_bridge_v1',
+                        'tdfol_formulas': ['Before(fact_1,fact_2)'],
+                        'dcec_formulas': ['Conflicts(employee_complained_to_hr,employee_was_terminated)'],
+                    },
+                    'metadata': {
+                        'operation': 'run_hybrid_reasoning',
+                        'backend_available': True,
+                        'implementation_status': 'implemented',
+                    },
+                }
+
             with patch('mediator.claim_support_hooks.build_ontology', side_effect=_capture_build_ontology), patch(
                 'mediator.claim_support_hooks.prove_claim_elements', side_effect=_capture_prove
             ), patch(
                 'mediator.claim_support_hooks.check_contradictions', side_effect=_capture_contradictions
+            ), patch(
+                'mediator.claim_support_hooks.run_hybrid_reasoning', side_effect=_capture_hybrid_reasoning
             ), patch(
                 'mediator.claim_support_hooks.validate_ontology', return_value={
                     'status': 'not_implemented',
@@ -2321,12 +2347,15 @@ class TestClaimSupportHook:
 
             assert diagnostics['predicate_count'] == len(captured['predicates'])
             assert len(captured['contradiction_predicates']) == len(captured['predicates'])
+            assert captured['hybrid_payload']['predicates'] == captured['predicates']
             assert {'claim_element', 'support_trace', 'temporal_fact', 'temporal_proof_lead', 'temporal_relation', 'temporal_consistency', 'temporal_issue'} <= predicate_types
             assert 'Timeline fact: Employee complained to HR.' in captured['seed_text']
             assert 'Timeline relation: fact_1 before fact_2' in captured['seed_text']
             assert 'Temporal issue: Complaint and termination are ordered inconsistently.' in captured['seed_text']
             assert diagnostics['ontology_entity_count'] >= 4
             assert diagnostics['ontology_relationship_count'] >= 4
+            assert diagnostics['adapter_statuses']['hybrid_reasoning']['operation'] == 'run_hybrid_reasoning'
+            assert diagnostics['adapter_statuses']['hybrid_reasoning']['implementation_status'] == 'implemented'
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)
