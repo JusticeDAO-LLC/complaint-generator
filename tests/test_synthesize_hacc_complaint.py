@@ -72,6 +72,24 @@ def test_proposed_allegations_use_section_specific_housing_process_language():
     assert not any("The intake record suggests a dispute involving grievance hearing." == item for item in allegations)
 
 
+def test_claims_theory_links_authority_to_hacc_retaliation_process():
+    seed = {
+        "description": "Retaliation complaint anchored to HACC core housing policies.",
+        "key_facts": {
+            "anchor_sections": ["grievance_hearing", "appeal_rights", "adverse_action"],
+            "theory_labels": ["retaliation", "due_process_failure"],
+            "authority_hints": ["Fair Housing Act anti-retaliation provisions", "24 C.F.R. Part 100"],
+        },
+    }
+
+    claims = MODULE._claims_theory(seed, {"conversation_history": []}, "hud")
+
+    assert any("may be implicated if HACC used grievance, review, or adverse-action procedures" in item for item in claims)
+    assert any("written notice, grievance, informal review, and due-process protections" in item for item in claims)
+    assert not any("Likely authority implicated by the current theory includes" in item for item in claims)
+    assert not any("clearly documented and transparent adverse-action process" in item for item in claims)
+
+
 def test_summarize_policy_excerpt_normalizes_hacc_grievance_fragments():
     text = (
         "Grievance: Any dispute a tenant may have with respect to HACC action or failure to "
