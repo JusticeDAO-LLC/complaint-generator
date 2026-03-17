@@ -73,6 +73,55 @@ def _build_hook_backed_review_api_mediator(db_path: str):
     }
     mediator.get_user_evidence.return_value = []
     mediator.summarize_claim_support.return_value = {"claims": {"retaliation": {}}}
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "iteration_count": 1,
+        "intake_readiness": {
+            "score": 1.0,
+            "ready_to_advance": True,
+            "remaining_gap_count": 0,
+            "contradiction_count": 0,
+            "criteria": {"complainant_summary_confirmed": True},
+            "blockers": [],
+            "contradictions": [],
+            "candidate_claim_count": 1,
+            "canonical_fact_count": 1,
+            "proof_lead_count": 1,
+        },
+        "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.9}],
+        "intake_sections": {},
+        "canonical_fact_summary": {"count": 1, "facts": []},
+        "canonical_fact_intent_summary": {},
+        "proof_lead_summary": {"count": 1, "proof_leads": []},
+        "proof_lead_intent_summary": {},
+        "timeline_anchor_summary": {"count": 0, "anchors": []},
+        "harm_profile": {},
+        "remedy_profile": {},
+        "complainant_summary_confirmation": {
+            "status": "confirmed",
+            "confirmed": True,
+            "confirmed_at": "2026-03-17T10:00:00+00:00",
+            "confirmation_note": "ready for evidence handoff",
+            "confirmation_source": "dashboard",
+            "summary_snapshot_index": 0,
+            "current_summary_snapshot": {
+                "candidate_claim_count": 1,
+                "canonical_fact_count": 1,
+                "proof_lead_count": 1,
+            },
+            "confirmed_summary_snapshot": {
+                "candidate_claim_count": 1,
+                "canonical_fact_count": 1,
+                "proof_lead_count": 1,
+            },
+        },
+        "question_candidate_summary": {},
+        "claim_support_packet_summary": {},
+        "intake_evidence_alignment_summary": {},
+        "alignment_evidence_tasks": [],
+        "alignment_task_updates": [],
+        "alignment_task_update_history": [],
+    }
 
     return mediator, hook
 
@@ -2549,6 +2598,36 @@ def test_claim_support_document_payload_persists_and_refreshes_review():
         {"chunk_id": "chunk-0", "index": 0, "text": "Termination followed the complaint."},
     ]
     mediator.summarize_claim_support.return_value = {"claims": {"retaliation": {}}}
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "iteration_count": 1,
+        "intake_readiness": {"ready_to_advance": True},
+        "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.9}],
+        "intake_sections": {},
+        "canonical_fact_summary": {"count": 1, "facts": []},
+        "canonical_fact_intent_summary": {},
+        "proof_lead_summary": {"count": 1, "proof_leads": []},
+        "proof_lead_intent_summary": {},
+        "timeline_anchor_summary": {"count": 0, "anchors": []},
+        "harm_profile": {},
+        "remedy_profile": {},
+        "complainant_summary_confirmation": {
+            "status": "confirmed",
+            "confirmed": True,
+            "confirmed_at": "2026-03-17T10:00:00+00:00",
+            "confirmation_note": "ready for evidence handoff",
+            "confirmation_source": "dashboard",
+            "summary_snapshot_index": 0,
+            "current_summary_snapshot": {"candidate_claim_count": 1, "canonical_fact_count": 1, "proof_lead_count": 1},
+            "confirmed_summary_snapshot": {"candidate_claim_count": 1, "canonical_fact_count": 1, "proof_lead_count": 1},
+        },
+        "question_candidate_summary": {},
+        "claim_support_packet_summary": {},
+        "intake_evidence_alignment_summary": {},
+        "alignment_evidence_tasks": [],
+        "alignment_task_updates": [],
+        "alignment_task_update_history": [],
+    }
 
     payload = build_claim_support_document_payload(
         mediator,
@@ -2576,7 +2655,22 @@ def test_claim_support_document_payload_persists_and_refreshes_review():
         filename=None,
         mime_type=None,
         evidence_type="document",
-        metadata={},
+        metadata={
+            "intake_summary_handoff": {
+                "current_phase": "intake",
+                "ready_to_advance": True,
+                "complainant_summary_confirmation": {
+                    "status": "confirmed",
+                    "confirmed": True,
+                    "confirmed_at": "2026-03-17T10:00:00+00:00",
+                    "confirmation_note": "ready for evidence handoff",
+                    "confirmation_source": "dashboard",
+                    "summary_snapshot_index": 0,
+                    "current_summary_snapshot": {"candidate_claim_count": 1, "canonical_fact_count": 1, "proof_lead_count": 1},
+                    "confirmed_summary_snapshot": {"candidate_claim_count": 1, "canonical_fact_count": 1, "proof_lead_count": 1},
+                },
+            },
+        },
     )
 
 
@@ -2587,6 +2681,36 @@ def test_claim_support_upload_document_route_accepts_multipart_file():
         "record_id": 91,
         "cid": "QmUploadedDoc1",
         "recorded": True,
+    }
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "iteration_count": 1,
+        "intake_readiness": {"ready_to_advance": True},
+        "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.9}],
+        "intake_sections": {},
+        "canonical_fact_summary": {"count": 1, "facts": []},
+        "canonical_fact_intent_summary": {},
+        "proof_lead_summary": {"count": 1, "proof_leads": []},
+        "proof_lead_intent_summary": {},
+        "timeline_anchor_summary": {"count": 0, "anchors": []},
+        "harm_profile": {},
+        "remedy_profile": {},
+        "complainant_summary_confirmation": {
+            "status": "confirmed",
+            "confirmed": True,
+            "confirmed_at": "2026-03-17T10:00:00+00:00",
+            "confirmation_note": "ready for evidence handoff",
+            "confirmation_source": "dashboard",
+            "summary_snapshot_index": 0,
+            "current_summary_snapshot": {"candidate_claim_count": 1, "canonical_fact_count": 1, "proof_lead_count": 1},
+            "confirmed_summary_snapshot": {"candidate_claim_count": 1, "canonical_fact_count": 1, "proof_lead_count": 1},
+        },
+        "question_candidate_summary": {},
+        "claim_support_packet_summary": {},
+        "intake_evidence_alignment_summary": {},
+        "alignment_evidence_tasks": [],
+        "alignment_task_updates": [],
+        "alignment_task_update_history": [],
     }
 
     app = create_review_api_app(mediator)
@@ -2623,7 +2747,22 @@ def test_claim_support_upload_document_route_accepts_multipart_file():
         filename="termination-memo.txt",
         mime_type="text/plain",
         evidence_type="document",
-        metadata={},
+        metadata={
+            "intake_summary_handoff": {
+                "current_phase": "intake",
+                "ready_to_advance": True,
+                "complainant_summary_confirmation": {
+                    "status": "confirmed",
+                    "confirmed": True,
+                    "confirmed_at": "2026-03-17T10:00:00+00:00",
+                    "confirmation_note": "ready for evidence handoff",
+                    "confirmation_source": "dashboard",
+                    "summary_snapshot_index": 0,
+                    "current_summary_snapshot": {"candidate_claim_count": 1, "canonical_fact_count": 1, "proof_lead_count": 1},
+                    "confirmed_summary_snapshot": {"candidate_claim_count": 1, "canonical_fact_count": 1, "proof_lead_count": 1},
+                },
+            },
+        },
     )
 
 
@@ -2733,6 +2872,12 @@ def test_claim_support_save_testimony_route_canonicalizes_text_only_claim_elemen
         assert payload["testimony_result"]["claim_element_text"] == "Protected activity"
         assert payload["post_save_review"]["testimony_records"]["retaliation"][0]["claim_element_id"] == "retaliation:1"
         assert payload["post_save_review"]["testimony_summary"]["retaliation"]["linked_element_count"] == 1
+        handoff_metadata = payload["post_save_review"]["testimony_records"]["retaliation"][0]["metadata"]["intake_summary_handoff"]
+        assert handoff_metadata["current_phase"] == "intake"
+        assert handoff_metadata["ready_to_advance"] is True
+        assert handoff_metadata["complainant_summary_confirmation"]["confirmed"] is True
+        assert handoff_metadata["complainant_summary_confirmation"]["confirmation_source"] == "dashboard"
+        assert handoff_metadata["complainant_summary_confirmation"]["confirmed_summary_snapshot"]["candidate_claim_count"] == 1
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)

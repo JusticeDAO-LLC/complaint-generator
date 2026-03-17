@@ -35,6 +35,7 @@ from integrations.ipfs_datasets.graphs import persist_graph_snapshot, query_grap
 from claim_support_review import (
 	ClaimSupportFollowUpExecuteRequest,
 	ClaimSupportReviewRequest,
+	_build_confirmed_intake_summary_handoff_metadata,
 	_summarize_follow_up_execution_claim,
 	_summarize_follow_up_plan_claim,
 	build_claim_support_follow_up_execution_payload,
@@ -1189,13 +1190,17 @@ class Mediator:
 		"""Persist gap and contradiction diagnostics for later review reuse."""
 		if user_id is None:
 			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
+		persist_metadata = dict(metadata or {})
+		handoff_metadata = _build_confirmed_intake_summary_handoff_metadata(self)
+		if handoff_metadata.get('intake_summary_handoff') and 'intake_summary_handoff' not in persist_metadata:
+			persist_metadata['intake_summary_handoff'] = handoff_metadata['intake_summary_handoff']
 		return self.claim_support.persist_claim_support_diagnostics(
 			user_id,
 			claim_type=claim_type,
 			required_support_kinds=required_support_kinds,
 			gaps=gaps,
 			contradictions=contradictions,
-			metadata=metadata,
+			metadata=persist_metadata,
 			retention_limit=retention_limit,
 		)
 
@@ -1705,6 +1710,9 @@ class Mediator:
 		for key, value in extra.items():
 			if value is not None:
 				metadata[key] = value
+		handoff_metadata = _build_confirmed_intake_summary_handoff_metadata(self)
+		if handoff_metadata.get('intake_summary_handoff') and 'intake_summary_handoff' not in metadata:
+			metadata['intake_summary_handoff'] = handoff_metadata['intake_summary_handoff']
 		return metadata
 
 	def _build_manual_review_audit_query(self, claim_type: str, task: Dict[str, Any]) -> str:

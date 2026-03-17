@@ -209,6 +209,45 @@ def _resolve_user_id(mediator: Any, user_id: Optional[str]) -> str:
     )
 
 
+def _build_confirmed_intake_summary_handoff_metadata(mediator: Any) -> Dict[str, Any]:
+    get_status = getattr(mediator, "get_three_phase_status", None)
+    if not callable(get_status):
+        return {}
+
+    raw_status = get_status()
+    if not isinstance(raw_status, dict):
+        return {}
+
+    confirmation = raw_status.get("complainant_summary_confirmation")
+    if not isinstance(confirmation, dict) or not bool(confirmation.get("confirmed", False)):
+        return {}
+
+    confirmed_summary_snapshot = confirmation.get("confirmed_summary_snapshot")
+    if not isinstance(confirmed_summary_snapshot, dict) or not confirmed_summary_snapshot:
+        return {}
+
+    readiness = raw_status.get("intake_readiness") if isinstance(raw_status.get("intake_readiness"), dict) else {}
+    return {
+        "intake_summary_handoff": {
+            "current_phase": str(raw_status.get("current_phase") or ""),
+            "ready_to_advance": bool(readiness.get("ready_to_advance", False)),
+            "complainant_summary_confirmation": dict(confirmation),
+        }
+    }
+
+
+def _merge_intake_summary_handoff_metadata(
+    metadata: Optional[Dict[str, Any]],
+    mediator: Any,
+) -> Dict[str, Any]:
+    merged_metadata = dict(metadata or {})
+    handoff_metadata = _build_confirmed_intake_summary_handoff_metadata(mediator)
+    if not handoff_metadata:
+        return merged_metadata
+    merged_metadata.update(handoff_metadata)
+    return merged_metadata
+
+
 def summarize_claim_support_snapshot_lifecycle(
     snapshots: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
@@ -2392,6 +2431,10 @@ def build_claim_support_testimony_payload(
             "error": "testimony_persistence_unavailable",
         }
     else:
+        testimony_metadata = _merge_intake_summary_handoff_metadata(
+            request.testimony_metadata,
+            mediator,
+        )
         testimony_result = save_claim_testimony_record(
             claim_type=request.claim_type,
             user_id=resolved_user_id,
@@ -2405,7 +2448,7 @@ def build_claim_support_testimony_payload(
             harm=request.harm,
             firsthand_status=request.firsthand_status,
             source_confidence=request.source_confidence,
-            metadata=request.testimony_metadata,
+            metadata=testimony_metadata,
         )
         payload = {
             "user_id": resolved_user_id,
@@ -2449,6 +2492,10 @@ def build_claim_support_document_payload(
             "error": "document_intake_unavailable",
         }
     else:
+        document_metadata = _merge_intake_summary_handoff_metadata(
+            request.document_metadata,
+            mediator,
+        )
         document_result = save_claim_support_document(
             claim_type=request.claim_type,
             user_id=resolved_user_id,
@@ -2460,7 +2507,7 @@ def build_claim_support_document_payload(
             filename=request.filename,
             mime_type=request.mime_type,
             evidence_type=request.evidence_type,
-            metadata=request.document_metadata,
+            metadata=document_metadata,
         )
         payload = {
             "user_id": resolved_user_id,
@@ -2520,6 +2567,10 @@ def build_claim_support_uploaded_document_payload(
             "error": "document_intake_unavailable",
         }
     else:
+        merged_document_metadata = _merge_intake_summary_handoff_metadata(
+            document_metadata,
+            mediator,
+        )
         document_result = save_claim_support_document(
             claim_type=claim_type,
             user_id=resolved_user_id,
@@ -2532,7 +2583,7 @@ def build_claim_support_uploaded_document_payload(
             filename=filename,
             mime_type=mime_type,
             evidence_type=evidence_type,
-            metadata=document_metadata or {},
+            metadata=merged_document_metadata,
         )
         payload = {
             "user_id": resolved_user_id,

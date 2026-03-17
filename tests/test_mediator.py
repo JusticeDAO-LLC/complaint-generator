@@ -1599,6 +1599,30 @@ class TestMediatorWithMocks:
                 'total_records': 0,
             })
             mediator.get_claim_overview = Mock(return_value={'claims': {'employment': {}}})
+            mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T10:00:00+00:00',
+                    'confirmation_note': 'ready for follow-up handoff',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
 
             mediator.execute_claim_follow_up_plan(
                 claim_type='employment',
@@ -1617,6 +1641,109 @@ class TestMediatorWithMocks:
             assert executed_call.kwargs['metadata']['missing_fact_bundle'] == ['Who received the complaint']
             assert executed_call.kwargs['metadata']['satisfied_fact_bundle'] == []
             assert executed_call.kwargs['metadata']['primary_missing_fact'] == 'Who received the complaint'
+            assert executed_call.kwargs['metadata']['intake_summary_handoff'] == {
+                'current_phase': 'intake',
+                'ready_to_advance': True,
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T10:00:00+00:00',
+                    'confirmation_note': 'ready for follow-up handoff',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            }
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_persist_claim_support_diagnostics_stamps_confirmed_intake_handoff_metadata(self):
+        """Diagnostic snapshot persistence should carry the confirmed intake handoff provenance when available."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.claim_support.persist_claim_support_diagnostics = Mock(return_value={'claims': {}})
+            mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T11:00:00+00:00',
+                    'confirmation_note': 'ready for snapshot persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
+
+            mediator.persist_claim_support_diagnostics(
+                claim_type='employment',
+                user_id='testuser',
+                required_support_kinds=['evidence', 'authority'],
+                gaps={'claims': {'employment': {'claim_type': 'employment', 'unresolved_count': 1}}},
+                contradictions={'claims': {'employment': {'claim_type': 'employment', 'candidate_count': 0}}},
+                metadata={'source': 'unit_test'},
+            )
+
+            mediator.claim_support.persist_claim_support_diagnostics.assert_called_once_with(
+                'testuser',
+                claim_type='employment',
+                required_support_kinds=['evidence', 'authority'],
+                gaps={'claims': {'employment': {'claim_type': 'employment', 'unresolved_count': 1}}},
+                contradictions={'claims': {'employment': {'claim_type': 'employment', 'candidate_count': 0}}},
+                metadata={
+                    'source': 'unit_test',
+                    'intake_summary_handoff': {
+                        'current_phase': 'intake',
+                        'ready_to_advance': True,
+                        'complainant_summary_confirmation': {
+                            'status': 'confirmed',
+                            'confirmed': True,
+                            'confirmed_at': '2026-03-17T11:00:00+00:00',
+                            'confirmation_note': 'ready for snapshot persistence',
+                            'confirmation_source': 'dashboard',
+                            'summary_snapshot_index': 0,
+                            'current_summary_snapshot': {
+                                'candidate_claim_count': 1,
+                                'canonical_fact_count': 2,
+                                'proof_lead_count': 1,
+                            },
+                            'confirmed_summary_snapshot': {
+                                'candidate_claim_count': 1,
+                                'canonical_fact_count': 2,
+                                'proof_lead_count': 1,
+                            },
+                        },
+                    },
+                },
+                retention_limit=3,
+            )
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
