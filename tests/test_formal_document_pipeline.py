@@ -12,6 +12,7 @@ from complaint_phases.dependency_graph import DependencyGraph, DependencyNode, N
 from complaint_phases.knowledge_graph import Entity, KnowledgeGraph
 from complaint_phases.legal_graph import LegalElement, LegalGraph
 from complaint_phases.neurosymbolic_matcher import NeurosymbolicMatcher
+from applications.document_api import _annotate_review_links
 from mediator import Mediator
 from mediator.formal_document import ComplaintDocumentBuilder, HAS_DOCX
 
@@ -331,6 +332,43 @@ def test_generate_formal_complaint_can_suppress_mirrored_affidavit_exhibits():
     complaint = result['formal_complaint']
     assert complaint['exhibits']
     assert complaint['affidavit']['supporting_exhibits'] == []
+
+
+def test_document_api_annotation_promotes_confirmed_intake_handoff():
+    mediator = _build_seeded_mediator()
+
+    payload = _annotate_review_links(
+        {
+            'draft': {
+                'title': 'Jane Doe v. Acme Corporation',
+                'source_context': {'user_id': 'Jane Doe'},
+            },
+            'drafting_readiness': {
+                'status': 'warning',
+                'sections': {
+                    'claims_for_relief': {
+                        'status': 'warning',
+                        'title': 'Claims For Relief',
+                    }
+                },
+                'claims': [
+                    {
+                        'claim_type': 'retaliation',
+                        'status': 'warning',
+                    }
+                ],
+            },
+            'document_optimization': {},
+        },
+        mediator=mediator,
+        user_id='Jane Doe',
+    )
+
+    assert payload['intake_summary_handoff']['current_phase'] == ComplaintPhase.FORMALIZATION.value
+    assert payload['intake_summary_handoff']['complainant_summary_confirmation']['confirmed'] is True
+    assert payload['document_optimization']['intake_summary_handoff'] == payload['intake_summary_handoff']
+    assert payload['review_links']['intake_status']['intake_summary_handoff'] == payload['intake_summary_handoff']
+    assert payload['review_links']['intake_case_summary']['intake_summary_handoff'] == payload['intake_summary_handoff']
 
 
 def test_factual_allegations_merge_overlapping_adverse_action_narratives():
