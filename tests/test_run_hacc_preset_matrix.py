@@ -88,7 +88,8 @@ def test_markdown_report_includes_claim_selection_snapshots(tmp_path):
     MODULE._write_markdown_report(report_path, rows, recommendations)
     report = report_path.read_text(encoding="utf-8")
 
-    assert "- Best overall: `accommodation_focus` (accommodation, process) - best for accommodation framing + process framing" in report
+    assert "- Unified winner: `accommodation_focus` (accommodation, process) - best for accommodation framing + process framing" in report
+    assert "- Applies to: best overall, best anchor coverage, best balanced" in report
     assert "## Claim Selection Snapshots" in report
     assert "### accommodation_focus" in report
     assert "- Overview: Accommodation Theory [tags=reasonable_accommodation,contact;" in report
@@ -97,6 +98,21 @@ def test_markdown_report_includes_claim_selection_snapshots(tmp_path):
     assert "- Relief posture note: Relief posture was materially similar across the winner and runner-up, so the selection difference was driven mainly by claim posture." not in report
     assert "- Relief overview: Corrective action requiring clear notice, fair review, and non-retaliation safeguards." in report
     assert "- Complaint synthesis: `/tmp/accommodation_focus/complaint_synthesis`" in report
+
+
+def test_recommendation_groups_collapses_duplicate_presets():
+    recommendations = {
+        "best_overall": {"preset": "accommodation_focus"},
+        "best_anchor_coverage": {"preset": "accommodation_focus"},
+        "best_balanced": {"preset": "accommodation_focus"},
+    }
+
+    groups = MODULE._recommendation_groups(recommendations)
+
+    assert groups == [(
+        ["best_overall", "best_anchor_coverage", "best_balanced"],
+        {"preset": "accommodation_focus"},
+    )]
 
 
 def test_attach_recommendation_claim_snapshots_enriches_best_overall():

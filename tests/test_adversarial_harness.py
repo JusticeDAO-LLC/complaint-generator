@@ -243,6 +243,37 @@ class TestComplainant:
         assert any('Decision-tree sections: grievance_hearing, appeal_rights' in prompt for prompt in prompts)
         assert any('Passage 1 [grievance_hearing] from HACC Policy' in prompt for prompt in prompts)
 
+    def test_prompt_includes_intake_questionnaire_guidance(self):
+        prompts = []
+
+        def backend(prompt):
+            prompts.append(prompt)
+            return "Mock response"
+
+        complainant = Complainant(backend, personality="detailed")
+        seed = {
+            'type': 'housing_discrimination',
+            'summary': 'The evidence points to a policy problem.',
+            'key_facts': {
+                'evidence_summary': 'The policy text points to a policy problem.',
+                'synthetic_prompts': {
+                    'complaint_chatbot_prompt': 'Ask for timeline, actor, harm, and remedy facts.',
+                    'intake_questionnaire_prompt': 'Before drafting, ask what adverse action happened and when.',
+                    'intake_questions': [
+                        'What happened, and what adverse action did HACC take or threaten to take?',
+                        'When did the key events happen?',
+                    ],
+                },
+            },
+        }
+
+        complainant.set_context(Complainant.build_default_context(seed, 'detailed'))
+        complainant.generate_initial_complaint(seed)
+
+        assert any('Intake questionnaire:' in prompt for prompt in prompts)
+        assert any('Missing fact question 1:' in prompt for prompt in prompts)
+        assert any('ask what adverse action happened and when' in prompt.lower() for prompt in prompts)
+
     def test_question_response_refreshes_dynamic_hacc_evidence(self, monkeypatch):
         prompts = []
 
@@ -283,6 +314,34 @@ class TestComplainant:
         assert complainant.context.dynamic_evidence_items[0]['title'] == 'ADMINISTRATIVE PLAN'
         assert any('Question-focused HACC evidence:' in prompt for prompt in prompts)
         assert any('Dynamic evidence for the specific question.' in prompt for prompt in prompts)
+
+    def test_response_prompt_includes_intake_questionnaire_guidance(self):
+        prompts = []
+
+        def backend(prompt):
+            prompts.append(prompt)
+            return "I still need to confirm the date and who made the decision."
+
+        complainant = Complainant(backend, personality="detailed")
+        context = ComplaintContext(
+            complaint_type="housing_discrimination",
+            key_facts={'evidence_query': 'administrative plan grievance hearing'},
+            evidence_items=[{'title': 'Static Policy', 'snippet': 'Static'}],
+            evidence_summary='Static summary',
+            synthetic_prompts={
+                'intake_questionnaire_prompt': 'Ask for date, actor, process, harm, and remedy facts.',
+                'intake_questions': [
+                    'When did the key events happen?',
+                    'Who at HACC made, communicated, or carried out each decision?',
+                ],
+            },
+        )
+        complainant.set_context(context)
+
+        complainant.respond_to_question("What happened after you complained?")
+
+        assert any('Intake questionnaire:' in prompt for prompt in prompts)
+        assert any('Missing fact question 1:' in prompt for prompt in prompts)
 
     def test_response_history_persists_dynamic_evidence_context(self, monkeypatch):
         backend = MockLLMBackend("I relied on the administrative plan language.")

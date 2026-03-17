@@ -323,6 +323,22 @@ def _recommendation_strategy_summary(payload: Dict[str, Any]) -> str:
     return " ".join(part for part in parts if part)
 
 
+def _recommendation_groups(recommendations: Dict[str, Dict[str, Any]]) -> List[tuple[List[str], Dict[str, Any]]]:
+    grouped: List[tuple[List[str], Dict[str, Any]]] = []
+    by_preset: Dict[str, List[str]] = {}
+    payload_by_preset: Dict[str, Dict[str, Any]] = {}
+    for key in ("best_overall", "best_anchor_coverage", "best_balanced"):
+        payload = dict(recommendations.get(key) or {})
+        preset = str(payload.get("preset") or "")
+        if not preset:
+            continue
+        by_preset.setdefault(preset, []).append(key)
+        payload_by_preset[preset] = payload
+    for preset, labels in by_preset.items():
+        grouped.append((labels, payload_by_preset[preset]))
+    return grouped
+
+
 def _attach_recommendation_tradeoff_notes(
     recommendations: Dict[str, Dict[str, Any]],
     winner_delta: Dict[str, Any],
@@ -380,14 +396,25 @@ def _write_markdown_report(
                 suffix += f" - {use_note}"
             return f"- {key}: `{payload.get('preset')}`{suffix}"
 
+        grouped_recommendations = _recommendation_groups(recommendations)
         lines.extend([
             "## Recommendations",
             "",
-            _recommendation_label("Best overall", dict(recommendations.get("best_overall") or {})),
-            _recommendation_label("Best anchor coverage", dict(recommendations.get("best_anchor_coverage") or {})),
-            _recommendation_label("Best balanced", dict(recommendations.get("best_balanced") or {})),
-            "",
         ])
+        if len(grouped_recommendations) == 1:
+            labels, payload = grouped_recommendations[0]
+            payload = dict(recommendations.get("best_overall") or payload)
+            label_names = ", ".join(label.replace("_", " ") for label in labels)
+            lines.append(_recommendation_label("Unified winner", payload))
+            lines.append(f"- Applies to: {label_names}")
+            lines.append("")
+        else:
+            lines.extend([
+                _recommendation_label("Best overall", dict(recommendations.get("best_overall") or {})),
+                _recommendation_label("Best anchor coverage", dict(recommendations.get("best_anchor_coverage") or {})),
+                _recommendation_label("Best balanced", dict(recommendations.get("best_balanced") or {})),
+                "",
+            ])
         best_overall = dict(recommendations.get("best_overall") or {})
         if best_overall.get("claim_selection_overview"):
             lines.extend([
@@ -508,6 +535,8 @@ def _write_markdown_report(
             if not preset:
                 continue
             existing = snapshot_notes_by_preset.setdefault(preset, {})
+            if item.get("strategy_summary"):
+                existing["strategy_summary"] = item["strategy_summary"]
             if item.get("claim_posture_note"):
                 existing["claim_posture_note"] = item["claim_posture_note"]
             if item.get("relief_posture_note"):
@@ -524,9 +553,12 @@ def _write_markdown_report(
                 "",
                 f"- Overview: {row['claim_selection_overview']}",
             ])
-            if snapshot_notes.get("claim_posture_note"):
+            has_snapshot_strategy_summary = bool(snapshot_notes.get("strategy_summary"))
+            if has_snapshot_strategy_summary:
+                lines.append(f"- Strategy summary: {snapshot_notes['strategy_summary']}")
+            if not has_snapshot_strategy_summary and snapshot_notes.get("claim_posture_note"):
                 lines.append(f"- Claim posture note: {snapshot_notes['claim_posture_note']}")
-            if snapshot_notes.get("relief_posture_note"):
+            if not has_snapshot_strategy_summary and snapshot_notes.get("relief_posture_note"):
                 lines.append(f"- Relief posture note: {snapshot_notes['relief_posture_note']}")
             if row.get("relief_selection_overview"):
                 lines.append(f"- Relief overview: {row['relief_selection_overview']}")
@@ -1529,26 +1561,31 @@ def main() -> int:
         def _recommendation_console_suffix(payload: Dict[str, Any]) -> str:
             family_list = list(payload.get("claim_theory_families") or [])
             families = ", ".join(family_list)
-            use_note = str(payload.get("tradeoff_note") or "")
+            use_note = str(payload.get("strategy_summary") or "").strip()
+            if not use_note:
+                use_note = str(payload.get("tradeoff_note") or "")
             if not use_note:
                 use_note = _recommendation_use_note(family_list)
-            claim_note = str(payload.get("claim_posture_note") or "")
-            relief_note = str(payload.get("relief_posture_note") or "")
             suffix = f" ({families})" if families else ""
             if use_note:
                 suffix += f" - {use_note}"
-            if claim_note:
-                suffix += f" | {claim_note}"
-            if relief_note:
-                suffix += f" | {relief_note}"
             return suffix
 
-        print(
-            "Recommendations: "
-            f"best_overall={recommendations['best_overall']['preset']}{_recommendation_console_suffix(dict(recommendations.get('best_overall') or {}))}, "
-            f"best_anchor_coverage={recommendations['best_anchor_coverage']['preset']}{_recommendation_console_suffix(dict(recommendations.get('best_anchor_coverage') or {}))}, "
-            f"best_balanced={recommendations['best_balanced']['preset']}{_recommendation_console_suffix(dict(recommendations.get('best_balanced') or {}))}"
-        )
+        grouped_recommendations = _recommendation_groups(recommendations)
+        if len(grouped_recommendations) == 1:
+            labels, payload = grouped_recommendations[0]
+            label_names = ", ".join(label.replace("_", " ") for label in labels)
+            print(
+                "Recommendations: "
+                f"unified={payload['preset']}{_recommendation_console_suffix(payload)}; applies_to={label_names}"
+            )
+        else:
+            print(
+                "Recommendations: "
+                f"best_overall={recommendations['best_overall']['preset']}{_recommendation_console_suffix(dict(recommendations.get('best_overall') or {}))}, "
+                f"best_anchor_coverage={recommendations['best_anchor_coverage']['preset']}{_recommendation_console_suffix(dict(recommendations.get('best_anchor_coverage') or {}))}, "
+                f"best_balanced={recommendations['best_balanced']['preset']}{_recommendation_console_suffix(dict(recommendations.get('best_balanced') or {}))}"
+            )
     for row in matrix_rows:
         print(
             f"{row['preset']}: score={row['average_score']:.2f}, "
@@ -1569,26 +1606,32 @@ def main() -> int:
             def _challenger_suffix(payload: Dict[str, Any]) -> str:
                 family_list = list(payload.get("claim_theory_families") or [])
                 families = ", ".join(family_list)
-                use_note = str(payload.get("tradeoff_note") or "")
+                use_note = str(payload.get("strategy_summary") or "").strip()
+                if not use_note:
+                    use_note = str(payload.get("tradeoff_note") or "")
                 if not use_note:
                     use_note = _recommendation_use_note(family_list)
-                claim_note = str(payload.get("claim_posture_note") or "")
-                relief_note = str(payload.get("relief_posture_note") or "")
                 suffix = f" ({families})" if families else ""
                 if use_note:
                     suffix += f" - {use_note}"
-                if claim_note:
-                    suffix += f" | {claim_note}"
-                if relief_note:
-                    suffix += f" | {relief_note}"
                 return suffix
 
-            print(
-                "Champion/challenger recommendations: "
-                f"best_overall={challenger_recs['best_overall']['preset']}{_challenger_suffix(dict(challenger_recs.get('best_overall') or {}))}, "
-                f"best_anchor_coverage={challenger_recs['best_anchor_coverage']['preset']}{_challenger_suffix(dict(challenger_recs.get('best_anchor_coverage') or {}))}, "
-                f"best_balanced={challenger_recs['best_balanced']['preset']}{_challenger_suffix(dict(challenger_recs.get('best_balanced') or {}))}"
-            )
+            grouped_challenger = _recommendation_groups(challenger_recs)
+            if len(grouped_challenger) == 1:
+                labels, payload = grouped_challenger[0]
+                payload = dict(challenger_recs.get("best_overall") or payload)
+                label_names = ", ".join(label.replace("_", " ") for label in labels)
+                print(
+                    "Champion/challenger recommendations: "
+                    f"unified={payload['preset']}{_challenger_suffix(payload)}; applies_to={label_names}"
+                )
+            else:
+                print(
+                    "Champion/challenger recommendations: "
+                    f"best_overall={challenger_recs['best_overall']['preset']}{_challenger_suffix(dict(challenger_recs.get('best_overall') or {}))}, "
+                    f"best_anchor_coverage={challenger_recs['best_anchor_coverage']['preset']}{_challenger_suffix(dict(challenger_recs.get('best_anchor_coverage') or {}))}, "
+                    f"best_balanced={challenger_recs['best_balanced']['preset']}{_challenger_suffix(dict(challenger_recs.get('best_balanced') or {}))}"
+                )
     return 0
 
 

@@ -287,6 +287,7 @@ Generate a complaint that:
 5. Prefer the grounded complainant facts and anchor passages over generic filler
 6. When evidence is provided, use it as grounding without sounding like a brief
 7. If a detail is not shown directly in the evidence, phrase it as your understanding or concern rather than as certain fact
+8. If the grounded digest includes missing-facts intake questions, surface the most important unanswered facts naturally so the mediator knows what still needs to be asked
 
 Complaint:"""
         return prompt
@@ -335,6 +336,7 @@ Respond naturally as this person would. Your response should:
 4. Sound like a real person, not a legal document
 5. Use the evidence when it supports the answer, and say when something is only an inference
 6. Prefer grounded complainant facts, anchor passages, and repository evidence when answering
+7. If the grounded digest includes missing-facts intake questions and the mediator has not yet covered them, be clear about which important facts still need confirmation
 
 Behavioral constraints:
 {instructions}
@@ -444,6 +446,12 @@ Response:"""
         synthetic_prompt_text = str((synthetic_prompts or {}).get("complaint_chatbot_prompt") or "").strip()
         if synthetic_prompt_text:
             lines.append(f"Prompt guidance: {synthetic_prompt_text}")
+        intake_prompt_text = str((synthetic_prompts or {}).get("intake_questionnaire_prompt") or "").strip()
+        if intake_prompt_text:
+            lines.append(f"Intake questionnaire: {intake_prompt_text}")
+        intake_questions = [str(item).strip() for item in list((synthetic_prompts or {}).get("intake_questions") or []) if str(item).strip()]
+        for index, question in enumerate(intake_questions[:6], start=1):
+            lines.append(f"Missing fact question {index}: {question}")
 
         return "\n".join(lines) if lines else "No grounded case digest was provided."
 
