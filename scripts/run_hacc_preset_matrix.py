@@ -127,41 +127,79 @@ def _select_matrix_recommendations(rows: List[Dict[str, Any]]) -> Dict[str, Dict
     }
 
 
-def _result_value(payload, *path, default=None):
+def _result_value(payload: Any, *path: str, default: Any = None) -> Any:
     current = payload
     for key in path:
-        if not isinstance(current, dict):
+        if isinstance(current, dict):
+            current = current.get(key)
+        else:
+            current = getattr(current, key, None)
+        if current is None:
             return default
-        current = current.get(key)
-    return current if current is not None else default
+    return current
 
 
-def _summarize_runtime_health(results: Dict[str, Any] | List[Dict[str, Any]]) -> Dict[str, Any]:
+def _summarize_runtime_health(results: Any) -> Dict[str, Any]:
     if isinstance(results, list):
-        sessions = [session for session in results if isinstance(session, dict)]
+        sessions = list(results)
+    elif isinstance(results, dict):
+        sessions = list(results.get("results") or [])
     else:
-        sessions = list((results or {}).get("results") or [])
+        sessions = []
+
     critic_fallback_sessions = 0
     complainant_error_sessions = 0
     session_errors: List[str] = []
 
     for session in sessions:
-        critic_feedback = str(_result_value(session, "critic_score", "feedback", default="") or "")
-        if "fallback" in critic_feedback.lower():
+        if not _result_value(session, "success", default=False):
+            session_errors.append(str(_result_value(session, "error", default="session_unsuccessful") or "session_unsuccessful"))
+
+        direct_error = str(_result_value(session, "error", default="") or "").strip()
+        if direct_error:
+            session_errors.append(direct_error)
+            if "llm_router_error" in direct_error.lower():
+                complainant_error_sessions += 1
+
+        feedback = str(_result_value(session, "critic_score", "feedback", default="") or "").strip().lower()
+        if "fallback" in feedback or "unavailable" in feedback:
             critic_fallback_sessions += 1
 
-        error_texts = [str(item) for item in list(session.get("errors") or []) if str(item)]
+        nested_errors = _result_value(session, "errors", default=[]) or []
+        error_texts = [str(item) for item in list(nested_errors) if str(item)]
         session_errors.extend(error_texts)
         if any("llm_router_error" in item.lower() for item in error_texts):
             complainant_error_sessions += 1
 
+    degraded_reasons: List[str] = []
+    if critic_fallback_sessions:
+        degraded_reasons.append("critic_fallback")
+    if complainant_error_sessions:
+        degraded_reasons.append("complainant_fallback")
+    if session_errors:
+        degraded_reasons.append("session_errors")
+
     return {
-        "degraded": bool(critic_fallback_sessions or complainant_error_sessions or session_errors),
+        "degraded": bool(degraded_reasons),
+        "degraded_reasons": degraded_reasons,
         "critic_fallback_sessions": critic_fallback_sessions,
         "complainant_error_sessions": complainant_error_sessions,
         "session_errors": session_errors,
     }
 
+
+def _runtime_note(runtime: Dict[str, Any] | None) -> str:
+    payload = dict(runtime or {})
+    reasons = []
+    if payload.get("critic_fallback_sessions"):
+        reasons.append("critic_fallback")
+    if payload.get("complainant_error_sessions"):
+        reasons.append("complainant_fallback")
+    if payload.get("session_errors"):
+        reasons.append("session_errors")
+    if not reasons:
+        return ""
+    return "runtime degraded: " + ", ".join(reasons)
 
 def _attach_recommendation_claim_snapshots(
     recommendations: Dict[str, Dict[str, Any]],
@@ -184,6 +222,8 @@ def _attach_recommendation_claim_snapshots(
             item["claim_theory_families"] = list(row["claim_theory_families"])
         if row.get("synthesis_output_dir"):
             item["synthesis_output_dir"] = row["synthesis_output_dir"]
+        if row.get("runtime_note"):
+            item["runtime_note"] = row["runtime_note"]
         enriched[key] = item
     return enriched
 
@@ -264,6 +304,25 @@ def _relief_posture_note(winner_delta: Dict[str, Any]) -> str:
     return ""
 
 
+def _strategy_sentence(text: str) -> str:
+    cleaned = str(text or "").strip()
+    if not cleaned:
+        return ""
+    cleaned = cleaned[:1].upper() + cleaned[1:]
+    if cleaned[-1] not in ".!?":
+        cleaned += "."
+    return cleaned
+
+
+def _recommendation_strategy_summary(payload: Dict[str, Any]) -> str:
+    parts = [
+        _strategy_sentence(payload.get("tradeoff_note") or ""),
+        _strategy_sentence(payload.get("claim_posture_note") or ""),
+        _strategy_sentence(payload.get("relief_posture_note") or ""),
+    ]
+    return " ".join(part for part in parts if part)
+
+
 def _attach_recommendation_tradeoff_notes(
     recommendations: Dict[str, Dict[str, Any]],
     winner_delta: Dict[str, Any],
@@ -291,6 +350,9 @@ def _attach_recommendation_tradeoff_notes(
                 item["claim_posture_note"] = claim_posture_note
             if relief_posture_note:
                 item["relief_posture_note"] = relief_posture_note
+            strategy_summary = _recommendation_strategy_summary(item)
+            if strategy_summary:
+                item["strategy_summary"] = strategy_summary
         enriched[key] = item
     return enriched
 
@@ -333,6 +395,8 @@ def _write_markdown_report(
                 "",
                 f"- Overview: {best_overall['claim_selection_overview']}",
             ])
+            if best_overall.get("strategy_summary"):
+                lines.append(f"- Strategy summary: {best_overall['strategy_summary']}")
             if best_overall.get("claim_posture_note"):
                 lines.append(f"- Claim posture note: {best_overall['claim_posture_note']}")
             if best_overall.get("relief_posture_note"):
@@ -465,6 +529,8 @@ def _write_markdown_report(
                 lines.append(f"- Relief posture note: {snapshot_notes['relief_posture_note']}")
             if row.get("relief_selection_overview"):
                 lines.append(f"- Relief overview: {row['relief_selection_overview']}")
+            if row.get("runtime_note"):
+                lines.append(f"- Runtime note: {row['runtime_note']}")
             synthesis_dir = row.get("synthesis_output_dir")
             if synthesis_dir:
                 lines.append(f"- Complaint synthesis: `{synthesis_dir}`")
@@ -488,6 +554,8 @@ def _write_markdown_report(
                 "",
                 f"- Overview: {champion_best['claim_selection_overview']}",
             ])
+            if champion_best.get("strategy_summary"):
+                lines.append(f"- Strategy summary: {champion_best['strategy_summary']}")
             if champion_best.get("claim_posture_note"):
                 lines.append(f"- Claim posture note: {champion_best['claim_posture_note']}")
             if champion_best.get("relief_posture_note"):
@@ -1026,6 +1094,7 @@ def _write_matrix_outputs(
                 "top_missing_sections",
                 "missing_sections",
                 "output_dir",
+                "runtime_note",
                 "claim_selection_overview",
                 "relief_selection_overview",
                 "claim_theory_families",
@@ -1206,6 +1275,11 @@ def main() -> int:
         help="Continue building the matrix summary from presets that finish successfully even if another preset fails.",
     )
     parser.add_argument(
+        "--fail-on-degraded-runtime",
+        action="store_true",
+        help="Abort if a preset completes only via degraded runtime fallback instead of a healthy backend path.",
+    )
+    parser.add_argument(
         "--rebuild-existing",
         action="store_true",
         help="Rebuild matrix summary/report from preset subdirectories already present under --output-dir.",
@@ -1292,6 +1366,7 @@ def main() -> int:
             "top_missing_sections": batch_result["top_missing_sections"],
             "missing_sections": batch_result["missing_sections"],
             "output_dir": batch_result["output_dir"],
+            "runtime_note": _runtime_note(batch_result["runtime"]),
             "claim_selection_overview": batch_result["claim_selection_overview"],
             "relief_selection_overview": batch_result["relief_selection_overview"],
             "claim_theory_families": batch_result["claim_theory_families"],
@@ -1317,6 +1392,11 @@ def main() -> int:
                 "synthesis_output_dir": batch_result["synthesis_output_dir"],
             }
         )
+
+        if args.fail_on_degraded_runtime and batch_result.get("runtime", {}).get("degraded"):
+            raise RuntimeError(
+                f"Preset {preset} completed with degraded runtime: {_runtime_note(batch_result.get("runtime", {})) or batch_result.get("runtime", {})}"
+            )
         current_rows = sorted(matrix_rows, key=lambda row: (-row["average_score"], -row["anchor_coverage"], row["preset"]))
         current_recommendations = _attach_recommendation_claim_snapshots(
             _select_matrix_recommendations(current_rows),
@@ -1387,6 +1467,7 @@ def main() -> int:
                         "missing_sections",
                         "output_dir",
                         "router_status",
+                        "runtime_note",
                         "claim_selection_overview",
                         "relief_selection_overview",
                         "claim_theory_families",
@@ -1473,7 +1554,8 @@ def main() -> int:
             f"anchor_coverage={row['anchor_coverage']:.2f}, "
             f"router={row.get('router_status') or '-'}, "
             f"top_missing={row['top_missing_sections'] or '-'}, "
-            f"success={row['successful_sessions']}/{row['total_sessions']}"
+            f"success={row['successful_sessions']}/{row['total_sessions']}, "
+            f"runtime={row.get('runtime_note') or 'healthy'}"
         )
     if challenger_summary:
         challenger_recs = challenger_summary.get("recommendations") or {}

@@ -139,6 +139,10 @@ def test_attach_recommendation_tradeoff_notes_enriches_winner():
         "while the runner-up leaned more heavily on retaliation-heavy framing theories."
     )
     assert "relief_posture_note" not in enriched["best_overall"]
+    assert enriched["best_overall"]["strategy_summary"] == (
+        "Best for accommodation framing + protected-basis framing; runner-up is stronger on retaliation-heavy framing. "
+        "The winner added stronger accommodation framing + protected-basis framing theories, while the runner-up leaned more heavily on retaliation-heavy framing theories."
+    )
     assert "tradeoff_note" not in enriched["best_anchor_coverage"]
 
 
@@ -161,6 +165,26 @@ def test_attach_recommendation_tradeoff_notes_enriches_relief_posture_when_relev
     assert enriched["best_overall"]["relief_posture_note"] == (
         "Relief posture was materially similar across the winner and runner-up, "
         "so the selection difference was driven mainly by claim posture."
+    )
+    assert enriched["best_overall"]["strategy_summary"] == (
+        "Relief posture was materially similar across the winner and runner-up, "
+        "so the selection difference was driven mainly by claim posture."
+    )
+
+
+def test_recommendation_strategy_summary_combines_notes_cleanly():
+    payload = {
+        "tradeoff_note": "best for accommodation framing + protected-basis framing; runner-up is stronger on retaliation-heavy framing",
+        "claim_posture_note": "The winner added stronger accommodation framing + protected-basis framing theories, while the runner-up leaned more heavily on retaliation-heavy framing theories.",
+        "relief_posture_note": "Relief posture was materially similar across the winner and runner-up, so the selection difference was driven mainly by claim posture.",
+    }
+
+    summary = MODULE._recommendation_strategy_summary(payload)
+
+    assert summary == (
+        "Best for accommodation framing + protected-basis framing; runner-up is stronger on retaliation-heavy framing. "
+        "The winner added stronger accommodation framing + protected-basis framing theories, while the runner-up leaned more heavily on retaliation-heavy framing theories. "
+        "Relief posture was materially similar across the winner and runner-up, so the selection difference was driven mainly by claim posture."
     )
 
 

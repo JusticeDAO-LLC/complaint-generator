@@ -1887,20 +1887,26 @@ def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: 
         claims.append("The current evidence suggests a disability-related accommodation or fair-housing theory connected to the challenged process")
     if protected_bases:
         claims.append(f"The available record suggests the dispute may implicate protected basis concerns related to {', '.join(protected_bases)}")
-    if authority_hints:
-        claims.append(f"Likely authority implicated by the current theory includes {', '.join(authority_hints[:3])}")
-    if "adverse_action" in sections:
-        claims.append("HACC appears to have pursued or upheld a denial or termination of assistance without a clearly documented and transparent adverse-action process")
-    if "appeal_rights" in sections or "grievance_hearing" in sections:
-        claims.append("The available policy language suggests the complainant should have received an informal review or hearing, written notice, and a review decision, but the intake narrative describes those protections as missing or unclear")
+    description = str(seed.get("description") or "").lower()
+    intake_excerpt = " ".join(_conversation_facts(list(session.get("conversation_history") or []), limit=3)).lower()
+    retaliation_flag = "retaliat" in description or "retaliat" in intake_excerpt
+    authority_line = _authority_claim_line(authority_hints, sections, retaliation=retaliation_flag)
+    if authority_line:
+        claims.append(authority_line)
+    combined_process_claim = _combined_process_claim(sections)
+    if combined_process_claim:
+        claims.append(combined_process_claim)
+    else:
+        if "adverse_action" in sections:
+            claims.append("HACC appears to have pursued or upheld a denial or termination of assistance without a clearly documented and transparent adverse-action process")
+        if "appeal_rights" in sections or "grievance_hearing" in sections:
+            claims.append("The available policy language suggests the complainant should have received an informal review or hearing, written notice, and a review decision, but the intake narrative describes those protections as missing or unclear")
     if "reasonable_accommodation" in sections:
         claims.append("The intake and policy materials suggest a potential failure to provide or fairly evaluate reasonable accommodation within the adverse-action process")
     if "selection_criteria" in sections:
         claims.append("The record suggests HACC may have relied on opaque or inconsistently applied selection criteria")
 
-    description = str(seed.get("description") or "").lower()
-    intake_excerpt = " ".join(_conversation_facts(list(session.get("conversation_history") or []), limit=3)).lower()
-    if "retaliat" in description or "retaliat" in intake_excerpt:
+    if retaliation_flag:
         claims.append("The complainant also describes a retaliation theory based on the timing of the adverse treatment after protected complaints or grievance activity")
     if evidence_summary:
         claims.append(f"The strongest policy support for these theories is: {evidence_summary}")
@@ -2102,6 +2108,32 @@ def _combined_section_narrative(sections: Sequence[str]) -> str:
     if len(narrative_items) == 1:
         return narrative_items[0]
     return narrative_items[0]
+
+
+def _combined_process_claim(sections: Sequence[str]) -> str:
+    section_set = {str(section) for section in sections if str(section)}
+    if {"grievance_hearing", "appeal_rights", "adverse_action"}.issubset(section_set):
+        return (
+            "HACC appears to have pursued or upheld a denial or termination of assistance without clearly providing the "
+            "written notice, grievance, informal review, and due-process protections described by policy."
+        )
+    return ""
+
+
+def _authority_claim_line(authority_hints: Sequence[str], sections: Sequence[str], *, retaliation: bool = False) -> str:
+    hints = [str(item) for item in authority_hints if str(item)]
+    if not hints:
+        return ""
+    hint_text = ", ".join(hints[:3])
+    section_set = {str(section) for section in sections if str(section)}
+    if retaliation and {"grievance_hearing", "appeal_rights", "adverse_action"} & section_set:
+        return (
+            f"{hint_text} may be implicated if HACC used grievance, review, or adverse-action procedures to respond to "
+            "protected complaints or protected activity."
+        )
+    if {"grievance_hearing", "appeal_rights", "adverse_action"} & section_set:
+        return f"{hint_text} may be implicated by the way HACC handled notice, grievance, review, and adverse-action protections."
+    return f"Likely authority implicated by the current theory includes {hint_text}."
 
 
 def _legal_theory_summary(seed: Dict[str, Any], filing_forum: str = "court") -> Dict[str, List[str]]:
