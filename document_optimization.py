@@ -222,6 +222,11 @@ class AgenticDocumentOptimizer:
         intake_status = build_intake_status_summary(self.mediator)
         intake_constraints = build_intake_warning_entries(intake_status)
         intake_case_summary = build_intake_case_review_summary(self.mediator)
+        intake_summary_handoff = {}
+        if isinstance(intake_status.get("intake_summary_handoff"), dict) and intake_status.get("intake_summary_handoff"):
+            intake_summary_handoff = dict(intake_status["intake_summary_handoff"])
+        elif isinstance(intake_case_summary.get("intake_summary_handoff"), dict) and intake_case_summary.get("intake_summary_handoff"):
+            intake_summary_handoff = dict(intake_case_summary["intake_summary_handoff"])
         trace_storage = self._store_trace(
             {
                 "user_id": user_id or "",
@@ -238,6 +243,7 @@ class AgenticDocumentOptimizer:
                 "intake_status": intake_status,
                 "intake_constraints": intake_constraints,
                 "intake_case_summary": intake_case_summary,
+                "intake_summary_handoff": intake_summary_handoff,
                 "support_context": support_context,
                 "initial_review": initial_review,
                 "final_review": current_review,
@@ -261,6 +267,7 @@ class AgenticDocumentOptimizer:
             "intake_status": intake_status,
             "intake_constraints": intake_constraints,
             "intake_case_summary": intake_case_summary,
+            "intake_summary_handoff": intake_summary_handoff,
             "packet_projection": dict(support_context.get("packet_projection") or {}),
             "section_history": [
                 {

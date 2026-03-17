@@ -7,6 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import document_optimization
 from complaint_phases import ComplaintPhase
 from complaint_phases.dependency_graph import DependencyGraph, DependencyNode, NodeType
 from complaint_phases.knowledge_graph import Entity, KnowledgeGraph
@@ -369,6 +370,62 @@ def test_document_api_annotation_promotes_confirmed_intake_handoff():
     assert payload['document_optimization']['intake_summary_handoff'] == payload['intake_summary_handoff']
     assert payload['review_links']['intake_status']['intake_summary_handoff'] == payload['intake_summary_handoff']
     assert payload['review_links']['intake_case_summary']['intake_summary_handoff'] == payload['intake_summary_handoff']
+
+
+def test_document_optimizer_report_promotes_confirmed_intake_handoff(monkeypatch):
+    mediator = _build_seeded_mediator()
+    optimizer = document_optimization.AgenticDocumentOptimizer(
+        mediator=mediator,
+        max_iterations=1,
+        target_score=0.95,
+        persist_artifacts=True,
+    )
+
+    stored_trace_payloads = []
+
+    monkeypatch.setattr(
+        optimizer,
+        '_build_support_context',
+        lambda **kwargs: {'packet_projection': {'section_presence': {'factual_allegations': True}}},
+    )
+
+    critic_responses = iter(
+        [
+            {'overall_score': 0.25, 'llm_metadata': {}},
+            {'overall_score': 0.55, 'llm_metadata': {}},
+        ]
+    )
+    monkeypatch.setattr(optimizer, '_run_critic', lambda **kwargs: next(critic_responses))
+    monkeypatch.setattr(optimizer, '_choose_focus_section', lambda **kwargs: 'factual_allegations')
+    monkeypatch.setattr(optimizer, '_run_actor', lambda **kwargs: {'llm_metadata': {}, 'factual_allegations': ['Improved fact']})
+    monkeypatch.setattr(optimizer, '_apply_actor_payload', lambda draft, **kwargs: {**draft, 'factual_allegations': ['Improved fact']})
+    monkeypatch.setattr(
+        optimizer,
+        '_build_iteration_change_manifest',
+        lambda **kwargs: [{'field': 'factual_allegations', 'before_count': 1, 'after_count': 1}],
+    )
+    monkeypatch.setattr(optimizer, '_select_support_context', lambda **kwargs: {'focus_section': 'factual_allegations'})
+    monkeypatch.setattr(optimizer, '_build_upstream_optimizer_metadata', lambda: {'selected_provider': 'test-provider'})
+    monkeypatch.setattr(optimizer, '_router_status', lambda: {'available': False})
+    monkeypatch.setattr(optimizer, '_router_usage_summary', lambda: {'llm_calls': 0})
+    monkeypatch.setattr(
+        optimizer,
+        '_store_trace',
+        lambda payload: (stored_trace_payloads.append(payload) or {'cid': 'bafy-doc-opt', 'status': 'stored'}),
+    )
+
+    report = optimizer.optimize_draft(
+        draft={'title': 'Jane Doe v. Acme Corporation', 'factual_allegations': ['Original fact']},
+        user_id='Jane Doe',
+        drafting_readiness={},
+        config={},
+    )
+
+    assert report['intake_summary_handoff']['current_phase'] == ComplaintPhase.FORMALIZATION.value
+    assert report['intake_summary_handoff']['complainant_summary_confirmation']['confirmed'] is True
+    assert stored_trace_payloads[0]['intake_summary_handoff'] == report['intake_summary_handoff']
+    assert stored_trace_payloads[0]['intake_status']['intake_summary_handoff'] == report['intake_summary_handoff']
+    assert stored_trace_payloads[0]['intake_case_summary']['intake_summary_handoff'] == report['intake_summary_handoff']
 
 
 def test_factual_allegations_merge_overlapping_adverse_action_narratives():
