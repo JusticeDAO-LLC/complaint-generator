@@ -990,7 +990,10 @@ def _inject_exhibit_references(package: Dict[str, Any]) -> None:
     updated_claims: List[str] = []
     inserted_claim_ref = False
     for item in claims:
-        if not inserted_claim_ref and item.startswith("The strongest policy support for these theories is:"):
+        if not inserted_claim_ref and (
+            item.startswith("The strongest policy support for these theories is:")
+            or item.startswith("The policy theory is grounded in HACC language stating that")
+        ):
             updated_claims.append(f"{item} That documentary support is reflected in {reference_text}.")
             inserted_claim_ref = True
         else:
@@ -1909,7 +1912,7 @@ def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: 
     if retaliation_flag:
         claims.append("The complainant also describes a retaliation theory based on the timing of the adverse treatment after protected complaints or grievance activity")
     if evidence_summary:
-        claims.append(f"The strongest policy support for these theories is: {evidence_summary}")
+        claims.append(f"The policy theory is grounded in HACC language stating that {evidence_summary}")
 
     return _dedupe_sentences(claims, limit=limit)
 

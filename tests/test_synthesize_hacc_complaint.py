@@ -79,6 +79,7 @@ def test_claims_theory_links_authority_to_hacc_retaliation_process():
             "anchor_sections": ["grievance_hearing", "appeal_rights", "adverse_action"],
             "theory_labels": ["retaliation", "due_process_failure"],
             "authority_hints": ["Fair Housing Act anti-retaliation provisions", "24 C.F.R. Part 100"],
+            "evidence_summary": "HACC policy defines a grievance as a tenant dispute concerning HACC action or inaction.",
         },
     }
 
@@ -86,6 +87,7 @@ def test_claims_theory_links_authority_to_hacc_retaliation_process():
 
     assert any("may be implicated if HACC used grievance, review, or adverse-action procedures" in item for item in claims)
     assert any("written notice, grievance, informal review, and due-process protections" in item for item in claims)
+    assert any("The policy theory is grounded in HACC language stating that" in item for item in claims)
     assert not any("Likely authority implicated by the current theory includes" in item for item in claims)
     assert not any("clearly documented and transparent adverse-action process" in item for item in claims)
 
