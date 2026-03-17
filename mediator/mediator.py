@@ -3618,11 +3618,15 @@ class Mediator:
 		Returns:
 			Dictionary with search results from each source
 		"""
-		return self.web_evidence_search.search_for_evidence(
+		result = self.web_evidence_search.search_for_evidence(
 			keywords=keywords,
 			domains=domains,
 			max_results=max_results
 		)
+		if isinstance(result, dict):
+			self.state.last_web_evidence_normalized = list(result.get('normalized', []) or [])
+			self.state.last_web_evidence_support_bundle = dict(result.get('support_bundle', {}) or {})
+		return result
 
 	def run_agentic_scraper_cycle(self,
 	                            keywords: List[str],

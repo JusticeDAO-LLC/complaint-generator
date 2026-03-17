@@ -22,6 +22,197 @@ LOGIC_AVAILABLE = any(
 LOGIC_ERROR = _logic_error or _fol_error or _deontic_error or _tdfol_error or _z3_error
 
 
+def _normalize_logic_symbol(value: Any, *, prefix: str) -> str:
+    text = str(value or "").strip().lower()
+    normalized = ''.join(ch if ch.isalnum() else '_' for ch in text).strip('_')
+    if not normalized:
+        normalized = prefix
+    if normalized[0].isdigit():
+        normalized = f"{prefix}_{normalized}"
+    return normalized
+
+
+def _normalize_time_symbol(date_value: Any, *, fallback: str = "t_unknown") -> str:
+    text = str(date_value or "").strip()
+    if not text:
+        return fallback
+    normalized = ''.join(ch if ch.isalnum() else '_' for ch in text).strip('_')
+    return f"t_{normalized}" if normalized else fallback
+
+
+def _build_temporal_formula_for_fact(event_symbol: str, temporal_fact: Dict[str, Any]) -> Dict[str, str]:
+    start_date = temporal_fact.get("start_date")
+    end_date = temporal_fact.get("end_date") or start_date
+    is_range = bool(temporal_fact.get("is_range", False)) or (start_date and end_date and start_date != end_date)
+    is_approximate = bool(temporal_fact.get("is_approximate", False))
+    start_symbol = _normalize_time_symbol(start_date)
+    end_symbol = _normalize_time_symbol(end_date, fallback=start_symbol)
+
+    if start_date and not is_range:
+        tdfol_formula = f"forall t (AtTime(t,{start_symbol}) -> Fact({event_symbol},t))"
+        dcec_formula = f"Happens({event_symbol},{start_symbol})"
+    elif start_date and end_date:
+        tdfol_formula = f"forall t (During(t,{start_symbol},{end_symbol}) -> Fact({event_symbol},t))"
+        dcec_formula = f"HoldsDuring({event_symbol},{start_symbol},{end_symbol})"
+    else:
+        tdfol_formula = f"forall t (Fact({event_symbol},t))"
+        dcec_formula = f"Observed({event_symbol})"
+
+    if is_approximate:
+        tdfol_formula = f"{tdfol_formula} and Approximate({event_symbol})"
+        dcec_formula = f"{dcec_formula} and ApproximateTime({event_symbol})"
+
+    return {
+        "tdfol": tdfol_formula,
+        "dcec": dcec_formula,
+    }
+
+
+def _build_temporal_reasoning_payload(predicates: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+    predicate_list: List[Dict[str, Any]] = [
+        predicate for predicate in predicates
+        if isinstance(predicate, dict)
+    ]
+    claim_elements: List[Dict[str, Any]] = []
+    support_traces: List[Dict[str, Any]] = []
+    timeline_events: List[Dict[str, Any]] = []
+    temporal_proof_leads: List[Dict[str, Any]] = []
+    temporal_relations: List[Dict[str, Any]] = []
+    contradiction_signals: List[Dict[str, Any]] = []
+    tdfol_formulas: List[str] = []
+    dcec_formulas: List[str] = []
+    claim_type_counts: Counter[str] = Counter()
+
+    for predicate in predicate_list:
+        claim_type = str(predicate.get("claim_type") or "").strip()
+        if claim_type:
+            claim_type_counts[claim_type] += 1
+
+        predicate_type = str(predicate.get("predicate_type") or "").strip()
+        if predicate_type == "claim_element":
+            claim_symbol = _normalize_logic_symbol(predicate.get("claim_element_id") or predicate.get("predicate_id"), prefix="claim")
+            claim_elements.append(
+                {
+                    "claim_symbol": claim_symbol,
+                    "claim_type": claim_type,
+                    "claim_element_id": predicate.get("claim_element_id"),
+                    "claim_element_text": predicate.get("claim_element_text"),
+                    "coverage_status": predicate.get("coverage_status"),
+                }
+            )
+        elif predicate_type == "support_trace":
+            trace_symbol = _normalize_logic_symbol(predicate.get("predicate_id") or predicate.get("support_ref"), prefix="support")
+            support_traces.append(
+                {
+                    "support_symbol": trace_symbol,
+                    "claim_type": claim_type,
+                    "support_ref": predicate.get("support_ref"),
+                    "support_kind": predicate.get("support_kind"),
+                    "text": predicate.get("text") or "",
+                }
+            )
+            claim_symbol = _normalize_logic_symbol(predicate.get("claim_element_id") or claim_type, prefix="claim")
+            tdfol_formulas.append(f"Supports({trace_symbol},{claim_symbol})")
+            dcec_formulas.append(f"Supports({trace_symbol},{claim_symbol})")
+        elif predicate_type == "temporal_fact":
+            event_symbol = _normalize_logic_symbol(predicate.get("fact_id") or predicate.get("predicate_id"), prefix="event")
+            event_entry = {
+                "event_symbol": event_symbol,
+                "claim_type": claim_type,
+                "fact_id": predicate.get("fact_id"),
+                "text": predicate.get("text") or "",
+                "fact_type": predicate.get("fact_type"),
+                "start_date": predicate.get("start_date"),
+                "end_date": predicate.get("end_date"),
+                "granularity": predicate.get("granularity"),
+                "is_approximate": bool(predicate.get("is_approximate", False)),
+                "is_range": bool(predicate.get("is_range", False)),
+                "relative_markers": list(predicate.get("relative_markers", []) or []),
+            }
+            timeline_events.append(event_entry)
+            formulas = _build_temporal_formula_for_fact(event_symbol, event_entry)
+            tdfol_formulas.append(formulas["tdfol"])
+            dcec_formulas.append(formulas["dcec"])
+        elif predicate_type == "temporal_proof_lead":
+            lead_symbol = _normalize_logic_symbol(predicate.get("lead_id") or predicate.get("predicate_id"), prefix="lead")
+            lead_entry = {
+                "lead_symbol": lead_symbol,
+                "claim_type": claim_type,
+                "lead_id": predicate.get("lead_id"),
+                "description": predicate.get("description") or "",
+                "related_fact_ids": list(predicate.get("related_fact_ids", []) or []),
+                "element_targets": list(predicate.get("element_targets", []) or []),
+                "temporal_scope": predicate.get("temporal_scope"),
+                "start_date": predicate.get("start_date"),
+                "end_date": predicate.get("end_date"),
+                "granularity": predicate.get("granularity"),
+                "is_approximate": bool(predicate.get("is_approximate", False)),
+                "is_range": bool(predicate.get("is_range", False)),
+            }
+            temporal_proof_leads.append(lead_entry)
+            formulas = _build_temporal_formula_for_fact(lead_symbol, lead_entry)
+            tdfol_formulas.append(formulas["tdfol"].replace("Fact", "EvidenceLead"))
+            dcec_formulas.append(formulas["dcec"].replace("Happens", "Available").replace("HoldsDuring", "AvailableDuring"))
+            for related_fact_id in lead_entry["related_fact_ids"]:
+                event_symbol = _normalize_logic_symbol(related_fact_id, prefix="event")
+                tdfol_formulas.append(f"Supports({lead_symbol},{event_symbol})")
+                dcec_formulas.append(f"Supports({lead_symbol},{event_symbol})")
+        elif predicate_type == "temporal_relation":
+            relation_type = str(predicate.get("relation_type") or "related_to").strip().lower() or "related_to"
+            source_symbol = _normalize_logic_symbol(predicate.get("source_fact_id"), prefix="event")
+            target_symbol = _normalize_logic_symbol(predicate.get("target_fact_id"), prefix="event")
+            temporal_relations.append(
+                {
+                    "relation_id": predicate.get("predicate_id"),
+                    "claim_type": claim_type,
+                    "relation_type": relation_type,
+                    "source_event_symbol": source_symbol,
+                    "target_event_symbol": target_symbol,
+                    "source_fact_id": predicate.get("source_fact_id"),
+                    "target_fact_id": predicate.get("target_fact_id"),
+                    "confidence": predicate.get("confidence"),
+                }
+            )
+            relation_name = {
+                "before": "Before",
+                "same_time": "SameTime",
+                "overlaps": "Overlaps",
+            }.get(relation_type, _normalize_logic_symbol(relation_type, prefix="rel").title().replace("_", ""))
+            tdfol_formulas.append(f"{relation_name}({source_symbol},{target_symbol})")
+            dcec_formulas.append(f"{relation_name}({source_symbol},{target_symbol})")
+        elif predicate_type in {"temporal_issue", "contradiction_candidate"}:
+            signal_symbol = _normalize_logic_symbol(predicate.get("predicate_id") or predicate.get("summary"), prefix="signal")
+            signal_entry = {
+                "signal_symbol": signal_symbol,
+                "claim_type": claim_type,
+                "predicate_type": predicate_type,
+                "issue_type": predicate.get("issue_type") or predicate.get("summary") or predicate_type,
+                "summary": predicate.get("summary") or "",
+                "severity": predicate.get("severity"),
+            }
+            contradiction_signals.append(signal_entry)
+            if predicate_type == "temporal_issue":
+                left_symbol = _normalize_logic_symbol(predicate.get("left_node_name"), prefix="event")
+                right_symbol = _normalize_logic_symbol(predicate.get("right_node_name"), prefix="event")
+                tdfol_formulas.append(f"Conflict({left_symbol},{right_symbol})")
+                dcec_formulas.append(f"Conflicts({left_symbol},{right_symbol})")
+
+    return {
+        "formalism": "tdfol_dcec_bridge_v1",
+        "claim_types": sorted(claim_type_counts.keys()),
+        "claim_elements": claim_elements,
+        "support_traces": support_traces,
+        "timeline_events": timeline_events,
+        "temporal_proof_leads": temporal_proof_leads,
+        "temporal_relations": temporal_relations,
+        "contradiction_signals": contradiction_signals,
+        "tdfol_formulas": tdfol_formulas,
+        "dcec_formulas": dcec_formulas,
+        "tdfol_formula_count": len(tdfol_formulas),
+        "dcec_formula_count": len(dcec_formulas),
+    }
+
+
 def _summarize_predicates(predicates: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     predicate_list: List[Dict[str, Any]] = [
         predicate for predicate in predicates
@@ -85,35 +276,41 @@ def legal_text_to_deontic(text: str) -> Dict[str, Any]:
 
 
 def prove_claim_elements(predicates: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
-    predicate_summary = _summarize_predicates(predicates)
+    predicate_list = list(predicates)
+    predicate_summary = _summarize_predicates(predicate_list)
+    temporal_reasoning_payload = _build_temporal_reasoning_payload(predicate_list)
     return with_adapter_metadata(
         {
             "status": "not_implemented" if LOGIC_AVAILABLE else "unavailable",
             "provable_elements": [],
             "unprovable_elements": [],
             **predicate_summary,
+            "temporal_reasoning_payload": temporal_reasoning_payload,
         },
         operation="prove_claim_elements",
         backend_available=LOGIC_AVAILABLE,
         degraded_reason=LOGIC_ERROR if not LOGIC_AVAILABLE else None,
         implementation_status="not_implemented" if LOGIC_AVAILABLE else "unavailable",
-        extra_metadata=predicate_summary,
+        extra_metadata={**predicate_summary, "temporal_reasoning_payload": temporal_reasoning_payload},
     )
 
 
 def check_contradictions(predicates: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
-    predicate_summary = _summarize_predicates(predicates)
+    predicate_list = list(predicates)
+    predicate_summary = _summarize_predicates(predicate_list)
+    temporal_reasoning_payload = _build_temporal_reasoning_payload(predicate_list)
     return with_adapter_metadata(
         {
             "status": "not_implemented" if LOGIC_AVAILABLE else "unavailable",
             "contradictions": [],
             **predicate_summary,
+            "temporal_reasoning_payload": temporal_reasoning_payload,
         },
         operation="check_contradictions",
         backend_available=LOGIC_AVAILABLE,
         degraded_reason=LOGIC_ERROR if not LOGIC_AVAILABLE else None,
         implementation_status="not_implemented" if LOGIC_AVAILABLE else "unavailable",
-        extra_metadata=predicate_summary,
+        extra_metadata={**predicate_summary, "temporal_reasoning_payload": temporal_reasoning_payload},
     )
 
 

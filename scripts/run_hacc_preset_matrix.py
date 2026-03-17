@@ -380,6 +380,7 @@ def _write_markdown_report(
     champion_challenger: Dict[str, Any] | None = None,
     winner_delta: Dict[str, Any] | None = None,
 ) -> None:
+    row_by_preset = {str(row.get("preset") or ""): row for row in rows}
     lines = [
         "# HACC Preset Matrix",
         "",
@@ -419,6 +420,13 @@ def _write_markdown_report(
                 "",
             ])
         best_overall = dict(recommendations.get("best_overall") or {})
+        best_overall_row = row_by_preset.get(str(best_overall.get("preset") or ""), {})
+        if best_overall_row.get("claim_selection_overview") and not best_overall.get("claim_selection_overview"):
+            best_overall["claim_selection_overview"] = best_overall_row["claim_selection_overview"]
+        if best_overall_row.get("relief_selection_overview") and not best_overall.get("relief_selection_overview"):
+            best_overall["relief_selection_overview"] = best_overall_row["relief_selection_overview"]
+        if best_overall_row.get("synthesis_output_dir") and not best_overall.get("synthesis_output_dir"):
+            best_overall["synthesis_output_dir"] = best_overall_row["synthesis_output_dir"]
         if best_overall.get("claim_selection_overview"):
             snapshot_heading = "### Unified Winner Snapshot" if unified_recommendations else "### Best Overall Claim Snapshot"
             lines.extend([

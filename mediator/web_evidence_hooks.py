@@ -6,6 +6,7 @@ import re
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pathlib import Path
+from mediator.state import extract_chat_history_context_strings_from_state
 
 from claim_support_review import (
     _build_confirmed_intake_summary_handoff_metadata,
@@ -14,6 +15,13 @@ from claim_support_review import (
     summarize_claim_reasoning_review,
     summarize_claim_support_snapshot_lifecycle,
     summarize_follow_up_history_claim,
+)
+from .integrations import (
+    IPFSDatasetsAdapter,
+    IntegrationFeatureFlags,
+    RetrievalOrchestrator,
+    VectorRetrievalAugmentor,
+    GraphAwareRetrievalReranker,
 )
 from integrations.ipfs_datasets.documents import detect_document_input_format
 from integrations.ipfs_datasets.provenance import build_document_parse_contract, enrich_document_parse
@@ -43,7 +51,156 @@ class WebEvidenceSearchHook:
     
     def __init__(self, mediator):
         self.mediator = mediator
+        self.integration_flags = IntegrationFeatureFlags.from_env()
+        self.integration_adapter = IPFSDatasetsAdapter(feature_flags=self.integration_flags)
+        self.retrieval_orchestrator = RetrievalOrchestrator()
+        self.vector_augmentor = VectorRetrievalAugmentor()
+        self.graph_reranker = GraphAwareRetrievalReranker()
         self._init_search_tools()
+
+    def get_capability_registry(self) -> Dict[str, Dict[str, object]]:
+        """Get capability and feature-flag status for enhanced integrations."""
+        return self.integration_adapter.capability_registry()
+
+    def _build_evidence_context(self, keywords: List[str], domains: Optional[List[str]] = None) -> List[str]:
+        context: List[str] = []
+
+        def _add(value: Any):
+            text = str(value or '').strip()
+            if text and text not in context:
+                context.append(text)
+
+        for value in keywords or []:
+            _add(value)
+        for value in domains or []:
+            _add(value)
+
+        state = getattr(self.mediator, 'state', None)
+        if state is not None:
+            for attr in ('complaint_summary', 'original_complaint', 'complaint', 'last_message'):
+                _add(getattr(state, attr, None))
+
+            for value in extract_chat_history_context_strings_from_state(state, limit=3):
+                _add(value)
+
+        return context[:10]
+
+    def _normalize_results(
+        self,
+        results: Dict[str, Any],
+        keywords: List[str],
+        domains: Optional[List[str]],
+        max_results: int,
+    ) -> List[Dict[str, Any]]:
+        query = ' '.join(keywords or [])
+        query_context = self.retrieval_orchestrator.build_query_context(
+            query=query,
+            complaint_type=query,
+        )
+        evidence_context = self._build_evidence_context(keywords, domains)
+        normalized: List[Dict[str, Any]] = []
+
+        for bucket_name in ('brave_search', 'common_crawl', 'multi_engine_search', 'archived_domain_scrape'):
+            for item in results.get(bucket_name, []) or []:
+                if not isinstance(item, dict):
+                    continue
+                source_name = str(item.get('source_type') or bucket_name).strip() or bucket_name
+                source_type = 'web_archive' if source_name == 'archived_domain_scrape' else 'web'
+                normalized_record = self.integration_adapter.normalize_record(
+                    query=query,
+                    source_type=source_type,
+                    source_name=source_name,
+                    record={
+                        'title': item.get('title', ''),
+                        'url': item.get('url', ''),
+                        'description': item.get('description', ''),
+                        'snippet': item.get('snippet', item.get('description', '')),
+                        'content': item.get('content', item.get('description', '')),
+                        'score': item.get('score', 0.0),
+                        'confidence': item.get('confidence', item.get('score', 0.0)),
+                        'metadata': dict(item.get('metadata', {}) or {}),
+                    },
+                )
+                normalized.append({
+                    'source_type': normalized_record.source_type,
+                    'source_name': normalized_record.source_name,
+                    'query': normalized_record.query,
+                    'retrieved_at': normalized_record.retrieved_at,
+                    'title': normalized_record.title,
+                    'url': normalized_record.url,
+                    'citation': normalized_record.citation,
+                    'snippet': normalized_record.snippet,
+                    'content': normalized_record.content,
+                    'score': normalized_record.score,
+                    'confidence': normalized_record.confidence,
+                    'metadata': normalized_record.metadata,
+                })
+
+        if self.integration_flags.enhanced_vector:
+            normalized = self.vector_augmentor.augment_normalized_records(
+                records=normalized,
+                query=query,
+                context_texts=evidence_context,
+            )
+            self.mediator.log(
+                'web_evidence_vector_augmentation',
+                query=query,
+                records=len(normalized),
+                evidence_context_items=len(evidence_context),
+                capabilities=self.vector_augmentor.capabilities(),
+            )
+
+        if self.integration_flags.enhanced_graph and self.integration_flags.reranker_mode in {'graph', 'hybrid', 'auto', 'on'}:
+            normalized = self.graph_reranker.augment_normalized_records(
+                records=normalized,
+                query=query,
+                mediator=self.mediator,
+                enable_optimizer=self.integration_flags.enhanced_optimizer,
+                retrieval_max_latency_ms=self.integration_flags.retrieval_max_latency_ms,
+            )
+
+        model_records = []
+        for item in normalized:
+            model_records.append(self.integration_adapter.normalize_record(
+                query=str(item.get('query', '')),
+                source_type=str(item.get('source_type', 'web')),
+                source_name=str(item.get('source_name', 'web_evidence')),
+                record=item,
+            ))
+
+        ranked = self.retrieval_orchestrator.merge_and_rank(
+            model_records,
+            max_results=max_results,
+            query_context=query_context,
+        )
+        return [
+            {
+                'source_type': rec.source_type,
+                'source_name': rec.source_name,
+                'query': rec.query,
+                'retrieved_at': rec.retrieved_at,
+                'title': rec.title,
+                'url': rec.url,
+                'citation': rec.citation,
+                'snippet': rec.snippet,
+                'content': rec.content,
+                'score': rec.score,
+                'confidence': rec.confidence,
+                'metadata': dict(rec.metadata or {}),
+            }
+            for rec in ranked
+        ]
+
+    def _build_support_bundle(self, normalized_records: List[Dict[str, Any]], max_items: int = 5) -> Dict[str, Any]:
+        model_records = []
+        for item in normalized_records:
+            model_records.append(self.integration_adapter.normalize_record(
+                query=str(item.get('query', '')),
+                source_type=str(item.get('source_type', 'web')),
+                source_name=str(item.get('source_name', 'web_evidence')),
+                record=item,
+            ))
+        return self.retrieval_orchestrator.build_support_bundle(model_records, max_items_per_bucket=max_items)
     
     def _init_search_tools(self):
         """Initialize web search tools."""
@@ -259,6 +416,16 @@ class WebEvidenceSearchHook:
         
         self.mediator.log('web_evidence_search_all',
             keywords=keywords, total_found=results['total_found'])
+
+        if self.integration_flags.enhanced_search or self.integration_flags.enhanced_vector or self.integration_flags.enhanced_graph:
+            normalized = self._normalize_results(results, keywords, domains, max_results)
+            results['normalized'] = normalized
+            results['support_bundle'] = self._build_support_bundle(normalized)
+
+            state = getattr(self.mediator, 'state', None)
+            if state is not None:
+                state.last_web_evidence_normalized = list(normalized)
+                state.last_web_evidence_support_bundle = dict(results['support_bundle'] or {})
         
         return results
     
