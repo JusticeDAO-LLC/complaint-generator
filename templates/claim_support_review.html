@@ -2465,6 +2465,10 @@
                     const normalizedResolutionStatus = resolutionStatus.toLowerCase();
                     const resolutionLabel = normalizedResolutionStatus === 'answered_pending_review'
                         ? 'answered, pending review'
+                        : normalizedResolutionStatus === 'promoted_to_testimony'
+                            ? 'saved as testimony'
+                            : normalizedResolutionStatus === 'promoted_to_document'
+                                ? 'saved as document'
                         : resolutionStatus;
                     const badgeClass = update.status === 'resolved'
                         ? (normalizedResolutionStatus === 'answered_pending_review' ? '' : 'covered')
@@ -2476,6 +2480,12 @@
                     ];
                     if (normalizedResolutionStatus === 'answered_pending_review') {
                         chips.push('<span class="chip">review state: awaiting support validation</span>');
+                    }
+                    if (normalizedResolutionStatus === 'promoted_to_testimony') {
+                        chips.push('<span class="chip">promotion: testimony record saved</span>');
+                    }
+                    if (normalizedResolutionStatus === 'promoted_to_document') {
+                        chips.push('<span class="chip">promotion: document saved</span>');
                     }
                     if (update.evidence_sequence !== undefined && update.evidence_sequence !== null && update.evidence_sequence !== '') {
                         chips.push(`<span class="chip">evidence event: ${update.evidence_sequence}</span>`);
@@ -2500,6 +2510,9 @@
                     });
                     if (update.evidence_artifact_id) {
                         chips.push(`<span class="chip">artifact: ${update.evidence_artifact_id}</span>`);
+                    }
+                    if (update.promotion_ref) {
+                        chips.push(`<span class="chip">promotion ref: ${update.promotion_ref}</span>`);
                     }
                     if (update.answer_preview) {
                         chips.push(`<span class="chip">answer: ${update.answer_preview}</span>`);

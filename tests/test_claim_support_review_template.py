@@ -58,6 +58,13 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "answered_pending_review" in content
     assert "answered, pending review" in content
     assert "review state: awaiting support validation" in content
+    assert "promoted_to_testimony" in content
+    assert "promoted_to_document" in content
+    assert "saved as testimony" in content
+    assert "saved as document" in content
+    assert "promotion: testimony record saved" in content
+    assert "promotion: document saved" in content
+    assert "promotion ref:" in content
     assert "prefill-testimony-update-button" in content
     assert "prefill-document-update-button" in content
     assert "Load Into Document Form" in content

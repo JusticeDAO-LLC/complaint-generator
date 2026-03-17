@@ -4,15 +4,24 @@ import os
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from lib.chat_payloads import build_chat_payload
+
+try:
+    from fastapi.templating import Jinja2Templates
+except Exception:
+    Jinja2Templates = None
 
 app = FastAPI()
 if os.path.isdir("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # locate templates
-templates = Jinja2Templates(directory="templates")
+templates = None
+if Jinja2Templates is not None:
+    try:
+        templates = Jinja2Templates(directory="templates")
+    except Exception:
+        templates = None
 
 
 

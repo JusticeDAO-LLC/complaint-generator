@@ -1,7 +1,7 @@
 """Tests for optimized batch entity deduplication using sorted merge buckets."""
 
 import pytest
-import numpy as np
+np = pytest.importorskip("numpy")
 from typing import Dict, List, Any
 
 # Import the module - will load from file if needed
