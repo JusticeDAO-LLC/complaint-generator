@@ -906,6 +906,19 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
                     {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.87, "ambiguity_flags": ["timing_overlap"]},
                     {"claim_type": "wrongful_termination", "label": "Wrongful Termination", "confidence": 0.79},
                 ],
+                "complainant_summary_confirmation": {
+                    "status": "pending",
+                    "confirmed": False,
+                    "confirmation_source": "complainant",
+                    "confirmation_note": "",
+                    "summary_snapshot_index": 0,
+                    "current_summary_snapshot": {
+                        "candidate_claim_count": 2,
+                        "canonical_fact_count": 1,
+                        "proof_lead_count": 1,
+                    },
+                    "confirmed_summary_snapshot": {},
+                },
                 "intake_sections": {
                     "proof_leads": {"status": "partial", "missing_items": ["documents"]},
                     "claims_for_relief": {"status": "partial", "missing_items": ["authority"]},
@@ -1132,6 +1145,16 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
             assert "Packet proof readiness: 0.23" in preview_text
             assert "Packet unresolved without path: 1" in preview_text
             assert "Packet completion ready: no" in preview_text
+            normalized_preview_text = preview_text.lower()
+            assert "intake summary handoff" in normalized_preview_text
+            assert "Status" in preview_text
+            assert "Pending" in preview_text
+            assert "Complainant Confirmed" in preview_text
+            assert "no" in preview_text
+            assert "Summary snapshot 1" in preview_text
+            assert "Snapshot scope: candidate claims 2 | canonical facts 1 | proof leads 1" in preview_text
+            assert "Confirm intake summary" in preview_text
+            assert "Confirmation records the latest intake summary snapshot before evidence marshalling continues." in preview_text
 
             browser.close()
 
@@ -1646,6 +1669,19 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
                     {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.87, "ambiguity_flags": ["timing_overlap"]},
                     {"claim_type": "wrongful_termination", "label": "Wrongful Termination", "confidence": 0.79},
                 ],
+                "complainant_summary_confirmation": {
+                    "status": "pending",
+                    "confirmed": False,
+                    "confirmation_source": "complainant",
+                    "confirmation_note": "",
+                    "summary_snapshot_index": 0,
+                    "current_summary_snapshot": {
+                        "candidate_claim_count": 2,
+                        "canonical_fact_count": 1,
+                        "proof_lead_count": 1,
+                    },
+                    "confirmed_summary_snapshot": {},
+                },
                 "intake_sections": {
                     "proof_leads": {"status": "partial", "missing_items": ["documents"]},
                     "claims_for_relief": {"status": "partial", "missing_items": ["authority"]},
@@ -1872,8 +1908,165 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
             assert "Claims impacted: 1" in pending_trace_text
             assert "Retaliation: Claims For Relief | action Await Operator Confirmation | artifact artifact-pending" in pending_trace_text
             assert "Termination date conflicts with reported complaint timeline | Clarify: Which date is supported by the termination notice? | Lane Request Document | Status Open | External corroboration required | Claims Retaliation | Affected elements Retaliation:2" in contradiction_trace_text
+            intake_confirmation_text = page.locator("#traceIntakeConfirmation").inner_text()
+            normalized_intake_confirmation_text = intake_confirmation_text.lower()
+            assert "intake summary handoff" in normalized_intake_confirmation_text
+            assert "status pending" in normalized_intake_confirmation_text
+            assert "complainant confirmed no" in normalized_intake_confirmation_text
+            assert "confirm on review dashboard" in normalized_intake_confirmation_text
 
             browser.close()
+
+
+def test_document_builder_smoke_confirms_intake_summary_handoff():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    payload = {
+        "generated_at": "2026-03-15T20:00:00+00:00",
+        "draft": {
+            "court_header": "IN THE UNITED STATES DISTRICT COURT",
+            "case_caption": {
+                "plaintiffs": ["Jane Doe"],
+                "defendants": ["Acme Corporation"],
+            },
+            "summary_of_facts": ["Plaintiff reported discrimination to HR."],
+            "factual_allegation_paragraphs": ["1. Plaintiff reported discrimination to HR."],
+            "legal_standards": ["Title VII prohibits retaliation."],
+            "claims_for_relief": [],
+            "requested_relief": ["Compensatory damages."],
+            "draft_text": "Sample draft text.",
+            "exhibits": [],
+        },
+        "drafting_readiness": {"sections": {}, "claims": [], "warnings": []},
+        "filing_checklist": [],
+        "review_links": {},
+        "review_intent": {
+            "user_id": "browser-smoke-text-link",
+            "claim_type": "retaliation",
+            "review_url": "/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+        },
+        "document_optimization": {
+            "status": "optimized",
+            "method": "actor_mediator_critic_optimizer",
+            "optimizer_backend": "upstream_agentic",
+            "initial_score": 0.4,
+            "final_score": 0.7,
+            "accepted_iterations": 1,
+            "iteration_count": 1,
+            "optimized_sections": ["factual_allegations"],
+            "trace_storage": {"status": "available", "cid": "bafy-test", "size": 123, "pinned": True},
+            "intake_status": {
+                "current_phase": "intake",
+                "score": 0.5,
+                "remaining_gap_count": 1,
+                "contradiction_count": 1,
+                "ready_to_advance": False,
+                "blockers": ["collect_missing_support", "complainant_summary_confirmation_required"],
+                "criteria": {
+                    "case_theory_coherent": True,
+                    "minimum_proof_path_present": True,
+                    "claim_disambiguation_resolved": False,
+                    "complainant_summary_confirmed": False,
+                },
+                "contradictions": [
+                    {
+                        "summary": "Termination date conflicts with reported complaint timeline",
+                        "question": "Which date is supported by the termination notice?",
+                        "recommended_resolution_lane": "request_document",
+                        "current_resolution_status": "open",
+                        "external_corroboration_required": True,
+                        "affected_claim_types": ["retaliation"],
+                        "affected_element_ids": ["retaliation:2"],
+                    }
+                ],
+            },
+            "intake_constraints": [],
+            "intake_case_summary": {
+                "candidate_claims": [
+                    {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.87},
+                    {"claim_type": "wrongful_termination", "label": "Wrongful Termination", "confidence": 0.79},
+                ],
+                "candidate_claim_summary": {
+                    "count": 2,
+                    "claim_types": ["retaliation", "wrongful_termination"],
+                    "average_confidence": 0.83,
+                    "top_claim_type": "retaliation",
+                    "top_confidence": 0.87,
+                    "ambiguous_claim_count": 0,
+                    "ambiguity_flag_count": 0,
+                    "ambiguity_flag_counts": {},
+                    "close_leading_claims": False,
+                },
+                "complainant_summary_confirmation": {
+                    "status": "pending",
+                    "confirmed": False,
+                    "confirmation_source": "complainant",
+                    "confirmation_note": "",
+                    "summary_snapshot_index": 0,
+                    "current_summary_snapshot": {
+                        "candidate_claim_count": 2,
+                        "canonical_fact_count": 1,
+                        "proof_lead_count": 1,
+                    },
+                    "confirmed_summary_snapshot": {},
+                },
+            },
+            "claim_support_packet_summary": {},
+            "section_history": [],
+            "initial_review": {},
+            "final_review": {},
+            "router_status": {},
+            "upstream_optimizer": {},
+        },
+    }
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for document handoff confirmation smoke coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+
+        app = _build_document_review_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(f"{base_url}/document")
+                page.evaluate("payload => window.renderPreview(payload)", payload)
+                page.wait_for_function(
+                    "() => document.getElementById('confirm-intake-summary-button') !== null"
+                )
+
+                assert "intake summary handoff" in page.locator("#previewRoot").inner_text().lower()
+                page.fill("#confirm-intake-summary-note", "Reviewed with complainant for evidence handoff")
+                page.click("#confirm-intake-summary-button")
+
+                page.wait_for_function(
+                    "() => document.getElementById('previewRoot').innerText.includes('Confirmed at')"
+                )
+                preview_text = page.locator("#previewRoot").inner_text()
+
+                assert "Status" in preview_text
+                assert "Confirmed" in preview_text
+                assert "Complainant Confirmed" in preview_text
+                assert "yes" in preview_text
+                assert "Source Document" in preview_text
+                assert "Note: Reviewed with complainant for evidence handoff" in preview_text
+                assert "Open Review Dashboard" in preview_text
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
 
 
 def test_document_builder_question_review_link_click_preserves_focus_on_review_page():
