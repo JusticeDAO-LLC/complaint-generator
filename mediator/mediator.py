@@ -3474,6 +3474,7 @@ class Mediator:
 					refreshed_claim_history
 				)
 		
+		results.update(self._get_confirmed_intake_summary_handoff())
 		self.log('auto_research_complete', results=results)
 		
 		return results
@@ -3499,13 +3500,16 @@ class Mediator:
 		if user_id is None:
 			user_id = getattr(self.state, 'username', None) or getattr(self.state, 'hashed_username', 'anonymous')
 		
-		return self.web_evidence_integration.discover_and_store_evidence(
+		result = self.web_evidence_integration.discover_and_store_evidence(
 			keywords=keywords,
 			domains=domains,
 			user_id=user_id,
 			claim_type=claim_type,
 			min_relevance=min_relevance
 		)
+		if isinstance(result, dict):
+			result.update(self._get_confirmed_intake_summary_handoff())
+		return result
 	
 	def search_web_for_evidence(self, keywords: List[str],
 	                           domains: Optional[List[str]] = None,
@@ -3554,7 +3558,7 @@ class Mediator:
 		Returns:
 			Dictionary with iteration reports, final results, and coverage ledger
 		"""
-		return self.web_evidence_integration.run_agentic_scraper_cycle(
+		result = self.web_evidence_integration.run_agentic_scraper_cycle(
 			keywords=keywords,
 			domains=domains,
 			iterations=iterations,
@@ -3565,6 +3569,9 @@ class Mediator:
 			min_relevance=min_relevance,
 			store_results=store_results,
 		)
+		if isinstance(result, dict):
+			result.update(self._get_confirmed_intake_summary_handoff())
+		return result
 
 	def run_agentic_scraper_daemon(self,
 	                             keywords: List[str],
@@ -3577,7 +3584,7 @@ class Mediator:
 	                             min_relevance: float = 0.5,
 	                             store_results: bool = True):
 		"""Convenience alias for a longer-running agentic scraper loop."""
-		return self.run_agentic_scraper_cycle(
+		result = self.run_agentic_scraper_cycle(
 			keywords=keywords,
 			domains=domains,
 			iterations=iterations,
@@ -3588,6 +3595,9 @@ class Mediator:
 			min_relevance=min_relevance,
 			store_results=store_results,
 		)
+		if isinstance(result, dict):
+			result.update(self._get_confirmed_intake_summary_handoff())
+		return result
 	
 	def discover_evidence_automatically(self, user_id: str = None, execute_follow_up: bool = False):
 		"""
@@ -3690,7 +3700,7 @@ class Mediator:
 			'gaps': len(kg.find_gaps())
 		})
 		
-		return {
+		result = {
 			'phase': ComplaintPhase.INTAKE.value,
 			'knowledge_graph_summary': kg.summary(),
 			'dependency_graph_summary': dg.summary(),
@@ -3706,6 +3716,8 @@ class Mediator:
 			'intake_readiness': self.phase_manager.get_intake_readiness(),
 			'next_action': self.phase_manager.get_next_action()
 		}
+		result.update(self._get_confirmed_intake_summary_handoff())
+		return result
 
 	def _initialize_intake_case_file(self, knowledge_graph, complaint_text: str) -> Dict[str, Any]:
 		"""Build the initial structured intake case file from the current knowledge graph."""
@@ -3724,6 +3736,29 @@ class Mediator:
 			intake_case_file = refresh_intake_case_file(intake_case_file, kg, append_snapshot=False)
 		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_case_file', intake_case_file)
 		return self.get_three_phase_status()
+
+	def _get_confirmed_intake_summary_handoff(self) -> Dict[str, Any]:
+		"""Return confirmed intake handoff metadata without recursing through status builders."""
+		intake_case_file = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
+		if not isinstance(intake_case_file, dict):
+			return {}
+
+		confirmation = intake_case_file.get('complainant_summary_confirmation')
+		if not isinstance(confirmation, dict) or not bool(confirmation.get('confirmed', False)):
+			return {}
+
+		confirmed_summary_snapshot = confirmation.get('confirmed_summary_snapshot')
+		if not isinstance(confirmed_summary_snapshot, dict) or not confirmed_summary_snapshot:
+			return {}
+
+		readiness = self.phase_manager.get_intake_readiness()
+		return {
+			'intake_summary_handoff': {
+				'current_phase': self.phase_manager.get_current_phase().value,
+				'ready_to_advance': bool(readiness.get('ready_to_advance', False)),
+				'complainant_summary_confirmation': dict(confirmation),
+			}
+		}
 
 	def _normalize_intake_text(self, value: Any) -> str:
 		return " ".join(str(value or "").strip().split())
@@ -6117,10 +6152,12 @@ class Mediator:
 			Status of evidence phase initiation
 		"""
 		if not self.phase_manager.advance_to_phase(ComplaintPhase.EVIDENCE):
-			return {
+			result = {
 				'error': 'Cannot advance to evidence phase. Complete intake first.',
 				'current_phase': self.phase_manager.get_current_phase().value
 			}
+			result.update(self._get_confirmed_intake_summary_handoff())
+			return result
 		
 		kg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
 		dg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'dependency_graph')
@@ -6143,7 +6180,7 @@ class Mediator:
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_updates', [])
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history', [])
 		
-		return {
+		result = {
 			'phase': ComplaintPhase.EVIDENCE.value,
 			'evidence_gaps': len(unsatisfied),
 			'knowledge_gaps': len(kg_gaps),
@@ -6153,6 +6190,8 @@ class Mediator:
 			'suggested_evidence_types': self._suggest_evidence_types(unsatisfied, kg_gaps),
 			'next_action': self.phase_manager.get_next_action()
 		}
+		result.update(self._get_confirmed_intake_summary_handoff())
+		return result
 
 	def _find_claim_entities_for_type(self, kg, claim_type: str = None):
 		"""Find claim entities in the intake knowledge graph matching a claim type."""
@@ -6422,6 +6461,8 @@ class Mediator:
 			'next_action': next_action,
 			'ready_for_formalization': self.phase_manager.is_phase_complete(ComplaintPhase.EVIDENCE)
 		}
+		result.update(self._get_confirmed_intake_summary_handoff())
+		return result
 	
 	def process_evidence_denoising(self, question: Dict[str, Any], answer: str) -> Dict[str, Any]:
 		"""
@@ -6528,7 +6569,7 @@ class Mediator:
 			'gap_ratio': gap_ratio
 		})
 		
-		return {
+		result = {
 			'phase': ComplaintPhase.EVIDENCE.value,
 			'updates': updates,
 			'next_questions': questions,
@@ -6539,6 +6580,8 @@ class Mediator:
 			'noise_level': noise,
 			'ready_for_formalization': self.phase_manager.is_phase_complete(ComplaintPhase.EVIDENCE)
 		}
+		result.update(self._get_confirmed_intake_summary_handoff())
+		return result
 	
 	def advance_to_formalization_phase(self) -> Dict[str, Any]:
 		"""
@@ -6548,10 +6591,12 @@ class Mediator:
 			Status of formalization phase initiation
 		"""
 		if not self.phase_manager.advance_to_phase(ComplaintPhase.FORMALIZATION):
-			return {
+			result = {
 				'error': 'Cannot advance to formalization phase. Complete evidence gathering first.',
 				'current_phase': self.phase_manager.get_current_phase().value
 			}
+			result.update(self._get_confirmed_intake_summary_handoff())
+			return result
 		
 		kg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
 		dg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'dependency_graph')
@@ -6577,7 +6622,7 @@ class Mediator:
 		viability = self.neurosymbolic_matcher.assess_claim_viability(matching_results)
 		self.phase_manager.update_phase_data(ComplaintPhase.FORMALIZATION, 'viability', viability)
 		
-		return {
+		result = {
 			'phase': ComplaintPhase.FORMALIZATION.value,
 			'legal_graph_summary': legal_graph.summary(),
 			'procedural_requirements': len(procedural_graph.elements),
@@ -6585,6 +6630,8 @@ class Mediator:
 			'viability_assessment': viability,
 			'next_action': self.phase_manager.get_next_action()
 		}
+		result.update(self._get_confirmed_intake_summary_handoff())
+		return result
 	
 	def generate_formal_complaint(self, court_name: str = None, district: str = None,
 						 county: str = None, division: str = None, court_header_override: str = None,
@@ -6678,12 +6725,14 @@ class Mediator:
 		
 		self.phase_manager.update_phase_data(ComplaintPhase.FORMALIZATION, 'formal_complaint', formal_complaint)
 		
-		return {
+		result = {
 			'formal_complaint': formal_complaint,
 			'draft_text': formal_complaint.get('draft_text', ''),
 			'complete': True,
 			'ready_to_file': self._check_filing_readiness(formal_complaint)
 		}
+		result.update(self._get_confirmed_intake_summary_handoff())
+		return result
 
 	def export_formal_complaint(self, output_path: str, court_name: str = None,
 						  district: str = None, division: str = None,
@@ -6701,10 +6750,12 @@ class Mediator:
 		formal_complaint = complaint_result['formal_complaint']
 		export_result = builder.export(formal_complaint, output_path, format=format)
 		self.phase_manager.update_phase_data(ComplaintPhase.FORMALIZATION, 'formal_complaint_export', export_result)
-		return {
+		result = {
 			**complaint_result,
 			'export': export_result,
 		}
+		result.update(self._get_confirmed_intake_summary_handoff())
+		return result
 	
 	def process_legal_denoising(self, question: Dict[str, Any], answer: str) -> Dict[str, Any]:
 		"""
@@ -6746,7 +6797,7 @@ class Mediator:
 			'unmatched_requirements': len(matching_results.get('unmatched_requirements', []))
 		})
 		
-		return {
+		result = {
 			'phase': ComplaintPhase.FORMALIZATION.value,
 			'updates': updates,
 			'matching_results': matching_results,
@@ -6754,6 +6805,8 @@ class Mediator:
 			'noise_level': noise,
 			'ready_to_generate': len(questions) == 0 or noise < 0.2
 		}
+		result.update(self._get_confirmed_intake_summary_handoff())
+		return result
 	
 	def synthesize_complaint_summary(self, include_conversation: bool = True) -> str:
 		"""
@@ -6813,7 +6866,7 @@ class Mediator:
 		harm_profile = intake_case_file.get('harm_profile', {}) if isinstance(intake_case_file, dict) else {}
 		remedy_profile = intake_case_file.get('remedy_profile', {}) if isinstance(intake_case_file, dict) else {}
 		complainant_summary_confirmation = intake_case_file.get('complainant_summary_confirmation', {}) if isinstance(intake_case_file, dict) else {}
-		return {
+		status = {
 			'current_phase': self.phase_manager.get_current_phase().value,
 			'iteration_count': self.phase_manager.iteration_count,
 			'convergence_history': self.phase_manager.loss_history[-10:] if self.phase_manager.loss_history else [],
@@ -6863,6 +6916,8 @@ class Mediator:
 			},
 			'next_action': self.phase_manager.get_next_action()
 		}
+		status.update(self._get_confirmed_intake_summary_handoff())
+		return status
 	
 	def save_graphs_to_statefiles(self, base_filename: str) -> Dict[str, str]:
 		"""

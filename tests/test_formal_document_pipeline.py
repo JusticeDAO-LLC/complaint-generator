@@ -71,6 +71,38 @@ def _build_seeded_mediator():
 
     mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', kg)
     mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', dg)
+    mediator.phase_manager.update_phase_data(
+        ComplaintPhase.INTAKE,
+        'intake_case_file',
+        {
+            'candidate_claims': [{'claim_type': 'retaliation'}],
+            'canonical_facts': [{'fact_id': 'fact:1'}],
+            'proof_leads': [{'lead_id': 'lead:1'}],
+            'complainant_summary_confirmation': {
+                'status': 'confirmed',
+                'confirmed': True,
+                'confirmed_at': '2026-03-17T18:00:00+00:00',
+                'confirmation_note': 'ready for formal complaint generation',
+                'confirmation_source': 'complainant',
+                'summary_snapshot_index': 0,
+                'current_summary_snapshot': {
+                    'candidate_claim_count': 1,
+                    'canonical_fact_count': 1,
+                    'proof_lead_count': 1,
+                },
+                'confirmed_summary_snapshot': {
+                    'candidate_claim_count': 1,
+                    'canonical_fact_count': 1,
+                    'proof_lead_count': 1,
+                },
+            },
+        },
+    )
+    mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', 0)
+    mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'denoising_converged', True)
+    mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'current_gaps', [])
+    mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_gap_types', [])
+    mediator.phase_manager.current_phase = ComplaintPhase.FORMALIZATION
     mediator.phase_manager.update_phase_data(ComplaintPhase.FORMALIZATION, 'legal_graph', legal_graph)
     mediator.phase_manager.update_phase_data(ComplaintPhase.FORMALIZATION, 'matching_results', matching_results)
 
@@ -183,6 +215,8 @@ def test_generate_formal_complaint_builds_court_style_sections():
     )
 
     complaint = result['formal_complaint']
+    assert result['intake_summary_handoff']['current_phase'] == ComplaintPhase.FORMALIZATION.value
+    assert result['intake_summary_handoff']['complainant_summary_confirmation']['confirmed'] is True
     assert complaint['court_header'] == 'IN THE UNITED STATES DISTRICT COURT FOR THE DISTRICT OF NEW MEXICO'
     assert complaint['caption']['case_number'] == '1:26-cv-12345'
     assert complaint['caption']['county_line'] == 'SANTA FE COUNTY'
@@ -332,6 +366,8 @@ def test_export_formal_complaint_pdf_writes_file(tmp_path):
         case_number='1:26-cv-12345',
     )
 
+    assert result['intake_summary_handoff']['current_phase'] == ComplaintPhase.FORMALIZATION.value
+    assert result['intake_summary_handoff']['complainant_summary_confirmation']['confirmed'] is True
     assert result['export']['format'] == 'pdf'
     assert output_path.exists()
     assert output_path.stat().st_size > 0
@@ -348,6 +384,8 @@ def test_export_formal_complaint_docx_writes_file(tmp_path):
         case_number='1:26-cv-12345',
     )
 
+    assert result['intake_summary_handoff']['current_phase'] == ComplaintPhase.FORMALIZATION.value
+    assert result['intake_summary_handoff']['complainant_summary_confirmation']['confirmed'] is True
     assert result['export']['format'] == 'docx'
     assert output_path.exists()
     assert output_path.stat().st_size > 0

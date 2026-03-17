@@ -1412,6 +1412,7 @@ class TestMediatorLegalAuthorityIntegration:
         """Test searching and storing legal authorities through mediator"""
         try:
             from mediator import Mediator
+            from complaint_phases import ComplaintPhase
             
             mock_backend = Mock()
             mock_backend.id = 'test-backend'
@@ -1431,6 +1432,37 @@ class TestMediatorLegalAuthorityIntegration:
                 mediator.state.legal_classification = {
                     'claim_types': ['civil rights']
                 }
+                mediator.phase_manager.update_phase_data(
+                    ComplaintPhase.INTAKE,
+                    'intake_case_file',
+                    {
+                        'candidate_claims': [{'claim_type': 'civil rights'}],
+                        'canonical_facts': [{'fact_id': 'fact_001'}],
+                        'proof_leads': [{'lead_id': 'lead_001'}],
+                        'complainant_summary_confirmation': {
+                            'status': 'confirmed',
+                            'confirmed': True,
+                            'confirmed_at': '2026-03-17T18:00:00+00:00',
+                            'confirmation_note': 'ready for authority research',
+                            'confirmation_source': 'complainant',
+                            'summary_snapshot_index': 0,
+                            'current_summary_snapshot': {
+                                'candidate_claim_count': 1,
+                                'canonical_fact_count': 1,
+                                'proof_lead_count': 1,
+                            },
+                            'confirmed_summary_snapshot': {
+                                'candidate_claim_count': 1,
+                                'canonical_fact_count': 1,
+                                'proof_lead_count': 1,
+                            },
+                        },
+                    },
+                )
+                mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', 0)
+                mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'denoising_converged', True)
+                mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'current_gaps', [])
+                mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_gap_types', [])
                 mediator.claim_support.register_claim_requirements(
                     'testuser',
                     {'civil rights': ['Protected activity', 'Adverse action']},
@@ -1580,6 +1612,9 @@ class TestMediatorLegalAuthorityIntegration:
                 assert len(authority_facts) >= 1
 
                 auto_results = mediator.research_case_automatically(user_id='testuser')
+                assert auto_results['intake_summary_handoff']['current_phase'] == ComplaintPhase.INTAKE.value
+                assert auto_results['intake_summary_handoff']['ready_to_advance'] == mediator.get_three_phase_status()['intake_readiness']['ready_to_advance']
+                assert auto_results['intake_summary_handoff']['complainant_summary_confirmation']['confirmed'] is True
                 assert auto_results['authorities_stored']['civil rights']['total_records'] == 1
                 assert auto_results['authorities_stored']['civil rights']['total_new'] == 0
                 assert auto_results['authorities_stored']['civil rights']['total_reused'] == 1
@@ -1656,6 +1691,8 @@ class TestMediatorLegalAuthorityIntegration:
                     user_id='testuser',
                     execute_follow_up=True,
                 )
+                assert auto_results_with_execution['intake_summary_handoff']['current_phase'] == ComplaintPhase.INTAKE.value
+                assert auto_results_with_execution['intake_summary_handoff']['complainant_summary_confirmation']['confirmed'] is True
                 assert auto_results_with_execution['follow_up_execution']['civil rights']['task_count'] == 0
                 assert auto_results_with_execution['follow_up_execution_summary']['civil rights']['executed_task_count'] == 0
                 assert auto_results_with_execution['follow_up_execution_summary']['civil rights']['contradiction_task_count'] == 0

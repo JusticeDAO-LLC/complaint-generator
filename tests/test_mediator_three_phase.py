@@ -362,6 +362,9 @@ class TestMediatorThreePhaseIntegration:
 
         assert status['complainant_summary_confirmation']['confirmed'] is True
         assert status['intake_readiness']['criteria']['complainant_summary_confirmed'] is True
+        assert status['intake_summary_handoff']['current_phase'] == ComplaintPhase.INTAKE.value
+        assert status['intake_summary_handoff']['ready_to_advance'] == status['intake_readiness']['ready_to_advance']
+        assert status['intake_summary_handoff']['complainant_summary_confirmation']['confirmed'] is True
         assert intake_case_file['complainant_summary_confirmation']['confirmation_note'] == 'summary reviewed with complainant'
         assert intake_case_file['complainant_summary_confirmation']['confirmed_summary_snapshot'] == intake_case_file['summary_snapshots'][-1]
 
@@ -719,6 +722,24 @@ class TestMediatorThreePhaseIntegration:
                     }
                 ],
                 'contradiction_queue': [],
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T18:00:00+00:00',
+                    'confirmation_note': 'ready for evidence handoff',
+                    'confirmation_source': 'complainant',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
                 'open_items': [
                     {
                         'open_item_id': 'element:employment_discrimination:causation',
@@ -793,6 +814,9 @@ class TestMediatorThreePhaseIntegration:
         result = mediator.advance_to_evidence_phase()
 
         packets = result['claim_support_packets']
+        assert result['intake_summary_handoff']['current_phase'] == ComplaintPhase.EVIDENCE.value
+        assert result['intake_summary_handoff']['ready_to_advance'] is True
+        assert result['intake_summary_handoff']['complainant_summary_confirmation']['confirmed'] is True
         assert 'employment_discrimination' in packets
         assert packets['employment_discrimination']['elements'][0]['support_status'] == 'supported'
         assert packets['employment_discrimination']['elements'][0]['support_quality'] == 'draft_ready'
@@ -815,6 +839,7 @@ class TestMediatorThreePhaseIntegration:
         assert result['next_action']['action'] == 'fill_evidence_gaps'
         assert result['next_action']['claim_element_id'] == 'causation'
         status = mediator.get_three_phase_status()
+        assert status['intake_summary_handoff']['current_phase'] == ComplaintPhase.EVIDENCE.value
         assert status['alignment_evidence_tasks']
         assert status['alignment_evidence_tasks'][0]['claim_element_id'] == 'causation'
         assert 'fallback_lanes' in status['alignment_evidence_tasks'][0]
@@ -1327,6 +1352,76 @@ class TestMediatorThreePhaseIntegration:
         assert result['alignment_task_update_history'][0]['evidence_sequence'] >= 1
         assert mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks') == []
         assert mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history')
+
+    def test_process_evidence_and_legal_denoising_include_confirmed_intake_handoff(self):
+        """Evidence and formalization workflow payloads should preserve the confirmed intake handoff."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process(
+            'I was fired after I complained about discrimination and I have emails and a termination letter.'
+        )
+        mediator.confirm_intake_summary('summary reviewed with complainant')
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', 0)
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'denoising_converged', True)
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'current_gaps', [])
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_gap_types', [])
+        mediator.phase_manager._phase_completion_checks[ComplaintPhase.EVIDENCE] = lambda: True
+
+        mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_evidence_tasks',
+            [
+                {
+                    'action': 'fill_evidence_gaps',
+                    'claim_type': 'employment_discrimination',
+                    'claim_element_id': 'adverse_action',
+                    'claim_element_label': 'Adverse action',
+                    'support_status': 'unsupported',
+                    'blocking': True,
+                }
+            ],
+        )
+        mediator.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_gaps', [])
+        evidence_result = mediator.process_evidence_denoising(
+            {
+                'type': 'evidence_clarification',
+                'question': 'What documents support the complaint?',
+                'context': {
+                    'alignment_task': True,
+                    'claim_type': 'employment_discrimination',
+                    'claim_element_id': 'adverse_action',
+                },
+            },
+            'Emails.',
+        )
+
+        assert evidence_result['intake_summary_handoff']['current_phase'] == ComplaintPhase.EVIDENCE.value
+        assert evidence_result['intake_summary_handoff']['complainant_summary_confirmation']['confirmed'] is True
+
+        formalization_result = mediator.advance_to_formalization_phase()
+
+        assert formalization_result['intake_summary_handoff']['current_phase'] == ComplaintPhase.FORMALIZATION.value
+        assert formalization_result['intake_summary_handoff']['complainant_summary_confirmation']['confirmed'] is True
+
+        legal_result = mediator.process_legal_denoising(
+            {
+                'type': 'legal_requirement',
+                'question': 'What law supports this claim?',
+                'context': {},
+            },
+            'Title VII supports the discrimination claim.',
+        )
+
+        assert legal_result['intake_summary_handoff']['current_phase'] == ComplaintPhase.FORMALIZATION.value
+        assert legal_result['intake_summary_handoff']['complainant_summary_confirmation']['confirmed'] is True
 
     def test_save_claim_testimony_record_promotes_answered_pending_review_update(self):
         """Saving testimony should advance matching answered-pending-review alignment updates."""

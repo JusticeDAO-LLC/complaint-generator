@@ -1705,12 +1705,40 @@ class TestMediatorWebEvidenceIntegration:
         """Test discovering web evidence through mediator"""
         try:
             from mediator import Mediator
+            from complaint_phases import ComplaintPhase
             
             mock_backend = Mock()
             mock_backend.id = 'test-backend'
             
             mediator = Mediator(backends=[mock_backend])
             mediator.state.username = 'testuser'
+            mediator.phase_manager.update_phase_data(
+                ComplaintPhase.INTAKE,
+                'intake_case_file',
+                {
+                    'candidate_claims': [{'claim_type': 'employment_discrimination'}],
+                    'canonical_facts': [{'fact_id': 'fact_001'}],
+                    'proof_leads': [{'lead_id': 'lead_001'}],
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T18:00:00+00:00',
+                        'confirmation_note': 'ready for web evidence discovery',
+                        'confirmation_source': 'complainant',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                },
+            )
             
             # Mock the integration method
             mediator.web_evidence_integration.discover_and_store_evidence = Mock(return_value={
@@ -1728,6 +1756,8 @@ class TestMediatorWebEvidenceIntegration:
             assert isinstance(result, dict)
             assert 'discovered' in result
             assert 'stored' in result
+            assert result['intake_summary_handoff']['current_phase'] == ComplaintPhase.INTAKE.value
+            assert result['intake_summary_handoff']['complainant_summary_confirmation']['confirmed'] is True
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
     
@@ -1763,11 +1793,39 @@ class TestMediatorWebEvidenceIntegration:
         """Test bounded agentic scraper loop through mediator"""
         try:
             from mediator import Mediator
+            from complaint_phases import ComplaintPhase
 
             mock_backend = Mock()
             mock_backend.id = 'test-backend'
 
             mediator = Mediator(backends=[mock_backend])
+            mediator.phase_manager.update_phase_data(
+                ComplaintPhase.INTAKE,
+                'intake_case_file',
+                {
+                    'candidate_claims': [{'claim_type': 'employment_discrimination'}],
+                    'canonical_facts': [{'fact_id': 'fact_001'}],
+                    'proof_leads': [{'lead_id': 'lead_001'}],
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T18:00:00+00:00',
+                        'confirmation_note': 'ready for agentic scraper discovery',
+                        'confirmation_source': 'complainant',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                },
+            )
             mediator.web_evidence_integration.run_agentic_scraper_cycle = Mock(return_value={
                 'iterations': [{'iteration': 1, 'accepted_count': 2}],
                 'final_results': [{'url': 'https://example.com/policy'}],
@@ -1786,6 +1844,8 @@ class TestMediatorWebEvidenceIntegration:
             assert 'iterations' in result
             assert result['final_results'][0]['url'] == 'https://example.com/policy'
             assert result['scraper_run']['persisted'] is True
+            assert result['intake_summary_handoff']['current_phase'] == ComplaintPhase.INTAKE.value
+            assert result['intake_summary_handoff']['complainant_summary_confirmation']['confirmed'] is True
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
