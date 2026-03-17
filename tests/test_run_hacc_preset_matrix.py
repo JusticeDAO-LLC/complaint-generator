@@ -74,7 +74,12 @@ def test_markdown_report_includes_claim_selection_snapshots(tmp_path):
         }
     ]
     recommendations = {
-        "best_overall": {"preset": "accommodation_focus", "claim_theory_families": ["accommodation", "process"]},
+        "best_overall": {
+            "preset": "accommodation_focus",
+            "claim_theory_families": ["accommodation", "process"],
+            "claim_posture_note": "The winner added stronger accommodation framing theories.",
+            "relief_posture_note": "Relief posture was materially similar across the winner and runner-up, so the selection difference was driven mainly by claim posture.",
+        },
         "best_anchor_coverage": {"preset": "accommodation_focus"},
         "best_balanced": {"preset": "accommodation_focus"},
     }
@@ -86,6 +91,8 @@ def test_markdown_report_includes_claim_selection_snapshots(tmp_path):
     assert "## Claim Selection Snapshots" in report
     assert "### accommodation_focus" in report
     assert "- Overview: Accommodation Theory [tags=reasonable_accommodation,contact;" in report
+    assert "- Claim posture note: The winner added stronger accommodation framing theories." in report
+    assert "- Relief posture note: Relief posture was materially similar across the winner and runner-up, so the selection difference was driven mainly by claim posture." in report
     assert "- Relief overview: Corrective action requiring clear notice, fair review, and non-retaliation safeguards." in report
     assert "- Complaint synthesis: `/tmp/accommodation_focus/complaint_synthesis`" in report
 
@@ -131,7 +138,30 @@ def test_attach_recommendation_tradeoff_notes_enriches_winner():
         "The winner added stronger accommodation framing + protected-basis framing theories, "
         "while the runner-up leaned more heavily on retaliation-heavy framing theories."
     )
+    assert "relief_posture_note" not in enriched["best_overall"]
     assert "tradeoff_note" not in enriched["best_anchor_coverage"]
+
+
+def test_attach_recommendation_tradeoff_notes_enriches_relief_posture_when_relevant():
+    recommendations = {
+        "best_overall": {"preset": "accommodation_focus"},
+    }
+    delta = {
+        "winner_preset": "accommodation_focus",
+        "winner_relief_overview": "same relief overview",
+        "runner_up_relief_overview": "same relief overview",
+        "winner_only_relief": [],
+        "runner_up_only_relief": [],
+        "winner_only_relief_families": [],
+        "runner_up_only_relief_families": [],
+    }
+
+    enriched = MODULE._attach_recommendation_tradeoff_notes(recommendations, delta)
+
+    assert enriched["best_overall"]["relief_posture_note"] == (
+        "Relief posture was materially similar across the winner and runner-up, "
+        "so the selection difference was driven mainly by claim posture."
+    )
 
 
 def test_claim_posture_note_compares_winner_to_runner_up():
