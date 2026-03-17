@@ -181,6 +181,94 @@ class TestClaimSupportHook:
             if os.path.exists(db_path):
                 os.unlink(db_path)
 
+    def test_add_support_link_stamps_confirmed_intake_handoff_metadata(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.get_three_phase_status = Mock(return_value={
+            'current_phase': 'intake',
+            'intake_readiness': {
+                'ready_to_advance': True,
+            },
+            'complainant_summary_confirmation': {
+                'status': 'confirmed',
+                'confirmed': True,
+                'confirmed_at': '2026-03-17T12:00:00+00:00',
+                'confirmation_note': 'ready for support linking',
+                'confirmation_source': 'dashboard',
+                'summary_snapshot_index': 0,
+                'current_summary_snapshot': {
+                    'candidate_claim_count': 1,
+                    'canonical_fact_count': 2,
+                    'proof_lead_count': 1,
+                },
+                'confirmed_summary_snapshot': {
+                    'candidate_claim_count': 1,
+                    'canonical_fact_count': 2,
+                    'proof_lead_count': 1,
+                },
+            },
+        })
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+
+            record_id = hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_id='employment:1',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidenceHandoff',
+                support_label='Email thread',
+                source_table='evidence',
+                metadata={'source': 'unit_test'},
+            )
+
+            links = hook.get_support_links('testuser', 'employment')
+
+            assert record_id > 0
+            assert len(links) == 1
+            assert links[0]['metadata'] == {
+                'source': 'unit_test',
+                'intake_summary_handoff': {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T12:00:00+00:00',
+                        'confirmation_note': 'ready for support linking',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                },
+            }
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
     def test_summary_includes_uncovered_requirements_without_links(self):
         try:
             from mediator.claim_support_hooks import ClaimSupportHook

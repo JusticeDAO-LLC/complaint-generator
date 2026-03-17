@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from integrations.ipfs_datasets.graphrag import build_ontology, validate_ontology
 from integrations.ipfs_datasets.logic import check_contradictions, prove_claim_elements
+from claim_support_review import _merge_intake_summary_handoff_metadata
 
 try:
     import duckdb
@@ -2337,12 +2338,17 @@ class ClaimSupportHook:
             self.mediator.log('claim_support_unavailable')
             return {'record_id': -1, 'created': False, 'reused': False}
 
+        normalized_metadata = _merge_intake_summary_handoff_metadata(
+            metadata,
+            self.mediator,
+        )
+
         resolved_element = self.resolve_claim_element(
             user_id,
             claim_type,
             claim_element_text=claim_element_text,
             support_label=support_label,
-            metadata=metadata,
+            metadata=normalized_metadata,
         )
         claim_element_id = claim_element_id or resolved_element['claim_element_id']
         claim_element_text = claim_element_text or resolved_element['claim_element_text']
@@ -2412,7 +2418,7 @@ class ClaimSupportHook:
                     support_label,
                     source_table,
                     support_strength,
-                    json.dumps(metadata or {}),
+                    json.dumps(normalized_metadata or {}),
                 ],
             ).fetchone()
             conn.close()
