@@ -237,6 +237,14 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
                 "evidence_sequence": 4,
             }
         ],
+        "alignment_promotion_drift_summary": {
+            "promoted_count": 2,
+            "resolved_supported_count": 0,
+            "pending_conversion_count": 2,
+            "proof_readiness_score": 0.5,
+            "drift_ratio": 1.0,
+            "drift_flag": True,
+        },
         "question_candidate_summary": {
             "count": 1,
             "candidates": [{"candidate_source": "intake_proof_gap"}],
@@ -345,6 +353,8 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["alignment_task_update_summary"]["promoted_testimony_count"] == 1
     assert summary["alignment_task_update_summary"]["promoted_document_count"] == 1
     assert summary["alignment_task_update_summary"]["resolution_status_counts"]["promoted_to_testimony"] == 1
+    assert summary["alignment_promotion_drift_summary"]["promoted_count"] == 2
+    assert summary["alignment_promotion_drift_summary"]["drift_flag"] is True
     assert summary["question_candidate_summary"]["count"] == 1
     assert summary["question_candidate_summary"]["source_counts"]["intake_proof_gap"] == 1
     assert summary["question_candidate_summary"]["intake_priority_uncovered"] == ["timeline"]

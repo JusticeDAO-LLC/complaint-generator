@@ -281,6 +281,7 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
     alignment_evidence_tasks = raw_status.get("alignment_evidence_tasks")
     alignment_task_updates = raw_status.get("alignment_task_updates")
     alignment_task_update_history = raw_status.get("alignment_task_update_history")
+    alignment_promotion_drift_summary = raw_status.get("alignment_promotion_drift_summary")
     question_candidate_summary = raw_status.get("question_candidate_summary")
     adversarial_intake_priority_summary = raw_status.get("adversarial_intake_priority_summary")
     claim_support_packet_summary = raw_status.get("claim_support_packet_summary")
@@ -352,6 +353,11 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
             alignment_task_update_history if isinstance(alignment_task_update_history, list) else []
         ),
         "alignment_task_update_summary": alignment_task_update_summary,
+        "alignment_promotion_drift_summary": (
+            alignment_promotion_drift_summary
+            if isinstance(alignment_promotion_drift_summary, dict)
+            else {}
+        ),
         "question_candidate_summary": (
             question_candidate_summary if isinstance(question_candidate_summary, dict) else {}
         ),

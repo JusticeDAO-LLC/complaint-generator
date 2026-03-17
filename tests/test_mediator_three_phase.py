@@ -793,6 +793,9 @@ class TestMediatorThreePhaseIntegration:
         assert status['alignment_task_update_summary']['promoted_testimony_count'] == 1
         assert status['alignment_task_update_summary']['promoted_document_count'] == 1
         assert status['alignment_task_update_summary']['resolution_status_counts']['promoted_to_testimony'] == 1
+        assert status['alignment_promotion_drift_summary']['promoted_count'] == 2
+        assert status['alignment_promotion_drift_summary']['pending_conversion_count'] == 2
+        assert status['alignment_promotion_drift_summary']['drift_flag'] is True
 
     def test_advance_to_evidence_phase_builds_claim_support_packets(self):
         """Evidence phase initialization should normalize claim-support validation into packets."""

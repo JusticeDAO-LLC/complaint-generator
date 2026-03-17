@@ -16,7 +16,7 @@ import logging
 import os
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from io import StringIO
 from pathlib import Path
 from unittest import mock
@@ -358,7 +358,7 @@ class TestCascadingFailureRecovery:
         log_event(
             EventType.ERROR_OCCURRED,
             error="circuit_open",
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
         )
         
         # Verify event was logged

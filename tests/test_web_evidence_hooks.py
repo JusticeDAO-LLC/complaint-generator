@@ -1433,7 +1433,81 @@ class TestWebEvidenceIntegrationHook:
                             'contradicted': 1,
                         },
                         'proof_gap_count': 3,
-                        'elements': [],
+                        'proof_diagnostics': {
+                            'reasoning': {
+                                'adapter_status_counts': {
+                                    'logic_proof': {'implemented': 1},
+                                    'logic_contradictions': {'implemented': 1},
+                                    'hybrid_reasoning': {'implemented': 1},
+                                    'ontology_build': {'implemented': 1},
+                                    'ontology_validation': {'implemented': 1},
+                                },
+                                'backend_available_count': 4,
+                                'predicate_count': 4,
+                                'ontology_entity_count': 0,
+                                'ontology_relationship_count': 0,
+                                'fallback_ontology_count': 0,
+                                'hybrid_bridge_available_count': 1,
+                                'hybrid_tdfol_formula_count': 2,
+                                'hybrid_dcec_formula_count': 1,
+                            },
+                            'decision': {
+                                'decision_source_counts': {
+                                    'logic_proof_supported': 1,
+                                },
+                            },
+                        },
+                        'elements': [
+                            {
+                                'element_id': 'employment discrimination:1',
+                                'element_text': 'Protected activity',
+                                'validation_status': 'supported',
+                                'proof_diagnostics': {
+                                    'decision_source': 'logic_proof_supported',
+                                },
+                                'reasoning_diagnostics': {
+                                    'predicate_count': 4,
+                                    'backend_available_count': 4,
+                                    'used_fallback_ontology': False,
+                                    'adapter_statuses': {
+                                        'logic_proof': {
+                                            'backend_available': True,
+                                            'implementation_status': 'implemented',
+                                        },
+                                        'logic_contradictions': {
+                                            'backend_available': True,
+                                            'implementation_status': 'implemented',
+                                        },
+                                        'hybrid_reasoning': {
+                                            'backend_available': True,
+                                            'implementation_status': 'implemented',
+                                            'operation': 'run_hybrid_reasoning',
+                                        },
+                                        'ontology_build': {
+                                            'backend_available': True,
+                                            'implementation_status': 'implemented',
+                                        },
+                                        'ontology_validation': {
+                                            'backend_available': True,
+                                            'implementation_status': 'implemented',
+                                        },
+                                    },
+                                    'hybrid_reasoning': {
+                                        'status': 'success',
+                                        'result': {
+                                            'compiler_bridge_available': True,
+                                            'tdfol_formulas': [
+                                                'Before(fact_1,fact_2)',
+                                                'forall t (AtTime(t,t_2026_03_10) -> Fact(fact_1,t))',
+                                            ],
+                                            'dcec_formulas': [
+                                                'Happens(fact_1,t_2026_03_10)',
+                                            ],
+                                        },
+                                    },
+                                },
+                            }
+                        ],
                     }
                 }
             })
@@ -1534,6 +1608,13 @@ class TestWebEvidenceIntegrationHook:
             assert result['claim_reasoning_review']['employment discrimination']['total_element_count'] == len(
                 result['claim_support_validation']['employment discrimination']['elements']
             )
+            assert result['claim_coverage_summary']['employment discrimination']['reasoning_hybrid_bridge_available_count'] == 1
+            assert result['claim_coverage_summary']['employment discrimination']['reasoning_hybrid_tdfol_formula_count'] == 2
+            assert result['claim_coverage_summary']['employment discrimination']['reasoning_hybrid_dcec_formula_count'] == 1
+            assert result['claim_reasoning_review']['employment discrimination']['hybrid_bridge_element_count'] == 1
+            assert result['claim_reasoning_review']['employment discrimination']['hybrid_bridge_available_element_count'] == 1
+            assert result['claim_reasoning_review']['employment discrimination']['hybrid_tdfol_formula_count'] == 2
+            assert result['claim_reasoning_review']['employment discrimination']['hybrid_dcec_formula_count'] == 1
             assert result['claim_overview']['employment discrimination']['missing_count'] == 1
             assert result['follow_up_plan']['employment discrimination']['task_count'] == 2
             assert result['follow_up_plan_summary']['employment discrimination']['task_count'] == 2

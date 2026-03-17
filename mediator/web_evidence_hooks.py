@@ -649,6 +649,15 @@ class WebEvidenceIntegrationHook:
             'reasoning_ontology_entity_count': int(reasoning_summary.get('ontology_entity_count', 0) or 0),
             'reasoning_ontology_relationship_count': int(reasoning_summary.get('ontology_relationship_count', 0) or 0),
             'reasoning_fallback_ontology_count': int(reasoning_summary.get('fallback_ontology_count', 0) or 0),
+            'reasoning_hybrid_bridge_available_count': int(
+                reasoning_summary.get('hybrid_bridge_available_count', 0) or 0
+            ),
+            'reasoning_hybrid_tdfol_formula_count': int(
+                reasoning_summary.get('hybrid_tdfol_formula_count', 0) or 0
+            ),
+            'reasoning_hybrid_dcec_formula_count': int(
+                reasoning_summary.get('hybrid_dcec_formula_count', 0) or 0
+            ),
             'decision_source_counts': decision_summary.get('decision_source_counts', {}),
             'adapter_contradicted_element_count': int(decision_summary.get('adapter_contradicted_element_count', 0) or 0),
             'decision_fallback_ontology_element_count': int(decision_summary.get('fallback_ontology_element_count', 0) or 0),

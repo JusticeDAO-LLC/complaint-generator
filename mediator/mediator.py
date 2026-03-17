@@ -6125,6 +6125,39 @@ class Mediator:
 				summary['promoted_document_count'] += 1
 		return summary
 
+	def _summarize_alignment_promotion_drift(
+		self,
+		alignment_task_update_summary: Dict[str, Any],
+		claim_support_packet_summary: Dict[str, Any],
+	) -> Dict[str, Any]:
+		update_summary = (
+			alignment_task_update_summary
+			if isinstance(alignment_task_update_summary, dict)
+			else {}
+		)
+		packet_summary = (
+			claim_support_packet_summary
+			if isinstance(claim_support_packet_summary, dict)
+			else {}
+		)
+		resolution_status_counts = dict(update_summary.get('resolution_status_counts', {}) or {})
+		promoted_count = int(update_summary.get('promoted_testimony_count', 0) or 0) + int(
+			update_summary.get('promoted_document_count', 0) or 0
+		)
+		resolved_supported_count = int(resolution_status_counts.get('resolved_supported', 0) or 0)
+		proof_readiness_score = float(packet_summary.get('proof_readiness_score', 0.0) or 0.0)
+		pending_conversion_count = max(0, promoted_count - resolved_supported_count)
+		drift_ratio = round((pending_conversion_count / promoted_count), 3) if promoted_count else 0.0
+		drift_flag = bool(promoted_count >= 2 and pending_conversion_count > 0 and proof_readiness_score < 0.75)
+		return {
+			'promoted_count': promoted_count,
+			'resolved_supported_count': resolved_supported_count,
+			'pending_conversion_count': pending_conversion_count,
+			'proof_readiness_score': round(proof_readiness_score, 3),
+			'drift_ratio': drift_ratio,
+			'drift_flag': drift_flag,
+		}
+
 	def _retire_answered_alignment_evidence_tasks(
 		self,
 		question: Dict[str, Any],
@@ -7324,6 +7357,11 @@ class Mediator:
 		harm_profile = intake_case_file.get('harm_profile', {}) if isinstance(intake_case_file, dict) else {}
 		remedy_profile = intake_case_file.get('remedy_profile', {}) if isinstance(intake_case_file, dict) else {}
 		complainant_summary_confirmation = intake_case_file.get('complainant_summary_confirmation', {}) if isinstance(intake_case_file, dict) else {}
+		claim_support_packet_summary = self._summarize_claim_support_packets(claim_support_packets)
+		alignment_task_update_summary = self._summarize_alignment_task_update_status(
+			alignment_task_updates,
+			alignment_task_update_history,
+		)
 		status = {
 			'current_phase': self.phase_manager.get_current_phase().value,
 			'iteration_count': self.phase_manager.iteration_count,
@@ -7367,7 +7405,7 @@ class Mediator:
 				if isinstance(adversarial_intake_priority_summary, dict)
 				else {}
 			),
-			'claim_support_packet_summary': self._summarize_claim_support_packets(claim_support_packets),
+			'claim_support_packet_summary': claim_support_packet_summary,
 			'intake_evidence_alignment_summary': self._summarize_intake_evidence_alignment(
 				intake_case_file,
 				claim_support_packets,
@@ -7375,9 +7413,10 @@ class Mediator:
 			'alignment_evidence_tasks': alignment_evidence_tasks if isinstance(alignment_evidence_tasks, list) else [],
 			'alignment_task_updates': alignment_task_updates if isinstance(alignment_task_updates, list) else [],
 			'alignment_task_update_history': alignment_task_update_history if isinstance(alignment_task_update_history, list) else [],
-			'alignment_task_update_summary': self._summarize_alignment_task_update_status(
-				alignment_task_updates,
-				alignment_task_update_history,
+			'alignment_task_update_summary': alignment_task_update_summary,
+			'alignment_promotion_drift_summary': self._summarize_alignment_promotion_drift(
+				alignment_task_update_summary,
+				claim_support_packet_summary,
 			),
 			'intake_contradictions': {
 				'candidate_count': intake_readiness.get('contradiction_count', 0),
