@@ -277,7 +277,8 @@ def _attach_recommendation_tradeoff_notes(
 
     tradeoff_note = _recommendation_tradeoff_note(winner_delta)
     claim_posture_note = _claim_posture_note(winner_delta)
-    if not tradeoff_note and not claim_posture_note:
+    relief_posture_note = _relief_posture_note(winner_delta)
+    if not tradeoff_note and not claim_posture_note and not relief_posture_note:
         return recommendations
 
     enriched: Dict[str, Dict[str, Any]] = {}
@@ -288,6 +289,8 @@ def _attach_recommendation_tradeoff_notes(
                 item["tradeoff_note"] = tradeoff_note
             if claim_posture_note:
                 item["claim_posture_note"] = claim_posture_note
+            if relief_posture_note:
+                item["relief_posture_note"] = relief_posture_note
         enriched[key] = item
     return enriched
 
@@ -330,6 +333,10 @@ def _write_markdown_report(
                 "",
                 f"- Overview: {best_overall['claim_selection_overview']}",
             ])
+            if best_overall.get("claim_posture_note"):
+                lines.append(f"- Claim posture note: {best_overall['claim_posture_note']}")
+            if best_overall.get("relief_posture_note"):
+                lines.append(f"- Relief posture note: {best_overall['relief_posture_note']}")
             if best_overall.get("relief_selection_overview"):
                 lines.append(f"- Relief overview: {best_overall['relief_selection_overview']}")
             if best_overall.get("synthesis_output_dir"):
@@ -429,17 +436,33 @@ def _write_markdown_report(
         )
     claim_snapshot_rows = [row for row in rows if row.get("claim_selection_overview")]
     if claim_snapshot_rows:
+        snapshot_notes_by_preset: Dict[str, Dict[str, Any]] = {}
+        for payload in recommendations.values():
+            item = dict(payload or {})
+            preset = str(item.get("preset") or "")
+            if not preset:
+                continue
+            existing = snapshot_notes_by_preset.setdefault(preset, {})
+            if item.get("claim_posture_note"):
+                existing["claim_posture_note"] = item["claim_posture_note"]
+            if item.get("relief_posture_note"):
+                existing["relief_posture_note"] = item["relief_posture_note"]
         lines.extend([
             "",
             "## Claim Selection Snapshots",
             "",
         ])
         for row in claim_snapshot_rows:
+            snapshot_notes = snapshot_notes_by_preset.get(str(row.get("preset") or ""), {})
             lines.extend([
                 f"### {row['preset']}",
                 "",
                 f"- Overview: {row['claim_selection_overview']}",
             ])
+            if snapshot_notes.get("claim_posture_note"):
+                lines.append(f"- Claim posture note: {snapshot_notes['claim_posture_note']}")
+            if snapshot_notes.get("relief_posture_note"):
+                lines.append(f"- Relief posture note: {snapshot_notes['relief_posture_note']}")
             if row.get("relief_selection_overview"):
                 lines.append(f"- Relief overview: {row['relief_selection_overview']}")
             synthesis_dir = row.get("synthesis_output_dir")
@@ -465,6 +488,10 @@ def _write_markdown_report(
                 "",
                 f"- Overview: {champion_best['claim_selection_overview']}",
             ])
+            if champion_best.get("claim_posture_note"):
+                lines.append(f"- Claim posture note: {champion_best['claim_posture_note']}")
+            if champion_best.get("relief_posture_note"):
+                lines.append(f"- Relief posture note: {champion_best['relief_posture_note']}")
             if champion_best.get("relief_selection_overview"):
                 lines.append(f"- Relief overview: {champion_best['relief_selection_overview']}")
             if champion_best.get("synthesis_output_dir"):
@@ -1422,9 +1449,15 @@ def main() -> int:
             use_note = str(payload.get("tradeoff_note") or "")
             if not use_note:
                 use_note = _recommendation_use_note(family_list)
+            claim_note = str(payload.get("claim_posture_note") or "")
+            relief_note = str(payload.get("relief_posture_note") or "")
             suffix = f" ({families})" if families else ""
             if use_note:
                 suffix += f" - {use_note}"
+            if claim_note:
+                suffix += f" | {claim_note}"
+            if relief_note:
+                suffix += f" | {relief_note}"
             return suffix
 
         print(
@@ -1455,9 +1488,15 @@ def main() -> int:
                 use_note = str(payload.get("tradeoff_note") or "")
                 if not use_note:
                     use_note = _recommendation_use_note(family_list)
+                claim_note = str(payload.get("claim_posture_note") or "")
+                relief_note = str(payload.get("relief_posture_note") or "")
                 suffix = f" ({families})" if families else ""
                 if use_note:
                     suffix += f" - {use_note}"
+                if claim_note:
+                    suffix += f" | {claim_note}"
+                if relief_note:
+                    suffix += f" | {relief_note}"
                 return suffix
 
             print(
