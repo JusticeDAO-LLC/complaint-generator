@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable
+from collections import Counter
+from typing import Any, Dict, Iterable, List
 
 from .loader import import_module_optional
 from .types import with_adapter_metadata
@@ -19,6 +20,40 @@ LOGIC_AVAILABLE = any(
     for value in (_logic_module, _fol_module, _deontic_module, _tdfol_module)
 )
 LOGIC_ERROR = _logic_error or _fol_error or _deontic_error or _tdfol_error or _z3_error
+
+
+def _summarize_predicates(predicates: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+    predicate_list: List[Dict[str, Any]] = [
+        predicate for predicate in predicates
+        if isinstance(predicate, dict)
+    ]
+    predicate_type_counts: Counter[str] = Counter()
+    claim_type_counts: Counter[str] = Counter()
+    temporal_predicate_count = 0
+    temporal_relation_count = 0
+    contradiction_signal_count = 0
+
+    for predicate in predicate_list:
+        predicate_type = str(predicate.get("predicate_type") or "unknown").strip() or "unknown"
+        predicate_type_counts[predicate_type] += 1
+        claim_type = str(predicate.get("claim_type") or "").strip()
+        if claim_type:
+            claim_type_counts[claim_type] += 1
+        if predicate_type.startswith("temporal_"):
+            temporal_predicate_count += 1
+        if predicate_type == "temporal_relation":
+            temporal_relation_count += 1
+        if predicate_type in {"contradiction_candidate", "temporal_issue"}:
+            contradiction_signal_count += 1
+
+    return {
+        "predicate_count": len(predicate_list),
+        "predicate_type_counts": dict(sorted(predicate_type_counts.items())),
+        "claim_type_counts": dict(sorted(claim_type_counts.items())),
+        "temporal_predicate_count": temporal_predicate_count,
+        "temporal_relation_count": temporal_relation_count,
+        "contradiction_signal_count": contradiction_signal_count,
+    }
 
 
 def text_to_fol(text: str) -> Dict[str, Any]:
@@ -50,33 +85,35 @@ def legal_text_to_deontic(text: str) -> Dict[str, Any]:
 
 
 def prove_claim_elements(predicates: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
-    predicate_list = list(predicates)
+    predicate_summary = _summarize_predicates(predicates)
     return with_adapter_metadata(
         {
             "status": "not_implemented" if LOGIC_AVAILABLE else "unavailable",
             "provable_elements": [],
             "unprovable_elements": [],
-            "predicate_count": len(predicate_list),
+            **predicate_summary,
         },
         operation="prove_claim_elements",
         backend_available=LOGIC_AVAILABLE,
         degraded_reason=LOGIC_ERROR if not LOGIC_AVAILABLE else None,
         implementation_status="not_implemented" if LOGIC_AVAILABLE else "unavailable",
+        extra_metadata=predicate_summary,
     )
 
 
 def check_contradictions(predicates: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
-    predicate_list = list(predicates)
+    predicate_summary = _summarize_predicates(predicates)
     return with_adapter_metadata(
         {
             "status": "not_implemented" if LOGIC_AVAILABLE else "unavailable",
             "contradictions": [],
-            "predicate_count": len(predicate_list),
+            **predicate_summary,
         },
         operation="check_contradictions",
         backend_available=LOGIC_AVAILABLE,
         degraded_reason=LOGIC_ERROR if not LOGIC_AVAILABLE else None,
         implementation_status="not_implemented" if LOGIC_AVAILABLE else "unavailable",
+        extra_metadata=predicate_summary,
     )
 
 
