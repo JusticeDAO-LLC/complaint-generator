@@ -395,11 +395,12 @@ def _write_markdown_report(
                 "",
                 f"- Overview: {best_overall['claim_selection_overview']}",
             ])
-            if best_overall.get("strategy_summary"):
+            has_strategy_summary = bool(best_overall.get("strategy_summary"))
+            if has_strategy_summary:
                 lines.append(f"- Strategy summary: {best_overall['strategy_summary']}")
-            if best_overall.get("claim_posture_note"):
+            if not has_strategy_summary and best_overall.get("claim_posture_note"):
                 lines.append(f"- Claim posture note: {best_overall['claim_posture_note']}")
-            if best_overall.get("relief_posture_note"):
+            if not has_strategy_summary and best_overall.get("relief_posture_note"):
                 lines.append(f"- Relief posture note: {best_overall['relief_posture_note']}")
             if best_overall.get("relief_selection_overview"):
                 lines.append(f"- Relief overview: {best_overall['relief_selection_overview']}")
@@ -554,11 +555,12 @@ def _write_markdown_report(
                 "",
                 f"- Overview: {champion_best['claim_selection_overview']}",
             ])
-            if champion_best.get("strategy_summary"):
+            has_champion_strategy_summary = bool(champion_best.get("strategy_summary"))
+            if has_champion_strategy_summary:
                 lines.append(f"- Strategy summary: {champion_best['strategy_summary']}")
-            if champion_best.get("claim_posture_note"):
+            if not has_champion_strategy_summary and champion_best.get("claim_posture_note"):
                 lines.append(f"- Claim posture note: {champion_best['claim_posture_note']}")
-            if champion_best.get("relief_posture_note"):
+            if not has_champion_strategy_summary and champion_best.get("relief_posture_note"):
                 lines.append(f"- Relief posture note: {champion_best['relief_posture_note']}")
             if champion_best.get("relief_selection_overview"):
                 lines.append(f"- Relief overview: {champion_best['relief_selection_overview']}")

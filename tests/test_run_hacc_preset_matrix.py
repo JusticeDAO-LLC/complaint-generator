@@ -77,6 +77,7 @@ def test_markdown_report_includes_claim_selection_snapshots(tmp_path):
         "best_overall": {
             "preset": "accommodation_focus",
             "claim_theory_families": ["accommodation", "process"],
+            "strategy_summary": "Best for accommodation framing + process framing.",
             "claim_posture_note": "The winner added stronger accommodation framing theories.",
             "relief_posture_note": "Relief posture was materially similar across the winner and runner-up, so the selection difference was driven mainly by claim posture.",
         },
@@ -91,8 +92,9 @@ def test_markdown_report_includes_claim_selection_snapshots(tmp_path):
     assert "## Claim Selection Snapshots" in report
     assert "### accommodation_focus" in report
     assert "- Overview: Accommodation Theory [tags=reasonable_accommodation,contact;" in report
-    assert "- Claim posture note: The winner added stronger accommodation framing theories." in report
-    assert "- Relief posture note: Relief posture was materially similar across the winner and runner-up, so the selection difference was driven mainly by claim posture." in report
+    assert "- Strategy summary: Best for accommodation framing + process framing." in report
+    assert "- Claim posture note: The winner added stronger accommodation framing theories." not in report
+    assert "- Relief posture note: Relief posture was materially similar across the winner and runner-up, so the selection difference was driven mainly by claim posture." not in report
     assert "- Relief overview: Corrective action requiring clear notice, fair review, and non-retaliation safeguards." in report
     assert "- Complaint synthesis: `/tmp/accommodation_focus/complaint_synthesis`" in report
 
