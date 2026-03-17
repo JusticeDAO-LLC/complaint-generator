@@ -318,6 +318,11 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
     intake_status = build_intake_status_summary(mediator)
     intake_case_summary = build_intake_case_review_summary(mediator)
     intake_warning_entries = build_intake_warning_entries(intake_status)
+    intake_summary_handoff = {}
+    if isinstance(intake_status.get("intake_summary_handoff"), dict) and intake_status.get("intake_summary_handoff"):
+        intake_summary_handoff = dict(intake_status["intake_summary_handoff"])
+    elif isinstance(intake_case_summary.get("intake_summary_handoff"), dict) and intake_case_summary.get("intake_summary_handoff"):
+        intake_summary_handoff = dict(intake_case_summary["intake_summary_handoff"])
 
     claim_links = []
     claim_types = []
@@ -483,6 +488,11 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
         section=preferred_section,
         follow_up_support_kind=_default_support_kind_for_section(preferred_section),
     )
+    if intake_summary_handoff:
+        payload["intake_summary_handoff"] = intake_summary_handoff
+        document_optimization = payload.get("document_optimization")
+        if isinstance(document_optimization, dict):
+            document_optimization["intake_summary_handoff"] = dict(intake_summary_handoff)
     return _annotate_checklist_review_links(
         payload,
         dashboard_url=dashboard_url,

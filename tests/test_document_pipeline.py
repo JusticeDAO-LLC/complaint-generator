@@ -1470,6 +1470,7 @@ def test_review_api_registers_formal_complaint_document_route():
         assert response.json()["draft"]["title"] == "Jane Doe v. Acme Corporation"
         assert response.json()["drafting_readiness"]["status"] == "ready"
         assert response.json()["artifacts"]["docx"]["download_url"].startswith('/api/documents/download?path=')
+        assert "intake_summary_handoff" not in response.json()
         assert response.json()["review_links"]["dashboard_url"] == "/claim-support-review"
         assert response.json()["review_links"]["intake_status"] == {}
         assert response.json()["review_links"]["claims"][0]["review_url"] == "/claim-support-review?claim_type=retaliation"
@@ -2435,6 +2436,24 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
                 'severity': 'high',
             }
         ],
+        'complainant_summary_confirmation': {
+            'status': 'confirmed',
+            'confirmed': True,
+            'confirmed_at': '2026-03-17T18:00:00+00:00',
+            'confirmation_note': 'ready for document drafting review',
+            'confirmation_source': 'dashboard',
+            'summary_snapshot_index': 0,
+            'current_summary_snapshot': {
+                'candidate_claim_count': 1,
+                'canonical_fact_count': 1,
+                'proof_lead_count': 1,
+            },
+            'confirmed_summary_snapshot': {
+                'candidate_claim_count': 1,
+                'canonical_fact_count': 1,
+                'proof_lead_count': 1,
+            },
+        },
     }
     DEFAULT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     artifact_path = DEFAULT_OUTPUT_DIR / 'review-surface-formal-complaint.docx'
@@ -2607,6 +2626,28 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert payload['draft']['case_caption']['jury_demand_notice'] == 'JURY TRIAL DEMANDED'
         assert payload['drafting_readiness']['status'] == 'warning'
         assert payload['review_links']['dashboard_url'] == '/claim-support-review'
+        assert payload['intake_summary_handoff'] == {
+            'current_phase': 'intake',
+            'ready_to_advance': False,
+            'complainant_summary_confirmation': {
+                'status': 'confirmed',
+                'confirmed': True,
+                'confirmed_at': '2026-03-17T18:00:00+00:00',
+                'confirmation_note': 'ready for document drafting review',
+                'confirmation_source': 'dashboard',
+                'summary_snapshot_index': 0,
+                'current_summary_snapshot': {
+                    'candidate_claim_count': 1,
+                    'canonical_fact_count': 1,
+                    'proof_lead_count': 1,
+                },
+                'confirmed_summary_snapshot': {
+                    'candidate_claim_count': 1,
+                    'canonical_fact_count': 1,
+                    'proof_lead_count': 1,
+                },
+            },
+        }
         assert payload['review_links']['intake_status'] == {
             'current_phase': 'intake',
             'ready_to_advance': False,
