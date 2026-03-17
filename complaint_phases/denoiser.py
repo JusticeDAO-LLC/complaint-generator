@@ -2128,15 +2128,10 @@ class ComplaintDenoiser:
 
     @staticmethod
     def _normalized_answer_length(answer: str) -> int:
-        """Return a stable, test-friendly length for an answer.
-
-        The denoiser interaction analytics intentionally ignore punctuation and
-        digits so small formatting differences (commas, dates) don't dominate
-        the stats.
-        """
+        """Return the raw character length for an answer."""
         if not answer:
             return 0
-        return sum(1 for ch in str(answer) if ch.isalpha() or ch.isspace())
+        return len(str(answer))
     
     def shortest_answer(self) -> int:
         """Find the length of the shortest answer received.

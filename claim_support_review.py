@@ -299,6 +299,10 @@ def summarize_claim_reasoning_review(
     fallback_ontology_element_count = 0
     unavailable_backend_element_count = 0
     degraded_adapter_element_count = 0
+    hybrid_bridge_element_count = 0
+    hybrid_bridge_available_element_count = 0
+    hybrid_tdfol_formula_count = 0
+    hybrid_dcec_formula_count = 0
 
     for element in elements:
         if not isinstance(element, dict):
@@ -325,6 +329,16 @@ def summarize_claim_reasoning_review(
             in {"unavailable", "error", "not_implemented"}
         )
         used_fallback_ontology = bool(reasoning.get("used_fallback_ontology"))
+        hybrid_reasoning = reasoning.get("hybrid_reasoning", {})
+        if not isinstance(hybrid_reasoning, dict):
+            hybrid_reasoning = {}
+        hybrid_result = hybrid_reasoning.get("result", {})
+        if not isinstance(hybrid_result, dict):
+            hybrid_result = {}
+        hybrid_bridge_used = bool(hybrid_reasoning)
+        hybrid_bridge_available = bool(hybrid_result.get("compiler_bridge_available", False))
+        hybrid_tdfol_count = len(hybrid_result.get("tdfol_formulas", []) or [])
+        hybrid_dcec_count = len(hybrid_result.get("dcec_formulas", []) or [])
 
         if used_fallback_ontology:
             fallback_ontology_element_count += 1
@@ -332,12 +346,19 @@ def summarize_claim_reasoning_review(
             unavailable_backend_element_count += 1
         if degraded_adapters:
             degraded_adapter_element_count += 1
+        if hybrid_bridge_used:
+            hybrid_bridge_element_count += 1
+        if hybrid_bridge_available:
+            hybrid_bridge_available_element_count += 1
+        hybrid_tdfol_formula_count += hybrid_tdfol_count
+        hybrid_dcec_formula_count += hybrid_dcec_count
 
         if not (
             used_fallback_ontology
             or unavailable_adapters
             or degraded_adapters
             or str(element.get("validation_status") or "") == "contradicted"
+            or hybrid_bridge_used
         ):
             continue
 
@@ -353,6 +374,10 @@ def summarize_claim_reasoning_review(
                 ),
                 "unavailable_adapters": unavailable_adapters,
                 "degraded_adapters": degraded_adapters,
+                "hybrid_bridge_used": hybrid_bridge_used,
+                "hybrid_bridge_available": hybrid_bridge_available,
+                "hybrid_tdfol_formula_count": hybrid_tdfol_count,
+                "hybrid_dcec_formula_count": hybrid_dcec_count,
             }
         )
 
@@ -365,6 +390,10 @@ def summarize_claim_reasoning_review(
         "fallback_ontology_element_count": fallback_ontology_element_count,
         "unavailable_backend_element_count": unavailable_backend_element_count,
         "degraded_adapter_element_count": degraded_adapter_element_count,
+        "hybrid_bridge_element_count": hybrid_bridge_element_count,
+        "hybrid_bridge_available_element_count": hybrid_bridge_available_element_count,
+        "hybrid_tdfol_formula_count": hybrid_tdfol_formula_count,
+        "hybrid_dcec_formula_count": hybrid_dcec_formula_count,
         "flagged_elements": flagged_elements,
     }
 
@@ -1421,6 +1450,15 @@ def _summarize_claim_coverage_claim(
         ),
         "reasoning_fallback_ontology_count": int(
             reasoning_summary.get("fallback_ontology_count", 0) or 0
+        ),
+        "reasoning_hybrid_bridge_available_count": int(
+            reasoning_summary.get("hybrid_bridge_available_count", 0) or 0
+        ),
+        "reasoning_hybrid_tdfol_formula_count": int(
+            reasoning_summary.get("hybrid_tdfol_formula_count", 0) or 0
+        ),
+        "reasoning_hybrid_dcec_formula_count": int(
+            reasoning_summary.get("hybrid_dcec_formula_count", 0) or 0
         ),
         "decision_source_counts": decision_summary.get("decision_source_counts", {}),
         "adapter_contradicted_element_count": int(

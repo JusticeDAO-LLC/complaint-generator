@@ -2064,6 +2064,9 @@ class ClaimSupportHook:
         ontology_entity_count = 0
         ontology_relationship_count = 0
         fallback_ontology_count = 0
+        hybrid_bridge_available_count = 0
+        hybrid_tdfol_formula_count = 0
+        hybrid_dcec_formula_count = 0
 
         for element in elements:
             if not isinstance(element, dict):
@@ -2077,6 +2080,13 @@ class ClaimSupportHook:
             backend_available_count += int(reasoning.get('backend_available_count', 0) or 0)
             if reasoning.get('used_fallback_ontology'):
                 fallback_ontology_count += 1
+            hybrid_reasoning = reasoning.get('hybrid_reasoning', {})
+            if isinstance(hybrid_reasoning, dict):
+                hybrid_result = hybrid_reasoning.get('result', {}) if isinstance(hybrid_reasoning.get('result'), dict) else {}
+                if bool(hybrid_result.get('compiler_bridge_available', False)):
+                    hybrid_bridge_available_count += 1
+                hybrid_tdfol_formula_count += len(hybrid_result.get('tdfol_formulas', []) or [])
+                hybrid_dcec_formula_count += len(hybrid_result.get('dcec_formulas', []) or [])
             for adapter_name, summary in (reasoning.get('adapter_statuses') or {}).items():
                 if not isinstance(summary, dict):
                     continue
@@ -2091,6 +2101,9 @@ class ClaimSupportHook:
             'ontology_entity_count': ontology_entity_count,
             'ontology_relationship_count': ontology_relationship_count,
             'fallback_ontology_count': fallback_ontology_count,
+            'hybrid_bridge_available_count': hybrid_bridge_available_count,
+            'hybrid_tdfol_formula_count': hybrid_tdfol_formula_count,
+            'hybrid_dcec_formula_count': hybrid_dcec_formula_count,
         }
 
     def _summarize_claim_validation_decisions(self, elements: List[Dict[str, Any]]) -> Dict[str, Any]:
