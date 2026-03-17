@@ -24,6 +24,12 @@ Related smoke-matrix task:
 HACC Preset Matrix Smoke
 ```
 
+Guarded smoke-matrix task:
+
+```text
+HACC Preset Matrix Smoke (Fail Fast)
+```
+
 Related comparison task:
 
 ```text
@@ -43,6 +49,14 @@ Small preset matrix example:
 ```bash
 ./.venv/bin/python scripts/run_hacc_preset_matrix.py --presets core_hacc_policies,accommodation_focus --num-sessions 1 --hacc-count 1 --max-turns 2 --max-parallel 1 --output-dir ../research_results/adversarial_runs/hacc_preset_matrix_smoke --continue-on-error
 ```
+
+Fail-fast matrix example:
+
+```bash
+./.venv/bin/python scripts/run_hacc_preset_matrix.py --presets core_hacc_policies,accommodation_focus --num-sessions 1 --hacc-count 1 --max-turns 2 --max-parallel 1 --output-dir ../research_results/adversarial_runs/hacc_preset_matrix_smoke_failfast --fail-on-degraded-runtime
+```
+
+In the current environment this guarded variant is expected to fail, because `llm-router` probes as available but falls back during live sessions and is now reported as degraded runtime.
 
 Deeper preset comparison example:
 

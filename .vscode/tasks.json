@@ -107,6 +107,36 @@
       }
     },
     {
+      "label": "HACC Preset Matrix Smoke (Fail Fast)",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/run_hacc_preset_matrix.py",
+        "--presets",
+        "core_hacc_policies,accommodation_focus",
+        "--num-sessions",
+        "1",
+        "--hacc-count",
+        "1",
+        "--max-turns",
+        "2",
+        "--max-parallel",
+        "1",
+        "--output-dir",
+        "../research_results/adversarial_runs/hacc_preset_matrix_smoke_failfast",
+        "--fail-on-degraded-runtime"
+      ],
+      "group": "test",
+      "isBackground": false,
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
       "label": "HACC Preset Matrix Compare",
       "type": "shell",
       "command": "${workspaceFolder}/.venv/bin/python",
