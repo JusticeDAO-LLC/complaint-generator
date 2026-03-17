@@ -2196,6 +2196,10 @@ class ClaimSupportHook:
             return {}
 
         registered: Dict[str, List[Dict[str, Any]]] = {}
+        requirement_metadata = _merge_intake_summary_handoff_metadata(
+            {},
+            self.mediator,
+        )
         try:
             conn = duckdb.connect(self.db_path)
             for claim_type, elements in requirements.items():
@@ -2221,7 +2225,7 @@ class ClaimSupportHook:
                             element_id,
                             element_index,
                             element_text,
-                            json.dumps({}),
+                            json.dumps(requirement_metadata),
                         ],
                     )
                     registered[claim_type].append(
@@ -3155,6 +3159,10 @@ class ClaimSupportHook:
             }
 
         normalized_kinds = self._normalize_required_support_kinds(required_support_kinds)
+        normalized_metadata = _merge_intake_summary_handoff_metadata(
+            metadata,
+            self.mediator,
+        )
         gap_payload = gaps if isinstance(gaps, dict) else self.get_claim_support_gaps(
             user_id,
             claim_type=claim_type,
@@ -3187,7 +3195,7 @@ class ClaimSupportHook:
                 normalized_kinds,
             )
             claim_metadata = {
-                **(metadata or {}),
+                **(normalized_metadata or {}),
                 'support_state_token': support_state_token,
             }
             claim_result = {
@@ -3494,6 +3502,10 @@ class ClaimSupportHook:
             return -1
 
         query_hash = self._hash_query_text(query_text)
+        normalized_metadata = _merge_intake_summary_handoff_metadata(
+            metadata,
+            self.mediator,
+        )
         try:
             conn = duckdb.connect(self.db_path)
             result = conn.execute(
@@ -3514,7 +3526,7 @@ class ClaimSupportHook:
                     query_text,
                     query_hash,
                     status,
-                    json.dumps(metadata or {}),
+                    json.dumps(normalized_metadata or {}),
                 ],
             ).fetchone()
             conn.close()
@@ -3858,7 +3870,10 @@ class ClaimSupportHook:
             'harm': str(harm or '').strip(),
             'firsthand_status': str(firsthand_status or 'unknown').strip() or 'unknown',
             'source_confidence': source_confidence,
-            'metadata': dict(metadata or {}),
+            'metadata': _merge_intake_summary_handoff_metadata(
+                dict(metadata or {}),
+                self.mediator,
+            ),
         }
         has_content = any(
             normalized_payload[field]

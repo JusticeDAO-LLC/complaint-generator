@@ -590,12 +590,12 @@ class EvidenceStateHook:
                     chunk.get('start'),
                     chunk.get('end'),
                     chunk.get('text'),
-                    json.dumps({
+                    json.dumps(_merge_intake_summary_handoff_metadata({
                         'length': chunk.get('length', 0),
                         'parser_version': parse_contract.get('summary', {}).get('parser_version', ''),
                         'source': parse_contract.get('source', ''),
                         'input_format': parse_contract.get('summary', {}).get('input_format', ''),
-                    }),
+                    }, self.mediator)),
                 ],
             )
 
@@ -617,7 +617,10 @@ class EvidenceStateHook:
                     entity.get('type'),
                     entity.get('name'),
                     entity.get('confidence', 0.0),
-                    json.dumps(entity.get('attributes', {})),
+                    json.dumps(_merge_intake_summary_handoff_metadata(
+                        entity.get('attributes', {}),
+                        self.mediator,
+                    )),
                 ],
             )
 
@@ -636,14 +639,29 @@ class EvidenceStateHook:
                     relationship.get('target_id'),
                     relationship.get('relation_type'),
                     relationship.get('confidence', 0.0),
-                    json.dumps(relationship.get('attributes', {})),
+                    json.dumps(_merge_intake_summary_handoff_metadata(
+                        relationship.get('attributes', {}),
+                        self.mediator,
+                    )),
                 ],
             )
 
     def _store_document_facts(self, conn, evidence_id: int, evidence_info: Dict[str, Any], document_graph: Dict[str, Any], document_parse: Dict[str, Any]) -> None:
         entities = document_graph.get('entities', []) or []
         artifact_id = evidence_info.get('artifact_id') or evidence_info.get('cid') or ''
-        provenance_payload = evidence_info.get('metadata', {}).get('provenance', {})
+        normalized_metadata = _merge_intake_summary_handoff_metadata(
+            evidence_info.get('metadata', {}),
+            self.mediator,
+        )
+        provenance_payload = (
+            dict(normalized_metadata.get('provenance') or {})
+            if isinstance(normalized_metadata.get('provenance'), dict)
+            else {}
+        )
+        provenance_metadata = _merge_intake_summary_handoff_metadata(
+            provenance_payload.get('metadata', {}),
+            self.mediator,
+        )
         parse_contract = build_document_parse_contract(
             document_parse,
             default_source=str((document_parse.get('metadata', {}) or {}).get('source', '')),
@@ -662,11 +680,14 @@ class EvidenceStateHook:
                 source_ref=artifact_id,
                 record_scope='evidence',
                 confidence=float(entity.get('confidence', 0.0) or 0.0),
-                metadata=build_fact_lineage_metadata(
-                    attributes,
-                    parse_contract=parse_contract,
-                    record_scope='evidence',
-                    source_ref=artifact_id,
+                metadata=_merge_intake_summary_handoff_metadata(
+                    build_fact_lineage_metadata(
+                        attributes,
+                        parse_contract=parse_contract,
+                        record_scope='evidence',
+                        source_ref=artifact_id,
+                    ),
+                    self.mediator,
                 ),
                 provenance=build_provenance(
                     source_url=str(provenance_payload.get('source_url', '')),
@@ -676,7 +697,7 @@ class EvidenceStateHook:
                     content_hash=str(provenance_payload.get('content_hash', '')),
                     source_system=str(provenance_payload.get('source_system', '')),
                     jurisdiction=str(provenance_payload.get('jurisdiction', '')),
-                    metadata=provenance_payload.get('metadata', {}) if isinstance(provenance_payload.get('metadata'), dict) else {},
+                    metadata=provenance_metadata,
                 ),
             )
             conn.execute(
@@ -809,14 +830,31 @@ class EvidenceStateHook:
         
         try:
             conn = duckdb.connect(self.db_path)
+            normalized_evidence_metadata = _merge_intake_summary_handoff_metadata(
+                evidence_info.get('metadata', {}),
+                self.mediator,
+            )
+            provenance_payload = (
+                dict(normalized_evidence_metadata.get('provenance') or {})
+                if isinstance(normalized_evidence_metadata.get('provenance'), dict)
+                else {}
+            )
+            provenance_metadata = _merge_intake_summary_handoff_metadata(
+                provenance_payload.get('metadata', {}),
+                self.mediator,
+            )
+            if provenance_metadata:
+                provenance_payload['metadata'] = provenance_metadata
+            if provenance_payload:
+                normalized_evidence_metadata['provenance'] = provenance_payload
             document_parse = evidence_info.get('document_parse') if isinstance(evidence_info.get('document_parse'), dict) else {}
             document_graph = evidence_info.get('document_graph') if isinstance(evidence_info.get('document_graph'), dict) else {}
-            document_graph_summary = evidence_info.get('metadata', {}).get('document_graph_summary', {})
+            document_graph_summary = normalized_evidence_metadata.get('document_graph_summary', {})
             parse_contract = build_document_parse_contract(
                 document_parse,
                 default_source=str(
                     document_parse.get('metadata', {}).get('source')
-                    or evidence_info.get('metadata', {}).get('parse_source')
+                    or normalized_evidence_metadata.get('parse_source')
                     or ''
                 ),
             )
@@ -829,7 +867,7 @@ class EvidenceStateHook:
                     source_id=evidence_info.get('artifact_id') or evidence_info.get('cid'),
                     metadata={
                         'artifact_id': evidence_info.get('artifact_id', ''),
-                        'source_url': evidence_info.get('metadata', {}).get('provenance', {}).get('source_url', ''),
+                        'source_url': provenance_payload.get('source_url', ''),
                         'claim_type': claim_type or '',
                         'claim_element_id': claim_element_id or '',
                         'claim_element_text': claim_element or '',
@@ -901,14 +939,14 @@ class EvidenceStateHook:
                 evidence_info['cid'],
                 evidence_info['type'],
                 evidence_info['size'],
-                json.dumps(evidence_info.get('metadata', {})),
+                json.dumps(normalized_evidence_metadata),
                 complaint_id,
                 claim_type,
                 description,
-                evidence_info.get('metadata', {}).get('provenance', {}).get('content_hash'),
-                evidence_info.get('metadata', {}).get('provenance', {}).get('source_url'),
-                evidence_info.get('metadata', {}).get('provenance', {}).get('acquisition_method'),
-                json.dumps(evidence_info.get('metadata', {}).get('provenance', {})),
+                provenance_payload.get('content_hash'),
+                provenance_payload.get('source_url'),
+                provenance_payload.get('acquisition_method'),
+                json.dumps(provenance_payload),
                 claim_element_id,
                 claim_element,
                 parse_contract.get('status') or parse_metadata.get('status'),

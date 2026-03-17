@@ -1122,10 +1122,12 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
             assert "Corroboration-required contradictions: 1" in preview_text
             assert "Contradiction lanes: Request Document 1" in preview_text
             assert "Contradiction target elements: Retaliation:2 1" in preview_text
+            assert preview_text.count("Contradiction target elements: Retaliation:2 1") == 1
             assert "Termination date conflicts with reported complaint timeline | ask Which date is supported by the termination notice? | lane Request Document | status Open | external corroboration required | claims Retaliation" in preview_text
             assert "Persisted contradiction lanes: Request Document 1" in preview_text
             assert "Persisted corroboration-required contradictions: 1" in preview_text
             assert "Persisted contradiction target elements: Retaliation:2 1" in preview_text
+            assert preview_text.count("Persisted contradiction target elements: Retaliation:2 1") == 1
             assert "Manual Review Blockers" in preview_text
             assert "Manual review blockers: 1" in preview_text
             assert "Claims impacted: 1" in preview_text
@@ -1911,9 +1913,11 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
             intake_confirmation_text = page.locator("#traceIntakeConfirmation").inner_text()
             normalized_intake_confirmation_text = intake_confirmation_text.lower()
             assert "intake summary handoff" in normalized_intake_confirmation_text
+            assert normalized_intake_confirmation_text.count("intake summary handoff") == 1
             assert "status pending" in normalized_intake_confirmation_text
             assert "complainant confirmed no" in normalized_intake_confirmation_text
             assert "confirm on review dashboard" in normalized_intake_confirmation_text
+            assert normalized_intake_confirmation_text.count("confirm on review dashboard") == 1
 
             browser.close()
 
@@ -2054,6 +2058,9 @@ def test_document_builder_smoke_confirms_intake_summary_handoff():
                     "() => document.getElementById('previewRoot').innerText.includes('Confirmed at')"
                 )
                 preview_text = page.locator("#previewRoot").inner_text()
+                handoff_text = page.locator("#previewRoot .intake-handoff-card").inner_text()
+                normalized_preview_text = preview_text.lower()
+                normalized_handoff_text = handoff_text.lower()
 
                 assert "Status" in preview_text
                 assert "Confirmed" in preview_text
@@ -2062,11 +2069,140 @@ def test_document_builder_smoke_confirms_intake_summary_handoff():
                 assert "Source Document" in preview_text
                 assert "Note: Reviewed with complainant for evidence handoff" in preview_text
                 assert "Open Review Dashboard" in preview_text
+                assert normalized_handoff_text.count("intake summary handoff") == 1
+                assert normalized_handoff_text.count("confirmed at") == 1
+                assert normalized_handoff_text.count("source document") == 1
+                assert normalized_handoff_text.count("open review dashboard") == 1
 
                 browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
+
+
+def test_optimization_trace_smoke_renders_confirmed_intake_summary_handoff():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    payload = {
+        "cid": "bafy-trace-confirmed",
+        "size": 654,
+        "trace": {
+            "user_id": "trace-smoke-user",
+            "intake_status": {
+                "current_phase": "intake",
+                "score": 1.0,
+                "contradiction_count": 0,
+                "blockers": [],
+                "criteria": {
+                    "case_theory_coherent": True,
+                    "minimum_proof_path_present": True,
+                    "claim_disambiguation_resolved": True,
+                    "complainant_summary_confirmed": True,
+                },
+                "contradictions": [],
+            },
+            "intake_constraints": [],
+            "intake_case_summary": {
+                "candidate_claims": [
+                    {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.91},
+                ],
+                "candidate_claim_summary": {
+                    "count": 1,
+                    "claim_types": ["retaliation"],
+                    "average_confidence": 0.91,
+                    "top_claim_type": "retaliation",
+                    "top_confidence": 0.91,
+                    "ambiguous_claim_count": 0,
+                    "ambiguity_flag_count": 0,
+                    "ambiguity_flag_counts": {},
+                    "close_leading_claims": False,
+                },
+                "complainant_summary_confirmation": {
+                    "status": "confirmed",
+                    "confirmed": True,
+                    "confirmation_source": "dashboard",
+                    "confirmation_note": "Reviewed with complainant for evidence handoff",
+                    "confirmed_at": "2026-03-17T10:00:00+00:00",
+                    "summary_snapshot_index": 0,
+                    "current_summary_snapshot": {
+                        "candidate_claim_count": 1,
+                        "canonical_fact_count": 1,
+                        "proof_lead_count": 1,
+                    },
+                    "confirmed_summary_snapshot": {
+                        "candidate_claim_count": 1,
+                        "canonical_fact_count": 1,
+                        "proof_lead_count": 1,
+                    },
+                },
+                "intake_sections": {},
+                "canonical_fact_summary": {"count": 1, "facts": [{"fact_id": "fact_001"}]},
+                "canonical_fact_intent_summary": {},
+                "proof_lead_summary": {"count": 1, "proof_leads": [{"lead_id": "lead_001"}]},
+                "proof_lead_intent_summary": {},
+                "timeline_anchor_summary": {"count": 0, "anchors": []},
+                "harm_profile": {},
+                "remedy_profile": {},
+                "question_candidate_summary": {},
+                "claim_support_packet_summary": {
+                    "claim_count": 1,
+                    "element_count": 1,
+                    "status_counts": {"supported": 1},
+                    "recommended_actions": [],
+                    "supported_blocking_element_ratio": 1.0,
+                    "credible_support_ratio": 1.0,
+                    "draft_ready_element_ratio": 1.0,
+                    "high_quality_parse_ratio": 1.0,
+                    "reviewable_escalation_ratio": 0.0,
+                    "claim_support_reviewable_escalation_count": 0,
+                    "proof_readiness_score": 1.0,
+                    "claim_support_unresolved_without_review_path_count": 0,
+                    "evidence_completion_ready": True,
+                },
+                "alignment_evidence_tasks": [],
+                "alignment_task_update_history": [],
+            },
+            "iterations": [
+                {
+                    "iteration": 1,
+                    "focus_section": "factual_allegations",
+                    "accepted": True,
+                    "critic": {"overall_score": 0.91},
+                }
+            ],
+            "initial_review": {"overall_score": 0.75},
+            "final_review": {"overall_score": 0.91, "recommended_focus": "claims_for_relief"},
+        },
+    }
+
+    app = _build_document_browser_smoke_app()
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page()
+            page.goto(f"{base_url}/document/optimization-trace")
+            page.evaluate("payload => window.renderTrace(payload)", payload)
+            page.wait_for_function(
+                "() => document.getElementById('traceIntakeConfirmation').innerText.includes('Open Review Dashboard')"
+            )
+
+            intake_confirmation_text = page.locator("#traceIntakeConfirmation").inner_text()
+            normalized_intake_confirmation_text = intake_confirmation_text.lower()
+
+            assert "intake summary handoff" in normalized_intake_confirmation_text
+            assert normalized_intake_confirmation_text.count("intake summary handoff") == 1
+            assert "status confirmed" in normalized_intake_confirmation_text
+            assert "complainant confirmed yes" in normalized_intake_confirmation_text
+            assert "summary snapshot 1" in normalized_intake_confirmation_text
+            assert "snapshot scope: candidate claims 1 | canonical facts 1 | proof leads 1" in normalized_intake_confirmation_text
+            assert "confirmed at 2026-03-17t10:00:00+00:00" in normalized_intake_confirmation_text
+            assert "source dashboard" in normalized_intake_confirmation_text
+            assert "note: reviewed with complainant for evidence handoff" in normalized_intake_confirmation_text
+            assert "open review dashboard" in normalized_intake_confirmation_text
+            assert normalized_intake_confirmation_text.count("open review dashboard") == 1
+
+            browser.close()
 
 
 def test_document_builder_question_review_link_click_preserves_focus_on_review_page():
@@ -3627,6 +3763,7 @@ def test_document_builder_checklist_review_link_preserves_focus_on_review_page()
                 assert "corroboration-required contradictions: 1" in normalized_checklist_text
                 assert "contradiction lanes: request document 1" in normalized_checklist_text
                 assert "contradiction target elements: retaliation:2 1" in normalized_checklist_text
+                assert normalized_checklist_text.count("contradiction target elements: retaliation:2 1") == 1
                 assert "complaint date conflicts with hr intake record | ask which date is reflected in the hr complaint email? | lane request document | status open | external corroboration required | claims retaliation" in normalized_checklist_text
 
                 page.locator('.checklist-card').get_by_text('Open Checklist Review').click()

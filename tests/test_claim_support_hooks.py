@@ -12,6 +12,33 @@ import pytest
 pytestmark = pytest.mark.no_auto_network
 
 
+def _confirmed_intake_status(*, note: str) -> dict:
+    return {
+        'current_phase': 'intake',
+        'intake_readiness': {
+            'ready_to_advance': True,
+        },
+        'complainant_summary_confirmation': {
+            'status': 'confirmed',
+            'confirmed': True,
+            'confirmed_at': '2026-03-17T19:00:00+00:00',
+            'confirmation_note': note,
+            'confirmation_source': 'dashboard',
+            'summary_snapshot_index': 0,
+            'current_summary_snapshot': {
+                'candidate_claim_count': 1,
+                'canonical_fact_count': 1,
+                'proof_lead_count': 1,
+            },
+            'confirmed_summary_snapshot': {
+                'candidate_claim_count': 1,
+                'canonical_fact_count': 1,
+                'proof_lead_count': 1,
+            },
+        },
+    }
+
+
 class TestClaimSupportHook:
     def test_get_recent_follow_up_execution_exposes_adaptive_retry_metadata(self):
         try:
@@ -74,6 +101,9 @@ class TestClaimSupportHook:
 
         mock_mediator = Mock()
         mock_mediator.log = Mock()
+        mock_mediator.get_three_phase_status = Mock(return_value=_confirmed_intake_status(
+            note='ready for follow-up execution persistence',
+        ))
 
         with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
             db_path = f.name
@@ -111,6 +141,28 @@ class TestClaimSupportHook:
             assert entry['selected_search_program_bias'] == 'uncertain'
             assert entry['selected_search_program_rule_bias'] == 'procedural_prerequisite'
             assert entry['selected_search_program_families'] == ['statute', 'regulation']
+            assert entry['metadata']['intake_summary_handoff'] == {
+                'current_phase': 'intake',
+                'ready_to_advance': True,
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T19:00:00+00:00',
+                    'confirmation_note': 'ready for follow-up execution persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            }
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)
@@ -262,6 +314,77 @@ class TestClaimSupportHook:
                             'canonical_fact_count': 2,
                             'proof_lead_count': 1,
                         },
+                    },
+                },
+            }
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_register_claim_requirements_stamps_confirmed_intake_handoff_metadata(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.get_three_phase_status = Mock(return_value={
+            'current_phase': 'intake',
+            'intake_readiness': {
+                'ready_to_advance': True,
+            },
+            'complainant_summary_confirmation': {
+                'status': 'confirmed',
+                'confirmed': True,
+                'confirmed_at': '2026-03-17T20:00:00+00:00',
+                'confirmation_note': 'ready for claim requirements persistence',
+                'confirmation_source': 'dashboard',
+                'summary_snapshot_index': 0,
+                'current_summary_snapshot': {
+                    'candidate_claim_count': 1,
+                    'canonical_fact_count': 2,
+                    'proof_lead_count': 1,
+                },
+                'confirmed_summary_snapshot': {
+                    'candidate_claim_count': 1,
+                    'canonical_fact_count': 2,
+                    'proof_lead_count': 1,
+                },
+            },
+        })
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+
+            requirements = hook.get_claim_requirements('testuser', 'employment')
+
+            assert requirements['employment'][0]['metadata']['intake_summary_handoff'] == {
+                'current_phase': 'intake',
+                'ready_to_advance': True,
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T20:00:00+00:00',
+                    'confirmation_note': 'ready for claim requirements persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
                     },
                 },
             }
@@ -1243,6 +1366,9 @@ class TestClaimSupportHook:
 
         mock_mediator = Mock()
         mock_mediator.log = Mock()
+        mock_mediator.get_three_phase_status = Mock(return_value=_confirmed_intake_status(
+            note='ready for support diagnostics persistence',
+        ))
 
         with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
             db_path = f.name
@@ -1280,6 +1406,28 @@ class TestClaimSupportHook:
             assert snapshots['claims']['employment']['gaps']['unresolved_count'] == 1
             assert snapshots['claims']['employment']['contradictions']['candidate_count'] == 0
             assert snapshots['claims']['employment']['snapshots']['gaps']['metadata']['source'] == 'unit_test'
+            assert snapshots['claims']['employment']['snapshots']['gaps']['metadata']['intake_summary_handoff'] == {
+                'current_phase': 'intake',
+                'ready_to_advance': True,
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T19:00:00+00:00',
+                    'confirmation_note': 'ready for support diagnostics persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            }
             assert snapshots['claims']['employment']['snapshots']['gaps']['required_support_kinds'] == [
                 'authority',
                 'evidence',
@@ -2864,6 +3012,9 @@ class TestClaimSupportHook:
 
         mock_mediator = Mock()
         mock_mediator.log = Mock()
+        mock_mediator.get_three_phase_status = Mock(return_value=_confirmed_intake_status(
+            note='ready for claim testimony persistence',
+        ))
 
         with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
             db_path = f.name
@@ -2899,6 +3050,28 @@ class TestClaimSupportHook:
             assert record['actor'] == 'Supervisor'
             assert record['harm'] == 'lost pay'
             assert record['metadata']['source'] == 'dashboard'
+            assert record['metadata']['intake_summary_handoff'] == {
+                'current_phase': 'intake',
+                'ready_to_advance': True,
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T19:00:00+00:00',
+                    'confirmation_note': 'ready for claim testimony persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            }
             assert records['summary']['employment discrimination']['record_count'] == 1
             assert records['summary']['employment discrimination']['linked_element_count'] == 1
             assert records['summary']['employment discrimination']['firsthand_status_counts'] == {

@@ -131,6 +131,22 @@ def _clone_provenance_record(provenance) -> Any:
     )
 
 
+def _merge_handoff_into_provenance_record(provenance, mediator) -> Any:
+    return build_provenance(
+        source_url=str(provenance.source_url or ''),
+        acquisition_method=str(provenance.acquisition_method or ''),
+        source_type=str(provenance.source_type or ''),
+        acquired_at=str(provenance.acquired_at or ''),
+        content_hash=str(provenance.content_hash or ''),
+        source_system=str(provenance.source_system or ''),
+        jurisdiction=str(provenance.jurisdiction or ''),
+        metadata=_merge_intake_summary_handoff_metadata(
+            dict(getattr(provenance, 'metadata', {}) or {}),
+            mediator,
+        ),
+    )
+
+
 class LegalAuthoritySearchHook:
     """
     Hook for searching relevant legal authorities.
@@ -855,12 +871,12 @@ class LegalAuthorityStorageHook:
                     chunk.get('start'),
                     chunk.get('end'),
                     chunk.get('text'),
-                    json.dumps({
+                    json.dumps(_merge_intake_summary_handoff_metadata({
                         'length': chunk.get('length', 0),
                         'parser_version': parse_contract.get('summary', {}).get('parser_version', ''),
                         'source': parse_contract.get('source', 'legal_authority'),
                         'input_format': parse_contract.get('summary', {}).get('input_format', ''),
-                    }),
+                    }, self.mediator)),
                 ],
             )
 
@@ -886,13 +902,16 @@ class LegalAuthorityStorageHook:
                 source_ref=f'authority:{authority_id}',
                 record_scope='legal_authority',
                 confidence=float(entity.get('confidence', 0.0) or 0.0),
-                metadata=build_fact_lineage_metadata(
-                    attributes,
-                    parse_contract=parse_contract,
-                    record_scope='legal_authority',
-                    source_ref=f'authority:{authority_id}',
+                metadata=_merge_intake_summary_handoff_metadata(
+                    build_fact_lineage_metadata(
+                        attributes,
+                        parse_contract=parse_contract,
+                        record_scope='legal_authority',
+                        source_ref=f'authority:{authority_id}',
+                    ),
+                    self.mediator,
                 ),
-                provenance=_clone_provenance_record(provenance),
+                provenance=_merge_handoff_into_provenance_record(provenance, self.mediator),
             )
             conn.execute(
                 """
@@ -955,7 +974,10 @@ class LegalAuthorityStorageHook:
                     entity.get('type'),
                     entity.get('name'),
                     entity.get('confidence', 0.0),
-                    json.dumps(entity.get('attributes', {})),
+                    json.dumps(_merge_intake_summary_handoff_metadata(
+                        entity.get('attributes', {}),
+                        self.mediator,
+                    )),
                 ],
             )
 
@@ -974,7 +996,10 @@ class LegalAuthorityStorageHook:
                     relationship.get('target_id'),
                     relationship.get('relation_type'),
                     relationship.get('confidence', 0.0),
-                    json.dumps(relationship.get('attributes', {})),
+                    json.dumps(_merge_intake_summary_handoff_metadata(
+                        relationship.get('attributes', {}),
+                        self.mediator,
+                    )),
                 ],
             )
 
@@ -1033,7 +1058,10 @@ class LegalAuthorityStorageHook:
             treatment_type = str(record.get('treatment_type') or record.get('type') or '').strip()
             if not treatment_type:
                 continue
-            metadata = dict(record.get('metadata', {}) or {})
+            metadata = _merge_intake_summary_handoff_metadata(
+                dict(record.get('metadata', {}) or {}),
+                self.mediator,
+            )
             treatment_records.append(
                 AuthorityTreatmentRecord(
                     authority_id=f'authority:{authority_id}',
@@ -1045,7 +1073,7 @@ class LegalAuthorityStorageHook:
                     treatment_date=str(record.get('treatment_date') or ''),
                     treatment_explanation=str(record.get('treatment_explanation') or record.get('explanation') or ''),
                     metadata=metadata,
-                    provenance=_clone_provenance_record(provenance),
+                    provenance=_merge_handoff_into_provenance_record(provenance, self.mediator),
                 )
             )
         return treatment_records
@@ -1183,18 +1211,21 @@ class LegalAuthorityStorageHook:
                     jurisdiction=str(provenance.jurisdiction or ''),
                     temporal_scope=str(authority.get('metadata', {}).get('effective_date') or ''),
                     extraction_confidence=self._rule_candidate_confidence(sentence, claim_element_text),
-                    metadata={
-                        'chunk_id': row.get('chunk_id', ''),
-                        'chunk_index': row.get('chunk_index', 0),
-                        'source_span': {
-                            'start': row.get('start', 0),
-                            'end': row.get('end', 0),
+                    metadata=_merge_intake_summary_handoff_metadata(
+                        {
+                            'chunk_id': row.get('chunk_id', ''),
+                            'chunk_index': row.get('chunk_index', 0),
+                            'source_span': {
+                                'start': row.get('start', 0),
+                                'end': row.get('end', 0),
+                            },
+                            'claim_type': claim_type or '',
+                            'authority_type': authority.get('type', ''),
+                            'authority_source': authority.get('source', ''),
                         },
-                        'claim_type': claim_type or '',
-                        'authority_type': authority.get('type', ''),
-                        'authority_source': authority.get('source', ''),
-                    },
-                    provenance=_clone_provenance_record(provenance),
+                        self.mediator,
+                    ),
+                    provenance=_merge_handoff_into_provenance_record(provenance, self.mediator),
                 )
             )
 
@@ -1509,6 +1540,15 @@ class LegalAuthorityStorageHook:
             parse_contract = build_document_parse_contract(document_parse, default_source='legal_authority')
             parsed_text = parse_contract.get('text', '')
             parsed_text_preview = parse_contract.get('text_preview', '')
+            authority_record_metadata = _merge_intake_summary_handoff_metadata(
+                {
+                    **(authority_data.get('metadata', {}) if isinstance(authority_data.get('metadata', {}), dict) else {}),
+                    'claim_element_id': claim_element.get('claim_element_id'),
+                    'claim_element': claim_element.get('claim_element'),
+                    'search_programs': self._normalize_search_programs(authority_data),
+                },
+                self.mediator,
+            )
             provenance = build_provenance(
                 source_url=str(authority_data.get('url', '')),
                 acquisition_method='legal_search',
@@ -1516,7 +1556,10 @@ class LegalAuthorityStorageHook:
                 acquired_at=datetime.now().isoformat(),
                 source_system=str(authority_data.get('source', 'unknown')),
                 jurisdiction=str(authority_data.get('jurisdiction', '')),
-                metadata=self._build_authority_provenance_metadata(authority_data, document_parse),
+                metadata=_merge_intake_summary_handoff_metadata(
+                    self._build_authority_provenance_metadata(authority_data, document_parse),
+                    self.mediator,
+                ),
             )
             authority = CaseAuthority(
                 authority_type=authority_data.get('type', 'unknown'),
@@ -1536,12 +1579,7 @@ class LegalAuthorityStorageHook:
                 claim_element_id=claim_element.get('claim_element_id') or '',
                 claim_element=claim_element.get('claim_element') or '',
                 relevance_score=authority_data.get('relevance_score', 0.5),
-                metadata={
-                    **(authority_data.get('metadata', {}) if isinstance(authority_data.get('metadata', {}), dict) else {}),
-                    'claim_element_id': claim_element.get('claim_element_id'),
-                    'claim_element': claim_element.get('claim_element'),
-                    'search_programs': self._normalize_search_programs(authority_data),
-                },
+                metadata=authority_record_metadata,
                 provenance=provenance,
             )
             normalized_authority = authority.as_dict()

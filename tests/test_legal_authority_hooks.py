@@ -31,6 +31,54 @@ class TestLegalAuthoritySearchHook:
             
             mock_mediator = Mock()
             mock_mediator.log = Mock()
+            mock_mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T18:00:00+00:00',
+                    'confirmation_note': 'ready for authority child artifact persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
+            mock_mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T18:00:00+00:00',
+                    'confirmation_note': 'ready for authority record persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
             mock_mediator.query_backend = Mock(return_value="employment discrimination\ncivil rights\nequal protection")
             
             hook = LegalAuthoritySearchHook(mock_mediator)
@@ -176,6 +224,30 @@ class TestLegalAuthorityStorageHook:
             
             mock_mediator = Mock()
             mock_mediator.log = Mock()
+            mock_mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T18:00:00+00:00',
+                    'confirmation_note': 'ready for authority record persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
             
             with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
                 db_path = f.name
@@ -199,8 +271,53 @@ class TestLegalAuthorityStorageHook:
                     user_id='testuser',
                     claim_type='civil rights violation'
                 )
+                authority = hook.get_authority_by_id(record_id)
                 
                 assert record_id > 0
+                assert authority['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T18:00:00+00:00',
+                        'confirmation_note': 'ready for authority record persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
+                assert authority['provenance']['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T18:00:00+00:00',
+                        'confirmation_note': 'ready for authority record persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)
@@ -495,6 +612,30 @@ class TestLegalAuthorityStorageHook:
 
             mock_mediator = Mock()
             mock_mediator.log = Mock()
+            mock_mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T18:00:00+00:00',
+                    'confirmation_note': 'ready for authority child artifact persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
 
             with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
                 db_path = f.name
@@ -531,6 +672,28 @@ class TestLegalAuthorityStorageHook:
                 assert len(chunks) >= 1
                 assert chunks[0]['chunk_id'] == 'chunk-0'
                 assert chunks[0]['metadata']['source'] == 'legal_authority'
+                assert chunks[0]['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T18:00:00+00:00',
+                        'confirmation_note': 'ready for authority child artifact persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
                 facts = hook.get_authority_facts(record_id)
                 assert len(facts) >= 1
                 assert facts[0]['source_authority_id'] == f'authority:{record_id}'
@@ -543,6 +706,50 @@ class TestLegalAuthorityStorageHook:
                 assert facts[0]['content_origin'] == 'authority_full_text'
                 assert facts[0]['parse_source'] == 'legal_authority'
                 assert facts[0]['metadata']['parse_lineage']['source'] == 'legal_authority'
+                assert facts[0]['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T18:00:00+00:00',
+                        'confirmation_note': 'ready for authority child artifact persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
+                assert facts[0]['provenance']['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T18:00:00+00:00',
+                        'confirmation_note': 'ready for authority child artifact persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)
@@ -557,6 +764,30 @@ class TestLegalAuthorityStorageHook:
 
             mock_mediator = Mock()
             mock_mediator.log = Mock()
+            mock_mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T18:00:00+00:00',
+                    'confirmation_note': 'ready for authority child artifact persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
 
             with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
                 db_path = f.name
@@ -715,6 +946,56 @@ class TestLegalAuthorityStorageHook:
                     },
                 }
                 assert graph['status'] == 'available'
+                assert any(
+                    entity['attributes'].get('intake_summary_handoff') == {
+                        'current_phase': 'intake',
+                        'ready_to_advance': True,
+                        'complainant_summary_confirmation': {
+                            'status': 'confirmed',
+                            'confirmed': True,
+                            'confirmed_at': '2026-03-17T14:00:00+00:00',
+                            'confirmation_note': 'ready for authority graph persistence',
+                            'confirmation_source': 'dashboard',
+                            'summary_snapshot_index': 0,
+                            'current_summary_snapshot': {
+                                'candidate_claim_count': 1,
+                                'canonical_fact_count': 1,
+                                'proof_lead_count': 1,
+                            },
+                            'confirmed_summary_snapshot': {
+                                'candidate_claim_count': 1,
+                                'canonical_fact_count': 1,
+                                'proof_lead_count': 1,
+                            },
+                        },
+                    }
+                    for entity in graph['entities']
+                )
+                assert all(
+                    rel['attributes'].get('intake_summary_handoff') == {
+                        'current_phase': 'intake',
+                        'ready_to_advance': True,
+                        'complainant_summary_confirmation': {
+                            'status': 'confirmed',
+                            'confirmed': True,
+                            'confirmed_at': '2026-03-17T14:00:00+00:00',
+                            'confirmation_note': 'ready for authority graph persistence',
+                            'confirmation_source': 'dashboard',
+                            'summary_snapshot_index': 0,
+                            'current_summary_snapshot': {
+                                'candidate_claim_count': 1,
+                                'canonical_fact_count': 1,
+                                'proof_lead_count': 1,
+                            },
+                            'confirmed_summary_snapshot': {
+                                'candidate_claim_count': 1,
+                                'canonical_fact_count': 1,
+                                'proof_lead_count': 1,
+                            },
+                        },
+                    }
+                    for rel in graph['relationships']
+                )
                 assert any(entity['type'] == 'fact' for entity in graph['entities'])
                 assert len(graph['relationships']) >= 1
                 assert all('relation_type' in rel for rel in graph['relationships'])
@@ -731,6 +1012,30 @@ class TestLegalAuthorityStorageHook:
 
             mock_mediator = Mock()
             mock_mediator.log = Mock()
+            mock_mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T18:00:00+00:00',
+                    'confirmation_note': 'ready for authority child artifact persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
 
             with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
                 db_path = f.name
@@ -787,6 +1092,50 @@ class TestLegalAuthorityStorageHook:
                 assert treatments[0]['treated_by_citation'] == 'Jones v. Smith, 456 F.4th 789'
                 assert treatments[0]['treatment_source'] == 'later_case_search'
                 assert treatments[0]['treatment_confidence'] == pytest.approx(0.82)
+                assert treatments[0]['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T18:00:00+00:00',
+                        'confirmation_note': 'ready for authority child artifact persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
+                assert treatments[0]['provenance']['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T18:00:00+00:00',
+                        'confirmation_note': 'ready for authority child artifact persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)
@@ -800,6 +1149,30 @@ class TestLegalAuthorityStorageHook:
 
             mock_mediator = Mock()
             mock_mediator.log = Mock()
+            mock_mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T18:00:00+00:00',
+                    'confirmation_note': 'ready for authority child artifact persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
             mock_mediator.claim_support = Mock()
             mock_mediator.claim_support.resolve_claim_element = Mock(return_value={
                 'claim_element_id': 'employment:1',
@@ -839,6 +1212,56 @@ class TestLegalAuthorityStorageHook:
                 assert all(candidate['claim_element_text'] == 'Protected activity' for candidate in rule_candidates)
                 assert all(candidate['provenance']['source_system'] == 'federal_register' for candidate in rule_candidates)
                 assert all('chunk_index' in candidate['metadata'] for candidate in rule_candidates)
+                assert all(
+                    candidate['metadata']['intake_summary_handoff'] == {
+                        'current_phase': 'intake',
+                        'ready_to_advance': True,
+                        'complainant_summary_confirmation': {
+                            'status': 'confirmed',
+                            'confirmed': True,
+                            'confirmed_at': '2026-03-17T18:00:00+00:00',
+                            'confirmation_note': 'ready for authority child artifact persistence',
+                            'confirmation_source': 'dashboard',
+                            'summary_snapshot_index': 0,
+                            'current_summary_snapshot': {
+                                'candidate_claim_count': 1,
+                                'canonical_fact_count': 1,
+                                'proof_lead_count': 1,
+                            },
+                            'confirmed_summary_snapshot': {
+                                'candidate_claim_count': 1,
+                                'canonical_fact_count': 1,
+                                'proof_lead_count': 1,
+                            },
+                        },
+                    }
+                    for candidate in rule_candidates
+                )
+                assert all(
+                    candidate['provenance']['metadata']['intake_summary_handoff'] == {
+                        'current_phase': 'intake',
+                        'ready_to_advance': True,
+                        'complainant_summary_confirmation': {
+                            'status': 'confirmed',
+                            'confirmed': True,
+                            'confirmed_at': '2026-03-17T18:00:00+00:00',
+                            'confirmation_note': 'ready for authority child artifact persistence',
+                            'confirmation_source': 'dashboard',
+                            'summary_snapshot_index': 0,
+                            'current_summary_snapshot': {
+                                'candidate_claim_count': 1,
+                                'canonical_fact_count': 1,
+                                'proof_lead_count': 1,
+                            },
+                            'confirmed_summary_snapshot': {
+                                'candidate_claim_count': 1,
+                                'canonical_fact_count': 1,
+                                'proof_lead_count': 1,
+                            },
+                        },
+                    }
+                    for candidate in rule_candidates
+                )
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)

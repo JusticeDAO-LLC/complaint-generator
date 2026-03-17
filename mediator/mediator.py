@@ -1577,16 +1577,18 @@ class Mediator:
 	def _refresh_follow_up_task_queries(self, claim_type: str, task: Dict[str, Any]) -> Dict[str, Any]:
 		adaptive_retry_state = task.get('adaptive_retry_state') if isinstance(task.get('adaptive_retry_state'), dict) else {}
 		adaptive_standard = bool(adaptive_retry_state.get('applied')) and str(adaptive_retry_state.get('adaptive_query_strategy') or '') == 'standard_gap_targeted'
+		resolved_standard = bool(task.get('manual_review_resolved')) and str(task.get('query_strategy') or '') == 'standard_gap_targeted'
+		use_standard_queries = adaptive_standard or resolved_standard
 		queries = self._build_follow_up_queries(
 			claim_type,
 			str(task.get('claim_element') or ''),
 			list(task.get('missing_support_kinds') or []),
 			support_by_kind=task.get('support_by_kind') if isinstance(task.get('support_by_kind'), dict) else {},
-			recommended_action='' if adaptive_standard else str(task.get('validation_recommended_action') or task.get('recommended_action') or ''),
-			validation_status='' if adaptive_standard else str(task.get('validation_status') or ''),
-			proof_gaps=[] if adaptive_standard else list(task.get('proof_gaps') or []),
+			recommended_action='' if use_standard_queries else str(task.get('validation_recommended_action') or task.get('recommended_action') or ''),
+			validation_status='' if use_standard_queries else str(task.get('validation_status') or ''),
+			proof_gaps=[] if use_standard_queries else list(task.get('proof_gaps') or []),
 			proof_decision_trace={}
-			if adaptive_standard else {
+			if use_standard_queries else {
 				'decision_source': str(task.get('proof_decision_source') or ''),
 				'logic_provable_count': int(task.get('logic_provable_count', 0) or 0),
 				'logic_unprovable_count': int(task.get('logic_unprovable_count', 0) or 0),

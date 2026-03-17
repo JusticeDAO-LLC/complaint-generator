@@ -143,6 +143,30 @@ class TestEvidenceStateHook:
             mock_mediator.log = Mock()
             mock_mediator.state = Mock()
             mock_mediator.state.username = "testuser"
+            mock_mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T17:00:00+00:00',
+                    'confirmation_note': 'ready for evidence record persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
             
             # Use temporary database
             with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
@@ -184,31 +208,53 @@ class TestEvidenceStateHook:
             mock_mediator.log = Mock()
             mock_mediator.state = Mock()
             mock_mediator.state.username = "testuser"
-            
+            mock_mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T17:00:00+00:00',
+                    'confirmation_note': 'ready for evidence record persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
+
             with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
                 db_path = f.name
-            
+
             try:
                 hook = EvidenceStateHook(mock_mediator, db_path=db_path)
-                
-                # Add test evidence
+
                 evidence_info = {
                     'cid': 'QmTest456',
                     'type': 'image',
                     'size': 2048,
-                    'metadata': {}
+                    'metadata': {'test': 'data'},
                 }
-                
+
                 hook.add_evidence_record(
                     'testuser',
                     evidence_info,
                     claim_element_id='employment:1',
                     claim_element='Protected activity',
                 )
-                
-                # Retrieve evidence
+
                 results = hook.get_user_evidence('testuser')
-                
+
                 assert isinstance(results, list)
                 assert len(results) > 0
                 assert results[0]['cid'] == 'QmTest456'
@@ -271,6 +317,30 @@ class TestEvidenceStateHook:
             mock_mediator.log = Mock()
             mock_mediator.state = Mock()
             mock_mediator.state.username = "testuser"
+            mock_mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T17:00:00+00:00',
+                    'confirmation_note': 'ready for evidence record persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
 
             with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
                 db_path = f.name
@@ -371,6 +441,30 @@ class TestEvidenceStateHook:
             mock_mediator.log = Mock()
             mock_mediator.state = Mock()
             mock_mediator.state.username = "testuser"
+            mock_mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T17:00:00+00:00',
+                    'confirmation_note': 'ready for evidence record persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
 
             with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
                 db_path = f.name
@@ -433,14 +527,101 @@ class TestEvidenceStateHook:
                 assert record['parse_metadata']['filename'] == 'evidence.txt'
                 assert record['parse_metadata']['parser_version'] == 'documents-adapter:1'
                 assert record['parse_metadata']['transform_lineage']['source'] == 'bytes'
+                assert record['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T17:00:00+00:00',
+                        'confirmation_note': 'ready for evidence record persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
+                assert record['provenance']['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T17:00:00+00:00',
+                        'confirmation_note': 'ready for evidence record persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
                 assert record['graph_metadata']['graph_snapshot']['created'] is True
                 assert record['graph_metadata']['graph_snapshot']['reused'] is False
                 assert record['graph_metadata']['graph_snapshot']['metadata']['record_scope'] == 'evidence'
-                assert 'intake_summary_handoff' not in record['graph_metadata']['graph_snapshot']['metadata']
+                assert record['graph_metadata']['graph_snapshot']['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T17:00:00+00:00',
+                        'confirmation_note': 'ready for evidence record persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
                 assert record['graph_entity_count'] >= 1
                 assert record['graph_relationship_count'] >= 1
                 assert len(chunks) == 2
                 assert chunks[0]['chunk_id'] == 'chunk-0'
+                assert chunks[0]['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T17:00:00+00:00',
+                        'confirmation_note': 'ready for evidence record persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
                 assert len(facts) >= 1
                 assert facts[0]['fact_id'].startswith('fact:')
                 assert facts[0]['source_artifact_id']
@@ -451,6 +632,100 @@ class TestEvidenceStateHook:
                 assert facts[0]['parse_source'] == 'bytes'
                 assert facts[0]['input_format'] == 'text'
                 assert facts[0]['metadata']['parse_lineage']['source'] == 'bytes'
+                assert facts[0]['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T17:00:00+00:00',
+                        'confirmation_note': 'ready for evidence record persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
+                assert facts[0]['provenance']['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T17:00:00+00:00',
+                        'confirmation_note': 'ready for evidence record persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
+                assert any(
+                    entity['attributes'].get('intake_summary_handoff') == {
+                        'current_phase': 'intake',
+                        'ready_to_advance': True,
+                        'complainant_summary_confirmation': {
+                            'status': 'confirmed',
+                            'confirmed': True,
+                            'confirmed_at': '2026-03-17T17:00:00+00:00',
+                            'confirmation_note': 'ready for evidence record persistence',
+                            'confirmation_source': 'dashboard',
+                            'summary_snapshot_index': 0,
+                            'current_summary_snapshot': {
+                                'candidate_claim_count': 1,
+                                'canonical_fact_count': 2,
+                                'proof_lead_count': 1,
+                            },
+                            'confirmed_summary_snapshot': {
+                                'candidate_claim_count': 1,
+                                'canonical_fact_count': 2,
+                                'proof_lead_count': 1,
+                            },
+                        },
+                    }
+                    for entity in graph['entities']
+                )
+                assert all(
+                    rel['attributes'].get('intake_summary_handoff') == {
+                        'current_phase': 'intake',
+                        'ready_to_advance': True,
+                        'complainant_summary_confirmation': {
+                            'status': 'confirmed',
+                            'confirmed': True,
+                            'confirmed_at': '2026-03-17T17:00:00+00:00',
+                            'confirmation_note': 'ready for evidence record persistence',
+                            'confirmation_source': 'dashboard',
+                            'summary_snapshot_index': 0,
+                            'current_summary_snapshot': {
+                                'candidate_claim_count': 1,
+                                'canonical_fact_count': 2,
+                                'proof_lead_count': 1,
+                            },
+                            'confirmed_summary_snapshot': {
+                                'candidate_claim_count': 1,
+                                'canonical_fact_count': 2,
+                                'proof_lead_count': 1,
+                            },
+                        },
+                    }
+                    for rel in graph['relationships']
+                )
                 assert any(entity['type'] == 'fact' for entity in graph['entities'])
                 assert any(rel['relation_type'] == 'has_fact' for rel in graph['relationships'])
             finally:
