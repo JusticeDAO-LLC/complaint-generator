@@ -44,6 +44,14 @@ Small preset matrix example:
 ./.venv/bin/python scripts/run_hacc_preset_matrix.py --presets core_hacc_policies,accommodation_focus --num-sessions 1 --hacc-count 1 --max-turns 2 --max-parallel 1 --output-dir ../research_results/adversarial_runs/hacc_preset_matrix_smoke --continue-on-error
 ```
 
+If you want the matrix run to abort as soon as a preset only succeeds via degraded fallback runtime, add:
+
+```bash
+./.venv/bin/python scripts/run_hacc_preset_matrix.py --presets core_hacc_policies --num-sessions 1 --hacc-count 1 --max-turns 2 --max-parallel 1 --output-dir ../research_results/adversarial_runs/hacc_preset_matrix_failfast --fail-on-degraded-runtime
+```
+
+Normal matrix runs now preserve degraded runtime in the summary artifacts as `router_status: degraded` plus a `runtime_note` field when the selected backend probes cleanly but the live session falls back during execution.
+
 Deeper preset comparison example:
 
 ```bash
