@@ -8,17 +8,35 @@ Usage:
 """
 
 import pytest
-from ipfs_datasets_py.optimizers.graphrag.ontology_generator import (
-    OntologyGenerator,
-    OntologyGenerationContext,
-    ExtractionConfig,
-    DataType,
+from integrations.ipfs_datasets.loader import import_attr_optional
+
+
+OntologyGenerator, _generator_error = import_attr_optional(
+    "ipfs_datasets_py.optimizers.graphrag.ontology_generator",
+    "OntologyGenerator",
+)
+OntologyGenerationContext, _context_error = import_attr_optional(
+    "ipfs_datasets_py.optimizers.graphrag.ontology_generator",
+    "OntologyGenerationContext",
+)
+ExtractionConfig, _config_error = import_attr_optional(
+    "ipfs_datasets_py.optimizers.graphrag.ontology_generator",
+    "ExtractionConfig",
+)
+DataType, _data_type_error = import_attr_optional(
+    "ipfs_datasets_py.optimizers.graphrag.ontology_generator",
+    "DataType",
 )
 
 
 @pytest.fixture
 def generator():
     """Create OntologyGenerator instance."""
+    if None in (OntologyGenerator, OntologyGenerationContext, ExtractionConfig, DataType):
+        pytest.skip(
+            "GraphRAG ontology generator benchmark dependencies are unavailable: "
+            f"{_generator_error or _context_error or _config_error or _data_type_error}"
+        )
     return OntologyGenerator()
 
 

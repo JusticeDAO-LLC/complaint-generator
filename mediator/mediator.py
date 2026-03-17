@@ -384,7 +384,19 @@ class Mediator:
 			if self.inquiries.is_complete():
 				return self.finalize()
 
-		return self.inquiries.get_next()['question']
+		next_inquiry = self.inquiries.get_next()
+		if next_inquiry is None:
+			self.state.current_inquiry = None
+			self.state.current_inquiry_explanation = None
+			return self.response()
+		self.state.current_inquiry = next_inquiry
+		explainer = getattr(self.inquiries, 'explain_inquiry', None)
+		self.state.current_inquiry_explanation = (
+			explainer(next_inquiry)
+			if callable(explainer)
+			else None
+		)
+		return next_inquiry['question']
 
 
 	def finalize(self):
@@ -412,8 +424,15 @@ class Mediator:
 		
 		# Step 2: Retrieve applicable statutes
 		self.log('legal_analysis', step='statute_retrieval')
-		statutes = self.statute_retriever.retrieve_statutes(classification)
+		retrieve_bundle = getattr(self.statute_retriever, 'retrieve_statutes_bundle', None)
+		if callable(retrieve_bundle):
+			statutes_bundle = retrieve_bundle(classification)
+		else:
+			statutes_bundle = {'raw': self.statute_retriever.retrieve_statutes(classification)}
+		statutes = list(statutes_bundle.get('raw', []) or [])
 		self.state.applicable_statutes = statutes
+		self.state.last_legal_authorities_normalized = list(statutes_bundle.get('normalized', []) or [])
+		self.state.last_legal_authority_support_bundle = dict(statutes_bundle.get('support_bundle', {}) or {})
 		
 		# Step 3: Generate summary judgment requirements
 		self.log('legal_analysis', step='requirements_generation')
@@ -423,11 +442,37 @@ class Mediator:
 		complaint_id = getattr(self.state, 'complaint_id', None)
 		self.claim_support.register_claim_requirements(user_id, requirements, complaint_id=complaint_id)
 		support_summary = self.summarize_claim_support(user_id=user_id)
+		legal_support_bundle = dict(statutes_bundle.get('support_bundle', {}) or {})
+		legal_support_summary = dict(legal_support_bundle.get('summary', {}) or {})
+		legal_support_entries = []
+		for key in ('top_authorities', 'cross_supported', 'hybrid_cross_supported', 'top_mixed'):
+			for item in legal_support_bundle.get(key, []) or []:
+				if not isinstance(item, dict):
+					continue
+				entry = ' - '.join(
+					part for part in (
+						str(item.get('title') or item.get('citation') or '').strip(),
+						str(item.get('snippet') or item.get('relevance') or '').strip(),
+					) if part
+				).strip()
+				if entry and entry not in legal_support_entries:
+					legal_support_entries.append(entry)
+		provenance_context = {
+			'support_context': '\n'.join(legal_support_entries[:5]),
+			'support_summary': legal_support_summary,
+		}
 		
 		# Step 4: Generate targeted questions
 		self.log('legal_analysis', step='question_generation')
-		questions = self.question_generator.generate_questions(requirements, classification)
+		questions = self.question_generator.generate_questions(
+			requirements,
+			classification,
+			provenance_context=provenance_context,
+		)
 		self.state.legal_questions = questions
+		merge_questions = getattr(self.inquiries, 'merge_legal_questions', None)
+		if callable(merge_questions):
+			merge_questions(questions)
 		
 		return {
 			'classification': classification,
@@ -436,6 +481,54 @@ class Mediator:
 			'support_summary': support_summary,
 			'questions': questions
 		}
+
+	def build_inquiry_gap_context(self) -> Dict[str, Any]:
+		priority_terms: List[str] = []
+		claim_support_packets = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packets') or {}
+		for claim_packet in claim_support_packets.values() if isinstance(claim_support_packets, dict) else []:
+			if not isinstance(claim_packet, dict):
+				continue
+			for element in claim_packet.get('elements', []) or []:
+				if not isinstance(element, dict):
+					continue
+				if str(element.get('support_status') or '').strip().lower() == 'supported':
+					continue
+				for value in (element.get('element_label'), element.get('element_id'), claim_packet.get('claim_type')):
+					text = str(value or '').strip()
+					if text and text.lower() not in {term.lower() for term in priority_terms}:
+						priority_terms.append(text)
+		return {
+			'priority_terms': priority_terms,
+			'gap_count': len(priority_terms),
+		}
+
+	def get_current_inquiry_payload(self) -> Dict[str, Any]:
+		inquiry = self.state.current_inquiry
+		explanation = self.state.current_inquiry_explanation
+		question = ''
+		if isinstance(inquiry, dict):
+			question = str(inquiry.get('question') or '').strip()
+		return {
+			'message': question,
+			'question': question,
+			'inquiry': inquiry if isinstance(inquiry, dict) else None,
+			'explanation': explanation if isinstance(explanation, dict) else None,
+		}
+
+	def io_payload(self, text):
+		response = self.io(text)
+		if isinstance(response, dict):
+			payload = dict(response)
+			message = str(payload.get('message') or payload.get('question') or '').strip()
+		else:
+			message = str(response or '').strip()
+			payload = {'message': message, 'question': message}
+		current = self.get_current_inquiry_payload()
+		payload.setdefault('message', current.get('message') or message)
+		payload.setdefault('question', current.get('question') or message)
+		payload.setdefault('inquiry', current.get('inquiry'))
+		payload.setdefault('explanation', current.get('explanation'))
+		return payload
 	
 	def get_legal_analysis(self):
 		"""Get the current legal analysis results."""

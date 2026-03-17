@@ -67,6 +67,8 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "promotion: testimony record saved" in content
     assert "promotion: document saved" in content
     assert "promotion ref:" in content
+    assert "promoted testimony:" in content
+    assert "promoted document:" in content
     assert "prefill-testimony-update-button" in content
     assert "prefill-document-update-button" in content
     assert "Load Into Document Form" in content

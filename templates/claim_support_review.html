@@ -2343,6 +2343,8 @@
                 `<span class="chip">sort: ${taskUpdateSortValue}</span>`,
                 `<span class="chip">visible updates: ${filteredAlignmentTaskUpdates.length}</span>`,
                 `<span class="chip">total updates: ${visibleAlignmentTaskUpdates.length}</span>`,
+                `<span class="chip">promoted testimony: ${visibleAlignmentTaskUpdates.filter((update) => String(update && update.resolution_status || '').trim().toLowerCase() === 'promoted_to_testimony').length}</span>`,
+                `<span class="chip">promoted document: ${visibleAlignmentTaskUpdates.filter((update) => String(update && update.resolution_status || '').trim().toLowerCase() === 'promoted_to_document').length}</span>`,
             ].join('');
 
             const manualReviewClaims = new Set(
