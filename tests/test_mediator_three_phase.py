@@ -281,6 +281,38 @@ class TestMediatorThreePhaseIntegration:
         assert status['intake_readiness']['contradiction_count'] == 1
         assert status['intake_contradictions']['candidates'][0]['left_node_name'] == 'Complaint before termination'
 
+    def test_phase_status_exposes_temporal_cycle_contradictions(self):
+        """Temporal ordering cycles should surface through the intake contradiction pipeline."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        dg = mediator.dg_builder.build_from_claims([])
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', dg)
+
+        fact_a = DependencyNode('fact_a', NodeType.FACT, 'Complaint made')
+        fact_b = DependencyNode('fact_b', NodeType.FACT, 'Termination issued')
+        dg.add_node(fact_a)
+        dg.add_node(fact_b)
+        dg.add_dependency(Dependency('dep_before_1', 'fact_a', 'fact_b', DependencyType.BEFORE, required=False))
+        dg.add_dependency(Dependency('dep_before_2', 'fact_b', 'fact_a', DependencyType.BEFORE, required=False))
+
+        mediator._update_intake_contradiction_state(dg)
+        status = mediator.get_three_phase_status()
+
+        assert status['intake_contradictions']['candidate_count'] >= 1
+        assert status['intake_readiness']['contradiction_count'] >= 1
+        assert 'contradiction_unresolved' in status['intake_readiness']['blockers']
+        assert any(
+            candidate.get('category') in {'temporal_cycle', 'temporal_reverse_before'}
+            for candidate in status['intake_contradictions']['candidates']
+        )
+
     def test_start_three_phase_process_persists_intake_case_file(self):
         """Starting intake should persist a structured intake case file."""
         from mediator.mediator import Mediator
@@ -410,10 +442,46 @@ class TestMediatorThreePhaseIntegration:
         assert intake_case_file['timeline_anchors'][0]['anchor_text'] == 'January 20, 2026'
         assert intake_case_file['timeline_anchors'][0]['start_date'] == '2026-01-20'
         assert intake_case_file['timeline_anchors'][0]['granularity'] == 'day'
+        dependency_graph = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'dependency_graph')
+        temporal_fact_nodes = [
+            node for node in dependency_graph.nodes.values()
+            if node.node_type == NodeType.FACT and node.attributes.get('timeline_fact_node')
+        ]
+        assert len(temporal_fact_nodes) >= 1
+        assert any(node.attributes.get('source_fact_id') == timeline_fact['fact_id'] for node in temporal_fact_nodes)
         assert intake_case_file['intake_sections']['chronology']['status'] == 'complete'
         assert result['intake_readiness']['canonical_fact_count'] >= 1
         assert result['question_candidates']
         assert mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'question_candidates')
+
+    def test_process_denoising_answer_syncs_temporal_relations_into_dependency_graph(self):
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'ok'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process("I was fired after I complained about discrimination.")
+
+        question = {
+            'type': 'timeline',
+            'question': 'When did this happen?',
+            'question_objective': 'establish_chronology',
+            'expected_update_kind': 'timeline_anchor',
+            'target_claim_type': 'employment_discrimination',
+        }
+        mediator.process_denoising_answer(question, 'I complained on March 1, 2025.')
+        mediator.process_denoising_answer(question, 'I was fired on April 15, 2025.')
+
+        dependency_graph = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'dependency_graph')
+        before_edges = [
+            dep for dep in dependency_graph.dependencies.values()
+            if dep.dependency_type == DependencyType.BEFORE
+        ]
+        assert len(before_edges) >= 1
 
     def test_process_denoising_answer_extracts_actor_target_and_location_for_responsible_party(self):
         """Responsible-party answers should populate actor, target, and location-oriented fact fields."""

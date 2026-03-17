@@ -55,6 +55,8 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "evidence action ${task.action || 'fill_evidence_gaps'}" in content
     assert "element: ${task.claim_element_id || 'unknown'}" in content
     assert "pending_review" in content
+    assert "promoted_testimony" in content
+    assert "promoted_document" in content
     assert "answered_pending_review" in content
     assert "answered, pending review" in content
     assert "review state: awaiting support validation" in content

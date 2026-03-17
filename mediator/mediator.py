@@ -3661,9 +3661,10 @@ class Mediator:
 		
 		# Build dependency graph
 		dg = self.dg_builder.build_from_claims(claims)
+		intake_case_file = self._initialize_intake_case_file(kg, initial_complaint_text)
+		dg = self.dg_builder.sync_intake_timeline_to_graph(dg, intake_case_file)
 		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', dg)
 		self._update_intake_contradiction_state(dg)
-		intake_case_file = self._initialize_intake_case_file(kg, initial_complaint_text)
 		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_case_file', intake_case_file)
 		
 		# Generate initial denoising questions
@@ -4548,6 +4549,7 @@ class Mediator:
 		intake_case_file = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
 		intake_case_file = self._apply_intake_answer_to_case_file(question, answer, intake_case_file, kg)
 		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_case_file', intake_case_file)
+		dg = self.dg_builder.sync_intake_timeline_to_graph(dg, intake_case_file)
 		
 		# Generate next questions
 		max_questions = 5
@@ -4645,11 +4647,47 @@ class Mediator:
 			seen_pairs.add(pair_key)
 			candidates.append({
 				'dependency_id': dependency.id,
+				'contradiction_id': dependency.id,
 				'left_node_id': dependency.source_id,
 				'right_node_id': dependency.target_id,
 				'left_node_name': left_name,
 				'right_node_name': right_name,
+				'summary': f'{left_name} vs {right_name}',
+				'category': 'dependency_graph',
+				'severity': 'blocking',
+				'recommended_resolution_lane': 'request_document',
+				'current_resolution_status': 'open',
+				'external_corroboration_required': True,
 				'label': f'{left_name} vs {right_name}',
+			})
+		for issue in getattr(dependency_graph, 'get_temporal_inconsistency_issues', lambda: [])():
+			if not isinstance(issue, dict):
+				continue
+			issue_id = str(issue.get('issue_id') or '')
+			left_name = str(issue.get('left_node_name') or '')
+			right_name = str(issue.get('right_node_name') or '')
+			node_names = issue.get('node_names') if isinstance(issue.get('node_names'), list) else []
+			pair_key = (
+				issue.get('issue_type'),
+				tuple(sorted(name for name in node_names if isinstance(name, str))) if node_names else tuple(sorted(name for name in (left_name, right_name) if name)),
+			)
+			if pair_key in seen_pairs:
+				continue
+			seen_pairs.add(pair_key)
+			candidates.append({
+				'dependency_id': issue_id,
+				'contradiction_id': issue_id,
+				'left_node_id': issue.get('left_node_id') or (issue.get('node_ids') or [''])[0],
+				'right_node_id': issue.get('right_node_id') or (issue.get('node_ids') or ['', ''])[-1],
+				'left_node_name': left_name or (node_names[0] if node_names else ''),
+				'right_node_name': right_name or (node_names[-1] if node_names else ''),
+				'summary': str(issue.get('summary') or ''),
+				'category': str(issue.get('issue_type') or 'timeline'),
+				'severity': str(issue.get('severity') or 'blocking'),
+				'recommended_resolution_lane': str(issue.get('recommended_resolution_lane') or 'request_document'),
+				'current_resolution_status': str(issue.get('current_resolution_status') or 'open'),
+				'external_corroboration_required': bool(issue.get('external_corroboration_required', True)),
+				'label': str(issue.get('summary') or issue_id),
 			})
 		return {
 			'candidate_count': len(candidates),

@@ -234,6 +234,89 @@ class TestDependencyGraph:
         summary = dg.summary()
         assert summary['total_nodes'] >= 2
 
+    def test_dependency_graph_builder_syncs_intake_timeline_facts_and_temporal_edges(self):
+        builder = DependencyGraphBuilder()
+        claims = [
+            {'name': 'Retaliation', 'type': 'retaliation', 'description': 'Protected activity before adverse action'}
+        ]
+
+        dg = builder.build_from_claims(claims, {})
+        intake_case_file = {
+            'canonical_facts': [
+                {
+                    'fact_id': 'fact_1',
+                    'text': 'Plaintiff complained about discrimination.',
+                    'fact_type': 'timeline',
+                    'claim_types': ['retaliation'],
+                    'confidence': 0.8,
+                    'event_date_or_range': 'March 1, 2025',
+                    'temporal_context': {
+                        'start_date': '2025-03-01',
+                        'end_date': '2025-03-01',
+                        'relative_markers': [],
+                    },
+                },
+                {
+                    'fact_id': 'fact_2',
+                    'text': 'Employer terminated Plaintiff.',
+                    'fact_type': 'timeline',
+                    'claim_types': ['retaliation'],
+                    'confidence': 0.9,
+                    'event_date_or_range': 'April 15, 2025',
+                    'temporal_context': {
+                        'start_date': '2025-04-15',
+                        'end_date': '2025-04-15',
+                        'relative_markers': [],
+                    },
+                },
+            ],
+            'timeline_relations': [
+                {
+                    'source_fact_id': 'fact_1',
+                    'target_fact_id': 'fact_2',
+                    'relation_type': 'before',
+                    'confidence': 'high',
+                }
+            ],
+        }
+
+        builder.sync_intake_timeline_to_graph(dg, intake_case_file)
+
+        temporal_nodes = [
+            node for node in dg.nodes.values()
+            if node.node_type == NodeType.FACT and node.attributes.get('timeline_fact_node')
+        ]
+        assert len(temporal_nodes) == 2
+        assert {node.attributes['source_fact_id'] for node in temporal_nodes} == {'fact_1', 'fact_2'}
+
+        before_edges = [
+            dep for dep in dg.dependencies.values()
+            if dep.dependency_type == DependencyType.BEFORE
+        ]
+        assert len(before_edges) == 1
+
+        support_edges = [
+            dep for dep in dg.dependencies.values()
+            if dep.dependency_type == DependencyType.SUPPORTS
+            and dg.get_node(dep.source_id).attributes.get('timeline_fact_node')
+        ]
+        assert len(support_edges) == 2
+
+    def test_dependency_graph_detects_temporal_cycles_and_reverse_before_conflicts(self):
+        graph = DependencyGraph()
+        node_a = DependencyNode(id='fact_a', node_type=NodeType.FACT, name='Complaint made')
+        node_b = DependencyNode(id='fact_b', node_type=NodeType.FACT, name='Termination issued')
+        graph.add_node(node_a)
+        graph.add_node(node_b)
+        graph.add_dependency(Dependency('dep_1', 'fact_a', 'fact_b', DependencyType.BEFORE, required=False))
+        graph.add_dependency(Dependency('dep_2', 'fact_b', 'fact_a', DependencyType.BEFORE, required=False))
+
+        issues = graph.get_temporal_inconsistency_issues()
+
+        issue_types = {issue['issue_type'] for issue in issues}
+        assert 'temporal_cycle' in issue_types
+        assert 'temporal_reverse_before' in issue_types
+
 
 class TestComplaintDenoiser:
     """Tests for ComplaintDenoiser."""

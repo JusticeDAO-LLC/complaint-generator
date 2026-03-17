@@ -932,6 +932,8 @@
                                 <option value="active">active</option>
                                 <option value="resolved">resolved</option>
                                 <option value="pending_review">pending_review</option>
+                                <option value="promoted_testimony">promoted_testimony</option>
+                                <option value="promoted_document">promoted_document</option>
                                 <option value="manual_review">manual_review</option>
                             </select>
                         </div>
@@ -1117,6 +1119,12 @@
             }
             if (normalizedFilter === 'pending_review') {
                 return updateList.filter((update) => String(update && update.resolution_status || '').trim().toLowerCase() === 'answered_pending_review');
+            }
+            if (normalizedFilter === 'promoted_testimony') {
+                return updateList.filter((update) => String(update && update.resolution_status || '').trim().toLowerCase() === 'promoted_to_testimony');
+            }
+            if (normalizedFilter === 'promoted_document') {
+                return updateList.filter((update) => String(update && update.resolution_status || '').trim().toLowerCase() === 'promoted_to_document');
             }
             if (normalizedFilter === 'manual_review') {
                 return updateList.filter((update) => String(update && update.resolution_status || '').trim().toLowerCase() === 'needs_manual_review');

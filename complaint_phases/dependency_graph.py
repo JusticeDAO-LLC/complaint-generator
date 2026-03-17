@@ -36,6 +36,9 @@ class DependencyType(Enum):
     CONTRADICTS = "contradicts"
     IMPLIES = "implies"
     DEPENDS_ON = "depends_on"
+    BEFORE = "before"
+    SAME_TIME = "same_time"
+    OVERLAPS = "overlaps"
 
 
 @dataclass
@@ -285,6 +288,132 @@ class DependencyGraph:
             'satisfied_nodes': satisfied_nodes,
             'satisfaction_rate': satisfied_nodes / len(self.nodes) if self.nodes else 0.0
         }
+
+    def get_temporal_dependencies(self) -> List[Dependency]:
+        """Return temporal ordering dependencies present in the graph."""
+        temporal_types = {
+            DependencyType.BEFORE,
+            DependencyType.SAME_TIME,
+            DependencyType.OVERLAPS,
+        }
+        return [
+            dep for dep in self.dependencies.values()
+            if dep.dependency_type in temporal_types
+        ]
+
+    def detect_temporal_cycles(self) -> List[List[str]]:
+        """Detect cycles among BEFORE dependencies and return node-id cycles."""
+        adjacency: Dict[str, List[str]] = {}
+        for dep in self.dependencies.values():
+            if dep.dependency_type != DependencyType.BEFORE:
+                continue
+            adjacency.setdefault(dep.source_id, []).append(dep.target_id)
+
+        cycles: List[List[str]] = []
+        seen_cycle_keys = set()
+
+        def _canonical_cycle_key(path: List[str]) -> tuple[str, ...]:
+            core = path[:-1] if len(path) > 1 and path[0] == path[-1] else path
+            if not core:
+                return tuple()
+            rotations = [tuple(core[index:] + core[:index]) for index in range(len(core))]
+            reversed_core = list(reversed(core))
+            rotations.extend(tuple(reversed_core[index:] + reversed_core[:index]) for index in range(len(reversed_core)))
+            return min(rotations)
+
+        def _visit(node_id: str, stack: List[str], visiting: set[str]) -> None:
+            visiting.add(node_id)
+            stack.append(node_id)
+            for neighbor_id in adjacency.get(node_id, []):
+                if neighbor_id in visiting:
+                    cycle_start = stack.index(neighbor_id)
+                    cycle_path = stack[cycle_start:] + [neighbor_id]
+                    cycle_key = _canonical_cycle_key(cycle_path)
+                    if cycle_key and cycle_key not in seen_cycle_keys:
+                        seen_cycle_keys.add(cycle_key)
+                        cycles.append(cycle_path)
+                    continue
+                if neighbor_id in stack:
+                    continue
+                _visit(neighbor_id, stack, visiting)
+            stack.pop()
+            visiting.remove(node_id)
+
+        for node_id in list(adjacency.keys()):
+            _visit(node_id, [], set())
+
+        return cycles
+
+    def get_temporal_inconsistency_issues(self) -> List[Dict[str, Any]]:
+        """Return temporal inconsistency diagnostics derived from temporal edges."""
+        issues: List[Dict[str, Any]] = []
+        pair_type_map: Dict[tuple[str, str], set[str]] = {}
+        directional_before_pairs = set()
+
+        for dep in self.get_temporal_dependencies():
+            source_id = str(dep.source_id)
+            target_id = str(dep.target_id)
+            relation_type = dep.dependency_type.value
+            pair_key = tuple(sorted((source_id, target_id)))
+            pair_type_map.setdefault(pair_key, set()).add(relation_type)
+            if dep.dependency_type == DependencyType.BEFORE:
+                directional_before_pairs.add((source_id, target_id))
+
+        for cycle_index, cycle in enumerate(self.detect_temporal_cycles(), start=1):
+            node_names = [self.get_node(node_id).name if self.get_node(node_id) else node_id for node_id in cycle[:-1]]
+            summary = f"Temporal cycle detected: {' -> '.join(node_names + [node_names[0]])}"
+            issues.append({
+                'issue_id': f'temporal_cycle_{cycle_index:03d}',
+                'issue_type': 'temporal_cycle',
+                'summary': summary,
+                'severity': 'blocking',
+                'recommended_resolution_lane': 'request_document',
+                'current_resolution_status': 'open',
+                'external_corroboration_required': True,
+                'node_ids': cycle[:-1],
+                'node_names': node_names,
+            })
+
+        for pair_index, (pair_key, relation_types) in enumerate(sorted(pair_type_map.items()), start=1):
+            left_id, right_id = pair_key
+            left_node = self.get_node(left_id)
+            right_node = self.get_node(right_id)
+            left_name = left_node.name if left_node else left_id
+            right_name = right_node.name if right_node else right_id
+
+            if 'before' in relation_types and 'same_time' in relation_types:
+                issues.append({
+                    'issue_id': f'temporal_conflict_{pair_index:03d}',
+                    'issue_type': 'temporal_relation_conflict',
+                    'summary': f'Temporal relation conflict: {left_name} cannot be both before and simultaneous with {right_name}',
+                    'severity': 'blocking',
+                    'recommended_resolution_lane': 'request_document',
+                    'current_resolution_status': 'open',
+                    'external_corroboration_required': True,
+                    'left_node_id': left_id,
+                    'right_node_id': right_id,
+                    'left_node_name': left_name,
+                    'right_node_name': right_name,
+                    'relation_types': sorted(relation_types),
+                })
+
+            if (left_id, right_id) in directional_before_pairs and (right_id, left_id) in directional_before_pairs:
+                issues.append({
+                    'issue_id': f'temporal_reverse_before_{pair_index:03d}',
+                    'issue_type': 'temporal_reverse_before',
+                    'summary': f'Temporal ordering conflict: {left_name} is marked before {right_name} and {right_name} is marked before {left_name}',
+                    'severity': 'blocking',
+                    'recommended_resolution_lane': 'request_document',
+                    'current_resolution_status': 'open',
+                    'external_corroboration_required': True,
+                    'left_node_id': left_id,
+                    'right_node_id': right_id,
+                    'left_node_name': left_name,
+                    'right_node_name': right_name,
+                    'relation_types': ['before'],
+                })
+
+        return issues
 
 
     # ------------------------------------------------------------------ #
@@ -980,6 +1109,129 @@ class DependencyGraphBuilder:
                     graph.add_dependency(dep)
         
         logger.info(f"Built dependency graph: {graph.summary()}")
+        return graph
+
+    def sync_intake_timeline_to_graph(
+        self,
+        graph: DependencyGraph,
+        intake_case_file: Optional[Dict[str, Any]],
+    ) -> DependencyGraph:
+        """Synchronize structured intake timeline facts and temporal edges into a dependency graph."""
+        if not isinstance(graph, DependencyGraph):
+            return graph
+
+        case_file = intake_case_file if isinstance(intake_case_file, dict) else {}
+        canonical_facts = case_file.get('canonical_facts') if isinstance(case_file.get('canonical_facts'), list) else []
+        timeline_relations = case_file.get('timeline_relations') if isinstance(case_file.get('timeline_relations'), list) else []
+
+        temporal_node_ids = [
+            node_id
+            for node_id, node in graph.nodes.items()
+            if isinstance(node.attributes, dict) and node.attributes.get('timeline_fact_node')
+        ]
+        if temporal_node_ids:
+            temporal_node_id_set = set(temporal_node_ids)
+            graph.dependencies = {
+                dep_id: dep
+                for dep_id, dep in graph.dependencies.items()
+                if dep.source_id not in temporal_node_id_set and dep.target_id not in temporal_node_id_set
+            }
+            for node_id in temporal_node_ids:
+                graph.nodes.pop(node_id, None)
+
+        claim_nodes = graph.get_nodes_by_type(NodeType.CLAIM)
+        claim_nodes_by_type = {
+            str(node.attributes.get('claim_type') or '').strip(): node
+            for node in claim_nodes
+            if isinstance(node.attributes, dict)
+        }
+        timeline_node_ids_by_fact_id: Dict[str, str] = {}
+
+        for fact in canonical_facts:
+            if not isinstance(fact, dict):
+                continue
+            temporal_context = fact.get('temporal_context') if isinstance(fact.get('temporal_context'), dict) else {}
+            if (
+                str(fact.get('fact_type') or '').strip().lower() != 'timeline'
+                and not temporal_context.get('start_date')
+                and not temporal_context.get('relative_markers')
+            ):
+                continue
+
+            fact_id = str(fact.get('fact_id') or '').strip()
+            if not fact_id:
+                continue
+            node_id = self._get_node_id()
+            timeline_node = DependencyNode(
+                id=node_id,
+                node_type=NodeType.FACT,
+                name=str(fact.get('text') or fact_id),
+                description=str(fact.get('event_date_or_range') or fact.get('text') or ''),
+                satisfied=bool(temporal_context.get('start_date')),
+                confidence=float(fact.get('confidence', 0.0) or 0.0),
+                attributes={
+                    'timeline_fact_node': True,
+                    'source_fact_id': fact_id,
+                    'fact_type': fact.get('fact_type'),
+                    'event_date_or_range': fact.get('event_date_or_range'),
+                    'temporal_context': temporal_context,
+                    'claim_types': list(fact.get('claim_types') or []),
+                    'element_tags': list(fact.get('element_tags') or []),
+                },
+            )
+            graph.add_node(timeline_node)
+            timeline_node_ids_by_fact_id[fact_id] = node_id
+
+            target_claim_nodes = []
+            claim_types = [str(item).strip() for item in (fact.get('claim_types') or []) if str(item).strip()]
+            for claim_type in claim_types:
+                claim_node = claim_nodes_by_type.get(claim_type)
+                if claim_node is not None:
+                    target_claim_nodes.append(claim_node)
+            if not target_claim_nodes:
+                target_claim_nodes = claim_nodes
+
+            for claim_node in target_claim_nodes:
+                graph.add_dependency(
+                    Dependency(
+                        id=self._get_dependency_id(),
+                        source_id=timeline_node.id,
+                        target_id=claim_node.id,
+                        dependency_type=DependencyType.SUPPORTS,
+                        required=False,
+                        strength=max(0.1, min(1.0, float(fact.get('confidence', 0.0) or 0.0))),
+                    )
+                )
+
+        relation_type_map = {
+            'before': DependencyType.BEFORE,
+            'same_time': DependencyType.SAME_TIME,
+            'overlaps': DependencyType.OVERLAPS,
+        }
+        for relation in timeline_relations:
+            if not isinstance(relation, dict):
+                continue
+            source_fact_id = str(relation.get('source_fact_id') or '').strip()
+            target_fact_id = str(relation.get('target_fact_id') or '').strip()
+            dependency_type = relation_type_map.get(str(relation.get('relation_type') or '').strip())
+            source_node_id = timeline_node_ids_by_fact_id.get(source_fact_id)
+            target_node_id = timeline_node_ids_by_fact_id.get(target_fact_id)
+            if not dependency_type or not source_node_id or not target_node_id:
+                continue
+            confidence = str(relation.get('confidence') or '').strip().lower()
+            strength = 0.7 if confidence == 'high' else 0.55 if confidence == 'medium' else 0.4
+            graph.add_dependency(
+                Dependency(
+                    id=self._get_dependency_id(),
+                    source_id=source_node_id,
+                    target_id=target_node_id,
+                    dependency_type=dependency_type,
+                    required=False,
+                    strength=strength,
+                )
+            )
+
+        graph._update_metadata()
         return graph
     
     def add_evidence_to_graph(self, graph: DependencyGraph, 
