@@ -398,6 +398,9 @@ class TestMediatorThreePhaseIntegration:
 
         assert any(fact['fact_type'] == 'timeline' for fact in intake_case_file['canonical_facts'])
         assert timeline_fact['event_date_or_range'] == 'January 20, 2026'
+        assert timeline_fact['temporal_context']['start_date'] == '2026-01-20'
+        assert timeline_fact['temporal_context']['end_date'] == '2026-01-20'
+        assert timeline_fact['temporal_context']['granularity'] == 'day'
         assert timeline_fact['location'] == 'Dallas office'
         assert timeline_fact['fact_participants']['location'] == 'Dallas office'
         assert timeline_fact['intake_question_intent']['question_objective'] == 'establish_chronology'
@@ -405,6 +408,8 @@ class TestMediatorThreePhaseIntegration:
         assert timeline_fact['intake_question_intent']['target_claim_type'] == 'employment_discrimination'
         assert timeline_fact['intake_question_intent']['target_element_id'] == 'adverse_action'
         assert intake_case_file['timeline_anchors'][0]['anchor_text'] == 'January 20, 2026'
+        assert intake_case_file['timeline_anchors'][0]['start_date'] == '2026-01-20'
+        assert intake_case_file['timeline_anchors'][0]['granularity'] == 'day'
         assert intake_case_file['intake_sections']['chronology']['status'] == 'complete'
         assert result['intake_readiness']['canonical_fact_count'] >= 1
         assert result['question_candidates']

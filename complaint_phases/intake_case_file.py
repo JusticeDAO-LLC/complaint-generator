@@ -4,7 +4,9 @@ Helpers for building and summarizing the structured intake case file.
 
 from __future__ import annotations
 
+import calendar
 from datetime import UTC, datetime
+import re
 from typing import Any, Dict, List
 
 from .intake_claim_registry import normalize_claim_type, refresh_required_elements, registry_for_claim_type
@@ -38,6 +40,317 @@ def _coerce_confirmation_record(value: Any) -> Dict[str, Any]:
         "current_summary_snapshot": _coerce_dict(record.get("current_summary_snapshot")),
         "confirmed_summary_snapshot": _coerce_dict(record.get("confirmed_summary_snapshot")),
     }
+
+
+_MONTH_NAME_TO_NUMBER = {
+    "january": 1,
+    "february": 2,
+    "march": 3,
+    "april": 4,
+    "may": 5,
+    "june": 6,
+    "july": 7,
+    "august": 8,
+    "september": 9,
+    "october": 10,
+    "november": 11,
+    "december": 12,
+}
+
+_APPROXIMATE_TEMPORAL_MARKERS = (
+    "about",
+    "approximately",
+    "approx",
+    "around",
+    "circa",
+    "early",
+    "mid",
+    "late",
+)
+
+_RELATIVE_TEMPORAL_MARKERS = (
+    "before",
+    "after",
+    "during",
+    "same day",
+    "next day",
+    "previous day",
+    "later",
+    "earlier",
+    "by",
+    "until",
+    "since",
+)
+
+
+def _normalize_date_iso(year: int, month: int, day: int) -> str:
+    return f"{year:04d}-{month:02d}-{day:02d}"
+
+
+def _month_bounds(year: int, month: int) -> tuple[str, str]:
+    last_day = calendar.monthrange(year, month)[1]
+    return _normalize_date_iso(year, month, 1), _normalize_date_iso(year, month, last_day)
+
+
+def _year_bounds(year: int) -> tuple[str, str]:
+    return _normalize_date_iso(year, 1, 1), _normalize_date_iso(year, 12, 31)
+
+
+def _coerce_two_digit_year(year: int) -> int:
+    if year >= 100:
+        return year
+    return 2000 + year if year < 70 else 1900 + year
+
+
+def _extract_temporal_markers(value: str, markers: tuple[str, ...]) -> List[str]:
+    normalized = _normalize_text(value).lower()
+    matched: List[str] = []
+    for marker in markers:
+        if re.search(rf"\b{re.escape(marker)}\b", normalized):
+            matched.append(marker)
+    return matched
+
+
+def _merge_temporal_granularity(start_granularity: str, end_granularity: str) -> str:
+    if start_granularity == end_granularity:
+        return start_granularity
+    if not start_granularity:
+        return end_granularity or "unknown"
+    if not end_granularity:
+        return start_granularity or "unknown"
+    return "mixed"
+
+
+def _split_temporal_range(value: str) -> tuple[str, str] | None:
+    normalized = _normalize_text(value)
+    if not normalized:
+        return None
+
+    from_match = re.search(r"\bfrom\s+(.+?)\s+(?:to|through|until)\s+(.+)$", normalized, flags=re.IGNORECASE)
+    if from_match:
+        return from_match.group(1), from_match.group(2)
+
+    plain_match = re.search(r"(.+?)\s+(?:to|through|until|-)\s+(.+)", normalized, flags=re.IGNORECASE)
+    if plain_match:
+        return plain_match.group(1), plain_match.group(2)
+    return None
+
+
+def _parse_single_temporal_expression(value: str) -> Dict[str, Any]:
+    normalized = _normalize_text(value)
+    if not normalized:
+        return {
+            "start_date": None,
+            "end_date": None,
+            "granularity": "unknown",
+            "matched_text": "",
+        }
+
+    month_names = "|".join(_MONTH_NAME_TO_NUMBER)
+
+    iso_match = re.search(r"\b(\d{4})-(\d{2})-(\d{2})\b", normalized)
+    if iso_match:
+        year, month, day = (int(item) for item in iso_match.groups())
+        iso_date = _normalize_date_iso(year, month, day)
+        return {
+            "start_date": iso_date,
+            "end_date": iso_date,
+            "granularity": "day",
+            "matched_text": iso_match.group(0),
+        }
+
+    month_day_year_match = re.search(
+        rf"\b({month_names})\s+(\d{{1,2}}),\s*(\d{{4}})\b",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    if month_day_year_match:
+        month_name, day_text, year_text = month_day_year_match.groups()
+        month = _MONTH_NAME_TO_NUMBER[month_name.lower()]
+        day = int(day_text)
+        year = int(year_text)
+        iso_date = _normalize_date_iso(year, month, day)
+        return {
+            "start_date": iso_date,
+            "end_date": iso_date,
+            "granularity": "day",
+            "matched_text": month_day_year_match.group(0),
+        }
+
+    numeric_date_match = re.search(r"\b(\d{1,2})/(\d{1,2})/(\d{2,4})\b", normalized)
+    if numeric_date_match:
+        month_text, day_text, year_text = numeric_date_match.groups()
+        month = int(month_text)
+        day = int(day_text)
+        year = _coerce_two_digit_year(int(year_text))
+        iso_date = _normalize_date_iso(year, month, day)
+        return {
+            "start_date": iso_date,
+            "end_date": iso_date,
+            "granularity": "day",
+            "matched_text": numeric_date_match.group(0),
+        }
+
+    month_year_match = re.search(
+        rf"\b({month_names})\s+(\d{{4}})\b",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    if month_year_match:
+        month_name, year_text = month_year_match.groups()
+        month = _MONTH_NAME_TO_NUMBER[month_name.lower()]
+        year = int(year_text)
+        start_date, end_date = _month_bounds(year, month)
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "granularity": "month",
+            "matched_text": month_year_match.group(0),
+        }
+
+    year_match = re.search(r"\b(19\d{2}|20\d{2}|21\d{2})\b", normalized)
+    if year_match:
+        year = int(year_match.group(1))
+        start_date, end_date = _year_bounds(year)
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "granularity": "year",
+            "matched_text": year_match.group(0),
+        }
+
+    return {
+        "start_date": None,
+        "end_date": None,
+        "granularity": "unknown",
+        "matched_text": "",
+    }
+
+
+def _build_temporal_context(raw_value: Any, *, fallback_text: str = "") -> Dict[str, Any]:
+    raw_text = _normalize_text(raw_value or fallback_text)
+    if not raw_text:
+        return {
+            "raw_text": "",
+            "start_date": None,
+            "end_date": None,
+            "granularity": "unknown",
+            "is_approximate": False,
+            "is_range": False,
+            "relative_markers": [],
+            "sortable_date": None,
+            "matched_text": "",
+        }
+
+    approximate_markers = _extract_temporal_markers(raw_text, _APPROXIMATE_TEMPORAL_MARKERS)
+    relative_markers = _extract_temporal_markers(raw_text, _RELATIVE_TEMPORAL_MARKERS)
+    range_parts = _split_temporal_range(raw_text)
+
+    if range_parts is not None:
+        start_expression, end_expression = range_parts
+        start_info = _parse_single_temporal_expression(start_expression)
+        end_info = _parse_single_temporal_expression(end_expression)
+        if start_info.get("start_date") or end_info.get("end_date"):
+            return {
+                "raw_text": raw_text,
+                "start_date": start_info.get("start_date"),
+                "end_date": end_info.get("end_date") or start_info.get("end_date"),
+                "granularity": _merge_temporal_granularity(
+                    str(start_info.get("granularity") or "unknown"),
+                    str(end_info.get("granularity") or "unknown"),
+                ),
+                "is_approximate": bool(approximate_markers),
+                "is_range": True,
+                "relative_markers": relative_markers,
+                "sortable_date": start_info.get("start_date") or end_info.get("start_date"),
+                "matched_text": raw_text,
+            }
+
+    parsed = _parse_single_temporal_expression(raw_text)
+    return {
+        "raw_text": raw_text,
+        "start_date": parsed.get("start_date"),
+        "end_date": parsed.get("end_date"),
+        "granularity": parsed.get("granularity") or "unknown",
+        "is_approximate": bool(approximate_markers),
+        "is_range": False,
+        "relative_markers": relative_markers,
+        "sortable_date": parsed.get("start_date"),
+        "matched_text": parsed.get("matched_text") or "",
+    }
+
+
+def _normalize_canonical_fact_record(record: Any) -> Dict[str, Any]:
+    fact = _coerce_dict(record)
+    normalized_text = _normalize_text(fact.get("text") or "")
+    fact_type = _normalize_text(fact.get("fact_type") or "general").lower() or "general"
+    raw_event_date_or_range = _normalize_text(
+        fact.get("event_date_or_range")
+        or _coerce_dict(fact.get("temporal_context")).get("raw_text")
+        or ""
+    ) or None
+    temporal_context = _build_temporal_context(
+        raw_event_date_or_range,
+        fallback_text=normalized_text if fact_type == "timeline" else "",
+    )
+    return {
+        **fact,
+        "text": normalized_text,
+        "fact_type": fact_type,
+        "event_date_or_range": raw_event_date_or_range,
+        "actor_ids": list(fact.get("actor_ids") or []),
+        "target_ids": list(fact.get("target_ids") or []),
+        "claim_types": list(fact.get("claim_types") or []),
+        "element_tags": list(fact.get("element_tags") or []),
+        "location": _normalize_text(fact.get("location") or "") or None,
+        "fact_participants": _coerce_dict(fact.get("fact_participants")),
+        "temporal_context": temporal_context,
+    }
+
+
+def _normalize_proof_lead_record(record: Any) -> Dict[str, Any]:
+    lead = _coerce_dict(record)
+    raw_temporal_scope = _normalize_text(
+        lead.get("temporal_scope")
+        or _coerce_dict(lead.get("temporal_context")).get("raw_text")
+        or ""
+    ) or None
+    return {
+        **lead,
+        "lead_type": _normalize_text(lead.get("lead_type") or "evidence").lower() or "evidence",
+        "description": _normalize_text(lead.get("description") or ""),
+        "related_fact_ids": list(lead.get("related_fact_ids") or []),
+        "fact_targets": list(lead.get("fact_targets") or []),
+        "element_targets": list(lead.get("element_targets") or []),
+        "timeline_anchor_ids": list(lead.get("timeline_anchor_ids") or []),
+        "temporal_scope": raw_temporal_scope,
+        "temporal_context": _build_temporal_context(raw_temporal_scope),
+    }
+
+
+def _link_proof_leads_to_timeline_anchors(
+    proof_leads: List[Dict[str, Any]],
+    timeline_anchors: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    anchor_ids_by_fact_id: Dict[str, List[str]] = {}
+    for anchor in timeline_anchors if isinstance(timeline_anchors, list) else []:
+        if not isinstance(anchor, dict):
+            continue
+        fact_id = _normalize_text(anchor.get("fact_id") or "")
+        anchor_id = _normalize_text(anchor.get("anchor_id") or "")
+        if not fact_id or not anchor_id:
+            continue
+        anchor_ids_by_fact_id.setdefault(fact_id, []).append(anchor_id)
+
+    linked_leads: List[Dict[str, Any]] = []
+    for record in proof_leads if isinstance(proof_leads, list) else []:
+        lead = _normalize_proof_lead_record(record)
+        timeline_anchor_ids = list(lead.get("timeline_anchor_ids") or [])
+        for fact_id in lead.get("related_fact_ids") or []:
+            timeline_anchor_ids.extend(anchor_ids_by_fact_id.get(_normalize_text(fact_id), []))
+        lead["timeline_anchor_ids"] = list(dict.fromkeys(item for item in timeline_anchor_ids if item))
+        linked_leads.append(lead)
+    return linked_leads
 
 
 def _contradiction_support_kind(resolution_lane: str) -> str:
@@ -122,26 +435,33 @@ def build_canonical_facts(knowledge_graph) -> List[Dict[str, Any]]:
         if not fact_text:
             continue
         canonical_facts.append(
-            {
-                "fact_id": entity.id,
-                "text": fact_text,
-                "fact_type": _normalize_text(entity.attributes.get("fact_type") or "general").lower() or "general",
-                "claim_types": [],
-                "element_tags": [],
-                "event_date_or_range": None,
-                "actor_ids": [],
-                "target_ids": [],
-                "location": None,
-                "source_kind": "knowledge_graph_entity",
-                "source_ref": entity.id,
-                "confidence": float(entity.confidence),
-                "status": "accepted",
-                "needs_corroboration": entity.confidence < 0.85,
-                "corroboration_priority": "high" if entity.confidence < 0.7 else "medium",
-                "materiality": "medium",
-                "fact_participants": {},
-                "contradiction_group_id": None,
-            }
+            _normalize_canonical_fact_record(
+                {
+                    "fact_id": entity.id,
+                    "text": fact_text,
+                    "fact_type": _normalize_text(entity.attributes.get("fact_type") or "general").lower() or "general",
+                    "claim_types": [],
+                    "element_tags": [],
+                    "event_date_or_range": _normalize_text(
+                        entity.attributes.get("event_date_or_range")
+                        or entity.attributes.get("event_date")
+                        or entity.attributes.get("date")
+                        or ""
+                    ) or None,
+                    "actor_ids": [],
+                    "target_ids": [],
+                    "location": _normalize_text(entity.attributes.get("location") or "") or None,
+                    "source_kind": "knowledge_graph_entity",
+                    "source_ref": entity.id,
+                    "confidence": float(entity.confidence),
+                    "status": "accepted",
+                    "needs_corroboration": entity.confidence < 0.85,
+                    "corroboration_priority": "high" if entity.confidence < 0.7 else "medium",
+                    "materiality": "medium",
+                    "fact_participants": {},
+                    "contradiction_group_id": None,
+                }
+            )
         )
     return canonical_facts
 
@@ -156,28 +476,37 @@ def build_proof_leads(knowledge_graph) -> List[Dict[str, Any]]:
         description = _normalize_text(entity.attributes.get("description") or entity.name)
         evidence_type = _normalize_text(entity.attributes.get("evidence_type") or entity.name).lower() or "evidence"
         proof_leads.append(
-            {
-                "lead_id": entity.id,
-                "lead_type": evidence_type,
-                "description": description,
-                "related_fact_ids": [],
-                "fact_targets": [],
-                "element_targets": [],
-                "availability": "mentioned_in_initial_complaint",
-                "availability_details": "Referenced in initial complaint narrative",
-                "owner": "complainant",
-                "custodian": "complainant",
-                "expected_format": _derive_expected_format(evidence_type),
-                "retrieval_path": _derive_retrieval_path(evidence_type),
-                "authenticity_risk": "unknown",
-                "privacy_risk": "review_required",
-                "priority": _derive_lead_priority(evidence_type),
-                "recommended_support_kind": "testimony" if "witness" in evidence_type else "evidence",
-                "source_quality_target": "credible" if "witness" in evidence_type else "high_quality_document",
-                "acquisition_notes": "Needs complainant confirmation and collection path review",
-                "source_kind": "knowledge_graph_entity",
-                "source_ref": entity.id,
-            }
+            _normalize_proof_lead_record(
+                {
+                    "lead_id": entity.id,
+                    "lead_type": evidence_type,
+                    "description": description,
+                    "related_fact_ids": [],
+                    "fact_targets": [],
+                    "element_targets": [],
+                    "availability": "mentioned_in_initial_complaint",
+                    "availability_details": "Referenced in initial complaint narrative",
+                    "owner": "complainant",
+                    "custodian": "complainant",
+                    "expected_format": _derive_expected_format(evidence_type),
+                    "retrieval_path": _derive_retrieval_path(evidence_type),
+                    "authenticity_risk": "unknown",
+                    "privacy_risk": "review_required",
+                    "priority": _derive_lead_priority(evidence_type),
+                    "recommended_support_kind": "testimony" if "witness" in evidence_type else "evidence",
+                    "source_quality_target": "credible" if "witness" in evidence_type else "high_quality_document",
+                    "acquisition_notes": "Needs complainant confirmation and collection path review",
+                    "source_kind": "knowledge_graph_entity",
+                    "source_ref": entity.id,
+                    "temporal_scope": _normalize_text(
+                        entity.attributes.get("temporal_scope")
+                        or entity.attributes.get("event_date_or_range")
+                        or entity.attributes.get("event_date")
+                        or entity.attributes.get("date")
+                        or ""
+                    ) or None,
+                }
+            )
         )
     return proof_leads
 
@@ -365,28 +694,42 @@ def build_timeline_anchors(canonical_facts: List[Dict[str, Any]]) -> List[Dict[s
     anchors: List[Dict[str, Any]] = []
     seen_keys = set()
     for fact in canonical_facts if isinstance(canonical_facts, list) else []:
-        if not isinstance(fact, dict):
-            continue
-        fact_type = _normalize_text(fact.get("fact_type") or "").lower()
-        event_date = _normalize_text(fact.get("event_date_or_range") or "")
+        normalized_fact = _normalize_canonical_fact_record(fact)
+        fact_type = _normalize_text(normalized_fact.get("fact_type") or "").lower()
+        event_date = _normalize_text(normalized_fact.get("event_date_or_range") or "")
         if fact_type != "timeline" and not event_date:
             continue
         anchor_text = event_date or _normalize_text(fact.get("text") or "")
         if not anchor_text:
             continue
-        key = (anchor_text.lower(), _normalize_text(fact.get("location") or "").lower())
+        temporal_context = _coerce_dict(normalized_fact.get("temporal_context"))
+        start_date = temporal_context.get("start_date")
+        end_date = temporal_context.get("end_date")
+        key = (
+            str(start_date or ""),
+            str(end_date or ""),
+            anchor_text.lower(),
+            _normalize_text(normalized_fact.get("location") or "").lower(),
+        )
         if key in seen_keys:
             continue
         seen_keys.add(key)
         anchors.append(
             {
                 "anchor_id": f"timeline_anchor_{len(anchors) + 1:03d}",
-                "fact_id": _normalize_text(fact.get("fact_id") or ""),
+                "fact_id": _normalize_text(normalized_fact.get("fact_id") or ""),
                 "anchor_text": anchor_text,
-                "location": _normalize_text(fact.get("location") or "") or None,
+                "location": _normalize_text(normalized_fact.get("location") or "") or None,
                 "fact_type": fact_type or "timeline",
+                "start_date": start_date,
+                "end_date": end_date,
+                "granularity": temporal_context.get("granularity") or "unknown",
+                "is_approximate": bool(temporal_context.get("is_approximate", False)),
+                "relative_markers": list(temporal_context.get("relative_markers") or []),
+                "sort_key": temporal_context.get("sortable_date") or anchor_text.lower(),
             }
         )
+    anchors.sort(key=lambda anchor: (str(anchor.get("sort_key") or "9999-99-99"), str(anchor.get("anchor_id") or "")))
     return anchors
 
 
@@ -536,6 +879,8 @@ def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[st
     candidate_claims = build_candidate_claims(knowledge_graph)
     canonical_facts = build_canonical_facts(knowledge_graph)
     proof_leads = build_proof_leads(knowledge_graph)
+    timeline_anchors = build_timeline_anchors(canonical_facts)
+    proof_leads = _link_proof_leads_to_timeline_anchors(proof_leads, timeline_anchors)
     intake_sections = build_intake_sections(
         knowledge_graph,
         candidate_claims=candidate_claims,
@@ -549,7 +894,7 @@ def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[st
         "candidate_claims": candidate_claims,
         "intake_sections": intake_sections,
         "canonical_facts": canonical_facts,
-        "timeline_anchors": build_timeline_anchors(canonical_facts),
+        "timeline_anchors": timeline_anchors,
         "harm_profile": build_harm_profile(canonical_facts),
         "remedy_profile": build_remedy_profile(canonical_facts),
         "proof_leads": proof_leads,
@@ -582,8 +927,22 @@ def refresh_intake_sections(intake_case_file: Dict[str, Any], knowledge_graph) -
 def refresh_intake_case_file(intake_case_file: Dict[str, Any], knowledge_graph, *, append_snapshot: bool = False) -> Dict[str, Any]:
     """Refresh derived intake sections, open items, and summary snapshots."""
     case_file = _coerce_dict(intake_case_file)
+    case_file["canonical_facts"] = [
+        _normalize_canonical_fact_record(record)
+        for record in _coerce_list(case_file.get("canonical_facts"))
+        if isinstance(record, dict)
+    ]
+    case_file["proof_leads"] = [
+        _normalize_proof_lead_record(record)
+        for record in _coerce_list(case_file.get("proof_leads"))
+        if isinstance(record, dict)
+    ]
     case_file["intake_sections"] = refresh_intake_sections(case_file, knowledge_graph)
     case_file["timeline_anchors"] = build_timeline_anchors(_coerce_list(case_file.get("canonical_facts")))
+    case_file["proof_leads"] = _link_proof_leads_to_timeline_anchors(
+        _coerce_list(case_file.get("proof_leads")),
+        _coerce_list(case_file.get("timeline_anchors")),
+    )
     case_file["harm_profile"] = build_harm_profile(_coerce_list(case_file.get("canonical_facts")))
     case_file["remedy_profile"] = build_remedy_profile(_coerce_list(case_file.get("canonical_facts")))
     case_file["open_items"] = build_open_items(case_file)
