@@ -1538,6 +1538,10 @@ class LegalAuthorityStorageHook:
             claim_element = self._resolve_claim_element(user_id, claim_type, authority_data)
             document_parse = self._parse_authority_text(authority_data)
             parse_contract = build_document_parse_contract(document_parse, default_source='legal_authority')
+            parse_storage_metadata = _merge_intake_summary_handoff_metadata(
+                parse_contract.get('storage_metadata', {}),
+                self.mediator,
+            )
             parsed_text = parse_contract.get('text', '')
             parsed_text_preview = parse_contract.get('text_preview', '')
             authority_record_metadata = _merge_intake_summary_handoff_metadata(
@@ -1640,7 +1644,7 @@ class LegalAuthorityStorageHook:
                 parse_contract.get('status'),
                 parse_contract.get('chunk_count', 0),
                 parsed_text_preview,
-                json.dumps(parse_contract.get('storage_metadata', {})),
+                json.dumps(parse_storage_metadata),
                 None,
                 0,
                 0,

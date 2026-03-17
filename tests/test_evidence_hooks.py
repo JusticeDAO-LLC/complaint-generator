@@ -527,6 +527,28 @@ class TestEvidenceStateHook:
                 assert record['parse_metadata']['filename'] == 'evidence.txt'
                 assert record['parse_metadata']['parser_version'] == 'documents-adapter:1'
                 assert record['parse_metadata']['transform_lineage']['source'] == 'bytes'
+                assert record['parse_metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T17:00:00+00:00',
+                        'confirmation_note': 'ready for evidence record persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
                 assert record['metadata']['intake_summary_handoff'] == {
                     'current_phase': 'intake',
                     'ready_to_advance': True,
@@ -908,7 +930,20 @@ class TestEvidenceStateHook:
                                 'coverage': {'example.com': 1},
                                 'quality': {'score': 0.8},
                                 'critique': {},
-                                'tactics': [],
+                                'tactics': [
+                                    {
+                                        'name': 'multi_engine_search',
+                                        'mode': 'search',
+                                        'query': 'employment discrimination example.com policy',
+                                        'weight': 1.0,
+                                        'discovered_count': 2,
+                                        'scraped_count': 1,
+                                        'accepted_count': 1,
+                                        'novelty_count': 1,
+                                        'quality_score': 0.8,
+                                        'quality': {'score': 0.8},
+                                    }
+                                ],
                             }
                         ],
                         'final_results': [{'url': 'https://example.com/policy'}],
@@ -929,6 +964,116 @@ class TestEvidenceStateHook:
                 assert detail['available'] is True
                 assert detail['run']['metadata']['tactic_history'] == {'multi_engine_search': [80.0]}
                 assert detail['run']['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T16:00:00+00:00',
+                        'confirmation_note': 'ready for scraper run persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 2,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 2,
+                        },
+                    },
+                }
+                assert detail['iterations'][0]['coverage']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T16:00:00+00:00',
+                        'confirmation_note': 'ready for scraper run persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 2,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 2,
+                        },
+                    },
+                }
+                assert detail['iterations'][0]['quality']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T16:00:00+00:00',
+                        'confirmation_note': 'ready for scraper run persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 2,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 2,
+                        },
+                    },
+                }
+                assert detail['iterations'][0]['critique']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T16:00:00+00:00',
+                        'confirmation_note': 'ready for scraper run persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 2,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 2,
+                        },
+                    },
+                }
+                assert detail['coverage'][0]['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T16:00:00+00:00',
+                        'confirmation_note': 'ready for scraper run persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 2,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 2,
+                        },
+                    },
+                }
+                assert detail['iterations'][0]['tactics'][0]['quality']['intake_summary_handoff'] == {
                     'current_phase': 'intake',
                     'ready_to_advance': True,
                     'complainant_summary_confirmation': {

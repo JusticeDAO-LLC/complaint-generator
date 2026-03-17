@@ -664,6 +664,28 @@ class TestLegalAuthorityStorageHook:
                 assert authority['parse_metadata']['source'] == 'legal_authority'
                 assert authority['parse_metadata']['content_origin'] == 'authority_full_text'
                 assert authority['parse_metadata']['content_source_field'] == 'content'
+                assert authority['parse_metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T18:00:00+00:00',
+                        'confirmation_note': 'ready for authority child artifact persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 1,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
                 assert authority['provenance']['metadata']['artifact_family'] == 'legal_authority_text'
                 assert authority['provenance']['metadata']['content_origin'] == 'authority_full_text'
                 assert authority['provenance']['metadata']['text_available'] is True

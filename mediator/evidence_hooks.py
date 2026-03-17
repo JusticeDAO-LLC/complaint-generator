@@ -858,7 +858,10 @@ class EvidenceStateHook:
                     or ''
                 ),
             )
-            parse_metadata = parse_contract['storage_metadata']
+            parse_metadata = _merge_intake_summary_handoff_metadata(
+                parse_contract['storage_metadata'],
+                self.mediator,
+            )
             parsed_text = parse_contract['text']
             parsed_text_preview = parse_contract['text_preview']
             if not document_graph and parsed_text:
@@ -1340,6 +1343,18 @@ class EvidenceStateHook:
 
             for iteration in iterations:
                 iteration_index = int(iteration.get('iteration', 0) or 0)
+                iteration_coverage = _merge_intake_summary_handoff_metadata(
+                    iteration.get('coverage', {}),
+                    self.mediator,
+                )
+                iteration_quality = _merge_intake_summary_handoff_metadata(
+                    iteration.get('quality', {}),
+                    self.mediator,
+                )
+                iteration_critique = _merge_intake_summary_handoff_metadata(
+                    iteration.get('critique', {}),
+                    self.mediator,
+                )
                 conn.execute(
                     """
                     INSERT INTO scraper_run_iterations (
@@ -1354,13 +1369,17 @@ class EvidenceStateHook:
                         int(iteration.get('discovered_count', 0) or 0),
                         int(iteration.get('accepted_count', 0) or 0),
                         int(iteration.get('scraped_count', 0) or 0),
-                        json.dumps(iteration.get('coverage', {})),
-                        json.dumps(iteration.get('quality', {})),
-                        json.dumps(iteration.get('critique', {})),
+                        json.dumps(iteration_coverage),
+                        json.dumps(iteration_quality),
+                        json.dumps(iteration_critique),
                     ],
                 )
 
                 for tactic in iteration.get('tactics', []) or []:
+                    tactic_quality = _merge_intake_summary_handoff_metadata(
+                        tactic.get('quality', {}),
+                        self.mediator,
+                    )
                     conn.execute(
                         """
                         INSERT INTO scraper_run_tactics (
@@ -1382,12 +1401,15 @@ class EvidenceStateHook:
                             int(tactic.get('accepted_count', 0) or 0),
                             int(tactic.get('novelty_count', 0) or 0),
                             float(tactic.get('quality_score', 0.0) or 0.0),
-                            json.dumps(tactic.get('quality', {})),
+                            json.dumps(tactic_quality),
                         ],
                     )
 
             for url, coverage in coverage_ledger.items():
-                coverage_metadata = coverage if isinstance(coverage, dict) else {}
+                coverage_metadata = _merge_intake_summary_handoff_metadata(
+                    coverage if isinstance(coverage, dict) else {},
+                    self.mediator,
+                )
                 conn.execute(
                     """
                     INSERT INTO scraper_run_coverage (
