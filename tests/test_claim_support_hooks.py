@@ -135,6 +135,28 @@ class TestClaimSupportHook:
             entry = history['claims']['employment'][0]
 
             assert record_id > 0
+            assert history['intake_summary_handoff'] == {
+                'current_phase': 'intake',
+                'ready_to_advance': True,
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T19:00:00+00:00',
+                    'confirmation_note': 'ready for follow-up execution persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            }
             assert entry['execution_id'] == record_id
             assert entry['selected_search_program_id'] == 'legal_search_program:authority-1'
             assert entry['selected_search_program_type'] == 'element_definition_search'
@@ -3043,6 +3065,28 @@ class TestClaimSupportHook:
             records = hook.get_claim_testimony_records('testuser', 'employment discrimination')
 
             assert records['available'] is True
+            assert records['intake_summary_handoff'] == {
+                'current_phase': 'intake',
+                'ready_to_advance': True,
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T19:00:00+00:00',
+                    'confirmation_note': 'ready for claim testimony persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            }
             assert len(records['claims']['employment discrimination']) == 1
             record = records['claims']['employment discrimination'][0]
             assert record['claim_element_id'] == 'employment_discrimination:1'
@@ -3080,6 +3124,95 @@ class TestClaimSupportHook:
             assert records['summary']['employment discrimination']['confidence_bucket_counts'] == {
                 'high': 1,
             }
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_claim_support_read_payloads_surface_confirmed_intake_handoff(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.get_three_phase_status = Mock(return_value=_confirmed_intake_status(
+            note='ready for claim support read payloads',
+        ))
+        mock_mediator.evidence_state = Mock()
+        mock_mediator.evidence_state.get_evidence_by_cid = Mock(return_value={
+            'id': 21,
+            'fact_count': 1,
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:evidence-21',
+                    'created': True,
+                    'reused': False,
+                }
+            },
+        })
+        mock_mediator.evidence_state.get_evidence_facts = Mock(return_value=[
+            {'fact_id': 'fact:1', 'text': 'Employee complained to HR about discrimination.'},
+        ])
+        mock_mediator.evidence_state.get_evidence_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:1'}],
+            'relationships': [{'id': 'rel:1'}],
+        })
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidenceGap',
+                support_label='HR complaint email',
+                source_table='evidence',
+            )
+
+            overview = hook.get_claim_overview('testuser', 'employment')
+            matrix = hook.get_claim_coverage_matrix('testuser', 'employment')
+            gaps = hook.get_claim_support_gaps('testuser', 'employment')
+            validation = hook.get_claim_support_validation('testuser', 'employment')
+            contradictions = hook.get_claim_contradiction_candidates('testuser', 'employment')
+
+            expected_handoff = {
+                'current_phase': 'intake',
+                'ready_to_advance': True,
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T19:00:00+00:00',
+                    'confirmation_note': 'ready for claim support read payloads',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 1,
+                        'proof_lead_count': 1,
+                    },
+                },
+            }
+
+            assert overview['intake_summary_handoff'] == expected_handoff
+            assert matrix['intake_summary_handoff'] == expected_handoff
+            assert gaps['intake_summary_handoff'] == expected_handoff
+            assert validation['intake_summary_handoff'] == expected_handoff
+            assert contradictions['intake_summary_handoff'] == expected_handoff
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)

@@ -342,3 +342,82 @@ def test_build_intake_status_summary_preserves_rich_contradiction_workflow_field
     assert summary["contradictions"][0]["external_corroboration_required"] is True
     assert summary["contradictions"][0]["affected_claim_types"] == ["retaliation"]
     assert summary["contradictions"][0]["affected_element_ids"] == ["causation"]
+
+
+def test_build_intake_status_summary_includes_confirmed_handoff_metadata():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "intake_readiness": {
+            "ready_to_advance": True,
+        },
+        "complainant_summary_confirmation": {
+            "status": "confirmed",
+            "confirmed": True,
+            "confirmed_at": "2026-03-17T10:00:00+00:00",
+            "confirmation_source": "dashboard",
+            "confirmed_summary_snapshot": {
+                "candidate_claim_count": 1,
+                "canonical_fact_count": 2,
+                "proof_lead_count": 1,
+            },
+        },
+    }
+
+    summary = build_intake_status_summary(mediator)
+
+    assert summary["intake_summary_handoff"] == {
+        "current_phase": "intake",
+        "ready_to_advance": True,
+        "complainant_summary_confirmation": {
+            "status": "confirmed",
+            "confirmed": True,
+            "confirmed_at": "2026-03-17T10:00:00+00:00",
+            "confirmation_source": "dashboard",
+            "confirmed_summary_snapshot": {
+                "candidate_claim_count": 1,
+                "canonical_fact_count": 2,
+                "proof_lead_count": 1,
+            },
+        },
+    }
+
+
+def test_build_intake_case_review_summary_includes_confirmed_handoff_metadata():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "intake_readiness": {
+            "ready_to_advance": True,
+            "contradictions": [],
+        },
+        "complainant_summary_confirmation": {
+            "status": "confirmed",
+            "confirmed": True,
+            "confirmed_at": "2026-03-17T10:00:00+00:00",
+            "confirmation_source": "dashboard",
+            "confirmed_summary_snapshot": {
+                "candidate_claim_count": 1,
+                "canonical_fact_count": 2,
+                "proof_lead_count": 1,
+            },
+        },
+    }
+
+    summary = build_intake_case_review_summary(mediator)
+
+    assert summary["intake_summary_handoff"] == {
+        "current_phase": "intake",
+        "ready_to_advance": True,
+        "complainant_summary_confirmation": {
+            "status": "confirmed",
+            "confirmed": True,
+            "confirmed_at": "2026-03-17T10:00:00+00:00",
+            "confirmation_source": "dashboard",
+            "confirmed_summary_snapshot": {
+                "candidate_claim_count": 1,
+                "canonical_fact_count": 2,
+                "proof_lead_count": 1,
+            },
+        },
+    }

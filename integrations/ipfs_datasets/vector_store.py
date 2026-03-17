@@ -46,6 +46,10 @@ embed_texts_batched, _embed_texts_batched_error = import_attr_optional(
 _vector_stores_module, _vector_stores_error = import_module_optional(
     "ipfs_datasets_py.vector_stores"
 )
+create_vector_store, _create_vector_store_error = import_attr_optional(
+    "ipfs_datasets_py.vector_stores.api",
+    "create_vector_store",
+)
 
 if EmbeddingsRouter is None and _embeddings_router_module is not None:
     class EmbeddingsRouter:  # type: ignore[no-redef]
@@ -87,6 +91,7 @@ VECTOR_STORE_ERROR = (
     or _embed_texts_error
     or _embed_texts_batched_error
     or _embeddings_module_error
+    or _create_vector_store_error
     or _vector_stores_error
     or _numpy_error
 )
@@ -109,6 +114,12 @@ def get_embeddings_router(*args: Any, **kwargs: Any) -> Any:
     if EmbeddingsRouter is None:
         return None
     return EmbeddingsRouter(*args, **kwargs)
+
+
+async def create_vector_store_async(*args: Any, **kwargs: Any) -> Any:
+    if create_vector_store is None:
+        raise RuntimeError(str(_create_vector_store_error or "create_vector_store unavailable"))
+    return await create_vector_store(*args, **kwargs)
 
 
 def embeddings_backend_status(
@@ -474,6 +485,7 @@ __all__ = [
     "VECTOR_STORE_AVAILABLE",
     "VECTOR_STORE_ERROR",
     "get_embeddings_router",
+    "create_vector_store_async",
     "embeddings_backend_status",
     "create_vector_index",
     "search_vector_index",

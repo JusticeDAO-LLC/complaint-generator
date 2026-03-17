@@ -1,6 +1,24 @@
 from typing import Any, Dict, List
 
 
+def _build_confirmed_intake_summary_handoff(raw_status: Any) -> Dict[str, Any]:
+    status = raw_status if isinstance(raw_status, dict) else {}
+    confirmation = status.get("complainant_summary_confirmation")
+    if not isinstance(confirmation, dict) or not bool(confirmation.get("confirmed", False)):
+        return {}
+
+    confirmed_summary_snapshot = confirmation.get("confirmed_summary_snapshot")
+    if not isinstance(confirmed_summary_snapshot, dict) or not confirmed_summary_snapshot:
+        return {}
+
+    readiness = status.get("intake_readiness") if isinstance(status.get("intake_readiness"), dict) else {}
+    return {
+        "current_phase": str(status.get("current_phase") or ""),
+        "ready_to_advance": bool(readiness.get("ready_to_advance", False)),
+        "complainant_summary_confirmation": dict(confirmation),
+    }
+
+
 def _build_candidate_claim_summary(candidate_claims: Any) -> Dict[str, Any]:
     claims = candidate_claims if isinstance(candidate_claims, list) else []
     normalized_claims = [claim for claim in claims if isinstance(claim, dict)]
@@ -230,6 +248,9 @@ def build_intake_status_summary(
             summary["iteration_count"] = int(raw_status.get("iteration_count"))
         except (TypeError, ValueError):
             summary["iteration_count"] = 0
+    handoff_metadata = _build_confirmed_intake_summary_handoff(raw_status)
+    if handoff_metadata:
+        summary["intake_summary_handoff"] = handoff_metadata
     return summary
 
 
@@ -266,7 +287,7 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
     )
     complainant_summary_confirmation = raw_status.get("complainant_summary_confirmation")
 
-    return {
+    summary = {
         "candidate_claims": candidate_claims if isinstance(candidate_claims, list) else [],
         "candidate_claim_summary": candidate_claim_summary,
         "intake_sections": intake_sections if isinstance(intake_sections, dict) else {},
@@ -332,6 +353,10 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
             else {}
         ),
     }
+    handoff_metadata = _build_confirmed_intake_summary_handoff(raw_status)
+    if handoff_metadata:
+        summary["intake_summary_handoff"] = handoff_metadata
+    return summary
 
 
 def build_intake_warning_entries(intake_status: Dict[str, Any]) -> List[Dict[str, Any]]:

@@ -53,6 +53,13 @@ class ClaimSupportHook:
             state_dir = Path('.')
         return str(state_dir / 'claim_support.duckdb')
 
+    def _with_intake_summary_handoff(self, payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        normalized_payload = dict(payload or {})
+        handoff_metadata = _merge_intake_summary_handoff_metadata({}, self.mediator)
+        if handoff_metadata:
+            normalized_payload.update(handoff_metadata)
+        return normalized_payload
+
     def _resolve_artifact_identity(
         self,
         *,
@@ -2878,7 +2885,7 @@ class ClaimSupportHook:
                 'total_elements': claim_summary.get('total_elements', 0),
             }
 
-        return overview
+        return self._with_intake_summary_handoff(overview)
 
     def get_claim_coverage_matrix(
         self,
@@ -2961,7 +2968,7 @@ class ClaimSupportHook:
                 'unassigned_links': claim_summary.get('unassigned_links', []),
             }
 
-        return matrix
+        return self._with_intake_summary_handoff(matrix)
 
     def get_claim_support_validation(
         self,
@@ -3002,7 +3009,7 @@ class ClaimSupportHook:
                 contradiction_claims.get(current_claim, {}),
             )
 
-        return validation
+        return self._with_intake_summary_handoff(validation)
 
     def get_claim_support_gaps(
         self,
@@ -3076,7 +3083,7 @@ class ClaimSupportHook:
                 'unresolved_elements': unresolved_elements,
             }
 
-        return gaps
+        return self._with_intake_summary_handoff(gaps)
 
     def get_claim_contradiction_candidates(
         self,
@@ -3135,7 +3142,7 @@ class ClaimSupportHook:
                 'candidates': candidates,
             }
 
-        return contradictions
+        return self._with_intake_summary_handoff(contradictions)
 
     def persist_claim_support_diagnostics(
         self,
@@ -3708,21 +3715,21 @@ class ClaimSupportHook:
         limit: int = 10,
     ) -> Dict[str, Any]:
         if not DUCKDB_AVAILABLE:
-            return {
+            return self._with_intake_summary_handoff({
                 'user_id': user_id,
                 'claim_type': claim_type,
                 'limit': max(0, int(limit or 0)),
                 'claims': {},
-            }
+            })
 
         normalized_limit = max(0, int(limit or 0))
         if normalized_limit == 0:
-            return {
+            return self._with_intake_summary_handoff({
                 'user_id': user_id,
                 'claim_type': claim_type,
                 'limit': normalized_limit,
                 'claims': {},
-            }
+            })
 
         where_clauses = ['user_id = ?']
         parameters: List[Any] = [user_id]
@@ -3761,13 +3768,13 @@ class ClaimSupportHook:
             conn.close()
         except Exception as exc:
             self.mediator.log('claim_follow_up_recent_history_error', error=str(exc))
-            return {
+            return self._with_intake_summary_handoff({
                 'user_id': user_id,
                 'claim_type': claim_type,
                 'limit': normalized_limit,
                 'claims': {},
                 'error': str(exc),
-            }
+            })
 
         claim_entries: Dict[str, List[Dict[str, Any]]] = {}
         for row in rows:
@@ -3814,12 +3821,12 @@ class ClaimSupportHook:
             current_claim = str(row[1] or '')
             claim_entries.setdefault(current_claim, []).append(entry)
 
-        return {
+        return self._with_intake_summary_handoff({
             'user_id': user_id,
             'claim_type': claim_type,
             'limit': normalized_limit,
             'claims': claim_entries,
-        }
+        })
 
     def save_testimony_record(
         self,
@@ -4131,14 +4138,14 @@ class ClaimSupportHook:
     ) -> Dict[str, Any]:
         normalized_limit = max(0, int(limit or 0))
         if not DUCKDB_AVAILABLE:
-            return {
+            return self._with_intake_summary_handoff({
                 'available': False,
                 'user_id': user_id,
                 'claim_type': claim_type,
                 'limit': normalized_limit,
                 'claims': {},
                 'summary': {},
-            }
+            })
 
         where_clauses = ['user_id = ?']
         parameters: List[Any] = [user_id]
@@ -4179,7 +4186,7 @@ class ClaimSupportHook:
             ).fetchall()
         except Exception as exc:
             self.mediator.log('claim_testimony_query_error', error=str(exc), claim_type=claim_type)
-            return {
+            return self._with_intake_summary_handoff({
                 'available': False,
                 'user_id': user_id,
                 'claim_type': claim_type,
@@ -4187,7 +4194,7 @@ class ClaimSupportHook:
                 'claims': {},
                 'summary': {},
                 'error': str(exc),
-            }
+            })
 
         claim_entries: Dict[str, List[Dict[str, Any]]] = {}
         for row in rows:
@@ -4226,7 +4233,7 @@ class ClaimSupportHook:
 
         conn.close()
 
-        return {
+        return self._with_intake_summary_handoff({
             'available': True,
             'user_id': user_id,
             'claim_type': claim_type,
@@ -4236,4 +4243,4 @@ class ClaimSupportHook:
                 current_claim: self._summarize_testimony_records(entries)
                 for current_claim, entries in claim_entries.items()
             },
-        }
+        })

@@ -33,6 +33,30 @@ class TestEvidenceStorageHook:
             
             mock_mediator = Mock()
             mock_mediator.log = Mock()
+            mock_mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for evidence storage payload persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
             
             hook = EvidenceStorageHook(mock_mediator)
             
@@ -51,6 +75,72 @@ class TestEvidenceStorageHook:
             assert 'timestamp' in result
             assert 'provenance' in result['metadata']
             assert result['metadata']['provenance']['content_hash']
+            assert result['metadata']['intake_summary_handoff'] == {
+                'current_phase': 'intake',
+                'ready_to_advance': True,
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for evidence storage payload persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                },
+            }
+            assert result['metadata']['provenance']['metadata']['intake_summary_handoff'] == {
+                'current_phase': 'intake',
+                'ready_to_advance': True,
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for evidence storage payload persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                },
+            }
+            assert result['provenance']['metadata']['intake_summary_handoff'] == {
+                'current_phase': 'intake',
+                'ready_to_advance': True,
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for evidence storage payload persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                },
+            }
             assert result['document_parse']['status'] in {'fallback', 'available-fallback', 'empty'}
             assert result['metadata']['document_parse_summary']['chunk_count'] >= 1
             assert result['metadata']['document_parse_summary']['parser_version']

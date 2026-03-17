@@ -652,6 +652,30 @@ class TestWebEvidenceIntegrationHook:
             mock_mediator.state.complaint_id = 'complaint-1'
             mock_mediator.phase_manager = Mock()
             mock_mediator.phase_manager.get_phase_data = Mock(return_value=None)
+            mock_mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for archived web evidence persistence',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                    'confirmed_summary_snapshot': {
+                        'candidate_claim_count': 1,
+                        'canonical_fact_count': 2,
+                        'proof_lead_count': 1,
+                    },
+                },
+            })
             mock_mediator.web_evidence_search = Mock()
             mock_mediator.web_evidence_search.validate_evidence = Mock(return_value={
                 'valid': True,
@@ -664,6 +688,8 @@ class TestWebEvidenceIntegrationHook:
 
             try:
                 mock_mediator.evidence_state = EvidenceStateHook(mock_mediator, db_path=db_path)
+                actual_upsert_evidence_record = mock_mediator.evidence_state.upsert_evidence_record
+                mock_mediator.evidence_state.upsert_evidence_record = MagicMock(side_effect=actual_upsert_evidence_record)
 
                 hook = WebEvidenceIntegrationHook(mock_mediator)
                 result = hook._store_evidence_items(
@@ -689,6 +715,73 @@ class TestWebEvidenceIntegrationHook:
                 )
 
                 assert result['stored_new'] == 1
+                persisted_info = mock_mediator.evidence_state.upsert_evidence_record.call_args.kwargs['evidence_info']
+                assert persisted_info['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T21:00:00+00:00',
+                        'confirmation_note': 'ready for archived web evidence persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
+                assert persisted_info['metadata']['provenance']['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T21:00:00+00:00',
+                        'confirmation_note': 'ready for archived web evidence persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
+                assert persisted_info['provenance']['metadata']['intake_summary_handoff'] == {
+                    'current_phase': 'intake',
+                    'ready_to_advance': True,
+                    'complainant_summary_confirmation': {
+                        'status': 'confirmed',
+                        'confirmed': True,
+                        'confirmed_at': '2026-03-17T21:00:00+00:00',
+                        'confirmation_note': 'ready for archived web evidence persistence',
+                        'confirmation_source': 'dashboard',
+                        'summary_snapshot_index': 0,
+                        'current_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                        'confirmed_summary_snapshot': {
+                            'candidate_claim_count': 1,
+                            'canonical_fact_count': 2,
+                            'proof_lead_count': 1,
+                        },
+                    },
+                }
                 record = mock_mediator.evidence_state.get_evidence_by_cid(result['evidence_cids'][0])
                 assert record is not None
                 facts = mock_mediator.evidence_state.get_evidence_facts(record['id'])

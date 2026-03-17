@@ -2288,6 +2288,7 @@ def build_claim_support_review_payload(
     intake_contradiction_summary = summarize_intake_contradictions(
         intake_status.get("contradictions")
     )
+    handoff_metadata = _build_confirmed_intake_summary_handoff_metadata(mediator)
 
     payload: Dict[str, Any] = {
         "user_id": resolved_user_id,
@@ -2409,6 +2410,9 @@ def build_claim_support_review_payload(
 
     if request.include_overview:
         payload["claim_overview"] = overview_claims
+
+    if handoff_metadata:
+        payload.update(handoff_metadata)
 
     return payload
 
@@ -2714,6 +2718,9 @@ def build_claim_support_follow_up_execution_payload(
             if isinstance(claim_execution, dict)
         },
     }
+    handoff_metadata = _build_confirmed_intake_summary_handoff_metadata(mediator)
+    if handoff_metadata:
+        payload.update(handoff_metadata)
 
     if request.include_post_execution_review:
         post_execution_review = build_claim_support_review_payload(

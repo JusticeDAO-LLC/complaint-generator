@@ -169,7 +169,23 @@ class EvidenceStorageHook:
                 source_system=str((metadata or {}).get('source_system', 'complaint_generator')),
                 jurisdiction=str((metadata or {}).get('jurisdiction', '')),
             )
-            normalized_metadata = merge_metadata_with_provenance(metadata, provenance)
+            provenance = build_provenance(
+                source_url=str(provenance.source_url or ''),
+                acquisition_method=str(provenance.acquisition_method or ''),
+                source_type=str(provenance.source_type or ''),
+                acquired_at=str(provenance.acquired_at or ''),
+                content_hash=str(provenance.content_hash or ''),
+                source_system=str(provenance.source_system or ''),
+                jurisdiction=str(provenance.jurisdiction or ''),
+                metadata=_merge_intake_summary_handoff_metadata(
+                    dict(getattr(provenance, 'metadata', {}) or {}),
+                    self.mediator,
+                ),
+            )
+            normalized_metadata = _merge_intake_summary_handoff_metadata(
+                merge_metadata_with_provenance(metadata, provenance),
+                self.mediator,
+            )
             if IPFS_AVAILABLE:
                 try:
                     # Store in IPFS

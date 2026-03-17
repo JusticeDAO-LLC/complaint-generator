@@ -124,7 +124,7 @@ class Optimizer:
         try:
             import sys
 
-            from integrations.ipfs_datasets.loader import ensure_import_paths, get_repo_paths
+            from integrations.ipfs_datasets.loader import ensure_import_paths, get_repo_paths, import_attr_optional
 
             ensure_import_paths(module_name="ipfs_datasets_py.optimizers.agentic")
 
@@ -139,12 +139,50 @@ class Optimizer:
         except Exception:
             pass
 
-        from ipfs_datasets_py.optimizers.agentic.base import OptimizationTask, OptimizationMethod
-        from ipfs_datasets_py.optimizers.agentic.llm_integration import OptimizerLLMRouter
-        from ipfs_datasets_py.optimizers.agentic.methods.actor_critic import ActorCriticOptimizer
-        from ipfs_datasets_py.optimizers.agentic.methods.adversarial import AdversarialOptimizer
-        from ipfs_datasets_py.optimizers.agentic.methods.chaos import ChaosOptimizer
-        from ipfs_datasets_py.optimizers.agentic.methods.test_driven import TestDrivenOptimizer
+        OptimizationTask, task_error = import_attr_optional(
+            "ipfs_datasets_py.optimizers.agentic.base",
+            "OptimizationTask",
+        )
+        OptimizationMethod, method_error = import_attr_optional(
+            "ipfs_datasets_py.optimizers.agentic.base",
+            "OptimizationMethod",
+        )
+        OptimizerLLMRouter, router_error = import_attr_optional(
+            "ipfs_datasets_py.optimizers.agentic.llm_integration",
+            "OptimizerLLMRouter",
+        )
+        ActorCriticOptimizer, actor_error = import_attr_optional(
+            "ipfs_datasets_py.optimizers.agentic.methods.actor_critic",
+            "ActorCriticOptimizer",
+        )
+        AdversarialOptimizer, adversarial_error = import_attr_optional(
+            "ipfs_datasets_py.optimizers.agentic.methods.adversarial",
+            "AdversarialOptimizer",
+        )
+        ChaosOptimizer, chaos_error = import_attr_optional(
+            "ipfs_datasets_py.optimizers.agentic.methods.chaos",
+            "ChaosOptimizer",
+        )
+        TestDrivenOptimizer, test_driven_error = import_attr_optional(
+            "ipfs_datasets_py.optimizers.agentic.methods.test_driven",
+            "TestDrivenOptimizer",
+        )
+
+        import_errors = [
+            error
+            for error in (
+                task_error,
+                method_error,
+                router_error,
+                actor_error,
+                adversarial_error,
+                chaos_error,
+                test_driven_error,
+            )
+            if error is not None
+        ]
+        if import_errors:
+            raise RuntimeError(str(import_errors[0]))
 
         return {
             "OptimizationTask": OptimizationTask,

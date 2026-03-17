@@ -12,11 +12,8 @@ import anyio
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
 
-from integrations.ipfs_datasets import create_vector_index
-from ipfs_datasets_py.vector_stores.api import create_vector_store
+from integrations.ipfs_datasets import create_vector_index, create_vector_store_async
 
 
 def _chunk_text(text: str, *, chunk_size: int = 1200, overlap: int = 200) -> List[str]:
@@ -144,7 +141,7 @@ async def _build_native_ipld_snapshot(
     if len(vectors) == 0:
         raise ValueError(f"No vectors available for {index_name}")
 
-    store = await create_vector_store(
+    store = await create_vector_store_async(
         "ipld",
         index_name,
         dimension=int(vectors.shape[1]),

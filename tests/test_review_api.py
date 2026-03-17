@@ -1780,6 +1780,55 @@ def test_claim_support_review_payload_recomputes_stale_diagnostic_snapshots():
 def test_claim_support_follow_up_execution_payload_returns_post_execution_review():
     mediator = Mock()
     mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "iteration_count": 1,
+        "intake_readiness": {
+            "score": 0.5,
+            "ready_to_advance": False,
+            "remaining_gap_count": 1,
+            "contradiction_count": 0,
+            "criteria": {"complainant_summary_confirmed": True},
+            "blockers": ["collect_evidence"],
+            "contradictions": [],
+            "candidate_claim_count": 1,
+            "canonical_fact_count": 1,
+            "proof_lead_count": 1,
+        },
+        "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.9}],
+        "intake_sections": {},
+        "canonical_fact_summary": {"count": 1, "facts": []},
+        "canonical_fact_intent_summary": {},
+        "proof_lead_summary": {"count": 1, "proof_leads": []},
+        "proof_lead_intent_summary": {},
+        "timeline_anchor_summary": {"count": 0, "anchors": []},
+        "harm_profile": {},
+        "remedy_profile": {},
+        "complainant_summary_confirmation": {
+            "status": "confirmed",
+            "confirmed": True,
+            "confirmed_at": "2026-03-17T10:00:00+00:00",
+            "confirmation_note": "ready for evidence handoff",
+            "confirmation_source": "dashboard",
+            "summary_snapshot_index": 0,
+            "current_summary_snapshot": {
+                "candidate_claim_count": 1,
+                "canonical_fact_count": 1,
+                "proof_lead_count": 1,
+            },
+            "confirmed_summary_snapshot": {
+                "candidate_claim_count": 1,
+                "canonical_fact_count": 1,
+                "proof_lead_count": 1,
+            },
+        },
+        "question_candidate_summary": {},
+        "claim_support_packet_summary": {},
+        "intake_evidence_alignment_summary": {},
+        "alignment_evidence_tasks": [],
+        "alignment_task_updates": [],
+        "alignment_task_update_history": [],
+    }
     mediator.execute_claim_follow_up_plan.return_value = {
         "claims": {
             "retaliation": {
@@ -1967,6 +2016,28 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
     )
 
     assert payload["user_id"] == "state-user"
+    assert payload["intake_summary_handoff"] == {
+        "current_phase": "intake",
+        "ready_to_advance": False,
+        "complainant_summary_confirmation": {
+            "status": "confirmed",
+            "confirmed": True,
+            "confirmed_at": "2026-03-17T10:00:00+00:00",
+            "confirmation_note": "ready for evidence handoff",
+            "confirmation_source": "dashboard",
+            "summary_snapshot_index": 0,
+            "current_summary_snapshot": {
+                "candidate_claim_count": 1,
+                "canonical_fact_count": 1,
+                "proof_lead_count": 1,
+            },
+            "confirmed_summary_snapshot": {
+                "candidate_claim_count": 1,
+                "canonical_fact_count": 1,
+                "proof_lead_count": 1,
+            },
+        },
+    }
     assert payload["follow_up_support_kind"] == "evidence"
     assert payload["follow_up_force"] is True
     assert payload["follow_up_execution"]["retaliation"]["task_count"] == 1
@@ -2062,6 +2133,9 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
     assert payload["post_execution_review"]["claim_support_gaps"]["retaliation"]["unresolved_count"] == 1
     assert payload["post_execution_review"]["claim_contradiction_candidates"]["retaliation"]["candidate_count"] == 0
     assert payload["post_execution_review"]["claim_support_validation"]["retaliation"]["proof_gap_count"] == 1
+    assert payload["post_execution_review"]["intake_summary_handoff"] == payload["intake_summary_handoff"]
+    assert payload["post_execution_review"]["intake_status"]["intake_summary_handoff"] == payload["intake_summary_handoff"]
+    assert payload["post_execution_review"]["intake_case_summary"]["intake_summary_handoff"] == payload["intake_summary_handoff"]
     mediator.execute_claim_follow_up_plan.assert_called_once_with(
         claim_type="retaliation",
         user_id="state-user",
@@ -2092,6 +2166,110 @@ def test_claim_support_follow_up_execution_payload_can_skip_post_review():
     mediator.get_claim_coverage_matrix.assert_not_called()
     mediator.get_claim_overview.assert_not_called()
     mediator.get_claim_follow_up_plan.assert_not_called()
+
+
+def test_claim_support_review_payload_includes_confirmed_handoff_metadata():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "iteration_count": 1,
+        "intake_readiness": {
+            "score": 1.0,
+            "ready_to_advance": True,
+            "remaining_gap_count": 0,
+            "contradiction_count": 0,
+            "criteria": {"complainant_summary_confirmed": True},
+            "blockers": [],
+            "contradictions": [],
+            "candidate_claim_count": 1,
+            "canonical_fact_count": 1,
+            "proof_lead_count": 1,
+        },
+        "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.9}],
+        "intake_sections": {},
+        "canonical_fact_summary": {"count": 1, "facts": []},
+        "canonical_fact_intent_summary": {},
+        "proof_lead_summary": {"count": 1, "proof_leads": []},
+        "proof_lead_intent_summary": {},
+        "timeline_anchor_summary": {"count": 0, "anchors": []},
+        "harm_profile": {},
+        "remedy_profile": {},
+        "complainant_summary_confirmation": {
+            "status": "confirmed",
+            "confirmed": True,
+            "confirmed_at": "2026-03-17T10:00:00+00:00",
+            "confirmation_note": "ready for evidence handoff",
+            "confirmation_source": "dashboard",
+            "summary_snapshot_index": 0,
+            "current_summary_snapshot": {
+                "candidate_claim_count": 1,
+                "canonical_fact_count": 1,
+                "proof_lead_count": 1,
+            },
+            "confirmed_summary_snapshot": {
+                "candidate_claim_count": 1,
+                "canonical_fact_count": 1,
+                "proof_lead_count": 1,
+            },
+        },
+        "question_candidate_summary": {},
+        "claim_support_packet_summary": {},
+        "intake_evidence_alignment_summary": {},
+        "alignment_evidence_tasks": [],
+        "alignment_task_updates": [],
+        "alignment_task_update_history": [],
+    }
+    mediator.get_claim_coverage_matrix.return_value = {
+        "claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}
+    }
+    mediator.get_claim_overview.return_value = {"claims": {"retaliation": {}}}
+    mediator.get_claim_support_diagnostic_snapshots.return_value = {"claims": {}}
+    mediator.get_claim_support_gaps.return_value = {
+        "claims": {"retaliation": {"claim_type": "retaliation", "unresolved_elements": []}}
+    }
+    mediator.get_claim_contradiction_candidates.return_value = {
+        "claims": {"retaliation": {"claim_type": "retaliation", "candidates": []}}
+    }
+    mediator.get_claim_support_validation.return_value = {
+        "claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}
+    }
+    mediator.get_recent_claim_follow_up_execution.return_value = {"claims": {"retaliation": []}}
+    mediator.get_claim_follow_up_plan.return_value = {
+        "claims": {"retaliation": {"claim_type": "retaliation", "tasks": []}}
+    }
+    mediator.get_user_evidence.return_value = []
+    mediator.summarize_claim_support.return_value = {"claims": {"retaliation": {}}}
+
+    payload = build_claim_support_review_payload(
+        mediator,
+        ClaimSupportReviewRequest(claim_type="retaliation"),
+    )
+
+    assert payload["intake_summary_handoff"] == {
+        "current_phase": "intake",
+        "ready_to_advance": True,
+        "complainant_summary_confirmation": {
+            "status": "confirmed",
+            "confirmed": True,
+            "confirmed_at": "2026-03-17T10:00:00+00:00",
+            "confirmation_note": "ready for evidence handoff",
+            "confirmation_source": "dashboard",
+            "summary_snapshot_index": 0,
+            "current_summary_snapshot": {
+                "candidate_claim_count": 1,
+                "canonical_fact_count": 1,
+                "proof_lead_count": 1,
+            },
+            "confirmed_summary_snapshot": {
+                "candidate_claim_count": 1,
+                "canonical_fact_count": 1,
+                "proof_lead_count": 1,
+            },
+        },
+    }
+    assert payload["intake_status"]["intake_summary_handoff"] == payload["intake_summary_handoff"]
+    assert payload["intake_case_summary"]["intake_summary_handoff"] == payload["intake_summary_handoff"]
 
 
 def test_claim_support_follow_up_execution_payload_summarizes_escalation_outcomes():
