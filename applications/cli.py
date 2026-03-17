@@ -58,7 +58,15 @@ class CLI:
 
 	def feed(self, text=None):
 		try:
-			self.print_response(self.mediator.io(text))
+			response = self.mediator.io(text)
+			self.print_response(response)
+			payload_getter = getattr(self.mediator, 'get_current_inquiry_payload', None)
+			if callable(payload_getter):
+				payload = payload_getter() or {}
+				explanation = payload.get('explanation') or {}
+				summary = str(explanation.get('summary') or '').strip()
+				if summary:
+					print('\033[90m%s\033[0m' % f"Why this question: {summary}")
 		except UserPresentableException as exception:
 			self.print_error(exception.description)
 		except Exception as exception:

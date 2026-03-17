@@ -9,123 +9,43 @@
     <!-- jQuery library -->
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
     <style>
+        body {
+            padding: 1rem;
+        }
 
+        #profile_data {
+            white-space: pre-wrap;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 0.25rem;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        #chat_history {
+            margin-top: 1rem;
+        }
+
+        .chat-history-entry {
+            border-bottom: 1px solid #e9ecef;
+            padding: 0.5rem 0;
+        }
+
+        .chat-history-explanation {
+            color: #6c757d;
+            margin-left: 1rem;
+            font-size: 0.9rem;
+        }
     </style>
+    <script src="/static/chat_entry_utils.js"></script>
+    <script src="/static/profile_data.js"></script>
     <script>
-        hostname = "localhost:19000";
-
-        function load_profile(username, password, email) {
-            username = JSON.parse(cookies)["hashed_username"];
-            password = JSON.parse(cookies)["hashed_password"];
-            $.ajaxSetup({
-                async: true
-            }); //execute synchronously
-            var returnData = null; //define returnData outside the scope of the callback function
-            $.ajax({
-                type: "POST",
-                contentType: 'application/json',
-                url: "/load_profile",
-                data: '{"request": {"hashed_username" : "' + username + '", "hashed_password": "' + password + '"}}',
-                dataType: 'json',
-                async: true,
-                success: function(data) {
-                    // console.log(JSON.stringify(data));
-                    testdata = data["data"];
-                    if (typeof testdata === 'string') {
-                        testdata = JSON.parse(testdata);
-                    }
-                    chat_history = testdata["chat_history"];
-                    $("#profile_data").html(JSON.stringify(testdata, undefined, 4));
-                }
-            });
-
-            // alert(JSON.stringify(returnData));
-            $.ajaxSetup({
-                async: true
-            }); //return to default setting
-            //alert(JSON.stringify(returnData));
-            //alert(returnData[0]["body"]);
-            //data = returnData[0]["data"];
-            // alert(JSON.stringify(returnData));
-            // if ("Err" in returnData) {
-            //     // alert("This Login Err: " + JSON.stringify(returnData));
-            //     show_error(returnData["Err"]);
-            //     return returnData;
-            // } else {
-            //     // window.location();
-            //     return returnData;
-            // }
-            // return returnData;
-        }
-
-        function show_error(message) {
-            form_field = $("#Err").html();
-            form_field = "<span>" + message + "</span>";
-            $("#Err").html(form_field);
-            $("#Err").show();
-            // alert(message)
-        }
-
-        // function loop_every_5_seconds() {
-        //     loop = true;
-        //     while (loop == true) {
-        //         setTimeout(function() {
-        //             console.log("5 second loop");
-        //             // profile = load_profile(hashed_username, hashed_password);
-        //             // testdata = profile["data"];
-        //             // if (typeof testdata === 'string') {
-        //             //     testdata = JSON.parse(testdata);
-        //             // }
-        //             // chat_history = testdata["chat_history"];
-        //             // $("#profile_data").html(JSON.stringify(testdata, undefined, 4));
-        //         }, 5000);
-        //     }
-        // }
-
-        function loop_this() {
-            console.log("5 second loop");
-            profile = load_profile(hashed_username, hashed_password);
-            testdata = profile["data"];
-            if (typeof testdata === 'string') {
-                testdata = JSON.parse(testdata);
-            }
-            chat_history = testdata["chat_history"];
-            $("#profile_data").html(JSON.stringify(testdata, undefined, 4));
-            return true
-        }
-
-
         $(document).ready(function() {
-            cookies = "";
-            $("body").css("background-color", "transparent");
-            $.ajax({
-                url: "/cookies",
-                type: "get",
-                async: false,
-                data: {},
-                success: function(data) {
-                    // alert(data);
-                    cookies = data;
-                }
+            window.ProfileDataPage.initialize({
+                jsonSelector: '#profile_data',
+                historySelector: '#chat_history',
+                refreshMs: 5000,
             });
-            // alert(JSON.parse(cookies));
-            hashed_username = JSON.parse(cookies)["hashed_username"];
-            hashed_password = JSON.parse(cookies)["hashed_password"];
-            // alert(hashed_username);
-            // profile = load_profile(hashed_username, hashed_password);
-            // // console.log(JSON.stringify(profile));
-            // // alert(JSON.stringify(profile));
-            // testdata = profile["data"];
-            // if (typeof testdata === 'string') {
-            //     testdata = JSON.parse(testdata);
-            // }
-            // chat_history = testdata["chat_history"];
-            // alert(JSON.stringify(testdata));
-            // console.log(JSON.stringify(testdata));
-            // console.log(JSON.stringify(testdata["data"]["chat_history"]));
-            // $("#profile_data").html(JSON.stringify(testdata, undefined, 4));
-            setInterval('load_profile()', 5000);
-            // loop_every_5_seconds();
         });
     </script>
 </head>
@@ -135,9 +55,10 @@
         <div id="Err">
             <br/>
         </div>
-        <div id="profile_data">
-
-        </div>
+        <h4>Profile Data</h4>
+        <pre id="profile_data"></pre>
+        <h4>Recent Chat History</h4>
+        <div id="chat_history"></div>
 
 
 

@@ -117,6 +117,16 @@ questions = mediator.question_generator.generate_questions(
 #     },
 #     ...
 # ]
+
+# Optional enhanced retrieval bundle (when IPFS_DATASETS_ENHANCED_LEGAL/SEARCH enabled)
+bundle = mediator.statute_retriever.retrieve_statutes_bundle(classification)
+# {
+#   'raw': [...],
+#   'normalized': [...]  # only present when enhanced mode enabled
+# }
+
+# Capability registry (availability + flag state)
+registry = mediator.statute_retriever.get_capability_registry()
 ```
 
 ## Hook Details
@@ -154,6 +164,7 @@ classification = mediator.legal_classifier.classify_complaint(complaint_text)
 - `citation`: Legal citation (e.g., "42 U.S.C. § 1983")
 - `title`: Statute title
 - `relevance`: Why this statute is relevant
+- `provenance`: Source metadata (`source_type`, `source_name`, `query`, `confidence`, `retrieved_at`, `metadata`)
 
 **Notes**: 
 - Uses LLM to identify relevant statutes
@@ -218,6 +229,7 @@ requirements = mediator.summary_judgment.generate_requirements(
 - `element`: Legal element being addressed
 - `priority`: Priority level (High/Medium/Low)
 - `answer`: Placeholder for answer (initially None)
+- `provenance`: Generation metadata including claim/element context and integration flags
 
 **Example**:
 ```python

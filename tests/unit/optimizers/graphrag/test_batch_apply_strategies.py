@@ -9,8 +9,6 @@ Comprehensive test suite covering:
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from typing import Dict, Any, List
 
 # Adjust import path based on your project structure
 import sys
@@ -48,37 +46,6 @@ def mediator():
     )
 
 
-def create_test_ontology(entity_count=5, relationship_count=3):
-    """Helper to create a test ontology."""
-    entities = [
-        {
-            "id": f"ent_{i}",
-            "text": f"Entity {i}",
-            "type": "Person" if i % 2 == 0 else "Organization",
-            "confidence": 0.8 + (i * 0.02),
-        }
-        for i in range(entity_count)
-    ]
-
-    relationships = [
-        {
-            "id": f"rel_{i}",
-            "source_id": f"ent_{i % entity_count}",
-            "target_id": f"ent_{(i + 1) % entity_count}",
-            "type": "works_for" if i % 2 == 0 else "located_in",
-            "confidence": 0.85,
-        }
-        for i in range(relationship_count)
-    ]
-
-    return {
-        "id": "test_ontology",
-        "entities": entities,
-        "relationships": relationships,
-        "metadata": {"created": "2024-01-01", "version": "1.0"},
-    }
-
-
 def create_test_feedback(entity_threshold=0.85):
     """Helper to create test feedback."""
     # Create a CriticScore-like object with required attributes
@@ -104,7 +71,7 @@ def create_test_feedback(entity_threshold=0.85):
 class TestBatchApplyStrategiesBasic:
     """Test basic batch application functionality."""
 
-    def test_batch_apply_strategies_basic(self, mediator, context):
+    def test_batch_apply_strategies_basic(self, mediator, context, create_test_ontology):
         """Test basic batch application with multiple ontologies."""
         ontologies = [create_test_ontology(5, 3) for _ in range(3)]
         feedbacks = [create_test_feedback() for _ in range(3)]
@@ -126,7 +93,7 @@ class TestBatchApplyStrategiesBasic:
         assert result["error_count"] == 0
         assert len(result["refined_ontologies"]) == 3
 
-    def test_batch_apply_strategies_change_tracking(self, mediator, context):
+    def test_batch_apply_strategies_change_tracking(self, mediator, context, create_test_ontology):
         """Test change tracking is properly recorded."""
         ontologies = [create_test_ontology(5, 3) for _ in range(2)]
         feedbacks = [create_test_feedback() for _ in range(2)]
@@ -148,7 +115,7 @@ class TestBatchApplyStrategiesBasic:
             assert "initial_entity_count" in log_entry
             assert "final_entity_count" in log_entry
 
-    def test_batch_apply_strategies_no_tracking(self, mediator, context):
+    def test_batch_apply_strategies_no_tracking(self, mediator, context, create_test_ontology):
         """Test batch application without change tracking."""
         ontologies = [create_test_ontology(5, 3) for _ in range(2)]
         feedbacks = [create_test_feedback() for _ in range(2)]
@@ -169,7 +136,7 @@ class TestBatchApplyStrategiesBasic:
 class TestBatchApplyStrategiesSizing:
     """Test batch application with different sizes."""
 
-    def test_batch_apply_strategies_single_ontology(self, mediator, context):
+    def test_batch_apply_strategies_single_ontology(self, mediator, context, create_test_ontology):
         """Test batch application with single ontology."""
         ontologies = [create_test_ontology(5, 3)]
         feedbacks = [create_test_feedback()]
@@ -184,7 +151,7 @@ class TestBatchApplyStrategiesSizing:
         assert result["success_count"] == 1
         assert len(result["refined_ontologies"]) == 1
 
-    def test_batch_apply_strategies_large_batch(self, mediator, context):
+    def test_batch_apply_strategies_large_batch(self, mediator, context, create_test_ontology):
         """Test batch application with many ontologies."""
         n = 20
         ontologies = [create_test_ontology(3, 2) for _ in range(n)]
@@ -200,7 +167,7 @@ class TestBatchApplyStrategiesSizing:
         assert result["success_count"] == n
         assert len(result["refined_ontologies"]) == n
 
-    def test_batch_apply_strategies_varying_sizes(self, mediator, context):
+    def test_batch_apply_strategies_varying_sizes(self, mediator, context, create_test_ontology):
         """Test with ontologies of varying entity/relationship counts."""
         ontologies = [
             create_test_ontology(entity_count=2, relationship_count=1),
@@ -226,7 +193,7 @@ class TestBatchApplyStrategiesSizing:
 class TestBatchApplyStrategiesParallel:
     """Test parallel execution aspects."""
 
-    def test_batch_apply_strategies_parallel_vs_serial(self, mediator, context):
+    def test_batch_apply_strategies_parallel_vs_serial(self, mediator, context, create_test_ontology):
         """Verify parallel execution produces same results as serial."""
         import copy
         ontologies = [create_test_ontology(5, 3) for _ in range(5)]
@@ -244,7 +211,7 @@ class TestBatchApplyStrategiesParallel:
         assert result_serial["success_count"] == 5
         assert len(result_serial["refined_ontologies"]) == 5
 
-    def test_batch_apply_strategies_worker_count(self, mediator, context):
+    def test_batch_apply_strategies_worker_count(self, mediator, context, create_test_ontology):
         import copy
         ontologies = [create_test_ontology(5, 3) for _ in range(8)]
         feedbacks = [create_test_feedback() for _ in range(8)]
@@ -262,7 +229,7 @@ class TestBatchApplyStrategiesParallel:
 class TestBatchApplyStrategiesErrors:
     """Test error handling and recovery."""
 
-    def test_batch_apply_strategies_length_mismatch(self, mediator, context):
+    def test_batch_apply_strategies_length_mismatch(self, mediator, context, create_test_ontology):
         """Test error when ontologies and feedbacks have different lengths."""
         ontologies = [create_test_ontology(5, 3) for _ in range(3)]
         feedbacks = [create_test_feedback() for _ in range(2)]  # Mismatch
@@ -274,7 +241,7 @@ class TestBatchApplyStrategiesErrors:
                 context=context,
             )
 
-    def test_batch_apply_strategies_malformed_ontology(self, mediator, context):
+    def test_batch_apply_strategies_malformed_ontology(self, mediator, context, create_test_ontology):
         """Test handling of malformed ontologies."""
         ontologies = [
             create_test_ontology(5, 3),
@@ -294,7 +261,7 @@ class TestBatchApplyStrategiesErrors:
         assert result["error_count"] >= 0
         assert result["success_count"] + result["error_count"] == 3
 
-    def test_batch_apply_strategies_partial_failure(self, mediator, context):
+    def test_batch_apply_strategies_partial_failure(self, mediator, context, create_test_ontology):
         """Test batch continues when some refinements fail."""
         ontologies = [
             create_test_ontology(5, 3),
@@ -318,7 +285,7 @@ class TestBatchApplyStrategiesErrors:
 class TestBatchApplyStrategiesStatistics:
     """Test statistics and aggregation."""
 
-    def test_batch_apply_strategies_aggregated_stats(self, mediator, context):
+    def test_batch_apply_strategies_aggregated_stats(self, mediator, context, create_test_ontology):
         """Test aggregated statistics across batch."""
         ontologies = [create_test_ontology(5, 3) for _ in range(3)]
         feedbacks = [create_test_feedback() for _ in range(3)]
@@ -345,7 +312,7 @@ class TestBatchApplyStrategiesStatistics:
         # Just verify structure is sound
         assert isinstance(per_ontology_entities, int)
 
-    def test_batch_apply_strategies_initial_counts(self, mediator, context):
+    def test_batch_apply_strategies_initial_counts(self, mediator, context, create_test_ontology):
         """Test initial entity/relationship counts are tracked."""
         ontologies = [
             create_test_ontology(2, 1),
@@ -425,7 +392,7 @@ class TestBatchApplyStrategiesEdgeCases:
             onto = result["refined_ontologies"][0]
             assert any("中文" in str(e.get("text", "")) for e in onto.get("entities", []))
 
-    def test_batch_apply_strategies_special_characters_in_feedback(self, mediator, context):
+    def test_batch_apply_strategies_special_characters_in_feedback(self, mediator, context, create_test_ontology):
         """Test with special characters in feedback data."""
         from ipfs_datasets_py.optimizers.graphrag.ontology_critic import CriticScore
         ontologies = [create_test_ontology(3, 2)]
@@ -491,7 +458,7 @@ class TestBatchApplyStrategiesIntegration:
 
             assert result["success_count"] >= 0
 
-    def test_batch_apply_strategies_result_structure(self, mediator, context):
+    def test_batch_apply_strategies_result_structure(self, mediator, context, create_test_ontology):
         """Test result structure is complete and valid."""
         ontologies = [create_test_ontology(5, 3) for _ in range(2)]
         feedbacks = [create_test_feedback() for _ in range(2)]
@@ -530,7 +497,7 @@ class TestBatchApplyStrategiesIntegration:
 class TestBatchApplyStrategiesConsistency:
     """Test consistency and determinism aspects."""
 
-    def test_batch_apply_strategies_idempotency(self, mediator, context):
+    def test_batch_apply_strategies_idempotency(self, mediator, context, create_test_ontology):
         """Test that multiple serial applications are consistent."""
         import copy
         ontology = create_test_ontology(5, 3)
@@ -561,7 +528,7 @@ class TestBatchApplyStrategiesConsistency:
         # Both should have same entity count (deterministic)
         assert first_entity_count == second_entity_count
 
-    def test_batch_apply_strategies_order_independence(self, mediator, context):
+    def test_batch_apply_strategies_order_independence(self, mediator, context, create_test_ontology):
         """Test that batch order doesn't affect count statistics."""
         import copy
         ontologies = [

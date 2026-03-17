@@ -9,14 +9,13 @@ Validates CriticScore across large sample sets, checking:
 
 import pytest
 import statistics as st
-from typing import List, Dict, Any
 import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../../"))
 
 from ipfs_datasets_py.optimizers.graphrag.ontology_critic import OntologyCritic, CriticScore
-from ipfs_datasets_py.optimizers.graphrag.ontology_generator import OntologyGenerator, OntologyGenerationContext
+from ipfs_datasets_py.optimizers.graphrag.ontology_generator import OntologyGenerationContext
 
 
 @pytest.fixture
@@ -33,37 +32,6 @@ def context():
         data_type="text",
         domain="health",
     )
-
-
-def create_sample_ontology(entity_count: int = 5, relationship_count: int = 3) -> Dict[str, Any]:
-    """Create a sample ontology for testing."""
-    entities = [
-        {
-            "id": f"ent_{i}",
-            "text": f"Entity {i}",
-            "type": "Person" if i % 2 == 0 else "Organization",
-            "confidence": 0.6 + (i * 0.08),
-        }
-        for i in range(entity_count)
-    ]
-
-    relationships = [
-        {
-            "id": f"rel_{i}",
-            "source_id": f"ent_{i % entity_count}",
-            "target_id": f"ent_{(i + 1) % entity_count}",
-            "type": "works_for" if i % 2 == 0 else "located_in",
-            "confidence": 0.75 + (i * 0.05),
-        }
-        for i in range(relationship_count)
-    ]
-
-    return {
-        "id": "test_ontology",
-        "entities": entities,
-        "relationships": relationships,
-        "metadata": {"created": "2024-01-01"},
-    }
 
 
 class TestCriticScoreBasicStatistics:

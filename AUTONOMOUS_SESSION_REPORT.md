@@ -260,6 +260,54 @@ Ensures unbiased, uniform random selection across improvement areas.
 value = self.validate_numeric_param(user_value, "threshold", 0, 1)
 ```
 
+---
+
+## 2026-03-07 Stabilization Addendum
+
+### Summary
+- Completed a compatibility and warning-cleanup pass across the MCP stack and complaint-generator integration tests.
+- Resolved the full fail-fast MCP unit frontier to green.
+- Reduced both MCP-unit and legal/web integration warnings to zero under normal test execution.
+
+### Final Validation Status
+- MCP unit suite: **5,467 passed, 145 skipped, 0 warnings**
+- Legal/web integration batch: **59 passed, 0 warnings**
+
+### Main Fix Areas
+
+#### MCP compatibility fixes
+- Reconciled legacy/new behavior in compliance result construction, serialization, rule iteration, and merge semantics.
+- Restored multiple `DelegationManager` compatibility APIs and payload shapes.
+- Reconciled revocation fallback behavior between low-level and manager-level APIs.
+- Added metrics-envelope compatibility for merge publication events.
+
+#### Async/runtime fixes
+- Fixed leaked coroutine paths in Trio bridging and remote P2P tools.
+- Removed the remaining unawaited-coroutine warning in the MCP unit suite.
+
+#### Deprecation cleanup
+- Replaced several deprecated import paths in `ipfs_datasets_py` with current module locations.
+- Updated Pydantic request/response models to `ConfigDict` style.
+- Switched test websocket cookie setup to client-level cookies.
+- Added lazy loading for deprecated agentic GitHub exports so importing `Mediator` no longer emits warnings.
+
+### Files Updated In This Pass
+- `AUTONOMOUS_SESSION_REPORT.md`
+- `tests/test_mediator_inquiry_payload.py`
+- `ipfs_datasets_py/ipfs_datasets_py/mcp_server/compliance_checker.py`
+- `ipfs_datasets_py/ipfs_datasets_py/mcp_server/ucan_delegation.py`
+- `ipfs_datasets_py/ipfs_datasets_py/mcp_server/trio_bridge.py`
+- `ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/p2p_tools/p2p_tools.py`
+- `ipfs_datasets_py/ipfs_datasets_py/optimizers/agentic/__init__.py`
+- `ipfs_datasets_py/ipfs_datasets_py/ml/llm/llm_semantic_validation.py`
+- `ipfs_datasets_py/ipfs_datasets_py/search/graphrag_integration/graphrag_integration.py`
+- `ipfs_datasets_py/ipfs_datasets_py/ml/embeddings/schema.py`
+- `ipfs_datasets_py/ipfs_datasets_py/processors/storage/ipld/__init__.py`
+- `ipfs_datasets_py/ipfs_datasets_py/processors/storage/ipld/knowledge_graph.py`
+
+### Environment Note
+- A strict `-W error::DeprecationWarning` run exposed a native `faiss` segmentation-fault path in this environment. Standard test runs remained stable and green throughout.
+
 ### 2. Async Batch Processing
 ```python
 # Concurrent execution with semaphore control

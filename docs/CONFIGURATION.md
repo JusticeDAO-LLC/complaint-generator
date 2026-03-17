@@ -254,6 +254,120 @@ Example:
 2. If it fails, try `openai-gpt4`
 3. If that fails, try `workstation-local`
 
+### Mediator Integrations (Phase 0 Scaffold)
+
+The `MEDIATOR.integrations` block configures the Phase 0 `ipfs_datasets_py` enhancement flags.
+
+```json
+{
+  "MEDIATOR": {
+    "backends": ["llm-router"],
+    "integrations": {
+      "enhanced_legal": false,
+      "enhanced_search": false,
+      "enhanced_graph": false,
+      "enhanced_vector": false,
+      "enhanced_optimizer": false,
+      "reranker_mode": "off",
+      "retrieval_max_latency_ms": 1500
+    }
+  }
+}
+```
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `enhanced_legal` | boolean | No | Enable legal datasets adapter paths |
+| `enhanced_search` | boolean | No | Enable unified enhanced search paths |
+| `enhanced_graph` | boolean | No | Enable graph-enrichment adapter paths |
+| `enhanced_vector` | boolean | No | Enable vector retrieval adapter paths |
+| `enhanced_optimizer` | boolean | No | Enable optimizer-assisted retrieval/extraction paths |
+| `reranker_mode` | string | No | `off`, `basic`, `graph`, `hybrid`, `auto`, or `on` |
+| `reranker_canary_percent` | integer | No | 0-100 rollout gate for graph/optimizer reranking (default: 100) |
+| `reranker_metrics_window` | integer | No | Optional rolling window size for in-state reranker metrics (0 disables window reset) |
+| `retrieval_max_latency_ms` | integer | No | Retrieval latency budget in milliseconds |
+
+Defaults preserve existing behavior.
+
+When `enhanced_graph=true` and `reranker_mode` is one of `graph`, `hybrid`, `auto`, or `on`, normalized legal/search/web retrieval records are rescored with graph-context overlap hints from the three-phase intake/formalization graph state.
+
+In this mode, reranking also incorporates dependency-graph readiness feedback (overall claim readiness and unsatisfied dependency names) so lower-readiness cases bias retrieval toward records aligned with open evidence gaps.
+
+When `enhanced_optimizer=true`, graph-aware reranking applies adaptive boost-budget tuning based on readiness gap and unsatisfied dependency complexity, and surfaces tuning metadata in normalized records.
+
+`retrieval_max_latency_ms` now also acts as a reranking guardrail: tighter budgets reduce effective graph-boost ceilings and emit telemetry fields such as `graph_latency_guard_applied`, `graph_run_elapsed_ms`, and `graph_run_avg_boost`.
+
+Use `reranker_canary_percent` for staged rollout. Example: `10` applies graph reranking to ~10% of deterministically bucketed requests.
+
+Runtime rollup metrics are also aggregated in mediator state under `state.reranker_metrics` (global + per-source counts, average boost, average elapsed ms, canary/latency-guard counters).
+If `reranker_metrics_window` is set (e.g., `100`), metrics automatically reset after each full window and increment `state.reranker_metrics_window_resets`.
+Metrics snapshots also include timestamps (`first_seen_at`, `last_updated_at`, `last_reset_at`) to make window boundaries and freshness explicit.
+For reporting pipelines, mediator also provides `export_reranker_metrics_json(path)` to emit the current snapshot (with `exported_at` and window reset count) as JSON.
+
+For one-command runtime export, run the app with:
+
+```bash
+python run.py --config config.llm_router.json --export-reranker-metrics statefiles/reranker_metrics_latest.json
+```
+
+Or let the app auto-generate a timestamped path under `statefiles/`:
+
+```bash
+python run.py --config config.llm_router.json --export-reranker-metrics
+```
+
+The export runs on shutdown so it captures metrics accumulated during that process lifetime.
+
+To postprocess exported snapshots for canary rollout review, use:
+
+```bash
+python scripts/summarize_reranker_metrics.py \
+  --input statefiles/reranker_metrics_latest.json \
+  --summary-out statefiles/reranker_metrics_latest.summary.json
+```
+
+This prints a concise terminal report (totals, rates, top sources, timestamps) and optionally writes a machine-readable summary JSON.
+
+For VS Code users, a workspace task is available in `.vscode/tasks.json`:
+
+- `Canary: Run + Export + Summarize Reranker Metrics`
+- `Canary: Summarize Latest Reranker Metrics Export`
+- `Canary: Generate Sample + Summarize Reranker Metrics`
+- `Canary: Validate Ops Wiring (CI-safe)`
+
+The run-and-export task runs the app with `run.py`, exports metrics to `statefiles/reranker_metrics_<timestamp>.json` on shutdown, then writes `statefiles/reranker_metrics_<timestamp>.summary.json`.
+The summarize-only task finds the most recent `statefiles/reranker_metrics_*.json` (excluding `.summary.json`) and writes the corresponding summary file.
+The sample task generates a synthetic metrics snapshot (without running the full app) and writes both `statefiles/reranker_metrics_sample_<timestamp>.json` and `.summary.json` for dry-run workflows.
+The CI-safe validation task runs `scripts/validate_canary_ops.py` and `tests/test_canary_ops_validation.py` without launching the app.
+
+For CI-safe wiring validation (no app startup), run:
+
+```bash
+python scripts/validate_canary_ops.py
+```
+
+This checks required canary task labels/command fragments, root `Makefile` aliases, the GitHub Actions canary workflow, and validates `scripts/summarize_reranker_metrics.py --help` output.
+
+### Environment Variable Overrides
+
+You can also control the same feature gates via environment variables:
+
+```bash
+export IPFS_DATASETS_ENHANCED_LEGAL=false
+export IPFS_DATASETS_ENHANCED_SEARCH=false
+export IPFS_DATASETS_ENHANCED_GRAPH=false
+export IPFS_DATASETS_ENHANCED_VECTOR=false
+export IPFS_DATASETS_ENHANCED_OPTIMIZER=false
+export RETRIEVAL_RERANKER_MODE=off
+export RETRIEVAL_RERANKER_CANARY_PERCENT=100
+export RETRIEVAL_RERANKER_METRICS_WINDOW=0
+export RETRIEVAL_MAX_LATENCY_MS=1500
+```
+
+See [docs/IPFS_DATASETS_PY_COMPATIBILITY_MATRIX.md](IPFS_DATASETS_PY_COMPATIBILITY_MATRIX.md) for capability-to-module mapping and runtime status semantics.
+
 ## APPLICATION Configuration
 
 Configure CLI and web server applications:

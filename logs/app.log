@@ -1,0 +1,12 @@
+2026-02-25 00:34:13,820 - logger - INFO - external_programs.py:60 -  ✓ 'ffmpeg' is available
+2026-02-25 00:34:13,886 - logger - INFO - external_programs.py:60 -  ✓ 'ffprobe' is available
+2026-02-25 00:34:13,910 - logger - INFO - external_programs.py:60 -  ✓ 'tesseract' is available
+2026-02-25 00:34:13,914 - logger - WARNING - external_programs.py:64 - ✗ 'calibre' is not available, functionality will be limited
+2026-02-25 00:34:13,917 - logger - WARNING - external_programs.py:64 - ✗ 'nvcc' is not available, functionality will be limited
+2026-02-25 00:34:13,918 - logger - WARNING - external_programs.py:64 - ✗ '7-zip' is not available, functionality will be limited
+2026-02-25 00:34:14,137 - logger - INFO - external_programs.py:60 -  ✓ 'libreoffice' is available
+2026-02-25 00:34:14,138 - logger - WARNING - external_programs.py:64 - ✗ 'audacity' is not available, functionality will be limited
+2026-02-25 00:34:14,142 - logger - INFO - external_programs.py:60 -  ✓ 'nvidia-smi' is available
+2026-02-25 00:34:14,143 - logger - WARNING - external_programs.py:64 - ✗ 'imagemagick' is not available, functionality will be limited
+2026-02-25 00:34:14,175 - logger - INFO - external_programs.py:60 -  ✓ 'ghostscript' is available
+2026-02-25 00:34:14,176 - logger - WARNING - external_programs.py:64 - ✗ 'pandoc' is not available, functionality will be limited

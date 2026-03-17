@@ -100,6 +100,33 @@ GitHub Actions now enforces the same slice in `.github/workflows/claim-support-r
 - Use `pytest -m "not integration"` for faster local feedback when you do not need external integrations.
 - Treat the browser smoke as optional for local setup and required in the browser CI lane.
 
+### Canary Ops Smoke Checks
+
+For reranker rollout tooling, run these lightweight checks before opening a PR:
+
+```bash
+# CI-safe canary wiring validation
+python scripts/validate_canary_ops.py
+
+# Focused validator test
+pytest tests/test_canary_ops_validation.py -q
+
+# Focused reranker integration regression
+pytest tests/test_graph_phase2_integration.py -q --run-network --run-llm
+```
+
+In VS Code, equivalent one-click tasks are available in `.vscode/tasks.json`:
+- `Canary: Validate Ops Wiring (CI-safe)`
+- `Canary: Run + Export + Summarize Reranker Metrics`
+
+For terminal-first workflows, use the top-level `Makefile` aliases:
+
+```bash
+make canary-validate
+make canary-smoke
+make canary-sample
+```
+
 ## TDD Workflow
 
 The project now follows Test-Driven Development principles:

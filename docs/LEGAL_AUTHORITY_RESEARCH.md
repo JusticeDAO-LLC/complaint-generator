@@ -28,6 +28,17 @@ Authority Database
 Research Insights
 ```
 
+## Enhanced Integration Notes (Phase 1)
+
+- Canonical authority buckets persisted to DuckDB are:
+    - `statutes`
+    - `regulations`
+    - `case_law`
+    - `web_archives`
+- Enhanced `normalized` retrieval artifacts are retained in mediator state for observability/audit workflows and are not stored as first-class authority rows.
+- In enhanced mode, normalized artifacts may be present in search results and are cached on mediator state:
+    - `mediator.state.last_legal_authorities_normalized`
+
 ## Features
 
 - **Multi-Source Search**: US Code, Federal Register, RECAP (case law), web archives

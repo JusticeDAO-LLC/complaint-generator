@@ -9,6 +9,15 @@ This module provides hooks for:
 """
 
 from typing import Dict, List, Optional, Any
+from mediator.state import extract_chat_history_context_strings_from_state
+
+from .integrations import (
+    IPFSDatasetsAdapter,
+    IntegrationFeatureFlags,
+    RetrievalOrchestrator,
+    VectorRetrievalAugmentor,
+    build_provenance_record,
+)
 
 
 class LegalClassificationHook:
@@ -119,6 +128,197 @@ class StatuteRetrievalHook:
     
     def __init__(self, mediator):
         self.mediator = mediator
+        self.integration_flags = IntegrationFeatureFlags.from_env()
+        self.integration_adapter = IPFSDatasetsAdapter(feature_flags=self.integration_flags)
+        self.retrieval_orchestrator = RetrievalOrchestrator()
+        self.vector_augmentor = VectorRetrievalAugmentor()
+
+    def get_capability_registry(self) -> Dict[str, Dict[str, object]]:
+        """Get capability and feature-flag status for enhanced integrations."""
+        return self.integration_adapter.capability_registry()
+
+    def _with_provenance(
+        self,
+        statutes: List[Dict[str, str]],
+        classification: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        claim_types = classification.get('claim_types', []) if isinstance(classification, dict) else []
+        legal_areas = classification.get('legal_areas', []) if isinstance(classification, dict) else []
+        enriched: List[Dict[str, Any]] = []
+
+        for statute in statutes:
+            provenance = build_provenance_record(
+                source_type='legal_dataset',
+                source_name='llm_statute_retrieval',
+                query=', '.join([*claim_types[:3], *legal_areas[:3]]),
+                confidence=0.6,
+                metadata={
+                    'jurisdiction': classification.get('jurisdiction', 'unknown') if isinstance(classification, dict) else 'unknown',
+                    'claim_types': claim_types,
+                    'legal_areas': legal_areas,
+                },
+            )
+
+            with_prov = dict(statute)
+            with_prov['provenance'] = {
+                'source_type': provenance.source_type,
+                'source_name': provenance.source_name,
+                'query': provenance.query,
+                'confidence': provenance.confidence,
+                'retrieved_at': provenance.retrieved_at,
+                'metadata': provenance.metadata,
+            }
+            enriched.append(with_prov)
+
+        return enriched
+
+    def _normalize_records(
+        self,
+        statutes: List[Dict[str, Any]],
+        classification: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        query = ', '.join(classification.get('claim_types', [])) if isinstance(classification, dict) else ''
+        query_context = self.retrieval_orchestrator.build_query_context(
+            query=query,
+            complaint_type=classification.get('claim_types', [query])[0] if isinstance(classification, dict) and classification.get('claim_types') else query,
+            jurisdiction=classification.get('jurisdiction') if isinstance(classification, dict) else None,
+        )
+        evidence_context = self._build_evidence_context(classification)
+        normalized = []
+        for statute in statutes:
+            normalized_record = self.integration_adapter.normalize_record(
+                query=query,
+                source_type='statute',
+                source_name='llm_statute_retrieval',
+                record={
+                    'citation': statute.get('citation', ''),
+                    'title': statute.get('title', ''),
+                    'content': statute.get('relevance', ''),
+                    'snippet': statute.get('relevance', ''),
+                    'score': statute.get('score', 0.0),
+                    'confidence': statute.get('confidence', 0.6),
+                    'metadata': {
+                        'jurisdiction': classification.get('jurisdiction', 'unknown') if isinstance(classification, dict) else 'unknown',
+                    },
+                },
+            )
+            normalized.append({
+                'source_type': normalized_record.source_type,
+                'source_name': normalized_record.source_name,
+                'query': normalized_record.query,
+                'retrieved_at': normalized_record.retrieved_at,
+                'title': normalized_record.title,
+                'url': normalized_record.url,
+                'citation': normalized_record.citation,
+                'snippet': normalized_record.snippet,
+                'content': normalized_record.content,
+                'score': normalized_record.score,
+                'confidence': normalized_record.confidence,
+                'metadata': normalized_record.metadata,
+            })
+
+        if self.integration_flags.enhanced_vector:
+            normalized = self.vector_augmentor.augment_normalized_records(
+                records=normalized,
+                query=query,
+                context_texts=evidence_context,
+            )
+            self.mediator.log(
+                'statute_retrieval_vector_augmentation',
+                query=query,
+                records=len(normalized),
+                evidence_context_items=len(evidence_context),
+                capabilities=self.vector_augmentor.capabilities(),
+            )
+
+        model_records = []
+        for item in normalized:
+            model_records.append(self.integration_adapter.normalize_record(
+                query=str(item.get('query', '')),
+                source_type=str(item.get('source_type', 'statute')),
+                source_name=str(item.get('source_name', 'llm_statute_retrieval')),
+                record=item,
+            ))
+
+        ranked = self.retrieval_orchestrator.merge_and_rank(
+            model_records,
+            max_results=10,
+            query_context=query_context,
+        )
+        return [
+            {
+                'source_type': rec.source_type,
+                'source_name': rec.source_name,
+                'query': rec.query,
+                'retrieved_at': rec.retrieved_at,
+                'title': rec.title,
+                'url': rec.url,
+                'citation': rec.citation,
+                'snippet': rec.snippet,
+                'content': rec.content,
+                'score': rec.score,
+                'confidence': rec.confidence,
+                'metadata': rec.metadata,
+            }
+            for rec in ranked
+        ]
+
+    def _build_support_bundle(self, normalized_records: List[Dict[str, Any]], max_items: int = 5) -> Dict[str, Any]:
+        model_records = []
+        for item in normalized_records:
+            model_records.append(self.integration_adapter.normalize_record(
+                query=str(item.get('query', '')),
+                source_type=str(item.get('source_type', 'statute')),
+                source_name=str(item.get('source_name', 'llm_statute_retrieval')),
+                record=item,
+            ))
+        return self.retrieval_orchestrator.build_support_bundle(model_records, max_items_per_bucket=max_items)
+
+    def _build_evidence_context(self, classification: Dict[str, Any]) -> List[str]:
+        context: List[str] = []
+
+        def _add(value: Any):
+            text = str(value or '').strip()
+            if text and text not in context:
+                context.append(text)
+
+        if isinstance(classification, dict):
+            for key in ('claim_types', 'legal_areas', 'key_facts'):
+                values = classification.get(key, []) or []
+                if isinstance(values, list):
+                    for value in values[:5]:
+                        _add(value)
+                else:
+                    _add(values)
+            _add(classification.get('jurisdiction'))
+
+        state = getattr(self.mediator, 'state', None)
+        if state is not None:
+            for attr in ('complaint_summary', 'original_complaint', 'complaint', 'last_message'):
+                _add(getattr(state, attr, None))
+
+            for value in extract_chat_history_context_strings_from_state(state, limit=3):
+                _add(value)
+
+        return context[:10]
+
+    def retrieve_statutes_bundle(self, classification: Dict[str, Any]) -> Dict[str, Any]:
+        """Retrieve statute results as raw + optional normalized bundle."""
+        raw = self.retrieve_statutes(classification)
+        bundle: Dict[str, Any] = {'raw': raw}
+
+        if self.integration_flags.enhanced_legal or self.integration_flags.enhanced_search:
+            bundle['normalized'] = self._normalize_records(raw, classification)
+            bundle['support_bundle'] = self._build_support_bundle(bundle['normalized'])
+            self.mediator.log(
+                'statute_retrieval_normalized',
+                raw_total=len(raw),
+                normalized_total=len(bundle['normalized']),
+                enhanced_legal=self.integration_flags.enhanced_legal,
+                enhanced_search=self.integration_flags.enhanced_search,
+            )
+
+        return bundle
     
     def retrieve_statutes(self, classification: Dict[str, Any]) -> List[Dict[str, str]]:
         """
@@ -159,7 +359,8 @@ RELEVANCE: [description]
         
         try:
             response = self.mediator.query_backend(prompt)
-            return self._parse_statutes(response)
+            parsed = self._parse_statutes(response)
+            return self._with_provenance(parsed, classification)
         except Exception as e:
             self.mediator.log('statute_retrieval_error', error=str(e))
             return []
@@ -281,8 +482,9 @@ class QuestionGenerationHook:
     def __init__(self, mediator):
         self.mediator = mediator
     
-    def generate_questions(self, requirements: Dict[str, List[str]], 
-                          classification: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def generate_questions(self, requirements: Dict[str, List[str]],
+                          classification: Dict[str, Any],
+                          provenance_context: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
         Generate questions to gather evidence for legal requirements.
         
@@ -303,7 +505,8 @@ class QuestionGenerationHook:
             questions = self._generate_questions_for_claim(
                 claim_type, 
                 elements,
-                classification
+                classification,
+                provenance_context=provenance_context,
             )
             all_questions.extend(questions)
         
@@ -311,9 +514,29 @@ class QuestionGenerationHook:
     
     def _generate_questions_for_claim(self, claim_type: str, 
                                      elements: List[str],
-                                     classification: Dict[str, Any]) -> List[Dict[str, Any]]:
+                                     classification: Dict[str, Any],
+                                     provenance_context: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Generate questions for a specific claim type."""
         elements_text = '\n'.join([f"{i+1}. {elem}" for i, elem in enumerate(elements)])
+        support_context = ''
+        support_summary = {}
+        if isinstance(provenance_context, dict):
+            support_context = str(provenance_context.get('support_context') or '').strip()
+            support_summary = provenance_context.get('support_summary', {}) or {}
+
+        support_guidance = ''
+        if support_context:
+            support_guidance = f"""
+
+Retrieved Support Already Available:
+{support_context}
+
+Support Coverage Summary:
+- authority_count: {support_summary.get('authority_count', 0)}
+- evidence_count: {support_summary.get('evidence_count', 0)}
+- cross_supported_count: {support_summary.get('cross_supported_count', 0)}
+- hybrid_cross_supported_count: {support_summary.get('hybrid_cross_supported_count', 0)}
+"""
         
         prompt = f"""For a legal claim of "{claim_type}", generate specific factual questions to ask the plaintiff that will help prove each of these required elements:
 
@@ -322,11 +545,13 @@ Required Elements:
 
 Key Facts Already Known:
 {', '.join(classification.get('key_facts', [])[:3])}
+{support_guidance}
 
 Generate 2-3 specific, concrete questions for each element. Questions should:
 - Be direct and clear
 - Ask for specific facts, dates, names, or evidence
 - Help establish the required element
+- Prioritize facts or evidence that are not already strongly corroborated by retrieved support
 
 Format as:
 ELEMENT: [element number and text]
@@ -337,16 +562,33 @@ Q2: [question]
         
         try:
             response = self.mediator.query_backend(prompt)
-            return self._parse_questions(response, claim_type, elements)
+            return self._parse_questions(response, claim_type, elements, provenance_context)
         except Exception as e:
             self.mediator.log('question_generation_error', error=str(e), claim_type=claim_type)
             return []
     
     def _parse_questions(self, response: str, claim_type: str, 
-                        elements: List[str]) -> List[Dict[str, Any]]:
+                        elements: List[str],
+                        provenance_context: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Parse generated questions from LLM response."""
         questions = []
         current_element = None
+        support_summary = provenance_context.get('support_summary', {}) if isinstance(provenance_context, dict) else {}
+        support_summary = support_summary if isinstance(support_summary, dict) else {}
+
+        authority_count = int(support_summary.get('authority_count', 0) or 0)
+        evidence_count = int(support_summary.get('evidence_count', 0) or 0)
+        cross_supported_count = int(support_summary.get('cross_supported_count', 0) or 0)
+        hybrid_cross_supported_count = int(support_summary.get('hybrid_cross_supported_count', 0) or 0)
+
+        if hybrid_cross_supported_count > 0:
+            default_priority = 'Medium'
+        elif cross_supported_count > 0 or authority_count > 0 or evidence_count > 0:
+            default_priority = 'High'
+        else:
+            default_priority = 'Critical'
+
+        support_gap_targeted = cross_supported_count == 0
         
         sections = response.split('---')
         for section in sections:
@@ -359,12 +601,23 @@ Q2: [question]
                     # Extract question
                     question_text = line.split(':', 1)[1].strip()
                     if question_text:
+                        provenance = {
+                            'source_type': 'question_generation',
+                            'source_name': 'llm_question_generator',
+                            'claim_type': claim_type,
+                            'element': current_element or 'Unknown',
+                        }
+                        if provenance_context:
+                            provenance.update(provenance_context)
+
                         questions.append({
                             'question': question_text,
                             'claim_type': claim_type,
                             'element': current_element or 'Unknown',
-                            'priority': 'High',
-                            'answer': None
+                            'priority': default_priority,
+                            'answer': None,
+                            'support_gap_targeted': support_gap_targeted,
+                            'provenance': provenance,
                         })
         
         return questions

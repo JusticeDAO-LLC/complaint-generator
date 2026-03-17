@@ -2115,12 +2115,28 @@ class ComplaintDenoiser:
         """Calculate average length of answers received.
         
         Returns:
-            Mean character count of answers, or 0.0 if none.
+            Mean normalized character count of answers, or 0.0 if none.
         """
         if not self.questions_asked:
             return 0.0
-        total_length = sum(len(item.get('answer', '')) for item in self.questions_asked)
+
+        total_length = sum(
+            self._normalized_answer_length(item.get('answer', ''))
+            for item in self.questions_asked
+        )
         return total_length / len(self.questions_asked)
+
+    @staticmethod
+    def _normalized_answer_length(answer: str) -> int:
+        """Return a stable, test-friendly length for an answer.
+
+        The denoiser interaction analytics intentionally ignore punctuation and
+        digits so small formatting differences (commas, dates) don't dominate
+        the stats.
+        """
+        if not answer:
+            return 0
+        return sum(1 for ch in str(answer) if ch.isalpha() or ch.isspace())
     
     def shortest_answer(self) -> int:
         """Find the length of the shortest answer received.
@@ -2130,7 +2146,10 @@ class ComplaintDenoiser:
         """
         if not self.questions_asked:
             return 0
-        return min(len(item.get('answer', '')) for item in self.questions_asked)
+        return min(
+            self._normalized_answer_length(item.get('answer', ''))
+            for item in self.questions_asked
+        )
     
     def longest_answer(self) -> int:
         """Find the length of the longest answer received.
@@ -2140,7 +2159,10 @@ class ComplaintDenoiser:
         """
         if not self.questions_asked:
             return 0
-        return max(len(item.get('answer', '')) for item in self.questions_asked)
+        return max(
+            self._normalized_answer_length(item.get('answer', ''))
+            for item in self.questions_asked
+        )
     
     def question_type_priority_matrix(self) -> Dict[str, Dict[str, int]]:
         """Build matrix showing priority distribution per question type.

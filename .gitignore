@@ -24,3 +24,6 @@ tmp/
 tmp/generated_documents/
 # Local stray artifact seen during config debugging
 test_extended_config.log
+
+# Local stray artifacts
+enhanced_daemon_manager.log

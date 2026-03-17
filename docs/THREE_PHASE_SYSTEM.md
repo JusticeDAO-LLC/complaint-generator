@@ -143,6 +143,20 @@ The complaint-generator now implements a sophisticated three-phase complaint pro
 - **Phase 2 (EVIDENCE):** Evidence gathered, graphs enhanced, gap ratio < 30%
 - **Phase 3 (FORMALIZATION):** Legal graph built, matching complete, formal complaint generated
 
+### Phase 2 Enhanced Graph Augmentation (IPFS Integrations)
+
+When `IPFS_DATASETS_ENHANCED_GRAPH=true`, mediator can enrich Phase 2 graphs from cached normalized retrieval artifacts:
+
+- `last_legal_authorities_normalized`
+- `last_web_evidence_normalized`
+
+The enrichment path converts these artifacts into evidence payloads and injects them into:
+
+- Knowledge Graph as `evidence` entities and `supports` relationships
+- Dependency Graph via existing evidence-to-claim links
+
+This flow is integrated into `advance_to_evidence_phase()` and can also be invoked directly through `enrich_graphs_with_retrieval_artifacts()`.
+
 ### 5. Legal Graph (`complaint_phases/legal_graph.py`)
 
 **Purpose:** Represent legal requirements, statutes, and procedural rules.

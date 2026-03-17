@@ -153,6 +153,24 @@ def pytest_collection_modifyitems(config, items):
         is_llm = False
         is_network = False
         is_heavy = False
+        
+        # Exclude specific test files from auto-detection
+        # (files containing "llm" in code but not actually requiring LLM features)
+        if (
+            "test_lazy_backend_loader" in path
+            or "test_circuit_breaker" in path
+            or "test_mcplusplus_v38_session83" in path
+            or "test_mcplusplus_v39_session84_properties" in path
+            or "test_mcplusplus_v39_session84_recovery" in path
+            or "test_mcplusplus_v39_session84_concurrency" in path
+            or "test_mcplusplus_v39_session84_observability" in path
+            or "test_integration_observability_core" in path
+            or "test_batch_264_api_type_contracts" in path
+            or "test_batch_265_path_validation_security" in path
+        ):
+            file_cache[path] = (False, False, False)
+            return file_cache[path]
+        
         try:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 text = f.read().lower()

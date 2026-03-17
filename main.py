@@ -3,9 +3,13 @@ import os
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from lib.chat_payloads import build_chat_payload
 
 app = FastAPI()
+if os.path.isdir("static"):
+    app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # locate templates
 templates = Jinja2Templates(directory="templates")
@@ -118,19 +122,32 @@ async def chat(websocket: WebSocket):
 
     if token:
         await manager.connect(websocket, hashed_username)
-        response = {
-            "hashed_username": hashed_username,
-            "message": "got connected"
-        }
+        response = build_chat_payload(
+            "got connected",
+            sender="System:",
+            hashed_username=hashed_username,
+        )
 
         await manager.broadcast(response)
         try:
             while True:
                 data = await websocket.receive_json()
                 output = test({"token": "token", "data": data, "hashed_username": hashed_username, "hashed_password": hashed_password})
-                await manager.broadcast(data)
+                message = data.get("message") if isinstance(data, dict) else str(data)
+                await manager.broadcast(build_chat_payload(
+                    message,
+                    sender=hashed_username or "User:",
+                    hashed_username=hashed_username,
+                ))
+                if isinstance(output, dict):
+                    await manager.broadcast(build_chat_payload(
+                        output.get("message") or "",
+                        inquiry_payload=output,
+                        sender=output.get("sender", "Bot:"),
+                        hashed_username=hashed_username,
+                    ))
 
         except WebSocketDisconnect:
-            manager.disconnect(websocket, token)
+            manager.disconnect(websocket, hashed_username)
             response['message'] = "left"
             await manager.broadcast(response)
