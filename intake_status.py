@@ -271,6 +271,8 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
     proof_lead_summary = raw_status.get("proof_lead_summary")
     proof_lead_intent_summary = raw_status.get("proof_lead_intent_summary")
     timeline_anchor_summary = raw_status.get("timeline_anchor_summary")
+    timeline_relation_summary = raw_status.get("timeline_relation_summary")
+    timeline_consistency_summary = raw_status.get("timeline_consistency_summary")
     harm_profile = raw_status.get("harm_profile")
     remedy_profile = raw_status.get("remedy_profile")
     intake_matching_summary = raw_status.get("intake_matching_summary")
@@ -310,6 +312,12 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
         ),
         "timeline_anchor_summary": (
             timeline_anchor_summary if isinstance(timeline_anchor_summary, dict) else {}
+        ),
+        "timeline_relation_summary": (
+            timeline_relation_summary if isinstance(timeline_relation_summary, dict) else {}
+        ),
+        "timeline_consistency_summary": (
+            timeline_consistency_summary if isinstance(timeline_consistency_summary, dict) else {}
         ),
         "harm_profile": (
             harm_profile if isinstance(harm_profile, dict) else {}

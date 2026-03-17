@@ -68,6 +68,21 @@ def test_build_intake_case_file_adds_structured_temporal_context_and_anchor_fiel
         "matched_text": "January 2026",
     }
     assert proof_lead["timeline_anchor_ids"] == []
+    assert intake_case_file["timeline_relations"] == []
+    assert intake_case_file["timeline_consistency_summary"] == {
+        "event_count": 1,
+        "anchor_count": 1,
+        "ordered_fact_count": 1,
+        "unsequenced_fact_count": 0,
+        "approximate_fact_count": 0,
+        "range_fact_count": 0,
+        "relation_count": 0,
+        "relation_type_counts": {},
+        "missing_temporal_fact_ids": [],
+        "relative_only_fact_ids": [],
+        "warnings": [],
+        "partial_order_ready": True,
+    }
 
 
 def test_refresh_intake_case_file_backfills_temporal_context_and_links_proof_leads():
@@ -80,6 +95,12 @@ def test_refresh_intake_case_file_backfills_temporal_context_and_links_proof_lea
                 "text": "Employer suspended Plaintiff around March 2025.",
                 "fact_type": "timeline",
                 "event_date_or_range": "around March 2025",
+            },
+            {
+                "fact_id": "fact_2",
+                "text": "Employer terminated Plaintiff on April 15, 2025.",
+                "fact_type": "timeline",
+                "event_date_or_range": "April 15, 2025",
             }
         ],
         "proof_leads": [
@@ -122,3 +143,31 @@ def test_refresh_intake_case_file_backfills_temporal_context_and_links_proof_lea
     assert proof_lead["temporal_context"]["end_date"] == "2025-04-30"
     assert proof_lead["temporal_context"]["granularity"] == "month"
     assert proof_lead["temporal_context"]["is_range"] is True
+
+    assert refreshed["timeline_relations"] == [
+        {
+            "relation_id": "timeline_relation_001",
+            "source_fact_id": "fact_1",
+            "target_fact_id": "fact_2",
+            "relation_type": "before",
+            "source_start_date": "2025-03-01",
+            "source_end_date": "2025-03-31",
+            "target_start_date": "2025-04-15",
+            "target_end_date": "2025-04-15",
+            "confidence": "medium",
+        }
+    ]
+    assert refreshed["timeline_consistency_summary"] == {
+        "event_count": 2,
+        "anchor_count": 2,
+        "ordered_fact_count": 2,
+        "unsequenced_fact_count": 0,
+        "approximate_fact_count": 1,
+        "range_fact_count": 1,
+        "relation_count": 1,
+        "relation_type_counts": {"before": 1},
+        "missing_temporal_fact_ids": [],
+        "relative_only_fact_ids": [],
+        "warnings": [],
+        "partial_order_ready": True,
+    }

@@ -6898,6 +6898,8 @@ class Mediator:
 		alignment_task_updates = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_updates') or []
 		alignment_task_update_history = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history') or []
 		timeline_anchors = intake_case_file.get('timeline_anchors', []) if isinstance(intake_case_file, dict) else []
+		timeline_relations = intake_case_file.get('timeline_relations', []) if isinstance(intake_case_file, dict) else []
+		timeline_consistency_summary = intake_case_file.get('timeline_consistency_summary', {}) if isinstance(intake_case_file, dict) else {}
 		harm_profile = intake_case_file.get('harm_profile', {}) if isinstance(intake_case_file, dict) else {}
 		remedy_profile = intake_case_file.get('remedy_profile', {}) if isinstance(intake_case_file, dict) else {}
 		complainant_summary_confirmation = intake_case_file.get('complainant_summary_confirmation', {}) if isinstance(intake_case_file, dict) else {}
@@ -6923,6 +6925,13 @@ class Mediator:
 				'count': len(timeline_anchors) if isinstance(timeline_anchors, list) else 0,
 				'anchors': timeline_anchors if isinstance(timeline_anchors, list) else [],
 			},
+			'timeline_relation_summary': {
+				'count': len(timeline_relations) if isinstance(timeline_relations, list) else 0,
+				'relations': timeline_relations if isinstance(timeline_relations, list) else [],
+			},
+			'timeline_consistency_summary': (
+				timeline_consistency_summary if isinstance(timeline_consistency_summary, dict) else {}
+			),
 			'harm_profile': harm_profile if isinstance(harm_profile, dict) else {},
 			'remedy_profile': remedy_profile if isinstance(remedy_profile, dict) else {},
 			'complainant_summary_confirmation': complainant_summary_confirmation if isinstance(complainant_summary_confirmation, dict) else {},

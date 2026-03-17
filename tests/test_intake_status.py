@@ -106,6 +106,24 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
             "target_element_id_counts": {"protected_activity": 1},
         },
         "timeline_anchor_summary": {"count": 1, "anchors": [{"anchor_id": "timeline_anchor_001"}]},
+        "timeline_relation_summary": {
+            "count": 1,
+            "relations": [{"relation_id": "timeline_relation_001", "relation_type": "before"}],
+        },
+        "timeline_consistency_summary": {
+            "event_count": 2,
+            "anchor_count": 1,
+            "ordered_fact_count": 2,
+            "unsequenced_fact_count": 0,
+            "approximate_fact_count": 0,
+            "range_fact_count": 0,
+            "relation_count": 1,
+            "relation_type_counts": {"before": 1},
+            "missing_temporal_fact_ids": [],
+            "relative_only_fact_ids": [],
+            "warnings": [],
+            "partial_order_ready": True,
+        },
         "harm_profile": {"count": 1, "categories": ["economic"]},
         "remedy_profile": {"count": 1, "categories": ["monetary"]},
         "intake_matching_summary": {
@@ -276,6 +294,24 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["proof_lead_summary"]["count"] == 1
     assert summary["proof_lead_intent_summary"]["question_objective_counts"]["identify_supporting_evidence"] == 1
     assert summary["timeline_anchor_summary"]["count"] == 1
+    assert summary["timeline_relation_summary"] == {
+        "count": 1,
+        "relations": [{"relation_id": "timeline_relation_001", "relation_type": "before"}],
+    }
+    assert summary["timeline_consistency_summary"] == {
+        "event_count": 2,
+        "anchor_count": 1,
+        "ordered_fact_count": 2,
+        "unsequenced_fact_count": 0,
+        "approximate_fact_count": 0,
+        "range_fact_count": 0,
+        "relation_count": 1,
+        "relation_type_counts": {"before": 1},
+        "missing_temporal_fact_ids": [],
+        "relative_only_fact_ids": [],
+        "warnings": [],
+        "partial_order_ready": True,
+    }
     assert summary["harm_profile"]["categories"] == ["economic"]
     assert summary["remedy_profile"]["categories"] == ["monetary"]
     assert summary["intake_matching_summary"]["claim_count"] == 1

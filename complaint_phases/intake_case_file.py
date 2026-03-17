@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import calendar
 from datetime import UTC, datetime
+from itertools import combinations
 import re
 from typing import Any, Dict, List
 
@@ -351,6 +352,143 @@ def _link_proof_leads_to_timeline_anchors(
         lead["timeline_anchor_ids"] = list(dict.fromkeys(item for item in timeline_anchor_ids if item))
         linked_leads.append(lead)
     return linked_leads
+
+
+def _timeline_capable_facts(canonical_facts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    timeline_facts: List[Dict[str, Any]] = []
+    for record in canonical_facts if isinstance(canonical_facts, list) else []:
+        fact = _normalize_canonical_fact_record(record)
+        temporal_context = _coerce_dict(fact.get("temporal_context"))
+        if (
+            fact.get("fact_type") == "timeline"
+            or temporal_context.get("start_date")
+            or temporal_context.get("relative_markers")
+        ):
+            timeline_facts.append(fact)
+    return timeline_facts
+
+
+def _temporal_relation_between(left_fact: Dict[str, Any], right_fact: Dict[str, Any]) -> Dict[str, Any] | None:
+    left_context = _coerce_dict(left_fact.get("temporal_context"))
+    right_context = _coerce_dict(right_fact.get("temporal_context"))
+    left_start = str(left_context.get("start_date") or "")
+    left_end = str(left_context.get("end_date") or left_start)
+    right_start = str(right_context.get("start_date") or "")
+    right_end = str(right_context.get("end_date") or right_start)
+    if not left_start or not right_start:
+        return None
+
+    left_fact_id = _normalize_text(left_fact.get("fact_id") or "")
+    right_fact_id = _normalize_text(right_fact.get("fact_id") or "")
+    confidence = "medium" if (
+        bool(left_context.get("is_approximate"))
+        or bool(right_context.get("is_approximate"))
+        or left_context.get("granularity") != "day"
+        or right_context.get("granularity") != "day"
+    ) else "high"
+
+    if left_end < right_start:
+        source_fact, target_fact = left_fact, right_fact
+        relation_type = "before"
+    elif right_end < left_start:
+        source_fact, target_fact = right_fact, left_fact
+        relation_type = "before"
+    elif left_start == right_start and left_end == right_end:
+        if left_fact_id <= right_fact_id:
+            source_fact, target_fact = left_fact, right_fact
+        else:
+            source_fact, target_fact = right_fact, left_fact
+        relation_type = "same_time"
+    else:
+        if left_fact_id <= right_fact_id:
+            source_fact, target_fact = left_fact, right_fact
+        else:
+            source_fact, target_fact = right_fact, left_fact
+        relation_type = "overlaps"
+
+    source_context = _coerce_dict(source_fact.get("temporal_context"))
+    target_context = _coerce_dict(target_fact.get("temporal_context"))
+    return {
+        "relation_id": "",
+        "source_fact_id": _normalize_text(source_fact.get("fact_id") or ""),
+        "target_fact_id": _normalize_text(target_fact.get("fact_id") or ""),
+        "relation_type": relation_type,
+        "source_start_date": source_context.get("start_date"),
+        "source_end_date": source_context.get("end_date"),
+        "target_start_date": target_context.get("start_date"),
+        "target_end_date": target_context.get("end_date"),
+        "confidence": confidence,
+    }
+
+
+def build_timeline_relations(canonical_facts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    relations: List[Dict[str, Any]] = []
+    for left_fact, right_fact in combinations(_timeline_capable_facts(canonical_facts), 2):
+        relation = _temporal_relation_between(left_fact, right_fact)
+        if relation is None:
+            continue
+        relation["relation_id"] = f"timeline_relation_{len(relations) + 1:03d}"
+        relations.append(relation)
+    return relations
+
+
+def build_timeline_consistency_summary(
+    canonical_facts: List[Dict[str, Any]],
+    timeline_anchors: List[Dict[str, Any]],
+    timeline_relations: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    timeline_facts = _timeline_capable_facts(canonical_facts)
+    relation_type_counts: Dict[str, int] = {}
+    for relation in timeline_relations if isinstance(timeline_relations, list) else []:
+        if not isinstance(relation, dict):
+            continue
+        relation_type = _normalize_text(relation.get("relation_type") or "")
+        if relation_type:
+            relation_type_counts[relation_type] = relation_type_counts.get(relation_type, 0) + 1
+
+    missing_temporal_fact_ids: List[str] = []
+    relative_only_fact_ids: List[str] = []
+    approximate_fact_ids: List[str] = []
+    range_fact_ids: List[str] = []
+    ordered_fact_count = 0
+
+    for fact in timeline_facts:
+        fact_id = _normalize_text(fact.get("fact_id") or "")
+        temporal_context = _coerce_dict(fact.get("temporal_context"))
+        start_date = temporal_context.get("start_date")
+        end_date = temporal_context.get("end_date")
+        relative_markers = list(temporal_context.get("relative_markers") or [])
+        if start_date:
+            ordered_fact_count += 1
+        else:
+            missing_temporal_fact_ids.append(fact_id)
+            if relative_markers:
+                relative_only_fact_ids.append(fact_id)
+        if bool(temporal_context.get("is_approximate", False)):
+            approximate_fact_ids.append(fact_id)
+        if bool(temporal_context.get("is_range", False)) or (start_date and end_date and start_date != end_date):
+            range_fact_ids.append(fact_id)
+
+    warnings: List[str] = []
+    if missing_temporal_fact_ids:
+        warnings.append("Some timeline facts still lack normalized dates or ranges.")
+    if relative_only_fact_ids:
+        warnings.append("Some timeline facts only express relative ordering and still need anchoring.")
+
+    return {
+        "event_count": len(timeline_facts),
+        "anchor_count": len(timeline_anchors) if isinstance(timeline_anchors, list) else 0,
+        "ordered_fact_count": ordered_fact_count,
+        "unsequenced_fact_count": len(missing_temporal_fact_ids),
+        "approximate_fact_count": len(approximate_fact_ids),
+        "range_fact_count": len(range_fact_ids),
+        "relation_count": len(timeline_relations) if isinstance(timeline_relations, list) else 0,
+        "relation_type_counts": relation_type_counts,
+        "missing_temporal_fact_ids": missing_temporal_fact_ids,
+        "relative_only_fact_ids": relative_only_fact_ids,
+        "warnings": warnings,
+        "partial_order_ready": bool(timeline_facts) and not missing_temporal_fact_ids,
+    }
 
 
 def _contradiction_support_kind(resolution_lane: str) -> str:
@@ -880,6 +1018,7 @@ def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[st
     canonical_facts = build_canonical_facts(knowledge_graph)
     proof_leads = build_proof_leads(knowledge_graph)
     timeline_anchors = build_timeline_anchors(canonical_facts)
+    timeline_relations = build_timeline_relations(canonical_facts)
     proof_leads = _link_proof_leads_to_timeline_anchors(proof_leads, timeline_anchors)
     intake_sections = build_intake_sections(
         knowledge_graph,
@@ -895,6 +1034,12 @@ def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[st
         "intake_sections": intake_sections,
         "canonical_facts": canonical_facts,
         "timeline_anchors": timeline_anchors,
+        "timeline_relations": timeline_relations,
+        "timeline_consistency_summary": build_timeline_consistency_summary(
+            canonical_facts,
+            timeline_anchors,
+            timeline_relations,
+        ),
         "harm_profile": build_harm_profile(canonical_facts),
         "remedy_profile": build_remedy_profile(canonical_facts),
         "proof_leads": proof_leads,
@@ -939,9 +1084,15 @@ def refresh_intake_case_file(intake_case_file: Dict[str, Any], knowledge_graph, 
     ]
     case_file["intake_sections"] = refresh_intake_sections(case_file, knowledge_graph)
     case_file["timeline_anchors"] = build_timeline_anchors(_coerce_list(case_file.get("canonical_facts")))
+    case_file["timeline_relations"] = build_timeline_relations(_coerce_list(case_file.get("canonical_facts")))
     case_file["proof_leads"] = _link_proof_leads_to_timeline_anchors(
         _coerce_list(case_file.get("proof_leads")),
         _coerce_list(case_file.get("timeline_anchors")),
+    )
+    case_file["timeline_consistency_summary"] = build_timeline_consistency_summary(
+        _coerce_list(case_file.get("canonical_facts")),
+        _coerce_list(case_file.get("timeline_anchors")),
+        _coerce_list(case_file.get("timeline_relations")),
     )
     case_file["harm_profile"] = build_harm_profile(_coerce_list(case_file.get("canonical_facts")))
     case_file["remedy_profile"] = build_remedy_profile(_coerce_list(case_file.get("canonical_facts")))
