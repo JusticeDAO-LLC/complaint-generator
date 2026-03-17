@@ -264,7 +264,8 @@ class AdversarialHarness:
                   hacc_count: int | None = None,
                   hacc_preset: str | None = None,
                   hacc_query_specs: List[Dict[str, Any]] | None = None,
-                  use_hacc_vector_search: bool = False) -> List[SessionResult]:
+                  use_hacc_vector_search: bool = False,
+                  hacc_search_mode: str = 'package') -> List[SessionResult]:
         """
         Run a batch of adversarial sessions in parallel.
         
@@ -288,6 +289,7 @@ class AdversarialHarness:
                 hacc_preset=hacc_preset,
                 hacc_query_specs=hacc_query_specs,
                 use_hacc_vector_search=use_hacc_vector_search,
+                hacc_search_mode=hacc_search_mode,
             )
         elif len(seed_complaints) < num_sessions:
             # Cycle through provided seeds
@@ -312,6 +314,7 @@ class AdversarialHarness:
                 'include_hacc_evidence': include_hacc_evidence,
                 'hacc_preset': hacc_preset,
                 'use_hacc_vector_search': use_hacc_vector_search,
+                'hacc_search_mode': hacc_search_mode,
             })
         
         # Run sessions in parallel

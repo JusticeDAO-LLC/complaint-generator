@@ -280,6 +280,7 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
     alignment_task_updates = raw_status.get("alignment_task_updates")
     alignment_task_update_history = raw_status.get("alignment_task_update_history")
     question_candidate_summary = raw_status.get("question_candidate_summary")
+    adversarial_intake_priority_summary = raw_status.get("adversarial_intake_priority_summary")
     claim_support_packet_summary = raw_status.get("claim_support_packet_summary")
     candidate_claim_summary = _build_candidate_claim_summary(candidate_claims)
     contradiction_summary = summarize_intake_contradictions(
@@ -340,6 +341,11 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
         ),
         "question_candidate_summary": (
             question_candidate_summary if isinstance(question_candidate_summary, dict) else {}
+        ),
+        "adversarial_intake_priority_summary": (
+            adversarial_intake_priority_summary
+            if isinstance(adversarial_intake_priority_summary, dict)
+            else {}
         ),
         "contradiction_summary": contradiction_summary,
         "complainant_summary_confirmation": (

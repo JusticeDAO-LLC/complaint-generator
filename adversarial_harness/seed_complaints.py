@@ -76,6 +76,7 @@ class SeedComplaintLibrary:
         hacc_preset: Optional[str] = None,
         hacc_query_specs: Optional[Sequence[Dict[str, Any]]] = None,
         use_hacc_vector_search: bool = False,
+        hacc_search_mode: str = "package",
     ) -> List[Dict[str, Any]]:
         """
         Get a set of pre-defined seed complaints.
@@ -96,6 +97,7 @@ class SeedComplaintLibrary:
                     preset=hacc_preset,
                     query_specs=hacc_query_specs,
                     use_vector=use_hacc_vector_search,
+                    search_mode=hacc_search_mode,
                 )
             )
         
@@ -132,6 +134,7 @@ class SeedComplaintLibrary:
         preset: Optional[str] = None,
         query_specs: Optional[Sequence[Dict[str, Any]]] = None,
         use_vector: bool = False,
+        search_mode: str = "package",
     ) -> List[Dict[str, Any]]:
         """Build complaint seeds grounded in the local HACC evidence corpus."""
         return build_hacc_evidence_seeds(
@@ -139,6 +142,7 @@ class SeedComplaintLibrary:
             preset=preset,
             query_specs=query_specs,
             use_vector=use_vector,
+            search_mode=search_mode,
         )
     
     def _get_example_values(self, template: ComplaintTemplate) -> Dict[str, Any]:

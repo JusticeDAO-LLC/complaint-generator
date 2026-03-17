@@ -88,9 +88,10 @@ def test_markdown_report_includes_claim_selection_snapshots(tmp_path):
     MODULE._write_markdown_report(report_path, rows, recommendations)
     report = report_path.read_text(encoding="utf-8")
 
-    assert "- Unified winner: `accommodation_focus` (accommodation, process) - best for accommodation framing + process framing" in report
+    assert "- Unified winner: `accommodation_focus` (accommodation, process) - Best for accommodation framing + process framing" in report
     assert "- Applies to: best overall, best anchor coverage, best balanced" in report
     assert "### Unified Winner Snapshot" in report
+    assert "## Runner-Up Snapshot" not in report
     assert "## Claim Selection Snapshots" not in report
     assert "### accommodation_focus" not in report
     assert "- Overview: Accommodation Theory [tags=reasonable_accommodation,contact;" in report
@@ -99,6 +100,51 @@ def test_markdown_report_includes_claim_selection_snapshots(tmp_path):
     assert "- Relief posture note: Relief posture was materially similar across the winner and runner-up, so the selection difference was driven mainly by claim posture." not in report
     assert "- Relief overview: Corrective action requiring clear notice, fair review, and non-retaliation safeguards." in report
     assert "- Complaint synthesis: `/tmp/accommodation_focus/complaint_synthesis`" in report
+
+
+def test_runner_up_snapshot_uses_role_based_heading(tmp_path):
+    report_path = tmp_path / "preset_matrix_summary.md"
+    rows = [
+        {
+            "preset": "accommodation_focus",
+            "backend_id": "llm-router-codex",
+            "average_score": 0.75,
+            "successful_sessions": 3,
+            "total_sessions": 3,
+            "anchor_coverage": 1.0,
+            "router_status": "available",
+            "top_missing_sections": "",
+            "missing_sections": "",
+            "output_dir": "/tmp/accommodation_focus",
+            "claim_selection_overview": "winner overview",
+            "synthesis_output_dir": "/tmp/accommodation_focus/complaint_synthesis",
+        },
+        {
+            "preset": "administrative_plan_retaliation",
+            "backend_id": "llm-router-codex",
+            "average_score": 0.70,
+            "successful_sessions": 3,
+            "total_sessions": 3,
+            "anchor_coverage": 0.9,
+            "router_status": "available",
+            "top_missing_sections": "",
+            "missing_sections": "",
+            "output_dir": "/tmp/administrative_plan_retaliation",
+            "claim_selection_overview": "runner overview",
+            "synthesis_output_dir": "/tmp/administrative_plan_retaliation/complaint_synthesis",
+        },
+    ]
+    recommendations = {
+        "best_overall": {"preset": "accommodation_focus", "strategy_summary": "Best for accommodation framing."},
+        "best_anchor_coverage": {"preset": "accommodation_focus"},
+        "best_balanced": {"preset": "accommodation_focus"},
+    }
+
+    MODULE._write_markdown_report(report_path, rows, recommendations)
+    report = report_path.read_text(encoding="utf-8")
+
+    assert "## Runner-Up Snapshot" in report
+    assert "### Runner-Up: administrative_plan_retaliation" in report
 
 
 def test_recommendation_groups_collapses_duplicate_presets():

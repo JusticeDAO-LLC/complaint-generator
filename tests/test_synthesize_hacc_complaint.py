@@ -107,6 +107,37 @@ def test_proposed_allegations_add_missing_case_facts_prompt_when_intake_facts_ab
     assert any("informal review, a grievance hearing, or an appeal was requested or denied" in item for item in allegations)
 
 
+def test_proposed_allegations_use_uncovered_intake_priority_summary_when_available():
+    seed = {
+        "description": "Retaliation complaint anchored to HACC core housing policies.",
+        "key_facts": {
+            "anchor_sections": ["grievance_hearing", "appeal_rights", "adverse_action"],
+            "evidence_summary": "HACC policy defines a grievance as a tenant dispute concerning HACC action or inaction.",
+        },
+    }
+    session = {
+        "conversation_history": [],
+        "final_state": {
+            "adversarial_intake_priority_summary": {
+                "expected_objectives": ["anchor_adverse_action", "timeline", "anchor_appeal_rights"],
+                "covered_objectives": ["anchor_adverse_action"],
+                "uncovered_objectives": ["timeline", "anchor_appeal_rights"],
+                "objective_question_counts": {
+                    "anchor_adverse_action": 1,
+                    "timeline": 0,
+                    "anchor_appeal_rights": 0,
+                },
+            }
+        },
+    }
+
+    allegations = MODULE._proposed_allegations(seed, session, "hud")
+
+    assert any("especially when the key events happened" in item for item in allegations)
+    assert any("provided, requested, denied, or ignored" in item for item in allegations)
+    assert not any("who at HACC made or communicated the decision" in item for item in allegations)
+
+
 def test_summarize_policy_excerpt_normalizes_hacc_grievance_fragments():
     text = (
         "Grievance: Any dispute a tenant may have with respect to HACC action or failure to "

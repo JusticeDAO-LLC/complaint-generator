@@ -2143,6 +2143,38 @@ def _missing_case_facts_line(sections: Sequence[str]) -> str:
     return "Case-specific facts still need confirmation, including " + ", ".join(ordered) + "."
 
 
+def _session_intake_priority_summary(session: Dict[str, Any]) -> Dict[str, Any]:
+    final_state = session.get("final_state") if isinstance(session.get("final_state"), dict) else {}
+    summary = final_state.get("adversarial_intake_priority_summary")
+    return summary if isinstance(summary, dict) else {}
+
+
+def _missing_case_facts_from_intake_priorities(session: Dict[str, Any]) -> List[str]:
+    summary = _session_intake_priority_summary(session)
+    uncovered = [
+        str(item).strip()
+        for item in list(summary.get("uncovered_objectives") or [])
+        if str(item).strip()
+    ]
+    if not uncovered:
+        return []
+
+    mapping = {
+        "anchor_adverse_action": "the exact denial, termination, threatened loss of assistance, or other adverse action HACC took or threatened",
+        "timeline": "when the key events happened, including the complaint, notice, review or hearing request, and any denial or termination decision",
+        "actors": "who at HACC made, communicated, or carried out each decision",
+        "anchor_appeal_rights": "whether written notice, an informal review, a grievance hearing, or an appeal was provided, requested, denied, or ignored",
+        "harm_remedy": "the resulting housing harm and the remedy now being requested",
+        "intake_follow_up": "the additional case-specific details needed to complete the intake record",
+    }
+    prompts: List[str] = []
+    for objective in uncovered:
+        prompt = mapping.get(objective)
+        if prompt and prompt not in prompts:
+            prompts.append(prompt)
+    return prompts
+
+
 def _authority_claim_line(authority_hints: Sequence[str], sections: Sequence[str], *, retaliation: bool = False) -> str:
     hints = [str(item) for item in authority_hints if str(item)]
     if not hints:
@@ -2418,7 +2450,15 @@ def _proposed_allegations(seed: Dict[str, Any], session: Dict[str, Any], filing_
         if summary:
             summarized_facts.append(summary)
     if not summarized_facts:
-        allegations.append(_missing_case_facts_line(list(key_facts.get("anchor_sections") or [])))
+        intake_priority_prompts = _missing_case_facts_from_intake_priorities(session)
+        if intake_priority_prompts:
+            allegations.append(
+                "Case-specific facts still need confirmation, especially "
+                + ", ".join(intake_priority_prompts)
+                + "."
+            )
+        else:
+            allegations.append(_missing_case_facts_line(list(key_facts.get("anchor_sections") or [])))
     for summary in _dedupe_fact_summaries(summarized_facts, limit=3):
         allegations.append(f"During intake, the complainant stated that {summary}")
 

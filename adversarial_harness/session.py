@@ -6,6 +6,7 @@ Manages a single adversarial training session between complainant and mediator.
 
 import logging
 import re
+from contextlib import contextmanager
 from typing import Dict, Any, List, Set, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -657,6 +658,171 @@ class AdversarialSession:
             merged.append(question)
         return merged
 
+    @classmethod
+    def _candidate_matches_intake_objective(cls, candidate: Any, objective: str) -> bool:
+        question_text = cls._extract_question_text(candidate)
+        if not question_text:
+            return False
+        if objective == 'timeline':
+            return cls._is_timeline_question(candidate)
+        if objective == 'actors':
+            return cls._is_actor_or_decisionmaker_question(candidate)
+        if objective == 'harm_remedy':
+            return cls._is_harm_or_remedy_question(candidate)
+        if objective == 'anchor_appeal_rights':
+            return cls._question_targets_anchor_section(question_text, 'appeal_rights')
+        if objective == 'anchor_adverse_action':
+            return cls._question_targets_anchor_section(question_text, 'adverse_action')
+        return False
+
+    @classmethod
+    def _reprioritize_candidates_for_intake_objectives(
+        cls,
+        candidates: Sequence[Any],
+        seed_complaint: Dict[str, Any],
+        *,
+        max_questions: int,
+    ) -> List[Any]:
+        intake_candidates = cls._extract_intake_prompt_candidates(seed_complaint)
+        if not intake_candidates:
+            return list(candidates or [])[:max_questions]
+
+        objective_priority: Dict[str, int] = {}
+        for _, objective in intake_candidates:
+            objective_priority.setdefault(objective, len(objective_priority))
+
+        ranked: List[tuple[tuple[Any, ...], Any]] = []
+        for index, candidate in enumerate(list(candidates or [])):
+            best_priority = len(objective_priority) + 1
+            matched_objectives: List[str] = []
+            for objective, priority in objective_priority.items():
+                if cls._candidate_matches_intake_objective(candidate, objective):
+                    matched_objectives.append(objective)
+                    if priority < best_priority:
+                        best_priority = priority
+            selector_score = 0.0
+            if isinstance(candidate, dict):
+                selector_score = float(candidate.get('selector_score', 0.0) or 0.0)
+            proof_priority = 99
+            if isinstance(candidate, dict):
+                proof_priority = int(candidate.get('proof_priority', 99) or 99)
+
+            annotated_candidate = candidate
+            if isinstance(candidate, dict):
+                annotated_candidate = dict(candidate)
+                explanation = dict(
+                    annotated_candidate.get('ranking_explanation', {})
+                    if isinstance(annotated_candidate.get('ranking_explanation'), dict)
+                    else {}
+                )
+                selector_signals = dict(
+                    annotated_candidate.get('selector_signals', {})
+                    if isinstance(annotated_candidate.get('selector_signals'), dict)
+                    else {}
+                )
+                selector_signals['intake_priority_match'] = matched_objectives
+                selector_signals['intake_priority_rank'] = None if not matched_objectives else best_priority
+                annotated_candidate['selector_signals'] = selector_signals
+                explanation['intake_priority_match'] = matched_objectives
+                explanation['intake_priority_rank'] = None if not matched_objectives else best_priority
+                annotated_candidate['ranking_explanation'] = explanation
+
+            ranked.append(
+                (
+                    (
+                        best_priority,
+                        -selector_score,
+                        proof_priority,
+                        index,
+                    ),
+                    annotated_candidate,
+                )
+            )
+
+        ranked.sort(key=lambda item: item[0])
+        return [candidate for _, candidate in ranked[:max_questions]]
+
+    @classmethod
+    def _summarize_intake_priority_coverage(
+        cls,
+        questions: Sequence[Any],
+        seed_complaint: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        intake_candidates = cls._extract_intake_prompt_candidates(seed_complaint)
+        expected_objectives: List[str] = []
+        for _, objective in intake_candidates:
+            if objective not in expected_objectives:
+                expected_objectives.append(objective)
+
+        coverage_counts: Dict[str, int] = {}
+        for objective in expected_objectives:
+            coverage_counts[objective] = 0
+
+        for question in list(questions or []):
+            for objective in expected_objectives:
+                if cls._candidate_matches_intake_objective(question, objective):
+                    coverage_counts[objective] = coverage_counts.get(objective, 0) + 1
+
+        covered_objectives = [
+            objective for objective in expected_objectives if coverage_counts.get(objective, 0) > 0
+        ]
+        uncovered_objectives = [
+            objective for objective in expected_objectives if coverage_counts.get(objective, 0) <= 0
+        ]
+        return {
+            "expected_objectives": expected_objectives,
+            "covered_objectives": covered_objectives,
+            "uncovered_objectives": uncovered_objectives,
+            "objective_question_counts": coverage_counts,
+        }
+
+    def _persist_intake_priority_summary(
+        self,
+        seed_complaint: Dict[str, Any],
+        initial_questions: Sequence[Any],
+    ) -> None:
+        phase_manager = getattr(self.mediator, "phase_manager", None)
+        update_phase_data = getattr(phase_manager, "update_phase_data", None)
+        if not callable(update_phase_data):
+            return
+        try:
+            from complaint_phases import ComplaintPhase
+        except Exception:
+            return
+
+        summary = self._summarize_intake_priority_coverage(initial_questions, seed_complaint)
+        try:
+            update_phase_data(ComplaintPhase.INTAKE, "current_questions", list(initial_questions or []))
+            update_phase_data(ComplaintPhase.INTAKE, "adversarial_intake_priority_summary", summary)
+        except Exception:
+            logger.debug("Could not persist intake-priority summary into mediator phase state", exc_info=True)
+
+    @contextmanager
+    def _temporarily_prioritize_mediator_intake_objectives(self, seed_complaint: Dict[str, Any]):
+        original_selector = getattr(self.mediator, 'select_intake_question_candidates', None)
+        if not callable(original_selector):
+            yield
+            return
+
+        def selector_with_intake_priority(candidates: List[Dict[str, Any]], *, max_questions: int = 10):
+            try:
+                selected = original_selector(candidates, max_questions=len(candidates or []))
+            except TypeError:
+                selected = original_selector(candidates)
+            if not isinstance(selected, list):
+                selected = list(candidates or [])
+            return self._reprioritize_candidates_for_intake_objectives(
+                selected,
+                seed_complaint,
+                max_questions=max_questions,
+            )
+
+        setattr(self.mediator, 'select_intake_question_candidates', selector_with_intake_priority)
+        try:
+            yield
+        finally:
+            setattr(self.mediator, 'select_intake_question_candidates', original_selector)
+
     def _build_fallback_probe(
         self,
         seed_complaint: Dict[str, Any],
@@ -1011,9 +1177,14 @@ class AdversarialSession:
             logger.debug(f"Initial complaint generated: {initial_complaint[:100]}...")
             
             # Step 2: Initialize mediator with complaint
-            result = self.mediator.start_three_phase_process(initial_complaint)
+            with self._temporarily_prioritize_mediator_intake_objectives(seed_complaint):
+                result = self.mediator.start_three_phase_process(initial_complaint)
             if isinstance(result, dict):
                 result['initial_questions'] = self._inject_intake_prompt_questions(
+                    seed_complaint,
+                    result.get('initial_questions', []),
+                )
+                self._persist_intake_priority_summary(
                     seed_complaint,
                     result.get('initial_questions', []),
                 )

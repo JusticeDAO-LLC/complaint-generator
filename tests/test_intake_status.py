@@ -210,6 +210,16 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
             "question_goal_counts": {"identify_supporting_proof": 1},
             "phase1_section_counts": {"proof_leads": 1},
             "blocking_level_counts": {"important": 1},
+            "intake_priority_expected": ["anchor_adverse_action", "timeline"],
+            "intake_priority_covered": ["anchor_adverse_action"],
+            "intake_priority_uncovered": ["timeline"],
+            "intake_priority_counts": {"anchor_adverse_action": 1},
+        },
+        "adversarial_intake_priority_summary": {
+            "expected_objectives": ["anchor_adverse_action", "timeline"],
+            "covered_objectives": ["anchor_adverse_action"],
+            "uncovered_objectives": ["timeline"],
+            "objective_question_counts": {"anchor_adverse_action": 1, "timeline": 0},
         },
         "complainant_summary_confirmation": {
             "status": "confirmed",
@@ -281,6 +291,9 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["alignment_task_update_history"][1]["evidence_sequence"] == 2
     assert summary["question_candidate_summary"]["count"] == 1
     assert summary["question_candidate_summary"]["source_counts"]["intake_proof_gap"] == 1
+    assert summary["question_candidate_summary"]["intake_priority_uncovered"] == ["timeline"]
+    assert summary["adversarial_intake_priority_summary"]["covered_objectives"] == ["anchor_adverse_action"]
+    assert summary["adversarial_intake_priority_summary"]["objective_question_counts"]["timeline"] == 0
     assert summary["complainant_summary_confirmation"]["confirmed"] is True
     assert summary["contradiction_summary"] == {
         "count": 1,

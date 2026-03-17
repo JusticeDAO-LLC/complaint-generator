@@ -391,6 +391,8 @@ def _write_markdown_report(
             use_note = str(payload.get("tradeoff_note") or "")
             if not use_note:
                 use_note = _recommendation_use_note(family_list)
+            if use_note:
+                use_note = use_note[:1].upper() + use_note[1:]
             suffix = f" ({families})" if families else ""
             if use_note:
                 suffix += f" - {use_note}"
@@ -550,15 +552,22 @@ def _write_markdown_report(
                 if str(row.get("preset") or "") != best_overall_preset
             ]
         if claim_snapshot_rows:
+            snapshot_section_heading = "## Runner-Up Snapshot" if len(claim_snapshot_rows) == 1 else "## Claim Selection Snapshots"
             lines.extend([
                 "",
-                "## Claim Selection Snapshots",
+                snapshot_section_heading,
                 "",
             ])
+            single_runner_up_snapshot = len(claim_snapshot_rows) == 1
             for row in claim_snapshot_rows:
                 snapshot_notes = snapshot_notes_by_preset.get(str(row.get("preset") or ""), {})
+                snapshot_heading = (
+                    f"### Runner-Up: {row['preset']}"
+                    if single_runner_up_snapshot
+                    else f"### {row['preset']}"
+                )
                 lines.extend([
-                    f"### {row['preset']}",
+                    snapshot_heading,
                     "",
                     f"- Overview: {row['claim_selection_overview']}",
                 ])

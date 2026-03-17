@@ -539,23 +539,30 @@ class TestSeedComplaintLibrary:
         assert all('key_facts' in s for s in seeds)
 
     def test_get_hacc_seed_complaints(self, monkeypatch):
-        monkeypatch.setattr(
-            seed_complaints_module,
-            'build_hacc_evidence_seeds',
-            lambda **kwargs: [
+        captured = {}
+
+        def fake_build_hacc_evidence_seeds(**kwargs):
+            captured['kwargs'] = kwargs
+            return [
                 {
                     'type': 'housing_discrimination',
                     'key_facts': {'evidence_summary': 'Mocked evidence'},
                     'hacc_evidence': [{'title': 'Mock Policy'}],
                 }
-            ],
+            ]
+
+        monkeypatch.setattr(
+            seed_complaints_module,
+            'build_hacc_evidence_seeds',
+            fake_build_hacc_evidence_seeds,
         )
 
         library = SeedComplaintLibrary()
-        seeds = library.get_hacc_seed_complaints(count=1)
+        seeds = library.get_hacc_seed_complaints(count=1, search_mode='hybrid')
 
         assert len(seeds) == 1
         assert seeds[0]['key_facts']['evidence_summary'] == 'Mocked evidence'
+        assert captured['kwargs']['search_mode'] == 'hybrid'
 
     def test_get_seed_complaints_can_include_hacc_evidence(self, monkeypatch):
         monkeypatch.setattr(
@@ -1340,6 +1347,7 @@ class TestAdversarialHarness:
             hacc_preset='retaliation_focus',
             hacc_query_specs=[{'query': 'retaliation policy', 'type': 'housing_discrimination'}],
             use_hacc_vector_search=True,
+            hacc_search_mode='hybrid',
         )
 
         assert len(results) == 1
@@ -1348,6 +1356,7 @@ class TestAdversarialHarness:
         assert captured['hacc_preset'] == 'retaliation_focus'
         assert captured['hacc_query_specs'][0]['query'] == 'retaliation policy'
         assert captured['use_hacc_vector_search'] is True
+        assert captured['hacc_search_mode'] == 'hybrid'
 
     def test_get_statistics_includes_anchor_section_coverage(self):
         harness = AdversarialHarness(

@@ -5333,20 +5333,45 @@ class Mediator:
 			'question_goal_counts': {},
 			'phase1_section_counts': {},
 			'blocking_level_counts': {},
+			'intake_priority_expected': [],
+			'intake_priority_covered': [],
+			'intake_priority_uncovered': [],
+			'intake_priority_counts': {},
 		}
 		if not isinstance(candidates, list):
 			return summary
 
 		summary['count'] = len(candidates)
 		summary['candidates'] = candidates
+		expected_objectives: List[str] = []
+		covered_objectives: set[str] = set()
 		for candidate in candidates:
 			if not isinstance(candidate, dict):
 				continue
 			explanation = candidate.get('ranking_explanation', {}) if isinstance(candidate.get('ranking_explanation'), dict) else {}
+			selector_signals = candidate.get('selector_signals', {}) if isinstance(candidate.get('selector_signals'), dict) else {}
 			source = str(explanation.get('candidate_source') or candidate.get('candidate_source') or '').strip()
 			question_goal = str(explanation.get('question_goal') or candidate.get('question_goal') or '').strip()
 			phase1_section = str(explanation.get('phase1_section') or candidate.get('phase1_section') or '').strip()
 			blocking_level = str(explanation.get('blocking_level') or candidate.get('blocking_level') or '').strip()
+			expected = selector_signals.get('intake_expected_objectives')
+			if not isinstance(expected, list):
+				expected = explanation.get('intake_expected_objectives')
+			for objective in expected if isinstance(expected, list) else []:
+				objective_text = str(objective).strip()
+				if objective_text and objective_text not in expected_objectives:
+					expected_objectives.append(objective_text)
+			matched = selector_signals.get('intake_priority_match')
+			if not isinstance(matched, list):
+				matched = explanation.get('intake_priority_match')
+			for objective in matched if isinstance(matched, list) else []:
+				objective_text = str(objective).strip()
+				if not objective_text:
+					continue
+				covered_objectives.add(objective_text)
+				summary['intake_priority_counts'][objective_text] = (
+					summary['intake_priority_counts'].get(objective_text, 0) + 1
+				)
 			if source:
 				summary['source_counts'][source] = summary['source_counts'].get(source, 0) + 1
 			if question_goal:
@@ -5355,6 +5380,13 @@ class Mediator:
 				summary['phase1_section_counts'][phase1_section] = summary['phase1_section_counts'].get(phase1_section, 0) + 1
 			if blocking_level:
 				summary['blocking_level_counts'][blocking_level] = summary['blocking_level_counts'].get(blocking_level, 0) + 1
+		summary['intake_priority_expected'] = expected_objectives
+		summary['intake_priority_covered'] = [
+			objective for objective in expected_objectives if objective in covered_objectives
+		]
+		summary['intake_priority_uncovered'] = [
+			objective for objective in expected_objectives if objective not in covered_objectives
+		]
 		return summary
 
 	def _summarize_intake_matching_pressure(self, pressure_map: Any) -> Dict[str, Any]:
@@ -6857,6 +6889,9 @@ class Mediator:
 		canonical_facts = intake_case_file.get('canonical_facts', []) if isinstance(intake_case_file, dict) else []
 		proof_leads = intake_case_file.get('proof_leads', []) if isinstance(intake_case_file, dict) else []
 		question_candidates = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'question_candidates') or []
+		adversarial_intake_priority_summary = (
+			self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'adversarial_intake_priority_summary') or {}
+		)
 		intake_matching_pressure = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_matching_pressure') or {}
 		claim_support_packets = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packets') or {}
 		alignment_evidence_tasks = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks') or []
@@ -6897,6 +6932,11 @@ class Mediator:
 				question_candidates,
 			),
 			'question_candidate_summary': self._summarize_question_candidates(question_candidates),
+			'adversarial_intake_priority_summary': (
+				adversarial_intake_priority_summary
+				if isinstance(adversarial_intake_priority_summary, dict)
+				else {}
+			),
 			'claim_support_packet_summary': self._summarize_claim_support_packets(claim_support_packets),
 			'intake_evidence_alignment_summary': self._summarize_intake_evidence_alignment(
 				intake_case_file,
