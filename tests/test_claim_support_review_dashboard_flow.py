@@ -290,6 +290,31 @@ def _build_dashboard_mediator() -> Mock:
         "claims": {
             "retaliation": {
                 "claim_type": "retaliation",
+                "proof_diagnostics": {
+                    "reasoning": {
+                        "adapter_status_counts": {
+                            "logic_proof": {"implemented": 1},
+                            "logic_contradictions": {"implemented": 1},
+                            "hybrid_reasoning": {"implemented": 1},
+                            "ontology_build": {"implemented": 1},
+                            "ontology_validation": {"implemented": 1},
+                        },
+                        "backend_available_count": 4,
+                        "predicate_count": 4,
+                        "ontology_entity_count": 0,
+                        "ontology_relationship_count": 0,
+                        "fallback_ontology_count": 0,
+                        "hybrid_bridge_available_count": 1,
+                        "hybrid_tdfol_formula_count": 2,
+                        "hybrid_dcec_formula_count": 1,
+                    },
+                    "decision": {
+                        "decision_source_counts": {
+                            "logic_proof_supported": 1,
+                            "heuristic_contradictions": 1,
+                        },
+                    },
+                },
                 "elements": [
                     {
                         "element_id": "retaliation:1",
@@ -303,6 +328,47 @@ def _build_dashboard_mediator() -> Mock:
                         },
                         "proof_diagnostics": {
                             "decision_source": "logic_proof_supported",
+                        },
+                        "reasoning_diagnostics": {
+                            "predicate_count": 4,
+                            "backend_available_count": 4,
+                            "used_fallback_ontology": False,
+                            "adapter_statuses": {
+                                "logic_proof": {
+                                    "backend_available": True,
+                                    "implementation_status": "implemented",
+                                },
+                                "logic_contradictions": {
+                                    "backend_available": True,
+                                    "implementation_status": "implemented",
+                                },
+                                "hybrid_reasoning": {
+                                    "backend_available": True,
+                                    "implementation_status": "implemented",
+                                    "operation": "run_hybrid_reasoning",
+                                },
+                                "ontology_build": {
+                                    "backend_available": True,
+                                    "implementation_status": "implemented",
+                                },
+                                "ontology_validation": {
+                                    "backend_available": True,
+                                    "implementation_status": "implemented",
+                                },
+                            },
+                            "hybrid_reasoning": {
+                                "status": "success",
+                                "result": {
+                                    "compiler_bridge_available": True,
+                                    "tdfol_formulas": [
+                                        "Before(fact_1,fact_2)",
+                                        "forall t (AtTime(t,t_2026_03_10) -> Fact(fact_1,t))",
+                                    ],
+                                    "dcec_formulas": [
+                                        "Happens(fact_1,t_2026_03_10)",
+                                    ],
+                                },
+                            },
                         },
                         "contradiction_candidates": [],
                     },
@@ -862,6 +928,14 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert review_payload["document_summary"]["retaliation"]["total_fact_count"] == 1
     assert review_payload["claim_coverage_summary"]["retaliation"]["document_record_count"] == 1
     assert review_payload["claim_coverage_summary"]["retaliation"]["document_total_fact_count"] == 1
+    assert review_payload["claim_coverage_summary"]["retaliation"]["reasoning_hybrid_bridge_available_count"] == 1
+    assert review_payload["claim_coverage_summary"]["retaliation"]["reasoning_hybrid_tdfol_formula_count"] == 2
+    assert review_payload["claim_coverage_summary"]["retaliation"]["reasoning_hybrid_dcec_formula_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["hybrid_bridge_element_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["hybrid_bridge_available_element_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["hybrid_tdfol_formula_count"] == 2
+    assert review_payload["claim_reasoning_review"]["retaliation"]["hybrid_dcec_formula_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["hybrid_bridge_available"] is True
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["validation_status"] == "supported"
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_fact_packet_count"] == 2
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_fact_status_counts"] == {

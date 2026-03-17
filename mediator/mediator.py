@@ -6089,6 +6089,42 @@ class Mediator:
 		merged = history + new_updates
 		return merged[-max_entries:] if max_entries > 0 else merged
 
+	def _summarize_alignment_task_update_status(
+		self,
+		alignment_task_updates: Any,
+		alignment_task_update_history: Any,
+	) -> Dict[str, Any]:
+		visible_updates = [
+			dict(item)
+			for item in (
+				alignment_task_update_history
+				if isinstance(alignment_task_update_history, list) and alignment_task_update_history
+				else alignment_task_updates if isinstance(alignment_task_updates, list) else []
+			)
+			if isinstance(item, dict)
+		]
+		summary = {
+			'count': len(visible_updates),
+			'status_counts': {},
+			'resolution_status_counts': {},
+			'promoted_testimony_count': 0,
+			'promoted_document_count': 0,
+		}
+		for item in visible_updates:
+			status = str(item.get('status') or '').strip().lower()
+			if status:
+				summary['status_counts'][status] = summary['status_counts'].get(status, 0) + 1
+			resolution_status = str(item.get('resolution_status') or '').strip().lower()
+			if resolution_status:
+				summary['resolution_status_counts'][resolution_status] = (
+					summary['resolution_status_counts'].get(resolution_status, 0) + 1
+				)
+			if resolution_status == 'promoted_to_testimony':
+				summary['promoted_testimony_count'] += 1
+			if resolution_status == 'promoted_to_document':
+				summary['promoted_document_count'] += 1
+		return summary
+
 	def _retire_answered_alignment_evidence_tasks(
 		self,
 		question: Dict[str, Any],
@@ -7339,6 +7375,10 @@ class Mediator:
 			'alignment_evidence_tasks': alignment_evidence_tasks if isinstance(alignment_evidence_tasks, list) else [],
 			'alignment_task_updates': alignment_task_updates if isinstance(alignment_task_updates, list) else [],
 			'alignment_task_update_history': alignment_task_update_history if isinstance(alignment_task_update_history, list) else [],
+			'alignment_task_update_summary': self._summarize_alignment_task_update_status(
+				alignment_task_updates,
+				alignment_task_update_history,
+			),
 			'intake_contradictions': {
 				'candidate_count': intake_readiness.get('contradiction_count', 0),
 				'candidates': intake_readiness.get('contradictions', []),

@@ -755,6 +755,45 @@ class TestMediatorThreePhaseIntegration:
         assert status['proof_lead_intent_summary']['target_claim_type_counts']['retaliation'] >= 1
         assert status['proof_lead_intent_summary']['target_element_id_counts']['protected_activity'] >= 1
 
+    def test_get_three_phase_status_includes_alignment_task_update_summary(self):
+        """Three-phase status should expose promoted testimony/document counts for alignment updates."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_task_update_history',
+            [
+                {
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'resolution_status': 'promoted_to_testimony',
+                    'status': 'resolved',
+                    'evidence_sequence': 1,
+                },
+                {
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'adverse_action',
+                    'resolution_status': 'promoted_to_document',
+                    'status': 'resolved',
+                    'evidence_sequence': 2,
+                },
+            ],
+        )
+
+        status = mediator.get_three_phase_status()
+
+        assert status['alignment_task_update_summary']['count'] == 2
+        assert status['alignment_task_update_summary']['promoted_testimony_count'] == 1
+        assert status['alignment_task_update_summary']['promoted_document_count'] == 1
+        assert status['alignment_task_update_summary']['resolution_status_counts']['promoted_to_testimony'] == 1
+
     def test_advance_to_evidence_phase_builds_claim_support_packets(self):
         """Evidence phase initialization should normalize claim-support validation into packets."""
         from mediator.mediator import Mediator
