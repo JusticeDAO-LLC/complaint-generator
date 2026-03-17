@@ -1095,6 +1095,32 @@ def test_embeddings_backend_status_reports_probe_success():
     assert "embed_text" in payload["available_methods"]
 
 
+def test_vector_index_backend_status_reports_numpy_requirement_over_stale_import_error():
+    with patch.object(vector_store_module, 'np', None), patch.object(
+        vector_store_module,
+        '_numpy_error',
+        "No module named 'numpy'",
+    ), patch.object(
+        vector_store_module,
+        'embed_texts_batched',
+        Mock(return_value=[[0.1, 0.2, 0.3]]),
+    ), patch.object(
+        vector_store_module,
+        'EMBEDDINGS_ERROR',
+        '',
+    ), patch.object(
+        vector_store_module,
+        'VECTOR_STORE_ERROR',
+        "module 'ipfs_datasets_py.embeddings_router' has no attribute 'EmbeddingsRouter'",
+    ):
+        payload = vector_store_module.vector_index_backend_status(require_local_persistence=True)
+
+    assert payload['status'] == 'unavailable'
+    assert payload['error'] == 'numpy is required for local vector persistence and search'
+    assert payload['metadata']['degraded_reason'] == "No module named 'numpy'"
+    assert payload['available_methods'] == ['embed_texts_batched']
+
+
 def test_router_status_report_combines_llm_ipfs_and_embeddings():
     with patch(
         "integrations.ipfs_datasets.router_status.llm_router_status",

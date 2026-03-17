@@ -12,7 +12,7 @@ except ModuleNotFoundError as exc:
 else:
     _numpy_error = ""
 
-from .loader import import_attr_optional, import_module_optional
+from .loader import import_attr_optional, import_module_optional, import_failure_message
 from .types import with_adapter_metadata
 
 try:
@@ -80,20 +80,35 @@ if EmbeddingsRouter is None and _embeddings_router_module is not None:
             return embed_texts_batched(list(texts), **self._merged_kwargs(kwargs))
 
 
+def _error_message(value: Any) -> str:
+    return str(import_failure_message(value) or "").strip()
+
+
+def _first_error(*errors: Any) -> str:
+    for error in errors:
+        message = _error_message(error)
+        if message:
+            return message
+    return ""
+
+
 EMBEDDINGS_AVAILABLE = any(
     value is not None
     for value in (embed_text, embed_texts, embed_texts_batched, EmbeddingsRouter)
 )
+EMBEDDINGS_ERROR = "" if EMBEDDINGS_AVAILABLE else _first_error(
+    _embeddings_error,
+    _embed_text_error,
+    _embed_texts_error,
+    _embed_texts_batched_error,
+    _embeddings_module_error,
+)
 VECTOR_STORE_AVAILABLE = EMBEDDINGS_AVAILABLE or _vector_stores_module is not None
-VECTOR_STORE_ERROR = (
-    _embeddings_error
-    or _embed_text_error
-    or _embed_texts_error
-    or _embed_texts_batched_error
-    or _embeddings_module_error
-    or _create_vector_store_error
-    or _vector_stores_error
-    or _numpy_error
+VECTOR_STORE_ERROR = _first_error(
+    EMBEDDINGS_ERROR,
+    _create_vector_store_error,
+    _vector_stores_error,
+    _numpy_error,
 )
 
 
@@ -191,6 +206,51 @@ def embeddings_backend_status(
         backend_available=payload["status"] == "available",
         degraded_reason=payload.get("error") or None,
         implementation_status="available" if payload["status"] != "unavailable" else "unavailable",
+    )
+
+
+def vector_index_backend_status(
+    *,
+    require_local_persistence: bool = True,
+) -> Dict[str, Any]:
+    if not callable(embed_texts_batched):
+        error = _first_error(_embed_texts_batched_error, EMBEDDINGS_ERROR, VECTOR_STORE_ERROR) or "embed_texts_batched unavailable"
+        return with_adapter_metadata(
+            {
+                "status": "unavailable",
+                "index_backend_present": False,
+                "local_persistence_ready": False,
+                "available_methods": [],
+                "error": error,
+            },
+            operation="vector_index_backend_status",
+            backend_available=False,
+            degraded_reason=error,
+            implementation_status="unavailable",
+        )
+
+    if require_local_persistence and np is None:
+        unavailable = _numpy_required_error("vector_index_backend_status")
+        unavailable.update(
+            {
+                "index_backend_present": True,
+                "local_persistence_ready": False,
+                "available_methods": ["embed_texts_batched"],
+            }
+        )
+        return unavailable
+
+    return with_adapter_metadata(
+        {
+            "status": "available",
+            "index_backend_present": True,
+            "local_persistence_ready": np is not None,
+            "available_methods": ["embed_texts_batched"],
+            "error": "",
+        },
+        operation="vector_index_backend_status",
+        backend_available=True,
+        implementation_status="available",
     )
 
 
@@ -482,11 +542,13 @@ def search_vector_index(
 __all__ = [
     "EmbeddingsRouter",
     "EMBEDDINGS_AVAILABLE",
+    "EMBEDDINGS_ERROR",
     "VECTOR_STORE_AVAILABLE",
     "VECTOR_STORE_ERROR",
     "get_embeddings_router",
     "create_vector_store_async",
     "embeddings_backend_status",
+    "vector_index_backend_status",
     "create_vector_index",
     "search_vector_index",
 ]

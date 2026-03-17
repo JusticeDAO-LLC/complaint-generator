@@ -138,6 +138,104 @@ def test_proposed_allegations_use_uncovered_intake_priority_summary_when_availab
     assert not any("who at HACC made or communicated the decision" in item for item in allegations)
 
 
+def test_outstanding_intake_gaps_reflect_uncovered_intake_priority_summary():
+    session = {
+        "final_state": {
+            "adversarial_intake_priority_summary": {
+                "expected_objectives": ["anchor_adverse_action", "timeline", "actors"],
+                "covered_objectives": ["anchor_adverse_action"],
+                "uncovered_objectives": ["timeline", "actors"],
+                "objective_question_counts": {
+                    "anchor_adverse_action": 1,
+                    "timeline": 0,
+                    "actors": 0,
+                },
+            }
+        }
+    }
+
+    gaps = MODULE._outstanding_intake_gaps(session)
+
+    assert gaps == [
+        "when the key events happened, including the complaint, notice, review or hearing request, and any denial or termination decision",
+        "who at HACC made, communicated, or carried out each decision",
+    ]
+
+
+def test_outstanding_intake_follow_up_questions_reuse_seed_questionnaire():
+    seed = {
+        "key_facts": {
+            "synthetic_prompts": {
+                "intake_questions": [
+                    "What happened, and what adverse action did HACC take or threaten to take?",
+                    "When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?",
+                    "Who at HACC made, communicated, or carried out each decision?",
+                ]
+            }
+        }
+    }
+    session = {
+        "final_state": {
+            "adversarial_intake_priority_summary": {
+                "expected_objectives": ["anchor_adverse_action", "timeline", "actors"],
+                "covered_objectives": ["anchor_adverse_action"],
+                "uncovered_objectives": ["timeline", "actors"],
+                "objective_question_counts": {
+                    "anchor_adverse_action": 1,
+                    "timeline": 0,
+                    "actors": 0,
+                },
+            }
+        }
+    }
+
+    questions = MODULE._outstanding_intake_follow_up_questions(seed, session)
+
+    assert questions == [
+        "When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?",
+        "Who at HACC made, communicated, or carried out each decision?",
+    ]
+
+
+def test_render_markdown_includes_outstanding_intake_gaps_section():
+    package = {
+        "generated_at": "2026-03-17T00:00:00+00:00",
+        "preset": "notice_retaliation",
+        "session_id": "session-1",
+        "critic_score": 0.91,
+        "summary": "Summary text.",
+        "selection_rationale": {},
+        "caption": {},
+        "parties": {},
+        "filing_forum": "hud",
+        "jurisdiction_and_venue": [],
+        "factual_allegations": [],
+        "claims_theory": [],
+        "policy_basis": [],
+        "causes_of_action": [],
+        "proposed_allegations": ["Narrative line."],
+        "outstanding_intake_gaps": [
+            "when the key events happened, including the complaint, notice, review or hearing request, and any denial or termination decision"
+        ],
+        "outstanding_intake_follow_up_questions": [
+            "When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?"
+        ],
+        "anchor_sections": [],
+        "anchor_passages": [],
+        "supporting_evidence": [],
+        "requested_relief": [],
+        "grounded_evidence_summary": [],
+        "requested_relief_annotations": [],
+    }
+
+    markdown = MODULE._render_markdown(package)
+
+    assert "## Outstanding Intake Gaps" in markdown
+    assert "- when the key events happened, including the complaint, notice, review or hearing request, and any denial or termination decision" in markdown
+    assert "## Follow-Up Questions" in markdown
+    assert "- When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?" in markdown
+
+
 def test_summarize_policy_excerpt_normalizes_hacc_grievance_fragments():
     text = (
         "Grievance: Any dispute a tenant may have with respect to HACC action or failure to "

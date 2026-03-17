@@ -2175,6 +2175,58 @@ def _missing_case_facts_from_intake_priorities(session: Dict[str, Any]) -> List[
     return prompts
 
 
+def _outstanding_intake_gaps(session: Dict[str, Any], limit: int = 5) -> List[str]:
+    prompts = _missing_case_facts_from_intake_priorities(session)
+    if not prompts:
+        return []
+    return prompts[:limit]
+
+
+def _classify_intake_question_objective(question_text: Any) -> str:
+    lowered = " ".join(str(question_text or "").split()).lower()
+    if not lowered:
+        return ""
+    if any(token in lowered for token in ("when", "date", "timeline")):
+        return "timeline"
+    if any(token in lowered for token in ("who", "which person", "made, communicated", "carried out", "decision")):
+        return "actors"
+    if any(token in lowered for token in ("harm", "remedy", "loss", "relief")):
+        return "harm_remedy"
+    if any(token in lowered for token in ("written notice", "informal review", "grievance hearing", "appeal", "requested or denied")):
+        return "anchor_appeal_rights"
+    if any(token in lowered for token in ("adverse action", "denial", "termination", "loss of assistance")):
+        return "anchor_adverse_action"
+    return "intake_follow_up"
+
+
+def _outstanding_intake_follow_up_questions(seed: Dict[str, Any], session: Dict[str, Any], limit: int = 5) -> List[str]:
+    summary = _session_intake_priority_summary(session)
+    uncovered = [
+        str(item).strip()
+        for item in list(summary.get("uncovered_objectives") or [])
+        if str(item).strip()
+    ]
+    if not uncovered:
+        return []
+
+    key_facts = dict(seed.get("key_facts") or {})
+    synthetic_prompts = dict(key_facts.get("synthetic_prompts") or {})
+    intake_questions = [
+        " ".join(str(item or "").split()).strip()
+        for item in list(synthetic_prompts.get("intake_questions") or [])
+        if " ".join(str(item or "").split()).strip()
+    ]
+    matched: List[str] = []
+    for objective in uncovered:
+        for question in intake_questions:
+            if _classify_intake_question_objective(question) != objective:
+                continue
+            if question not in matched:
+                matched.append(question)
+            break
+    return matched[:limit]
+
+
 def _authority_claim_line(authority_hints: Sequence[str], sections: Sequence[str], *, retaliation: bool = False) -> str:
     hints = [str(item) for item in authority_hints if str(item)]
     if not hints:
@@ -2646,6 +2698,22 @@ def _render_markdown(package: Dict[str, Any]) -> str:
         "",
     ])
     lines.extend(f"- {item}" for item in package["proposed_allegations"])
+    outstanding_intake_gaps = [str(item) for item in list(package.get("outstanding_intake_gaps") or []) if str(item)]
+    if outstanding_intake_gaps:
+        lines.extend([
+            "",
+            "## Outstanding Intake Gaps",
+            "",
+        ])
+        lines.extend(f"- {item}" for item in outstanding_intake_gaps)
+    follow_up_questions = [str(item) for item in list(package.get("outstanding_intake_follow_up_questions") or []) if str(item)]
+    if follow_up_questions:
+        lines.extend([
+            "",
+            "## Follow-Up Questions",
+            "",
+        ])
+        lines.extend(f"- {item}" for item in follow_up_questions)
     lines.extend([
         "",
         "## Anchor Sections",
@@ -2776,6 +2844,8 @@ def main(argv: List[str] | None = None) -> int:
             limit=8,
         ),
         "proposed_allegations": _proposed_allegations(seed, best_session, args.filing_forum),
+        "outstanding_intake_gaps": _outstanding_intake_gaps(best_session),
+        "outstanding_intake_follow_up_questions": _outstanding_intake_follow_up_questions(seed, best_session),
         "requested_relief": _requested_relief_for_forum(args.filing_forum),
         "grounded_evidence_summary": _grounded_summary_lines(grounding_bundle, evidence_upload_report),
         "selection_rationale": selection_rationale,

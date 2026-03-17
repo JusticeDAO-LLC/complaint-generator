@@ -742,6 +742,22 @@ def _condense_evidence_snippet(text: str, max_chars: int = 220) -> str:
     return cleaned[: max_chars - 3].rstrip(" ,;:.") + "..."
 
 
+def _build_seed_packet_text(candidate: Dict[str, Any], resolved_text: str, *, max_chars: int = 6000) -> str:
+    cleaned = _normalize_match_text(resolved_text)
+    if not cleaned:
+        return _condense_evidence_snippet(str(candidate.get("snippet") or ""), max_chars=800)
+    if len(cleaned) <= max_chars:
+        return cleaned
+
+    relevant_excerpt = _condense_evidence_snippet(str(candidate.get("snippet") or ""), max_chars=800)
+    if relevant_excerpt:
+        reserved = len("\n\nRelevant excerpt: ") + len(relevant_excerpt)
+        head_budget = max(1200, max_chars - reserved)
+        truncated = cleaned[:head_budget].rstrip(" ,;:.")
+        return f"{truncated}\n\nRelevant excerpt: {relevant_excerpt}"
+    return cleaned[:max_chars].rstrip(" ,;:.")
+
+
 def _build_repository_candidates(
     grounding_bundle: Optional[Dict[str, Any]],
     *,
@@ -798,14 +814,17 @@ def _build_seed_mediator_packets(
                 "metadata": {},
             }
         metadata = dict(packet.get("metadata") or {})
+        resolved_text = ""
         try:
-            document_text = str(engine._resolve_candidate_upload_text(candidate) or "")
+            resolved_text = str(engine._resolve_candidate_upload_text(candidate) or "")
         except Exception:
-            document_text = str(candidate.get("snippet") or "")
+            resolved_text = str(candidate.get("snippet") or "")
+        document_text = _build_seed_packet_text(candidate, resolved_text)
         packet["document_text"] = document_text
         metadata.setdefault("relative_path", str(candidate.get("relative_path") or ""))
         metadata.setdefault("source_type", str(candidate.get("source_type") or ""))
         metadata.setdefault("upload_strategy", "snippet_only" if not document_text else "seed_packet")
+        metadata.setdefault("seed_packet_truncated", len(_normalize_match_text(resolved_text)) > len(document_text))
         packet["metadata"] = metadata
         enriched_packets.append(packet)
     return enriched_packets
