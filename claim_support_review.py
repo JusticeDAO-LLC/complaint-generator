@@ -310,6 +310,15 @@ def summarize_claim_reasoning_review(
     hybrid_formalism = ""
     hybrid_reasoning_mode = ""
     hybrid_compiler_bridge_path = ""
+    temporal_element_count = 0
+    temporal_fact_count = 0
+    temporal_relation_count = 0
+    temporal_issue_count = 0
+    temporal_partial_order_ready_element_count = 0
+    temporal_warning_count = 0
+    temporal_warning_preview: List[str] = []
+    temporal_relation_type_counts: Dict[str, int] = {}
+    temporal_relation_preview: List[str] = []
 
     for element in elements:
         if not isinstance(element, dict):
@@ -359,6 +368,31 @@ def summarize_claim_reasoning_review(
             for formula in (hybrid_result.get("dcec_formulas", []) or [])
             if str(formula).strip()
         ]
+        temporal_summary = reasoning.get("temporal_summary", {})
+        if not isinstance(temporal_summary, dict):
+            temporal_summary = {}
+        element_temporal_fact_count = int(temporal_summary.get("fact_count", 0) or 0)
+        element_temporal_relation_count = int(temporal_summary.get("relation_count", 0) or 0)
+        element_temporal_issue_count = int(temporal_summary.get("issue_count", 0) or 0)
+        element_temporal_warning_count = int(temporal_summary.get("warning_count", 0) or 0)
+        element_temporal_partial_order_ready = bool(
+            temporal_summary.get("partial_order_ready", False)
+        )
+        element_temporal_warnings = [
+            str(warning)
+            for warning in (temporal_summary.get("warnings", []) or [])
+            if str(warning).strip()
+        ]
+        element_temporal_relation_preview = [
+            str(relation)
+            for relation in (temporal_summary.get("relation_preview", []) or [])
+            if str(relation).strip()
+        ]
+        element_temporal_relation_type_counts = {
+            str(name): int(count or 0)
+            for name, count in (temporal_summary.get("relation_type_counts", {}) or {}).items()
+            if str(name).strip()
+        }
         hybrid_tdfol_count = len(hybrid_tdfol_formulas)
         hybrid_dcec_count = len(hybrid_dcec_formulas)
         element_tdfol_preview = hybrid_tdfol_formulas[:preview_limit]
@@ -376,6 +410,35 @@ def summarize_claim_reasoning_review(
             hybrid_bridge_available_element_count += 1
         hybrid_tdfol_formula_count += hybrid_tdfol_count
         hybrid_dcec_formula_count += hybrid_dcec_count
+        if (
+            element_temporal_fact_count
+            or element_temporal_relation_count
+            or element_temporal_issue_count
+            or element_temporal_warning_count
+            or element_temporal_relation_type_counts
+            or element_temporal_relation_preview
+        ):
+            temporal_element_count += 1
+        temporal_fact_count += element_temporal_fact_count
+        temporal_relation_count += element_temporal_relation_count
+        temporal_issue_count += element_temporal_issue_count
+        temporal_warning_count += element_temporal_warning_count
+        if element_temporal_partial_order_ready:
+            temporal_partial_order_ready_element_count += 1
+        for warning in element_temporal_warnings:
+            if warning not in temporal_warning_preview:
+                temporal_warning_preview.append(warning)
+            if len(temporal_warning_preview) >= preview_limit:
+                break
+        for relation_preview in element_temporal_relation_preview:
+            if relation_preview not in temporal_relation_preview:
+                temporal_relation_preview.append(relation_preview)
+            if len(temporal_relation_preview) >= preview_limit:
+                break
+        for relation_type, count in element_temporal_relation_type_counts.items():
+            temporal_relation_type_counts[relation_type] = (
+                temporal_relation_type_counts.get(relation_type, 0) + int(count or 0)
+            )
         if element_formalism and not hybrid_formalism:
             hybrid_formalism = element_formalism
         if element_reasoning_mode and not hybrid_reasoning_mode:
@@ -399,6 +462,10 @@ def summarize_claim_reasoning_review(
             or degraded_adapters
             or str(element.get("validation_status") or "") == "contradicted"
             or hybrid_bridge_used
+            or element_temporal_fact_count
+            or element_temporal_relation_count
+            or element_temporal_issue_count
+            or element_temporal_warning_count
         ):
             continue
 
@@ -423,6 +490,14 @@ def summarize_claim_reasoning_review(
                 "hybrid_formalism": element_formalism,
                 "hybrid_reasoning_mode": element_reasoning_mode,
                 "hybrid_compiler_bridge_path": element_compiler_bridge_path,
+                "temporal_fact_count": element_temporal_fact_count,
+                "temporal_relation_count": element_temporal_relation_count,
+                "temporal_issue_count": element_temporal_issue_count,
+                "temporal_partial_order_ready": element_temporal_partial_order_ready,
+                "temporal_warning_count": element_temporal_warning_count,
+                "temporal_warnings": element_temporal_warnings,
+                "temporal_relation_type_counts": element_temporal_relation_type_counts,
+                "temporal_relation_preview": element_temporal_relation_preview,
             }
         )
 
@@ -444,6 +519,15 @@ def summarize_claim_reasoning_review(
         "hybrid_formalism": hybrid_formalism,
         "hybrid_reasoning_mode": hybrid_reasoning_mode,
         "hybrid_compiler_bridge_path": hybrid_compiler_bridge_path,
+        "temporal_element_count": temporal_element_count,
+        "temporal_fact_count": temporal_fact_count,
+        "temporal_relation_count": temporal_relation_count,
+        "temporal_issue_count": temporal_issue_count,
+        "temporal_partial_order_ready_element_count": temporal_partial_order_ready_element_count,
+        "temporal_warning_count": temporal_warning_count,
+        "temporal_warning_preview": temporal_warning_preview,
+        "temporal_relation_type_counts": temporal_relation_type_counts,
+        "temporal_relation_preview": temporal_relation_preview,
         "flagged_elements": flagged_elements,
     }
 
@@ -1509,6 +1593,21 @@ def _summarize_claim_coverage_claim(
         ),
         "reasoning_hybrid_dcec_formula_count": int(
             reasoning_summary.get("hybrid_dcec_formula_count", 0) or 0
+        ),
+        "reasoning_temporal_fact_count": int(
+            reasoning_summary.get("temporal_fact_count", 0) or 0
+        ),
+        "reasoning_temporal_relation_count": int(
+            reasoning_summary.get("temporal_relation_count", 0) or 0
+        ),
+        "reasoning_temporal_issue_count": int(
+            reasoning_summary.get("temporal_issue_count", 0) or 0
+        ),
+        "reasoning_temporal_partial_order_ready_count": int(
+            reasoning_summary.get("temporal_partial_order_ready_count", 0) or 0
+        ),
+        "reasoning_temporal_warning_count": int(
+            reasoning_summary.get("temporal_warning_count", 0) or 0
         ),
         "decision_source_counts": decision_summary.get("decision_source_counts", {}),
         "adapter_contradicted_element_count": int(

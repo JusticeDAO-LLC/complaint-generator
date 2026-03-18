@@ -24,6 +24,7 @@ from claim_support_review import (
     build_claim_support_manual_review_resolution_payload,
     build_claim_support_review_payload,
     build_claim_support_testimony_payload,
+    summarize_claim_reasoning_review,
 )
 from applications.review_api import (
     REVIEW_EXECUTION_SUNSET,
@@ -1097,6 +1098,11 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert payload["claim_coverage_summary"]["retaliation"]["reasoning_hybrid_bridge_available_count"] == 0
         assert payload["claim_coverage_summary"]["retaliation"]["reasoning_hybrid_tdfol_formula_count"] == 0
         assert payload["claim_coverage_summary"]["retaliation"]["reasoning_hybrid_dcec_formula_count"] == 0
+        assert payload["claim_coverage_summary"]["retaliation"]["reasoning_temporal_fact_count"] == 0
+        assert payload["claim_coverage_summary"]["retaliation"]["reasoning_temporal_relation_count"] == 0
+        assert payload["claim_coverage_summary"]["retaliation"]["reasoning_temporal_issue_count"] == 0
+        assert payload["claim_coverage_summary"]["retaliation"]["reasoning_temporal_partial_order_ready_count"] == 0
+        assert payload["claim_coverage_summary"]["retaliation"]["reasoning_temporal_warning_count"] == 0
         assert payload["claim_coverage_summary"]["retaliation"]["decision_source_counts"] == {
             "heuristic_contradictions": 1,
             "partial_support": 1,
@@ -1288,6 +1294,15 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert reasoning_review["hybrid_formalism"] == ""
         assert reasoning_review["hybrid_reasoning_mode"] == ""
         assert reasoning_review["hybrid_compiler_bridge_path"] == ""
+        assert reasoning_review["temporal_element_count"] == 0
+        assert reasoning_review["temporal_fact_count"] == 0
+        assert reasoning_review["temporal_relation_count"] == 0
+        assert reasoning_review["temporal_issue_count"] == 0
+        assert reasoning_review["temporal_partial_order_ready_element_count"] == 0
+        assert reasoning_review["temporal_warning_count"] == 0
+        assert reasoning_review["temporal_warning_preview"] == []
+        assert reasoning_review["temporal_relation_type_counts"] == {}
+        assert reasoning_review["temporal_relation_preview"] == []
         assert any(
             item == {
                 "element_id": "retaliation:1",
@@ -1307,6 +1322,14 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 "hybrid_formalism": "",
                 "hybrid_reasoning_mode": "",
                 "hybrid_compiler_bridge_path": "",
+                "temporal_fact_count": 0,
+                "temporal_relation_count": 0,
+                "temporal_issue_count": 0,
+                "temporal_partial_order_ready": False,
+                "temporal_warning_count": 0,
+                "temporal_warnings": [],
+                "temporal_relation_type_counts": {},
+                "temporal_relation_preview": [],
             }
             for item in reasoning_review["flagged_elements"]
         )
@@ -1736,6 +1759,15 @@ def test_claim_support_review_payload_reuses_persisted_diagnostic_snapshots():
         "hybrid_formalism": "",
         "hybrid_reasoning_mode": "",
         "hybrid_compiler_bridge_path": "",
+        "temporal_element_count": 0,
+        "temporal_fact_count": 0,
+        "temporal_relation_count": 0,
+        "temporal_issue_count": 0,
+        "temporal_partial_order_ready_element_count": 0,
+        "temporal_warning_count": 0,
+        "temporal_warning_preview": [],
+        "temporal_relation_type_counts": {},
+        "temporal_relation_preview": [],
         "flagged_elements": [],
     }
     mediator.get_claim_support_diagnostic_snapshots.assert_called_once_with(
@@ -1849,6 +1881,15 @@ def test_claim_support_review_payload_recomputes_stale_diagnostic_snapshots():
         "hybrid_formalism": "",
         "hybrid_reasoning_mode": "",
         "hybrid_compiler_bridge_path": "",
+        "temporal_element_count": 0,
+        "temporal_fact_count": 0,
+        "temporal_relation_count": 0,
+        "temporal_issue_count": 0,
+        "temporal_partial_order_ready_element_count": 0,
+        "temporal_warning_count": 0,
+        "temporal_warning_preview": [],
+        "temporal_relation_type_counts": {},
+        "temporal_relation_preview": [],
         "flagged_elements": [],
     }
     mediator.get_claim_support_gaps.assert_called_once_with(
@@ -3726,6 +3767,67 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
         "rule_fact_targeted": 1,
         "adverse_authority_targeted": 1,
     }
+
+
+def test_summarize_claim_reasoning_review_includes_temporal_handoff_summary():
+    review = summarize_claim_reasoning_review(
+        {
+            "claim_type": "retaliation",
+            "elements": [
+                {
+                    "element_id": "retaliation:1",
+                    "element_text": "Protected activity",
+                    "validation_status": "supported",
+                    "reasoning_diagnostics": {
+                        "predicate_count": 6,
+                        "backend_available_count": 4,
+                        "used_fallback_ontology": False,
+                        "adapter_statuses": {
+                            "hybrid_reasoning": {
+                                "backend_available": True,
+                                "implementation_status": "implemented",
+                            }
+                        },
+                        "temporal_summary": {
+                            "fact_count": 2,
+                            "proof_lead_count": 1,
+                            "relation_count": 1,
+                            "issue_count": 1,
+                            "partial_order_ready": False,
+                            "warning_count": 1,
+                            "warnings": ["Some timeline facts only express relative ordering and still need anchoring."],
+                            "relation_type_counts": {"before": 1},
+                            "relation_preview": ["fact_001 before fact_termination"],
+                        },
+                    },
+                }
+            ],
+        }
+    )
+
+    assert review["temporal_element_count"] == 1
+    assert review["temporal_fact_count"] == 2
+    assert review["temporal_relation_count"] == 1
+    assert review["temporal_issue_count"] == 1
+    assert review["temporal_partial_order_ready_element_count"] == 0
+    assert review["temporal_warning_count"] == 1
+    assert review["temporal_warning_preview"] == [
+        "Some timeline facts only express relative ordering and still need anchoring.",
+    ]
+    assert review["temporal_relation_type_counts"] == {"before": 1}
+    assert review["temporal_relation_preview"] == ["fact_001 before fact_termination"]
+    assert review["flagged_elements"][0]["temporal_fact_count"] == 2
+    assert review["flagged_elements"][0]["temporal_relation_count"] == 1
+    assert review["flagged_elements"][0]["temporal_issue_count"] == 1
+    assert review["flagged_elements"][0]["temporal_partial_order_ready"] is False
+    assert review["flagged_elements"][0]["temporal_warning_count"] == 1
+    assert review["flagged_elements"][0]["temporal_warnings"] == [
+        "Some timeline facts only express relative ordering and still need anchoring.",
+    ]
+    assert review["flagged_elements"][0]["temporal_relation_type_counts"] == {"before": 1}
+    assert review["flagged_elements"][0]["temporal_relation_preview"] == [
+        "fact_001 before fact_termination"
+    ]
 
 
 async def test_claim_support_review_route_marks_execute_follow_up_as_deprecated():

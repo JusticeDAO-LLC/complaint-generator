@@ -3318,6 +3318,14 @@ class Mediator:
 			'reasoning_ontology_entity_count': int(reasoning_summary.get('ontology_entity_count', 0) or 0),
 			'reasoning_ontology_relationship_count': int(reasoning_summary.get('ontology_relationship_count', 0) or 0),
 			'reasoning_fallback_ontology_count': int(reasoning_summary.get('fallback_ontology_count', 0) or 0),
+			'reasoning_hybrid_bridge_available_count': int(reasoning_summary.get('hybrid_bridge_available_count', 0) or 0),
+			'reasoning_hybrid_tdfol_formula_count': int(reasoning_summary.get('hybrid_tdfol_formula_count', 0) or 0),
+			'reasoning_hybrid_dcec_formula_count': int(reasoning_summary.get('hybrid_dcec_formula_count', 0) or 0),
+			'reasoning_temporal_fact_count': int(reasoning_summary.get('temporal_fact_count', 0) or 0),
+			'reasoning_temporal_relation_count': int(reasoning_summary.get('temporal_relation_count', 0) or 0),
+			'reasoning_temporal_issue_count': int(reasoning_summary.get('temporal_issue_count', 0) or 0),
+			'reasoning_temporal_partial_order_ready_count': int(reasoning_summary.get('temporal_partial_order_ready_count', 0) or 0),
+			'reasoning_temporal_warning_count': int(reasoning_summary.get('temporal_warning_count', 0) or 0),
 			'decision_source_counts': decision_summary.get('decision_source_counts', {}),
 			'adapter_contradicted_element_count': int(decision_summary.get('adapter_contradicted_element_count', 0) or 0),
 			'decision_fallback_ontology_element_count': int(decision_summary.get('fallback_ontology_element_count', 0) or 0),
@@ -5296,6 +5304,11 @@ class Mediator:
 						'hybrid_bridge_available': bool(hybrid_result.get('compiler_bridge_available', False)),
 						'hybrid_tdfol_formula_count': len(hybrid_result.get('tdfol_formulas', []) or []),
 						'hybrid_dcec_formula_count': len(hybrid_result.get('dcec_formulas', []) or []),
+						'temporal_fact_count': int(((reasoning_diagnostics.get('temporal_summary') or {}).get('fact_count', 0)) or 0),
+						'temporal_relation_count': int(((reasoning_diagnostics.get('temporal_summary') or {}).get('relation_count', 0)) or 0),
+						'temporal_issue_count': int(((reasoning_diagnostics.get('temporal_summary') or {}).get('issue_count', 0)) or 0),
+						'temporal_partial_order_ready': bool(((reasoning_diagnostics.get('temporal_summary') or {}).get('partial_order_ready', False))),
+						'temporal_warning_count': int(((reasoning_diagnostics.get('temporal_summary') or {}).get('warning_count', 0)) or 0),
 						'parse_quality_flags': self._extract_parse_quality_flags(element),
 						'recommended_next_step': str(element.get('recommended_action') or ''),
 						'contradiction_count': int(element.get('contradiction_candidate_count', 0) or 0),
@@ -5426,6 +5439,11 @@ class Mediator:
 			'hybrid_bridge_available_element_count': 0,
 			'hybrid_tdfol_formula_count': 0,
 			'hybrid_dcec_formula_count': 0,
+			'temporal_fact_count': 0,
+			'temporal_relation_count': 0,
+			'temporal_issue_count': 0,
+			'temporal_partial_order_ready_element_count': 0,
+			'temporal_warning_count': 0,
 		}
 		if not isinstance(packets, dict):
 			return summary
@@ -5459,6 +5477,12 @@ class Mediator:
 					summary['hybrid_bridge_available_element_count'] += 1
 				summary['hybrid_tdfol_formula_count'] += int(element.get('hybrid_tdfol_formula_count', 0) or 0)
 				summary['hybrid_dcec_formula_count'] += int(element.get('hybrid_dcec_formula_count', 0) or 0)
+				summary['temporal_fact_count'] += int(element.get('temporal_fact_count', 0) or 0)
+				summary['temporal_relation_count'] += int(element.get('temporal_relation_count', 0) or 0)
+				summary['temporal_issue_count'] += int(element.get('temporal_issue_count', 0) or 0)
+				summary['temporal_warning_count'] += int(element.get('temporal_warning_count', 0) or 0)
+				if bool(element.get('temporal_partial_order_ready')):
+					summary['temporal_partial_order_ready_element_count'] += 1
 				if status == 'supported':
 					parse_quality_flags = element.get('parse_quality_flags', [])
 					if not (parse_quality_flags if isinstance(parse_quality_flags, list) else []):

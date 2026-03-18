@@ -64,13 +64,10 @@ class TestWebEvidenceSearchHook:
                 }
             })
             hook.brave_search = mock_brave
-            
-            results = hook.search_brave('employment discrimination', max_results=10)
-            
-            assert isinstance(results, list)
-            if results:
-                assert 'source_type' in results[0]
-                assert results[0]['source_type'] == 'brave_search'
+
+            results = hook.search_brave('test query')
+
+            assert results[0]['source_type'] == 'brave_search'
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
     
@@ -1450,6 +1447,11 @@ class TestWebEvidenceIntegrationHook:
                                 'hybrid_bridge_available_count': 1,
                                 'hybrid_tdfol_formula_count': 2,
                                 'hybrid_dcec_formula_count': 1,
+                                'temporal_fact_count': 2,
+                                'temporal_relation_count': 1,
+                                'temporal_issue_count': 1,
+                                'temporal_partial_order_ready_count': 0,
+                                'temporal_warning_count': 1,
                             },
                             'decision': {
                                 'decision_source_counts': {
@@ -1504,6 +1506,17 @@ class TestWebEvidenceIntegrationHook:
                                                 'Happens(fact_1,t_2026_03_10)',
                                             ],
                                         },
+                                    },
+                                    'temporal_summary': {
+                                        'fact_count': 2,
+                                        'proof_lead_count': 1,
+                                        'relation_count': 1,
+                                        'issue_count': 1,
+                                        'partial_order_ready': False,
+                                        'warning_count': 1,
+                                        'warnings': ['Some timeline facts only express relative ordering and still need anchoring.'],
+                                        'relation_type_counts': {'before': 1},
+                                        'relation_preview': ['fact_001 before fact_termination'],
                                     },
                                 },
                             }
@@ -1611,6 +1624,11 @@ class TestWebEvidenceIntegrationHook:
             assert result['claim_coverage_summary']['employment discrimination']['reasoning_hybrid_bridge_available_count'] == 1
             assert result['claim_coverage_summary']['employment discrimination']['reasoning_hybrid_tdfol_formula_count'] == 2
             assert result['claim_coverage_summary']['employment discrimination']['reasoning_hybrid_dcec_formula_count'] == 1
+            assert result['claim_coverage_summary']['employment discrimination']['reasoning_temporal_fact_count'] == 2
+            assert result['claim_coverage_summary']['employment discrimination']['reasoning_temporal_relation_count'] == 1
+            assert result['claim_coverage_summary']['employment discrimination']['reasoning_temporal_issue_count'] == 1
+            assert result['claim_coverage_summary']['employment discrimination']['reasoning_temporal_partial_order_ready_count'] == 0
+            assert result['claim_coverage_summary']['employment discrimination']['reasoning_temporal_warning_count'] == 1
             assert result['claim_reasoning_review']['employment discrimination']['hybrid_bridge_element_count'] == 1
             assert result['claim_reasoning_review']['employment discrimination']['hybrid_bridge_available_element_count'] == 1
             assert result['claim_reasoning_review']['employment discrimination']['hybrid_tdfol_formula_count'] == 2

@@ -1779,6 +1779,11 @@ class TestClaimSupportHook:
             assert claim_validation['proof_gap_count'] == 4
             assert claim_validation['proof_diagnostics']['reasoning']['predicate_count'] >= 3
             assert 'logic_proof' in claim_validation['proof_diagnostics']['reasoning']['adapter_status_counts']
+            assert claim_validation['proof_diagnostics']['reasoning']['temporal_fact_count'] == 0
+            assert claim_validation['proof_diagnostics']['reasoning']['temporal_relation_count'] == 0
+            assert claim_validation['proof_diagnostics']['reasoning']['temporal_issue_count'] == 0
+            assert claim_validation['proof_diagnostics']['reasoning']['temporal_partial_order_ready_count'] == 0
+            assert claim_validation['proof_diagnostics']['reasoning']['temporal_warning_count'] == 0
             protected_activity = next(
                 element for element in claim_validation['elements']
                 if element['element_text'] == 'Protected activity'
@@ -2356,6 +2361,17 @@ class TestClaimSupportHook:
             assert diagnostics['ontology_relationship_count'] >= 4
             assert diagnostics['adapter_statuses']['hybrid_reasoning']['operation'] == 'run_hybrid_reasoning'
             assert diagnostics['adapter_statuses']['hybrid_reasoning']['implementation_status'] == 'implemented'
+            assert diagnostics['temporal_summary'] == {
+                'fact_count': 2,
+                'proof_lead_count': 1,
+                'relation_count': 1,
+                'issue_count': 1,
+                'partial_order_ready': False,
+                'warning_count': 1,
+                'warnings': ['Timeline needs corroboration.'],
+                'relation_type_counts': {'before': 1},
+                'relation_preview': ['fact_1 before fact_2'],
+            }
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)

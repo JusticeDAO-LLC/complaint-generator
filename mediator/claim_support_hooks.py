@@ -2012,6 +2012,43 @@ class ClaimSupportHook:
         hybrid_reasoning = run_hybrid_reasoning({'predicates': predicates})
         ontology_validation = validate_ontology(ontology_for_validation)
 
+        temporal_summary: Dict[str, Any] = {}
+        if temporal_context:
+            temporal_consistency_summary = (
+                temporal_context.get('consistency_summary', {})
+                if isinstance(temporal_context.get('consistency_summary'), dict)
+                else {}
+            )
+            temporal_relation_type_counts = dict(
+                temporal_consistency_summary.get('relation_type_counts', {}) or {}
+            )
+            temporal_warnings = list(temporal_consistency_summary.get('warnings', []) or [])
+            temporal_relation_preview = []
+            for relation in temporal_context.get('temporal_relations', []) or []:
+                if not isinstance(relation, dict):
+                    continue
+                source_fact_id = str(relation.get('source_fact_id') or '').strip()
+                target_fact_id = str(relation.get('target_fact_id') or '').strip()
+                relation_type = str(relation.get('relation_type') or '').strip().replace('_', ' ')
+                preview = ' '.join(part for part in [source_fact_id, relation_type, target_fact_id] if part).strip()
+                if preview and preview not in temporal_relation_preview:
+                    temporal_relation_preview.append(preview)
+                if len(temporal_relation_preview) >= 3:
+                    break
+            temporal_summary = {
+                'fact_count': len(temporal_context.get('temporal_facts', []) or []),
+                'proof_lead_count': len(temporal_context.get('temporal_proof_leads', []) or []),
+                'relation_count': len(temporal_context.get('temporal_relations', []) or []),
+                'issue_count': len(temporal_context.get('temporal_issues', []) or []),
+                'partial_order_ready': bool(
+                    temporal_consistency_summary.get('partial_order_ready', False)
+                ),
+                'warning_count': int(temporal_consistency_summary.get('warning_count', 0) or 0),
+                'warnings': temporal_warnings,
+                'relation_type_counts': temporal_relation_type_counts,
+                'relation_preview': temporal_relation_preview,
+            }
+
         adapter_statuses = {
             'ontology_build': self._summarize_adapter_result(
                 ontology_build,
@@ -2049,6 +2086,7 @@ class ClaimSupportHook:
             'logic_contradictions': logic_contradictions,
             'hybrid_reasoning': hybrid_reasoning,
             'ontology_validation': ontology_validation,
+            'temporal_summary': temporal_summary,
         }
 
     def _summarize_claim_reasoning_diagnostics(self, elements: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -2067,6 +2105,11 @@ class ClaimSupportHook:
         hybrid_bridge_available_count = 0
         hybrid_tdfol_formula_count = 0
         hybrid_dcec_formula_count = 0
+        temporal_fact_count = 0
+        temporal_relation_count = 0
+        temporal_issue_count = 0
+        temporal_partial_order_ready_count = 0
+        temporal_warning_count = 0
 
         for element in elements:
             if not isinstance(element, dict):
@@ -2087,6 +2130,14 @@ class ClaimSupportHook:
                     hybrid_bridge_available_count += 1
                 hybrid_tdfol_formula_count += len(hybrid_result.get('tdfol_formulas', []) or [])
                 hybrid_dcec_formula_count += len(hybrid_result.get('dcec_formulas', []) or [])
+            temporal_summary = reasoning.get('temporal_summary', {})
+            if isinstance(temporal_summary, dict):
+                temporal_fact_count += int(temporal_summary.get('fact_count', 0) or 0)
+                temporal_relation_count += int(temporal_summary.get('relation_count', 0) or 0)
+                temporal_issue_count += int(temporal_summary.get('issue_count', 0) or 0)
+                temporal_warning_count += int(temporal_summary.get('warning_count', 0) or 0)
+                if bool(temporal_summary.get('partial_order_ready', False)):
+                    temporal_partial_order_ready_count += 1
             for adapter_name, summary in (reasoning.get('adapter_statuses') or {}).items():
                 if not isinstance(summary, dict):
                     continue
@@ -2104,6 +2155,11 @@ class ClaimSupportHook:
             'hybrid_bridge_available_count': hybrid_bridge_available_count,
             'hybrid_tdfol_formula_count': hybrid_tdfol_formula_count,
             'hybrid_dcec_formula_count': hybrid_dcec_formula_count,
+            'temporal_fact_count': temporal_fact_count,
+            'temporal_relation_count': temporal_relation_count,
+            'temporal_issue_count': temporal_issue_count,
+            'temporal_partial_order_ready_count': temporal_partial_order_ready_count,
+            'temporal_warning_count': temporal_warning_count,
         }
 
     def _summarize_claim_validation_decisions(self, elements: List[Dict[str, Any]]) -> Dict[str, Any]:

@@ -307,6 +307,11 @@ def _build_dashboard_mediator() -> Mock:
                         "hybrid_bridge_available_count": 1,
                         "hybrid_tdfol_formula_count": 2,
                         "hybrid_dcec_formula_count": 1,
+                        "temporal_fact_count": 2,
+                        "temporal_relation_count": 1,
+                        "temporal_issue_count": 1,
+                        "temporal_partial_order_ready_count": 0,
+                        "temporal_warning_count": 1,
                     },
                     "decision": {
                         "decision_source_counts": {
@@ -371,6 +376,19 @@ def _build_dashboard_mediator() -> Mock:
                                         "Happens(fact_1,t_2026_03_10)",
                                     ],
                                 },
+                            },
+                            "temporal_summary": {
+                                "fact_count": 2,
+                                "proof_lead_count": 1,
+                                "relation_count": 1,
+                                "issue_count": 1,
+                                "partial_order_ready": False,
+                                "warning_count": 1,
+                                "warnings": [
+                                    "Some timeline facts only express relative ordering and still need anchoring.",
+                                ],
+                                "relation_type_counts": {"before": 1},
+                                "relation_preview": ["fact_001 before fact_termination"],
                             },
                         },
                         "contradiction_candidates": [],
@@ -807,6 +825,13 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert "claim-reasoning-summary-chips" in page_html
     assert "claim-reasoning-flagged-list" in page_html
     assert "renderClaimReasoningReview" in page_html
+    assert "Temporal proof handoff" in page_html
+    assert "Temporal relation preview" in page_html
+    assert "Temporal warnings" in page_html
+    assert "packet temporal facts" in page_html
+    assert "packet temporal relations" in page_html
+    assert "packet temporal issues" in page_html
+    assert "packet temporal warnings" in page_html
     assert "Claim-level hybrid bridge" in page_html
     assert "No hybrid reasoning bridge diagnostics surfaced for this claim." in page_html
     assert "TDFOL preview" in page_html
@@ -950,6 +975,11 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert review_payload["claim_coverage_summary"]["retaliation"]["reasoning_hybrid_bridge_available_count"] == 1
     assert review_payload["claim_coverage_summary"]["retaliation"]["reasoning_hybrid_tdfol_formula_count"] == 2
     assert review_payload["claim_coverage_summary"]["retaliation"]["reasoning_hybrid_dcec_formula_count"] == 1
+    assert review_payload["claim_coverage_summary"]["retaliation"]["reasoning_temporal_fact_count"] == 2
+    assert review_payload["claim_coverage_summary"]["retaliation"]["reasoning_temporal_relation_count"] == 1
+    assert review_payload["claim_coverage_summary"]["retaliation"]["reasoning_temporal_issue_count"] == 1
+    assert review_payload["claim_coverage_summary"]["retaliation"]["reasoning_temporal_partial_order_ready_count"] == 0
+    assert review_payload["claim_coverage_summary"]["retaliation"]["reasoning_temporal_warning_count"] == 1
     assert review_payload["claim_reasoning_review"]["retaliation"]["hybrid_bridge_element_count"] == 1
     assert review_payload["claim_reasoning_review"]["retaliation"]["hybrid_bridge_available_element_count"] == 1
     assert review_payload["claim_reasoning_review"]["retaliation"]["hybrid_tdfol_formula_count"] == 2
@@ -966,6 +996,19 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert review_payload["claim_reasoning_review"]["retaliation"]["hybrid_compiler_bridge_path"] == (
         "ipfs_datasets_py.ipfs_datasets_py.processors.legal_data.reasoner.hybrid_v2_blueprint"
     )
+    assert review_payload["claim_reasoning_review"]["retaliation"]["temporal_element_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["temporal_fact_count"] == 2
+    assert review_payload["claim_reasoning_review"]["retaliation"]["temporal_relation_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["temporal_issue_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["temporal_partial_order_ready_element_count"] == 0
+    assert review_payload["claim_reasoning_review"]["retaliation"]["temporal_warning_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["temporal_warning_preview"] == [
+        "Some timeline facts only express relative ordering and still need anchoring.",
+    ]
+    assert review_payload["claim_reasoning_review"]["retaliation"]["temporal_relation_type_counts"] == {"before": 1}
+    assert review_payload["claim_reasoning_review"]["retaliation"]["temporal_relation_preview"] == [
+        "fact_001 before fact_termination"
+    ]
     assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["hybrid_bridge_available"] is True
     assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["hybrid_tdfol_formula_preview"] == [
         "Before(fact_1,fact_2)",
@@ -979,6 +1022,18 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["hybrid_compiler_bridge_path"] == (
         "ipfs_datasets_py.ipfs_datasets_py.processors.legal_data.reasoner.hybrid_v2_blueprint"
     )
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_fact_count"] == 2
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_relation_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_issue_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_partial_order_ready"] is False
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_warning_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_warnings"] == [
+        "Some timeline facts only express relative ordering and still need anchoring.",
+    ]
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_relation_type_counts"] == {"before": 1}
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_relation_preview"] == [
+        "fact_001 before fact_termination"
+    ]
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["validation_status"] == "supported"
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_fact_packet_count"] == 2
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_fact_status_counts"] == {

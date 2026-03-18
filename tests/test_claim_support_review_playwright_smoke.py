@@ -274,6 +274,11 @@ def _build_hook_backed_browser_mediator(db_path: str):
             "claim_support_unresolved_without_review_path_count": 1,
             "proof_readiness_score": 0.225,
             "evidence_completion_ready": False,
+            "temporal_fact_count": 2,
+            "temporal_relation_count": 1,
+            "temporal_issue_count": 1,
+            "temporal_partial_order_ready_element_count": 0,
+            "temporal_warning_count": 1,
         },
     }
 
@@ -585,6 +590,19 @@ def _build_hook_backed_browser_mediator(db_path: str):
                                         "Happens(fact_1,t_2026_03_10)",
                                     ],
                                 },
+                            },
+                            "temporal_summary": {
+                                "fact_count": 2,
+                                "proof_lead_count": 1,
+                                "relation_count": 1,
+                                "issue_count": 1,
+                                "partial_order_ready": False,
+                                "warning_count": 1,
+                                "warnings": [
+                                    "Some timeline facts only express relative ordering and still need anchoring.",
+                                ],
+                                "relation_type_counts": {"before": 1},
+                                "relation_preview": ["fact_001 before fact_termination"],
                             },
                         },
                         "contradiction_candidates": [],
@@ -1148,6 +1166,11 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
                     "claim_support_unresolved_without_review_path_count": 1,
                     "proof_readiness_score": 0.225,
                     "evidence_completion_ready": False,
+                    "temporal_fact_count": 2,
+                    "temporal_relation_count": 1,
+                    "temporal_issue_count": 1,
+                    "temporal_partial_order_ready_element_count": 0,
+                    "temporal_warning_count": 1,
                 },
                 "alignment_task_update_history": [
                     {
@@ -1307,6 +1330,11 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
             assert "Packet proof readiness: 0.23" in preview_text
             assert "Packet unresolved without path: 1" in preview_text
             assert "Packet completion ready: no" in preview_text
+            assert "Packet temporal facts: 2" in preview_text
+            assert "Packet temporal relations: 1" in preview_text
+            assert "Packet temporal issues: 1" in preview_text
+            assert "Packet temporal ready elements: 0" in preview_text
+            assert "Packet temporal warnings: 1" in preview_text
             normalized_preview_text = preview_text.lower()
             assert "intake summary handoff" in normalized_preview_text
             assert "Status" in preview_text
@@ -1460,12 +1488,29 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "packet unresolved without path: 1" in packet_summary
                 assert "packet proof readiness: 0.23" in packet_summary
                 assert "packet completion ready: no" in packet_summary
+                assert "packet temporal facts: 2" in packet_summary
+                assert "packet temporal relations: 1" in packet_summary
+                assert "packet temporal issues: 1" in packet_summary
+                assert "packet temporal ready elements: 0" in packet_summary
+                assert "packet temporal warnings: 1" in packet_summary
                 assert "Bridge elements: 1" in reasoning_summary
                 assert "Bridge available: 1" in reasoning_summary
                 assert "TDFOL formulas: 2" in reasoning_summary
                 assert "DCEC formulas: 1" in reasoning_summary
                 assert "Formalism: tdfol_dcec_bridge_v1" in reasoning_summary
                 assert "Mode: temporal_bridge" in reasoning_summary
+                assert "Temporal facts: 2" in reasoning_summary
+                assert "Temporal relations: 1" in reasoning_summary
+                assert "Temporal issues: 1" in reasoning_summary
+                assert "Temporal warnings: 1" in reasoning_summary
+                assert "Formalism: tdfol_dcec_bridge_v1" in reasoning_summary
+                assert "Mode: temporal_bridge" in reasoning_summary
+                assert "Temporal proof handoff" in reasoning_flagged
+                assert "facts 2" in reasoning_flagged
+                assert "relations 1" in reasoning_flagged
+                assert "issues 1" in reasoning_flagged
+                assert "warnings 1" in reasoning_flagged
+                assert "Before 1" in reasoning_flagged
                 assert "Claim-level hybrid bridge" in reasoning_flagged
                 assert "Protected activity" in reasoning_flagged
                 assert "formalism tdfol_dcec_bridge_v1" in reasoning_flagged
@@ -1474,9 +1519,15 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "DCEC preview" in reasoning_flagged
                 assert "bridge path ipfs_datasets_py.ipfs_datasets_py.processors.legal_data.reasoner.hybrid_v2_blueprint" in reasoning_flagged
 
+                page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Temporal relation preview").first.click()
+                page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Temporal warnings").first.click()
                 page.locator("#claim-reasoning-flagged-list summary").filter(has_text="TDFOL preview").first.click()
                 page.locator("#claim-reasoning-flagged-list summary").filter(has_text="DCEC preview").first.click()
 
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("fact_001 before fact_termination").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text(
+                    "Some timeline facts only express relative ordering and still need anchoring."
+                ).first.is_visible()
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text("Before(fact_1,fact_2)").first.is_visible()
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text(
                     "forall t (AtTime(t,t_2026_03_10) -> Fact(fact_1,t))"
@@ -1956,6 +2007,11 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
                     "proof_readiness_score": 0.225,
                     "claim_support_unresolved_without_review_path_count": 1,
                     "evidence_completion_ready": False,
+                    "temporal_fact_count": 2,
+                    "temporal_relation_count": 1,
+                    "temporal_issue_count": 1,
+                    "temporal_partial_order_ready_element_count": 0,
+                    "temporal_warning_count": 1,
                 },
                 "alignment_task_update_history": [
                     {
@@ -2094,6 +2150,11 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
             assert "Packet proof readiness: 0.23" in trace_evidence
             assert "Packet unresolved without path: 1" in trace_evidence
             assert "Packet completion ready: no" in trace_evidence
+            assert "Packet temporal facts: 2" in trace_evidence
+            assert "Packet temporal relations: 1" in trace_evidence
+            assert "Packet temporal issues: 1" in trace_evidence
+            assert "Packet temporal ready elements: 0" in trace_evidence
+            assert "Packet temporal warnings: 1" in trace_evidence
             handoff_trace_text = page.locator("#traceEvidenceHandoffs").inner_text()
             assert "Evidence Handoffs" in handoff_trace_text
             assert "Evidence handoffs: 1" in handoff_trace_text

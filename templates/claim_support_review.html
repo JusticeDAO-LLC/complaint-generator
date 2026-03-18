@@ -1796,6 +1796,10 @@
                 `<span class="chip">Bridge available: ${Number(reviewData.hybrid_bridge_available_element_count || 0)}</span>`,
                 `<span class="chip">TDFOL formulas: ${Number(reviewData.hybrid_tdfol_formula_count || 0)}</span>`,
                 `<span class="chip">DCEC formulas: ${Number(reviewData.hybrid_dcec_formula_count || 0)}</span>`,
+                `<span class="chip">Temporal facts: ${Number(reviewData.temporal_fact_count || 0)}</span>`,
+                `<span class="chip">Temporal relations: ${Number(reviewData.temporal_relation_count || 0)}</span>`,
+                `<span class="chip">Temporal issues: ${Number(reviewData.temporal_issue_count || 0)}</span>`,
+                `<span class="chip">Temporal warnings: ${Number(reviewData.temporal_warning_count || 0)}</span>`,
             ];
             if (reviewData.hybrid_formalism) {
                 summaryChips.push(`<span class="chip">Formalism: ${escapeHtml(reviewData.hybrid_formalism)}</span>`);
@@ -1804,6 +1808,35 @@
                 summaryChips.push(`<span class="chip">Mode: ${escapeHtml(reviewData.hybrid_reasoning_mode)}</span>`);
             }
             summaryContainer.innerHTML = summaryChips.join('');
+
+            const claimLevelTemporalCard = (
+                reviewData.temporal_element_count
+                || reviewData.temporal_fact_count
+                || reviewData.temporal_relation_count
+                || reviewData.temporal_issue_count
+                || reviewData.temporal_warning_count
+                || (Array.isArray(reviewData.temporal_relation_preview) && reviewData.temporal_relation_preview.length)
+            ) ? `
+                <div class="task-card">
+                    <div class="row-head">
+                        <div>
+                            <div class="row-title">Temporal proof handoff</div>
+                            <div class="meta">Claim-scoped timeline facts, relations, and proof-blocking temporal issues.</div>
+                        </div>
+                    </div>
+                    <div class="chip-row">
+                        <span class="chip">temporal elements ${Number(reviewData.temporal_element_count || 0)}</span>
+                        <span class="chip">facts ${Number(reviewData.temporal_fact_count || 0)}</span>
+                        <span class="chip">relations ${Number(reviewData.temporal_relation_count || 0)}</span>
+                        <span class="chip">issues ${Number(reviewData.temporal_issue_count || 0)}</span>
+                        <span class="chip">partial-order-ready elements ${Number(reviewData.temporal_partial_order_ready_element_count || 0)}</span>
+                        <span class="chip">warnings ${Number(reviewData.temporal_warning_count || 0)}</span>
+                        ${Object.entries(reviewData.temporal_relation_type_counts && typeof reviewData.temporal_relation_type_counts === 'object' ? reviewData.temporal_relation_type_counts : {}).map(([relationType, count]) => `<span class="chip">${humanizeQueryValue(relationType)} ${Number(count || 0)}</span>`).join('')}
+                    </div>
+                    ${renderFormulaPreviewDetails('Temporal relation preview', reviewData.temporal_relation_preview || [], 'No temporal relation preview available.')}
+                    ${renderFormulaPreviewDetails('Temporal warnings', reviewData.temporal_warning_preview || [], 'No temporal warnings surfaced.')}
+                </div>
+            ` : '';
 
             const claimLevelCard = (
                 reviewData.hybrid_bridge_element_count
@@ -1830,7 +1863,8 @@
                 </div>
             ` : '';
 
-            if (!flaggedElements.length && !claimLevelCard) {
+
+            if (!flaggedElements.length && !claimLevelCard && !claimLevelTemporalCard) {
                 listContainer.innerHTML = '<div class="task-card">No hybrid reasoning bridge diagnostics surfaced for this claim.</div>';
                 return;
             }
@@ -1849,6 +1883,12 @@
                         ${element.hybrid_formalism ? `<span class="chip">formalism ${escapeHtml(element.hybrid_formalism)}</span>` : ''}
                         ${element.hybrid_reasoning_mode ? `<span class="chip">mode ${escapeHtml(element.hybrid_reasoning_mode)}</span>` : ''}
                         ${element.hybrid_compiler_bridge_path ? `<span class="chip">bridge path ${escapeHtml(element.hybrid_compiler_bridge_path)}</span>` : ''}
+                        ${element.temporal_fact_count ? `<span class="chip">temporal facts ${Number(element.temporal_fact_count || 0)}</span>` : ''}
+                        ${element.temporal_relation_count ? `<span class="chip">temporal relations ${Number(element.temporal_relation_count || 0)}</span>` : ''}
+                        ${element.temporal_issue_count ? `<span class="chip">temporal issues ${Number(element.temporal_issue_count || 0)}</span>` : ''}
+                        ${element.temporal_partial_order_ready ? '<span class="chip">partial order ready</span>' : ''}
+                        ${element.temporal_warning_count ? `<span class="chip">temporal warnings ${Number(element.temporal_warning_count || 0)}</span>` : ''}
+                        ${Object.entries(element.temporal_relation_type_counts && typeof element.temporal_relation_type_counts === 'object' ? element.temporal_relation_type_counts : {}).map(([relationType, count]) => `<span class="chip">${humanizeQueryValue(relationType)} ${Number(count || 0)}</span>`).join('')}
                         ${(element.unavailable_adapters || []).map((name) => `<span class="chip">unavailable ${escapeHtml(name)}</span>`).join('')}
                         ${(element.degraded_adapters || []).map((name) => `<span class="chip">degraded ${escapeHtml(name)}</span>`).join('')}
                     </div>
@@ -1857,7 +1897,7 @@
                 </div>
             `).join('');
 
-            listContainer.innerHTML = `${claimLevelCard}${flaggedCards}`;
+            listContainer.innerHTML = `${claimLevelTemporalCard}${claimLevelCard}${flaggedCards}`;
         }
 
         function renderTimelineOrdering(summary) {
@@ -2459,6 +2499,21 @@
             }
             if (claimSupportPacketSummary.evidence_completion_ready !== undefined) {
                 packetChips.push(`<span class="chip">packet completion ready: ${claimSupportPacketSummary.evidence_completion_ready ? 'yes' : 'no'}</span>`);
+            }
+            if (claimSupportPacketSummary.temporal_fact_count !== undefined) {
+                packetChips.push(`<span class="chip">packet temporal facts: ${Number(claimSupportPacketSummary.temporal_fact_count || 0)}</span>`);
+            }
+            if (claimSupportPacketSummary.temporal_relation_count !== undefined) {
+                packetChips.push(`<span class="chip">packet temporal relations: ${Number(claimSupportPacketSummary.temporal_relation_count || 0)}</span>`);
+            }
+            if (claimSupportPacketSummary.temporal_issue_count !== undefined) {
+                packetChips.push(`<span class="chip">packet temporal issues: ${Number(claimSupportPacketSummary.temporal_issue_count || 0)}</span>`);
+            }
+            if (claimSupportPacketSummary.temporal_partial_order_ready_element_count !== undefined) {
+                packetChips.push(`<span class="chip">packet temporal ready elements: ${Number(claimSupportPacketSummary.temporal_partial_order_ready_element_count || 0)}</span>`);
+            }
+            if (claimSupportPacketSummary.temporal_warning_count !== undefined) {
+                packetChips.push(`<span class="chip">packet temporal warnings: ${Number(claimSupportPacketSummary.temporal_warning_count || 0)}</span>`);
             }
             recommendedActions.forEach((action) => {
                 packetChips.push(`<span class="chip">packet next: ${action}</span>`);

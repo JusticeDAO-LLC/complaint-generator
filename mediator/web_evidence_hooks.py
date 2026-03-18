@@ -658,6 +658,21 @@ class WebEvidenceIntegrationHook:
             'reasoning_hybrid_dcec_formula_count': int(
                 reasoning_summary.get('hybrid_dcec_formula_count', 0) or 0
             ),
+            'reasoning_temporal_fact_count': int(
+                reasoning_summary.get('temporal_fact_count', 0) or 0
+            ),
+            'reasoning_temporal_relation_count': int(
+                reasoning_summary.get('temporal_relation_count', 0) or 0
+            ),
+            'reasoning_temporal_issue_count': int(
+                reasoning_summary.get('temporal_issue_count', 0) or 0
+            ),
+            'reasoning_temporal_partial_order_ready_count': int(
+                reasoning_summary.get('temporal_partial_order_ready_count', 0) or 0
+            ),
+            'reasoning_temporal_warning_count': int(
+                reasoning_summary.get('temporal_warning_count', 0) or 0
+            ),
             'decision_source_counts': decision_summary.get('decision_source_counts', {}),
             'adapter_contradicted_element_count': int(decision_summary.get('adapter_contradicted_element_count', 0) or 0),
             'decision_fallback_ontology_element_count': int(decision_summary.get('fallback_ontology_element_count', 0) or 0),

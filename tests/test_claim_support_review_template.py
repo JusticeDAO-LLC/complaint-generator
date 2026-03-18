@@ -395,6 +395,11 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Packet proof readiness:" in content
     assert "Packet unresolved without path:" in content
     assert "Packet completion ready:" in content
+    assert "Packet temporal facts:" in content
+    assert "Packet temporal relations:" in content
+    assert "Packet temporal issues:" in content
+    assert "Packet temporal ready elements:" in content
+    assert "Packet temporal warnings:" in content
     assert "renderTriageChipRow" in content
     assert "triage-chip" in content
     assert "Question Blocking Levels" in content
@@ -573,6 +578,11 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "Packet proof readiness:" in content
     assert "Packet unresolved without path:" in content
     assert "Packet completion ready:" in content
+    assert "Packet temporal facts:" in content
+    assert "Packet temporal relations:" in content
+    assert "Packet temporal issues:" in content
+    assert "Packet temporal ready elements:" in content
+    assert "Packet temporal warnings:" in content
     assert "Corroboration-required contradictions:" in content
     assert "Contradiction lanes:" in content
     assert "Affected elements" in content

@@ -1358,6 +1358,21 @@
                     claimSupportPacketSummary.evidence_completion_ready != null
                         ? `Packet completion ready: ${claimSupportPacketSummary.evidence_completion_ready ? 'yes' : 'no'}`
                         : '',
+                    claimSupportPacketSummary.temporal_fact_count != null
+                        ? `Packet temporal facts: ${Number(claimSupportPacketSummary.temporal_fact_count || 0)}`
+                        : '',
+                    claimSupportPacketSummary.temporal_relation_count != null
+                        ? `Packet temporal relations: ${Number(claimSupportPacketSummary.temporal_relation_count || 0)}`
+                        : '',
+                    claimSupportPacketSummary.temporal_issue_count != null
+                        ? `Packet temporal issues: ${Number(claimSupportPacketSummary.temporal_issue_count || 0)}`
+                        : '',
+                    claimSupportPacketSummary.temporal_partial_order_ready_element_count != null
+                        ? `Packet temporal ready elements: ${Number(claimSupportPacketSummary.temporal_partial_order_ready_element_count || 0)}`
+                        : '',
+                    claimSupportPacketSummary.temporal_warning_count != null
+                        ? `Packet temporal warnings: ${Number(claimSupportPacketSummary.temporal_warning_count || 0)}`
+                        : '',
                     Array.isArray(claimSupportPacketSummary.recommended_actions) && claimSupportPacketSummary.recommended_actions.length
                         ? `Packet next steps: ${claimSupportPacketSummary.recommended_actions.join(' | ')}`
                         : '',
