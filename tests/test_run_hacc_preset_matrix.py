@@ -61,6 +61,8 @@ def test_markdown_report_includes_claim_selection_snapshots(tmp_path):
             "anchor_coverage": 1.0,
             "router_status": "available",
             "top_missing_sections": "",
+            "top_intake_gaps": "anchor_appeal_rights (0/1)",
+            "remediation_focus": "anchor=appeal_rights; intake=anchor_appeal_rights",
             "missing_sections": "",
             "output_dir": "/tmp/accommodation_focus",
             "claim_selection_overview": (
@@ -100,11 +102,13 @@ def test_markdown_report_includes_claim_selection_snapshots(tmp_path):
     assert "- Overview: Accommodation Theory [tags=reasonable_accommodation,contact;" in report
     assert "- Search mode: requested=hybrid; effective=lexical_only" in report
     assert "- Search fallback: Requested hybrid search, but vector support is unavailable; using lexical results instead." in report
+    assert "- Coverage remediation: anchor=appeal_rights; intake=anchor_appeal_rights" in report
     assert "- Strategy summary: Best for accommodation framing + process framing." in report
     assert "- Claim posture note: The winner added stronger accommodation framing theories." not in report
     assert "- Relief posture note: Relief posture was materially similar across the winner and runner-up, so the selection difference was driven mainly by claim posture." not in report
     assert "- Relief overview: Corrective action requiring clear notice, fair review, and non-retaliation safeguards." in report
     assert "- Complaint synthesis: `/tmp/accommodation_focus/complaint_synthesis`" in report
+    assert "| Preset | Backend | Avg Score | Success | Anchor Coverage | Router | Top Missing Sections | Top Intake Gaps | Remediation Focus | Missing Sections | Output Dir |" in report
 
 
 def test_rebuild_batch_result_recovers_effective_search_mode_from_run_summary(tmp_path, monkeypatch):
@@ -234,6 +238,12 @@ def test_attach_recommendation_claim_snapshots_enriches_best_overall():
             "hacc_search_mode": "hybrid",
             "effective_hacc_search_mode": "lexical_only",
             "hacc_search_fallback_note": "Requested hybrid search, but vector support is unavailable; using lexical results instead.",
+            "top_intake_gaps": "anchor_appeal_rights (0/1)",
+            "remediation_focus": "anchor=appeal_rights; intake=anchor_appeal_rights",
+            "coverage_remediation": {
+                "anchor_sections": {"missing_sections": ["appeal_rights"]},
+                "intake_priorities": {"uncovered_objectives": ["anchor_appeal_rights"]},
+            },
         }
     ]
     recommendations = {
@@ -250,6 +260,45 @@ def test_attach_recommendation_claim_snapshots_enriches_best_overall():
     assert enriched["best_overall"]["effective_hacc_search_mode"] == "lexical_only"
     assert enriched["best_overall"]["hacc_search_fallback_note"] == (
         "Requested hybrid search, but vector support is unavailable; using lexical results instead."
+    )
+    assert enriched["best_overall"]["top_intake_gaps"] == "anchor_appeal_rights (0/1)"
+    assert enriched["best_overall"]["remediation_focus"] == (
+        "anchor=appeal_rights; intake=anchor_appeal_rights"
+    )
+    assert enriched["best_overall"]["coverage_remediation"]["anchor_sections"]["missing_sections"] == [
+        "appeal_rights"
+    ]
+
+
+def test_remediation_helpers_rank_intake_gaps_and_focus():
+    remediation = {
+        "anchor_sections": {"missing_sections": ["appeal_rights", "grievance_hearing"]},
+        "intake_priorities": {
+            "uncovered_objectives": ["anchor_appeal_rights", "anchor_grievance_hearing"],
+            "recommended_actions": [
+                {
+                    "objective": "anchor_appeal_rights",
+                    "covered": 0,
+                    "expected": 2,
+                    "uncovered": 2,
+                    "coverage_rate": 0.0,
+                },
+                {
+                    "objective": "anchor_grievance_hearing",
+                    "covered": 1,
+                    "expected": 2,
+                    "uncovered": 1,
+                    "coverage_rate": 0.5,
+                },
+            ],
+        },
+    }
+
+    assert MODULE._top_uncovered_objectives(remediation) == (
+        "anchor_appeal_rights (0/2), anchor_grievance_hearing (1/2)"
+    )
+    assert MODULE._coverage_remediation_focus(remediation) == (
+        "anchor=appeal_rights, grievance_hearing; intake=anchor_appeal_rights, anchor_grievance_hearing"
     )
 
 
@@ -749,3 +798,74 @@ def test_summary_json_can_record_partial_preset_errors(tmp_path):
 
     assert loaded["errors"][0]["preset"] == "administrative_plan_retaliation"
     assert loaded["errors"][0]["error"] == "quota exceeded"
+
+
+def test_write_matrix_outputs_persists_remediation_fields(tmp_path):
+    matrix_rows = [
+        {
+            "preset": "accommodation_focus",
+            "backend_id": "llm-router-codex",
+            "hacc_search_mode": "hybrid",
+            "effective_hacc_search_mode": "lexical_only",
+            "hacc_search_fallback_note": "fallback",
+            "average_score": 0.8,
+            "successful_sessions": 2,
+            "total_sessions": 2,
+            "anchor_coverage": 0.9,
+            "router_status": "available",
+            "top_missing_sections": "appeal_rights (1)",
+            "top_intake_gaps": "anchor_appeal_rights (0/1)",
+            "remediation_focus": "anchor=appeal_rights; intake=anchor_appeal_rights",
+            "coverage_remediation": {
+                "anchor_sections": {"missing_sections": ["appeal_rights"]},
+                "intake_priorities": {"uncovered_objectives": ["anchor_appeal_rights"]},
+            },
+            "missing_sections": "appeal_rights",
+            "output_dir": "/tmp/accommodation_focus",
+            "claim_selection_overview": "winner overview",
+            "relief_selection_overview": "relief overview",
+            "claim_theory_families": ["accommodation"],
+            "synthesis_output_dir": "/tmp/accommodation_focus/complaint_synthesis",
+        }
+    ]
+    full_results = [
+        {
+            "preset": "accommodation_focus",
+            "optimizer_report": {
+                "coverage_remediation": {
+                    "anchor_sections": {"missing_sections": ["appeal_rights"]},
+                    "intake_priorities": {"uncovered_objectives": ["anchor_appeal_rights"]},
+                }
+            },
+            "coverage_remediation": {
+                "anchor_sections": {"missing_sections": ["appeal_rights"]},
+                "intake_priorities": {"uncovered_objectives": ["anchor_appeal_rights"]},
+            },
+        }
+    ]
+    recommendations = {"best_overall": {"preset": "accommodation_focus"}}
+
+    MODULE._write_matrix_outputs(
+        output_dir=tmp_path,
+        requested_presets=["accommodation_focus"],
+        matrix_rows=matrix_rows,
+        full_results=full_results,
+        recommendations=recommendations,
+        winner_delta={},
+        challenger_summary=None,
+        preset_errors=[],
+    )
+
+    summary = __import__("json").loads((tmp_path / "preset_matrix_summary.json").read_text(encoding="utf-8"))
+    csv_text = (tmp_path / "preset_matrix_summary.csv").read_text(encoding="utf-8")
+    markdown = (tmp_path / "preset_matrix_summary.md").read_text(encoding="utf-8")
+
+    assert summary["rows"][0]["top_intake_gaps"] == "anchor_appeal_rights (0/1)"
+    assert summary["rows"][0]["remediation_focus"] == "anchor=appeal_rights; intake=anchor_appeal_rights"
+    assert summary["rows"][0]["coverage_remediation"]["anchor_sections"]["missing_sections"] == ["appeal_rights"]
+    assert summary["full_results"][0]["coverage_remediation"]["intake_priorities"]["uncovered_objectives"] == [
+        "anchor_appeal_rights"
+    ]
+    assert "top_intake_gaps,remediation_focus" in csv_text
+    assert "anchor_appeal_rights (0/1)" in markdown
+    assert "anchor=appeal_rights; intake=anchor_appeal_rights" in markdown

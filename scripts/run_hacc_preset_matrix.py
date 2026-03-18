@@ -298,8 +298,63 @@ def _attach_recommendation_claim_snapshots(
             item["effective_hacc_search_mode"] = row["effective_hacc_search_mode"]
         if row.get("hacc_search_fallback_note"):
             item["hacc_search_fallback_note"] = row["hacc_search_fallback_note"]
+        if row.get("top_intake_gaps"):
+            item["top_intake_gaps"] = row["top_intake_gaps"]
+        if row.get("remediation_focus"):
+            item["remediation_focus"] = row["remediation_focus"]
+        if row.get("coverage_remediation"):
+            item["coverage_remediation"] = row["coverage_remediation"]
         enriched[key] = item
     return enriched
+
+
+def _top_uncovered_objectives(remediation: Dict[str, Any], limit: int = 3) -> str:
+    intake = dict((remediation or {}).get("intake_priorities") or {})
+    actions = [
+        dict(item)
+        for item in list(intake.get("recommended_actions") or [])
+        if isinstance(item, dict)
+    ]
+    if not actions:
+        return ""
+    ranked = sorted(
+        actions,
+        key=lambda item: (
+            -int(item.get("uncovered") or 0),
+            float(item.get("coverage_rate") or 0.0),
+            str(item.get("objective") or ""),
+        ),
+    )
+    return ", ".join(
+        f"{objective} ({int(item.get('covered') or 0)}/{int(item.get('expected') or 0)})"
+        for item in ranked[:limit]
+        for objective in [str(item.get("objective") or "")]
+        if objective
+    )
+
+
+def _coverage_remediation_focus(remediation: Dict[str, Any]) -> str:
+    payload = dict(remediation or {})
+    anchor_sections = [
+        str(value)
+        for value in list(((payload.get("anchor_sections") or {}).get("missing_sections") or []))
+        if str(value)
+    ]
+    intake_objectives = [
+        str(value)
+        for value in list(((payload.get("intake_priorities") or {}).get("uncovered_objectives") or []))
+        if str(value)
+    ]
+    parts: List[str] = []
+    if anchor_sections:
+        parts.append("anchor=" + ", ".join(anchor_sections[:3]))
+    if intake_objectives:
+        parts.append("intake=" + ", ".join(intake_objectives[:3]))
+    if parts:
+        return "; ".join(parts)
+    if int(((payload.get("intake_priorities") or {}).get("sessions_with_full_coverage") or 0)):
+        return "maintain full intake coverage"
+    return ""
 
 
 def _recommendation_use_note(families: List[str]) -> str:
@@ -486,6 +541,8 @@ def _write_matrix_outputs(
         "anchor_coverage",
         "router_status",
         "top_missing_sections",
+        "top_intake_gaps",
+        "remediation_focus",
         "missing_sections",
         "output_dir",
         "claim_selection_overview",
@@ -565,6 +622,7 @@ def _write_markdown_report(
             "hacc_search_mode",
             "effective_hacc_search_mode",
             "hacc_search_fallback_note",
+            "remediation_focus",
         ):
             if best_overall_row.get(field) and not best_overall.get(field):
                 best_overall[field] = best_overall_row[field]
@@ -584,6 +642,8 @@ def _write_markdown_report(
                 )
             if fallback_note:
                 lines.append(f"- Search fallback: {fallback_note}")
+            if best_overall.get("remediation_focus"):
+                lines.append(f"- Coverage remediation: {best_overall['remediation_focus']}")
             has_strategy_summary = bool(best_overall.get("strategy_summary"))
             if has_strategy_summary:
                 lines.append(f"- Strategy summary: {best_overall['strategy_summary']}")
@@ -670,12 +730,12 @@ def _write_markdown_report(
                 )
             lines.extend(["",])
     lines.extend([
-        "| Preset | Backend | Avg Score | Success | Anchor Coverage | Router | Top Missing Sections | Missing Sections | Output Dir |",
-        "| --- | --- | ---: | ---: | ---: | --- | --- | --- | --- |",
+        "| Preset | Backend | Avg Score | Success | Anchor Coverage | Router | Top Missing Sections | Top Intake Gaps | Remediation Focus | Missing Sections | Output Dir |",
+        "| --- | --- | ---: | ---: | ---: | --- | --- | --- | --- | --- | --- |",
     ])
     for row in rows:
         lines.append(
-            "| {preset} | {backend_id} | {average_score:.2f} | {successful_sessions}/{total_sessions} | {anchor_coverage:.2f} | {router_status} | {top_missing_sections} | {missing_sections} | {output_dir} |".format(
+            "| {preset} | {backend_id} | {average_score:.2f} | {successful_sessions}/{total_sessions} | {anchor_coverage:.2f} | {router_status} | {top_missing_sections} | {top_intake_gaps} | {remediation_focus} | {missing_sections} | {output_dir} |".format(
                 preset=row["preset"],
                 backend_id=row.get("backend_id") or "-",
                 average_score=row["average_score"],
@@ -684,6 +744,8 @@ def _write_markdown_report(
                 anchor_coverage=row["anchor_coverage"],
                 router_status=row.get("router_status") or "-",
                 top_missing_sections=row["top_missing_sections"] or "-",
+                top_intake_gaps=row.get("top_intake_gaps") or "-",
+                remediation_focus=row.get("remediation_focus") or "-",
                 missing_sections=row["missing_sections"] or "-",
                 output_dir=row["output_dir"],
             )
@@ -736,6 +798,8 @@ def _write_markdown_report(
                 )
             if fallback_note:
                 lines.append(f"- Search fallback: {fallback_note}")
+            if row.get("remediation_focus"):
+                lines.append(f"- Coverage remediation: {row['remediation_focus']}")
             has_strategy_summary = bool(snapshot_notes.get("strategy_summary"))
             if has_strategy_summary:
                 lines.append(f"- Strategy summary: {snapshot_notes['strategy_summary']}")
@@ -799,6 +863,8 @@ def _write_markdown_report(
                 "",
                 f"- Overview: {champion_best['claim_selection_overview']}",
             ])
+            if champion_best.get("remediation_focus"):
+                lines.append(f"- Coverage remediation: {champion_best['remediation_focus']}")
             champion_has_strategy_summary = bool(champion_best.get("strategy_summary"))
             if champion_has_strategy_summary:
                 lines.append(f"- Strategy summary: {champion_best['strategy_summary']}")
@@ -1268,6 +1334,9 @@ def _run_preset_batch(
     avg_anchor_coverage = sum(coverage_rates) / len(coverage_rates) if coverage_rates else 0.0
     missing_sections = ",".join(sorted((anchor_sections.get("missing_counts", {}) or {}).keys()))
     top_missing_sections = _top_missing_sections(anchor_sections)
+    coverage_remediation = dict(optimizer_report.get("coverage_remediation") or {})
+    top_intake_gaps = _top_uncovered_objectives(coverage_remediation)
+    remediation_focus = _coverage_remediation_focus(coverage_remediation)
     synthesis_snapshot = _synthesize_claim_selection_snapshot(
         preset=preset,
         preset_dir=preset_dir,
@@ -1286,11 +1355,14 @@ def _run_preset_batch(
         "total_sessions": int(statistics.get("total_sessions", 0) or 0),
         "anchor_coverage": avg_anchor_coverage,
         "top_missing_sections": top_missing_sections,
+        "top_intake_gaps": top_intake_gaps,
+        "remediation_focus": remediation_focus,
         "missing_sections": missing_sections,
         "output_dir": str(preset_dir),
         "router_status": router_status,
         "statistics": statistics,
         "optimizer_report": optimizer_report,
+        "coverage_remediation": coverage_remediation,
         "router_report": router_report,
         "backend_probe_attempts": backend_probe_attempts,
         "runtime": runtime_health,
@@ -1400,6 +1472,9 @@ def _rebuild_batch_result_from_preset_dir(
     }
     top_missing_sections = _top_missing_sections(anchor_sections)
     missing_sections = ",".join(sorted(anchor_sections_missing.keys()))
+    coverage_remediation = dict(optimizer_report.get("coverage_remediation") or {})
+    top_intake_gaps = _top_uncovered_objectives(coverage_remediation)
+    remediation_focus = _coverage_remediation_focus(coverage_remediation)
 
     return {
         "preset": preset,
@@ -1413,6 +1488,8 @@ def _rebuild_batch_result_from_preset_dir(
         "total_sessions": len(sessions),
         "anchor_coverage": avg_anchor_coverage,
         "top_missing_sections": top_missing_sections,
+        "top_intake_gaps": top_intake_gaps,
+        "remediation_focus": remediation_focus,
         "missing_sections": missing_sections,
         "output_dir": str(preset_dir),
         "router_status": router_status,
@@ -1422,6 +1499,7 @@ def _rebuild_batch_result_from_preset_dir(
         "search_summary": search_summary,
         "statistics": statistics,
         "optimizer_report": optimizer_report,
+        "coverage_remediation": coverage_remediation,
         "claim_selection_summary": synthesis_snapshot["claim_selection_summary"],
         "claim_selection_overview": synthesis_snapshot["claim_selection_overview"],
         "relief_selection_summary": synthesis_snapshot["relief_selection_summary"],
@@ -1581,6 +1659,9 @@ def main() -> int:
             "anchor_coverage": batch_result["anchor_coverage"],
             "router_status": batch_result["router_status"],
             "top_missing_sections": batch_result["top_missing_sections"],
+            "top_intake_gaps": batch_result["top_intake_gaps"],
+            "remediation_focus": batch_result["remediation_focus"],
+            "coverage_remediation": batch_result["coverage_remediation"],
             "missing_sections": batch_result["missing_sections"],
             "output_dir": batch_result["output_dir"],
             "claim_selection_overview": batch_result["claim_selection_overview"],
@@ -1600,6 +1681,7 @@ def main() -> int:
                 "backend_probe_attempts": batch_result["backend_probe_attempts"],
                 "statistics": batch_result["statistics"],
                 "optimizer_report": batch_result["optimizer_report"],
+                "coverage_remediation": batch_result["coverage_remediation"],
                 "output_dir": batch_result["output_dir"],
                 "router_report": batch_result["router_report"],
                 "runtime": batch_result.get("runtime", {}),
@@ -1702,6 +1784,9 @@ def main() -> int:
                         "total_sessions",
                         "anchor_coverage",
                         "top_missing_sections",
+                        "top_intake_gaps",
+                        "remediation_focus",
+                        "coverage_remediation",
                         "missing_sections",
                         "output_dir",
                         "router_status",
@@ -1723,6 +1808,9 @@ def main() -> int:
                     "relief_selection_summary": batch_result["relief_selection_summary"],
                     "relief_selection_overview": batch_result["relief_selection_overview"],
                     "claim_theory_families": batch_result["claim_theory_families"],
+                    "coverage_remediation": batch_result["coverage_remediation"],
+                    "top_intake_gaps": batch_result["top_intake_gaps"],
+                    "remediation_focus": batch_result["remediation_focus"],
                 }
             )
 
@@ -1797,6 +1885,7 @@ def main() -> int:
             f"anchor_coverage={row['anchor_coverage']:.2f}, "
             f"router={row.get('router_status') or '-'}, "
             f"top_missing={row['top_missing_sections'] or '-'}, "
+            f"top_intake={row.get('top_intake_gaps') or '-'}, "
             f"success={row['successful_sessions']}/{row['total_sessions']}"
         )
     if challenger_summary:
