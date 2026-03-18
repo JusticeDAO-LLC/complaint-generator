@@ -383,6 +383,7 @@ class TestScalingCharacteristics:
     def test_lookup_scales_sublinearly(self, loader):
         """Entity lookup should scale sublinearly with total entities."""
         lookup_times = {}
+        repeat_count = 200
         
         with patch.object(loader, 'driver') as mock_driver:
             mock_session = MagicMock()
@@ -393,10 +394,11 @@ class TestScalingCharacteristics:
                 entity_id = f"entity_{entity_count // 2}"
                 entity_data = _create_entity_dict(entity_id, "Entity")
                 mock_session.run.return_value.data.return_value = [entity_data]
-                
-                start_time = time.time()
-                result = loader.get_entity(entity_id)
-                lookup_times[entity_count] = time.time() - start_time
+
+                start_time = time.perf_counter()
+                for _ in range(repeat_count):
+                    result = loader.get_entity(entity_id)
+                lookup_times[entity_count] = (time.perf_counter() - start_time) / repeat_count
             
             # 10x entity increase should not cause 10x lookup slowdown (mocks are reasonably consistent)
             # With mocking overhead, we allow more variance (up to 5x)

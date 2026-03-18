@@ -105,10 +105,22 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
             "target_claim_type_counts": {"retaliation": 1},
             "target_element_id_counts": {"protected_activity": 1},
         },
+        "temporal_fact_registry_summary": {
+            "count": 1,
+            "facts": [{"temporal_fact_id": "fact_1", "temporal_status": "anchored"}],
+        },
         "timeline_anchor_summary": {"count": 1, "anchors": [{"anchor_id": "timeline_anchor_001"}]},
+        "temporal_relation_registry_summary": {
+            "count": 1,
+            "relations": [{"relation_id": "timeline_relation_001", "inference_basis": "normalized_temporal_context"}],
+        },
         "timeline_relation_summary": {
             "count": 1,
             "relations": [{"relation_id": "timeline_relation_001", "relation_type": "before"}],
+        },
+        "temporal_issue_registry_summary": {
+            "count": 1,
+            "issues": [{"issue_id": "temporal_issue:relative_only_ordering:fact_3", "issue_type": "relative_only_ordering"}],
         },
         "timeline_consistency_summary": {
             "event_count": 2,
@@ -317,10 +329,22 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["canonical_fact_intent_summary"]["question_objective_counts"]["satisfy_claim_requirement"] == 1
     assert summary["proof_lead_summary"]["count"] == 1
     assert summary["proof_lead_intent_summary"]["question_objective_counts"]["identify_supporting_evidence"] == 1
+    assert summary["temporal_fact_registry_summary"] == {
+        "count": 1,
+        "facts": [{"temporal_fact_id": "fact_1", "temporal_status": "anchored"}],
+    }
     assert summary["timeline_anchor_summary"]["count"] == 1
+    assert summary["temporal_relation_registry_summary"] == {
+        "count": 1,
+        "relations": [{"relation_id": "timeline_relation_001", "inference_basis": "normalized_temporal_context"}],
+    }
     assert summary["timeline_relation_summary"] == {
         "count": 1,
         "relations": [{"relation_id": "timeline_relation_001", "relation_type": "before"}],
+    }
+    assert summary["temporal_issue_registry_summary"] == {
+        "count": 1,
+        "issues": [{"issue_id": "temporal_issue:relative_only_ordering:fact_3", "issue_type": "relative_only_ordering"}],
     }
     assert summary["timeline_consistency_summary"] == {
         "event_count": 2,

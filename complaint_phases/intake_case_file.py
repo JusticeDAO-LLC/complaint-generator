@@ -29,6 +29,38 @@ def _coerce_dict(value: Any) -> Dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _coerce_provenance_refs(value: Any) -> List[Any]:
+    refs: List[Any] = []
+    seen = set()
+    for item in value if isinstance(value, list) else []:
+        if isinstance(item, dict):
+            normalized_item = {
+                key: (_normalize_text(val) if isinstance(val, str) else val)
+                for key, val in item.items()
+            }
+            marker = tuple(sorted(normalized_item.items()))
+            if marker in seen:
+                continue
+            seen.add(marker)
+            refs.append(normalized_item)
+            continue
+        normalized = _normalize_text(item)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        refs.append(normalized)
+    return refs
+
+
+def _unique_normalized_strings(values: Any) -> List[str]:
+    normalized_values: List[str] = []
+    for value in values if isinstance(values, list) else []:
+        normalized = _normalize_text(value)
+        if normalized and normalized not in normalized_values:
+            normalized_values.append(normalized)
+    return normalized_values
+
+
 def _coerce_confirmation_record(value: Any) -> Dict[str, Any]:
     record = _coerce_dict(value)
     return {
@@ -294,6 +326,14 @@ def _normalize_canonical_fact_record(record: Any) -> Dict[str, Any]:
         raw_event_date_or_range,
         fallback_text=normalized_text if fact_type == "timeline" else "",
     )
+    source_artifact_ids = _unique_normalized_strings(
+        list(fact.get("source_artifact_ids") or [])
+        + ([fact.get("source_artifact_id")] if str(fact.get("source_artifact_id") or "").strip() else [])
+    )
+    testimony_record_ids = _unique_normalized_strings(
+        list(fact.get("testimony_record_ids") or [])
+        + ([fact.get("testimony_record_id")] if str(fact.get("testimony_record_id") or "").strip() else [])
+    )
     return {
         **fact,
         "text": normalized_text,
@@ -305,6 +345,15 @@ def _normalize_canonical_fact_record(record: Any) -> Dict[str, Any]:
         "element_tags": list(fact.get("element_tags") or []),
         "location": _normalize_text(fact.get("location") or "") or None,
         "fact_participants": _coerce_dict(fact.get("fact_participants")),
+        "event_label": _normalize_text(fact.get("event_label") or normalized_text) or None,
+        "predicate_family": _normalize_text(fact.get("predicate_family") or fact_type).lower() or fact_type,
+        "source_artifact_ids": source_artifact_ids,
+        "testimony_record_ids": testimony_record_ids,
+        "source_span_refs": _coerce_provenance_refs(fact.get("source_span_refs")),
+        "confidence": fact.get("confidence"),
+        "validation_status": _normalize_text(
+            fact.get("validation_status") or fact.get("status") or "accepted"
+        ).lower() or "accepted",
         "temporal_context": temporal_context,
     }
 
@@ -324,6 +373,15 @@ def _normalize_proof_lead_record(record: Any) -> Dict[str, Any]:
         "fact_targets": list(lead.get("fact_targets") or []),
         "element_targets": list(lead.get("element_targets") or []),
         "timeline_anchor_ids": list(lead.get("timeline_anchor_ids") or []),
+        "source_artifact_ids": _unique_normalized_strings(
+            list(lead.get("source_artifact_ids") or [])
+            + ([lead.get("source_artifact_id")] if str(lead.get("source_artifact_id") or "").strip() else [])
+        ),
+        "testimony_record_ids": _unique_normalized_strings(
+            list(lead.get("testimony_record_ids") or [])
+            + ([lead.get("testimony_record_id")] if str(lead.get("testimony_record_id") or "").strip() else [])
+        ),
+        "source_span_refs": _coerce_provenance_refs(lead.get("source_span_refs")),
         "temporal_scope": raw_temporal_scope,
         "temporal_context": _build_temporal_context(raw_temporal_scope),
     }
@@ -430,6 +488,217 @@ def build_timeline_relations(canonical_facts: List[Dict[str, Any]]) -> List[Dict
         relation["relation_id"] = f"timeline_relation_{len(relations) + 1:03d}"
         relations.append(relation)
     return relations
+
+
+def build_temporal_fact_registry(
+    canonical_facts: List[Dict[str, Any]],
+    timeline_anchors: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    anchor_ids_by_fact_id: Dict[str, List[str]] = {}
+    for anchor in timeline_anchors if isinstance(timeline_anchors, list) else []:
+        if not isinstance(anchor, dict):
+            continue
+        fact_id = _normalize_text(anchor.get("fact_id") or "")
+        anchor_id = _normalize_text(anchor.get("anchor_id") or "")
+        if not fact_id or not anchor_id:
+            continue
+        anchor_ids_by_fact_id.setdefault(fact_id, []).append(anchor_id)
+
+    registry: List[Dict[str, Any]] = []
+    for index, fact in enumerate(_timeline_capable_facts(canonical_facts), start=1):
+        fact_id = _normalize_text(fact.get("fact_id") or "") or f"temporal_fact_{index:03d}"
+        temporal_context = _coerce_dict(fact.get("temporal_context"))
+        if temporal_context.get("start_date"):
+            temporal_status = "anchored"
+        elif temporal_context.get("relative_markers"):
+            temporal_status = "relative_only"
+        else:
+            temporal_status = "missing_anchor"
+
+        registry.append(
+            {
+                **fact,
+                "fact_id": fact_id,
+                "temporal_fact_id": fact_id,
+                "registry_version": "temporal_fact_registry.v1",
+                "claim_types": _unique_normalized_strings(fact.get("claim_types") or []),
+                "element_tags": _unique_normalized_strings(fact.get("element_tags") or []),
+                "actor_ids": _unique_normalized_strings(fact.get("actor_ids") or []),
+                "target_ids": _unique_normalized_strings(fact.get("target_ids") or []),
+                "event_label": _normalize_text(fact.get("event_label") or fact.get("text") or fact_id) or fact_id,
+                "predicate_family": _normalize_text(fact.get("predicate_family") or fact.get("fact_type") or "timeline").lower() or "timeline",
+                "start_time": temporal_context.get("start_date"),
+                "end_time": temporal_context.get("end_date"),
+                "granularity": temporal_context.get("granularity") or "unknown",
+                "is_approximate": bool(temporal_context.get("is_approximate", False)),
+                "is_range": bool(temporal_context.get("is_range", False)),
+                "relative_markers": _unique_normalized_strings(temporal_context.get("relative_markers") or []),
+                "timeline_anchor_ids": list(anchor_ids_by_fact_id.get(fact_id, [])),
+                "temporal_context": temporal_context,
+                "temporal_status": temporal_status,
+                "source_artifact_ids": _unique_normalized_strings(fact.get("source_artifact_ids") or []),
+                "testimony_record_ids": _unique_normalized_strings(fact.get("testimony_record_ids") or []),
+                "source_span_refs": _coerce_provenance_refs(fact.get("source_span_refs")),
+                "confidence": fact.get("confidence"),
+                "validation_status": _normalize_text(
+                    fact.get("validation_status") or fact.get("status") or "accepted"
+                ).lower() or "accepted",
+                "source_kind": _normalize_text(fact.get("source_kind") or "") or None,
+                "source_ref": _normalize_text(fact.get("source_ref") or "") or None,
+            }
+        )
+    return registry
+
+
+def build_temporal_relation_registry(
+    canonical_facts: List[Dict[str, Any]],
+    timeline_relations: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    fact_index = {
+        _normalize_text(fact.get("fact_id") or ""): fact
+        for fact in _timeline_capable_facts(canonical_facts)
+        if _normalize_text(fact.get("fact_id") or "")
+    }
+    registry: List[Dict[str, Any]] = []
+    for index, relation in enumerate(timeline_relations if isinstance(timeline_relations, list) else [], start=1):
+        if not isinstance(relation, dict):
+            continue
+        relation_id = _normalize_text(relation.get("relation_id") or "") or f"timeline_relation_{index:03d}"
+        source_fact_id = _normalize_text(relation.get("source_fact_id") or "")
+        target_fact_id = _normalize_text(relation.get("target_fact_id") or "")
+        source_fact = _coerce_dict(fact_index.get(source_fact_id))
+        target_fact = _coerce_dict(fact_index.get(target_fact_id))
+        claim_types = _unique_normalized_strings(
+            list(source_fact.get("claim_types") or []) + list(target_fact.get("claim_types") or [])
+        )
+        element_tags = _unique_normalized_strings(
+            list(source_fact.get("element_tags") or []) + list(target_fact.get("element_tags") or [])
+        )
+        source_artifact_ids = _unique_normalized_strings(
+            list(source_fact.get("source_artifact_ids") or [])
+            + list(target_fact.get("source_artifact_ids") or [])
+        )
+        testimony_record_ids = _unique_normalized_strings(
+            list(source_fact.get("testimony_record_ids") or [])
+            + list(target_fact.get("testimony_record_ids") or [])
+        )
+        registry.append(
+            {
+                **relation,
+                "relation_id": relation_id,
+                "registry_version": "temporal_relation_registry.v1",
+                "source_fact_id": source_fact_id,
+                "target_fact_id": target_fact_id,
+                "source_temporal_fact_id": str(source_fact.get("temporal_fact_id") or source_fact_id or "") or None,
+                "target_temporal_fact_id": str(target_fact.get("temporal_fact_id") or target_fact_id or "") or None,
+                "claim_types": claim_types,
+                "element_tags": element_tags,
+                "source_fact_text": _normalize_text(source_fact.get("text") or "") or None,
+                "target_fact_text": _normalize_text(target_fact.get("text") or "") or None,
+                "source_artifact_ids": source_artifact_ids,
+                "testimony_record_ids": testimony_record_ids,
+                "source_span_refs": _coerce_provenance_refs(
+                    list(source_fact.get("source_span_refs") or [])
+                    + list(target_fact.get("source_span_refs") or [])
+                ),
+                "inference_mode": "derived_from_temporal_context",
+                "inference_basis": "normalized_temporal_context",
+                "explanation": (
+                    f"{source_fact_id or 'unknown_fact'} {str(relation.get('relation_type') or 'related_to')} "
+                    f"{target_fact_id or 'unknown_fact'} based on normalized temporal context."
+                ),
+            }
+        )
+    return registry
+
+
+def build_temporal_issue_registry(
+    canonical_facts: List[Dict[str, Any]],
+    contradiction_queue: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    registry: List[Dict[str, Any]] = []
+    seen_issue_ids = set()
+
+    for fact in _timeline_capable_facts(canonical_facts):
+        fact_id = _normalize_text(fact.get("fact_id") or "")
+        temporal_context = _coerce_dict(fact.get("temporal_context"))
+        if temporal_context.get("start_date"):
+            continue
+
+        relative_markers = _unique_normalized_strings(temporal_context.get("relative_markers") or [])
+        issue_type = "relative_only_ordering" if relative_markers else "missing_anchor"
+        issue_id = f"temporal_issue:{issue_type}:{fact_id or len(registry) + 1}"
+        if issue_id in seen_issue_ids:
+            continue
+        seen_issue_ids.add(issue_id)
+
+        summary = (
+            f"Timeline fact {fact_id or 'unidentified_fact'} only has relative ordering and still needs anchoring."
+            if relative_markers
+            else f"Timeline fact {fact_id or 'unidentified_fact'} still lacks a normalized temporal anchor."
+        )
+        registry.append(
+            {
+                "issue_id": issue_id,
+                "registry_version": "temporal_issue_registry.v1",
+                "issue_type": issue_type,
+                "category": issue_type,
+                "summary": summary,
+                "severity": "blocking",
+                "blocking": True,
+                "recommended_resolution_lane": "clarify_with_complainant",
+                "fact_ids": [fact_id] if fact_id else [],
+                "claim_types": _unique_normalized_strings(fact.get("claim_types") or []),
+                "element_tags": _unique_normalized_strings(fact.get("element_tags") or []),
+                "left_node_name": _normalize_text(fact.get("text") or "") or None,
+                "right_node_name": None,
+                "status": "open",
+                "relative_markers": relative_markers,
+                "source_kind": "temporal_fact_registry",
+                "source_ref": fact_id or None,
+                "inference_mode": "derived_from_temporal_context",
+            }
+        )
+
+    for contradiction in contradiction_queue if isinstance(contradiction_queue, list) else []:
+        candidate = _coerce_dict(contradiction)
+        category = _normalize_text(candidate.get("category") or candidate.get("type") or "").lower()
+        if not category.startswith("temporal"):
+            continue
+        issue_id = _normalize_text(candidate.get("contradiction_id") or candidate.get("dependency_id") or "")
+        issue_id = issue_id or f"temporal_issue:{category}:{len(registry) + 1}"
+        if issue_id in seen_issue_ids:
+            continue
+        seen_issue_ids.add(issue_id)
+        registry.append(
+            {
+                "issue_id": issue_id,
+                "registry_version": "temporal_issue_registry.v1",
+                "issue_type": category,
+                "category": category,
+                "summary": _normalize_text(candidate.get("summary") or candidate.get("topic") or category),
+                "severity": _normalize_text(candidate.get("severity") or "important").lower() or "important",
+                "blocking": _normalize_text(candidate.get("severity") or "").lower() == "blocking",
+                "recommended_resolution_lane": _normalize_text(
+                    candidate.get("recommended_resolution_lane") or "clarify_with_complainant"
+                ).lower() or "clarify_with_complainant",
+                "fact_ids": _unique_normalized_strings(candidate.get("fact_ids") or []),
+                "claim_types": _unique_normalized_strings(
+                    candidate.get("affected_claim_types") or candidate.get("claim_types") or []
+                ),
+                "element_tags": _unique_normalized_strings(
+                    candidate.get("affected_element_ids") or candidate.get("element_tags") or []
+                ),
+                "left_node_name": _normalize_text(candidate.get("left_node_name") or "") or None,
+                "right_node_name": _normalize_text(candidate.get("right_node_name") or "") or None,
+                "status": _normalize_text(candidate.get("current_resolution_status") or candidate.get("status") or "open").lower() or "open",
+                "source_kind": "contradiction_queue",
+                "source_ref": _normalize_text(candidate.get("contradiction_id") or candidate.get("dependency_id") or "") or None,
+                "inference_mode": "imported_temporal_contradiction",
+            }
+        )
+
+    return registry
 
 
 def build_timeline_consistency_summary(
@@ -1019,6 +1288,9 @@ def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[st
     proof_leads = build_proof_leads(knowledge_graph)
     timeline_anchors = build_timeline_anchors(canonical_facts)
     timeline_relations = build_timeline_relations(canonical_facts)
+    temporal_fact_registry = build_temporal_fact_registry(canonical_facts, timeline_anchors)
+    temporal_relation_registry = build_temporal_relation_registry(canonical_facts, timeline_relations)
+    temporal_issue_registry = build_temporal_issue_registry(canonical_facts, [])
     proof_leads = _link_proof_leads_to_timeline_anchors(proof_leads, timeline_anchors)
     intake_sections = build_intake_sections(
         knowledge_graph,
@@ -1035,6 +1307,9 @@ def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[st
         "canonical_facts": canonical_facts,
         "timeline_anchors": timeline_anchors,
         "timeline_relations": timeline_relations,
+        "temporal_fact_registry": temporal_fact_registry,
+        "temporal_relation_registry": temporal_relation_registry,
+        "temporal_issue_registry": temporal_issue_registry,
         "timeline_consistency_summary": build_timeline_consistency_summary(
             canonical_facts,
             timeline_anchors,
@@ -1085,6 +1360,18 @@ def refresh_intake_case_file(intake_case_file: Dict[str, Any], knowledge_graph, 
     case_file["intake_sections"] = refresh_intake_sections(case_file, knowledge_graph)
     case_file["timeline_anchors"] = build_timeline_anchors(_coerce_list(case_file.get("canonical_facts")))
     case_file["timeline_relations"] = build_timeline_relations(_coerce_list(case_file.get("canonical_facts")))
+    case_file["temporal_fact_registry"] = build_temporal_fact_registry(
+        _coerce_list(case_file.get("canonical_facts")),
+        _coerce_list(case_file.get("timeline_anchors")),
+    )
+    case_file["temporal_relation_registry"] = build_temporal_relation_registry(
+        _coerce_list(case_file.get("canonical_facts")),
+        _coerce_list(case_file.get("timeline_relations")),
+    )
+    case_file["temporal_issue_registry"] = build_temporal_issue_registry(
+        _coerce_list(case_file.get("canonical_facts")),
+        _coerce_list(case_file.get("contradiction_queue")),
+    )
     case_file["proof_leads"] = _link_proof_leads_to_timeline_anchors(
         _coerce_list(case_file.get("proof_leads")),
         _coerce_list(case_file.get("timeline_anchors")),

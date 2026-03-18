@@ -7383,6 +7383,9 @@ class Mediator:
 		candidate_claims = intake_case_file.get('candidate_claims', []) if isinstance(intake_case_file, dict) else []
 		canonical_facts = intake_case_file.get('canonical_facts', []) if isinstance(intake_case_file, dict) else []
 		proof_leads = intake_case_file.get('proof_leads', []) if isinstance(intake_case_file, dict) else []
+		temporal_fact_registry = intake_case_file.get('temporal_fact_registry', []) if isinstance(intake_case_file, dict) else []
+		temporal_relation_registry = intake_case_file.get('temporal_relation_registry', []) if isinstance(intake_case_file, dict) else []
+		temporal_issue_registry = intake_case_file.get('temporal_issue_registry', []) if isinstance(intake_case_file, dict) else []
 		question_candidates = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'question_candidates') or []
 		adversarial_intake_priority_summary = (
 			self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'adversarial_intake_priority_summary') or {}
@@ -7421,13 +7424,25 @@ class Mediator:
 				'proof_leads': proof_leads,
 			},
 			'proof_lead_intent_summary': self._summarize_intake_record_intents(proof_leads),
+			'temporal_fact_registry_summary': {
+				'count': len(temporal_fact_registry) if isinstance(temporal_fact_registry, list) else 0,
+				'facts': temporal_fact_registry if isinstance(temporal_fact_registry, list) else [],
+			},
 			'timeline_anchor_summary': {
 				'count': len(timeline_anchors) if isinstance(timeline_anchors, list) else 0,
 				'anchors': timeline_anchors if isinstance(timeline_anchors, list) else [],
 			},
+			'temporal_relation_registry_summary': {
+				'count': len(temporal_relation_registry) if isinstance(temporal_relation_registry, list) else 0,
+				'relations': temporal_relation_registry if isinstance(temporal_relation_registry, list) else [],
+			},
 			'timeline_relation_summary': {
 				'count': len(timeline_relations) if isinstance(timeline_relations, list) else 0,
 				'relations': timeline_relations if isinstance(timeline_relations, list) else [],
+			},
+			'temporal_issue_registry_summary': {
+				'count': len(temporal_issue_registry) if isinstance(temporal_issue_registry, list) else 0,
+				'issues': temporal_issue_registry if isinstance(temporal_issue_registry, list) else [],
 			},
 			'timeline_consistency_summary': (
 				timeline_consistency_summary if isinstance(timeline_consistency_summary, dict) else {}

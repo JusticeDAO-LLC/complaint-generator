@@ -8,6 +8,8 @@ from unittest.mock import Mock, patch
 import duckdb
 import pytest
 
+from complaint_analysis.temporal_rule_profiles import evaluate_temporal_rule_profile
+
 
 pytestmark = pytest.mark.no_auto_network
 
@@ -2274,7 +2276,6 @@ class TestClaimSupportHook:
                         'implementation_status': 'not_implemented',
                     },
                 }
-
             def _capture_prove(predicates):
                 captured['predicates'] = predicates
                 return {
@@ -2372,9 +2373,435 @@ class TestClaimSupportHook:
                 'relation_type_counts': {'before': 1},
                 'relation_preview': ['fact_1 before fact_2'],
             }
+            assert diagnostics['temporal_rule_profile'] == {
+                'available': True,
+                'evaluated': True,
+                'profile_id': 'retaliation_temporal_profile_v1',
+                'rule_frame_id': 'retaliation_temporal_frame',
+                'claim_type': 'retaliation',
+                'element_role': 'protected_activity',
+                'status': 'satisfied',
+                'matched_fact_ids': ['fact_1'],
+                'matched_relation_ids': [],
+                'blocking_reasons': [],
+                'warnings': [],
+                'recommended_follow_ups': [],
+            }
+            assert diagnostics['temporal_proof_bundle'] == {
+                'proof_bundle_id': 'retaliation:retaliation_1:retaliation_temporal_profile_v1',
+                'claim_type': 'retaliation',
+                'claim_element_id': 'retaliation:1',
+                'claim_element_text': 'Protected activity',
+                'profile_id': 'retaliation_temporal_profile_v1',
+                'rule_frame_id': 'retaliation_temporal_frame',
+                'element_role': 'protected_activity',
+                'status': 'satisfied',
+                'available': True,
+                'matched_fact_ids': ['fact_1'],
+                'matched_relation_ids': [],
+                'temporal_fact_ids': ['fact_1', 'fact_2'],
+                'temporal_relation_ids': ['timeline_relation_001'],
+                'temporal_issue_ids': ['temporal_reverse_before_001'],
+                'source_artifact_ids': [],
+                'testimony_record_ids': [],
+                'blocking_reasons': [],
+                'warnings': [],
+                'recommended_follow_ups': [],
+                'theorem_exports': {
+                    'tdfol_formulas': ['ProtectedActivity(fact_1)', 'AdverseAction(fact_2)', 'Before(fact_1,fact_2)'],
+                    'dcec_formulas': ['Happens(fact_1,t_2025_03_01)', 'Happens(fact_2,t_2025_04_15)'],
+                },
+                'theorem_export_counts': {
+                    'tdfol_formula_count': 3,
+                    'dcec_formula_count': 2,
+                },
+            }
+            temporal_fact_predicate = next(
+                predicate for predicate in captured['predicates']
+                if isinstance(predicate, dict) and predicate.get('predicate_type') == 'temporal_fact'
+            )
+            assert temporal_fact_predicate['event_label'] == 'Employee complained to HR.'
+            assert temporal_fact_predicate['predicate_family'] == 'timeline'
+            assert temporal_fact_predicate['source_artifact_ids'] == []
+            assert temporal_fact_predicate['testimony_record_ids'] == []
+            assert temporal_fact_predicate['source_span_refs'] == []
+            temporal_relation_predicate = next(
+                predicate for predicate in captured['predicates']
+                if isinstance(predicate, dict) and predicate.get('predicate_type') == 'temporal_relation'
+            )
+            assert temporal_relation_predicate['inference_mode'] == 'derived_from_temporal_context'
+            assert temporal_relation_predicate['inference_basis'] == 'normalized_temporal_context'
+            assert temporal_relation_predicate['explanation'] == 'fact_1 before fact_2 based on normalized temporal context.'
+            temporal_issue_predicate = next(
+                predicate for predicate in captured['predicates']
+                if isinstance(predicate, dict) and predicate.get('predicate_type') == 'temporal_issue'
+            )
+            assert temporal_issue_predicate['source_kind'] == 'contradiction_queue'
+            assert temporal_issue_predicate['inference_mode'] == 'imported_temporal_contradiction'
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)
+
+    def test_evaluate_temporal_rule_profile_for_retaliation_causation_reports_partial_order_gap(self):
+        profile = evaluate_temporal_rule_profile(
+            'retaliation',
+            {
+                'element_id': 'retaliation:3',
+                'element_text': 'Causal connection',
+            },
+            {
+                'temporal_facts': [
+                    {
+                        'fact_id': 'fact_1',
+                        'element_tags': ['protected_activity'],
+                        'temporal_context': {'start_date': '2025-03-01'},
+                    },
+                    {
+                        'fact_id': 'fact_2',
+                        'element_tags': ['adverse_action'],
+                        'temporal_context': {'start_date': '2025-04-15'},
+                    },
+                ],
+                'temporal_relations': [],
+                'temporal_issues': [],
+            },
+        )
+
+        assert profile == {
+            'available': True,
+            'evaluated': True,
+            'profile_id': 'retaliation_temporal_profile_v1',
+            'rule_frame_id': 'retaliation_temporal_frame',
+            'claim_type': 'retaliation',
+            'element_role': 'causal_connection',
+            'status': 'partial',
+            'matched_fact_ids': ['fact_1', 'fact_2'],
+            'matched_relation_ids': [],
+            'blocking_reasons': [
+                'Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.'
+            ],
+            'warnings': [
+                'Protected activity and adverse action are both present but lack an ordering relation.'
+            ],
+            'recommended_follow_ups': [
+                {
+                    'lane': 'clarify_with_complainant',
+                    'reason': 'Clarify whether the protected activity occurred before the adverse action.',
+                }
+            ],
+        }
+
+    def test_get_temporal_reasoning_context_prefers_temporal_registries(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.get_three_phase_status = Mock(return_value={
+            'canonical_fact_summary': {'count': 0, 'facts': []},
+            'proof_lead_summary': {
+                'proof_leads': [
+                    {
+                        'lead_id': 'lead_1',
+                        'description': 'Timeline email',
+                        'claim_type': 'retaliation',
+                        'element_targets': ['protected_activity'],
+                        'related_fact_ids': ['fact_1'],
+                        'temporal_scope': 'March 2025',
+                        'temporal_context': {
+                            'start_date': '2025-03-01',
+                            'end_date': '2025-03-31',
+                            'granularity': 'month',
+                            'is_approximate': False,
+                            'is_range': False,
+                            'relative_markers': [],
+                        },
+                    },
+                ],
+            },
+            'temporal_fact_registry_summary': {
+                'count': 1,
+                'facts': [
+                    {
+                        'fact_id': 'fact_1',
+                        'temporal_fact_id': 'fact_1',
+                        'text': 'Employee complained to HR.',
+                        'fact_type': 'timeline',
+                        'claim_types': ['retaliation'],
+                        'element_tags': ['protected_activity'],
+                        'temporal_context': {
+                            'start_date': '2025-03-01',
+                            'end_date': '2025-03-01',
+                            'granularity': 'day',
+                            'is_approximate': False,
+                            'is_range': False,
+                            'relative_markers': [],
+                        },
+                    },
+                ],
+            },
+            'timeline_relation_summary': {'count': 0, 'relations': []},
+            'temporal_relation_registry_summary': {
+                'count': 1,
+                'relations': [
+                    {
+                        'relation_id': 'timeline_relation_001',
+                        'source_fact_id': 'fact_1',
+                        'target_fact_id': 'fact_1',
+                        'relation_type': 'same_time',
+                        'source_start_date': '2025-03-01',
+                        'source_end_date': '2025-03-01',
+                        'target_start_date': '2025-03-01',
+                        'target_end_date': '2025-03-01',
+                        'claim_types': ['retaliation'],
+                        'element_tags': ['protected_activity'],
+                        'confidence': 'high',
+                    },
+                ],
+            },
+            'timeline_consistency_summary': {
+                'event_count': 1,
+                'relation_count': 1,
+                'partial_order_ready': False,
+                'warnings': ['Need date corroboration.'],
+            },
+            'temporal_issue_registry_summary': {
+                'count': 1,
+                'issues': [
+                    {
+                        'issue_id': 'temporal_issue:relative_only_ordering:fact_1',
+                        'issue_type': 'relative_only_ordering',
+                        'category': 'relative_only_ordering',
+                        'summary': 'Timeline fact fact_1 only has relative ordering and still needs anchoring.',
+                        'severity': 'blocking',
+                        'recommended_resolution_lane': 'clarify_with_complainant',
+                        'fact_ids': ['fact_1'],
+                        'claim_types': ['retaliation'],
+                        'element_tags': ['protected_activity'],
+                    },
+                ],
+            },
+            'intake_contradictions': {'candidates': []},
+        })
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            context = hook._get_temporal_reasoning_context(
+                'retaliation',
+                {
+                    'element_id': 'protected_activity',
+                    'element_text': 'Protected activity',
+                },
+            )
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+        assert [fact['fact_id'] for fact in context['temporal_facts']] == ['fact_1']
+        assert [relation['relation_id'] for relation in context['temporal_relations']] == ['timeline_relation_001']
+        assert [issue['issue_type'] for issue in context['temporal_issues']] == ['relative_only_ordering']
+        assert context['consistency_summary']['warning_count'] == 1
+
+    def test_retaliation_temporal_rule_profile_requires_ordering_for_causation(self):
+        profile = evaluate_temporal_rule_profile(
+            'retaliation',
+            {
+                'element_id': 'causation',
+                'element_text': 'Causal connection',
+            },
+            {
+                'temporal_facts': [
+                    {
+                        'fact_id': 'fact_1',
+                        'element_tags': ['protected_activity'],
+                        'temporal_context': {'start_date': '2025-03-01'},
+                    },
+                    {
+                        'fact_id': 'fact_2',
+                        'element_tags': ['adverse_action'],
+                        'temporal_context': {'start_date': '2025-04-15'},
+                    },
+                ],
+                'temporal_relations': [],
+                'temporal_issues': [],
+            },
+        )
+
+        assert profile['available'] is True
+        assert profile['evaluated'] is True
+        assert profile['profile_id'] == 'retaliation_temporal_profile_v1'
+        assert profile['status'] == 'partial'
+        assert profile['blocking_reasons'] == [
+            'Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.'
+        ]
+        assert profile['recommended_follow_ups'][0]['lane'] == 'clarify_with_complainant'
+
+    def test_get_claim_support_validation_uses_temporal_rule_profile_for_retaliation_causation(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.get_three_phase_status = Mock(return_value={
+            'canonical_fact_summary': {'count': 0, 'facts': []},
+            'proof_lead_summary': {'count': 0, 'proof_leads': []},
+            'temporal_fact_registry_summary': {
+                'count': 2,
+                'facts': [
+                    {
+                        'fact_id': 'fact_1',
+                        'temporal_fact_id': 'fact_1',
+                        'text': 'Employee complained to HR.',
+                        'fact_type': 'timeline',
+                        'claim_types': ['retaliation'],
+                        'element_tags': ['protected_activity'],
+                        'temporal_context': {
+                            'start_date': '2025-03-01',
+                            'end_date': '2025-03-01',
+                            'granularity': 'day',
+                            'is_approximate': False,
+                            'is_range': False,
+                            'relative_markers': [],
+                        },
+                    },
+                    {
+                        'fact_id': 'fact_2',
+                        'temporal_fact_id': 'fact_2',
+                        'text': 'Employee was terminated.',
+                        'fact_type': 'timeline',
+                        'claim_types': ['retaliation'],
+                        'element_tags': ['adverse_action'],
+                        'temporal_context': {
+                            'start_date': '2025-04-15',
+                            'end_date': '2025-04-15',
+                            'granularity': 'day',
+                            'is_approximate': False,
+                            'is_range': False,
+                            'relative_markers': [],
+                        },
+                    },
+                ],
+            },
+            'temporal_relation_registry_summary': {'count': 0, 'relations': []},
+            'timeline_relation_summary': {'count': 0, 'relations': []},
+            'timeline_consistency_summary': {
+                'event_count': 2,
+                'relation_count': 0,
+                'partial_order_ready': False,
+                'warnings': ['Timeline ordering is incomplete.'],
+            },
+            'temporal_issue_registry_summary': {'count': 0, 'issues': []},
+            'intake_contradictions': {'candidates': []},
+        })
+        mock_mediator.evidence_state = Mock()
+        mock_mediator.evidence_state.get_evidence_by_cid = Mock(return_value={
+            'id': 144,
+            'cid': 'QmRetaliationEvidence',
+            'fact_count': 1,
+            'graph_metadata': {
+                'graph_snapshot': {
+                    'graph_id': 'graph:evidence-144',
+                    'created': True,
+                    'reused': False,
+                }
+            },
+        })
+        mock_mediator.evidence_state.get_evidence_facts = Mock(return_value=[
+            {'fact_id': 'fact:retaliation', 'text': 'Email and termination notice confirm the retaliation timeline.'},
+        ])
+        mock_mediator.evidence_state.get_evidence_graph = Mock(return_value={
+            'status': 'ready',
+            'entities': [{'id': 'entity:retaliation'}],
+            'relationships': [{'id': 'rel:retaliation'}],
+        })
+        mock_mediator.legal_authority_storage = Mock()
+        mock_mediator.legal_authority_storage.get_authority_by_citation = Mock(return_value=None)
+        mock_mediator.legal_authority_storage.get_authority_facts = Mock(return_value=[])
+        mock_mediator.legal_authority_storage.get_authority_graph = Mock(return_value={})
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements('testuser', {'retaliation': ['Causal connection']})
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='retaliation',
+                claim_element_text='Causal connection',
+                support_kind='evidence',
+                support_ref='QmRetaliationEvidence',
+                support_label='HR complaint and termination records',
+                source_table='evidence',
+            )
+
+            with patch('mediator.claim_support_hooks.prove_claim_elements', return_value={
+                'status': 'not_implemented',
+                'provable_elements': [],
+                'unprovable_elements': [],
+                'predicate_count': 0,
+                'metadata': {
+                    'operation': 'prove_claim_elements',
+                    'backend_available': False,
+                    'implementation_status': 'not_implemented',
+                },
+            }), patch('mediator.claim_support_hooks.check_contradictions', return_value={
+                'status': 'not_implemented',
+                'contradictions': [],
+                'predicate_count': 0,
+                'metadata': {
+                    'operation': 'check_contradictions',
+                    'backend_available': False,
+                    'implementation_status': 'not_implemented',
+                },
+            }), patch('mediator.claim_support_hooks.build_ontology', return_value={
+                'status': 'not_implemented',
+                'ontology': None,
+                'metadata': {
+                    'operation': 'build_ontology',
+                    'backend_available': False,
+                    'implementation_status': 'not_implemented',
+                },
+            }), patch('mediator.claim_support_hooks.run_hybrid_reasoning', return_value={
+                'status': 'not_implemented',
+                'result': {},
+                'predicate_count': 0,
+                'metadata': {
+                    'operation': 'run_hybrid_reasoning',
+                    'backend_available': False,
+                    'implementation_status': 'not_implemented',
+                },
+            }), patch('mediator.claim_support_hooks.validate_ontology', return_value={
+                'status': 'not_implemented',
+                'result': {},
+                'metadata': {
+                    'operation': 'validate_ontology',
+                    'backend_available': False,
+                    'implementation_status': 'not_implemented',
+                },
+            }):
+                validation = hook.get_claim_support_validation(
+                    'testuser',
+                    'retaliation',
+                    required_support_kinds=['evidence'],
+                )
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+        causation = validation['claims']['retaliation']['elements'][0]
+        assert causation['validation_status'] == 'incomplete'
+        assert causation['proof_decision_trace']['decision_source'] == 'temporal_rule_partial'
+        assert causation['proof_decision_trace']['temporal_rule_status'] == 'partial'
+        assert {gap['gap_type'] for gap in causation['proof_gaps']} == {'temporal_rule_partial'}
+        assert validation['claims']['retaliation']['proof_diagnostics']['decision']['temporal_rule_gap_element_count'] == 1
 
     def test_resolve_follow_up_manual_review_appends_resolution_event(self):
         try:

@@ -1303,6 +1303,12 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert reasoning_review["temporal_warning_preview"] == []
         assert reasoning_review["temporal_relation_type_counts"] == {}
         assert reasoning_review["temporal_relation_preview"] == []
+        assert reasoning_review["temporal_rule_profile_available_element_count"] == 0
+        assert reasoning_review["temporal_rule_profile_satisfied_element_count"] == 0
+        assert reasoning_review["temporal_rule_profile_partial_element_count"] == 0
+        assert reasoning_review["temporal_rule_profile_failed_element_count"] == 0
+        assert reasoning_review["temporal_proof_bundle_count"] == 0
+        assert reasoning_review["temporal_proof_bundle_status_counts"] == {}
         assert any(
             item == {
                 "element_id": "retaliation:1",
@@ -1330,6 +1336,19 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 "temporal_warnings": [],
                 "temporal_relation_type_counts": {},
                 "temporal_relation_preview": [],
+                "temporal_rule_profile_id": "",
+                "temporal_rule_frame_id": "",
+                "temporal_rule_status": "",
+                "temporal_rule_blocking_reasons": [],
+                "temporal_rule_warnings": [],
+                "temporal_rule_follow_ups": [],
+                "temporal_proof_bundle_id": "",
+                "temporal_proof_bundle_status": "",
+                "temporal_proof_bundle_fact_ids": [],
+                "temporal_proof_bundle_relation_ids": [],
+                "temporal_proof_bundle_issue_ids": [],
+                "temporal_proof_bundle_tdfol_preview": [],
+                "temporal_proof_bundle_dcec_preview": [],
             }
             for item in reasoning_review["flagged_elements"]
         )
@@ -1768,6 +1787,12 @@ def test_claim_support_review_payload_reuses_persisted_diagnostic_snapshots():
         "temporal_warning_preview": [],
         "temporal_relation_type_counts": {},
         "temporal_relation_preview": [],
+        "temporal_rule_profile_available_element_count": 0,
+        "temporal_rule_profile_satisfied_element_count": 0,
+        "temporal_rule_profile_partial_element_count": 0,
+        "temporal_rule_profile_failed_element_count": 0,
+        "temporal_proof_bundle_count": 0,
+        "temporal_proof_bundle_status_counts": {},
         "flagged_elements": [],
     }
     mediator.get_claim_support_diagnostic_snapshots.assert_called_once_with(
@@ -1890,6 +1915,12 @@ def test_claim_support_review_payload_recomputes_stale_diagnostic_snapshots():
         "temporal_warning_preview": [],
         "temporal_relation_type_counts": {},
         "temporal_relation_preview": [],
+        "temporal_rule_profile_available_element_count": 0,
+        "temporal_rule_profile_satisfied_element_count": 0,
+        "temporal_rule_profile_partial_element_count": 0,
+        "temporal_rule_profile_failed_element_count": 0,
+        "temporal_proof_bundle_count": 0,
+        "temporal_proof_bundle_status_counts": {},
         "flagged_elements": [],
     }
     mediator.get_claim_support_gaps.assert_called_once_with(
@@ -3799,6 +3830,35 @@ def test_summarize_claim_reasoning_review_includes_temporal_handoff_summary():
                             "relation_type_counts": {"before": 1},
                             "relation_preview": ["fact_001 before fact_termination"],
                         },
+                        "temporal_rule_profile": {
+                            "available": True,
+                            "profile_id": "retaliation_temporal_profile_v1",
+                            "rule_frame_id": "retaliation_temporal_frame",
+                            "status": "partial",
+                            "blocking_reasons": [
+                                "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action."
+                            ],
+                            "warnings": [
+                                "Protected activity and adverse action are both present but lack an ordering relation."
+                            ],
+                            "recommended_follow_ups": [
+                                {
+                                    "lane": "clarify_with_complainant",
+                                    "reason": "Clarify whether the protected activity occurred before the adverse action.",
+                                }
+                            ],
+                        },
+                        "temporal_proof_bundle": {
+                            "proof_bundle_id": "retaliation:retaliation_1:retaliation_temporal_profile_v1",
+                            "status": "partial",
+                            "temporal_fact_ids": ["fact_001", "fact_termination"],
+                            "temporal_relation_ids": ["timeline_relation_001"],
+                            "temporal_issue_ids": ["temporal_issue_001"],
+                            "theorem_exports": {
+                                "tdfol_formulas": ["ProtectedActivity(fact_001)", "AdverseAction(fact_termination)"],
+                                "dcec_formulas": ["Happens(fact_001,t_2025_03_10)", "Happens(fact_termination,t_2025_03_24)"],
+                            },
+                        },
                     },
                 }
             ],
@@ -3816,6 +3876,12 @@ def test_summarize_claim_reasoning_review_includes_temporal_handoff_summary():
     ]
     assert review["temporal_relation_type_counts"] == {"before": 1}
     assert review["temporal_relation_preview"] == ["fact_001 before fact_termination"]
+    assert review["temporal_rule_profile_available_element_count"] == 1
+    assert review["temporal_rule_profile_satisfied_element_count"] == 0
+    assert review["temporal_rule_profile_partial_element_count"] == 1
+    assert review["temporal_rule_profile_failed_element_count"] == 0
+    assert review["temporal_proof_bundle_count"] == 1
+    assert review["temporal_proof_bundle_status_counts"] == {"partial": 1}
     assert review["flagged_elements"][0]["temporal_fact_count"] == 2
     assert review["flagged_elements"][0]["temporal_relation_count"] == 1
     assert review["flagged_elements"][0]["temporal_issue_count"] == 1
@@ -3827,6 +3893,34 @@ def test_summarize_claim_reasoning_review_includes_temporal_handoff_summary():
     assert review["flagged_elements"][0]["temporal_relation_type_counts"] == {"before": 1}
     assert review["flagged_elements"][0]["temporal_relation_preview"] == [
         "fact_001 before fact_termination"
+    ]
+    assert review["flagged_elements"][0]["temporal_rule_profile_id"] == "retaliation_temporal_profile_v1"
+    assert review["flagged_elements"][0]["temporal_rule_frame_id"] == "retaliation_temporal_frame"
+    assert review["flagged_elements"][0]["temporal_rule_status"] == "partial"
+    assert review["flagged_elements"][0]["temporal_rule_blocking_reasons"] == [
+        "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action."
+    ]
+    assert review["flagged_elements"][0]["temporal_rule_warnings"] == [
+        "Protected activity and adverse action are both present but lack an ordering relation."
+    ]
+    assert review["flagged_elements"][0]["temporal_rule_follow_ups"] == [
+        {
+            "lane": "clarify_with_complainant",
+            "reason": "Clarify whether the protected activity occurred before the adverse action.",
+        }
+    ]
+    assert review["flagged_elements"][0]["temporal_proof_bundle_id"] == "retaliation:retaliation_1:retaliation_temporal_profile_v1"
+    assert review["flagged_elements"][0]["temporal_proof_bundle_status"] == "partial"
+    assert review["flagged_elements"][0]["temporal_proof_bundle_fact_ids"] == ["fact_001", "fact_termination"]
+    assert review["flagged_elements"][0]["temporal_proof_bundle_relation_ids"] == ["timeline_relation_001"]
+    assert review["flagged_elements"][0]["temporal_proof_bundle_issue_ids"] == ["temporal_issue_001"]
+    assert review["flagged_elements"][0]["temporal_proof_bundle_tdfol_preview"] == [
+        "ProtectedActivity(fact_001)",
+        "AdverseAction(fact_termination)",
+    ]
+    assert review["flagged_elements"][0]["temporal_proof_bundle_dcec_preview"] == [
+        "Happens(fact_001,t_2025_03_10)",
+        "Happens(fact_termination,t_2025_03_24)",
     ]
 
 

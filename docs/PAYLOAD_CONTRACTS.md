@@ -43,6 +43,237 @@ Metadata semantics:
 - `implementation_status`: Normalized implementation state for the adapter surface, such as `implemented`, `fallback`, `not_implemented`, `pending`, `noop`, `empty`, `error`, or `unavailable`.
 - `degraded_reason`: Import or availability reason when the adapter is running degraded.
 
+## Temporal Registry Contract
+
+Intake and review payloads now preserve a canonical temporal registry alongside the legacy timeline summaries. The summaries remain for compatibility, but downstream reasoning should prefer the registries when available.
+
+Representative shape:
+
+```json
+{
+  "temporal_fact_registry_summary": {
+    "count": 2,
+    "facts": [
+      {
+        "registry_version": "temporal_fact_registry.v1",
+        "temporal_fact_id": "fact_1",
+        "fact_id": "fact_1",
+        "text": "Employee complained to HR.",
+        "event_label": "Employee complained to HR.",
+        "fact_type": "timeline",
+        "predicate_family": "timeline",
+        "claim_types": ["retaliation"],
+        "element_tags": ["protected_activity"],
+        "actor_ids": [],
+        "target_ids": [],
+        "start_time": "2025-03-01",
+        "end_time": "2025-03-01",
+        "granularity": "day",
+        "is_approximate": false,
+        "is_range": false,
+        "relative_markers": [],
+        "timeline_anchor_ids": ["timeline_anchor_001"],
+        "temporal_status": "anchored",
+        "source_artifact_ids": [],
+        "testimony_record_ids": [],
+        "source_span_refs": [],
+        "confidence": 0.91,
+        "validation_status": "accepted",
+        "temporal_context": {
+          "start_date": "2025-03-01",
+          "end_date": "2025-03-01",
+          "granularity": "day",
+          "is_approximate": false,
+          "is_range": false,
+          "relative_markers": []
+        }
+      }
+    ]
+  },
+  "temporal_relation_registry_summary": {
+    "count": 1,
+    "relations": [
+      {
+        "registry_version": "temporal_relation_registry.v1",
+        "relation_id": "timeline_relation_001",
+        "source_fact_id": "fact_1",
+        "target_fact_id": "fact_2",
+        "source_temporal_fact_id": "fact_1",
+        "target_temporal_fact_id": "fact_2",
+        "relation_type": "before",
+        "claim_types": ["retaliation"],
+        "element_tags": ["protected_activity", "adverse_action"],
+        "source_artifact_ids": [],
+        "testimony_record_ids": [],
+        "source_span_refs": [],
+        "inference_mode": "derived_from_temporal_context",
+        "inference_basis": "normalized_temporal_context"
+        ,"explanation": "fact_1 before fact_2 based on normalized temporal context."
+      }
+    ]
+  },
+  "temporal_issue_registry_summary": {
+    "count": 1,
+    "issues": [
+      {
+        "registry_version": "temporal_issue_registry.v1",
+        "issue_id": "temporal_issue:relative_only_ordering:fact_3",
+        "issue_type": "relative_only_ordering",
+        "summary": "Timeline fact fact_3 only has relative ordering and still needs anchoring.",
+        "severity": "blocking",
+        "blocking": true,
+        "claim_types": ["retaliation"],
+        "element_tags": ["causation"],
+        "fact_ids": ["fact_3"],
+        "recommended_resolution_lane": "clarify_with_complainant",
+        "source_kind": "temporal_fact_registry",
+        "source_ref": "fact_3",
+        "inference_mode": "derived_from_temporal_context"
+      }
+    ]
+  }
+}
+```
+
+Field semantics:
+
+- `temporal_status`: High-level anchoring state for the fact, currently `anchored`, `relative_only`, or `missing_anchor`.
+- `registry_version`: Canonical schema version for the temporal registry record family.
+- `event_label` and `predicate_family`: Stable theorem-facing labels for fact-to-rule mapping.
+- `start_time`, `end_time`, `granularity`, `is_approximate`, `is_range`, and `relative_markers`: First-class temporal fields duplicated from `temporal_context` for direct consumers.
+- `source_artifact_ids`, `testimony_record_ids`, and `source_span_refs`: Provenance fields for linking theorem inputs and review explanations back to concrete evidence sources.
+- `inference_mode`: Whether a relation or issue was derived from normalized temporal context or imported from an upstream contradiction workflow.
+- `claim_types` and `element_tags`: Stable claim and element linkage so claim-scoped reasoning does not need to reconstruct timing relevance from raw summaries.
+- `inference_basis`: How a relation was derived. Current intake relations are inferred from normalized temporal context.
+- `issue_type`: Canonical temporal issue category, including registry-native categories such as `missing_anchor` and `relative_only_ordering` plus contradiction-derived temporal categories.
+
+## Claim-Support Temporal Rule Profile
+
+Claim-support reasoning diagnostics may now include a claim-type-specific `temporal_rule_profile` when the system can evaluate chronology against an explicit legal timing frame.
+
+Representative shape:
+
+```json
+{
+  "reasoning_diagnostics": {
+    "temporal_rule_profile": {
+      "available": true,
+      "evaluated": true,
+      "profile_id": "retaliation_temporal_profile_v1",
+      "rule_frame_id": "retaliation_temporal_frame",
+      "claim_type": "retaliation",
+      "element_role": "causal_connection",
+      "status": "partial",
+      "matched_fact_ids": ["fact_1", "fact_2"],
+      "matched_relation_ids": [],
+      "blocking_reasons": [
+        "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action."
+      ],
+      "warnings": [
+        "Protected activity and adverse action are both present but lack an ordering relation."
+      ],
+      "recommended_follow_ups": [
+        {
+          "lane": "clarify_with_complainant",
+          "reason": "Clarify whether the protected activity occurred before the adverse action."
+        }
+      ]
+    }
+  },
+  "proof_decision_trace": {
+    "decision_source": "temporal_rule_partial",
+    "temporal_rule_profile_id": "retaliation_temporal_profile_v1",
+    "temporal_rule_status": "partial"
+  },
+  "proof_gaps": [
+    {
+      "gap_type": "temporal_rule_partial",
+      "profile_id": "retaliation_temporal_profile_v1",
+      "message": "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.",
+      "follow_ups": [
+        {
+          "lane": "clarify_with_complainant",
+          "reason": "Clarify whether the protected activity occurred before the adverse action."
+        }
+      ]
+    }
+  ]
+}
+```
+
+Semantics:
+
+- `profile_id`: Canonical legal timing profile identifier.
+- `rule_frame_id`: Stable rule-frame identifier for downstream proof or review explanations.
+- `element_role`: The legal timing role being evaluated, such as `protected_activity`, `adverse_action`, or `causal_connection`.
+- `status`: Timing sufficiency result for the profile, currently `satisfied`, `partial`, `failed`, `missing`, `not_targeted`, or `not_applicable`.
+- `decision_source`: Claim-support validation now distinguishes temporal-rule failures from generic support gaps via `temporal_rule_partial` and `temporal_rule_failed`.
+
+## Temporal Proof Bundle Contract
+
+When a temporal rule profile is available, element reasoning diagnostics may also expose a `temporal_proof_bundle` that packages the chronology, legal frame, and theorem exports into one durable review and proof artifact.
+
+Representative shape:
+
+```json
+{
+  "reasoning_diagnostics": {
+    "temporal_proof_bundle": {
+      "proof_bundle_id": "retaliation:retaliation_3:retaliation_temporal_profile_v1",
+      "claim_type": "retaliation",
+      "claim_element_id": "retaliation:3",
+      "claim_element_text": "Causal connection",
+      "profile_id": "retaliation_temporal_profile_v1",
+      "rule_frame_id": "retaliation_temporal_frame",
+      "element_role": "causal_connection",
+      "status": "partial",
+      "available": true,
+      "matched_fact_ids": ["fact_001", "fact_termination"],
+      "matched_relation_ids": [],
+      "temporal_fact_ids": ["fact_001", "fact_termination"],
+      "temporal_relation_ids": [],
+      "temporal_issue_ids": ["temporal_issue:relative_only_ordering:fact_termination"],
+      "source_artifact_ids": ["artifact_termination_notice"],
+      "testimony_record_ids": ["testimony_001"],
+      "blocking_reasons": [
+        "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action."
+      ],
+      "warnings": [
+        "Protected activity and adverse action are both present but lack an ordering relation."
+      ],
+      "recommended_follow_ups": [
+        {
+          "lane": "clarify_with_complainant",
+          "reason": "Clarify whether the protected activity occurred before the adverse action."
+        }
+      ],
+      "theorem_exports": {
+        "tdfol_formulas": [
+          "ProtectedActivity(fact_001)",
+          "AdverseAction(fact_termination)"
+        ],
+        "dcec_formulas": [
+          "Happens(fact_001,t_2025_03_10)",
+          "Happens(fact_termination,t_2025_03_24)"
+        ]
+      },
+      "theorem_export_counts": {
+        "tdfol_formula_count": 2,
+        "dcec_formula_count": 2
+      }
+    }
+  }
+}
+```
+
+Semantics:
+
+- `proof_bundle_id`: Stable identifier for the claim-element-scoped temporal proof package.
+- `matched_fact_ids` and `matched_relation_ids`: The exact facts and relations the legal timing profile treated as directly relevant.
+- `temporal_fact_ids`, `temporal_relation_ids`, and `temporal_issue_ids`: The broader chronology context included in the bundle.
+- `theorem_exports`: Lightweight theorem-facing formulas derived from the same chronology used for rule evaluation.
+- `theorem_export_counts`: Fast summary counts so review payloads can aggregate bundle richness without parsing formula arrays.
+
 ## Document Optimization Router Hints
 
 The formal complaint document API accepts provider-specific optimizer settings through `optimization_llm_config`. When using Hugging Face router requests, this can now include an optional `arch_router` block for automatic model selection.

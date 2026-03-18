@@ -312,6 +312,11 @@ def _build_dashboard_mediator() -> Mock:
                         "temporal_issue_count": 1,
                         "temporal_partial_order_ready_count": 0,
                         "temporal_warning_count": 1,
+                        "temporal_rule_profile_available_count": 1,
+                        "temporal_rule_profile_satisfied_count": 0,
+                        "temporal_rule_profile_partial_count": 1,
+                        "temporal_rule_profile_failed_count": 0,
+                        "temporal_proof_bundle_count": 1,
                     },
                     "decision": {
                         "decision_source_counts": {
@@ -389,6 +394,41 @@ def _build_dashboard_mediator() -> Mock:
                                 ],
                                 "relation_type_counts": {"before": 1},
                                 "relation_preview": ["fact_001 before fact_termination"],
+                            },
+                            "temporal_rule_profile": {
+                                "available": True,
+                                "profile_id": "retaliation_temporal_profile_v1",
+                                "rule_frame_id": "retaliation_temporal_frame",
+                                "status": "partial",
+                                "blocking_reasons": [
+                                    "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.",
+                                ],
+                                "warnings": [
+                                    "Protected activity and adverse action are both present but lack an ordering relation.",
+                                ],
+                                "recommended_follow_ups": [
+                                    {
+                                        "lane": "clarify_with_complainant",
+                                        "reason": "Clarify whether the protected activity occurred before the adverse action.",
+                                    }
+                                ],
+                            },
+                            "temporal_proof_bundle": {
+                                "proof_bundle_id": "retaliation:retaliation_1:retaliation_temporal_profile_v1",
+                                "status": "partial",
+                                "temporal_fact_ids": ["fact_001", "fact_termination"],
+                                "temporal_relation_ids": ["timeline_relation_001"],
+                                "temporal_issue_ids": ["temporal_issue_001"],
+                                "theorem_exports": {
+                                    "tdfol_formulas": [
+                                        "ProtectedActivity(fact_001)",
+                                        "AdverseAction(fact_termination)",
+                                    ],
+                                    "dcec_formulas": [
+                                        "Happens(fact_001,t_2026_03_10)",
+                                        "Happens(fact_termination,t_2026_03_24)",
+                                    ],
+                                },
                             },
                         },
                         "contradiction_candidates": [],
@@ -828,6 +868,12 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert "Temporal proof handoff" in page_html
     assert "Temporal relation preview" in page_html
     assert "Temporal warnings" in page_html
+    assert "Temporal rule profiles" in page_html
+    assert "Temporal proof bundles" in page_html
+    assert "Temporal rule blockers" in page_html
+    assert "Temporal rule follow-ups" in page_html
+    assert "Temporal proof bundle TDFOL preview" in page_html
+    assert "Temporal proof bundle DCEC preview" in page_html
     assert "packet temporal facts" in page_html
     assert "packet temporal relations" in page_html
     assert "packet temporal issues" in page_html
@@ -1009,6 +1055,12 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert review_payload["claim_reasoning_review"]["retaliation"]["temporal_relation_preview"] == [
         "fact_001 before fact_termination"
     ]
+    assert review_payload["claim_reasoning_review"]["retaliation"]["temporal_rule_profile_available_element_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["temporal_rule_profile_satisfied_element_count"] == 0
+    assert review_payload["claim_reasoning_review"]["retaliation"]["temporal_rule_profile_partial_element_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["temporal_rule_profile_failed_element_count"] == 0
+    assert review_payload["claim_reasoning_review"]["retaliation"]["temporal_proof_bundle_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["temporal_proof_bundle_status_counts"] == {"partial": 1}
     assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["hybrid_bridge_available"] is True
     assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["hybrid_tdfol_formula_preview"] == [
         "Before(fact_1,fact_2)",
@@ -1033,6 +1085,34 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_relation_type_counts"] == {"before": 1}
     assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_relation_preview"] == [
         "fact_001 before fact_termination"
+    ]
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_rule_profile_id"] == "retaliation_temporal_profile_v1"
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_rule_frame_id"] == "retaliation_temporal_frame"
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_rule_status"] == "partial"
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_rule_blocking_reasons"] == [
+        "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.",
+    ]
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_rule_warnings"] == [
+        "Protected activity and adverse action are both present but lack an ordering relation.",
+    ]
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_rule_follow_ups"] == [
+        {
+            "lane": "clarify_with_complainant",
+            "reason": "Clarify whether the protected activity occurred before the adverse action.",
+        }
+    ]
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_proof_bundle_id"] == "retaliation:retaliation_1:retaliation_temporal_profile_v1"
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_proof_bundle_status"] == "partial"
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_proof_bundle_fact_ids"] == ["fact_001", "fact_termination"]
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_proof_bundle_relation_ids"] == ["timeline_relation_001"]
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_proof_bundle_issue_ids"] == ["temporal_issue_001"]
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_proof_bundle_tdfol_preview"] == [
+        "ProtectedActivity(fact_001)",
+        "AdverseAction(fact_termination)",
+    ]
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["temporal_proof_bundle_dcec_preview"] == [
+        "Happens(fact_001,t_2026_03_10)",
+        "Happens(fact_termination,t_2026_03_24)",
     ]
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["validation_status"] == "supported"
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_fact_packet_count"] == 2

@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from integrations.ipfs_datasets.graphrag import build_ontology, validate_ontology
 from integrations.ipfs_datasets.logic import check_contradictions, prove_claim_elements, run_hybrid_reasoning
+from complaint_analysis.temporal_rule_profiles import evaluate_temporal_rule_profile
 from claim_support_review import _merge_intake_summary_handoff_metadata
 
 try:
@@ -1236,6 +1237,165 @@ class ClaimSupportHook:
             return 'invalid'
         return 'unknown'
 
+    def _extract_temporal_rule_profile(
+        self,
+        reasoning_diagnostics: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        reasoning = reasoning_diagnostics if isinstance(reasoning_diagnostics, dict) else {}
+        temporal_rule_profile = reasoning.get('temporal_rule_profile', {})
+        return temporal_rule_profile if isinstance(temporal_rule_profile, dict) else {}
+
+    def _build_temporal_proof_bundle(
+        self,
+        claim_type: str,
+        element: Dict[str, Any],
+        temporal_context: Optional[Dict[str, Any]],
+        temporal_rule_profile: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        profile = temporal_rule_profile if isinstance(temporal_rule_profile, dict) else {}
+        if not bool(profile.get('available', False)):
+            return {}
+
+        context = temporal_context if isinstance(temporal_context, dict) else {}
+        facts = [fact for fact in (context.get('temporal_facts', []) or []) if isinstance(fact, dict)]
+        relations = [relation for relation in (context.get('temporal_relations', []) or []) if isinstance(relation, dict)]
+        issues = [issue for issue in (context.get('temporal_issues', []) or []) if isinstance(issue, dict)]
+
+        fact_ids = [
+            str(fact.get('fact_id') or '').strip()
+            for fact in facts
+            if str(fact.get('fact_id') or '').strip()
+        ]
+        relation_ids = [
+            str(relation.get('relation_id') or '').strip()
+            for relation in relations
+            if str(relation.get('relation_id') or '').strip()
+        ]
+        issue_ids = [
+            str(issue.get('issue_id') or issue.get('contradiction_id') or issue.get('dependency_id') or '').strip()
+            for issue in issues
+            if str(issue.get('issue_id') or issue.get('contradiction_id') or issue.get('dependency_id') or '').strip()
+        ]
+
+        matched_fact_ids = [
+            str(fact_id).strip()
+            for fact_id in (profile.get('matched_fact_ids', []) or [])
+            if str(fact_id).strip()
+        ]
+        matched_relation_ids = [
+            str(relation_id).strip()
+            for relation_id in (profile.get('matched_relation_ids', []) or [])
+            if str(relation_id).strip()
+        ]
+
+        source_artifact_ids: List[str] = []
+        testimony_record_ids: List[str] = []
+        for fact in facts:
+            for artifact_id in fact.get('source_artifact_ids', []) or []:
+                normalized_artifact_id = str(artifact_id or '').strip()
+                if normalized_artifact_id and normalized_artifact_id not in source_artifact_ids:
+                    source_artifact_ids.append(normalized_artifact_id)
+            for testimony_record_id in fact.get('testimony_record_ids', []) or []:
+                normalized_testimony_record_id = str(testimony_record_id or '').strip()
+                if normalized_testimony_record_id and normalized_testimony_record_id not in testimony_record_ids:
+                    testimony_record_ids.append(normalized_testimony_record_id)
+
+        relation_formula_map = {
+            'before': 'Before',
+            'after': 'After',
+            'same_time': 'SameTime',
+            'overlaps': 'Overlaps',
+            'during': 'During',
+            'meets': 'Meets',
+        }
+        tdfol_formulas: List[str] = []
+        dcec_formulas: List[str] = []
+        role = str(profile.get('element_role') or '').strip()
+
+        for fact in facts:
+            fact_id = str(fact.get('fact_id') or '').strip()
+            if not fact_id:
+                continue
+            if 'protected_activity' in [self._normalize_reasoning_key(tag) for tag in (fact.get('element_tags', []) or [])]:
+                formula = f'ProtectedActivity({fact_id})'
+                if formula not in tdfol_formulas:
+                    tdfol_formulas.append(formula)
+            if 'adverse_action' in [self._normalize_reasoning_key(tag) for tag in (fact.get('element_tags', []) or [])]:
+                formula = f'AdverseAction({fact_id})'
+                if formula not in tdfol_formulas:
+                    tdfol_formulas.append(formula)
+            temporal_context = fact.get('temporal_context', {}) if isinstance(fact.get('temporal_context'), dict) else {}
+            start_date = str(temporal_context.get('start_date') or '').strip()
+            if start_date:
+                time_symbol = f"t_{start_date.replace('-', '_')}"
+                formula = f'Happens({fact_id},{time_symbol})'
+                if formula not in dcec_formulas:
+                    dcec_formulas.append(formula)
+
+        for relation in relations:
+            source_fact_id = str(relation.get('source_fact_id') or '').strip()
+            target_fact_id = str(relation.get('target_fact_id') or '').strip()
+            relation_type = self._normalize_reasoning_key(relation.get('relation_type'))
+            if not source_fact_id or not target_fact_id:
+                continue
+            relation_predicate = relation_formula_map.get(relation_type)
+            if relation_predicate:
+                formula = f'{relation_predicate}({source_fact_id},{target_fact_id})'
+                if formula not in tdfol_formulas:
+                    tdfol_formulas.append(formula)
+
+        proof_bundle_id = ':'.join(
+            part
+            for part in [
+                self._normalize_reasoning_key(claim_type) or 'claim',
+                self._normalize_reasoning_key(element.get('element_id') or element.get('element_text')) or 'element',
+                self._normalize_reasoning_key(profile.get('profile_id')) or 'temporal_rule_profile',
+            ]
+            if part
+        )
+
+        return {
+            'proof_bundle_id': proof_bundle_id,
+            'claim_type': str(claim_type or ''),
+            'claim_element_id': str(element.get('element_id') or ''),
+            'claim_element_text': str(element.get('element_text') or ''),
+            'profile_id': str(profile.get('profile_id') or ''),
+            'rule_frame_id': str(profile.get('rule_frame_id') or ''),
+            'element_role': role,
+            'status': str(profile.get('status') or ''),
+            'available': bool(profile.get('available', False)),
+            'matched_fact_ids': matched_fact_ids,
+            'matched_relation_ids': matched_relation_ids,
+            'temporal_fact_ids': fact_ids,
+            'temporal_relation_ids': relation_ids,
+            'temporal_issue_ids': issue_ids,
+            'source_artifact_ids': source_artifact_ids,
+            'testimony_record_ids': testimony_record_ids,
+            'blocking_reasons': [
+                str(reason).strip()
+                for reason in (profile.get('blocking_reasons', []) or [])
+                if str(reason).strip()
+            ],
+            'warnings': [
+                str(warning).strip()
+                for warning in (profile.get('warnings', []) or [])
+                if str(warning).strip()
+            ],
+            'recommended_follow_ups': [
+                follow_up
+                for follow_up in (profile.get('recommended_follow_ups', []) or [])
+                if isinstance(follow_up, dict)
+            ],
+            'theorem_exports': {
+                'tdfol_formulas': tdfol_formulas[:10],
+                'dcec_formulas': dcec_formulas[:10],
+            },
+            'theorem_export_counts': {
+                'tdfol_formula_count': len(tdfol_formulas),
+                'dcec_formula_count': len(dcec_formulas),
+            },
+        }
+
     def _build_validation_decision_trace(
         self,
         element: Dict[str, Any],
@@ -1250,6 +1410,8 @@ class ClaimSupportHook:
         provable_count = logic_proof_counts['provable_count']
         unprovable_count = logic_proof_counts['unprovable_count']
         ontology_validation_signal = self._extract_ontology_validation_signal(reasoning)
+        temporal_rule_profile = self._extract_temporal_rule_profile(reasoning)
+        temporal_rule_status = str(temporal_rule_profile.get('status') or '')
         missing_support_kind_count = len(element.get('missing_support_kinds', []) or [])
         total_links = int(element.get('total_links', 0) or 0)
         coverage_status = str(element.get('status') or '')
@@ -1260,6 +1422,12 @@ class ClaimSupportHook:
         elif logic_contradiction_count:
             decision_source = 'logic_contradictions'
             validation_status = 'contradicted'
+        elif temporal_rule_status == 'failed':
+            decision_source = 'temporal_rule_failed'
+            validation_status = 'incomplete'
+        elif temporal_rule_status == 'partial' and total_links > 0:
+            decision_source = 'temporal_rule_partial'
+            validation_status = 'incomplete'
         elif unprovable_count and total_links > 0:
             decision_source = 'logic_unprovable'
             validation_status = 'incomplete'
@@ -1297,6 +1465,10 @@ class ClaimSupportHook:
             notes.append('Logic adapter reported provable claim-element output for this element.')
         if unprovable_count:
             notes.append('Logic adapter reported unprovable claim-element output for this element.')
+        if temporal_rule_status == 'failed':
+            notes.append('Temporal rule evaluation found chronology that is legally insufficient for this element.')
+        elif temporal_rule_status == 'partial':
+            notes.append('Temporal rule evaluation found chronology that is present but still incomplete for this element.')
         if ontology_validation_signal == 'invalid':
             notes.append('Ontology validation returned an invalid or inconsistent result for this element.')
         elif ontology_validation_signal == 'valid':
@@ -1317,6 +1489,10 @@ class ClaimSupportHook:
             'logic_provable_count': provable_count,
             'logic_unprovable_count': unprovable_count,
             'ontology_validation_signal': ontology_validation_signal,
+            'temporal_rule_profile_id': str(temporal_rule_profile.get('profile_id') or ''),
+            'temporal_rule_status': temporal_rule_status,
+            'temporal_rule_blocking_reason_count': len(temporal_rule_profile.get('blocking_reasons', []) or []),
+            'temporal_rule_follow_up_count': len(temporal_rule_profile.get('recommended_follow_ups', []) or []),
             'missing_support_kind_count': missing_support_kind_count,
             'total_links': total_links,
             'used_fallback_ontology': bool(reasoning.get('used_fallback_ontology')),
@@ -1371,6 +1547,18 @@ class ClaimSupportHook:
                     'gap_type': 'logic_unprovable',
                     'candidate_count': logic_proof_counts['unprovable_count'],
                     'message': 'Logic adapter could not prove one or more predicates for this element.',
+                }
+            )
+        temporal_rule_profile = self._extract_temporal_rule_profile(reasoning_diagnostics)
+        temporal_rule_status = str(temporal_rule_profile.get('status') or '')
+        if temporal_rule_status in {'failed', 'partial'}:
+            proof_gaps.append(
+                {
+                    'gap_type': f'temporal_rule_{temporal_rule_status}',
+                    'profile_id': temporal_rule_profile.get('profile_id'),
+                    'message': '; '.join(temporal_rule_profile.get('blocking_reasons', []) or [])
+                    or 'Temporal rule profile found unresolved chronology for this element.',
+                    'follow_ups': temporal_rule_profile.get('recommended_follow_ups', []),
                 }
             )
         ontology_validation_signal = self._extract_ontology_validation_signal(reasoning_diagnostics)
@@ -1454,8 +1642,10 @@ class ClaimSupportHook:
         ontology_validation_signal = str(decision_trace.get('ontology_validation_signal') or '')
         return (
             'logic_unprovable' in (proof_gap_types or [])
+            or 'temporal_rule_failed' in (proof_gap_types or [])
+            or 'temporal_rule_partial' in (proof_gap_types or [])
             or 'ontology_validation_failed' in (proof_gap_types or [])
-            or decision_source in {'logic_unprovable', 'logic_proof_partial', 'ontology_validation_failed'}
+            or decision_source in {'logic_unprovable', 'logic_proof_partial', 'ontology_validation_failed', 'temporal_rule_failed', 'temporal_rule_partial'}
             or ontology_validation_signal == 'invalid'
         )
 
@@ -1481,14 +1671,23 @@ class ClaimSupportHook:
 
         canonical_fact_summary = status.get('canonical_fact_summary', {})
         proof_lead_summary = status.get('proof_lead_summary', {})
+        temporal_fact_registry_summary = status.get('temporal_fact_registry_summary', {})
+        temporal_relation_registry_summary = status.get('temporal_relation_registry_summary', {})
         timeline_relation_summary = status.get('timeline_relation_summary', {})
         timeline_consistency_summary = status.get('timeline_consistency_summary', {})
+        temporal_issue_registry_summary = status.get('temporal_issue_registry_summary', {})
         intake_contradictions = status.get('intake_contradictions', {})
 
-        canonical_facts = canonical_fact_summary.get('facts', []) if isinstance(canonical_fact_summary, dict) else []
+        canonical_facts = temporal_fact_registry_summary.get('facts', []) if isinstance(temporal_fact_registry_summary, dict) else []
+        if not isinstance(canonical_facts, list) or not canonical_facts:
+            canonical_facts = canonical_fact_summary.get('facts', []) if isinstance(canonical_fact_summary, dict) else []
         proof_leads = proof_lead_summary.get('proof_leads', []) if isinstance(proof_lead_summary, dict) else []
-        timeline_relations = timeline_relation_summary.get('relations', []) if isinstance(timeline_relation_summary, dict) else []
-        contradiction_candidates = intake_contradictions.get('candidates', []) if isinstance(intake_contradictions, dict) else []
+        timeline_relations = temporal_relation_registry_summary.get('relations', []) if isinstance(temporal_relation_registry_summary, dict) else []
+        if not isinstance(timeline_relations, list) or not timeline_relations:
+            timeline_relations = timeline_relation_summary.get('relations', []) if isinstance(timeline_relation_summary, dict) else []
+        contradiction_candidates = temporal_issue_registry_summary.get('issues', []) if isinstance(temporal_issue_registry_summary, dict) else []
+        if not isinstance(contradiction_candidates, list) or not contradiction_candidates:
+            contradiction_candidates = intake_contradictions.get('candidates', []) if isinstance(intake_contradictions, dict) else []
 
         claim_key = self._normalize_reasoning_key(claim_type)
         element_keys = {
@@ -1541,6 +1740,15 @@ class ClaimSupportHook:
                 if str(item or '').strip()
             }
             return bool(element_keys & normalized_values)
+
+        def _is_temporal_issue(record: Dict[str, Any]) -> bool:
+            category = self._normalize_reasoning_key(record.get('category') or record.get('issue_type'))
+            return category.startswith('temporal') or category in {
+                'missing_anchor',
+                'relative_only_ordering',
+                'contradictory_dates',
+                'limitations_risk',
+            }
 
         element_temporal_facts: List[Dict[str, Any]] = []
         claim_temporal_facts: List[Dict[str, Any]] = []
@@ -1608,13 +1816,26 @@ class ClaimSupportHook:
         for candidate in contradiction_candidates if isinstance(contradiction_candidates, list) else []:
             if not isinstance(candidate, dict):
                 continue
-            category = self._normalize_reasoning_key(candidate.get('category'))
-            if not category.startswith('temporal'):
+            if not _is_temporal_issue(candidate):
                 continue
+            issue_fact_ids = {
+                str(item or '').strip()
+                for item in candidate.get('fact_ids', [])
+                if str(item or '').strip()
+            } if isinstance(candidate.get('fact_ids'), list) else set()
             node_names = {
                 str(candidate.get('left_node_name') or '').strip(),
                 str(candidate.get('right_node_name') or '').strip(),
             }
+            if _matches_element(candidate, ['element_tags', 'affected_element_ids']):
+                selected_temporal_issues.append(candidate)
+                continue
+            if _matches_claim(candidate):
+                selected_temporal_issues.append(candidate)
+                continue
+            if selected_fact_ids and issue_fact_ids and (selected_fact_ids & issue_fact_ids):
+                selected_temporal_issues.append(candidate)
+                continue
             if selected_fact_labels and not (selected_fact_labels & node_names):
                 continue
             selected_temporal_issues.append(candidate)
@@ -1701,14 +1922,22 @@ class ClaimSupportHook:
                     'fact_id': fact.get('fact_id'),
                     'text': fact.get('text') or '',
                     'fact_type': fact.get('fact_type'),
+                    'event_label': fact.get('event_label') or fact.get('text') or fact.get('fact_id'),
+                    'predicate_family': fact.get('predicate_family') or fact.get('fact_type') or 'timeline',
                     'claim_types': list(fact.get('claim_types', []) or []),
                     'element_tags': list(fact.get('element_tags', []) or []),
+                    'actor_ids': list(fact.get('actor_ids', []) or []),
+                    'target_ids': list(fact.get('target_ids', []) or []),
                     'start_date': temporal_details.get('start_date'),
                     'end_date': temporal_details.get('end_date'),
                     'granularity': temporal_details.get('granularity'),
                     'is_approximate': bool(temporal_details.get('is_approximate', False)),
                     'is_range': bool(temporal_details.get('is_range', False)),
                     'relative_markers': list(temporal_details.get('relative_markers', []) or []),
+                    'source_artifact_ids': list(fact.get('source_artifact_ids', []) or []),
+                    'testimony_record_ids': list(fact.get('testimony_record_ids', []) or []),
+                    'source_span_refs': list(fact.get('source_span_refs', []) or []),
+                    'validation_status': fact.get('validation_status'),
                 }
             )
 
@@ -1747,6 +1976,12 @@ class ClaimSupportHook:
                     'claim_element_id': element.get('element_id'),
                     'claim_element_text': element.get('element_text'),
                     'relation_type': relation.get('relation_type'),
+                    'inference_mode': relation.get('inference_mode') or 'derived_from_temporal_context',
+                    'inference_basis': relation.get('inference_basis') or 'normalized_temporal_context',
+                    'explanation': relation.get('explanation') or (
+                        f"{relation.get('source_fact_id') or 'unknown_fact'} {relation.get('relation_type') or 'related_to'} "
+                        f"{relation.get('target_fact_id') or 'unknown_fact'} based on normalized temporal context."
+                    ),
                     'source_fact_id': relation.get('source_fact_id'),
                     'target_fact_id': relation.get('target_fact_id'),
                     'source_start_date': relation.get('source_start_date'),
@@ -1754,6 +1989,9 @@ class ClaimSupportHook:
                     'target_start_date': relation.get('target_start_date'),
                     'target_end_date': relation.get('target_end_date'),
                     'confidence': relation.get('confidence'),
+                    'source_artifact_ids': list(relation.get('source_artifact_ids', []) or []),
+                    'testimony_record_ids': list(relation.get('testimony_record_ids', []) or []),
+                    'source_span_refs': list(relation.get('source_span_refs', []) or []),
                 }
             )
 
@@ -1793,6 +2031,9 @@ class ClaimSupportHook:
                     'left_node_name': issue.get('left_node_name'),
                     'right_node_name': issue.get('right_node_name'),
                     'recommended_resolution_lane': issue.get('recommended_resolution_lane'),
+                    'source_kind': issue.get('source_kind') or 'contradiction_queue',
+                    'source_ref': issue.get('source_ref'),
+                    'inference_mode': issue.get('inference_mode') or 'imported_temporal_contradiction',
                 }
             )
 
@@ -2011,6 +2252,13 @@ class ClaimSupportHook:
         logic_contradictions = check_contradictions(predicates)
         hybrid_reasoning = run_hybrid_reasoning({'predicates': predicates})
         ontology_validation = validate_ontology(ontology_for_validation)
+        temporal_rule_profile = evaluate_temporal_rule_profile(claim_type, element, temporal_context)
+        temporal_proof_bundle = self._build_temporal_proof_bundle(
+            claim_type,
+            element,
+            temporal_context,
+            temporal_rule_profile,
+        )
 
         temporal_summary: Dict[str, Any] = {}
         if temporal_context:
@@ -2087,6 +2335,8 @@ class ClaimSupportHook:
             'hybrid_reasoning': hybrid_reasoning,
             'ontology_validation': ontology_validation,
             'temporal_summary': temporal_summary,
+            'temporal_rule_profile': temporal_rule_profile,
+            'temporal_proof_bundle': temporal_proof_bundle,
         }
 
     def _summarize_claim_reasoning_diagnostics(self, elements: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -2110,6 +2360,11 @@ class ClaimSupportHook:
         temporal_issue_count = 0
         temporal_partial_order_ready_count = 0
         temporal_warning_count = 0
+        temporal_rule_profile_available_count = 0
+        temporal_rule_profile_satisfied_count = 0
+        temporal_rule_profile_partial_count = 0
+        temporal_rule_profile_failed_count = 0
+        temporal_proof_bundle_count = 0
 
         for element in elements:
             if not isinstance(element, dict):
@@ -2138,6 +2393,19 @@ class ClaimSupportHook:
                 temporal_warning_count += int(temporal_summary.get('warning_count', 0) or 0)
                 if bool(temporal_summary.get('partial_order_ready', False)):
                     temporal_partial_order_ready_count += 1
+            temporal_rule_profile = reasoning.get('temporal_rule_profile', {})
+            if isinstance(temporal_rule_profile, dict) and bool(temporal_rule_profile.get('available', False)):
+                temporal_rule_profile_available_count += 1
+                temporal_rule_status = str(temporal_rule_profile.get('status') or '')
+                if temporal_rule_status == 'satisfied':
+                    temporal_rule_profile_satisfied_count += 1
+                elif temporal_rule_status == 'partial':
+                    temporal_rule_profile_partial_count += 1
+                elif temporal_rule_status == 'failed':
+                    temporal_rule_profile_failed_count += 1
+            temporal_proof_bundle = reasoning.get('temporal_proof_bundle', {})
+            if isinstance(temporal_proof_bundle, dict) and temporal_proof_bundle:
+                temporal_proof_bundle_count += 1
             for adapter_name, summary in (reasoning.get('adapter_statuses') or {}).items():
                 if not isinstance(summary, dict):
                     continue
@@ -2160,6 +2428,11 @@ class ClaimSupportHook:
             'temporal_issue_count': temporal_issue_count,
             'temporal_partial_order_ready_count': temporal_partial_order_ready_count,
             'temporal_warning_count': temporal_warning_count,
+            'temporal_rule_profile_available_count': temporal_rule_profile_available_count,
+            'temporal_rule_profile_satisfied_count': temporal_rule_profile_satisfied_count,
+            'temporal_rule_profile_partial_count': temporal_rule_profile_partial_count,
+            'temporal_rule_profile_failed_count': temporal_rule_profile_failed_count,
+            'temporal_proof_bundle_count': temporal_proof_bundle_count,
         }
 
     def _summarize_claim_validation_decisions(self, elements: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -2169,6 +2442,7 @@ class ClaimSupportHook:
         proof_supported_element_count = 0
         logic_unprovable_element_count = 0
         ontology_invalid_element_count = 0
+        temporal_rule_gap_element_count = 0
 
         for element in elements:
             if not isinstance(element, dict):
@@ -2188,6 +2462,8 @@ class ClaimSupportHook:
                 logic_unprovable_element_count += 1
             if str(trace.get('ontology_validation_signal') or '') == 'invalid':
                 ontology_invalid_element_count += 1
+            if str(trace.get('temporal_rule_status') or '') in {'failed', 'partial'}:
+                temporal_rule_gap_element_count += 1
 
         return {
             'decision_source_counts': dict(sorted(decision_source_counts.items())),
@@ -2196,6 +2472,7 @@ class ClaimSupportHook:
             'proof_supported_element_count': proof_supported_element_count,
             'logic_unprovable_element_count': logic_unprovable_element_count,
             'ontology_invalid_element_count': ontology_invalid_element_count,
+            'temporal_rule_gap_element_count': temporal_rule_gap_element_count,
         }
 
     def _build_claim_validation(

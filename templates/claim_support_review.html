@@ -1800,6 +1800,8 @@
                 `<span class="chip">Temporal relations: ${Number(reviewData.temporal_relation_count || 0)}</span>`,
                 `<span class="chip">Temporal issues: ${Number(reviewData.temporal_issue_count || 0)}</span>`,
                 `<span class="chip">Temporal warnings: ${Number(reviewData.temporal_warning_count || 0)}</span>`,
+                `<span class="chip">Temporal rule profiles: ${Number(reviewData.temporal_rule_profile_available_element_count || 0)}</span>`,
+                `<span class="chip">Temporal proof bundles: ${Number(reviewData.temporal_proof_bundle_count || 0)}</span>`,
             ];
             if (reviewData.hybrid_formalism) {
                 summaryChips.push(`<span class="chip">Formalism: ${escapeHtml(reviewData.hybrid_formalism)}</span>`);
@@ -1815,6 +1817,8 @@
                 || reviewData.temporal_relation_count
                 || reviewData.temporal_issue_count
                 || reviewData.temporal_warning_count
+                || reviewData.temporal_rule_profile_available_element_count
+                || reviewData.temporal_proof_bundle_count
                 || (Array.isArray(reviewData.temporal_relation_preview) && reviewData.temporal_relation_preview.length)
             ) ? `
                 <div class="task-card">
@@ -1831,7 +1835,13 @@
                         <span class="chip">issues ${Number(reviewData.temporal_issue_count || 0)}</span>
                         <span class="chip">partial-order-ready elements ${Number(reviewData.temporal_partial_order_ready_element_count || 0)}</span>
                         <span class="chip">warnings ${Number(reviewData.temporal_warning_count || 0)}</span>
+                        <span class="chip">rule profiles ${Number(reviewData.temporal_rule_profile_available_element_count || 0)}</span>
+                        <span class="chip">rule satisfied ${Number(reviewData.temporal_rule_profile_satisfied_element_count || 0)}</span>
+                        <span class="chip">rule partial ${Number(reviewData.temporal_rule_profile_partial_element_count || 0)}</span>
+                        <span class="chip">rule failed ${Number(reviewData.temporal_rule_profile_failed_element_count || 0)}</span>
+                        <span class="chip">proof bundles ${Number(reviewData.temporal_proof_bundle_count || 0)}</span>
                         ${Object.entries(reviewData.temporal_relation_type_counts && typeof reviewData.temporal_relation_type_counts === 'object' ? reviewData.temporal_relation_type_counts : {}).map(([relationType, count]) => `<span class="chip">${humanizeQueryValue(relationType)} ${Number(count || 0)}</span>`).join('')}
+                        ${Object.entries(reviewData.temporal_proof_bundle_status_counts && typeof reviewData.temporal_proof_bundle_status_counts === 'object' ? reviewData.temporal_proof_bundle_status_counts : {}).map(([status, count]) => `<span class="chip">bundle ${humanizeQueryValue(status)} ${Number(count || 0)}</span>`).join('')}
                     </div>
                     ${renderFormulaPreviewDetails('Temporal relation preview', reviewData.temporal_relation_preview || [], 'No temporal relation preview available.')}
                     ${renderFormulaPreviewDetails('Temporal warnings', reviewData.temporal_warning_preview || [], 'No temporal warnings surfaced.')}
@@ -1869,7 +1879,20 @@
                 return;
             }
 
-            const flaggedCards = flaggedElements.map((element) => `
+            const flaggedCards = flaggedElements.map((element) => {
+                const temporalRuleFollowUpPreview = Array.isArray(element.temporal_rule_follow_ups)
+                    ? element.temporal_rule_follow_ups
+                        .map((followUp) => {
+                            if (!followUp || typeof followUp !== 'object') {
+                                return '';
+                            }
+                            const lane = humanizeQueryValue(followUp.lane || 'follow_up');
+                            const reason = String(followUp.reason || '').trim();
+                            return reason ? `${lane}: ${reason}` : lane;
+                        })
+                        .filter(Boolean)
+                    : [];
+                return `
                 <div class="task-card">
                     <div class="row-head">
                         <div>
@@ -1888,14 +1911,27 @@
                         ${element.temporal_issue_count ? `<span class="chip">temporal issues ${Number(element.temporal_issue_count || 0)}</span>` : ''}
                         ${element.temporal_partial_order_ready ? '<span class="chip">partial order ready</span>' : ''}
                         ${element.temporal_warning_count ? `<span class="chip">temporal warnings ${Number(element.temporal_warning_count || 0)}</span>` : ''}
+                        ${element.temporal_rule_status ? `<span class="chip">temporal rule ${humanizeQueryValue(element.temporal_rule_status)}</span>` : ''}
+                        ${element.temporal_rule_frame_id ? `<span class="chip">rule frame ${escapeHtml(element.temporal_rule_frame_id)}</span>` : ''}
+                        ${element.temporal_proof_bundle_status ? `<span class="chip">proof bundle ${humanizeQueryValue(element.temporal_proof_bundle_status)}</span>` : ''}
+                        ${element.temporal_proof_bundle_id ? `<span class="chip">bundle id ${escapeHtml(element.temporal_proof_bundle_id)}</span>` : ''}
                         ${Object.entries(element.temporal_relation_type_counts && typeof element.temporal_relation_type_counts === 'object' ? element.temporal_relation_type_counts : {}).map(([relationType, count]) => `<span class="chip">${humanizeQueryValue(relationType)} ${Number(count || 0)}</span>`).join('')}
                         ${(element.unavailable_adapters || []).map((name) => `<span class="chip">unavailable ${escapeHtml(name)}</span>`).join('')}
                         ${(element.degraded_adapters || []).map((name) => `<span class="chip">degraded ${escapeHtml(name)}</span>`).join('')}
                     </div>
                     ${renderFormulaPreviewDetails('TDFOL preview', element.hybrid_tdfol_formula_preview || [], 'No TDFOL preview formulas for this element.')}
                     ${renderFormulaPreviewDetails('DCEC preview', element.hybrid_dcec_formula_preview || [], 'No DCEC preview formulas for this element.')}
+                    ${renderFormulaPreviewDetails('Temporal rule blockers', element.temporal_rule_blocking_reasons || [], 'No temporal rule blockers for this element.')}
+                    ${renderFormulaPreviewDetails('Temporal rule warnings', element.temporal_rule_warnings || [], 'No temporal rule warnings for this element.')}
+                    ${renderFormulaPreviewDetails('Temporal rule follow-ups', temporalRuleFollowUpPreview, 'No temporal rule follow-ups for this element.')}
+                    ${renderFormulaPreviewDetails('Temporal proof bundle facts', element.temporal_proof_bundle_fact_ids || [], 'No temporal proof bundle facts for this element.')}
+                    ${renderFormulaPreviewDetails('Temporal proof bundle relations', element.temporal_proof_bundle_relation_ids || [], 'No temporal proof bundle relations for this element.')}
+                    ${renderFormulaPreviewDetails('Temporal proof bundle issues', element.temporal_proof_bundle_issue_ids || [], 'No temporal proof bundle issues for this element.')}
+                    ${renderFormulaPreviewDetails('Temporal proof bundle TDFOL preview', element.temporal_proof_bundle_tdfol_preview || [], 'No temporal proof bundle TDFOL preview for this element.')}
+                    ${renderFormulaPreviewDetails('Temporal proof bundle DCEC preview', element.temporal_proof_bundle_dcec_preview || [], 'No temporal proof bundle DCEC preview for this element.')}
                 </div>
-            `).join('');
+            `;
+            }).join('');
 
             listContainer.innerHTML = `${claimLevelTemporalCard}${claimLevelCard}${flaggedCards}`;
         }
@@ -2269,6 +2305,9 @@
             const alignmentTaskUpdateHistory = Array.isArray(intakeCaseSummary.alignment_task_update_history)
                 ? intakeCaseSummary.alignment_task_update_history
                 : [];
+            const alignmentPromotionDriftSummary = intakeCaseSummary.alignment_promotion_drift_summary && typeof intakeCaseSummary.alignment_promotion_drift_summary === 'object'
+                ? intakeCaseSummary.alignment_promotion_drift_summary
+                : {};
             const visibleAlignmentTaskUpdates = alignmentTaskUpdateHistory.length
                 ? alignmentTaskUpdateHistory
                 : alignmentTaskUpdates;
@@ -2614,6 +2653,9 @@
                 `<span class="chip">total updates: ${visibleAlignmentTaskUpdates.length}</span>`,
                 `<span class="chip">promoted testimony: ${visibleAlignmentTaskUpdates.filter((update) => String(update && update.resolution_status || '').trim().toLowerCase() === 'promoted_to_testimony').length}</span>`,
                 `<span class="chip">promoted document: ${visibleAlignmentTaskUpdates.filter((update) => String(update && update.resolution_status || '').trim().toLowerCase() === 'promoted_to_document').length}</span>`,
+                `<span class="chip ${alignmentPromotionDriftSummary.drift_flag ? 'contradicted' : ''}">promotion drift: ${alignmentPromotionDriftSummary.drift_flag ? 'warning' : 'stable'}</span>`,
+                `<span class="chip">pending conversion: ${Number(alignmentPromotionDriftSummary.pending_conversion_count || 0)}</span>`,
+                `<span class="chip">drift ratio: ${Number(alignmentPromotionDriftSummary.drift_ratio || 0).toFixed(2)}</span>`,
             ].join('');
 
             const manualReviewClaims = new Set(

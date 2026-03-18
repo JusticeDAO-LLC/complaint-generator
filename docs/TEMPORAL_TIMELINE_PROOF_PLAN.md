@@ -1,5 +1,9 @@
 # Temporal Timeline Proof Plan
 
+Companion backlog:
+
+- [docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md](./TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md)
+
 This plan describes how to turn collected testimony, documents, web evidence, and authority references into a causal and temporal timeline suitable for temporal deontic first-order logic and DCEC style theorem proving.
 
 The core objective is simple: facts should not only be collected, they should be ordered, normalized, and attached to the legal rules they can satisfy or defeat. A complaint element is not provable merely because supporting text exists. It becomes legally meaningful only when the system can show who acted, what happened, when it happened, what it caused, and how that ordering interacts with the governing law.

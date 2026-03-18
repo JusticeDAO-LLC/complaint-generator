@@ -319,6 +319,12 @@ def summarize_claim_reasoning_review(
     temporal_warning_preview: List[str] = []
     temporal_relation_type_counts: Dict[str, int] = {}
     temporal_relation_preview: List[str] = []
+    temporal_rule_profile_available_element_count = 0
+    temporal_rule_profile_satisfied_element_count = 0
+    temporal_rule_profile_partial_element_count = 0
+    temporal_rule_profile_failed_element_count = 0
+    temporal_proof_bundle_count = 0
+    temporal_proof_bundle_status_counts: Dict[str, int] = {}
 
     for element in elements:
         if not isinstance(element, dict):
@@ -393,6 +399,71 @@ def summarize_claim_reasoning_review(
             for name, count in (temporal_summary.get("relation_type_counts", {}) or {}).items()
             if str(name).strip()
         }
+        temporal_rule_profile = reasoning.get("temporal_rule_profile", {})
+        if not isinstance(temporal_rule_profile, dict):
+            temporal_rule_profile = {}
+        element_temporal_rule_profile_id = str(
+            temporal_rule_profile.get("profile_id") or ""
+        ).strip()
+        element_temporal_rule_frame_id = str(
+            temporal_rule_profile.get("rule_frame_id") or ""
+        ).strip()
+        element_temporal_rule_status = str(
+            temporal_rule_profile.get("status") or ""
+        ).strip()
+        element_temporal_rule_blocking_reasons = [
+            str(reason)
+            for reason in (temporal_rule_profile.get("blocking_reasons", []) or [])
+            if str(reason).strip()
+        ]
+        element_temporal_rule_warnings = [
+            str(warning)
+            for warning in (temporal_rule_profile.get("warnings", []) or [])
+            if str(warning).strip()
+        ]
+        element_temporal_rule_follow_ups = [
+            follow_up
+            for follow_up in (temporal_rule_profile.get("recommended_follow_ups", []) or [])
+            if isinstance(follow_up, dict)
+        ]
+        element_temporal_rule_available = bool(temporal_rule_profile.get("available", False))
+        temporal_proof_bundle = reasoning.get("temporal_proof_bundle", {})
+        if not isinstance(temporal_proof_bundle, dict):
+            temporal_proof_bundle = {}
+        element_temporal_proof_bundle_id = str(
+            temporal_proof_bundle.get("proof_bundle_id") or ""
+        ).strip()
+        element_temporal_proof_bundle_status = str(
+            temporal_proof_bundle.get("status") or ""
+        ).strip()
+        element_temporal_proof_bundle_fact_ids = [
+            str(fact_id)
+            for fact_id in (temporal_proof_bundle.get("temporal_fact_ids", []) or [])
+            if str(fact_id).strip()
+        ]
+        element_temporal_proof_bundle_relation_ids = [
+            str(relation_id)
+            for relation_id in (temporal_proof_bundle.get("temporal_relation_ids", []) or [])
+            if str(relation_id).strip()
+        ]
+        element_temporal_proof_bundle_issue_ids = [
+            str(issue_id)
+            for issue_id in (temporal_proof_bundle.get("temporal_issue_ids", []) or [])
+            if str(issue_id).strip()
+        ]
+        theorem_exports = temporal_proof_bundle.get("theorem_exports", {})
+        if not isinstance(theorem_exports, dict):
+            theorem_exports = {}
+        element_temporal_proof_bundle_tdfol_preview = [
+            str(formula)
+            for formula in (theorem_exports.get("tdfol_formulas", []) or [])
+            if str(formula).strip()
+        ][:preview_limit]
+        element_temporal_proof_bundle_dcec_preview = [
+            str(formula)
+            for formula in (theorem_exports.get("dcec_formulas", []) or [])
+            if str(formula).strip()
+        ][:preview_limit]
         hybrid_tdfol_count = len(hybrid_tdfol_formulas)
         hybrid_dcec_count = len(hybrid_dcec_formulas)
         element_tdfol_preview = hybrid_tdfol_formulas[:preview_limit]
@@ -425,6 +496,22 @@ def summarize_claim_reasoning_review(
         temporal_warning_count += element_temporal_warning_count
         if element_temporal_partial_order_ready:
             temporal_partial_order_ready_element_count += 1
+        if element_temporal_rule_available:
+            temporal_rule_profile_available_element_count += 1
+            if element_temporal_rule_status == "satisfied":
+                temporal_rule_profile_satisfied_element_count += 1
+            elif element_temporal_rule_status == "partial":
+                temporal_rule_profile_partial_element_count += 1
+            elif element_temporal_rule_status == "failed":
+                temporal_rule_profile_failed_element_count += 1
+        if element_temporal_proof_bundle_id:
+            temporal_proof_bundle_count += 1
+            temporal_proof_bundle_status_counts[element_temporal_proof_bundle_status or "unknown"] = (
+                temporal_proof_bundle_status_counts.get(
+                    element_temporal_proof_bundle_status or "unknown", 0
+                )
+                + 1
+            )
         for warning in element_temporal_warnings:
             if warning not in temporal_warning_preview:
                 temporal_warning_preview.append(warning)
@@ -466,6 +553,7 @@ def summarize_claim_reasoning_review(
             or element_temporal_relation_count
             or element_temporal_issue_count
             or element_temporal_warning_count
+            or element_temporal_rule_status in {"partial", "failed"}
         ):
             continue
 
@@ -498,6 +586,19 @@ def summarize_claim_reasoning_review(
                 "temporal_warnings": element_temporal_warnings,
                 "temporal_relation_type_counts": element_temporal_relation_type_counts,
                 "temporal_relation_preview": element_temporal_relation_preview,
+                "temporal_rule_profile_id": element_temporal_rule_profile_id,
+                "temporal_rule_frame_id": element_temporal_rule_frame_id,
+                "temporal_rule_status": element_temporal_rule_status,
+                "temporal_rule_blocking_reasons": element_temporal_rule_blocking_reasons,
+                "temporal_rule_warnings": element_temporal_rule_warnings,
+                "temporal_rule_follow_ups": element_temporal_rule_follow_ups,
+                "temporal_proof_bundle_id": element_temporal_proof_bundle_id,
+                "temporal_proof_bundle_status": element_temporal_proof_bundle_status,
+                "temporal_proof_bundle_fact_ids": element_temporal_proof_bundle_fact_ids,
+                "temporal_proof_bundle_relation_ids": element_temporal_proof_bundle_relation_ids,
+                "temporal_proof_bundle_issue_ids": element_temporal_proof_bundle_issue_ids,
+                "temporal_proof_bundle_tdfol_preview": element_temporal_proof_bundle_tdfol_preview,
+                "temporal_proof_bundle_dcec_preview": element_temporal_proof_bundle_dcec_preview,
             }
         )
 
@@ -528,6 +629,12 @@ def summarize_claim_reasoning_review(
         "temporal_warning_preview": temporal_warning_preview,
         "temporal_relation_type_counts": temporal_relation_type_counts,
         "temporal_relation_preview": temporal_relation_preview,
+        "temporal_rule_profile_available_element_count": temporal_rule_profile_available_element_count,
+        "temporal_rule_profile_satisfied_element_count": temporal_rule_profile_satisfied_element_count,
+        "temporal_rule_profile_partial_element_count": temporal_rule_profile_partial_element_count,
+        "temporal_rule_profile_failed_element_count": temporal_rule_profile_failed_element_count,
+        "temporal_proof_bundle_count": temporal_proof_bundle_count,
+        "temporal_proof_bundle_status_counts": temporal_proof_bundle_status_counts,
         "flagged_elements": flagged_elements,
     }
 

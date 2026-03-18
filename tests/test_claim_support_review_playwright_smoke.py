@@ -532,6 +532,16 @@ def _build_hook_backed_browser_mediator(db_path: str):
                         "hybrid_bridge_available_count": 1,
                         "hybrid_tdfol_formula_count": 2,
                         "hybrid_dcec_formula_count": 1,
+                        "temporal_fact_count": 2,
+                        "temporal_relation_count": 1,
+                        "temporal_issue_count": 1,
+                        "temporal_partial_order_ready_count": 0,
+                        "temporal_warning_count": 1,
+                        "temporal_rule_profile_available_count": 1,
+                        "temporal_rule_profile_satisfied_count": 0,
+                        "temporal_rule_profile_partial_count": 1,
+                        "temporal_rule_profile_failed_count": 0,
+                        "temporal_proof_bundle_count": 1,
                     },
                 },
                 "elements": [
@@ -603,6 +613,41 @@ def _build_hook_backed_browser_mediator(db_path: str):
                                 ],
                                 "relation_type_counts": {"before": 1},
                                 "relation_preview": ["fact_001 before fact_termination"],
+                            },
+                            "temporal_rule_profile": {
+                                "available": True,
+                                "profile_id": "retaliation_temporal_profile_v1",
+                                "rule_frame_id": "retaliation_temporal_frame",
+                                "status": "partial",
+                                "blocking_reasons": [
+                                    "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.",
+                                ],
+                                "warnings": [
+                                    "Protected activity and adverse action are both present but lack an ordering relation.",
+                                ],
+                                "recommended_follow_ups": [
+                                    {
+                                        "lane": "clarify_with_complainant",
+                                        "reason": "Clarify whether the protected activity occurred before the adverse action.",
+                                    }
+                                ],
+                            },
+                            "temporal_proof_bundle": {
+                                "proof_bundle_id": "retaliation:retaliation_1:retaliation_temporal_profile_v1",
+                                "status": "partial",
+                                "temporal_fact_ids": ["fact_001", "fact_termination"],
+                                "temporal_relation_ids": ["timeline_relation_001"],
+                                "temporal_issue_ids": ["temporal_issue_001"],
+                                "theorem_exports": {
+                                    "tdfol_formulas": [
+                                        "ProtectedActivity(fact_001)",
+                                        "AdverseAction(fact_termination)",
+                                    ],
+                                    "dcec_formulas": [
+                                        "Happens(fact_001,t_2026_03_10)",
+                                        "Happens(fact_termination,t_2026_03_24)",
+                                    ],
+                                },
                             },
                         },
                         "contradiction_candidates": [],
@@ -1503,6 +1548,8 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "Temporal relations: 1" in reasoning_summary
                 assert "Temporal issues: 1" in reasoning_summary
                 assert "Temporal warnings: 1" in reasoning_summary
+                assert "Temporal rule profiles: 1" in reasoning_summary
+                assert "Temporal proof bundles: 1" in reasoning_summary
                 assert "Formalism: tdfol_dcec_bridge_v1" in reasoning_summary
                 assert "Mode: temporal_bridge" in reasoning_summary
                 assert "Temporal proof handoff" in reasoning_flagged
@@ -1510,29 +1557,53 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "relations 1" in reasoning_flagged
                 assert "issues 1" in reasoning_flagged
                 assert "warnings 1" in reasoning_flagged
+                assert "rule profiles 1" in reasoning_flagged
+                assert "rule partial 1" in reasoning_flagged
+                assert "proof bundles 1" in reasoning_flagged
+                assert "bundle Partial 1" in reasoning_flagged
                 assert "Before 1" in reasoning_flagged
                 assert "Claim-level hybrid bridge" in reasoning_flagged
                 assert "Protected activity" in reasoning_flagged
+                assert "temporal rule Partial" in reasoning_flagged
+                assert "rule frame retaliation_temporal_frame" in reasoning_flagged
+                assert "proof bundle Partial" in reasoning_flagged
                 assert "formalism tdfol_dcec_bridge_v1" in reasoning_flagged
                 assert "mode temporal_bridge" in reasoning_flagged
                 assert "TDFOL preview" in reasoning_flagged
                 assert "DCEC preview" in reasoning_flagged
+                assert "Temporal rule blockers" in reasoning_flagged
+                assert "Temporal rule follow-ups" in reasoning_flagged
+                assert "Temporal proof bundle TDFOL preview" in reasoning_flagged
+                assert "Temporal proof bundle DCEC preview" in reasoning_flagged
                 assert "bridge path ipfs_datasets_py.ipfs_datasets_py.processors.legal_data.reasoner.hybrid_v2_blueprint" in reasoning_flagged
 
                 page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Temporal relation preview").first.click()
                 page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Temporal warnings").first.click()
                 page.locator("#claim-reasoning-flagged-list summary").filter(has_text="TDFOL preview").first.click()
                 page.locator("#claim-reasoning-flagged-list summary").filter(has_text="DCEC preview").first.click()
+                page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Temporal rule blockers").first.click()
+                page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Temporal rule follow-ups").first.click()
+                page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Temporal proof bundle TDFOL preview").first.click()
+                page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Temporal proof bundle DCEC preview").first.click()
 
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text("fact_001 before fact_termination").first.is_visible()
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text(
                     "Some timeline facts only express relative ordering and still need anchoring."
+                ).first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text(
+                    "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action."
+                ).first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text(
+                    "Clarify With Complainant: Clarify whether the protected activity occurred before the adverse action."
                 ).first.is_visible()
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text("Before(fact_1,fact_2)").first.is_visible()
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text(
                     "forall t (AtTime(t,t_2026_03_10) -> Fact(fact_1,t))"
                 ).first.is_visible()
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text("Happens(fact_1,t_2026_03_10)").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("ProtectedActivity(fact_001)").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("AdverseAction(fact_termination)").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("Happens(fact_termination,t_2026_03_24)").first.is_visible()
                 assert "Tasks: 1" in task_summary
                 assert "Primary gaps: Manager knowledge=1" in task_summary
                 assert "Gap coverage: Event sequence=1, Manager knowledge=1" in task_summary
