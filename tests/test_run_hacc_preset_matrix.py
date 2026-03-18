@@ -251,6 +251,8 @@ def test_attach_recommendation_claim_snapshots_enriches_best_overall():
     assert enriched["best_overall"]["hacc_search_fallback_note"] == (
         "Requested hybrid search, but vector support is unavailable; using lexical results instead."
     )
+
+
 def test_attach_recommendation_tradeoff_notes_enriches_winner():
     recommendations = {
         "best_overall": {"preset": "accommodation_focus"},

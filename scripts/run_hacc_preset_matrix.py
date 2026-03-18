@@ -292,8 +292,12 @@ def _attach_recommendation_claim_snapshots(
             item["claim_theory_families"] = list(row["claim_theory_families"])
         if row.get("synthesis_output_dir"):
             item["synthesis_output_dir"] = row["synthesis_output_dir"]
-        if row.get("runtime_note"):
-            item["runtime_note"] = row["runtime_note"]
+        if row.get("hacc_search_mode"):
+            item["hacc_search_mode"] = row["hacc_search_mode"]
+        if row.get("effective_hacc_search_mode"):
+            item["effective_hacc_search_mode"] = row["effective_hacc_search_mode"]
+        if row.get("hacc_search_fallback_note"):
+            item["hacc_search_fallback_note"] = row["hacc_search_fallback_note"]
         enriched[key] = item
     return enriched
 
