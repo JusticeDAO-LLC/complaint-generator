@@ -240,7 +240,8 @@ def test_render_markdown_includes_outstanding_intake_gaps_section():
     assert "## Follow-Up Questions" in markdown
     assert "- When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?" in markdown
     assert "## Search Summary" in markdown
-    assert "- Search mode: requested=hybrid; effective=lexical_only" in markdown
+    assert "- Requested search mode: hybrid" in markdown
+    assert "- Effective search mode: lexical_only" in markdown
     assert "- Search fallback: Requested hybrid search, but vector support is unavailable; using lexical results instead." in markdown
 
 

@@ -1928,8 +1928,54 @@ class TestOptimizer:
         assert report.intake_priority_performance["coverage_by_objective"]["timeline"]["coverage_rate"] == 0.5
         assert report.intake_priority_performance["sessions_with_full_coverage"] == 0
         assert report.intake_priority_performance["sessions_with_partial_coverage"] == 2
+        assert report.coverage_remediation["intake_priorities"]["uncovered_objectives"] == ["documents", "timeline"]
+        assert report.coverage_remediation["intake_priorities"]["recommended_actions"][0]["objective"] == "documents"
+        assert "written records earlier" in report.coverage_remediation["intake_priorities"]["recommended_actions"][0]["recommended_action"]
         assert any("documents (0/1)" in rec for rec in report.recommendations)
         assert any(improvement.startswith("Improve intake priority coverage:") for improvement in report.priority_improvements)
+
+    def test_optimizer_distinguishes_anchor_and_intake_remediation(self):
+        optimizer = Optimizer()
+        result = SessionResult(
+            session_id="session_remediation",
+            timestamp="2024-01-01",
+            seed_complaint={},
+            initial_complaint_text="Test",
+            conversation_history=[],
+            num_questions=3,
+            num_turns=2,
+            final_state={
+                'adversarial_intake_priority_summary': {
+                    'expected_objectives': ['timeline', 'anchor_appeal_rights'],
+                    'covered_objectives': ['timeline'],
+                    'uncovered_objectives': ['anchor_appeal_rights'],
+                }
+            },
+            critic_score=CriticScore(
+                overall_score=0.58,
+                question_quality=0.58,
+                information_extraction=0.58,
+                empathy=0.58,
+                efficiency=0.58,
+                coverage=0.50,
+                feedback="Test",
+                strengths=[],
+                weaknesses=[],
+                suggestions=[],
+                anchor_sections_expected=['appeal_rights'],
+                anchor_sections_covered=[],
+                anchor_sections_missing=['appeal_rights'],
+            ),
+            success=True,
+        )
+
+        report = optimizer.analyze([result])
+
+        assert report.coverage_remediation["anchor_sections"]["missing_sections"] == ["appeal_rights"]
+        assert report.coverage_remediation["anchor_sections"]["recommended_actions"][0]["section"] == "appeal_rights"
+        assert report.coverage_remediation["intake_priorities"]["uncovered_objectives"] == ["anchor_appeal_rights"]
+        assert report.coverage_remediation["intake_priorities"]["recommended_actions"][0]["objective"] == "anchor_appeal_rights"
+        assert any(improvement.startswith("Close anchor-section coverage gaps:") for improvement in report.priority_improvements)
 
     def test_build_agentic_patch_task_uses_report_recommendations(self, monkeypatch):
         optimizer = Optimizer()

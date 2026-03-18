@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import logging
 import re
-import importlib.util
+import importlib
+import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
@@ -63,17 +64,16 @@ def _repo_root() -> Path:
 
 
 def _load_hacc_engine() -> Any:
-    engine_path = _repo_root() / "hacc_research" / "engine.py"
+    repo_root = _repo_root()
+    engine_path = repo_root / "hacc_research" / "engine.py"
     if not engine_path.exists():
         raise ModuleNotFoundError(f"HACCResearchEngine not found at {engine_path}")
 
-    module_name = "hacc_research.engine"
-    spec = importlib.util.spec_from_file_location(module_name, engine_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load module spec for {engine_path}")
+    repo_root_str = str(repo_root)
+    if repo_root_str not in sys.path:
+        sys.path.insert(0, repo_root_str)
 
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    module = importlib.import_module("hacc_research")
     return getattr(module, "HACCResearchEngine")
 
 

@@ -127,8 +127,15 @@ def _select_matrix_recommendations(rows: List[Dict[str, Any]]) -> Dict[str, Dict
     }
 
 
-def _session_search_summary(session: Dict[str, Any], fallback_search_mode: str = "package") -> Dict[str, Any]:
-    seed = dict(session.get("seed_complaint") or {})
+def _session_search_summary(session: Any, fallback_search_mode: str = "package") -> Dict[str, Any]:
+    if isinstance(session, dict):
+        session_payload = session
+    elif hasattr(session, "to_dict"):
+        session_payload = session.to_dict()
+    else:
+        session_payload = {"seed_complaint": getattr(session, "seed_complaint", {})}
+
+    seed = dict(session_payload.get("seed_complaint") or {})
     meta = dict(seed.get("_meta") or {})
     key_facts = dict(seed.get("key_facts") or {})
     stored = dict(meta.get("search_summary") or key_facts.get("search_summary") or {})
@@ -147,6 +154,41 @@ def _session_search_summary(session: Dict[str, Any], fallback_search_mode: str =
         stored.get("fallback_note")
         or meta.get("hacc_search_fallback_note")
         or ""
+    )
+    return {
+        "requested_search_mode": requested_mode,
+        "effective_search_mode": effective_mode,
+        "fallback_note": fallback_note,
+    }
+
+
+def _results_search_summary(results: Any, fallback_search_mode: str = "package") -> Dict[str, Any]:
+    if isinstance(results, dict):
+        sessions = list(results.get("results") or [])
+    else:
+        sessions = list(results or [])
+    if not sessions:
+        return {
+            "requested_search_mode": fallback_search_mode or "package",
+            "effective_search_mode": fallback_search_mode or "package",
+            "fallback_note": "",
+        }
+
+    summaries = [_session_search_summary(session, fallback_search_mode) for session in sessions]
+    requested_mode = str(
+        next(
+            (item.get("requested_search_mode") for item in summaries if item.get("requested_search_mode")),
+            fallback_search_mode or "package",
+        )
+    )
+    effective_mode = str(
+        next(
+            (item.get("effective_search_mode") for item in summaries if item.get("effective_search_mode")),
+            requested_mode,
+        )
+    )
+    fallback_note = "; ".join(
+        sorted({str(item.get("fallback_note") or "").strip() for item in summaries if str(item.get("fallback_note") or "").strip()})
     )
     return {
         "requested_search_mode": requested_mode,
@@ -399,6 +441,67 @@ def _attach_recommendation_tradeoff_notes(
                 item["strategy_summary"] = strategy_summary
         enriched[key] = item
     return enriched
+
+
+def _write_matrix_outputs(
+    *,
+    output_dir: Path,
+    requested_presets: List[str],
+    matrix_rows: List[Dict[str, Any]],
+    full_results: List[Dict[str, Any]],
+    recommendations: Dict[str, Dict[str, Any]],
+    winner_delta: Dict[str, Any] | None = None,
+    challenger_summary: Dict[str, Any] | None = None,
+    preset_errors: List[Dict[str, str]] | None = None,
+) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    summary_payload = {
+        "requested_presets": requested_presets,
+        "rows": matrix_rows,
+        "recommendations": recommendations,
+        "winner_delta": winner_delta or {},
+        "champion_challenger": challenger_summary,
+        "preset_errors": preset_errors or [],
+        "full_results": full_results,
+    }
+    (output_dir / "preset_matrix_summary.json").write_text(
+        json.dumps(summary_payload, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    fieldnames = [
+        "preset",
+        "backend_id",
+        "hacc_search_mode",
+        "effective_hacc_search_mode",
+        "hacc_search_fallback_note",
+        "average_score",
+        "successful_sessions",
+        "total_sessions",
+        "anchor_coverage",
+        "router_status",
+        "top_missing_sections",
+        "missing_sections",
+        "output_dir",
+        "claim_selection_overview",
+        "relief_selection_overview",
+        "claim_theory_families",
+        "synthesis_output_dir",
+    ]
+    with open(output_dir / "preset_matrix_summary.csv", "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in matrix_rows:
+            writer.writerow({name: row.get(name) for name in fieldnames})
+
+    _write_markdown_report(
+        output_dir / "preset_matrix_summary.md",
+        matrix_rows,
+        recommendations,
+        champion_challenger=challenger_summary,
+        winner_delta=winner_delta,
+    )
 
 
 def _write_markdown_report(
@@ -1015,6 +1118,7 @@ def _synthesize_claim_selection_snapshot(
         "session_id": best_session.get("session_id"),
         "critic_score": float((best_session.get("critic_score") or {}).get("overall_score", 0.0) or 0.0),
         "summary": cleaned_summary,
+        "search_summary": synthesis._extract_search_summary(seed),
         "caption": synthesis._draft_caption(seed, filing_forum),
         "parties": synthesis._draft_parties(filing_forum),
         "jurisdiction_and_venue": synthesis._jurisdiction_and_venue(seed, filing_forum),
@@ -1075,6 +1179,7 @@ def _run_preset_batch(
     max_turns: int,
     max_parallel: int,
     use_vector_search: bool,
+    hacc_search_mode: str,
     probe_llm_router: bool,
     probe_embeddings_router: bool,
     disable_local_ipfs_fallback: bool,
@@ -1119,6 +1224,7 @@ def _run_preset_batch(
         hacc_count=hacc_count,
         hacc_preset=preset,
         use_hacc_vector_search=use_vector_search,
+        hacc_search_mode=hacc_search_mode,
     )
 
     statistics = harness.get_statistics()
@@ -1130,6 +1236,7 @@ def _run_preset_batch(
         json.dump(optimizer_report, handle, indent=2)
 
     runtime_health = _summarize_runtime_health(results)
+    search_summary = _results_search_summary(results, hacc_search_mode)
     router_status = str(router_report.get("status") or "")
     if runtime_health.get("degraded") or not selected_backend_healthy:
         router_status = "degraded"
@@ -1141,6 +1248,8 @@ def _run_preset_batch(
         "backend_probe_attempts": backend_probe_attempts,
         "router_report": router_report,
         "runtime": runtime_health,
+        "hacc_search_mode": hacc_search_mode,
+        "search_summary": search_summary,
     }
     with open(preset_dir / "run_summary.json", "w", encoding="utf-8") as handle:
         json.dump(run_summary_payload, handle, indent=2)
@@ -1164,6 +1273,9 @@ def _run_preset_batch(
     return {
         "preset": preset,
         "backend_id": backend_id,
+        "hacc_search_mode": hacc_search_mode,
+        "effective_hacc_search_mode": search_summary.get("effective_search_mode") or hacc_search_mode,
+        "hacc_search_fallback_note": search_summary.get("fallback_note") or "",
         "selected_backend_healthy": selected_backend_healthy,
         "average_score": float(statistics.get("average_score", 0.0) or 0.0),
         "successful_sessions": int(statistics.get("successful_sessions", 0) or 0),
@@ -1173,11 +1285,12 @@ def _run_preset_batch(
         "missing_sections": missing_sections,
         "output_dir": str(preset_dir),
         "router_status": router_status,
-        "backend_probe_attempts": backend_probe_attempts,
-        "router_report": router_report,
-        "runtime": runtime_health,
         "statistics": statistics,
         "optimizer_report": optimizer_report,
+        "router_report": router_report,
+        "backend_probe_attempts": backend_probe_attempts,
+        "runtime": runtime_health,
+        "search_summary": search_summary,
         "claim_selection_summary": synthesis_snapshot["claim_selection_summary"],
         "claim_selection_overview": synthesis_snapshot["claim_selection_overview"],
         "relief_selection_summary": synthesis_snapshot["relief_selection_summary"],
@@ -1185,65 +1298,6 @@ def _run_preset_batch(
         "claim_theory_families": synthesis_snapshot["claim_theory_families"],
         "synthesis_output_dir": synthesis_snapshot["synthesis_output_dir"],
     }
-
-
-def _write_matrix_outputs(
-    *,
-    output_dir: Path,
-    requested_presets: List[str],
-    matrix_rows: List[Dict[str, Any]],
-    full_results: List[Dict[str, Any]],
-    recommendations: Dict[str, Dict[str, Any]],
-    winner_delta: Dict[str, Any],
-    challenger_summary: Dict[str, Any] | None,
-    preset_errors: List[Dict[str, str]],
-) -> None:
-    summary_json = output_dir / "preset_matrix_summary.json"
-    summary_csv = output_dir / "preset_matrix_summary.csv"
-    summary_md = output_dir / "preset_matrix_summary.md"
-
-    with open(summary_json, "w", encoding="utf-8") as handle:
-        json.dump(
-            {
-                "timestamp": datetime.now(UTC).isoformat(),
-                "presets": requested_presets,
-                "recommendations": recommendations,
-                "winner_delta": winner_delta,
-                "rows": matrix_rows,
-                "details": full_results,
-                "champion_challenger": challenger_summary,
-                "errors": preset_errors,
-            },
-            handle,
-            indent=2,
-        )
-
-    with open(summary_csv, "w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(
-            handle,
-            fieldnames=[
-                "preset",
-                "backend_id",
-                "average_score",
-                "successful_sessions",
-                "total_sessions",
-                "anchor_coverage",
-                "router_status",
-                "top_missing_sections",
-                "missing_sections",
-                "output_dir",
-                "runtime_note",
-                "claim_selection_overview",
-                "relief_selection_overview",
-                "claim_theory_families",
-                "synthesis_output_dir",
-            ],
-        )
-        writer.writeheader()
-        for row in matrix_rows:
-            writer.writerow(row)
-
-    _write_markdown_report(summary_md, matrix_rows, recommendations, challenger_summary, winner_delta)
 
 
 def _rebuild_batch_result_from_preset_dir(
@@ -1404,6 +1458,12 @@ def main() -> int:
     )
     parser.add_argument("--use-vector-search", action="store_true")
     parser.add_argument(
+        "--hacc-search-mode",
+        choices=("auto", "lexical", "hybrid", "vector", "package"),
+        default="package",
+        help="Search strategy used for HACC evidence retrieval inside each preset batch.",
+    )
+    parser.add_argument(
         "--synthesis-filing-forum",
         default="hud",
         choices=("court", "hud", "state_agency"),
@@ -1437,8 +1497,10 @@ def main() -> int:
     invalid_presets = [preset for preset in requested_presets if preset not in HACC_QUERY_PRESETS]
     if invalid_presets:
         raise ValueError(
-            "Unknown presets: " + ", ".join(invalid_presets) +
-            ". Available presets: " + ", ".join(sorted(HACC_QUERY_PRESETS.keys()))
+            "Unknown presets: "
+            + ", ".join(invalid_presets)
+            + ". Available presets: "
+            + ", ".join(sorted(HACC_QUERY_PRESETS.keys()))
         )
 
     logging.basicConfig(level=logging.INFO)
@@ -1456,6 +1518,7 @@ def main() -> int:
     matrix_rows: List[Dict[str, Any]] = []
     full_results: List[Dict[str, Any]] = []
     preset_errors: List[Dict[str, str]] = []
+    challenger_summary: Dict[str, Any] | None = None
 
     for preset in requested_presets:
         preset_dir = output_dir / preset
@@ -1483,6 +1546,7 @@ def main() -> int:
                     max_turns=args.max_turns,
                     max_parallel=args.max_parallel,
                     use_vector_search=args.use_vector_search,
+                    hacc_search_mode=args.hacc_search_mode,
                     probe_llm_router=args.probe_llm_router,
                     probe_embeddings_router=args.probe_embeddings_router,
                     disable_local_ipfs_fallback=args.disable_local_ipfs_fallback,
@@ -1500,9 +1564,13 @@ def main() -> int:
             )
             logging.exception("Preset %s failed; continuing with completed presets", preset)
             continue
+
         row = {
             "preset": batch_result["preset"],
             "backend_id": batch_result["backend_id"],
+            "hacc_search_mode": batch_result["hacc_search_mode"],
+            "effective_hacc_search_mode": batch_result["effective_hacc_search_mode"],
+            "hacc_search_fallback_note": batch_result["hacc_search_fallback_note"],
             "average_score": batch_result["average_score"],
             "successful_sessions": batch_result["successful_sessions"],
             "total_sessions": batch_result["total_sessions"],
@@ -1511,7 +1579,6 @@ def main() -> int:
             "top_missing_sections": batch_result["top_missing_sections"],
             "missing_sections": batch_result["missing_sections"],
             "output_dir": batch_result["output_dir"],
-            "runtime_note": _runtime_note(batch_result["runtime"]),
             "claim_selection_overview": batch_result["claim_selection_overview"],
             "relief_selection_overview": batch_result["relief_selection_overview"],
             "claim_theory_families": batch_result["claim_theory_families"],
@@ -1522,6 +1589,9 @@ def main() -> int:
             {
                 "preset": preset,
                 "backend_id": batch_result["backend_id"],
+                "hacc_search_mode": batch_result["hacc_search_mode"],
+                "effective_hacc_search_mode": batch_result["effective_hacc_search_mode"],
+                "hacc_search_fallback_note": batch_result["hacc_search_fallback_note"],
                 "selected_backend_healthy": batch_result["selected_backend_healthy"],
                 "backend_probe_attempts": batch_result["backend_probe_attempts"],
                 "statistics": batch_result["statistics"],
@@ -1529,6 +1599,7 @@ def main() -> int:
                 "output_dir": batch_result["output_dir"],
                 "router_report": batch_result["router_report"],
                 "runtime": batch_result.get("runtime", {}),
+                "search_summary": batch_result.get("search_summary", {}),
                 "claim_selection_summary": batch_result["claim_selection_summary"],
                 "claim_selection_overview": batch_result["claim_selection_overview"],
                 "relief_selection_summary": batch_result["relief_selection_summary"],
@@ -1538,72 +1609,90 @@ def main() -> int:
             }
         )
 
-        if args.fail_on_degraded_runtime and batch_result.get("runtime", {}).get("degraded"):
-            raise RuntimeError(
-                f"Preset {preset} completed with degraded runtime: {_runtime_note(batch_result.get("runtime", {})) or batch_result.get("runtime", {})}"
-            )
-        current_rows = sorted(matrix_rows, key=lambda row: (-row["average_score"], -row["anchor_coverage"], row["preset"]))
-        current_recommendations = _attach_recommendation_claim_snapshots(
-            _select_matrix_recommendations(current_rows),
-            current_rows,
-        )
-        current_winner_delta = _build_claim_snapshot_delta(current_rows, full_results, current_recommendations)
-        current_recommendations = _attach_recommendation_tradeoff_notes(current_recommendations, current_winner_delta)
-        _write_matrix_outputs(
-            output_dir=output_dir,
-            requested_presets=requested_presets,
-            matrix_rows=current_rows,
-            full_results=full_results,
-            recommendations=current_recommendations,
-            winner_delta=current_winner_delta,
-            challenger_summary=None,
-            preset_errors=preset_errors,
-        )
+    if not matrix_rows:
+        raise RuntimeError("No preset runs completed successfully")
 
     matrix_rows.sort(key=lambda row: (-row["average_score"], -row["anchor_coverage"], row["preset"]))
-    if not matrix_rows:
-        raise RuntimeError(
-            "No presets completed successfully. " +
-            ("Errors: " + "; ".join(f"{item['preset']}: {item['error']}" for item in preset_errors) if preset_errors else "")
-        )
-    recommendations = _select_matrix_recommendations(matrix_rows)
-    recommendations = _attach_recommendation_claim_snapshots(recommendations, matrix_rows)
+    recommendations = _attach_recommendation_claim_snapshots(
+        _select_matrix_recommendations(matrix_rows),
+        matrix_rows,
+    )
     winner_delta = _build_claim_snapshot_delta(matrix_rows, full_results, recommendations)
     recommendations = _attach_recommendation_tradeoff_notes(recommendations, winner_delta)
 
-    challenger_summary = None
+    if args.fail_on_degraded_runtime:
+        degraded_presets = [
+            row["preset"]
+            for row, detail in zip(matrix_rows, full_results)
+            if bool((detail.get("runtime") or {}).get("degraded"))
+        ]
+        if degraded_presets:
+            raise RuntimeError(
+                "Matrix run completed with degraded runtime for presets: " + ", ".join(sorted(degraded_presets))
+            )
 
-    if args.top_k_rerun > 0 and args.champion_sessions > 0 and matrix_rows:
+    if args.top_k_rerun > 0:
         rerun_dir = output_dir / "champion_challenger"
         rerun_dir.mkdir(parents=True, exist_ok=True)
         challenger_rows: List[Dict[str, Any]] = []
         challenger_details: List[Dict[str, Any]] = []
-        top_presets = [row["preset"] for row in matrix_rows[: args.top_k_rerun]]
-        for preset in top_presets:
-            batch_result = _run_preset_batch(
-                preset=preset,
-                preset_dir=rerun_dir / preset,
-                backend_id=selected_backend_id,
-                backend_kwargs=backend_kwargs,
-                backend_probe_attempts=probe_attempts,
-                selected_backend_healthy=selected_backend_healthy,
-                embeddings_config=embeddings_config,
-                num_sessions=args.champion_sessions,
-                hacc_count=args.hacc_count,
-                max_turns=args.max_turns,
-                max_parallel=args.max_parallel,
-                use_vector_search=args.use_vector_search,
-                probe_llm_router=args.probe_llm_router,
-                probe_embeddings_router=args.probe_embeddings_router,
-                disable_local_ipfs_fallback=args.disable_local_ipfs_fallback,
-                synthesis_filing_forum=args.synthesis_filing_forum,
-            )
+        rerun_sessions = args.champion_sessions or args.num_sessions
+        top_candidates = matrix_rows[: args.top_k_rerun]
+        for candidate in top_candidates:
+            preset = str(candidate["preset"])
+            preset_dir = rerun_dir / preset
+            try:
+                if args.rebuild_existing:
+                    batch_result = _rebuild_batch_result_from_preset_dir(
+                        preset=preset,
+                        preset_dir=preset_dir,
+                        backend_id=selected_backend_id,
+                        selected_backend_healthy=selected_backend_healthy,
+                        backend_probe_attempts=probe_attempts,
+                        synthesis_filing_forum=args.synthesis_filing_forum,
+                    )
+                else:
+                    batch_result = _run_preset_batch(
+                        preset=preset,
+                        preset_dir=preset_dir,
+                        backend_id=selected_backend_id,
+                        backend_kwargs=backend_kwargs,
+                        backend_probe_attempts=probe_attempts,
+                        selected_backend_healthy=selected_backend_healthy,
+                        embeddings_config=embeddings_config,
+                        num_sessions=rerun_sessions,
+                        hacc_count=args.hacc_count,
+                        max_turns=args.max_turns,
+                        max_parallel=args.max_parallel,
+                        use_vector_search=args.use_vector_search,
+                        hacc_search_mode=args.hacc_search_mode,
+                        probe_llm_router=args.probe_llm_router,
+                        probe_embeddings_router=args.probe_embeddings_router,
+                        disable_local_ipfs_fallback=args.disable_local_ipfs_fallback,
+                        synthesis_filing_forum=args.synthesis_filing_forum,
+                    )
+            except Exception as exc:
+                if not args.continue_on_error:
+                    raise
+                preset_errors.append(
+                    {
+                        "preset": f"champion_challenger::{preset}",
+                        "error": str(exc),
+                        "traceback": traceback.format_exc(),
+                    }
+                )
+                logging.exception("Champion/challenger preset %s failed; continuing", preset)
+                continue
+
             challenger_rows.append(
                 {
                     key: batch_result[key]
                     for key in (
                         "preset",
                         "backend_id",
+                        "hacc_search_mode",
+                        "effective_hacc_search_mode",
+                        "hacc_search_fallback_note",
                         "average_score",
                         "successful_sessions",
                         "total_sessions",
@@ -1612,7 +1701,6 @@ def main() -> int:
                         "missing_sections",
                         "output_dir",
                         "router_status",
-                        "runtime_note",
                         "claim_selection_overview",
                         "relief_selection_overview",
                         "claim_theory_families",
@@ -1623,6 +1711,9 @@ def main() -> int:
             challenger_details.append(
                 {
                     "preset": batch_result["preset"],
+                    "hacc_search_mode": batch_result["hacc_search_mode"],
+                    "effective_hacc_search_mode": batch_result["effective_hacc_search_mode"],
+                    "hacc_search_fallback_note": batch_result["hacc_search_fallback_note"],
                     "claim_selection_overview": batch_result["claim_selection_overview"],
                     "claim_selection_summary": batch_result["claim_selection_summary"],
                     "relief_selection_summary": batch_result["relief_selection_summary"],
@@ -1630,26 +1721,28 @@ def main() -> int:
                     "claim_theory_families": batch_result["claim_theory_families"],
                 }
             )
-        challenger_rows.sort(key=lambda row: (-row["average_score"], -row["anchor_coverage"], row["preset"]))
-        challenger_summary = {
-            "num_sessions": args.champion_sessions,
-            "top_k_rerun": args.top_k_rerun,
-            "rows": challenger_rows,
-            "recommendations": _attach_recommendation_claim_snapshots(
-                _select_matrix_recommendations(challenger_rows),
+
+        if challenger_rows:
+            challenger_rows.sort(key=lambda row: (-row["average_score"], -row["anchor_coverage"], row["preset"]))
+            challenger_summary = {
+                "num_sessions": rerun_sessions,
+                "top_k_rerun": args.top_k_rerun,
+                "rows": challenger_rows,
+                "recommendations": _attach_recommendation_claim_snapshots(
+                    _select_matrix_recommendations(challenger_rows),
+                    challenger_rows,
+                ),
+                "output_dir": str(rerun_dir),
+            }
+            challenger_summary["winner_delta"] = _build_claim_snapshot_delta(
                 challenger_rows,
-            ),
-            "output_dir": str(rerun_dir),
-        }
-        challenger_summary["winner_delta"] = _build_claim_snapshot_delta(
-            challenger_rows,
-            challenger_details,
-            challenger_summary["recommendations"],
-        )
-        challenger_summary["recommendations"] = _attach_recommendation_tradeoff_notes(
-            challenger_summary["recommendations"],
-            challenger_summary["winner_delta"],
-        )
+                challenger_details,
+                challenger_summary["recommendations"],
+            )
+            challenger_summary["recommendations"] = _attach_recommendation_tradeoff_notes(
+                challenger_summary["recommendations"],
+                challenger_summary["winner_delta"],
+            )
 
     _write_matrix_outputs(
         output_dir=output_dir,
@@ -1665,84 +1758,73 @@ def main() -> int:
     print(f"Saved preset matrix outputs to {output_dir}")
     if preset_errors:
         print(
-            "Preset errors: " +
-            "; ".join(f"{item['preset']}={item['error']}" for item in preset_errors)
+            "Preset errors: "
+            + "; ".join(f"{item['preset']}={item['error']}" for item in preset_errors)
         )
     if recommendations:
         def _recommendation_console_suffix(payload: Dict[str, Any]) -> str:
             family_list = list(payload.get("claim_theory_families") or [])
             families = ", ".join(family_list)
-            use_note = str(payload.get("strategy_summary") or "").strip()
-            if not use_note:
-                use_note = str(payload.get("tradeoff_note") or "")
+            use_note = str(payload.get("tradeoff_note") or "")
             if not use_note:
                 use_note = _recommendation_use_note(family_list)
+            claim_note = str(payload.get("claim_posture_note") or "")
+            relief_note = str(payload.get("relief_posture_note") or "")
             suffix = f" ({families})" if families else ""
             if use_note:
                 suffix += f" - {use_note}"
+            if claim_note:
+                suffix += f" | {claim_note}"
+            if relief_note:
+                suffix += f" | {relief_note}"
             return suffix
 
-        grouped_recommendations = _recommendation_groups(recommendations)
-        if len(grouped_recommendations) == 1:
-            labels, payload = grouped_recommendations[0]
-            label_names = ", ".join(label.replace("_", " ") for label in labels)
-            print(
-                "Recommendations: "
-                f"unified={payload['preset']}{_recommendation_console_suffix(payload)}; applies_to={label_names}"
-            )
-        else:
-            print(
-                "Recommendations: "
-                f"best_overall={recommendations['best_overall']['preset']}{_recommendation_console_suffix(dict(recommendations.get('best_overall') or {}))}, "
-                f"best_anchor_coverage={recommendations['best_anchor_coverage']['preset']}{_recommendation_console_suffix(dict(recommendations.get('best_anchor_coverage') or {}))}, "
-                f"best_balanced={recommendations['best_balanced']['preset']}{_recommendation_console_suffix(dict(recommendations.get('best_balanced') or {}))}"
-            )
+        print(
+            "Recommendations: "
+            f"best_overall={recommendations['best_overall']['preset']}{_recommendation_console_suffix(dict(recommendations.get('best_overall') or {}))}, "
+            f"best_anchor_coverage={recommendations['best_anchor_coverage']['preset']}{_recommendation_console_suffix(dict(recommendations.get('best_anchor_coverage') or {}))}, "
+            f"best_balanced={recommendations['best_balanced']['preset']}{_recommendation_console_suffix(dict(recommendations.get('best_balanced') or {}))}"
+        )
     for row in matrix_rows:
         print(
             f"{row['preset']}: score={row['average_score']:.2f}, "
             f"backend={row.get('backend_id') or '-'}, "
+            f"search={row.get('hacc_search_mode') or '-'}->{row.get('effective_hacc_search_mode') or row.get('hacc_search_mode') or '-'}, "
             f"anchor_coverage={row['anchor_coverage']:.2f}, "
             f"router={row.get('router_status') or '-'}, "
             f"top_missing={row['top_missing_sections'] or '-'}, "
-            f"success={row['successful_sessions']}/{row['total_sessions']}, "
-            f"runtime={row.get('runtime_note') or 'healthy'}"
+            f"success={row['successful_sessions']}/{row['total_sessions']}"
         )
     if challenger_summary:
         challenger_recs = challenger_summary.get("recommendations") or {}
         print(
             "Champion/challenger: "
-            f"reran top {args.top_k_rerun} presets with {args.champion_sessions} sessions each"
+            f"reran top {args.top_k_rerun} presets with {args.champion_sessions or args.num_sessions} sessions each"
         )
         if challenger_recs:
             def _challenger_suffix(payload: Dict[str, Any]) -> str:
                 family_list = list(payload.get("claim_theory_families") or [])
                 families = ", ".join(family_list)
-                use_note = str(payload.get("strategy_summary") or "").strip()
-                if not use_note:
-                    use_note = str(payload.get("tradeoff_note") or "")
+                use_note = str(payload.get("tradeoff_note") or "")
                 if not use_note:
                     use_note = _recommendation_use_note(family_list)
+                claim_note = str(payload.get("claim_posture_note") or "")
+                relief_note = str(payload.get("relief_posture_note") or "")
                 suffix = f" ({families})" if families else ""
                 if use_note:
                     suffix += f" - {use_note}"
+                if claim_note:
+                    suffix += f" | {claim_note}"
+                if relief_note:
+                    suffix += f" | {relief_note}"
                 return suffix
 
-            grouped_challenger = _recommendation_groups(challenger_recs)
-            if len(grouped_challenger) == 1:
-                labels, payload = grouped_challenger[0]
-                payload = dict(challenger_recs.get("best_overall") or payload)
-                label_names = ", ".join(label.replace("_", " ") for label in labels)
-                print(
-                    "Champion/challenger recommendations: "
-                    f"unified={payload['preset']}{_challenger_suffix(payload)}; applies_to={label_names}"
-                )
-            else:
-                print(
-                    "Champion/challenger recommendations: "
-                    f"best_overall={challenger_recs['best_overall']['preset']}{_challenger_suffix(dict(challenger_recs.get('best_overall') or {}))}, "
-                    f"best_anchor_coverage={challenger_recs['best_anchor_coverage']['preset']}{_challenger_suffix(dict(challenger_recs.get('best_anchor_coverage') or {}))}, "
-                    f"best_balanced={challenger_recs['best_balanced']['preset']}{_challenger_suffix(dict(challenger_recs.get('best_balanced') or {}))}"
-                )
+            print(
+                "Champion/challenger recommendations: "
+                f"best_overall={challenger_recs['best_overall']['preset']}{_challenger_suffix(dict(challenger_recs.get('best_overall') or {}))}, "
+                f"best_anchor_coverage={challenger_recs['best_anchor_coverage']['preset']}{_challenger_suffix(dict(challenger_recs.get('best_anchor_coverage') or {}))}, "
+                f"best_balanced={challenger_recs['best_balanced']['preset']}{_challenger_suffix(dict(challenger_recs.get('best_balanced') or {}))}"
+            )
     return 0
 
 

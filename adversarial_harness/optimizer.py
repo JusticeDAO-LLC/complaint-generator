@@ -64,6 +64,7 @@ class OptimizationReport:
     hacc_preset_performance: Dict[str, Dict[str, Any]] | None = None
     anchor_section_performance: Dict[str, Dict[str, Any]] | None = None
     intake_priority_performance: Dict[str, Any] | None = None
+    coverage_remediation: Dict[str, Any] | None = None
     recommended_hacc_preset: str | None = None
     
     def to_dict(self) -> Dict[str, Any]:
@@ -103,6 +104,7 @@ class OptimizationReport:
             'hacc_preset_performance': self.hacc_preset_performance or {},
             'anchor_section_performance': self.anchor_section_performance or {},
             'intake_priority_performance': self.intake_priority_performance or {},
+            'coverage_remediation': self.coverage_remediation or {},
             'recommended_hacc_preset': self.recommended_hacc_preset,
         }
 
@@ -681,6 +683,10 @@ class Optimizer:
         hacc_preset_performance = self._summarize_group_scores(preset_scores)
         anchor_section_performance = self._summarize_group_scores(anchor_section_scores)
         intake_priority_performance = self._summarize_intake_priority(successful)
+        coverage_remediation = self._build_coverage_remediation(
+            anchor_missing=self._most_common(all_anchor_missing, top_n=5),
+            intake_priority_performance=intake_priority_performance,
+        )
         recommended_hacc_preset = None
         if hacc_preset_performance:
             recommended_hacc_preset = max(
@@ -748,6 +754,12 @@ class Optimizer:
                 recommendations.append(
                     "Intake-priority objectives achieved full coverage in the analyzed sessions. Preserve the current anchor-aware prompt injection and fallback probes."
                 )
+
+        anchor_actions = list((coverage_remediation.get("anchor_sections") or {}).get("recommended_actions") or [])
+        if anchor_actions:
+            anchor_focus = ", ".join(str(item.get("section") or "") for item in anchor_actions[:3] if str(item.get("section") or ""))
+            if anchor_focus:
+                priority_improvements.insert(0, f"Close anchor-section coverage gaps: {anchor_focus}")
         
         report = OptimizationReport(
             timestamp=datetime.now(UTC).isoformat(),
@@ -784,6 +796,7 @@ class Optimizer:
             hacc_preset_performance=hacc_preset_performance,
             anchor_section_performance=anchor_section_performance,
             intake_priority_performance=intake_priority_performance,
+            coverage_remediation=coverage_remediation,
             recommended_hacc_preset=recommended_hacc_preset,
         )
         
@@ -839,6 +852,81 @@ class Optimizer:
             'sessions_with_full_coverage': sessions_with_full_coverage,
             'sessions_with_partial_coverage': max(0, len(successful_results) - sessions_with_full_coverage),
         }
+
+    def _build_coverage_remediation(
+        self,
+        *,
+        anchor_missing: List[str],
+        intake_priority_performance: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        anchor_actions = [
+            {
+                'section': section,
+                'recommended_action': f"Add or strengthen explicit mediator probes for '{section}' before the session exits intake.",
+                'signal': 'critic_missing',
+            }
+            for section in list(anchor_missing or [])
+            if str(section)
+        ]
+
+        intake_actions: List[Dict[str, Any]] = []
+        intake_coverage = dict((intake_priority_performance or {}).get('coverage_by_objective') or {})
+        for objective, payload in sorted(
+            intake_coverage.items(),
+            key=lambda item: (
+                float((item[1] or {}).get('coverage_rate') or 0.0),
+                -int((item[1] or {}).get('expected') or 0),
+                item[0],
+            ),
+        ):
+            expected = int((payload or {}).get('expected') or 0)
+            covered = int((payload or {}).get('covered') or 0)
+            uncovered = int((payload or {}).get('uncovered') or 0)
+            coverage_rate = float((payload or {}).get('coverage_rate') or 0.0)
+            if expected <= 0 or coverage_rate >= 1.0:
+                continue
+            intake_actions.append(
+                {
+                    'objective': objective,
+                    'expected': expected,
+                    'covered': covered,
+                    'uncovered': uncovered,
+                    'coverage_rate': coverage_rate,
+                    'recommended_action': self._intake_objective_action(objective),
+                }
+            )
+
+        return {
+            'anchor_sections': {
+                'missing_sections': list(anchor_missing or []),
+                'recommended_actions': anchor_actions,
+            },
+            'intake_priorities': {
+                'uncovered_objectives': [item.get('objective') for item in intake_actions if item.get('objective')],
+                'recommended_actions': intake_actions,
+                'sessions_with_full_coverage': int((intake_priority_performance or {}).get('sessions_with_full_coverage') or 0),
+                'sessions_with_partial_coverage': int((intake_priority_performance or {}).get('sessions_with_partial_coverage') or 0),
+            },
+        }
+
+    def _intake_objective_action(self, objective: str) -> str:
+        normalized = str(objective or '').strip()
+        if not normalized:
+            return "Add a dedicated fallback question for this intake objective."
+        if normalized == 'timeline':
+            return "Ask for a clear chronology early and keep date/sequence follow-ups ahead of generic evidence questions."
+        if normalized == 'actors':
+            return "Ask who made, communicated, or carried out each decision and capture names, roles, and witnesses."
+        if normalized == 'documents':
+            return "Request notices, emails, grievances, hearing requests, appeal paperwork, and other written records earlier in intake."
+        if normalized == 'harm_remedy':
+            return "Ask what harm occurred and what remedy the complainant wants before leaving intake."
+        if normalized == 'witnesses':
+            return "Ask for witness identities, their relationship to the event, and what each person observed."
+        if normalized.startswith('anchor_'):
+            anchor_label = normalized[len('anchor_'):].replace('_', ' ')
+            return f"Add a dedicated anchor-specific fallback probe for {anchor_label} and keep it ahead of generic catch-all prompts."
+        return f"Add a dedicated fallback question for the '{normalized}' intake objective."
     
     def _generate_recommendations(self,
                                   avg_score: float,

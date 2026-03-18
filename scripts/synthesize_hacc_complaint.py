@@ -2730,13 +2730,11 @@ def _render_markdown(package: Dict[str, Any]) -> str:
             "## Search Summary",
             "",
         ])
+        requested_mode = search_summary.get("requested_search_mode") or "-"
+        effective_mode = search_summary.get("effective_search_mode") or search_summary.get("requested_search_mode") or "-"
         if search_summary.get("requested_search_mode") or search_summary.get("effective_search_mode"):
-            lines.append(
-                "- Search mode: requested={requested}; effective={effective}".format(
-                    requested=search_summary.get("requested_search_mode") or "-",
-                    effective=search_summary.get("effective_search_mode") or search_summary.get("requested_search_mode") or "-",
-                )
-            )
+            lines.append(f"- Requested search mode: {requested_mode}")
+            lines.append(f"- Effective search mode: {effective_mode}")
         if search_summary.get("fallback_note"):
             lines.append(f"- Search fallback: {search_summary['fallback_note']}")
     ordered_exhibits = _ordered_exhibit_index(all_exhibit_lines)

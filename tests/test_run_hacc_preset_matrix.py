@@ -231,6 +231,9 @@ def test_attach_recommendation_claim_snapshots_enriches_best_overall():
             "relief_selection_overview": "Corrective action requiring clear notice [families=process]",
             "claim_theory_families": ["accommodation", "process"],
             "synthesis_output_dir": "/tmp/accommodation_focus/complaint_synthesis",
+            "hacc_search_mode": "hybrid",
+            "effective_hacc_search_mode": "lexical_only",
+            "hacc_search_fallback_note": "Requested hybrid search, but vector support is unavailable; using lexical results instead.",
         }
     ]
     recommendations = {
@@ -243,6 +246,11 @@ def test_attach_recommendation_claim_snapshots_enriches_best_overall():
     assert enriched["best_overall"]["relief_selection_overview"] == "Corrective action requiring clear notice [families=process]"
     assert enriched["best_overall"]["claim_theory_families"] == ["accommodation", "process"]
     assert enriched["best_overall"]["synthesis_output_dir"] == "/tmp/accommodation_focus/complaint_synthesis"
+    assert enriched["best_overall"]["hacc_search_mode"] == "hybrid"
+    assert enriched["best_overall"]["effective_hacc_search_mode"] == "lexical_only"
+    assert enriched["best_overall"]["hacc_search_fallback_note"] == (
+        "Requested hybrid search, but vector support is unavailable; using lexical results instead."
+    )
 def test_attach_recommendation_tradeoff_notes_enriches_winner():
     recommendations = {
         "best_overall": {"preset": "accommodation_focus"},
