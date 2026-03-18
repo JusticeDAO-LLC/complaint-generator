@@ -795,6 +795,22 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert "renderQuestionRecommendations" in page_html
     assert "renderTestimonyRecords" in page_html
     assert "renderDocumentArtifacts" in page_html
+    assert "Timeline Ordering" in page_html
+    assert "intake-timeline-summary-chips" in page_html
+    assert "intake-timeline-relation-list" in page_html
+    assert "renderTimelineOrdering" in page_html
+    assert "No timeline ordering diagnostics available." in page_html
+    assert "Timeline ordering diagnostics are not available for this intake summary." in page_html
+    assert "Timeline consistency warnings" in page_html
+    assert "partial order ready" in page_html
+    assert "Hybrid Reasoning Diagnostics" in page_html
+    assert "claim-reasoning-summary-chips" in page_html
+    assert "claim-reasoning-flagged-list" in page_html
+    assert "renderClaimReasoningReview" in page_html
+    assert "Claim-level hybrid bridge" in page_html
+    assert "No hybrid reasoning bridge diagnostics surfaced for this claim." in page_html
+    assert "TDFOL preview" in page_html
+    assert "DCEC preview" in page_html
     assert "Alignment Task Updates" in page_html
     assert "Task Update Filter" in page_html
     assert "alignment-task-update-filter" in page_html

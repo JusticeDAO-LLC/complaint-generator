@@ -619,6 +619,19 @@
             font-size: 0.86rem;
         }
 
+        .formula-preview {
+            margin-top: 10px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(154, 52, 18, 0.12);
+            background: rgba(255, 255, 255, 0.82);
+            color: var(--ink);
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 0.8rem;
+            line-height: 1.45;
+            overflow-x: auto;
+        }
+
         .raw-output {
             margin-top: 20px;
             padding: 16px;
@@ -907,6 +920,9 @@
                     <div class="chip-row" id="intake-claim-summary-chips" style="margin-top: 10px;"></div>
                     <div class="chip-row" id="intake-section-chips" style="margin-top: 10px;"></div>
                     <div class="chip-row" id="intake-context-chips" style="margin-top: 10px;"></div>
+                    <h2 style="margin-top: 18px;">Timeline Ordering</h2>
+                    <div class="chip-row" id="intake-timeline-summary-chips" style="margin-top: 10px;"></div>
+                    <div class="question-list" id="intake-timeline-relation-list"></div>
                     <div class="question-list" id="intake-canonical-fact-list"></div>
                     <div class="chip-row" id="intake-proof-lead-chips" style="margin-top: 10px;"></div>
                     <div class="question-list" id="intake-matching-summary-list"></div>
@@ -915,6 +931,9 @@
                 <div class="focus-block" data-section-focus-target="claims_for_relief requested_relief">
                     <h2 style="margin-top: 18px;">Claim Support Packet Summary</h2>
                     <div class="chip-row" id="claim-support-packet-summary-chips"></div>
+                    <h2 style="margin-top: 18px;">Hybrid Reasoning Diagnostics</h2>
+                    <div class="chip-row" id="claim-reasoning-summary-chips"></div>
+                    <div class="question-list" id="claim-reasoning-flagged-list"></div>
                     <h2 style="margin-top: 18px;">Intake-Evidence Alignment</h2>
                     <div class="question-list" id="intake-evidence-alignment-summary-list"></div>
                     <h2 style="margin-top: 18px;">Alignment Evidence Tasks</h2>
@@ -1268,6 +1287,15 @@
             } catch (error) {
                 return null;
             }
+        }
+
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
         }
 
         function buildReviewIntent(payload = {}) {
@@ -1739,6 +1767,192 @@
             container.innerHTML = entries.length
                 ? entries.map(([label, count]) => `<span class="chip">${label}: ${count}</span>`).join('')
                 : `<span class="chip">${emptyLabel}</span>`;
+        }
+
+        function renderFormulaPreviewDetails(title, formulas, emptyLabel) {
+            const formulaList = Array.isArray(formulas) ? formulas.filter(Boolean) : [];
+            if (!formulaList.length) {
+                return `<div class="packet-card-meta">${emptyLabel}</div>`;
+            }
+            return `
+                <details class="packet-details" style="margin-top: 12px;">
+                    <summary>${title} (${formulaList.length})</summary>
+                    <div class="packet-list">
+                        ${formulaList.map((formula) => `<div class="formula-preview">${escapeHtml(formula)}</div>`).join('')}
+                    </div>
+                </details>
+            `;
+        }
+
+        function renderClaimReasoningReview(review) {
+            const summaryContainer = document.getElementById('claim-reasoning-summary-chips');
+            const listContainer = document.getElementById('claim-reasoning-flagged-list');
+            const reviewData = review && typeof review === 'object' ? review : {};
+            const flaggedElements = Array.isArray(reviewData.flagged_elements) ? reviewData.flagged_elements : [];
+
+            const summaryChips = [
+                `<span class="chip">Flagged elements: ${Number(reviewData.flagged_element_count || 0)}</span>`,
+                `<span class="chip">Bridge elements: ${Number(reviewData.hybrid_bridge_element_count || 0)}</span>`,
+                `<span class="chip">Bridge available: ${Number(reviewData.hybrid_bridge_available_element_count || 0)}</span>`,
+                `<span class="chip">TDFOL formulas: ${Number(reviewData.hybrid_tdfol_formula_count || 0)}</span>`,
+                `<span class="chip">DCEC formulas: ${Number(reviewData.hybrid_dcec_formula_count || 0)}</span>`,
+            ];
+            if (reviewData.hybrid_formalism) {
+                summaryChips.push(`<span class="chip">Formalism: ${escapeHtml(reviewData.hybrid_formalism)}</span>`);
+            }
+            if (reviewData.hybrid_reasoning_mode) {
+                summaryChips.push(`<span class="chip">Mode: ${escapeHtml(reviewData.hybrid_reasoning_mode)}</span>`);
+            }
+            summaryContainer.innerHTML = summaryChips.join('');
+
+            const claimLevelCard = (
+                reviewData.hybrid_bridge_element_count
+                || reviewData.hybrid_tdfol_formula_preview?.length
+                || reviewData.hybrid_dcec_formula_preview?.length
+                || reviewData.hybrid_formalism
+                || reviewData.hybrid_reasoning_mode
+                || reviewData.hybrid_compiler_bridge_path
+            ) ? `
+                <div class="task-card">
+                    <div class="row-head">
+                        <div>
+                            <div class="row-title">Claim-level hybrid bridge</div>
+                            <div class="meta">Compact theorem-input preview for the current claim.</div>
+                        </div>
+                    </div>
+                    <div class="chip-row">
+                        ${reviewData.hybrid_formalism ? `<span class="chip">formalism ${escapeHtml(reviewData.hybrid_formalism)}</span>` : ''}
+                        ${reviewData.hybrid_reasoning_mode ? `<span class="chip">mode ${escapeHtml(reviewData.hybrid_reasoning_mode)}</span>` : ''}
+                        ${reviewData.hybrid_compiler_bridge_path ? `<span class="chip">bridge path ${escapeHtml(reviewData.hybrid_compiler_bridge_path)}</span>` : ''}
+                    </div>
+                    ${renderFormulaPreviewDetails('TDFOL preview', reviewData.hybrid_tdfol_formula_preview || [], 'No TDFOL preview formulas available.')}
+                    ${renderFormulaPreviewDetails('DCEC preview', reviewData.hybrid_dcec_formula_preview || [], 'No DCEC preview formulas available.')}
+                </div>
+            ` : '';
+
+            if (!flaggedElements.length && !claimLevelCard) {
+                listContainer.innerHTML = '<div class="task-card">No hybrid reasoning bridge diagnostics surfaced for this claim.</div>';
+                return;
+            }
+
+            const flaggedCards = flaggedElements.map((element) => `
+                <div class="task-card">
+                    <div class="row-head">
+                        <div>
+                            <div class="row-title">${escapeHtml(element.element_text || element.element_id || 'Flagged claim element')}</div>
+                            <div class="meta">status=${escapeHtml(element.validation_status || 'unknown')} predicates=${Number(element.predicate_count || 0)} backends=${Number(element.backend_available_count || 0)}</div>
+                        </div>
+                    </div>
+                    <div class="chip-row">
+                        ${element.hybrid_bridge_used ? '<span class="chip">hybrid bridge used</span>' : ''}
+                        ${element.hybrid_bridge_available ? '<span class="chip">bridge available</span>' : ''}
+                        ${element.hybrid_formalism ? `<span class="chip">formalism ${escapeHtml(element.hybrid_formalism)}</span>` : ''}
+                        ${element.hybrid_reasoning_mode ? `<span class="chip">mode ${escapeHtml(element.hybrid_reasoning_mode)}</span>` : ''}
+                        ${element.hybrid_compiler_bridge_path ? `<span class="chip">bridge path ${escapeHtml(element.hybrid_compiler_bridge_path)}</span>` : ''}
+                        ${(element.unavailable_adapters || []).map((name) => `<span class="chip">unavailable ${escapeHtml(name)}</span>`).join('')}
+                        ${(element.degraded_adapters || []).map((name) => `<span class="chip">degraded ${escapeHtml(name)}</span>`).join('')}
+                    </div>
+                    ${renderFormulaPreviewDetails('TDFOL preview', element.hybrid_tdfol_formula_preview || [], 'No TDFOL preview formulas for this element.')}
+                    ${renderFormulaPreviewDetails('DCEC preview', element.hybrid_dcec_formula_preview || [], 'No DCEC preview formulas for this element.')}
+                </div>
+            `).join('');
+
+            listContainer.innerHTML = `${claimLevelCard}${flaggedCards}`;
+        }
+
+        function renderTimelineOrdering(summary) {
+            const summaryContainer = document.getElementById('intake-timeline-summary-chips');
+            const listContainer = document.getElementById('intake-timeline-relation-list');
+            const intakeCaseSummary = summary && typeof summary === 'object' ? summary : {};
+            const relationSummary = intakeCaseSummary.timeline_relation_summary && typeof intakeCaseSummary.timeline_relation_summary === 'object'
+                ? intakeCaseSummary.timeline_relation_summary
+                : {};
+            const consistencySummary = intakeCaseSummary.timeline_consistency_summary && typeof intakeCaseSummary.timeline_consistency_summary === 'object'
+                ? intakeCaseSummary.timeline_consistency_summary
+                : {};
+            const relations = Array.isArray(relationSummary.relations) ? relationSummary.relations : [];
+            const warnings = Array.isArray(consistencySummary.warnings) ? consistencySummary.warnings.filter(Boolean) : [];
+            const relationTypeCounts = consistencySummary.relation_type_counts && typeof consistencySummary.relation_type_counts === 'object'
+                ? consistencySummary.relation_type_counts
+                : {};
+
+            const summaryChips = [];
+            if (relationSummary.count !== undefined || consistencySummary.relation_count !== undefined) {
+                summaryChips.push(`<span class="chip">relations: ${Number(relationSummary.count ?? consistencySummary.relation_count ?? 0)}</span>`);
+            }
+            if (consistencySummary.event_count !== undefined) {
+                summaryChips.push(`<span class="chip">timeline events: ${Number(consistencySummary.event_count || 0)}</span>`);
+            }
+            if (consistencySummary.ordered_fact_count !== undefined) {
+                summaryChips.push(`<span class="chip">ordered facts: ${Number(consistencySummary.ordered_fact_count || 0)}</span>`);
+            }
+            if (consistencySummary.unsequenced_fact_count !== undefined) {
+                summaryChips.push(`<span class="chip">unsequenced facts: ${Number(consistencySummary.unsequenced_fact_count || 0)}</span>`);
+            }
+            if (consistencySummary.partial_order_ready !== undefined) {
+                summaryChips.push(`<span class="chip">partial order ready: ${consistencySummary.partial_order_ready ? 'yes' : 'no'}</span>`);
+            }
+            if (consistencySummary.approximate_fact_count !== undefined) {
+                summaryChips.push(`<span class="chip">approximate facts: ${Number(consistencySummary.approximate_fact_count || 0)}</span>`);
+            }
+            if (consistencySummary.range_fact_count !== undefined) {
+                summaryChips.push(`<span class="chip">range facts: ${Number(consistencySummary.range_fact_count || 0)}</span>`);
+            }
+            Object.entries(relationTypeCounts).forEach(([relationType, count]) => {
+                summaryChips.push(`<span class="chip">${humanizeQueryValue(relationType)}: ${Number(count || 0)}</span>`);
+            });
+            summaryContainer.innerHTML = summaryChips.length
+                ? summaryChips.join('')
+                : '<span class="chip">No timeline ordering diagnostics available.</span>';
+
+            if (!relations.length && !warnings.length) {
+                listContainer.innerHTML = '<div class="task-card">Timeline ordering diagnostics are not available for this intake summary.</div>';
+                return;
+            }
+
+            const warningCard = warnings.length ? `
+                <article class="task-card">
+                    <div class="row-head">
+                        <div>
+                            <div class="row-title">Timeline consistency warnings</div>
+                            <div class="meta">Temporal gaps that can block order-sensitive proof review.</div>
+                        </div>
+                        <span class="badge">${warnings.length}</span>
+                    </div>
+                    <div class="chip-row" style="margin-top: 10px;">
+                        ${warnings.map((warning) => `<span class="chip">${escapeHtml(warning)}</span>`).join('')}
+                    </div>
+                </article>
+            ` : '';
+
+            const relationCards = relations.map((relation) => {
+                const sourceFact = escapeHtml(relation.source_fact_id || 'unknown_source');
+                const targetFact = escapeHtml(relation.target_fact_id || 'unknown_target');
+                const relationType = humanizeQueryValue(relation.relation_type || 'unknown');
+                const confidence = escapeHtml(relation.confidence || 'unknown');
+                const sourceDate = escapeHtml(relation.source_start_date || relation.source_end_date || 'unknown');
+                const targetDate = escapeHtml(relation.target_start_date || relation.target_end_date || 'unknown');
+                return `
+                    <article class="task-card">
+                        <div class="row-head">
+                            <div>
+                                <div class="row-title">Timeline relation ${escapeHtml(relation.relation_id || '')}</div>
+                                <div class="meta">${sourceFact} ${escapeHtml(String(relation.relation_type || '').replace(/_/g, ' '))} ${targetFact}</div>
+                            </div>
+                            <span class="badge">${relationType}</span>
+                        </div>
+                        <div class="chip-row" style="margin-top: 10px;">
+                            <span class="chip">source: ${sourceFact}</span>
+                            <span class="chip">target: ${targetFact}</span>
+                            <span class="chip">confidence: ${confidence}</span>
+                            <span class="chip">source date: ${sourceDate}</span>
+                            <span class="chip">target date: ${targetDate}</span>
+                        </div>
+                    </article>
+                `;
+            }).join('');
+
+            listContainer.innerHTML = `${warningCard}${relationCards}`;
         }
 
         function summarizeIntentCountMap(prefix, values, humanizer) {
@@ -3871,6 +4085,7 @@
             const claimType = primary.claimType;
             const summary = primary.coverageClaims[claimType] || { status_counts: {} };
             const matrix = (payload.claim_coverage_matrix || {})[claimType] || { elements: [] };
+            const reasoningReview = ((payload.claim_reasoning_review || {})[claimType]) || null;
             const plan = primary.planClaims[claimType] || { tasks: [] };
             const planSummary = primary.planSummaryClaims[claimType] || null;
             const historyEntries = primary.historyClaims[claimType] || [];
@@ -3888,6 +4103,8 @@
             renderQuestionRecommendations(questionRecommendations);
             renderTestimonyRecords(testimonyRecords, testimonySummary);
             renderDocumentArtifacts(documentArtifacts, documentSummary);
+            renderTimelineOrdering(payload.intake_case_summary || {});
+            renderClaimReasoningReview(reasoningReview);
             renderElements(matrix.elements || []);
             renderTasks(plan, planSummary);
             renderHistory(historyEntries, historySummary);

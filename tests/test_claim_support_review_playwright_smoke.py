@@ -135,6 +135,36 @@ def _build_hook_backed_browser_mediator(db_path: str):
             "count": 1,
             "anchors": [{"anchor_id": "timeline_anchor_001", "anchor_text": "2026-02-03 complaint email"}],
         },
+        "timeline_relation_summary": {
+            "count": 1,
+            "relations": [
+                {
+                    "relation_id": "timeline_relation_001",
+                    "source_fact_id": "fact_001",
+                    "target_fact_id": "fact_termination",
+                    "relation_type": "before",
+                    "source_start_date": "2026-02-03",
+                    "source_end_date": "2026-02-03",
+                    "target_start_date": "2026-02-10",
+                    "target_end_date": "2026-02-10",
+                    "confidence": "high",
+                }
+            ],
+        },
+        "timeline_consistency_summary": {
+            "event_count": 2,
+            "anchor_count": 1,
+            "ordered_fact_count": 1,
+            "unsequenced_fact_count": 1,
+            "approximate_fact_count": 0,
+            "range_fact_count": 0,
+            "relation_count": 1,
+            "relation_type_counts": {"before": 1},
+            "missing_temporal_fact_ids": ["fact_termination"],
+            "relative_only_fact_ids": ["fact_termination"],
+            "warnings": ["Some timeline facts only express relative ordering and still need anchoring."],
+            "partial_order_ready": False,
+        },
         "harm_profile": {
             "count": 1,
             "categories": ["economic"],
@@ -470,18 +500,148 @@ def _build_hook_backed_browser_mediator(db_path: str):
                 "required_support_kinds": ["evidence", "authority"],
                 "validation_status": "incomplete",
                 "validation_status_counts": {
-                    "supported": 0,
-                    "incomplete": 1,
+                    "supported": 1,
+                    "incomplete": 0,
                     "missing": 2,
                     "contradicted": 0,
                 },
-                "proof_gap_count": 6,
+                "proof_gap_count": 4,
                 "elements_requiring_follow_up": [
-                    "Protected activity",
                     "Adverse action",
                     "Causal connection",
                 ],
-                "elements": [],
+                "proof_diagnostics": {
+                    "reasoning": {
+                        "adapter_status_counts": {
+                            "logic_proof": {"implemented": 1},
+                            "logic_contradictions": {"implemented": 1},
+                            "hybrid_reasoning": {"implemented": 1},
+                            "ontology_build": {"implemented": 1},
+                            "ontology_validation": {"implemented": 1},
+                        },
+                        "backend_available_count": 4,
+                        "predicate_count": 4,
+                        "ontology_entity_count": 0,
+                        "ontology_relationship_count": 0,
+                        "fallback_ontology_count": 0,
+                        "hybrid_bridge_available_count": 1,
+                        "hybrid_tdfol_formula_count": 2,
+                        "hybrid_dcec_formula_count": 1,
+                    },
+                },
+                "elements": [
+                    {
+                        "element_id": "retaliation:1",
+                        "element_text": "Protected activity",
+                        "validation_status": "supported",
+                        "recommended_action": "review_existing_support",
+                        "proof_gap_count": 0,
+                        "proof_gaps": [],
+                        "proof_decision_trace": {
+                            "decision_source": "logic_proof_supported",
+                        },
+                        "proof_diagnostics": {
+                            "decision_source": "logic_proof_supported",
+                        },
+                        "reasoning_diagnostics": {
+                            "predicate_count": 4,
+                            "backend_available_count": 4,
+                            "used_fallback_ontology": False,
+                            "adapter_statuses": {
+                                "logic_proof": {
+                                    "backend_available": True,
+                                    "implementation_status": "implemented",
+                                },
+                                "logic_contradictions": {
+                                    "backend_available": True,
+                                    "implementation_status": "implemented",
+                                },
+                                "hybrid_reasoning": {
+                                    "backend_available": True,
+                                    "implementation_status": "implemented",
+                                    "operation": "run_hybrid_reasoning",
+                                },
+                                "ontology_build": {
+                                    "backend_available": True,
+                                    "implementation_status": "implemented",
+                                },
+                                "ontology_validation": {
+                                    "backend_available": True,
+                                    "implementation_status": "implemented",
+                                },
+                            },
+                            "hybrid_reasoning": {
+                                "status": "success",
+                                "result": {
+                                    "formalism": "tdfol_dcec_bridge_v1",
+                                    "reasoning_mode": "temporal_bridge",
+                                    "compiler_bridge_available": True,
+                                    "compiler_bridge_path": "ipfs_datasets_py.ipfs_datasets_py.processors.legal_data.reasoner.hybrid_v2_blueprint",
+                                    "tdfol_formulas": [
+                                        "Before(fact_1,fact_2)",
+                                        "forall t (AtTime(t,t_2026_03_10) -> Fact(fact_1,t))",
+                                    ],
+                                    "dcec_formulas": [
+                                        "Happens(fact_1,t_2026_03_10)",
+                                    ],
+                                },
+                            },
+                        },
+                        "contradiction_candidates": [],
+                    },
+                    {
+                        "element_id": "retaliation:2",
+                        "element_text": "Adverse action",
+                        "validation_status": "missing",
+                        "recommended_action": "collect_initial_support",
+                        "proof_gap_count": 2,
+                        "proof_gaps": [
+                            {
+                                "gap_type": "missing_support_kind",
+                                "support_kind": "evidence",
+                                "message": "Missing required evidence support.",
+                            },
+                            {
+                                "gap_type": "missing_support_kind",
+                                "support_kind": "authority",
+                                "message": "Missing required authority support.",
+                            },
+                        ],
+                        "proof_decision_trace": {
+                            "decision_source": "missing_support",
+                        },
+                        "proof_diagnostics": {
+                            "decision_source": "missing_support",
+                        },
+                        "contradiction_candidates": [],
+                    },
+                    {
+                        "element_id": "retaliation:3",
+                        "element_text": "Causal connection",
+                        "validation_status": "missing",
+                        "recommended_action": "collect_initial_support",
+                        "proof_gap_count": 2,
+                        "proof_gaps": [
+                            {
+                                "gap_type": "missing_support_kind",
+                                "support_kind": "evidence",
+                                "message": "Missing required evidence support.",
+                            },
+                            {
+                                "gap_type": "missing_support_kind",
+                                "support_kind": "authority",
+                                "message": "Missing required authority support.",
+                            },
+                        ],
+                        "proof_decision_trace": {
+                            "decision_source": "missing_support",
+                        },
+                        "proof_diagnostics": {
+                            "decision_source": "missing_support",
+                        },
+                        "contradiction_candidates": [],
+                    },
+                ],
             }
         }
     }
@@ -1196,6 +1356,8 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 intake_claims = page.locator("#intake-case-claim-chips").inner_text()
                 intake_claim_summary = page.locator("#intake-claim-summary-chips").inner_text()
                 intake_context = page.locator("#intake-context-chips").inner_text()
+                timeline_summary = page.locator("#intake-timeline-summary-chips").inner_text()
+                timeline_relations = page.locator("#intake-timeline-relation-list").inner_text()
                 intake_facts = page.locator("#intake-canonical-fact-list").inner_text()
                 intake_proof_leads = page.locator("#intake-proof-lead-chips").inner_text()
                 alignment_summary = page.locator("#intake-evidence-alignment-summary-list").inner_text()
@@ -1205,6 +1367,8 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 alignment_updates = page.locator("#alignment-task-update-list").inner_text()
                 alignment_update_filter_summary = page.locator("#alignment-task-update-filter-summary").inner_text()
                 packet_summary = page.locator("#claim-support-packet-summary-chips").inner_text()
+                reasoning_summary = page.locator("#claim-reasoning-summary-chips").inner_text()
+                reasoning_flagged = page.locator("#claim-reasoning-flagged-list").inner_text()
                 task_summary = page.locator("#task-summary-chips").inner_text()
                 follow_up_tasks = page.locator("#task-list").inner_text()
                 history_summary = page.locator("#history-summary-chips").inner_text()
@@ -1234,6 +1398,19 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "timeline anchors: 1" in intake_context
                 assert "harm profile: Economic" in intake_context
                 assert "remedy profile: Monetary" in intake_context
+                assert "relations: 1" in timeline_summary
+                assert "timeline events: 2" in timeline_summary
+                assert "ordered facts: 1" in timeline_summary
+                assert "unsequenced facts: 1" in timeline_summary
+                assert "partial order ready: no" in timeline_summary
+                assert "Before: 1" in timeline_summary
+                assert "Timeline consistency warnings" in timeline_relations
+                assert "Some timeline facts only express relative ordering and still need anchoring." in timeline_relations
+                assert "Timeline relation timeline_relation_001" in timeline_relations
+                assert "fact_001 before fact_termination" in timeline_relations
+                assert "confidence: high" in timeline_relations
+                assert "source date: 2026-02-03" in timeline_relations
+                assert "target date: 2026-02-10" in timeline_relations
                 assert "corroboration-required contradictions: 1" in intake_readiness
                 assert "contradiction lanes: Request Document=1" in intake_readiness
                 assert "lane: Request Document" in page.locator("#intake-contradiction-list").inner_text()
@@ -1283,6 +1460,28 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "packet unresolved without path: 1" in packet_summary
                 assert "packet proof readiness: 0.23" in packet_summary
                 assert "packet completion ready: no" in packet_summary
+                assert "Bridge elements: 1" in reasoning_summary
+                assert "Bridge available: 1" in reasoning_summary
+                assert "TDFOL formulas: 2" in reasoning_summary
+                assert "DCEC formulas: 1" in reasoning_summary
+                assert "Formalism: tdfol_dcec_bridge_v1" in reasoning_summary
+                assert "Mode: temporal_bridge" in reasoning_summary
+                assert "Claim-level hybrid bridge" in reasoning_flagged
+                assert "Protected activity" in reasoning_flagged
+                assert "formalism tdfol_dcec_bridge_v1" in reasoning_flagged
+                assert "mode temporal_bridge" in reasoning_flagged
+                assert "TDFOL preview" in reasoning_flagged
+                assert "DCEC preview" in reasoning_flagged
+                assert "bridge path ipfs_datasets_py.ipfs_datasets_py.processors.legal_data.reasoner.hybrid_v2_blueprint" in reasoning_flagged
+
+                page.locator("#claim-reasoning-flagged-list summary").filter(has_text="TDFOL preview").first.click()
+                page.locator("#claim-reasoning-flagged-list summary").filter(has_text="DCEC preview").first.click()
+
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("Before(fact_1,fact_2)").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text(
+                    "forall t (AtTime(t,t_2026_03_10) -> Fact(fact_1,t))"
+                ).first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("Happens(fact_1,t_2026_03_10)").first.is_visible()
                 assert "Tasks: 1" in task_summary
                 assert "Primary gaps: Manager knowledge=1" in task_summary
                 assert "Gap coverage: Event sequence=1, Manager knowledge=1" in task_summary
