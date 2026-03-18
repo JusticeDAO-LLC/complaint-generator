@@ -843,7 +843,14 @@ def test_write_matrix_outputs_persists_remediation_fields(tmp_path):
             },
         }
     ]
-    recommendations = {"best_overall": {"preset": "accommodation_focus"}}
+    recommendations = {
+        "best_overall": {
+            "preset": "accommodation_focus",
+            "hacc_search_mode": "hybrid",
+            "effective_hacc_search_mode": "lexical_only",
+            "hacc_search_fallback_note": "fallback",
+        }
+    }
 
     MODULE._write_matrix_outputs(
         output_dir=tmp_path,
@@ -859,13 +866,17 @@ def test_write_matrix_outputs_persists_remediation_fields(tmp_path):
     summary = __import__("json").loads((tmp_path / "preset_matrix_summary.json").read_text(encoding="utf-8"))
     csv_text = (tmp_path / "preset_matrix_summary.csv").read_text(encoding="utf-8")
     markdown = (tmp_path / "preset_matrix_summary.md").read_text(encoding="utf-8")
+    persisted_full_results = summary.get("details") or summary.get("full_results") or []
 
     assert summary["rows"][0]["top_intake_gaps"] == "anchor_appeal_rights (0/1)"
     assert summary["rows"][0]["remediation_focus"] == "anchor=appeal_rights; intake=anchor_appeal_rights"
     assert summary["rows"][0]["coverage_remediation"]["anchor_sections"]["missing_sections"] == ["appeal_rights"]
-    assert summary["full_results"][0]["coverage_remediation"]["intake_priorities"]["uncovered_objectives"] == [
+    assert persisted_full_results[0]["coverage_remediation"]["intake_priorities"]["uncovered_objectives"] == [
         "anchor_appeal_rights"
     ]
+    assert summary["recommendations"]["best_overall"]["hacc_search_mode"] == "hybrid"
+    assert summary["recommendations"]["best_overall"]["effective_hacc_search_mode"] == "lexical_only"
+    assert summary["recommendations"]["best_overall"]["hacc_search_fallback_note"] == "fallback"
     assert "top_intake_gaps,remediation_focus" in csv_text
     assert "anchor_appeal_rights (0/1)" in markdown
     assert "anchor=appeal_rights; intake=anchor_appeal_rights" in markdown
