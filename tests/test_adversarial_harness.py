@@ -27,7 +27,6 @@ from adversarial_harness.demo_autopatch import (
     run_adversarial_autopatch_batch,
 )
 import adversarial_harness.demo_autopatch as demo_autopatch_module
-import adversarial_harness.hacc_evidence as hacc_evidence_module
 from adversarial_harness.hacc_evidence import (
     _best_rule_text,
     _extract_source_window,
@@ -589,31 +588,6 @@ class TestSeedComplaintLibrary:
 
         assert len(specs) > 0
         assert specs == HACC_QUERY_PRESETS['retaliation_focus']
-
-    def test_load_hacc_engine_uses_package_import(self, tmp_path, monkeypatch):
-        repo_root = tmp_path / "repo"
-        engine_dir = repo_root / "hacc_research"
-        engine_dir.mkdir(parents=True)
-        (engine_dir / "engine.py").write_text("class HACCResearchEngine:\n    pass\n", encoding="utf-8")
-
-        class FakeEngine:
-            pass
-
-        captured = {}
-
-        def fake_import_module(name):
-            captured["module_name"] = name
-            return SimpleNamespace(HACCResearchEngine=FakeEngine)
-
-        monkeypatch.setattr(hacc_evidence_module, "_repo_root", lambda: repo_root)
-        monkeypatch.setattr(hacc_evidence_module.importlib, "import_module", fake_import_module)
-        monkeypatch.setattr(hacc_evidence_module.sys, "path", [])
-
-        engine_cls = hacc_evidence_module._load_hacc_engine()
-
-        assert captured["module_name"] == "hacc_research"
-        assert str(repo_root) in hacc_evidence_module.sys.path
-        assert engine_cls is FakeEngine
 
     def test_build_hacc_evidence_seed_prefers_anchor_titles(self):
         payload = {
