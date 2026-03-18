@@ -1407,6 +1407,58 @@ class TestAdversarialHarness:
         assert stats['anchor_sections']['covered_counts']['reasonable_accommodation'] == 1
         assert stats['anchor_sections']['missing_counts']['grievance_hearing'] == 1
 
+    def test_get_statistics_includes_intake_priority_coverage(self):
+        harness = AdversarialHarness(
+            MockLLMBackend(),
+            MockLLMBackend(),
+            MockMediator,
+            max_parallel=1
+        )
+        harness.results = [
+            SessionResult(
+                session_id='session_1',
+                timestamp='2024-01-01',
+                seed_complaint={'_meta': {'include_hacc_evidence': True}},
+                initial_complaint_text='Test',
+                conversation_history=[],
+                num_questions=2,
+                num_turns=1,
+                final_state={
+                    'adversarial_intake_priority_summary': {
+                        'expected_objectives': ['anchor_adverse_action', 'timeline', 'documents'],
+                        'covered_objectives': ['anchor_adverse_action', 'timeline'],
+                        'uncovered_objectives': ['documents'],
+                    }
+                },
+                critic_score=CriticScore(
+                    overall_score=0.7,
+                    question_quality=0.7,
+                    information_extraction=0.7,
+                    empathy=0.7,
+                    efficiency=0.7,
+                    coverage=0.7,
+                    feedback='ok',
+                    strengths=[],
+                    weaknesses=[],
+                    suggestions=[],
+                    anchor_sections_expected=['grievance_hearing'],
+                    anchor_sections_covered=['grievance_hearing'],
+                    anchor_sections_missing=[],
+                ),
+                success=True,
+                duration_seconds=1.0,
+            )
+        ]
+
+        stats = harness.get_statistics()
+
+        assert stats['intake_priority']['expected_counts']['anchor_adverse_action'] == 1
+        assert stats['intake_priority']['covered_counts']['timeline'] == 1
+        assert stats['intake_priority']['uncovered_counts']['documents'] == 1
+        assert stats['intake_priority']['coverage_by_objective']['documents']['coverage_rate'] == 0.0
+        assert stats['intake_priority']['sessions_with_full_coverage'] == 0
+        assert stats['intake_priority']['sessions_with_partial_coverage'] == 1
+
     def test_save_anchor_section_report_csv(self, tmp_path):
         harness = AdversarialHarness(
             MockLLMBackend(),
@@ -1527,6 +1579,11 @@ class TestAdversarialHarness:
                 'key_facts': {
                     'evidence_summary': 'Anchored evidence',
                     'anchor_sections': ['grievance_hearing', 'appeal_rights'],
+                    'search_summary': {
+                        'requested_search_mode': 'hybrid',
+                        'effective_search_mode': 'lexical_only',
+                        'fallback_note': 'Requested hybrid search, but vector support is unavailable; using lexical results instead.',
+                    },
                 },
                 'hacc_evidence': [{'title': 'Mock Policy'}],
             }],
@@ -1567,6 +1624,11 @@ class TestAdversarialHarness:
 
         assert results[0].seed_complaint['_meta']['seed_source'] == 'hacc_research_engine'
         assert results[0].seed_complaint['_meta']['anchor_sections'] == ['grievance_hearing', 'appeal_rights']
+        assert results[0].seed_complaint['_meta']['hacc_search_mode'] == 'hybrid'
+        assert results[0].seed_complaint['_meta']['hacc_effective_search_mode'] == 'lexical_only'
+        assert results[0].seed_complaint['_meta']['hacc_search_fallback_note'] == (
+            'Requested hybrid search, but vector support is unavailable; using lexical results instead.'
+        )
 
     def test_preload_hacc_seed_evidence_submits_documents_to_mediator(self, tmp_path):
         source_path = tmp_path / 'policy.pdf'
@@ -1793,6 +1855,81 @@ class TestOptimizer:
         report = optimizer.analyze([result])
 
         assert any('grievance_hearing' in rec for rec in report.recommendations)
+
+    def test_optimizer_reports_intake_priority_performance(self):
+        optimizer = Optimizer()
+
+        results = [
+            SessionResult(
+                session_id="session_intake_1",
+                timestamp="2024-01-01",
+                seed_complaint={},
+                initial_complaint_text="Test",
+                conversation_history=[],
+                num_questions=3,
+                num_turns=2,
+                final_state={
+                    'adversarial_intake_priority_summary': {
+                        'expected_objectives': ['anchor_adverse_action', 'timeline', 'documents'],
+                        'covered_objectives': ['anchor_adverse_action', 'timeline'],
+                        'uncovered_objectives': ['documents'],
+                    }
+                },
+                critic_score=CriticScore(
+                    overall_score=0.72,
+                    question_quality=0.72,
+                    information_extraction=0.72,
+                    empathy=0.72,
+                    efficiency=0.72,
+                    coverage=0.72,
+                    feedback="Test",
+                    strengths=[],
+                    weaknesses=[],
+                    suggestions=[],
+                ),
+                success=True,
+            ),
+            SessionResult(
+                session_id="session_intake_2",
+                timestamp="2024-01-01",
+                seed_complaint={},
+                initial_complaint_text="Test",
+                conversation_history=[],
+                num_questions=3,
+                num_turns=2,
+                final_state={
+                    'adversarial_intake_priority_summary': {
+                        'expected_objectives': ['anchor_adverse_action', 'timeline'],
+                        'covered_objectives': ['anchor_adverse_action'],
+                        'uncovered_objectives': ['timeline'],
+                    }
+                },
+                critic_score=CriticScore(
+                    overall_score=0.68,
+                    question_quality=0.68,
+                    information_extraction=0.68,
+                    empathy=0.68,
+                    efficiency=0.68,
+                    coverage=0.68,
+                    feedback="Test",
+                    strengths=[],
+                    weaknesses=[],
+                    suggestions=[],
+                ),
+                success=True,
+            ),
+        ]
+
+        report = optimizer.analyze(results)
+
+        assert report.intake_priority_performance["expected_counts"]["timeline"] == 2
+        assert report.intake_priority_performance["covered_counts"]["anchor_adverse_action"] == 2
+        assert report.intake_priority_performance["uncovered_counts"]["documents"] == 1
+        assert report.intake_priority_performance["coverage_by_objective"]["timeline"]["coverage_rate"] == 0.5
+        assert report.intake_priority_performance["sessions_with_full_coverage"] == 0
+        assert report.intake_priority_performance["sessions_with_partial_coverage"] == 2
+        assert any("documents (0/1)" in rec for rec in report.recommendations)
+        assert any(improvement.startswith("Improve intake priority coverage:") for improvement in report.priority_improvements)
 
     def test_build_agentic_patch_task_uses_report_recommendations(self, monkeypatch):
         optimizer = Optimizer()

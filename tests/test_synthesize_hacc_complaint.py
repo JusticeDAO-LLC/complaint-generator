@@ -225,6 +225,11 @@ def test_render_markdown_includes_outstanding_intake_gaps_section():
         "supporting_evidence": [],
         "requested_relief": [],
         "grounded_evidence_summary": [],
+        "search_summary": {
+            "requested_search_mode": "hybrid",
+            "effective_search_mode": "lexical_only",
+            "fallback_note": "Requested hybrid search, but vector support is unavailable; using lexical results instead.",
+        },
         "requested_relief_annotations": [],
     }
 
@@ -234,6 +239,131 @@ def test_render_markdown_includes_outstanding_intake_gaps_section():
     assert "- when the key events happened, including the complaint, notice, review or hearing request, and any denial or termination decision" in markdown
     assert "## Follow-Up Questions" in markdown
     assert "- When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?" in markdown
+    assert "## Search Summary" in markdown
+    assert "- Search mode: requested=hybrid; effective=lexical_only" in markdown
+    assert "- Search fallback: Requested hybrid search, but vector support is unavailable; using lexical results instead." in markdown
+
+
+def test_extract_search_summary_prefers_seed_metadata():
+    seed = {
+        '_meta': {
+            'hacc_search_mode': 'hybrid',
+            'hacc_effective_search_mode': 'lexical_only',
+            'hacc_search_fallback_note': 'Requested hybrid search, but vector support is unavailable; using lexical results instead.',
+        },
+        'key_facts': {
+            'search_summary': {
+                'requested_search_mode': 'hybrid',
+                'effective_search_mode': 'lexical_only',
+                'fallback_note': 'Requested hybrid search, but vector support is unavailable; using lexical results instead.',
+            }
+        },
+    }
+
+    summary = MODULE._extract_search_summary(seed)
+
+    assert summary == {
+        'requested_search_mode': 'hybrid',
+        'effective_search_mode': 'lexical_only',
+        'fallback_note': 'Requested hybrid search, but vector support is unavailable; using lexical results instead.',
+    }
+
+
+def test_build_intake_follow_up_worksheet_creates_fillable_items():
+    package = {
+        "generated_at": "2026-03-17T00:00:00+00:00",
+        "preset": "notice_retaliation",
+        "session_id": "session-1",
+        "filing_forum": "hud",
+        "summary": "Summary text.",
+        "outstanding_intake_gaps": [
+            "when the key events happened, including the complaint, notice, review or hearing request, and any denial or termination decision",
+            "who at HACC made, communicated, or carried out each decision",
+        ],
+        "outstanding_intake_follow_up_questions": [
+            "When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?",
+            "Who at HACC made, communicated, or carried out each decision?",
+        ],
+    }
+
+    worksheet = MODULE._build_intake_follow_up_worksheet(package)
+
+    assert worksheet["preset"] == "notice_retaliation"
+    assert worksheet["follow_up_items"][0]["id"] == "follow_up_01"
+    assert worksheet["follow_up_items"][0]["status"] == "open"
+    assert worksheet["follow_up_items"][0]["answer"] == ""
+    assert worksheet["follow_up_items"][1]["gap"] == "who at HACC made, communicated, or carried out each decision"
+
+
+def test_merge_completed_intake_worksheet_adds_answers_and_closes_matching_gaps():
+    session = {
+        "conversation_history": [],
+        "final_state": {
+            "adversarial_intake_priority_summary": {
+                "expected_objectives": ["timeline", "actors"],
+                "covered_objectives": [],
+                "uncovered_objectives": ["timeline", "actors"],
+                "objective_question_counts": {
+                    "timeline": 0,
+                    "actors": 0,
+                },
+            }
+        },
+    }
+    worksheet = {
+        "follow_up_items": [
+            {
+                "id": "follow_up_01",
+                "question": "When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?",
+                "answer": "The denial notice came on January 15, 2026, and I requested review on January 18, 2026.",
+                "status": "answered",
+            },
+            {
+                "id": "follow_up_02",
+                "question": "Who at HACC made, communicated, or carried out each decision?",
+                "answer": "",
+                "status": "open",
+            },
+        ]
+    }
+
+    merged = MODULE._merge_completed_intake_worksheet(session, worksheet)
+
+    assert merged["conversation_history"][-1]["content"].startswith("The denial notice came on January 15, 2026")
+    summary = merged["final_state"]["adversarial_intake_priority_summary"]
+    assert summary["covered_objectives"] == ["timeline"]
+    assert summary["uncovered_objectives"] == ["actors"]
+    assert summary["objective_question_counts"]["timeline"] == 1
+
+
+def test_render_intake_follow_up_worksheet_markdown_includes_fillable_items():
+    worksheet = {
+        "generated_at": "2026-03-17T00:00:00+00:00",
+        "preset": "notice_retaliation",
+        "session_id": "session-1",
+        "filing_forum": "hud",
+        "summary": "Summary text.",
+        "outstanding_intake_gaps": [
+            "when the key events happened, including the complaint, notice, review or hearing request, and any denial or termination decision"
+        ],
+        "follow_up_items": [
+            {
+                "id": "follow_up_01",
+                "gap": "when the key events happened, including the complaint, notice, review or hearing request, and any denial or termination decision",
+                "question": "When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?",
+                "answer": "",
+                "status": "open",
+            }
+        ],
+    }
+
+    markdown = MODULE._render_intake_follow_up_worksheet_markdown(worksheet)
+
+    assert "# Intake Follow-Up Worksheet" in markdown
+    assert "## Outstanding Intake Gaps" in markdown
+    assert "## Follow-Up Items" in markdown
+    assert "- follow_up_01: When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?" in markdown
+    assert "  - Answer: " in markdown
 
 
 def test_summarize_policy_excerpt_normalizes_hacc_grievance_fragments():

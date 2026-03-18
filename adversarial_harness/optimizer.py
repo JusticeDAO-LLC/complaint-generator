@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from collections import Counter
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ class OptimizationReport:
     worst_score: float = 1.0
     hacc_preset_performance: Dict[str, Dict[str, Any]] | None = None
     anchor_section_performance: Dict[str, Dict[str, Any]] | None = None
+    intake_priority_performance: Dict[str, Any] | None = None
     recommended_hacc_preset: str | None = None
     
     def to_dict(self) -> Dict[str, Any]:
@@ -100,6 +102,7 @@ class OptimizationReport:
             'worst_score': self.worst_score,
             'hacc_preset_performance': self.hacc_preset_performance or {},
             'anchor_section_performance': self.anchor_section_performance or {},
+            'intake_priority_performance': self.intake_priority_performance or {},
             'recommended_hacc_preset': self.recommended_hacc_preset,
         }
 
@@ -677,6 +680,7 @@ class Optimizer:
         trend = self._determine_trend(scores)
         hacc_preset_performance = self._summarize_group_scores(preset_scores)
         anchor_section_performance = self._summarize_group_scores(anchor_section_scores)
+        intake_priority_performance = self._summarize_intake_priority(successful)
         recommended_hacc_preset = None
         if hacc_preset_performance:
             recommended_hacc_preset = max(
@@ -711,6 +715,38 @@ class Optimizer:
                 recommendations.append(
                     "Decision-tree coverage is weakest for these seeded anchor sections: "
                     + ", ".join(weak_labels) + ". Add more explicit branch logic for them."
+                )
+
+        if intake_priority_performance:
+            weakest_objectives = [
+                (name, payload)
+                for name, payload in sorted(
+                    (intake_priority_performance.get("coverage_by_objective") or {}).items(),
+                    key=lambda item: (
+                        float(item[1].get("coverage_rate") or 0.0),
+                        -int(item[1].get("expected") or 0),
+                        item[0],
+                    ),
+                )
+                if int(payload.get("expected") or 0) > 0 and float(payload.get("coverage_rate") or 0.0) < 1.0
+            ]
+            if weakest_objectives:
+                formatted = [
+                    f"{name} ({int(payload.get('covered') or 0)}/{int(payload.get('expected') or 0)})"
+                    for name, payload in weakest_objectives[:3]
+                ]
+                recommendations.append(
+                    "Adversarial intake priorities are not fully covered. Add stronger probes or fallback prompts for: "
+                    + ", ".join(formatted) + "."
+                )
+                priority_improvements.insert(
+                    0,
+                    "Improve intake priority coverage: "
+                    + ", ".join(str(name) for name, _payload in weakest_objectives[:3]),
+                )
+            elif int(intake_priority_performance.get("sessions_with_full_coverage") or 0) > 0:
+                recommendations.append(
+                    "Intake-priority objectives achieved full coverage in the analyzed sessions. Preserve the current anchor-aware prompt injection and fallback probes."
                 )
         
         report = OptimizationReport(
@@ -747,6 +783,7 @@ class Optimizer:
             worst_score=worst_result.critic_score.overall_score,
             hacc_preset_performance=hacc_preset_performance,
             anchor_section_performance=anchor_section_performance,
+            intake_priority_performance=intake_priority_performance,
             recommended_hacc_preset=recommended_hacc_preset,
         )
         
@@ -760,9 +797,48 @@ class Optimizer:
         if not items:
             return []
         
-        from collections import Counter
         counter = Counter(items)
         return [item for item, count in counter.most_common(top_n)]
+
+    def _summarize_intake_priority(self, successful_results: List[Any]) -> Dict[str, Any]:
+        expected_counter: Counter[str] = Counter()
+        covered_counter: Counter[str] = Counter()
+        uncovered_counter: Counter[str] = Counter()
+        sessions_with_full_coverage = 0
+
+        for result in successful_results:
+            final_state = dict(getattr(result, 'final_state', {}) or {})
+            summary = dict(final_state.get('adversarial_intake_priority_summary') or {})
+            expected = [str(value) for value in list(summary.get('expected_objectives') or []) if str(value)]
+            covered = [str(value) for value in list(summary.get('covered_objectives') or []) if str(value)]
+            uncovered = [str(value) for value in list(summary.get('uncovered_objectives') or []) if str(value)]
+            expected_counter.update(expected)
+            covered_counter.update(covered)
+            uncovered_counter.update(uncovered)
+            if expected and not uncovered:
+                sessions_with_full_coverage += 1
+
+        objective_names = sorted(set(expected_counter) | set(covered_counter) | set(uncovered_counter))
+        coverage_by_objective: Dict[str, Dict[str, Any]] = {}
+        for name in objective_names:
+            expected_count = expected_counter.get(name, 0)
+            covered_count = covered_counter.get(name, 0)
+            uncovered_count = uncovered_counter.get(name, 0)
+            coverage_by_objective[name] = {
+                'expected': expected_count,
+                'covered': covered_count,
+                'uncovered': uncovered_count,
+                'coverage_rate': (covered_count / expected_count) if expected_count else 0.0,
+            }
+
+        return {
+            'expected_counts': dict(expected_counter),
+            'covered_counts': dict(covered_counter),
+            'uncovered_counts': dict(uncovered_counter),
+            'coverage_by_objective': coverage_by_objective,
+            'sessions_with_full_coverage': sessions_with_full_coverage,
+            'sessions_with_partial_coverage': max(0, len(successful_results) - sessions_with_full_coverage),
+        }
     
     def _generate_recommendations(self,
                                   avg_score: float,

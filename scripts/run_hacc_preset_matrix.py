@@ -127,6 +127,34 @@ def _select_matrix_recommendations(rows: List[Dict[str, Any]]) -> Dict[str, Dict
     }
 
 
+def _session_search_summary(session: Dict[str, Any], fallback_search_mode: str = "package") -> Dict[str, Any]:
+    seed = dict(session.get("seed_complaint") or {})
+    meta = dict(seed.get("_meta") or {})
+    key_facts = dict(seed.get("key_facts") or {})
+    stored = dict(meta.get("search_summary") or key_facts.get("search_summary") or {})
+    requested_mode = str(
+        stored.get("requested_search_mode")
+        or meta.get("hacc_search_mode")
+        or fallback_search_mode
+        or "package"
+    )
+    effective_mode = str(
+        stored.get("effective_search_mode")
+        or meta.get("hacc_effective_search_mode")
+        or requested_mode
+    )
+    fallback_note = str(
+        stored.get("fallback_note")
+        or meta.get("hacc_search_fallback_note")
+        or ""
+    )
+    return {
+        "requested_search_mode": requested_mode,
+        "effective_search_mode": effective_mode,
+        "fallback_note": fallback_note,
+    }
+
+
 def _result_value(payload: Any, *path: str, default: Any = None) -> Any:
     current = payload
     for key in path:
@@ -385,6 +413,8 @@ def _write_markdown_report(
         "# HACC Preset Matrix",
         "",
     ]
+    best_overall: Dict[str, Any] = {}
+    unified_recommendations = False
     if recommendations:
         def _recommendation_label(key: str, payload: Dict[str, Any]) -> str:
             family_list = list(payload.get("claim_theory_families") or [])
@@ -421,12 +451,16 @@ def _write_markdown_report(
             ])
         best_overall = dict(recommendations.get("best_overall") or {})
         best_overall_row = row_by_preset.get(str(best_overall.get("preset") or ""), {})
-        if best_overall_row.get("claim_selection_overview") and not best_overall.get("claim_selection_overview"):
-            best_overall["claim_selection_overview"] = best_overall_row["claim_selection_overview"]
-        if best_overall_row.get("relief_selection_overview") and not best_overall.get("relief_selection_overview"):
-            best_overall["relief_selection_overview"] = best_overall_row["relief_selection_overview"]
-        if best_overall_row.get("synthesis_output_dir") and not best_overall.get("synthesis_output_dir"):
-            best_overall["synthesis_output_dir"] = best_overall_row["synthesis_output_dir"]
+        for field in (
+            "claim_selection_overview",
+            "relief_selection_overview",
+            "synthesis_output_dir",
+            "hacc_search_mode",
+            "effective_hacc_search_mode",
+            "hacc_search_fallback_note",
+        ):
+            if best_overall_row.get(field) and not best_overall.get(field):
+                best_overall[field] = best_overall_row[field]
         if best_overall.get("claim_selection_overview"):
             snapshot_heading = "### Unified Winner Snapshot" if unified_recommendations else "### Best Overall Claim Snapshot"
             lines.extend([
@@ -434,6 +468,15 @@ def _write_markdown_report(
                 "",
                 f"- Overview: {best_overall['claim_selection_overview']}",
             ])
+            requested_search_mode = str(best_overall.get("hacc_search_mode") or "")
+            effective_search_mode = str(best_overall.get("effective_hacc_search_mode") or requested_search_mode)
+            fallback_note = str(best_overall.get("hacc_search_fallback_note") or "")
+            if requested_search_mode or effective_search_mode:
+                lines.append(
+                    f"- Search mode: requested={requested_search_mode or '-'}; effective={effective_search_mode or '-'}"
+                )
+            if fallback_note:
+                lines.append(f"- Search fallback: {fallback_note}")
             has_strategy_summary = bool(best_overall.get("strategy_summary"))
             if has_strategy_summary:
                 lines.append(f"- Strategy summary: {best_overall['strategy_summary']}")
@@ -538,10 +581,21 @@ def _write_markdown_report(
                 output_dir=row["output_dir"],
             )
         )
-    best_overall_preset = str((recommendations.get("best_overall") or {}).get("preset") or "")
     claim_snapshot_rows = [row for row in rows if row.get("claim_selection_overview")]
-    if claim_snapshot_rows:
+    if claim_snapshot_rows and not unified_recommendations:
         snapshot_notes_by_preset: Dict[str, Dict[str, Any]] = {}
+        for payload in claim_snapshot_rows:
+            item = dict(payload or {})
+            preset = str(item.get("preset") or "")
+            if not preset:
+                continue
+            existing = snapshot_notes_by_preset.setdefault(preset, {})
+            if item.get("strategy_summary"):
+                existing["strategy_summary"] = item["strategy_summary"]
+            if item.get("claim_posture_note"):
+                existing["claim_posture_note"] = item["claim_posture_note"]
+            if item.get("relief_posture_note"):
+                existing["relief_posture_note"] = item["relief_posture_note"]
         for payload in recommendations.values():
             item = dict(payload or {})
             preset = str(item.get("preset") or "")
@@ -554,60 +608,75 @@ def _write_markdown_report(
                 existing["claim_posture_note"] = item["claim_posture_note"]
             if item.get("relief_posture_note"):
                 existing["relief_posture_note"] = item["relief_posture_note"]
-        if best_overall_preset:
-            claim_snapshot_rows = [
-                row for row in claim_snapshot_rows
-                if str(row.get("preset") or "") != best_overall_preset
-            ]
-        if claim_snapshot_rows:
-            snapshot_section_heading = "## Runner-Up Snapshot" if len(claim_snapshot_rows) == 1 else "## Claim Selection Snapshots"
+        lines.extend([
+            "",
+            "## Claim Selection Snapshots",
+            "",
+        ])
+        for row in claim_snapshot_rows:
+            snapshot_notes = snapshot_notes_by_preset.get(str(row.get("preset") or ""), {})
             lines.extend([
+                f"### {row['preset']}",
                 "",
-                snapshot_section_heading,
+                f"- Overview: {row['claim_selection_overview']}",
+            ])
+            requested_search_mode = str(row.get("hacc_search_mode") or "")
+            effective_search_mode = str(row.get("effective_hacc_search_mode") or requested_search_mode)
+            fallback_note = str(row.get("hacc_search_fallback_note") or "")
+            if requested_search_mode or effective_search_mode:
+                lines.append(
+                    f"- Search mode: requested={requested_search_mode or '-'}; effective={effective_search_mode or '-'}"
+                )
+            if fallback_note:
+                lines.append(f"- Search fallback: {fallback_note}")
+            has_strategy_summary = bool(snapshot_notes.get("strategy_summary"))
+            if has_strategy_summary:
+                lines.append(f"- Strategy summary: {snapshot_notes['strategy_summary']}")
+            if not has_strategy_summary and snapshot_notes.get("claim_posture_note"):
+                lines.append(f"- Claim posture note: {snapshot_notes['claim_posture_note']}")
+            if not has_strategy_summary and snapshot_notes.get("relief_posture_note"):
+                lines.append(f"- Relief posture note: {snapshot_notes['relief_posture_note']}")
+            if row.get("relief_selection_overview"):
+                lines.append(f"- Relief overview: {row['relief_selection_overview']}")
+            synthesis_dir = row.get("synthesis_output_dir")
+            if synthesis_dir:
+                lines.append(f"- Complaint synthesis: `{synthesis_dir}`")
+            lines.append("")
+    if unified_recommendations and len(claim_snapshot_rows) > 1:
+        runner_rows = [
+            row for row in claim_snapshot_rows
+            if str(row.get("preset") or "") != str(best_overall.get("preset") or "")
+        ]
+        if runner_rows:
+            lines.extend([
+                "## Runner-Up Snapshot",
                 "",
             ])
-            single_runner_up_snapshot = len(claim_snapshot_rows) == 1
-            for row in claim_snapshot_rows:
-                snapshot_notes = snapshot_notes_by_preset.get(str(row.get("preset") or ""), {})
-                snapshot_heading = (
-                    f"### Runner-Up: {row['preset']}"
-                    if single_runner_up_snapshot
-                    else f"### {row['preset']}"
-                )
-                lines.extend([
-                    snapshot_heading,
-                    "",
-                    f"- Overview: {row['claim_selection_overview']}",
-                ])
-                has_snapshot_strategy_summary = bool(snapshot_notes.get("strategy_summary"))
-                if has_snapshot_strategy_summary:
-                    lines.append(f"- Strategy summary: {snapshot_notes['strategy_summary']}")
-                if not has_snapshot_strategy_summary and snapshot_notes.get("claim_posture_note"):
-                    lines.append(f"- Claim posture note: {snapshot_notes['claim_posture_note']}")
-                if not has_snapshot_strategy_summary and snapshot_notes.get("relief_posture_note"):
-                    lines.append(f"- Relief posture note: {snapshot_notes['relief_posture_note']}")
-                if row.get("relief_selection_overview"):
-                    lines.append(f"- Relief overview: {row['relief_selection_overview']}")
-                if row.get("runtime_note"):
-                    lines.append(f"- Runtime note: {row['runtime_note']}")
-                synthesis_dir = row.get("synthesis_output_dir")
-                if synthesis_dir:
-                    lines.append(f"- Complaint synthesis: `{synthesis_dir}`")
-                lines.append("")
+            runner_up = runner_rows[0]
+            lines.extend([
+                f"### Runner-Up: {runner_up['preset']}",
+                "",
+                f"- Overview: {runner_up['claim_selection_overview']}",
+            ])
+            if runner_up.get("relief_selection_overview"):
+                lines.append(f"- Relief overview: {runner_up['relief_selection_overview']}")
+            if runner_up.get("synthesis_output_dir"):
+                lines.append(f"- Complaint synthesis: `{runner_up['synthesis_output_dir']}`")
+            lines.append("")
     champion = dict(champion_challenger or {})
     champion_recommendations = dict(champion.get("recommendations") or {})
     if champion_recommendations:
-        champion_groups = _recommendation_groups(champion_recommendations)
         lines.extend([
             "## Champion Challenger",
             "",
             f"- Reran top {champion.get('top_k_rerun')} presets with {champion.get('num_sessions')} sessions each.",
         ])
-        if len(champion_groups) == 1:
+        champion_groups = _recommendation_groups(champion_recommendations)
+        unified_champion = len(champion_groups) == 1
+        if unified_champion:
             labels, payload = champion_groups[0]
-            payload = dict(champion_recommendations.get("best_overall") or payload)
             label_names = ", ".join(label.replace("_", " ") for label in labels)
-            lines.append(_recommendation_label("Unified champion", payload))
+            lines.append(f"- Unified champion: `{payload.get('preset')}`")
             lines.append(f"- Applies to: {label_names}")
         else:
             lines.extend([
@@ -617,21 +686,18 @@ def _write_markdown_report(
             ])
         champion_best = dict(champion_recommendations.get("best_overall") or {})
         if champion_best.get("claim_selection_overview"):
-            champion_snapshot_heading = (
-                "### Unified Champion Snapshot" if len(champion_groups) == 1 else "### Champion Claim Snapshot"
-            )
             lines.extend([
                 "",
-                champion_snapshot_heading,
+                "### Unified Champion Snapshot" if unified_champion else "### Champion Claim Snapshot",
                 "",
                 f"- Overview: {champion_best['claim_selection_overview']}",
             ])
-            has_champion_strategy_summary = bool(champion_best.get("strategy_summary"))
-            if has_champion_strategy_summary:
+            champion_has_strategy_summary = bool(champion_best.get("strategy_summary"))
+            if champion_has_strategy_summary:
                 lines.append(f"- Strategy summary: {champion_best['strategy_summary']}")
-            if not has_champion_strategy_summary and champion_best.get("claim_posture_note"):
+            if not champion_has_strategy_summary and champion_best.get("claim_posture_note"):
                 lines.append(f"- Claim posture note: {champion_best['claim_posture_note']}")
-            if not has_champion_strategy_summary and champion_best.get("relief_posture_note"):
+            if not champion_has_strategy_summary and champion_best.get("relief_posture_note"):
                 lines.append(f"- Relief posture note: {champion_best['relief_posture_note']}")
             if champion_best.get("relief_selection_overview"):
                 lines.append(f"- Relief overview: {champion_best['relief_selection_overview']}")
@@ -712,7 +778,6 @@ def _write_markdown_report(
                 )
         lines.append("")
     filepath.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
 
 def _top_missing_sections(anchor_sections: Dict[str, Any], limit: int = 3) -> str:
     missing_counts = dict(anchor_sections.get("missing_counts", {}) or {})
@@ -1257,12 +1322,16 @@ def _rebuild_batch_result_from_preset_dir(
 
     router_status = "unknown"
     runtime_health: Dict[str, Any] = {}
+    hacc_search_mode = "package"
+    search_summary = _session_search_summary({}, hacc_search_mode)
     run_summary_path = preset_dir / "run_summary.json"
     if run_summary_path.exists():
         with run_summary_path.open("r", encoding="utf-8") as handle:
             run_summary = json.load(handle)
         router_status = str(((run_summary.get("router_report") or {}).get("status")) or router_status)
         runtime_health = dict(run_summary.get("runtime") or {})
+        hacc_search_mode = str(run_summary.get("hacc_search_mode") or hacc_search_mode)
+        search_summary = dict(run_summary.get("search_summary") or {}) or _session_search_summary({}, hacc_search_mode)
         if runtime_health.get("degraded"):
             router_status = "degraded"
     statistics = {
@@ -1277,6 +1346,9 @@ def _rebuild_batch_result_from_preset_dir(
     return {
         "preset": preset,
         "backend_id": backend_id,
+        "hacc_search_mode": hacc_search_mode,
+        "effective_hacc_search_mode": search_summary.get("effective_search_mode") or hacc_search_mode,
+        "hacc_search_fallback_note": search_summary.get("fallback_note") or "",
         "selected_backend_healthy": selected_backend_healthy,
         "average_score": average_score,
         "successful_sessions": len(successful_sessions),
@@ -1289,6 +1361,7 @@ def _rebuild_batch_result_from_preset_dir(
         "backend_probe_attempts": backend_probe_attempts,
         "router_report": {},
         "runtime": runtime_health,
+        "search_summary": search_summary,
         "statistics": statistics,
         "optimizer_report": optimizer_report,
         "claim_selection_summary": synthesis_snapshot["claim_selection_summary"],
@@ -1298,7 +1371,6 @@ def _rebuild_batch_result_from_preset_dir(
         "claim_theory_families": synthesis_snapshot["claim_theory_families"],
         "synthesis_output_dir": synthesis_snapshot["synthesis_output_dir"],
     }
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(

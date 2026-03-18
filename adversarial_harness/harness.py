@@ -23,6 +23,26 @@ from .hacc_evidence import build_hacc_mediator_evidence_packet
 logger = logging.getLogger(__name__)
 
 
+def _seed_search_summary(seed: Dict[str, Any], requested_search_mode: str) -> Dict[str, Any]:
+    key_facts = dict(seed.get('key_facts') or {})
+    stored = dict(key_facts.get('search_summary') or {})
+    requested_mode = str(
+        stored.get('requested_search_mode')
+        or requested_search_mode
+        or 'package'
+    )
+    effective_mode = str(
+        stored.get('effective_search_mode')
+        or requested_mode
+    )
+    fallback_note = str(stored.get('fallback_note') or '')
+    return {
+        'requested_search_mode': requested_mode,
+        'effective_search_mode': effective_mode,
+        'fallback_note': fallback_note,
+    }
+
+
 class AdversarialHarness:
     """
     Orchestrates multiple adversarial training sessions.
@@ -335,6 +355,10 @@ class AdversarialHarness:
                     # Attach spec metadata for downstream optimization.
                     try:
                         if isinstance(result.seed_complaint, dict):
+                            search_summary = _seed_search_summary(
+                                result.seed_complaint,
+                                str(spec.get('hacc_search_mode') or 'package'),
+                            )
                             result.seed_complaint = {
                                 **result.seed_complaint,
                                 '_meta': {
@@ -343,6 +367,10 @@ class AdversarialHarness:
                                     'include_hacc_evidence': spec.get('include_hacc_evidence', False),
                                     'hacc_preset': spec.get('hacc_preset'),
                                     'use_hacc_vector_search': spec.get('use_hacc_vector_search', False),
+                                    'hacc_search_mode': search_summary['requested_search_mode'],
+                                    'hacc_effective_search_mode': search_summary['effective_search_mode'],
+                                    'hacc_search_fallback_note': search_summary['fallback_note'],
+                                    'search_summary': search_summary,
                                     'seed_source': result.seed_complaint.get('source'),
                                     'anchor_sections': list(
                                         (
@@ -512,6 +540,7 @@ class AdversarialHarness:
         question_counts = [r.num_questions for r in successful]
         durations = [r.duration_seconds for r in successful]
         anchor_summary = self._anchor_section_statistics(successful)
+        intake_priority_summary = self._intake_priority_statistics(successful)
         
         return {
             'total_sessions': len(self.results),
@@ -524,6 +553,7 @@ class AdversarialHarness:
             'average_duration': sum(durations) / len(durations) if durations else 0,
             'score_distribution': self._score_distribution(scores),
             'anchor_sections': anchor_summary,
+            'intake_priority': intake_priority_summary,
         }
     
     def _score_distribution(self, scores: List[float]) -> Dict[str, int]:
@@ -653,4 +683,44 @@ class AdversarialHarness:
             'covered_counts': dict(covered_counter),
             'missing_counts': dict(missing_counter),
             'coverage_by_section': coverage_by_section,
+        }
+
+    def _intake_priority_statistics(self, successful_results: List[SessionResult]) -> Dict[str, Any]:
+        expected_counter: Counter[str] = Counter()
+        covered_counter: Counter[str] = Counter()
+        uncovered_counter: Counter[str] = Counter()
+        sessions_with_full_coverage = 0
+
+        for result in successful_results:
+            final_state = dict(getattr(result, 'final_state', {}) or {})
+            summary = dict(final_state.get('adversarial_intake_priority_summary') or {})
+            expected = [str(value) for value in list(summary.get('expected_objectives') or []) if str(value)]
+            covered = [str(value) for value in list(summary.get('covered_objectives') or []) if str(value)]
+            uncovered = [str(value) for value in list(summary.get('uncovered_objectives') or []) if str(value)]
+            expected_counter.update(expected)
+            covered_counter.update(covered)
+            uncovered_counter.update(uncovered)
+            if expected and not uncovered:
+                sessions_with_full_coverage += 1
+
+        objective_names = sorted(set(expected_counter) | set(covered_counter) | set(uncovered_counter))
+        coverage_by_objective = {}
+        for name in objective_names:
+            expected_count = expected_counter.get(name, 0)
+            covered_count = covered_counter.get(name, 0)
+            uncovered_count = uncovered_counter.get(name, 0)
+            coverage_by_objective[name] = {
+                'expected': expected_count,
+                'covered': covered_count,
+                'uncovered': uncovered_count,
+                'coverage_rate': (covered_count / expected_count) if expected_count else 0.0,
+            }
+
+        return {
+            'expected_counts': dict(expected_counter),
+            'covered_counts': dict(covered_counter),
+            'uncovered_counts': dict(uncovered_counter),
+            'coverage_by_objective': coverage_by_objective,
+            'sessions_with_full_coverage': sessions_with_full_coverage,
+            'sessions_with_partial_coverage': max(0, len(successful_results) - sessions_with_full_coverage),
         }

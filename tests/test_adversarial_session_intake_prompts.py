@@ -124,9 +124,41 @@ def test_extract_intake_prompt_candidates_classifies_missing_fact_questions():
 
     candidates = AdversarialSession._extract_intake_prompt_candidates(seed)
 
-    assert candidates[0][1] == "timeline"
-    assert candidates[1][1] == "actors"
-    assert candidates[2][1] == "anchor_appeal_rights"
+    objective_by_question = {}
+    for question_text, objective in candidates:
+        objective_by_question.setdefault(question_text, []).append(objective)
+
+    assert set(
+        objective_by_question[
+            "When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?"
+        ]
+    ) == {"timeline", "documents", "anchor_grievance_hearing", "anchor_appeal_rights", "anchor_adverse_action"}
+    assert objective_by_question[
+        "Who at HACC made, communicated, or carried out each decision?"
+    ] == ["actors"]
+    assert set(
+        objective_by_question[
+            "What written notice, grievance, informal review, hearing, or appeal rights were provided, requested, denied, or ignored?"
+        ]
+    ) == {"documents", "anchor_grievance_hearing", "anchor_appeal_rights"}
+
+
+def test_extract_intake_prompt_candidates_supplements_seed_anchor_sections():
+    seed = {
+        "key_facts": {
+            "anchor_sections": ["grievance_hearing", "reasonable_accommodation"],
+            "synthetic_prompts": {
+                "intake_questions": [
+                    "When did the key events happen?",
+                ]
+            },
+        }
+    }
+
+    candidates = AdversarialSession._extract_intake_prompt_candidates(seed)
+
+    assert ("What grievance or informal hearing process were you told was available, whether you requested it, and who was supposed to handle it?", "anchor_grievance_hearing") in candidates
+    assert ("Did you request a reasonable accommodation or raise a disability-related need, and how did HACC respond?", "anchor_reasonable_accommodation") in candidates
 
 
 def test_build_fallback_probe_prefers_intake_questionnaire_prompt():

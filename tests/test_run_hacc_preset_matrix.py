@@ -52,6 +52,9 @@ def test_markdown_report_includes_claim_selection_snapshots(tmp_path):
         {
             "preset": "accommodation_focus",
             "backend_id": "llm-router-codex",
+            "hacc_search_mode": "hybrid",
+            "effective_hacc_search_mode": "lexical_only",
+            "hacc_search_fallback_note": "Requested hybrid search, but vector support is unavailable; using lexical results instead.",
             "average_score": 0.75,
             "successful_sessions": 3,
             "total_sessions": 3,
@@ -95,11 +98,69 @@ def test_markdown_report_includes_claim_selection_snapshots(tmp_path):
     assert "## Claim Selection Snapshots" not in report
     assert "### accommodation_focus" not in report
     assert "- Overview: Accommodation Theory [tags=reasonable_accommodation,contact;" in report
+    assert "- Search mode: requested=hybrid; effective=lexical_only" in report
+    assert "- Search fallback: Requested hybrid search, but vector support is unavailable; using lexical results instead." in report
     assert "- Strategy summary: Best for accommodation framing + process framing." in report
     assert "- Claim posture note: The winner added stronger accommodation framing theories." not in report
     assert "- Relief posture note: Relief posture was materially similar across the winner and runner-up, so the selection difference was driven mainly by claim posture." not in report
     assert "- Relief overview: Corrective action requiring clear notice, fair review, and non-retaliation safeguards." in report
     assert "- Complaint synthesis: `/tmp/accommodation_focus/complaint_synthesis`" in report
+
+
+def test_rebuild_batch_result_recovers_effective_search_mode_from_run_summary(tmp_path, monkeypatch):
+    preset_dir = tmp_path / "accommodation_focus"
+    preset_dir.mkdir()
+    (preset_dir / "adversarial_results.json").write_text(
+        __import__("json").dumps({"results": []}, indent=2),
+        encoding="utf-8",
+    )
+    (preset_dir / "optimizer_report.json").write_text(
+        __import__("json").dumps({}, indent=2),
+        encoding="utf-8",
+    )
+    (preset_dir / "run_summary.json").write_text(
+        __import__("json").dumps(
+            {
+                "hacc_search_mode": "hybrid",
+                "runtime": {},
+                "router_report": {"status": "available"},
+                "search_summary": {
+                    "requested_search_mode": "hybrid",
+                    "effective_search_mode": "lexical_only",
+                    "fallback_note": "Requested hybrid search, but vector support is unavailable; using lexical results instead.",
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        MODULE,
+        '_synthesize_claim_selection_snapshot',
+        lambda **kwargs: {
+            'claim_selection_summary': [],
+            'claim_selection_overview': '',
+            'relief_selection_summary': [],
+            'relief_selection_overview': '',
+            'claim_theory_families': [],
+            'synthesis_output_dir': str(preset_dir / 'complaint_synthesis'),
+        },
+    )
+
+    result = MODULE._rebuild_batch_result_from_preset_dir(
+        preset='accommodation_focus',
+        preset_dir=preset_dir,
+        backend_id='llm-router-codex',
+        selected_backend_healthy=True,
+        backend_probe_attempts=[],
+        synthesis_filing_forum='hud',
+    )
+
+    assert result['hacc_search_mode'] == 'hybrid'
+    assert result['effective_hacc_search_mode'] == 'lexical_only'
+    assert result['hacc_search_fallback_note'] == (
+        'Requested hybrid search, but vector support is unavailable; using lexical results instead.'
+    )
 
 
 def test_runner_up_snapshot_uses_role_based_heading(tmp_path):

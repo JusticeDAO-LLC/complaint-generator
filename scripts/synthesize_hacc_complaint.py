@@ -115,6 +115,48 @@ def _summary_with_selection_rationale(summary: str, selection_rationale: Dict[st
     return f"{prefix} {base}"
 
 
+def _extract_search_summary(
+    seed: Dict[str, Any],
+    grounding_bundle: Dict[str, Any] | None = None,
+    evidence_upload_report: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    meta = dict(seed.get("_meta") or {})
+    key_facts = dict(seed.get("key_facts") or {})
+    candidates = (
+        meta.get("search_summary"),
+        key_facts.get("search_summary"),
+        (grounding_bundle or {}).get("search_summary"),
+        (evidence_upload_report or {}).get("search_summary"),
+    )
+    stored: Dict[str, Any] = {}
+    for candidate in candidates:
+        if isinstance(candidate, dict) and candidate:
+            stored = dict(candidate)
+            break
+
+    requested_mode = str(
+        stored.get("requested_search_mode")
+        or meta.get("hacc_search_mode")
+        or ""
+    )
+    effective_mode = str(
+        stored.get("effective_search_mode")
+        or meta.get("hacc_effective_search_mode")
+        or requested_mode
+    )
+    fallback_note = str(
+        stored.get("fallback_note")
+        or meta.get("hacc_search_fallback_note")
+        or ""
+    )
+    summary = {
+        "requested_search_mode": requested_mode,
+        "effective_search_mode": effective_mode,
+        "fallback_note": fallback_note,
+    }
+    return {key: value for key, value in summary.items() if value}
+
+
 def _selection_relief_similarity_note(selection_rationale: Dict[str, Any]) -> str:
     winner_overview = str(selection_rationale.get("winner_relief_overview") or "").strip()
     runner_up_overview = str(selection_rationale.get("runner_up_relief_overview") or "").strip()
@@ -2227,6 +2269,61 @@ def _outstanding_intake_follow_up_questions(seed: Dict[str, Any], session: Dict[
     return matched[:limit]
 
 
+def _answered_intake_follow_up_items(worksheet: Dict[str, Any]) -> List[Dict[str, str]]:
+    items: List[Dict[str, str]] = []
+    for item in list(worksheet.get("follow_up_items") or []):
+        if not isinstance(item, dict):
+            continue
+        question = " ".join(str(item.get("question") or "").split()).strip()
+        answer = " ".join(str(item.get("answer") or "").split()).strip()
+        if not question or not answer:
+            continue
+        items.append({"question": question, "answer": answer})
+    return items
+
+
+def _merge_completed_intake_worksheet(session: Dict[str, Any], worksheet: Dict[str, Any]) -> Dict[str, Any]:
+    answered_items = _answered_intake_follow_up_items(worksheet)
+    if not answered_items:
+        return session
+
+    merged_session = dict(session or {})
+    conversation_history = list(merged_session.get("conversation_history") or [])
+    final_state = dict(merged_session.get("final_state") or {})
+    summary = dict(final_state.get("adversarial_intake_priority_summary") or {})
+    covered = [str(item).strip() for item in list(summary.get("covered_objectives") or []) if str(item).strip()]
+    uncovered = [str(item).strip() for item in list(summary.get("uncovered_objectives") or []) if str(item).strip()]
+    counts = {
+        str(key).strip(): int(value or 0)
+        for key, value in dict(summary.get("objective_question_counts") or {}).items()
+        if str(key).strip()
+    }
+
+    for item in answered_items:
+        conversation_history.append(
+            {
+                "role": "complainant",
+                "content": item["answer"],
+                "source": "completed_intake_follow_up_worksheet",
+                "question": item["question"],
+            }
+        )
+        objective = _classify_intake_question_objective(item["question"])
+        if objective:
+            counts[objective] = counts.get(objective, 0) + 1
+            if objective not in covered:
+                covered.append(objective)
+            uncovered = [value for value in uncovered if value != objective]
+
+    summary["covered_objectives"] = covered
+    summary["uncovered_objectives"] = uncovered
+    summary["objective_question_counts"] = counts
+    final_state["adversarial_intake_priority_summary"] = summary
+    merged_session["conversation_history"] = conversation_history
+    merged_session["final_state"] = final_state
+    return merged_session
+
+
 def _authority_claim_line(authority_hints: Sequence[str], sections: Sequence[str], *, retaliation: bool = False) -> str:
     hints = [str(item) for item in authority_hints if str(item)]
     if not hints:
@@ -2626,6 +2723,22 @@ def _render_markdown(package: Dict[str, Any]) -> str:
             "",
         ])
         lines.extend(f"- {item}" for item in grounded_summary)
+    search_summary = dict(package.get("search_summary") or {})
+    if search_summary:
+        lines.extend([
+            "",
+            "## Search Summary",
+            "",
+        ])
+        if search_summary.get("requested_search_mode") or search_summary.get("effective_search_mode"):
+            lines.append(
+                "- Search mode: requested={requested}; effective={effective}".format(
+                    requested=search_summary.get("requested_search_mode") or "-",
+                    effective=search_summary.get("effective_search_mode") or search_summary.get("requested_search_mode") or "-",
+                )
+            )
+        if search_summary.get("fallback_note"):
+            lines.append(f"- Search fallback: {search_summary['fallback_note']}")
     ordered_exhibits = _ordered_exhibit_index(all_exhibit_lines)
     claim_selection_summary = list(package.get("claim_selection_summary") or [])
     relief_selection_summary = list(package.get("relief_selection_summary") or [])
@@ -2747,6 +2860,78 @@ def _render_markdown(package: Dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _build_intake_follow_up_worksheet(package: Dict[str, Any]) -> Dict[str, Any]:
+    gaps = [str(item) for item in list(package.get("outstanding_intake_gaps") or []) if str(item)]
+    questions = [
+        str(item)
+        for item in list(package.get("outstanding_intake_follow_up_questions") or [])
+        if str(item)
+    ]
+    follow_up_items: List[Dict[str, Any]] = []
+    for index, question in enumerate(questions, start=1):
+        gap = gaps[index - 1] if index - 1 < len(gaps) else ""
+        follow_up_items.append(
+            {
+                "id": f"follow_up_{index:02d}",
+                "gap": gap,
+                "question": question,
+                "answer": "",
+                "status": "open",
+            }
+        )
+    return {
+        "generated_at": str(package.get("generated_at") or ""),
+        "preset": str(package.get("preset") or ""),
+        "session_id": str(package.get("session_id") or ""),
+        "filing_forum": str(package.get("filing_forum") or ""),
+        "summary": str(package.get("summary") or ""),
+        "outstanding_intake_gaps": gaps,
+        "follow_up_items": follow_up_items,
+    }
+
+
+def _render_intake_follow_up_worksheet_markdown(worksheet: Dict[str, Any]) -> str:
+    lines = [
+        "# Intake Follow-Up Worksheet",
+        "",
+        f"- Generated: {worksheet.get('generated_at', '')}",
+        f"- Preset: {worksheet.get('preset', '')}",
+        f"- Session ID: {worksheet.get('session_id', '')}",
+        f"- Filing Forum: {worksheet.get('filing_forum', '')}",
+        "",
+    ]
+    summary = str(worksheet.get("summary") or "").strip()
+    if summary:
+        lines.extend([
+            "## Summary",
+            "",
+            summary,
+            "",
+        ])
+    gaps = [str(item) for item in list(worksheet.get("outstanding_intake_gaps") or []) if str(item)]
+    if gaps:
+        lines.extend([
+            "## Outstanding Intake Gaps",
+            "",
+        ])
+        lines.extend(f"- {item}" for item in gaps)
+        lines.append("")
+    lines.extend([
+        "## Follow-Up Items",
+        "",
+    ])
+    items = list(worksheet.get("follow_up_items") or [])
+    if not items:
+        lines.append("- No additional follow-up questions were generated.")
+    else:
+        for item in items:
+            lines.append(f"- {item.get('id', '')}: {item.get('question', '')}")
+            gap = str(item.get("gap") or "").strip()
+            if gap:
+                lines.append(f"  - Gap: {gap}")
+            lines.append(f"  - Status: {item.get('status', 'open')}")
+            lines.append("  - Answer: ")
+    return "\n".join(lines) + "\n"
 def main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Synthesize a draft complaint package from HACC adversarial matrix or results artifacts."
@@ -2772,6 +2957,11 @@ def main(argv: List[str] | None = None) -> int:
         "--output-dir",
         default=None,
         help="Directory for outputs; defaults next to the source artifact.",
+    )
+    parser.add_argument(
+        "--completed-intake-worksheet",
+        default=None,
+        help="Optional completed intake_follow_up_worksheet.json whose answers should be merged back into the synthesized draft.",
     )
     parser.add_argument("--grounded-run-dir", default=None, help="Optional grounded pipeline run directory containing grounding_bundle.json and evidence_upload_report.json.")
     parser.add_argument("--grounding-bundle", default=None, help="Optional explicit grounding_bundle.json path.")
@@ -2812,8 +3002,12 @@ def main(argv: List[str] | None = None) -> int:
     )
     grounding_bundle = _load_optional_json(grounding_bundle_path)
     evidence_upload_report = _load_optional_json(evidence_upload_report_path)
+    completed_intake_worksheet_path = Path(args.completed_intake_worksheet).resolve() if args.completed_intake_worksheet else None
+    completed_intake_worksheet = _load_optional_json(completed_intake_worksheet_path)
     best_session = _pick_best_session(results_payload, preset=args.preset)
+    best_session = _merge_completed_intake_worksheet(best_session, completed_intake_worksheet)
     seed = _merge_seed_with_grounding(dict(best_session.get("seed_complaint") or {}), grounding_bundle)
+    search_summary = _extract_search_summary(seed, grounding_bundle, evidence_upload_report)
     key_facts = dict(seed.get("key_facts") or {})
     anchor_sections = [str(item) for item in list(key_facts.get("anchor_sections") or []) if str(item)]
     selection_rationale = _selection_rationale_from_matrix(matrix_payload, selection_source) if matrix_payload else {}
@@ -2848,6 +3042,7 @@ def main(argv: List[str] | None = None) -> int:
         "outstanding_intake_follow_up_questions": _outstanding_intake_follow_up_questions(seed, best_session),
         "requested_relief": _requested_relief_for_forum(args.filing_forum),
         "grounded_evidence_summary": _grounded_summary_lines(grounding_bundle, evidence_upload_report),
+        "search_summary": search_summary,
         "selection_rationale": selection_rationale,
         "source_artifacts": {
             "results_json": str(results_path),
@@ -2856,6 +3051,8 @@ def main(argv: List[str] | None = None) -> int:
             "grounded_run_dir": str(grounded_run_dir) if grounded_run_dir else None,
             "grounding_bundle_json": str(grounding_bundle_path) if grounding_bundle_path else None,
             "evidence_upload_report_json": str(evidence_upload_report_path) if evidence_upload_report_path else None,
+            "completed_intake_worksheet_json": str(completed_intake_worksheet_path) if completed_intake_worksheet_path else None,
+            "search_summary": search_summary,
         },
     }
     _inject_exhibit_references(package)
@@ -2877,14 +3074,22 @@ def main(argv: List[str] | None = None) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     json_path = output_dir / "draft_complaint_package.json"
     md_path = output_dir / "draft_complaint_package.md"
+    worksheet_json_path = output_dir / "intake_follow_up_worksheet.json"
+    worksheet_md_path = output_dir / "intake_follow_up_worksheet.md"
+    worksheet = _build_intake_follow_up_worksheet(package)
 
     with json_path.open("w", encoding="utf-8") as handle:
         json.dump(package, handle, indent=2)
     md_path.write_text(_render_markdown(package), encoding="utf-8")
+    with worksheet_json_path.open("w", encoding="utf-8") as handle:
+        json.dump(worksheet, handle, indent=2)
+    worksheet_md_path.write_text(_render_intake_follow_up_worksheet_markdown(worksheet), encoding="utf-8")
 
     print(f"Saved complaint synthesis artifacts to {output_dir}")
     print(f"Preset: {package['preset']}")
     print(f"Session ID: {package['session_id']}")
+    print(f"Intake worksheet JSON: {worksheet_json_path}")
+    print(f"Intake worksheet Markdown: {worksheet_md_path}")
     return 0
 
 

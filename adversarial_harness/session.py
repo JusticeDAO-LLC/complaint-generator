@@ -545,6 +545,61 @@ class AdversarialSession:
         return any(cls._question_targets_anchor_section(question_text, section) for section in missing_anchor_sections)
 
     @staticmethod
+    def _anchor_probe_map() -> Dict[str, tuple[str, str]]:
+        return {
+            'grievance_hearing': (
+                "What grievance or informal hearing process were you told was available, whether you requested it, and who was supposed to handle it?",
+                "anchor_grievance_hearing",
+            ),
+            'appeal_rights': (
+                "Were you told you could request a grievance hearing, appeal, review, or other due-process rights, and did you try to use them?",
+                "anchor_appeal_rights",
+            ),
+            'reasonable_accommodation': (
+                "Did you request a reasonable accommodation or raise a disability-related need, and how did HACC respond?",
+                "anchor_reasonable_accommodation",
+            ),
+            'adverse_action': (
+                "What adverse action happened to you exactly, such as a denial, termination, or other loss of housing benefits?",
+                "anchor_adverse_action",
+            ),
+            'selection_criteria': (
+                "What screening, selection, or evaluation criteria were you told were being used in your case?",
+                "anchor_selection_criteria",
+            ),
+        }
+
+    @classmethod
+    def _question_objectives_from_prompt(cls, question_text: str) -> List[str]:
+        lowered = question_text.lower()
+        objectives: List[str] = []
+        if any(token in lowered for token in ('when', 'date', 'timeline')):
+            objectives.append('timeline')
+        if any(token in lowered for token in ('harm', 'remedy', 'loss', 'relief')):
+            objectives.append('harm_remedy')
+        if any(token in lowered for token in ('who', 'which person', 'made, communicated', 'carried out')):
+            objectives.append('actors')
+        if any(token in lowered for token in ('email', 'emails', 'document', 'documents', 'notice', 'records', 'messages', 'written')):
+            objectives.append('documents')
+        if any(token in lowered for token in ('witness', 'witnesses', 'saw or heard')):
+            objectives.append('witnesses')
+
+        for section, (_, objective) in cls._anchor_probe_map().items():
+            if cls._question_targets_anchor_section(question_text, section):
+                objectives.append(objective)
+
+        if not objectives:
+            objectives.append('intake_follow_up')
+
+        deduped: List[str] = []
+        seen = set()
+        for objective in objectives:
+            if objective not in seen:
+                seen.add(objective)
+                deduped.append(objective)
+        return deduped
+
+    @staticmethod
     def _extract_anchor_sections(seed_complaint: Dict[str, Any]) -> Set[str]:
         key_facts = seed_complaint.get('key_facts') if isinstance(seed_complaint.get('key_facts'), dict) else {}
         return {
@@ -568,40 +623,49 @@ class AdversarialSession:
     def _extract_intake_prompt_candidates(seed_complaint: Dict[str, Any]) -> List[tuple[str, str]]:
         key_facts = seed_complaint.get('key_facts') if isinstance(seed_complaint.get('key_facts'), dict) else {}
         synthetic_prompts = key_facts.get('synthetic_prompts') if isinstance(key_facts, dict) else {}
-        if not isinstance(synthetic_prompts, dict):
-            return []
         candidates: List[tuple[str, str]] = []
-        for raw_question in list(synthetic_prompts.get('intake_questions') or []):
-            question_text = str(raw_question or '').strip()
-            if not question_text:
+        if isinstance(synthetic_prompts, dict):
+            for raw_question in list(synthetic_prompts.get('intake_questions') or []):
+                question_text = str(raw_question or '').strip()
+                if not question_text:
+                    continue
+                for objective in AdversarialSession._question_objectives_from_prompt(question_text):
+                    candidates.append((question_text, objective))
+
+        expected_anchor_sections = [
+            str(value) for value in list(key_facts.get('anchor_sections') or []) if str(value)
+        ]
+        covered_anchor_objectives = {objective for _, objective in candidates if objective.startswith('anchor_')}
+        for section in expected_anchor_sections:
+            probe = AdversarialSession._anchor_probe_map().get(section)
+            if not probe:
                 continue
-            lowered = question_text.lower()
-            probe_type = 'intake_follow_up'
-            if any(token in lowered for token in ('when', 'date', 'timeline')):
-                probe_type = 'timeline'
-            elif any(token in lowered for token in ('harm', 'remedy', 'loss', 'relief')):
-                probe_type = 'harm_remedy'
-            elif any(token in lowered for token in ('who', 'which person', 'made, communicated', 'carried out', 'decision')):
-                probe_type = 'actors'
-            elif any(token in lowered for token in ('written notice', 'informal review', 'grievance hearing', 'appeal', 'requested or denied')):
-                probe_type = 'anchor_appeal_rights'
-            elif any(token in lowered for token in ('adverse action', 'denial', 'termination', 'loss of assistance')):
-                probe_type = 'anchor_adverse_action'
-            candidates.append((question_text, probe_type))
+            probe_text, probe_type = probe
+            if probe_type not in covered_anchor_objectives:
+                candidates.append((probe_text, probe_type))
+
+        if not candidates:
+            return []
+
         priority = {
             'anchor_adverse_action': 0,
-            'timeline': 1,
-            'actors': 2,
-            'anchor_appeal_rights': 3,
-            'harm_remedy': 4,
-            'intake_follow_up': 5,
+            'anchor_grievance_hearing': 1,
+            'anchor_appeal_rights': 2,
+            'anchor_reasonable_accommodation': 3,
+            'anchor_selection_criteria': 4,
+            'timeline': 5,
+            'actors': 6,
+            'documents': 7,
+            'witnesses': 8,
+            'harm_remedy': 9,
+            'intake_follow_up': 10,
         }
-        candidates.sort(key=lambda item: (priority.get(item[1], 99), item[0].lower()))
+        candidates.sort(key=lambda item: (priority.get(item[1], 99), item[0].lower(), item[1]))
         deduped: List[tuple[str, str]] = []
         seen = set()
         for item in candidates:
-            key = item[0].strip().lower()
-            if key and key not in seen:
+            key = (item[0].strip().lower(), item[1])
+            if key not in seen:
                 seen.add(key)
                 deduped.append(item)
         return deduped
@@ -621,6 +685,8 @@ class AdversarialSession:
         similarity = cls._question_similarity(text_a, text_b)
         if intent_a and intent_b and intent_a == intent_b and similarity >= 0.35:
             return True
+        if cls._is_timeline_question(question_a) and cls._is_timeline_question(question_b) and similarity >= 0.35:
+            return True
         return similarity >= 0.72
 
     @classmethod
@@ -631,9 +697,12 @@ class AdversarialSession:
     ) -> List[Any]:
         merged: List[Any] = []
         seen = set()
+        skipped = set()
         existing_questions = list(questions or [])
         for probe_text, probe_type in cls._extract_intake_prompt_candidates(seed_complaint):
             key = cls._question_dedupe_key(probe_text)
+            if key and (key in seen or key in skipped):
+                continue
             synthetic_question = {
                 "question": probe_text,
                 "type": probe_type,
@@ -645,6 +714,8 @@ class AdversarialSession:
                 cls._questions_substantially_overlap(synthetic_question, existing_question)
                 for existing_question in existing_questions
             ):
+                if key:
+                    skipped.add(key)
                 continue
             if key and key not in seen:
                 seen.add(key)
@@ -669,10 +740,12 @@ class AdversarialSession:
             return cls._is_actor_or_decisionmaker_question(candidate)
         if objective == 'harm_remedy':
             return cls._is_harm_or_remedy_question(candidate)
-        if objective == 'anchor_appeal_rights':
-            return cls._question_targets_anchor_section(question_text, 'appeal_rights')
-        if objective == 'anchor_adverse_action':
-            return cls._question_targets_anchor_section(question_text, 'adverse_action')
+        if objective == 'documents':
+            return cls._is_documentary_evidence_question(candidate)
+        if objective == 'witnesses':
+            return cls._is_witness_question(candidate)
+        if objective.startswith('anchor_'):
+            return cls._question_targets_anchor_section(question_text, objective.replace('anchor_', '', 1))
         return False
 
     @classmethod
@@ -847,35 +920,23 @@ class AdversarialSession:
                 continue
             if probe_type == 'actors' and not need_actor_decisionmaker:
                 continue
+            if probe_type == 'documents' and not need_documentary_evidence:
+                continue
+            if probe_type == 'witnesses' and not need_witness:
+                continue
             if probe_type == 'anchor_appeal_rights' and 'appeal_rights' not in missing_anchor_sections:
+                continue
+            if probe_type == 'anchor_grievance_hearing' and 'grievance_hearing' not in missing_anchor_sections:
+                continue
+            if probe_type == 'anchor_reasonable_accommodation' and 'reasonable_accommodation' not in missing_anchor_sections:
                 continue
             if probe_type == 'anchor_adverse_action' and 'adverse_action' not in missing_anchor_sections:
                 continue
+            if probe_type == 'anchor_selection_criteria' and 'selection_criteria' not in missing_anchor_sections:
+                continue
             probe_candidates.append((probe_text, probe_type))
-        anchor_probe_map = {
-            'grievance_hearing': (
-                "What grievance or informal hearing process were you told was available, whether you requested it, and who was supposed to handle it?",
-                "anchor_grievance_hearing",
-            ),
-            'appeal_rights': (
-                "Were you told you could request a grievance hearing, appeal, review, or other due-process rights, and did you try to use them?",
-                "anchor_appeal_rights",
-            ),
-            'reasonable_accommodation': (
-                "Did you request a reasonable accommodation or raise a disability-related need, and how did HACC respond?",
-                "anchor_reasonable_accommodation",
-            ),
-            'adverse_action': (
-                "What adverse action happened to you exactly, such as a denial, termination, or other loss of housing benefits?",
-                "anchor_adverse_action",
-            ),
-            'selection_criteria': (
-                "What screening, selection, or evaluation criteria were you told were being used in your case?",
-                "anchor_selection_criteria",
-            ),
-        }
         for section in sorted(missing_anchor_sections):
-            probe = anchor_probe_map.get(section)
+            probe = self._anchor_probe_map().get(section)
             if probe:
                 probe_candidates.append(probe)
         if need_harm_remedy:
