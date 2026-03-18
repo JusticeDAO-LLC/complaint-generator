@@ -264,6 +264,99 @@ def test_main_uses_rebuild_helper_when_rebuild_existing_is_set(tmp_path, monkeyp
     assert calls["write"]["full_results"][0]["search_summary"]["requested_search_mode"] == "package"
 
 
+def test_main_continue_on_error_records_failed_preset_and_writes_partial_matrix(tmp_path, monkeypatch):
+    fake_adversarial_harness = ModuleType("adversarial_harness")
+    fake_adversarial_harness.HACC_QUERY_PRESETS = {
+        "accommodation_focus": {"query": "stub"},
+        "core_hacc_policies": {"query": "stub"},
+    }
+    monkeypatch.setitem(sys.modules, "adversarial_harness", fake_adversarial_harness)
+
+    monkeypatch.setattr(MODULE, "_load_config", lambda path: {"BACKENDS": [], "MEDIATOR": {"backends": []}})
+    monkeypatch.setattr(
+        MODULE,
+        "_select_llm_router_backend_config",
+        lambda config, backend_id: ("llm-router-codex", {"id": "llm-router-codex"}, [], True),
+    )
+
+    calls = {"run": [], "write": None}
+
+    def fake_run(**kwargs):
+        calls["run"].append(kwargs["preset"])
+        if kwargs["preset"] == "accommodation_focus":
+            raise RuntimeError("quota exceeded")
+        preset_dir = kwargs["preset_dir"]
+        return {
+            "preset": kwargs["preset"],
+            "backend_id": kwargs["backend_id"],
+            "hacc_search_mode": "package",
+            "effective_hacc_search_mode": "package",
+            "hacc_search_fallback_note": "",
+            "selected_backend_healthy": True,
+            "average_score": 0.73,
+            "successful_sessions": 1,
+            "total_sessions": 1,
+            "anchor_coverage": 1.0,
+            "top_missing_sections": "",
+            "top_intake_gaps": "",
+            "remediation_focus": "maintain full intake coverage",
+            "coverage_remediation": {
+                "anchor_sections": {"missing_sections": [], "recommended_actions": []},
+                "intake_priorities": {"uncovered_objectives": [], "recommended_actions": []},
+            },
+            "missing_sections": "",
+            "output_dir": str(preset_dir),
+            "router_status": "available",
+            "backend_probe_attempts": [],
+            "router_report": {},
+            "runtime": {},
+            "search_summary": {
+                "requested_search_mode": "package",
+                "effective_search_mode": "package",
+                "fallback_note": "",
+            },
+            "statistics": {},
+            "optimizer_report": {},
+            "claim_selection_summary": [],
+            "claim_selection_overview": "winner overview",
+            "relief_selection_summary": [],
+            "relief_selection_overview": "relief overview",
+            "claim_theory_families": ["process"],
+            "synthesis_output_dir": str(preset_dir / "complaint_synthesis"),
+        }
+
+    def fake_write(**kwargs):
+        calls["write"] = kwargs
+
+    monkeypatch.setattr(MODULE, "_run_preset_batch", fake_run)
+    monkeypatch.setattr(MODULE, "_write_matrix_outputs", fake_write)
+    monkeypatch.setattr(
+        MODULE.sys,
+        "argv",
+        [
+            "run_hacc_preset_matrix.py",
+            "--config",
+            str(tmp_path / "config.json"),
+            "--presets",
+            "accommodation_focus,core_hacc_policies",
+            "--continue-on-error",
+            "--output-dir",
+            str(tmp_path / "matrix_output"),
+        ],
+    )
+
+    exit_code = MODULE.main()
+
+    assert exit_code == 0
+    assert calls["run"] == ["accommodation_focus", "core_hacc_policies"]
+    assert calls["write"] is not None
+    assert [row["preset"] for row in calls["write"]["matrix_rows"]] == ["core_hacc_policies"]
+    assert [item["preset"] for item in calls["write"]["full_results"]] == ["core_hacc_policies"]
+    assert calls["write"]["preset_errors"][0]["preset"] == "accommodation_focus"
+    assert calls["write"]["preset_errors"][0]["error"] == "quota exceeded"
+    assert "RuntimeError: quota exceeded" in calls["write"]["preset_errors"][0]["traceback"]
+
+
 def test_runner_up_snapshot_uses_role_based_heading(tmp_path):
     report_path = tmp_path / "preset_matrix_summary.md"
     rows = [
