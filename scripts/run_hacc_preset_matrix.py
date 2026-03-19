@@ -304,6 +304,10 @@ def _attach_recommendation_claim_snapshots(
             item["remediation_focus"] = row["remediation_focus"]
         if row.get("coverage_remediation"):
             item["coverage_remediation"] = row["coverage_remediation"]
+        if row.get("grounding_overview"):
+            item["grounding_overview"] = row["grounding_overview"]
+        if row.get("grounding_overview_focus"):
+            item["grounding_overview_focus"] = row["grounding_overview_focus"]
         enriched[key] = item
     return enriched
 
@@ -547,6 +551,7 @@ def _write_matrix_outputs(
         "output_dir",
         "claim_selection_overview",
         "relief_selection_overview",
+        "grounding_overview_focus",
         "claim_theory_families",
         "synthesis_output_dir",
     ]
@@ -618,6 +623,7 @@ def _write_markdown_report(
         for field in (
             "claim_selection_overview",
             "relief_selection_overview",
+            "grounding_overview_focus",
             "synthesis_output_dir",
             "hacc_search_mode",
             "effective_hacc_search_mode",
@@ -653,6 +659,8 @@ def _write_markdown_report(
                 lines.append(f"- Relief posture note: {best_overall['relief_posture_note']}")
             if best_overall.get("relief_selection_overview"):
                 lines.append(f"- Relief overview: {best_overall['relief_selection_overview']}")
+            if best_overall.get("grounding_overview_focus"):
+                lines.append(f"- Grounding overview: {best_overall['grounding_overview_focus']}")
             if best_overall.get("synthesis_output_dir"):
                 lines.append(f"- Complaint synthesis: `{best_overall['synthesis_output_dir']}`")
             lines.extend(["",])
@@ -809,6 +817,8 @@ def _write_markdown_report(
                 lines.append(f"- Relief posture note: {snapshot_notes['relief_posture_note']}")
             if row.get("relief_selection_overview"):
                 lines.append(f"- Relief overview: {row['relief_selection_overview']}")
+            if row.get("grounding_overview_focus"):
+                lines.append(f"- Grounding overview: {row['grounding_overview_focus']}")
             synthesis_dir = row.get("synthesis_output_dir")
             if synthesis_dir:
                 lines.append(f"- Complaint synthesis: `{synthesis_dir}`")
@@ -831,6 +841,8 @@ def _write_markdown_report(
             ])
             if runner_up.get("relief_selection_overview"):
                 lines.append(f"- Relief overview: {runner_up['relief_selection_overview']}")
+            if runner_up.get("grounding_overview_focus"):
+                lines.append(f"- Grounding overview: {runner_up['grounding_overview_focus']}")
             if runner_up.get("synthesis_output_dir"):
                 lines.append(f"- Complaint synthesis: `{runner_up['synthesis_output_dir']}`")
             lines.append("")
@@ -874,6 +886,8 @@ def _write_markdown_report(
                 lines.append(f"- Relief posture note: {champion_best['relief_posture_note']}")
             if champion_best.get("relief_selection_overview"):
                 lines.append(f"- Relief overview: {champion_best['relief_selection_overview']}")
+            if champion_best.get("grounding_overview_focus"):
+                lines.append(f"- Grounding overview: {champion_best['grounding_overview_focus']}")
             if champion_best.get("synthesis_output_dir"):
                 lines.append(f"- Complaint synthesis: `{champion_best['synthesis_output_dir']}`")
         champion_delta = dict(champion.get("winner_delta") or {})
@@ -1008,6 +1022,73 @@ def _compact_relief_selection_summary(summary: List[Dict[str, Any]], limit: int 
             parts.append(f"{text} [{'; '.join(detail_parts)}]")
         else:
             parts.append(text)
+    return " | ".join(parts)
+
+
+def _derive_grounding_overview_from_package(package: Dict[str, Any]) -> Dict[str, Any]:
+    overview = dict(package.get("grounding_overview") or {})
+    if overview:
+        return overview
+
+    anchor_sections = [str(item) for item in list(package.get("anchor_sections") or []) if str(item)]
+    anchor_passages = [str(item) for item in list(package.get("anchor_passages") or []) if str(item)]
+    claim_selection_summary = [
+        dict(item) for item in list(package.get("claim_selection_summary") or []) if isinstance(item, dict)
+    ]
+
+    top_documents: List[str] = []
+    for item in claim_selection_summary:
+        for exhibit in list(item.get("selected_exhibits") or []):
+            if not isinstance(exhibit, dict):
+                continue
+            label = str(exhibit.get("label") or exhibit.get("exhibit_id") or "").strip()
+            if label and label not in top_documents:
+                top_documents.append(label)
+            if len(top_documents) >= 3:
+                break
+        if len(top_documents) >= 3:
+            break
+
+    return {
+        "evidence_summary": str(package.get("summary") or "").strip(),
+        "anchor_sections": anchor_sections,
+        "anchor_passage_count": len(anchor_passages),
+        "upload_candidate_count": len(top_documents),
+        "mediator_packet_count": 0,
+        "uploaded_evidence_count": 0,
+        "top_documents": top_documents,
+    }
+
+
+def _compact_grounding_overview(grounding_overview: Dict[str, Any]) -> str:
+    overview = dict(grounding_overview or {})
+    if not overview:
+        return ""
+
+    parts: List[str] = []
+    anchor_sections = [str(item) for item in list(overview.get("anchor_sections") or []) if str(item)]
+    if anchor_sections:
+        parts.append(f"anchors={','.join(anchor_sections[:3])}")
+
+    anchor_passage_count = int(overview.get("anchor_passage_count") or 0)
+    if anchor_passage_count:
+        parts.append(f"passages={anchor_passage_count}")
+
+    uploaded_evidence_count = int(overview.get("uploaded_evidence_count") or 0)
+    if uploaded_evidence_count:
+        parts.append(f"uploaded={uploaded_evidence_count}")
+
+    top_documents = [str(item) for item in list(overview.get("top_documents") or []) if str(item)]
+    if top_documents:
+        parts.append(f"top_docs={'; '.join(top_documents[:2])}")
+
+    if not parts:
+        evidence_summary = str(overview.get("evidence_summary") or "").strip()
+        if evidence_summary:
+            truncated = evidence_summary[:117].rstrip()
+            if len(evidence_summary) > 117:
+                truncated += "..."
+            parts.append(f"summary={truncated}")
     return " | ".join(parts)
 
 
@@ -1218,6 +1299,7 @@ def _synthesize_claim_selection_snapshot(
     package["relief_selection_summary"] = synthesis._relief_selection_summary(
         list(package.get("requested_relief_annotations") or [])
     )
+    package["grounding_overview"] = _derive_grounding_overview_from_package(package)
     theory_families = _claim_selection_theory_families(package["claim_selection_summary"])
 
     output_dir = preset_dir / "complaint_synthesis"
@@ -1230,6 +1312,8 @@ def _synthesize_claim_selection_snapshot(
         "claim_selection_overview": _compact_claim_selection_summary(package["claim_selection_summary"]),
         "relief_selection_summary": package["relief_selection_summary"],
         "relief_selection_overview": _compact_relief_selection_summary(package["relief_selection_summary"]),
+        "grounding_overview": package["grounding_overview"],
+        "grounding_overview_focus": _compact_grounding_overview(package["grounding_overview"]),
         "claim_theory_families": theory_families,
         "synthesis_output_dir": str(output_dir),
     }
@@ -1371,6 +1455,8 @@ def _run_preset_batch(
         "claim_selection_overview": synthesis_snapshot["claim_selection_overview"],
         "relief_selection_summary": synthesis_snapshot["relief_selection_summary"],
         "relief_selection_overview": synthesis_snapshot["relief_selection_overview"],
+        "grounding_overview": synthesis_snapshot["grounding_overview"],
+        "grounding_overview_focus": synthesis_snapshot["grounding_overview_focus"],
         "claim_theory_families": synthesis_snapshot["claim_theory_families"],
         "synthesis_output_dir": synthesis_snapshot["synthesis_output_dir"],
     }
@@ -1504,6 +1590,8 @@ def _rebuild_batch_result_from_preset_dir(
         "claim_selection_overview": synthesis_snapshot["claim_selection_overview"],
         "relief_selection_summary": synthesis_snapshot["relief_selection_summary"],
         "relief_selection_overview": synthesis_snapshot["relief_selection_overview"],
+        "grounding_overview": synthesis_snapshot["grounding_overview"],
+        "grounding_overview_focus": synthesis_snapshot["grounding_overview_focus"],
         "claim_theory_families": synthesis_snapshot["claim_theory_families"],
         "synthesis_output_dir": synthesis_snapshot["synthesis_output_dir"],
     }
@@ -1666,6 +1754,8 @@ def main() -> int:
             "output_dir": batch_result["output_dir"],
             "claim_selection_overview": batch_result["claim_selection_overview"],
             "relief_selection_overview": batch_result["relief_selection_overview"],
+            "grounding_overview": batch_result["grounding_overview"],
+            "grounding_overview_focus": batch_result["grounding_overview_focus"],
             "claim_theory_families": batch_result["claim_theory_families"],
             "synthesis_output_dir": batch_result["synthesis_output_dir"],
         }
@@ -1690,6 +1780,8 @@ def main() -> int:
                 "claim_selection_overview": batch_result["claim_selection_overview"],
                 "relief_selection_summary": batch_result["relief_selection_summary"],
                 "relief_selection_overview": batch_result["relief_selection_overview"],
+                "grounding_overview": batch_result["grounding_overview"],
+                "grounding_overview_focus": batch_result["grounding_overview_focus"],
                 "claim_theory_families": batch_result["claim_theory_families"],
                 "synthesis_output_dir": batch_result["synthesis_output_dir"],
             }
@@ -1792,6 +1884,8 @@ def main() -> int:
                         "router_status",
                         "claim_selection_overview",
                         "relief_selection_overview",
+                        "grounding_overview",
+                        "grounding_overview_focus",
                         "claim_theory_families",
                         "synthesis_output_dir",
                     )
@@ -1807,6 +1901,8 @@ def main() -> int:
                     "claim_selection_summary": batch_result["claim_selection_summary"],
                     "relief_selection_summary": batch_result["relief_selection_summary"],
                     "relief_selection_overview": batch_result["relief_selection_overview"],
+                    "grounding_overview": batch_result["grounding_overview"],
+                    "grounding_overview_focus": batch_result["grounding_overview_focus"],
                     "claim_theory_families": batch_result["claim_theory_families"],
                     "coverage_remediation": batch_result["coverage_remediation"],
                     "top_intake_gaps": batch_result["top_intake_gaps"],

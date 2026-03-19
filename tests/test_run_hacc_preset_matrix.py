@@ -48,6 +48,21 @@ def test_compact_relief_selection_summary_formats_families_role_and_related_clai
     assert "related=Administrative Fair Housing Process Failure" in overview
 
 
+def test_compact_grounding_overview_formats_anchor_counts_and_top_docs():
+    overview = MODULE._compact_grounding_overview(
+        {
+            "anchor_sections": ["grievance_hearing", "appeal_rights"],
+            "anchor_passage_count": 2,
+            "uploaded_evidence_count": 1,
+            "top_documents": ["ADMINISTRATIVE PLAN", "ACOP"],
+        }
+    )
+
+    assert overview == (
+        "anchors=grievance_hearing,appeal_rights | passages=2 | uploaded=1 | top_docs=ADMINISTRATIVE PLAN; ACOP"
+    )
+
+
 def test_markdown_report_includes_claim_selection_snapshots(tmp_path):
     report_path = tmp_path / "preset_matrix_summary.md"
     rows = [
@@ -76,6 +91,7 @@ def test_markdown_report_includes_claim_selection_snapshots(tmp_path):
                 "Corrective action requiring clear notice, fair review, and non-retaliation safeguards. "
                 "[families=process; role=shared_baseline]"
             ),
+            "grounding_overview_focus": "anchors=appeal_rights | passages=2 | top_docs=ADMINISTRATIVE PLAN",
             "claim_theory_families": ["accommodation", "process"],
             "synthesis_output_dir": "/tmp/accommodation_focus/complaint_synthesis",
         }
@@ -109,6 +125,7 @@ def test_markdown_report_includes_claim_selection_snapshots(tmp_path):
     assert "- Claim posture note: The winner added stronger accommodation framing theories." not in report
     assert "- Relief posture note: Relief posture was materially similar across the winner and runner-up, so the selection difference was driven mainly by claim posture." not in report
     assert "- Relief overview: Corrective action requiring clear notice, fair review, and non-retaliation safeguards." in report
+    assert "- Grounding overview: anchors=appeal_rights | passages=2 | top_docs=ADMINISTRATIVE PLAN" in report
     assert "- Complaint synthesis: `/tmp/accommodation_focus/complaint_synthesis`" in report
     assert "| Preset | Backend | Avg Score | Success | Anchor Coverage | Router | Top Missing Sections | Top Intake Gaps | Remediation Focus | Missing Sections | Output Dir |" in report
 
@@ -148,6 +165,8 @@ def test_rebuild_batch_result_recovers_effective_search_mode_from_run_summary(tm
             'claim_selection_overview': '',
             'relief_selection_summary': [],
             'relief_selection_overview': '',
+            'grounding_overview': {},
+            'grounding_overview_focus': '',
             'claim_theory_families': [],
             'synthesis_output_dir': str(preset_dir / 'complaint_synthesis'),
         },
@@ -221,6 +240,8 @@ def test_main_uses_rebuild_helper_when_rebuild_existing_is_set(tmp_path, monkeyp
             "claim_selection_overview": "winner overview",
             "relief_selection_summary": [],
             "relief_selection_overview": "relief overview",
+            "grounding_overview": {"anchor_sections": ["appeal_rights"]},
+            "grounding_overview_focus": "anchors=appeal_rights",
             "claim_theory_families": ["accommodation"],
             "synthesis_output_dir": str(preset_dir / "complaint_synthesis"),
         }
@@ -261,6 +282,7 @@ def test_main_uses_rebuild_helper_when_rebuild_existing_is_set(tmp_path, monkeyp
     assert calls["write"]["requested_presets"] == ["accommodation_focus"]
     assert calls["write"]["matrix_rows"][0]["preset"] == "accommodation_focus"
     assert calls["write"]["matrix_rows"][0]["hacc_search_mode"] == "package"
+    assert calls["write"]["matrix_rows"][0]["grounding_overview_focus"] == "anchors=appeal_rights"
     assert calls["write"]["full_results"][0]["search_summary"]["requested_search_mode"] == "package"
 
 
@@ -321,6 +343,8 @@ def test_main_continue_on_error_records_failed_preset_and_writes_partial_matrix(
             "claim_selection_overview": "winner overview",
             "relief_selection_summary": [],
             "relief_selection_overview": "relief overview",
+            "grounding_overview": {"anchor_sections": ["appeal_rights"]},
+            "grounding_overview_focus": "anchors=appeal_rights",
             "claim_theory_families": ["process"],
             "synthesis_output_dir": str(preset_dir / "complaint_synthesis"),
         }
@@ -423,6 +447,12 @@ def test_attach_recommendation_claim_snapshots_enriches_best_overall():
             "preset": "accommodation_focus",
             "claim_selection_overview": "Accommodation Theory [tags=reasonable_accommodation,contact]",
             "relief_selection_overview": "Corrective action requiring clear notice [families=process]",
+            "grounding_overview": {
+                "anchor_sections": ["appeal_rights"],
+                "anchor_passage_count": 2,
+                "top_documents": ["ADMINISTRATIVE PLAN"],
+            },
+            "grounding_overview_focus": "anchors=appeal_rights | passages=2 | top_docs=ADMINISTRATIVE PLAN",
             "claim_theory_families": ["accommodation", "process"],
             "synthesis_output_dir": "/tmp/accommodation_focus/complaint_synthesis",
             "hacc_search_mode": "hybrid",
@@ -454,6 +484,9 @@ def test_attach_recommendation_claim_snapshots_enriches_best_overall():
     assert enriched["best_overall"]["top_intake_gaps"] == "anchor_appeal_rights (0/1)"
     assert enriched["best_overall"]["remediation_focus"] == (
         "anchor=appeal_rights; intake=anchor_appeal_rights"
+    )
+    assert enriched["best_overall"]["grounding_overview_focus"] == (
+        "anchors=appeal_rights | passages=2 | top_docs=ADMINISTRATIVE PLAN"
     )
     assert enriched["best_overall"]["coverage_remediation"]["anchor_sections"]["missing_sections"] == [
         "appeal_rights"
@@ -785,6 +818,7 @@ def test_markdown_report_includes_winner_vs_runner_up_delta(tmp_path):
             "missing_sections": "",
             "output_dir": "/tmp/accommodation_focus",
             "claim_selection_overview": "winner overview",
+            "grounding_overview_focus": "anchors=appeal_rights | passages=2 | top_docs=ADMINISTRATIVE PLAN",
             "synthesis_output_dir": "/tmp/accommodation_focus/complaint_synthesis",
         },
         {
@@ -861,6 +895,7 @@ def test_markdown_report_includes_winner_vs_runner_up_delta(tmp_path):
     assert "- Runner-up-only claims: Retaliation for Protected Fair Housing Activity" in report
     assert "- Winner-only relief items: Protected-basis remedies." in report
     assert "- Runner-up-only relief items: Retaliation remedies." in report
+    assert "- Grounding overview: anchors=appeal_rights | passages=2 | top_docs=ADMINISTRATIVE PLAN" in report
     assert "Shared claim changed: Accommodation Theory | winner tags=reasonable_accommodation, contact" in report
     assert "Shared relief changed: Corrective action requiring clear notice. | winner families=process | runner-up families=process, retaliation" in report
 
@@ -1014,6 +1049,12 @@ def test_write_matrix_outputs_persists_remediation_fields(tmp_path):
             "output_dir": "/tmp/accommodation_focus",
             "claim_selection_overview": "winner overview",
             "relief_selection_overview": "relief overview",
+            "grounding_overview": {
+                "anchor_sections": ["appeal_rights"],
+                "anchor_passage_count": 2,
+                "top_documents": ["ADMINISTRATIVE PLAN"],
+            },
+            "grounding_overview_focus": "anchors=appeal_rights | passages=2 | top_docs=ADMINISTRATIVE PLAN",
             "claim_theory_families": ["accommodation"],
             "synthesis_output_dir": "/tmp/accommodation_focus/complaint_synthesis",
         }
@@ -1031,6 +1072,12 @@ def test_write_matrix_outputs_persists_remediation_fields(tmp_path):
                 "anchor_sections": {"missing_sections": ["appeal_rights"]},
                 "intake_priorities": {"uncovered_objectives": ["anchor_appeal_rights"]},
             },
+            "grounding_overview": {
+                "anchor_sections": ["appeal_rights"],
+                "anchor_passage_count": 2,
+                "top_documents": ["ADMINISTRATIVE PLAN"],
+            },
+            "grounding_overview_focus": "anchors=appeal_rights | passages=2 | top_docs=ADMINISTRATIVE PLAN",
         }
     ]
     recommendations = {
@@ -1039,6 +1086,7 @@ def test_write_matrix_outputs_persists_remediation_fields(tmp_path):
             "hacc_search_mode": "hybrid",
             "effective_hacc_search_mode": "lexical_only",
             "hacc_search_fallback_note": "fallback",
+            "grounding_overview_focus": "anchors=appeal_rights | passages=2 | top_docs=ADMINISTRATIVE PLAN",
         }
     }
 
@@ -1061,12 +1109,17 @@ def test_write_matrix_outputs_persists_remediation_fields(tmp_path):
     assert summary["rows"][0]["top_intake_gaps"] == "anchor_appeal_rights (0/1)"
     assert summary["rows"][0]["remediation_focus"] == "anchor=appeal_rights; intake=anchor_appeal_rights"
     assert summary["rows"][0]["coverage_remediation"]["anchor_sections"]["missing_sections"] == ["appeal_rights"]
+    assert summary["rows"][0]["grounding_overview_focus"] == (
+        "anchors=appeal_rights | passages=2 | top_docs=ADMINISTRATIVE PLAN"
+    )
     assert persisted_full_results[0]["coverage_remediation"]["intake_priorities"]["uncovered_objectives"] == [
         "anchor_appeal_rights"
     ]
+    assert persisted_full_results[0]["grounding_overview"]["top_documents"] == ["ADMINISTRATIVE PLAN"]
     assert summary["recommendations"]["best_overall"]["hacc_search_mode"] == "hybrid"
     assert summary["recommendations"]["best_overall"]["effective_hacc_search_mode"] == "lexical_only"
     assert summary["recommendations"]["best_overall"]["hacc_search_fallback_note"] == "fallback"
-    assert "top_intake_gaps,remediation_focus" in csv_text
+    assert "grounding_overview_focus" in csv_text
     assert "anchor_appeal_rights (0/1)" in markdown
     assert "anchor=appeal_rights; intake=anchor_appeal_rights" in markdown
+    assert "anchors=appeal_rights | passages=2 | top_docs=ADMINISTRATIVE PLAN" in markdown

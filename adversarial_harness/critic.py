@@ -30,6 +30,9 @@ class CriticScore:
     anchor_sections_expected: List[str] = field(default_factory=list)
     anchor_sections_covered: List[str] = field(default_factory=list)
     anchor_sections_missing: List[str] = field(default_factory=list)
+    intake_priority_expected: List[str] = field(default_factory=list)
+    intake_priority_covered: List[str] = field(default_factory=list)
+    intake_priority_missing: List[str] = field(default_factory=list)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -47,6 +50,9 @@ class CriticScore:
             'anchor_sections_expected': self.anchor_sections_expected,
             'anchor_sections_covered': self.anchor_sections_covered,
             'anchor_sections_missing': self.anchor_sections_missing,
+            'intake_priority_expected': self.intake_priority_expected,
+            'intake_priority_covered': self.intake_priority_covered,
+            'intake_priority_missing': self.intake_priority_missing,
         }
 
 
@@ -97,22 +103,25 @@ class Critic:
             CriticScore with detailed evaluation
         """
         anchor_coverage = self._analyze_anchor_section_coverage(conversation_history, context)
+        intake_priority_coverage = self._analyze_intake_priority_coverage(final_state)
         prompt = self._build_evaluation_prompt(
             initial_complaint,
             conversation_history,
             final_state,
             context,
             anchor_coverage,
+            intake_priority_coverage,
         )
         
         try:
             response = self.llm_backend(prompt)
             score = self._parse_evaluation(response)
             self._apply_anchor_coverage(score, anchor_coverage)
+            self._apply_intake_priority_coverage(score, intake_priority_coverage)
             return score
         except Exception as e:
             logger.error(f"Error evaluating session: {e}")
-            return self._fallback_score(conversation_history, context=context)
+            return self._fallback_score(conversation_history, context=context, final_state=final_state)
     
     def evaluate_question(self, 
                          question: str,
@@ -161,7 +170,8 @@ Score:"""
                                  conversation_history: List[Dict[str, Any]],
                                  final_state: Dict[str, Any],
                                  context: Dict[str, Any] = None,
-                                 anchor_coverage: Dict[str, List[str]] | None = None) -> str:
+                                 anchor_coverage: Dict[str, List[str]] | None = None,
+                                 intake_priority_coverage: Dict[str, List[str]] | None = None) -> str:
         """Build comprehensive evaluation prompt."""
         
         # Format conversation
@@ -177,6 +187,7 @@ Score:"""
 """
         
         anchor_text = self._format_anchor_coverage(anchor_coverage or {})
+        intake_text = self._format_intake_priority_coverage(intake_priority_coverage or {})
 
         prompt = f"""You are an expert evaluator assessing a legal complaint intake session between a mediator and a complainant.
 
@@ -191,6 +202,7 @@ FINAL STATE:
 
 {f'GROUND TRUTH CONTEXT:\n{json.dumps(context, indent=2)}\n' if context else ''}
 {anchor_text}
+{intake_text}
 
 Evaluate the mediator's performance on these criteria:
 {criteria_text}
@@ -319,7 +331,12 @@ Evaluation:"""
         """Format context messages."""
         return self._format_conversation(context)
     
-    def _fallback_score(self, conversation_history: List[Dict[str, Any]], context: Dict[str, Any] = None) -> CriticScore:
+    def _fallback_score(
+        self,
+        conversation_history: List[Dict[str, Any]],
+        context: Dict[str, Any] = None,
+        final_state: Dict[str, Any] = None,
+    ) -> CriticScore:
         """Fallback score if evaluation fails."""
         # Simple heuristic: more questions = potentially better
         num_questions = sum(1 for msg in conversation_history if msg.get('type') == 'question')
@@ -338,6 +355,7 @@ Evaluation:"""
             suggestions=["Review LLM backend configuration"]
         )
         self._apply_anchor_coverage(result, self._analyze_anchor_section_coverage(conversation_history, context))
+        self._apply_intake_priority_coverage(result, self._analyze_intake_priority_coverage(final_state or {}))
         return result
 
     def _analyze_anchor_section_coverage(
@@ -379,6 +397,34 @@ Evaluation:"""
             f"Still missing from conversation: {', '.join(missing) if missing else 'none'}\n"
         )
 
+    def _analyze_intake_priority_coverage(self, final_state: Dict[str, Any]) -> Dict[str, List[str]]:
+        if not isinstance(final_state, dict):
+            return {'expected': [], 'covered': [], 'missing': []}
+        summary = final_state.get('adversarial_intake_priority_summary')
+        if not isinstance(summary, dict):
+            return {'expected': [], 'covered': [], 'missing': []}
+        expected = [str(value) for value in list(summary.get('expected_objectives') or []) if str(value)]
+        covered = [str(value) for value in list(summary.get('covered_objectives') or []) if str(value)]
+        missing = [str(value) for value in list(summary.get('uncovered_objectives') or []) if str(value)]
+        if expected and not missing:
+            missing = [value for value in expected if value not in covered]
+        if expected and not covered:
+            covered = [value for value in expected if value not in missing]
+        return {'expected': expected, 'covered': covered, 'missing': missing}
+
+    def _format_intake_priority_coverage(self, coverage: Dict[str, List[str]]) -> str:
+        expected = list(coverage.get('expected') or [])
+        if not expected:
+            return ''
+        covered = list(coverage.get('covered') or [])
+        missing = list(coverage.get('missing') or [])
+        return (
+            "INTAKE PRIORITY COVERAGE:\n"
+            f"Expected intake objectives: {', '.join(expected)}\n"
+            f"Objectives already covered: {', '.join(covered) if covered else 'none'}\n"
+            f"Objectives still uncovered: {', '.join(missing) if missing else 'none'}\n"
+        )
+
     def _apply_anchor_coverage(self, score: CriticScore, coverage: Dict[str, List[str]]) -> None:
         expected = list(coverage.get('expected') or [])
         covered = list(coverage.get('covered') or [])
@@ -408,5 +454,39 @@ Evaluation:"""
                 score.feedback = f"{score.feedback} {feedback_note}".strip()
         elif expected:
             strength = f"Covered all seeded anchor sections: {', '.join(covered)}"
+            if strength not in score.strengths:
+                score.strengths = list(score.strengths) + [strength]
+
+    def _apply_intake_priority_coverage(self, score: CriticScore, coverage: Dict[str, List[str]]) -> None:
+        expected = list(coverage.get('expected') or [])
+        covered = list(coverage.get('covered') or [])
+        missing = list(coverage.get('missing') or [])
+        score.intake_priority_expected = expected
+        score.intake_priority_covered = covered
+        score.intake_priority_missing = missing
+        if expected:
+            coverage_ratio = len(covered) / len(expected)
+            score.information_extraction = (score.information_extraction + coverage_ratio) / 2.0
+            score.coverage = (score.coverage + coverage_ratio) / 2.0
+            score.overall_score = (
+                (score.question_quality * self.criteria_weights.get('question_quality', 0.0))
+                + (score.information_extraction * self.criteria_weights.get('information_extraction', 0.0))
+                + (score.empathy * self.criteria_weights.get('empathy', 0.0))
+                + (score.efficiency * self.criteria_weights.get('efficiency', 0.0))
+                + (score.coverage * self.criteria_weights.get('coverage', 0.0))
+            )
+        if missing:
+            missing_text = ", ".join(missing)
+            weakness = f"Missed intake objectives: {missing_text}"
+            if weakness not in score.weaknesses:
+                score.weaknesses = list(score.weaknesses) + [weakness]
+            suggestion = f"Add questions covering intake objectives: {missing_text}"
+            if suggestion not in score.suggestions:
+                score.suggestions = list(score.suggestions) + [suggestion]
+            feedback_note = f"Intake-priority coverage was incomplete ({len(covered)}/{len(expected)} covered)."
+            if feedback_note not in score.feedback:
+                score.feedback = f"{score.feedback} {feedback_note}".strip()
+        elif expected:
+            strength = f"Covered all intake-priority objectives: {', '.join(covered)}"
             if strength not in score.strengths:
                 score.strengths = list(score.strengths) + [strength]

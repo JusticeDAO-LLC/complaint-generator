@@ -247,14 +247,39 @@ class Optimizer:
             focus_items = list(report.common_weaknesses or [])[:3]
         if not focus_items:
             focus_items = ["stabilize adversarial mediator questioning flow"]
+        weakest_intake_objectives = self._top_uncovered_intake_objectives(report)
 
         target_labels = ", ".join(str(path) for path in target_files) or "target files auto-detected"
         focus_text = "; ".join(focus_items)
-        return (
+        description = (
             f"Use the {method} optimizer to improve the complaint-generator adversarial complainant/mediator loop. "
             f"Target files: {target_labels}. Priorities from the latest adversarial batch: {focus_text}. "
             f"Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability."
         )
+        if weakest_intake_objectives:
+            description += (
+                " The weakest unresolved intake objectives were: "
+                + ", ".join(weakest_intake_objectives[:3])
+                + "."
+            )
+        return description
+
+    @staticmethod
+    def _top_uncovered_intake_objectives(report: OptimizationReport, limit: int = 3) -> List[str]:
+        coverage_by_objective = dict((report.intake_priority_performance or {}).get("coverage_by_objective") or {})
+        weakest = [
+            (name, payload)
+            for name, payload in sorted(
+                coverage_by_objective.items(),
+                key=lambda item: (
+                    float((item[1] or {}).get("coverage_rate") or 0.0),
+                    -int((item[1] or {}).get("expected") or 0),
+                    item[0],
+                ),
+            )
+            if int((payload or {}).get("expected") or 0) > 0 and float((payload or {}).get("coverage_rate") or 0.0) < 1.0
+        ]
+        return [name for name, _payload in weakest[: max(0, int(limit))]]
 
     def build_agentic_patch_task(
         self,
@@ -300,6 +325,10 @@ class Optimizer:
                     "priority_improvements": list(report.priority_improvements or []),
                     "recommendations": list(report.recommendations or [])[:5],
                     "common_weaknesses": list(report.common_weaknesses or []),
+                    "weakest_intake_objectives": self._top_uncovered_intake_objectives(report),
+                    "sessions_with_full_intake_coverage": int(
+                        (report.intake_priority_performance or {}).get("sessions_with_full_coverage") or 0
+                    ),
                 },
                 **dict(metadata or {}),
             },
