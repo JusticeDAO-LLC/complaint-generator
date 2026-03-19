@@ -104,4 +104,46 @@ def test_build_agentic_patch_task_includes_intake_priority_summary():
     assert "documents, harm_remedy, timeline" in task.description
     assert task.metadata["report_summary"]["weakest_intake_objectives"] == ["documents", "harm_remedy", "timeline"]
     assert task.metadata["report_summary"]["sessions_with_full_intake_coverage"] == 0
+    assert task.metadata["report_summary"]["recommended_target_files"] == [
+        "adversarial_harness/session.py",
+        "mediator/mediator.py",
+        "adversarial_harness/complainant.py",
+    ]
     assert "recommendations" in task.metadata["report_summary"]
+
+
+def test_build_agentic_patch_task_can_autoselect_targets_from_intake_gaps():
+    optimizer = Optimizer()
+    results = [
+        _session_result(
+            "session_auto",
+            0.61,
+            {
+                "adversarial_intake_priority_summary": {
+                    "expected_objectives": ["actors", "anchor_appeal_rights"],
+                    "covered_objectives": [],
+                    "uncovered_objectives": ["actors", "anchor_appeal_rights"],
+                }
+            },
+        )
+    ]
+
+    task, report = optimizer.build_agentic_patch_task(
+        results,
+        target_files=[],
+        method="actor_critic",
+        components={
+            "OptimizationTask": lambda **kwargs: SimpleNamespace(**kwargs),
+            "OptimizationMethod": SimpleNamespace(ACTOR_CRITIC="ACTOR_CRITIC"),
+            "OptimizerLLMRouter": None,
+            "optimizer_classes": {},
+        },
+    )
+
+    assert report.intake_priority_performance["coverage_by_objective"]["actors"]["coverage_rate"] == 0.0
+    assert task.target_files == [
+        Path("adversarial_harness/session.py"),
+        Path("mediator/mediator.py"),
+        Path("adversarial_harness/complainant.py"),
+    ]
+    assert "Target files: adversarial_harness/session.py, mediator/mediator.py, adversarial_harness/complainant.py." in task.description

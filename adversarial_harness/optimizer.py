@@ -281,6 +281,31 @@ class Optimizer:
         ]
         return [name for name, _payload in weakest[: max(0, int(limit))]]
 
+    @classmethod
+    def _recommended_target_files_for_report(cls, report: OptimizationReport) -> List[Path]:
+        objectives = cls._top_uncovered_intake_objectives(report, limit=5)
+        recommendations: List[Path] = []
+
+        def add_target(path: str) -> None:
+            candidate = Path(path)
+            if candidate not in recommendations:
+                recommendations.append(candidate)
+
+        if objectives:
+            add_target("adversarial_harness/session.py")
+
+        if any(
+            objective in {"timeline", "actors", "documents", "witnesses", "harm_remedy"}
+            or str(objective).startswith("anchor_")
+            for objective in objectives
+        ):
+            add_target("mediator/mediator.py")
+
+        if any(objective in {"harm_remedy", "actors"} for objective in objectives):
+            add_target("adversarial_harness/complainant.py")
+
+        return recommendations
+
     def build_agentic_patch_task(
         self,
         results: List[Any],
@@ -304,6 +329,9 @@ class Optimizer:
 
         report = report or self.analyze(results)
         resolved_targets = [Path(path) for path in target_files]
+        recommended_targets = self._recommended_target_files_for_report(report)
+        if not resolved_targets:
+            resolved_targets = list(recommended_targets)
         resolved_description = description or self._build_agentic_patch_description(
             report,
             method=normalized_method,
@@ -329,6 +357,7 @@ class Optimizer:
                     "sessions_with_full_intake_coverage": int(
                         (report.intake_priority_performance or {}).get("sessions_with_full_coverage") or 0
                     ),
+                    "recommended_target_files": [str(path) for path in recommended_targets],
                 },
                 **dict(metadata or {}),
             },
