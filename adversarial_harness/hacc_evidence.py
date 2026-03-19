@@ -7,6 +7,7 @@ from __future__ import annotations
 import importlib.util
 import logging
 import re
+import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
@@ -68,12 +69,21 @@ def _load_hacc_engine() -> Any:
         raise ModuleNotFoundError(f"HACCResearchEngine not found at {engine_path}")
 
     module_name = "hacc_research.engine"
+    existing_module = sys.modules.get(module_name)
+    if existing_module is not None and getattr(existing_module, "HACCResearchEngine", None) is not None:
+        return getattr(existing_module, "HACCResearchEngine")
+
     spec = importlib.util.spec_from_file_location(module_name, engine_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Unable to load module spec for {engine_path}")
 
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(module_name, None)
+        raise
     return getattr(module, "HACCResearchEngine")
 
 

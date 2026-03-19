@@ -1,4 +1,5 @@
 import inspect
+import sys
 from types import SimpleNamespace
 
 import adversarial_harness.hacc_evidence as hacc_evidence_module
@@ -33,6 +34,7 @@ def test_load_hacc_engine_loads_engine_module_from_file(tmp_path, monkeypatch):
     monkeypatch.setattr(hacc_evidence_module, "_repo_root", lambda: repo_root)
     monkeypatch.setattr(hacc_evidence_module.importlib.util, "spec_from_file_location", fake_spec_from_file_location)
     monkeypatch.setattr(hacc_evidence_module.importlib.util, "module_from_spec", fake_module_from_spec)
+    monkeypatch.delitem(sys.modules, "hacc_research.engine", raising=False)
 
     engine_cls = hacc_evidence_module._load_hacc_engine()
 
@@ -40,6 +42,7 @@ def test_load_hacc_engine_loads_engine_module_from_file(tmp_path, monkeypatch):
     assert captured["location"] == repo_root / "hacc_research" / "engine.py"
     assert captured["spec"] is fake_spec
     assert captured["executed_module"] is fake_module
+    assert sys.modules["hacc_research.engine"] is fake_module
     assert engine_cls is fake_engine
 
 
@@ -48,4 +51,5 @@ def test_load_hacc_engine_source_uses_file_based_loader():
 
     assert "spec_from_file_location" in source
     assert "module_from_spec" in source
+    assert 'sys.modules[module_name] = module' in source
     assert 'importlib.import_module("hacc_research")' not in source
