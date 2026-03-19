@@ -268,9 +268,9 @@ Example response fields:
 - `support_summary`: persisted support-link summary keyed by claim type.
 - `claim_overview`: covered, partially supported, and missing element buckets keyed by claim type.
 - `follow_up_plan`: actionable retrieval tasks keyed by claim type; authority-targeted tasks now include claim-aware `authority_search_programs` bundles and a compact `authority_search_program_summary`.
-- `follow_up_plan_summary`: compact task, suppression, graph-support, parse-remediation, and graph-source-context counts keyed by claim type.
+- `follow_up_plan_summary`: compact task, suppression, graph-support, parse-remediation, chronology-follow-up, and graph-source-context counts keyed by claim type.
 - `follow_up_history`: recent persisted follow-up execution and manual-review rows keyed by claim type; graph-backed executions can flatten dominant source-lineage fields such as `source_family`, `artifact_family`, and `content_origin` onto each row for compact operator and CLI review.
-- `follow_up_history_summary`: compact history ledger counts keyed by claim type, including selected authority-program mixes, adaptive retry counts, and persisted graph-source-context families when the follow-up ledger stored graph-backed lineage.
+- `follow_up_history_summary`: compact history ledger counts keyed by claim type, including selected authority-program mixes, adaptive retry counts, chronology-follow-up aggregates, and persisted graph-source-context families when the follow-up ledger stored graph-backed lineage.
 - `follow_up_execution`: compatibility-only opt-in execution results keyed by claim type when `execute_follow_up=true`.
 - `follow_up_execution_summary`: compatibility-only compact execution, suppression, cooldown-skip, graph-support, and graph-source-context counts keyed by claim type.
 - `compatibility_notice`: route-level deprecation metadata returned only when `execute_follow_up=true`.

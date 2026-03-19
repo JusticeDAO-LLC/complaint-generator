@@ -110,6 +110,17 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
         },
         'follow_up_history_summary': {
             'retaliation': {
+                'temporal_gap_task_count': 1,
+                'temporal_gap_targeted_task_count': 1,
+                'temporal_rule_status_counts': {
+                    'partial': 1,
+                },
+                'temporal_rule_blocking_reason_counts': {
+                    'Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.': 1,
+                },
+                'temporal_resolution_status_counts': {
+                    'awaiting_testimony': 1,
+                },
                 'selected_authority_program_type_counts': {
                     'adverse_authority_search': 1,
                 },
@@ -164,6 +175,17 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
         },
         'follow_up_plan_summary': {
             'retaliation': {
+                'temporal_gap_task_count': 1,
+                'temporal_gap_targeted_task_count': 1,
+                'temporal_rule_status_counts': {
+                    'partial': 1,
+                },
+                'temporal_rule_blocking_reason_counts': {
+                    'Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.': 1,
+                },
+                'temporal_resolution_status_counts': {
+                    'awaiting_testimony': 1,
+                },
                 'authority_search_program_task_count': 1,
                 'authority_search_program_count': 2,
                 'authority_search_program_type_counts': {
@@ -226,6 +248,11 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
     assert 'primary_biases: uncertain=1' in rendered
     assert 'primary_rule_biases: exception=1' in rendered
     assert 'source_context: lane authority=1; family legal_authority=1; artifact legal_authority_reference=1' in rendered
+    assert 'follow-up plan chronology summary:' in rendered
+    assert '- retaliation: chronology_tasks=1 chronology_targeted=1' in rendered
+    assert 'rule_status: partial=1' in rendered
+    assert 'blockers: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.=1' in rendered
+    assert 'handoffs: awaiting_testimony=1' in rendered
     assert 'follow-up plan fact-target summary:' in rendered
     assert 'primary_gaps: Manager knowledge=1' in rendered
     assert 'missing_bundle: Event sequence=1, Manager knowledge=1' in rendered
@@ -237,6 +264,11 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
     assert 'selected_biases: adverse=1' in rendered
     assert 'selected_rule_biases: exception=1' in rendered
     assert 'source_context: family legal_authority=1; artifact legal_authority_reference=1' in rendered
+    assert 'follow-up history chronology summary:' in rendered
+    assert '- retaliation: chronology_tasks=1 chronology_targeted=1' in rendered
+    assert 'rule_status: partial=1' in rendered
+    assert 'blockers: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.=1' in rendered
+    assert 'handoffs: awaiting_testimony=1' in rendered
     assert 'follow-up history fact-target summary:' in rendered
     assert '"claim_coverage_summary"' in rendered
 
@@ -290,6 +322,17 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
         },
         'follow_up_execution_summary': {
             'retaliation': {
+                    'temporal_gap_task_count': 1,
+                    'temporal_gap_targeted_task_count': 1,
+                    'temporal_rule_status_counts': {
+                        'partial': 1,
+                    },
+                    'temporal_rule_blocking_reason_counts': {
+                        'Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.': 1,
+                    },
+                    'temporal_resolution_status_counts': {
+                        'awaiting_testimony': 1,
+                    },
                 'authority_search_program_task_count': 1,
                 'authority_search_program_count': 2,
                 'authority_search_program_type_counts': {
@@ -343,6 +386,17 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
             },
             'follow_up_history_summary': {
                 'retaliation': {
+                    'temporal_gap_task_count': 1,
+                    'temporal_gap_targeted_task_count': 1,
+                    'temporal_rule_status_counts': {
+                        'partial': 1,
+                    },
+                    'temporal_rule_blocking_reason_counts': {
+                        'Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.': 1,
+                    },
+                    'temporal_resolution_status_counts': {
+                        'awaiting_testimony': 1,
+                    },
                     'selected_authority_program_type_counts': {
                         'element_definition_search': 1,
                     },
@@ -403,6 +457,11 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
     assert 'primary_biases: adverse=1' in rendered
     assert 'primary_rule_biases: procedural_prerequisite=1' in rendered
     assert 'source_context: lane authority=1; family legal_authority=1; artifact legal_authority_reference=1' in rendered
+    assert 'follow-up execution chronology summary:' in rendered
+    assert '- retaliation: chronology_tasks=1 chronology_targeted=1' in rendered
+    assert 'rule_status: partial=1' in rendered
+    assert 'blockers: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.=1' in rendered
+    assert 'handoffs: awaiting_testimony=1' in rendered
     assert 'follow-up execution fact-target summary:' in rendered
     assert 'primary_gaps: Manager knowledge=1' in rendered
     assert 'missing_bundle: Event sequence=1, Manager knowledge=1' in rendered
@@ -414,6 +473,11 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
     assert 'selected_biases: uncertain=1' in rendered
     assert 'selected_rule_biases: procedural_prerequisite=1' in rendered
     assert 'source_context: family legal_authority=1; artifact legal_authority_reference=1' in rendered
+    assert 'follow-up history chronology summary:' in rendered
+    assert '- retaliation: chronology_tasks=1 chronology_targeted=1' in rendered
+    assert 'rule_status: partial=1' in rendered
+    assert 'blockers: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.=1' in rendered
+    assert 'handoffs: awaiting_testimony=1' in rendered
     assert 'follow-up history fact-target summary:' in rendered
     assert '"execution_quality_summary"' in rendered
 

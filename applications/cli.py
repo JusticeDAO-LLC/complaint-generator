@@ -182,6 +182,12 @@ class CLI:
 				)
 			)
 			sections.append(
+				self._format_temporal_follow_up_summary(
+					'follow-up plan chronology summary:',
+					follow_up_plan_summary,
+				)
+			)
+			sections.append(
 				self._format_follow_up_fact_targeting_summary(
 					'follow-up plan fact-target summary:',
 					follow_up_plan_summary,
@@ -192,6 +198,12 @@ class CLI:
 			sections.append(
 				self._format_authority_search_history_summary(
 					'follow-up history authority search summary:',
+					follow_up_history_summary,
+				)
+			)
+			sections.append(
+				self._format_temporal_follow_up_summary(
+					'follow-up history chronology summary:',
 					follow_up_history_summary,
 				)
 			)
@@ -336,6 +348,45 @@ class CLI:
 			source_context_summary = self._format_follow_up_source_context_summary(summary)
 			if source_context_summary:
 				lines.append(f'  source_context: {source_context_summary}')
+		return '' if len(lines) == 1 else '\n'.join(lines)
+
+	def _format_temporal_follow_up_summary(self, title, follow_up_summary):
+		lines = [title]
+		for claim_type in sorted(follow_up_summary.keys()):
+			summary = follow_up_summary.get(claim_type, {})
+			if not isinstance(summary, dict):
+				continue
+			temporal_gap_task_count = int(summary.get('temporal_gap_task_count', 0) or 0)
+			temporal_gap_targeted_task_count = int(summary.get('temporal_gap_targeted_task_count', 0) or 0)
+			temporal_rule_status_counts = summary.get('temporal_rule_status_counts', {}) if isinstance(summary.get('temporal_rule_status_counts'), dict) else {}
+			temporal_rule_blocking_reason_counts = summary.get('temporal_rule_blocking_reason_counts', {}) if isinstance(summary.get('temporal_rule_blocking_reason_counts'), dict) else {}
+			temporal_resolution_status_counts = summary.get('temporal_resolution_status_counts', {}) if isinstance(summary.get('temporal_resolution_status_counts'), dict) else {}
+			if not (
+				temporal_gap_task_count > 0
+				or temporal_gap_targeted_task_count > 0
+				or temporal_rule_status_counts
+				or temporal_rule_blocking_reason_counts
+				or temporal_resolution_status_counts
+			):
+				continue
+			lines.append(
+				f'- {claim_type}: chronology_tasks={temporal_gap_task_count} chronology_targeted={temporal_gap_targeted_task_count}'
+			)
+			if temporal_rule_status_counts:
+				status_labels = ', '.join(
+					f"{status}={count}" for status, count in sorted(temporal_rule_status_counts.items())
+				)
+				lines.append(f'  rule_status: {status_labels}')
+			if temporal_rule_blocking_reason_counts:
+				blocker_labels = ', '.join(
+					f"{reason}={count}" for reason, count in sorted(temporal_rule_blocking_reason_counts.items())
+				)
+				lines.append(f'  blockers: {blocker_labels}')
+			if temporal_resolution_status_counts:
+				handoff_labels = ', '.join(
+					f"{status}={count}" for status, count in sorted(temporal_resolution_status_counts.items())
+				)
+				lines.append(f'  handoffs: {handoff_labels}')
 		return '' if len(lines) == 1 else '\n'.join(lines)
 
 	def _format_follow_up_source_context_summary(self, summary):
@@ -485,6 +536,12 @@ class CLI:
 				)
 			)
 			sections.append(
+				self._format_temporal_follow_up_summary(
+					'follow-up execution chronology summary:',
+					follow_up_execution_summary,
+				)
+			)
+			sections.append(
 				self._format_follow_up_fact_targeting_summary(
 					'follow-up execution fact-target summary:',
 					follow_up_execution_summary,
@@ -504,6 +561,12 @@ class CLI:
 			sections.append(
 				self._format_authority_search_history_summary(
 					'follow-up history authority search summary:',
+					post_execution_history_summary,
+				)
+			)
+			sections.append(
+				self._format_temporal_follow_up_summary(
+					'follow-up history chronology summary:',
 					post_execution_history_summary,
 				)
 			)

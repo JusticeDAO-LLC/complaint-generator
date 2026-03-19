@@ -30,6 +30,10 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Validate promoted support" in content
     assert "intake-next-action-open-promoted" in content
     assert "Review promoted updates" in content
+    assert "intake-next-action-prefill-testimony" in content
+    assert "Prefill testimony validation" in content
+    assert "intake-next-action-prefill-document" in content
+    assert "Prefill document validation" in content
     assert "intake-next-action-confirm-summary" in content
     assert "Confirm intake summary" in content
     assert "intake-next-action-review-gaps" in content
@@ -97,6 +101,11 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "openAlignmentUpdateFilter(" in content
     assert "openPromotedUpdatesButton.dataset.claimType" in content
     assert "openPromotedUpdatesButton.dataset.claimElementId" in content
+    assert "prefillPromotedValidationForm(" in content
+    assert "Validation follow-up for promoted support tied to ${humanizedElement}." in content
+    assert "Validation support for ${humanizedElement}" in content
+    assert "Testimony form prefilled from focused promoted-support validation." in content
+    assert "Document form prefilled from focused promoted-support validation." in content
     assert "recommended action: confirm_intake_summary" in content
     assert "recommended action: address_gaps" in content
     assert "gap count: ${actionGaps.length}" in content

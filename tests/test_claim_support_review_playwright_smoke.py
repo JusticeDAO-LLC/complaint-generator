@@ -2023,6 +2023,79 @@ def test_claim_support_review_dashboard_smoke_filters_pending_review_alignment_u
             os.unlink(db_path)
 
 
+def test_claim_support_review_dashboard_smoke_reviews_intake_gaps_from_next_action_banner():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for intake gap banner smoke coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+        status_payload = mediator.get_three_phase_status.return_value
+        status_payload["alignment_promotion_drift_summary"] = {}
+        status_payload["next_action"] = {
+            "action": "address_gaps",
+            "gaps": ["timeline", "manager_knowledge"],
+            "intake_readiness_score": 0.41,
+            "intake_blockers": ["collect_missing_support", "complainant_summary_confirmation_required"],
+        }
+
+        app = _build_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(
+                    f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
+                )
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                next_action_banner = page.locator("#intake-next-action-banner").inner_text()
+
+                assert "Review intake gaps" in next_action_banner
+                assert "recommended action: address_gaps" in next_action_banner
+                assert "gap count: 2" in next_action_banner
+                assert "blockers: 2" in next_action_banner
+                assert "contradictions: 1" in next_action_banner
+                assert "question candidates: 0" in next_action_banner
+                assert "readiness score: 0.41" in next_action_banner
+                assert "gap: Timeline" in next_action_banner
+                assert "gap: Manager Knowledge" in next_action_banner
+
+                page.click("#intake-next-action-review-gaps")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Showing unresolved intake gaps and targeted questions.')"
+                )
+                page.wait_for_function(
+                    "() => document.getElementById('section-focus-chip-row').textContent.includes('Summary Of Facts')"
+                )
+
+                focus_chips = page.locator("#section-focus-chip-row").inner_text()
+                prefill_context = page.locator("#prefill-context-line").inner_text()
+
+                assert "section=summary_of_facts" in page.url
+                assert "follow_up_support_kind=evidence" in page.url
+                assert "Summary Of Facts" in focus_chips
+                assert "Evidence lane" in focus_chips
+                assert "Focused lane: Evidence." in prefill_context
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
 def test_claim_support_review_dashboard_smoke_uploads_document_via_playwright_and_persists_evidence():
     if not PLAYWRIGHT_AVAILABLE:
         pytest.skip("Playwright not available")

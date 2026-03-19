@@ -2491,6 +2491,8 @@
             const nextAction = intakeCaseSummary.next_action && typeof intakeCaseSummary.next_action === 'object'
                 ? intakeCaseSummary.next_action
                 : {};
+            const focusedPromotedClaimType = String(nextAction.claim_type || '').trim().toLowerCase();
+            const focusedPromotedElementId = String(nextAction.claim_element_id || '').trim().toLowerCase();
             const candidateClaims = Array.isArray(intakeCaseSummary.candidate_claims) ? intakeCaseSummary.candidate_claims : [];
             const intakeSections = intakeCaseSummary.intake_sections && typeof intakeCaseSummary.intake_sections === 'object'
                 ? intakeCaseSummary.intake_sections
@@ -2519,6 +2521,12 @@
             const summaryConfirmation = intakeCaseSummary.complainant_summary_confirmation && typeof intakeCaseSummary.complainant_summary_confirmation === 'object'
                 ? intakeCaseSummary.complainant_summary_confirmation
                 : {};
+            const summaryConfirmed = Boolean(summaryConfirmation.confirmed);
+            const hasCurrentSummarySnapshot = Boolean(
+                summaryConfirmation.current_summary_snapshot
+                && typeof summaryConfirmation.current_summary_snapshot === 'object'
+                && Object.keys(summaryConfirmation.current_summary_snapshot).length
+            );
             const candidateClaimSummary = intakeCaseSummary.candidate_claim_summary && typeof intakeCaseSummary.candidate_claim_summary === 'object'
                 ? intakeCaseSummary.candidate_claim_summary
                 : {};
@@ -2576,12 +2584,103 @@
                     `<span class="chip">drift ratio: ${driftRatio.toFixed(2)}</span>`,
                     `<span class="chip">proof readiness: ${proofReadinessScore.toFixed(2)}</span>`,
                 ];
+                if (focusedPromotedClaimType) {
+                    validationChips.push(`<span class="chip">focus claim: ${humanizeQueryValue(focusedPromotedClaimType)}</span>`);
+                }
+                if (focusedPromotedElementId) {
+                    validationChips.push(`<span class="chip">focus element: ${humanizeQueryValue(focusedPromotedElementId)}</span>`);
+                }
                 intakeNextActionBanner.hidden = false;
                 intakeNextActionBanner.classList.remove('is-error');
                 intakeNextActionTitle.textContent = 'Validate promoted support';
                 intakeNextActionStatus.textContent = 'validate_promoted_support';
                 intakeNextActionChips.innerHTML = validationChips.join('');
-                intakeNextActionNotes.textContent = 'Promoted testimony or document support is accumulating faster than packet validation is reaching resolved supported status. Review and validate saved support before treating the evidence phase as truly settled.';
+                intakeNextActionNotes.innerHTML = `
+                    Promoted testimony or document support is accumulating faster than packet validation is reaching resolved supported status.
+                    Review and validate saved support before treating the evidence phase as truly settled.
+                    <div class="button-row" style="margin-top: 12px;">
+                        <button
+                            class="button-secondary"
+                            id="intake-next-action-open-promoted"
+                            type="button"
+                            data-claim-type="${nextAction.claim_type || ''}"
+                            data-claim-element-id="${nextAction.claim_element_id || ''}"
+                        >Review promoted updates</button>
+                        ${focusedPromotedElementId ? `
+                            <button
+                                class="button-tertiary"
+                                id="intake-next-action-prefill-testimony"
+                                type="button"
+                                data-claim-type="${nextAction.claim_type || ''}"
+                                data-claim-element-id="${nextAction.claim_element_id || ''}"
+                            >Prefill testimony validation</button>
+                            <button
+                                class="button-tertiary"
+                                id="intake-next-action-prefill-document"
+                                type="button"
+                                data-claim-type="${nextAction.claim_type || ''}"
+                                data-claim-element-id="${nextAction.claim_element_id || ''}"
+                            >Prefill document validation</button>
+                        ` : ''}
+                    </div>
+                `;
+            } else if (nextAction.action === 'address_gaps') {
+                const actionGaps = Array.isArray(nextAction.gaps) ? nextAction.gaps : [];
+                const intakeBlockers = Array.isArray(nextAction.intake_blockers) ? nextAction.intake_blockers : [];
+                const contradictionCount = Number(intakeCaseSummary.contradiction_summary && intakeCaseSummary.contradiction_summary.count || 0);
+                const questionCandidateCount = Number(questionCandidateSummary.count || 0);
+                const readinessScore = Number(nextAction.intake_readiness_score || 0);
+                const gapChips = [
+                    '<span class="chip">recommended action: address_gaps</span>',
+                    `<span class="chip">gap count: ${actionGaps.length}</span>`,
+                    `<span class="chip">blockers: ${intakeBlockers.length}</span>`,
+                    `<span class="chip">contradictions: ${contradictionCount}</span>`,
+                    `<span class="chip">question candidates: ${questionCandidateCount}</span>`,
+                ];
+                if (Number.isFinite(readinessScore) && readinessScore > 0) {
+                    gapChips.push(`<span class="chip">readiness score: ${readinessScore.toFixed(2)}</span>`);
+                }
+                actionGaps.slice(0, 2).forEach((gap) => {
+                    gapChips.push(`<span class="chip">gap: ${humanizeQueryValue(gap)}</span>`);
+                });
+                intakeNextActionBanner.hidden = false;
+                intakeNextActionBanner.classList.remove('is-error');
+                intakeNextActionTitle.textContent = 'Review intake gaps';
+                intakeNextActionStatus.textContent = 'address_gaps';
+                intakeNextActionChips.innerHTML = gapChips.join('');
+                intakeNextActionNotes.innerHTML = `
+                    Intake still has unresolved proof or chronology gaps that should be clarified before handoff quality degrades.
+                    Review the unresolved intake matching diagnostics and targeted questions.
+                    <div class="button-row" style="margin-top: 12px;">
+                        <button class="button-secondary" id="intake-next-action-review-gaps" type="button">Review intake gaps</button>
+                    </div>
+                `;
+            } else if (!summaryConfirmed && hasCurrentSummarySnapshot) {
+                const currentSummarySnapshot = summaryConfirmation.current_summary_snapshot && typeof summaryConfirmation.current_summary_snapshot === 'object'
+                    ? summaryConfirmation.current_summary_snapshot
+                    : {};
+                const confirmationChips = [
+                    '<span class="chip">recommended action: confirm_intake_summary</span>',
+                    `<span class="chip">candidate claims: ${Number(currentSummarySnapshot.candidate_claim_count || 0)}</span>`,
+                    `<span class="chip">canonical facts: ${Number(currentSummarySnapshot.canonical_fact_count || 0)}</span>`,
+                    `<span class="chip">proof leads: ${Number(currentSummarySnapshot.proof_lead_count || 0)}</span>`,
+                ];
+                const openItemCount = Number(currentSummarySnapshot.open_item_count || 0);
+                if (openItemCount > 0) {
+                    confirmationChips.push(`<span class="chip">open items: ${openItemCount}</span>`);
+                }
+                intakeNextActionBanner.hidden = false;
+                intakeNextActionBanner.classList.remove('is-error');
+                intakeNextActionTitle.textContent = 'Confirm intake summary';
+                intakeNextActionStatus.textContent = 'confirm_intake_summary';
+                intakeNextActionChips.innerHTML = confirmationChips.join('');
+                intakeNextActionNotes.innerHTML = `
+                    The latest intake summary snapshot is still waiting for complainant confirmation before the intake phase can fully settle.
+                    Add an optional confirmation note above if needed, then confirm the intake summary.
+                    <div class="button-row" style="margin-top: 12px;">
+                        <button class="button-secondary" id="intake-next-action-confirm-summary" type="button">Confirm intake summary</button>
+                    </div>
+                `;
             } else {
                 intakeNextActionBanner.hidden = true;
                 intakeNextActionChips.innerHTML = '';
@@ -3103,6 +3202,7 @@
                     const prefillButtons = normalizedResolutionStatus === 'answered_pending_review'
                         ? `
                             <div class="button-row" style="margin-top: 12px;">
+                                <span class="chip">Pinned for validation focus</span>
                                 <button
                                     class="button-tertiary prefill-testimony-update-button"
                                     type="button"
@@ -4694,6 +4794,97 @@
             }
         }
 
+        function openAlignmentUpdateFilter(filterValue, sortValue = 'newest_first', focusClaimType = '', focusElementId = '') {
+            const alignmentFilter = document.getElementById('alignment-task-update-filter');
+            const alignmentSort = document.getElementById('alignment-task-update-sort');
+            if (!alignmentFilter) {
+                return;
+            }
+            alignmentFilter.value = filterValue || 'all';
+            if (alignmentSort) {
+                alignmentSort.value = sortValue || 'newest_first';
+            }
+            syncReviewIntentUrl(persistReviewIntent({
+                alignment_task_update_filter: alignmentFilter.value || 'all',
+                alignment_task_update_sort: alignmentSort && alignmentSort.value ? alignmentSort.value : 'newest_first',
+            }));
+            if (reviewRenderState.payload) {
+                renderIntakeCaseSummary(reviewRenderState.payload.intake_case_summary || null);
+            }
+            const normalizedClaimType = String(focusClaimType || '').trim().toLowerCase();
+            const normalizedElementId = String(focusElementId || '').trim().toLowerCase();
+            const focusedCard = Array.from(document.querySelectorAll('#alignment-task-update-list .task-card')).find((card) => {
+                const text = String(card.textContent || '').toLowerCase();
+                const claimMatches = !normalizedClaimType || text.includes(normalizedClaimType.replaceAll('_', ' '));
+                const elementMatches = !normalizedElementId || text.includes(normalizedElementId.replaceAll('_', ' '));
+                return claimMatches && elementMatches;
+            });
+            const alignmentUpdateList = focusedCard || document.getElementById('alignment-task-update-list');
+            if (alignmentUpdateList && typeof alignmentUpdateList.scrollIntoView === 'function') {
+                alignmentUpdateList.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        function openIntakeGapReview(sectionKey = 'summary_of_facts', targetElementId = 'question-list') {
+            const sectionConfig = applySectionFocus(sectionKey);
+            setPrefillContext(sectionKey, sectionConfig);
+            syncReviewIntentUrl(persistReviewIntent({
+                section: sectionKey,
+                follow_up_support_kind: sectionConfig && sectionConfig.supportKind ? sectionConfig.supportKind : '',
+            }));
+            if (reviewRenderState.payload) {
+                renderPayload(reviewRenderState.payload);
+            }
+            finalizeSectionFocus();
+            const preferredTargets = [targetElementId, 'intake-matching-summary-list', 'intake-contradiction-list', 'question-list']
+                .filter(Boolean);
+            const focusTarget = preferredTargets
+                .map((id) => document.getElementById(id))
+                .find((node) => node && typeof node.scrollIntoView === 'function');
+            if (focusTarget) {
+                focusTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        function prefillPromotedValidationForm(kind, claimType = '', claimElementId = '') {
+            const normalizedClaimType = String(claimType || '').trim();
+            const normalizedElementId = String(claimElementId || '').trim();
+            if (normalizedClaimType) {
+                document.getElementById('claim-type').value = normalizedClaimType;
+            }
+            const humanizedElement = normalizedElementId ? humanizeQueryValue(normalizedElementId) : '';
+            if (kind === 'testimony') {
+                prefillTestimonyForm({
+                    claimElementId: normalizedElementId,
+                    claimElementText: humanizedElement,
+                    questionText: normalizedElementId
+                        ? `Validation follow-up for promoted support tied to ${humanizedElement}.`
+                        : 'Validation follow-up for promoted support.',
+                });
+                const testimonyField = document.getElementById('testimony-element-id');
+                if (testimonyField && typeof testimonyField.scrollIntoView === 'function') {
+                    testimonyField.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                return;
+            }
+            if (kind === 'document') {
+                prefillDocumentForm({
+                    claimElementId: normalizedElementId,
+                    claimElementText: humanizedElement,
+                    documentLabel: normalizedElementId
+                        ? `Validation support for ${humanizedElement}`
+                        : 'Validation support',
+                    documentText: normalizedElementId
+                        ? `Validation follow-up for promoted support tied to ${humanizedElement}.`
+                        : 'Validation follow-up for promoted support.',
+                });
+                const documentField = document.getElementById('document-element-id');
+                if (documentField && typeof documentField.scrollIntoView === 'function') {
+                    documentField.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }
+        }
+
         document.getElementById('review-button').addEventListener('click', loadReview);
         document.getElementById('execute-button').addEventListener('click', executeFollowUp);
         document.getElementById('confirm-intake-summary-button').addEventListener('click', confirmIntakeSummary);
@@ -4839,6 +5030,48 @@
                     documentText: documentUpdateButton.dataset.documentText || '',
                 });
                 setStatus('Document form prefilled from pending-review alignment update.');
+                return;
+            }
+            const openPromotedUpdatesButton = event.target.closest('#intake-next-action-open-promoted');
+            if (openPromotedUpdatesButton) {
+                openAlignmentUpdateFilter(
+                    'promoted',
+                    'pending_review_first',
+                    openPromotedUpdatesButton.dataset.claimType || '',
+                    openPromotedUpdatesButton.dataset.claimElementId || '',
+                );
+                setStatus('Showing promoted alignment updates that still need validation.');
+                return;
+            }
+            const prefillPromotedTestimonyButton = event.target.closest('#intake-next-action-prefill-testimony');
+            if (prefillPromotedTestimonyButton) {
+                prefillPromotedValidationForm(
+                    'testimony',
+                    prefillPromotedTestimonyButton.dataset.claimType || '',
+                    prefillPromotedTestimonyButton.dataset.claimElementId || '',
+                );
+                setStatus('Testimony form prefilled from focused promoted-support validation.');
+                return;
+            }
+            const prefillPromotedDocumentButton = event.target.closest('#intake-next-action-prefill-document');
+            if (prefillPromotedDocumentButton) {
+                prefillPromotedValidationForm(
+                    'document',
+                    prefillPromotedDocumentButton.dataset.claimType || '',
+                    prefillPromotedDocumentButton.dataset.claimElementId || '',
+                );
+                setStatus('Document form prefilled from focused promoted-support validation.');
+                return;
+            }
+            const confirmSummaryBannerButton = event.target.closest('#intake-next-action-confirm-summary');
+            if (confirmSummaryBannerButton) {
+                confirmIntakeSummary();
+                return;
+            }
+            const reviewGapsBannerButton = event.target.closest('#intake-next-action-review-gaps');
+            if (reviewGapsBannerButton) {
+                openIntakeGapReview('summary_of_facts', 'question-list');
+                setStatus('Showing unresolved intake gaps and targeted questions.');
             }
         });
         if (applyQueryPrefill()) {
