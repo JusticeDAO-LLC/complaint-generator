@@ -34,6 +34,12 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Prefill testimony validation" in content
     assert "intake-next-action-prefill-document" in content
     assert "Prefill document validation" in content
+    assert "intake-next-action-review-conflicts" in content
+    assert "Review manual conflicts" in content
+    assert "intake-next-action-prefill-resolution" in content
+    assert "Load into resolution form" in content
+    assert "intake-next-action-review-evidence-task" in content
+    assert "Review evidence task" in content
     assert "intake-next-action-confirm-summary" in content
     assert "Confirm intake summary" in content
     assert "intake-next-action-review-gaps" in content
@@ -106,6 +112,22 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Validation support for ${humanizedElement}" in content
     assert "Testimony form prefilled from focused promoted-support validation." in content
     assert "Document form prefilled from focused promoted-support validation." in content
+    assert "recommended action: resolve_support_conflicts" in content
+    assert "manual review blockers: ${manualReviewBlockers.length}" in content
+    assert "packet escalations: ${reviewableEscalations}" in content
+    assert "support status: ${humanizeQueryValue(nextAction.support_status)}" in content
+    assert "recommended lane: ${humanizeQueryValue(item)}" in content
+    assert "Contradicted or escalated support is blocking evidence completion for a priority element." in content
+    assert "openManualReviewFocus(" in content
+    assert "Showing manual-review conflicts that are blocking evidence completion." in content
+    assert "Resolution form prefilled from blocking evidence conflict." in content
+    assert "recommended action: fill_evidence_gaps" in content
+    assert "preferred lane: ${humanizeQueryValue(preferredSupportKind)}" in content
+    assert "quality target: ${humanizeQueryValue(focusedAlignmentTask.source_quality_target)}" in content
+    assert "fallback lane: ${humanizeQueryValue(lane)}" in content
+    assert "Priority evidence is still missing for a shared intake-to-packet element." in content
+    assert "openEvidenceTaskReview(" in content
+    assert "Showing priority evidence task and preferred support lane." in content
     assert "recommended action: confirm_intake_summary" in content
     assert "recommended action: address_gaps" in content
     assert "gap count: ${actionGaps.length}" in content

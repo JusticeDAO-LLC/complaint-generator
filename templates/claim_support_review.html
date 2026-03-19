@@ -2491,6 +2491,9 @@
             const nextAction = intakeCaseSummary.next_action && typeof intakeCaseSummary.next_action === 'object'
                 ? intakeCaseSummary.next_action
                 : {};
+            const focusedActionClaimType = String(nextAction.claim_type || '').trim().toLowerCase();
+            const focusedActionElementId = String(nextAction.claim_element_id || '').trim().toLowerCase();
+            const focusedActionElementLabel = String(nextAction.claim_element_label || '').trim();
             const focusedPromotedClaimType = String(nextAction.claim_type || '').trim().toLowerCase();
             const focusedPromotedElementId = String(nextAction.claim_element_id || '').trim().toLowerCase();
             const candidateClaims = Array.isArray(intakeCaseSummary.candidate_claims) ? intakeCaseSummary.candidate_claims : [];
@@ -2622,6 +2625,118 @@
                                 data-claim-element-id="${nextAction.claim_element_id || ''}"
                             >Prefill document validation</button>
                         ` : ''}
+                    </div>
+                `;
+            } else if (nextAction.action === 'resolve_support_conflicts') {
+                const recommendedActions = Array.isArray(nextAction.recommended_actions) ? nextAction.recommended_actions : [];
+                const reviewableEscalations = Number(claimSupportPacketSummary.claim_support_reviewable_escalation_count || manualReviewBlockers.length || 0);
+                const unresolvedWithoutReviewPath = Number(claimSupportPacketSummary.claim_support_unresolved_without_review_path_count || 0);
+                const conflictChips = [
+                    '<span class="chip">recommended action: resolve_support_conflicts</span>',
+                    `<span class="chip">manual review blockers: ${manualReviewBlockers.length}</span>`,
+                    `<span class="chip">packet escalations: ${reviewableEscalations}</span>`,
+                ];
+                if (unresolvedWithoutReviewPath > 0) {
+                    conflictChips.push(`<span class="chip">without review path: ${unresolvedWithoutReviewPath}</span>`);
+                }
+                if (focusedActionClaimType) {
+                    conflictChips.push(`<span class="chip">focus claim: ${humanizeQueryValue(focusedActionClaimType)}</span>`);
+                }
+                if (focusedActionElementId) {
+                    conflictChips.push(`<span class="chip">focus element: ${humanizeQueryValue(focusedActionElementId)}</span>`);
+                }
+                if (nextAction.support_status) {
+                    conflictChips.push(`<span class="chip">support status: ${humanizeQueryValue(nextAction.support_status)}</span>`);
+                }
+                recommendedActions.slice(0, 2).forEach((item) => {
+                    conflictChips.push(`<span class="chip">recommended lane: ${humanizeQueryValue(item)}</span>`);
+                });
+                intakeNextActionBanner.hidden = false;
+                intakeNextActionBanner.classList.remove('is-error');
+                intakeNextActionTitle.textContent = 'Resolve support conflicts';
+                intakeNextActionStatus.textContent = 'resolve_support_conflicts';
+                intakeNextActionChips.innerHTML = conflictChips.join('');
+                intakeNextActionNotes.innerHTML = `
+                    Contradicted or escalated support is blocking evidence completion for a priority element.
+                    Open the manual-review queue and resolve the focused conflict before evidence drift expands.
+                    <div class="button-row" style="margin-top: 12px;">
+                        <button
+                            class="button-secondary"
+                            id="intake-next-action-review-conflicts"
+                            type="button"
+                            data-claim-type="${nextAction.claim_type || ''}"
+                            data-claim-element-id="${nextAction.claim_element_id || ''}"
+                            data-claim-element-text="${(focusedActionElementLabel || nextAction.claim_element_id || '').replace(/"/g, '&quot;')}"
+                        >Review manual conflicts</button>
+                        <button
+                            class="button-tertiary"
+                            id="intake-next-action-prefill-resolution"
+                            type="button"
+                            data-claim-element-id="${nextAction.claim_element_id || ''}"
+                            data-claim-element-text="${(focusedActionElementLabel || nextAction.claim_element_id || '').replace(/"/g, '&quot;')}"
+                        >Load into resolution form</button>
+                    </div>
+                `;
+            } else if (nextAction.action === 'fill_evidence_gaps') {
+                const prioritizedAlignmentTasks = Array.isArray(nextAction.alignment_tasks) ? nextAction.alignment_tasks : [];
+                const focusedAlignmentTask = prioritizedAlignmentTasks.find((task) => {
+                    if (!task || typeof task !== 'object') {
+                        return false;
+                    }
+                    const taskClaimType = String(task.claim_type || '').trim().toLowerCase();
+                    const taskElementId = String(task.claim_element_id || '').trim().toLowerCase();
+                    return (!focusedActionClaimType || taskClaimType === focusedActionClaimType)
+                        && (!focusedActionElementId || taskElementId === focusedActionElementId);
+                }) || alignmentEvidenceTasks.find((task) => {
+                    if (!task || typeof task !== 'object') {
+                        return false;
+                    }
+                    const taskClaimType = String(task.claim_type || '').trim().toLowerCase();
+                    const taskElementId = String(task.claim_element_id || '').trim().toLowerCase();
+                    return (!focusedActionClaimType || taskClaimType === focusedActionClaimType)
+                        && (!focusedActionElementId || taskElementId === focusedActionElementId);
+                }) || {};
+                const preferredSupportKind = String(focusedAlignmentTask.preferred_support_kind || '').trim().toLowerCase();
+                const fallbackLanes = Array.isArray(focusedAlignmentTask.fallback_lanes) ? focusedAlignmentTask.fallback_lanes : [];
+                const evidenceGapChips = [
+                    '<span class="chip">recommended action: fill_evidence_gaps</span>',
+                ];
+                if (focusedActionClaimType) {
+                    evidenceGapChips.push(`<span class="chip">focus claim: ${humanizeQueryValue(focusedActionClaimType)}</span>`);
+                }
+                if (focusedActionElementId) {
+                    evidenceGapChips.push(`<span class="chip">focus element: ${humanizeQueryValue(focusedActionElementId)}</span>`);
+                }
+                if (nextAction.support_status) {
+                    evidenceGapChips.push(`<span class="chip">support status: ${humanizeQueryValue(nextAction.support_status)}</span>`);
+                }
+                if (preferredSupportKind) {
+                    evidenceGapChips.push(`<span class="chip">preferred lane: ${humanizeQueryValue(preferredSupportKind)}</span>`);
+                }
+                if (focusedAlignmentTask.source_quality_target) {
+                    evidenceGapChips.push(`<span class="chip">quality target: ${humanizeQueryValue(focusedAlignmentTask.source_quality_target)}</span>`);
+                }
+                fallbackLanes.slice(0, 2).forEach((lane) => {
+                    evidenceGapChips.push(`<span class="chip">fallback lane: ${humanizeQueryValue(lane)}</span>`);
+                });
+                intakeNextActionBanner.hidden = false;
+                intakeNextActionBanner.classList.remove('is-error');
+                intakeNextActionTitle.textContent = 'Fill evidence gaps';
+                intakeNextActionStatus.textContent = 'fill_evidence_gaps';
+                intakeNextActionChips.innerHTML = evidenceGapChips.join('');
+                intakeNextActionNotes.innerHTML = `
+                    Priority evidence is still missing for a shared intake-to-packet element.
+                    Review the focused evidence task and preferred support lane before advancing the packet.
+                    <div class="button-row" style="margin-top: 12px;">
+                        <button
+                            class="button-secondary"
+                            id="intake-next-action-review-evidence-task"
+                            type="button"
+                            data-claim-type="${nextAction.claim_type || ''}"
+                            data-claim-element-id="${nextAction.claim_element_id || ''}"
+                            data-claim-element-text="${(focusedActionElementLabel || nextAction.claim_element_id || '').replace(/"/g, '&quot;')}"
+                            data-support-kind="${preferredSupportKind || ''}"
+                        >Review evidence task</button>
                     </div>
                 `;
             } else if (nextAction.action === 'address_gaps') {
@@ -4825,6 +4940,46 @@
             }
         }
 
+        function findFocusedReviewCard(containerSelector, claimType = '', claimElementId = '', claimElementText = '') {
+            const normalizedClaimType = String(claimType || '').trim().toLowerCase();
+            const normalizedElementId = String(claimElementId || '').trim().toLowerCase();
+            const normalizedElementText = String(claimElementText || '').trim().toLowerCase();
+            return Array.from(document.querySelectorAll(`${containerSelector} .task-card`)).find((card) => {
+                const text = String(card.textContent || '').toLowerCase();
+                const claimMatches = !normalizedClaimType || text.includes(normalizedClaimType.replaceAll('_', ' '));
+                const elementIdMatches = !normalizedElementId || text.includes(normalizedElementId.replaceAll('_', ' '));
+                const elementTextMatches = !normalizedElementText || text.includes(normalizedElementText);
+                const elementMatches = (!normalizedElementId && !normalizedElementText) || elementIdMatches || elementTextMatches;
+                return claimMatches && elementMatches;
+            });
+        }
+
+        function openManualReviewFocus(claimType = '', claimElementId = '', claimElementText = '') {
+            openAlignmentUpdateFilter('manual_review', 'manual_review_first', claimType, claimElementId);
+            const focusedCard = findFocusedReviewCard('#alignment-task-manual-review-list', claimType, claimElementId, claimElementText)
+                || findFocusedReviewCard('#alignment-task-update-list', claimType, claimElementId, claimElementText)
+                || document.getElementById('alignment-task-manual-review-list');
+            if (focusedCard && typeof focusedCard.scrollIntoView === 'function') {
+                focusedCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        function openEvidenceTaskReview(claimType = '', claimElementId = '', claimElementText = '', supportKind = '') {
+            const normalizedSupportKind = String(supportKind || '').trim().toLowerCase();
+            if (normalizedSupportKind) {
+                document.getElementById('support-kind').value = normalizedSupportKind;
+            }
+            syncReviewIntentUrl(persistReviewIntent({
+                follow_up_support_kind: document.getElementById('support-kind').value || null,
+            }));
+            const focusedCard = findFocusedReviewCard('#alignment-evidence-task-list', claimType, claimElementId, claimElementText)
+                || findFocusedReviewCard('#task-list', claimType, claimElementId, claimElementText)
+                || document.getElementById('alignment-evidence-task-list');
+            if (focusedCard && typeof focusedCard.scrollIntoView === 'function') {
+                focusedCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
         function openIntakeGapReview(sectionKey = 'summary_of_facts', targetElementId = 'question-list') {
             const sectionConfig = applySectionFocus(sectionKey);
             setPrefillContext(sectionKey, sectionConfig);
@@ -5061,6 +5216,41 @@
                     prefillPromotedDocumentButton.dataset.claimElementId || '',
                 );
                 setStatus('Document form prefilled from focused promoted-support validation.');
+                return;
+            }
+            const reviewConflictsBannerButton = event.target.closest('#intake-next-action-review-conflicts');
+            if (reviewConflictsBannerButton) {
+                openManualReviewFocus(
+                    reviewConflictsBannerButton.dataset.claimType || '',
+                    reviewConflictsBannerButton.dataset.claimElementId || '',
+                    reviewConflictsBannerButton.dataset.claimElementText || '',
+                );
+                setStatus('Showing manual-review conflicts that are blocking evidence completion.');
+                return;
+            }
+            const prefillResolutionBannerButton = event.target.closest('#intake-next-action-prefill-resolution');
+            if (prefillResolutionBannerButton) {
+                prefillResolutionForm({
+                    claimElementId: prefillResolutionBannerButton.dataset.claimElementId || '',
+                    claimElementText: prefillResolutionBannerButton.dataset.claimElementText || '',
+                    resolutionStatus: 'resolved_supported',
+                });
+                const resolutionField = document.getElementById('resolution-element-id');
+                if (resolutionField && typeof resolutionField.scrollIntoView === 'function') {
+                    resolutionField.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                setStatus('Resolution form prefilled from blocking evidence conflict.');
+                return;
+            }
+            const reviewEvidenceTaskBannerButton = event.target.closest('#intake-next-action-review-evidence-task');
+            if (reviewEvidenceTaskBannerButton) {
+                openEvidenceTaskReview(
+                    reviewEvidenceTaskBannerButton.dataset.claimType || '',
+                    reviewEvidenceTaskBannerButton.dataset.claimElementId || '',
+                    reviewEvidenceTaskBannerButton.dataset.claimElementText || '',
+                    reviewEvidenceTaskBannerButton.dataset.supportKind || '',
+                );
+                setStatus('Showing priority evidence task and preferred support lane.');
                 return;
             }
             const confirmSummaryBannerButton = event.target.closest('#intake-next-action-confirm-summary');

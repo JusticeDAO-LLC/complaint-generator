@@ -1895,6 +1895,82 @@ def test_claim_support_review_dashboard_smoke_confirms_intake_summary():
             os.unlink(db_path)
 
 
+def test_claim_support_review_dashboard_smoke_reviews_manual_conflicts_from_next_action_banner():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for manual-conflict next-action smoke coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+        status_payload = mediator.get_three_phase_status.return_value
+        status_payload["next_action"] = {
+            "action": "resolve_support_conflicts",
+            "claim_type": "retaliation",
+            "claim_element_id": "retaliation:3",
+            "claim_element_label": "Causal connection",
+            "support_status": "contradicted",
+            "recommended_actions": ["request_document", "manual_review"],
+        }
+
+        app = _build_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(
+                    f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
+                )
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                next_action_banner = page.locator("#intake-next-action-banner").inner_text()
+
+                assert "Resolve support conflicts" in next_action_banner
+                assert "recommended action: resolve_support_conflicts" in next_action_banner
+                assert "manual review blockers: 1" in next_action_banner
+                assert "packet escalations: 1" in next_action_banner
+                assert "focus claim: Retaliation" in next_action_banner
+                assert "focus element: Retaliation:3" in next_action_banner
+                assert "support status: Contradicted" in next_action_banner
+                assert "recommended lane: Request Document" in next_action_banner
+
+                page.click("#intake-next-action-review-conflicts")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Showing manual-review conflicts that are blocking evidence completion.')"
+                )
+                page.wait_for_function(
+                    "() => document.getElementById('alignment-task-update-filter-summary').textContent.includes('filter: manual_review') && document.getElementById('alignment-task-update-filter-summary').textContent.includes('sort: manual_review_first')"
+                )
+
+                assert "alignment_task_update_filter=manual_review" in page.url
+                assert "alignment_task_update_sort=manual_review_first" in page.url
+
+                page.click("#intake-next-action-prefill-resolution")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Resolution form prefilled from blocking evidence conflict.')"
+                )
+
+                assert page.locator("#resolution-element-id").input_value() == "retaliation:3"
+                assert page.locator("#resolution-element-text").input_value() == "Causal connection"
+                assert page.locator("#resolution-status").input_value() == "resolved_supported"
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
 def test_claim_support_review_dashboard_smoke_filters_pending_review_alignment_updates():
     if not PLAYWRIGHT_AVAILABLE:
         pytest.skip("Playwright not available")
@@ -2089,6 +2165,73 @@ def test_claim_support_review_dashboard_smoke_reviews_intake_gaps_from_next_acti
                 assert "Summary Of Facts" in focus_chips
                 assert "Evidence lane" in focus_chips
                 assert "Focused lane: Evidence." in prefill_context
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+def test_claim_support_review_dashboard_smoke_reviews_evidence_gap_task_from_next_action_banner():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for evidence-gap next-action smoke coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+        status_payload = mediator.get_three_phase_status.return_value
+        status_payload["next_action"] = {
+            "action": "fill_evidence_gaps",
+            "claim_type": "retaliation",
+            "claim_element_id": "retaliation:3",
+            "claim_element_label": "Causal connection",
+            "support_status": "missing",
+            "alignment_tasks": list(status_payload.get("alignment_evidence_tasks") or []),
+        }
+
+        app = _build_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(
+                    f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
+                )
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                next_action_banner = page.locator("#intake-next-action-banner").inner_text()
+
+                assert "Fill evidence gaps" in next_action_banner
+                assert "recommended action: fill_evidence_gaps" in next_action_banner
+                assert "focus claim: Retaliation" in next_action_banner
+                assert "focus element: Retaliation:3" in next_action_banner
+                assert "support status: Missing" in next_action_banner
+                assert "preferred lane: Evidence" in next_action_banner
+                assert "quality target: High Quality Document" in next_action_banner
+                assert "fallback lane: Authority" in next_action_banner
+                assert "fallback lane: Testimony" in next_action_banner
+
+                page.click("#intake-next-action-review-evidence-task")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Showing priority evidence task and preferred support lane.')"
+                )
+
+                assert "follow_up_support_kind=evidence" in page.url
+                assert page.locator("#support-kind").input_value() == "evidence"
+                assert "Alignment task for retaliation" in page.locator("#alignment-evidence-task-list").inner_text()
+                assert "element: retaliation:3" in page.locator("#alignment-evidence-task-list").inner_text()
 
                 browser.close()
     finally:
