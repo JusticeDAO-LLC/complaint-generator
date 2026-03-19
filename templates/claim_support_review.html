@@ -921,6 +921,14 @@
 
                 <div class="focus-block" data-section-focus-target="summary_of_facts claims_for_relief requested_relief">
                     <h2 style="margin-top: 18px;">Intake Case Summary</h2>
+                    <div class="resolution-feedback" id="intake-next-action-banner" hidden>
+                        <div class="resolution-feedback-head">
+                            <div class="resolution-feedback-title" id="intake-next-action-title">Validation needed</div>
+                            <span class="status-pill" id="intake-next-action-status">validate_promoted_support</span>
+                        </div>
+                        <div class="chip-row" id="intake-next-action-chips"></div>
+                        <div class="resolution-feedback-body" id="intake-next-action-notes"></div>
+                    </div>
                     <div class="chip-row" id="intake-case-claim-chips"></div>
                     <div class="chip-row" id="intake-claim-summary-chips" style="margin-top: 10px;"></div>
                     <div class="chip-row" id="intake-section-chips" style="margin-top: 10px;"></div>
@@ -1083,6 +1091,26 @@
 
                 <div class="focus-block" data-section-focus-target="claims_for_relief requested_relief">
                     <h2 style="margin-top: 18px;">Follow-Up Plan</h2>
+                    <div class="control-grid" style="margin-top: 10px;">
+                        <div>
+                            <label for="follow-up-task-filter">Follow-Up Plan Filter</label>
+                            <select id="follow-up-task-filter">
+                                <option value="all">All tasks</option>
+                                <option value="chronology_only">Chronology only</option>
+                                <option value="handoff_only">Handoffs only</option>
+                                <option value="authority_backed">Authority-backed only</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="follow-up-task-sort">Follow-Up Plan Sort</label>
+                            <select id="follow-up-task-sort">
+                                <option value="section_focus">Section focus</option>
+                                <option value="chronology_first">Chronology first</option>
+                                <option value="priority_high_first">Priority high first</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="chip-row" id="task-filter-summary" style="margin-top: 10px;"></div>
                     <div class="chip-row" id="task-summary-chips"></div>
                     <div class="task-list" id="task-list"></div>
                 </div>
@@ -1093,6 +1121,27 @@
                 <div class="element-list" id="element-list"></div>
 
                 <h2 style="margin-top: 18px;">Recent Follow-Up History</h2>
+                <div class="control-grid" style="margin-top: 10px;">
+                    <div>
+                        <label for="follow-up-history-filter">Follow-Up History Filter</label>
+                        <select id="follow-up-history-filter">
+                            <option value="all">All history</option>
+                            <option value="chronology_only">Chronology only</option>
+                            <option value="handoff_only">Handoffs only</option>
+                            <option value="exhausted_only">Search exhausted only</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="follow-up-history-sort">Follow-Up History Sort</label>
+                        <select id="follow-up-history-sort">
+                            <option value="section_focus">Section focus</option>
+                            <option value="chronology_first">Chronology first</option>
+                            <option value="newest_first">Newest first</option>
+                            <option value="oldest_first">Oldest first</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="chip-row" id="history-filter-summary" style="margin-top: 10px;"></div>
                 <div class="chip-row" id="history-summary-chips"></div>
                 <div class="history-list" id="history-list"></div>
 
@@ -1308,6 +1357,26 @@
             const userId = String(payload.user_id || document.getElementById('user-id').value || '').trim() || null;
             const sectionKey = String(payload.section || sectionFocusState.sectionKey || '').trim() || null;
             const supportKind = String(payload.follow_up_support_kind || document.getElementById('support-kind').value || '').trim() || null;
+            const followUpTaskFilter = String(
+                payload.follow_up_task_filter
+                || document.getElementById('follow-up-task-filter').value
+                || ''
+            ).trim() || 'all';
+            const followUpTaskSort = String(
+                payload.follow_up_task_sort
+                || document.getElementById('follow-up-task-sort').value
+                || ''
+            ).trim() || 'section_focus';
+            const followUpHistoryFilter = String(
+                payload.follow_up_history_filter
+                || document.getElementById('follow-up-history-filter').value
+                || ''
+            ).trim() || 'all';
+            const followUpHistorySort = String(
+                payload.follow_up_history_sort
+                || document.getElementById('follow-up-history-sort').value
+                || ''
+            ).trim() || 'section_focus';
             const alignmentTaskUpdateFilter = String(
                 payload.alignment_task_update_filter
                 || document.getElementById('alignment-task-update-filter').value
@@ -1331,6 +1400,18 @@
             if (supportKind) {
                 params.set('follow_up_support_kind', supportKind);
             }
+            if (followUpTaskFilter && followUpTaskFilter !== 'all') {
+                params.set('follow_up_task_filter', followUpTaskFilter);
+            }
+            if (followUpTaskSort && followUpTaskSort !== 'section_focus') {
+                params.set('follow_up_task_sort', followUpTaskSort);
+            }
+            if (followUpHistoryFilter && followUpHistoryFilter !== 'all') {
+                params.set('follow_up_history_filter', followUpHistoryFilter);
+            }
+            if (followUpHistorySort && followUpHistorySort !== 'section_focus') {
+                params.set('follow_up_history_sort', followUpHistorySort);
+            }
             if (alignmentTaskUpdateFilter && alignmentTaskUpdateFilter !== 'all') {
                 params.set('alignment_task_update_filter', alignmentTaskUpdateFilter);
             }
@@ -1343,6 +1424,10 @@
                 user_id: userId,
                 section: sectionKey,
                 follow_up_support_kind: supportKind,
+                follow_up_task_filter: followUpTaskFilter,
+                follow_up_task_sort: followUpTaskSort,
+                follow_up_history_filter: followUpHistoryFilter,
+                follow_up_history_sort: followUpHistorySort,
                 alignment_task_update_filter: alignmentTaskUpdateFilter,
                 alignment_task_update_sort: alignmentTaskUpdateSort,
                 review_url: query ? `/claim-support-review?${query}` : '/claim-support-review',
@@ -1800,6 +1885,130 @@
                 return String(item.reason || item.description || item.lane || '').trim();
             }
             return String(item).trim();
+        }
+
+        function isChronologyFollowUpItem(item) {
+            if (!item || typeof item !== 'object') {
+                return false;
+            }
+            return String(item.follow_up_focus || '').trim() === 'temporal_gap_closure'
+                || String(item.query_strategy || '').trim() === 'temporal_gap_targeted'
+                || Boolean(String(item.temporal_rule_status || '').trim())
+                || Boolean(String(item.temporal_rule_profile_id || '').trim());
+        }
+
+        function followUpPriorityRank(item) {
+            const priority = String(item && item.priority || '').trim().toLowerCase();
+            if (priority === 'high') {
+                return 0;
+            }
+            if (priority === 'medium') {
+                return 1;
+            }
+            if (priority === 'low') {
+                return 2;
+            }
+            return 3;
+        }
+
+        function followUpTimestampValue(item) {
+            const parsed = Date.parse(String(item && item.timestamp || '').trim());
+            return Number.isFinite(parsed) ? parsed : 0;
+        }
+
+        function filterFollowUpTasks(tasks, filterValue) {
+            const normalizedFilter = String(filterValue || 'all').trim().toLowerCase();
+            const taskList = Array.isArray(tasks) ? tasks : [];
+            if (normalizedFilter === 'chronology_only') {
+                return taskList.filter((task) => isChronologyFollowUpItem(task));
+            }
+            if (normalizedFilter === 'handoff_only') {
+                return taskList.filter((task) => isFollowUpHandoffStatus(task && task.resolution_status));
+            }
+            if (normalizedFilter === 'authority_backed') {
+                return taskList.filter((task) => Boolean(task && task.authority_search_program_summary && task.authority_search_program_summary.primary_program_type));
+            }
+            return taskList;
+        }
+
+        function sortFollowUpTasks(tasks, sortValue) {
+            const normalizedSort = String(sortValue || 'section_focus').trim().toLowerCase();
+            const taskList = [...(Array.isArray(tasks) ? tasks : [])];
+            if (normalizedSort === 'chronology_first') {
+                return taskList.sort((left, right) => {
+                    const chronologyDifference = Number(isChronologyFollowUpItem(right)) - Number(isChronologyFollowUpItem(left));
+                    if (chronologyDifference !== 0) {
+                        return chronologyDifference;
+                    }
+                    const scoreDifference = scoreTaskForSectionFocus(right) - scoreTaskForSectionFocus(left);
+                    if (scoreDifference !== 0) {
+                        return scoreDifference;
+                    }
+                    return String(left && (left.claim_element || left.claim_element_id || '')).localeCompare(
+                        String(right && (right.claim_element || right.claim_element_id || '')),
+                    );
+                });
+            }
+            if (normalizedSort === 'priority_high_first') {
+                return taskList.sort((left, right) => {
+                    const priorityDifference = followUpPriorityRank(left) - followUpPriorityRank(right);
+                    if (priorityDifference !== 0) {
+                        return priorityDifference;
+                    }
+                    const scoreDifference = scoreTaskForSectionFocus(right) - scoreTaskForSectionFocus(left);
+                    if (scoreDifference !== 0) {
+                        return scoreDifference;
+                    }
+                    return String(left && (left.claim_element || left.claim_element_id || '')).localeCompare(
+                        String(right && (right.claim_element || right.claim_element_id || '')),
+                    );
+                });
+            }
+            return sortBySectionFocus(
+                taskList,
+                scoreTaskForSectionFocus,
+                (task) => String(task && (task.claim_element || task.claim_element_id || '')),
+            );
+        }
+
+        function filterFollowUpHistory(entries, filterValue) {
+            const normalizedFilter = String(filterValue || 'all').trim().toLowerCase();
+            const historyEntries = Array.isArray(entries) ? entries : [];
+            if (normalizedFilter === 'chronology_only') {
+                return historyEntries.filter((entry) => isChronologyFollowUpItem(entry));
+            }
+            if (normalizedFilter === 'handoff_only') {
+                return historyEntries.filter((entry) => isFollowUpHandoffStatus(entry && entry.resolution_status));
+            }
+            if (normalizedFilter === 'exhausted_only') {
+                return historyEntries.filter((entry) => String(entry && entry.resolution_applied || '').trim() === 'insufficient_support_after_search');
+            }
+            return historyEntries;
+        }
+
+        function sortFollowUpHistory(entries, sortValue) {
+            const normalizedSort = String(sortValue || 'section_focus').trim().toLowerCase();
+            const historyEntries = [...(Array.isArray(entries) ? entries : [])];
+            if (normalizedSort === 'chronology_first') {
+                return historyEntries.sort((left, right) => {
+                    const chronologyDifference = Number(isChronologyFollowUpItem(right)) - Number(isChronologyFollowUpItem(left));
+                    if (chronologyDifference !== 0) {
+                        return chronologyDifference;
+                    }
+                    return followUpTimestampValue(right) - followUpTimestampValue(left);
+                });
+            }
+            if (normalizedSort === 'newest_first') {
+                return historyEntries.sort((left, right) => followUpTimestampValue(right) - followUpTimestampValue(left));
+            }
+            if (normalizedSort === 'oldest_first') {
+                return historyEntries.sort((left, right) => followUpTimestampValue(left) - followUpTimestampValue(right));
+            }
+            return sortBySectionFocus(
+                historyEntries,
+                scoreHistoryEntryForSectionFocus,
+                (entry) => String(entry && (entry.claim_element_text || entry.claim_element_id || entry.timestamp || '')),
+            );
         }
 
         function renderClaimReasoningReview(review) {
@@ -2273,7 +2482,15 @@
             const alignmentTaskPendingReviewSummary = document.getElementById('alignment-task-pending-review-summary');
             const alignmentTaskPendingReviewList = document.getElementById('alignment-task-pending-review-list');
             const alignmentTaskUpdateContainer = document.getElementById('alignment-task-update-list');
+            const intakeNextActionBanner = document.getElementById('intake-next-action-banner');
+            const intakeNextActionTitle = document.getElementById('intake-next-action-title');
+            const intakeNextActionStatus = document.getElementById('intake-next-action-status');
+            const intakeNextActionChips = document.getElementById('intake-next-action-chips');
+            const intakeNextActionNotes = document.getElementById('intake-next-action-notes');
             const intakeCaseSummary = summary && typeof summary === 'object' ? summary : {};
+            const nextAction = intakeCaseSummary.next_action && typeof intakeCaseSummary.next_action === 'object'
+                ? intakeCaseSummary.next_action
+                : {};
             const candidateClaims = Array.isArray(intakeCaseSummary.candidate_claims) ? intakeCaseSummary.candidate_claims : [];
             const intakeSections = intakeCaseSummary.intake_sections && typeof intakeCaseSummary.intake_sections === 'object'
                 ? intakeCaseSummary.intake_sections
@@ -2343,6 +2560,33 @@
             const claimSupportPacketSummary = intakeCaseSummary.claim_support_packet_summary && typeof intakeCaseSummary.claim_support_packet_summary === 'object'
                 ? intakeCaseSummary.claim_support_packet_summary
                 : {};
+
+            if (nextAction.action === 'validate_promoted_support') {
+                const driftSummary = nextAction.drift_summary && typeof nextAction.drift_summary === 'object'
+                    ? nextAction.drift_summary
+                    : alignmentPromotionDriftSummary;
+                const driftRatio = Number(driftSummary.drift_ratio || 0);
+                const pendingConversionCount = Number(nextAction.pending_conversion_count || driftSummary.pending_conversion_count || 0);
+                const promotedCount = Number(nextAction.promoted_count || driftSummary.promoted_count || 0);
+                const proofReadinessScore = Number(driftSummary.proof_readiness_score || 0);
+                const validationChips = [
+                    `<span class="chip">recommended action: ${nextAction.action}</span>`,
+                    `<span class="chip">pending conversion: ${pendingConversionCount}</span>`,
+                    `<span class="chip">promoted updates: ${promotedCount}</span>`,
+                    `<span class="chip">drift ratio: ${driftRatio.toFixed(2)}</span>`,
+                    `<span class="chip">proof readiness: ${proofReadinessScore.toFixed(2)}</span>`,
+                ];
+                intakeNextActionBanner.hidden = false;
+                intakeNextActionBanner.classList.remove('is-error');
+                intakeNextActionTitle.textContent = 'Validate promoted support';
+                intakeNextActionStatus.textContent = 'validate_promoted_support';
+                intakeNextActionChips.innerHTML = validationChips.join('');
+                intakeNextActionNotes.textContent = 'Promoted testimony or document support is accumulating faster than packet validation is reaching resolved supported status. Review and validate saved support before treating the evidence phase as truly settled.';
+            } else {
+                intakeNextActionBanner.hidden = true;
+                intakeNextActionChips.innerHTML = '';
+                intakeNextActionNotes.textContent = '';
+            }
 
             claimContainer.innerHTML = candidateClaims.length
                 ? candidateClaims.map((claim) => {
@@ -3156,6 +3400,10 @@
             const userId = params.get('user_id') || storedIntent.user_id;
             const section = params.get('section') || storedIntent.section;
             const supportKind = params.get('follow_up_support_kind') || storedIntent.follow_up_support_kind || null;
+            const followUpTaskFilter = params.get('follow_up_task_filter') || storedIntent.follow_up_task_filter || 'all';
+            const followUpTaskSort = params.get('follow_up_task_sort') || storedIntent.follow_up_task_sort || 'section_focus';
+            const followUpHistoryFilter = params.get('follow_up_history_filter') || storedIntent.follow_up_history_filter || 'all';
+            const followUpHistorySort = params.get('follow_up_history_sort') || storedIntent.follow_up_history_sort || 'section_focus';
             const alignmentTaskUpdateFilter = params.get('alignment_task_update_filter') || storedIntent.alignment_task_update_filter || 'all';
             const alignmentTaskUpdateSort = params.get('alignment_task_update_sort') || storedIntent.alignment_task_update_sort || 'newest_first';
             if (claimType) {
@@ -3168,6 +3416,10 @@
             if (supportKind) {
                 document.getElementById('support-kind').value = supportKind;
             }
+            document.getElementById('follow-up-task-filter').value = followUpTaskFilter;
+            document.getElementById('follow-up-task-sort').value = followUpTaskSort;
+            document.getElementById('follow-up-history-filter').value = followUpHistoryFilter;
+            document.getElementById('follow-up-history-sort').value = followUpHistorySort;
             document.getElementById('alignment-task-update-filter').value = alignmentTaskUpdateFilter;
             document.getElementById('alignment-task-update-sort').value = alignmentTaskUpdateSort;
             setPrefillContext(section, sectionConfig);
@@ -3176,12 +3428,27 @@
                 user_id: userId,
                 section,
                 follow_up_support_kind: document.getElementById('support-kind').value || null,
+                follow_up_task_filter: document.getElementById('follow-up-task-filter').value || 'all',
+                follow_up_task_sort: document.getElementById('follow-up-task-sort').value || 'section_focus',
+                follow_up_history_filter: document.getElementById('follow-up-history-filter').value || 'all',
+                follow_up_history_sort: document.getElementById('follow-up-history-sort').value || 'section_focus',
                 alignment_task_update_filter: document.getElementById('alignment-task-update-filter').value || 'all',
                 alignment_task_update_sort: document.getElementById('alignment-task-update-sort').value || 'newest_first',
             });
             syncReviewIntentUrl(intent);
             finalizeSectionFocus();
-            return Boolean(claimType || userId || section || supportKind || alignmentTaskUpdateFilter !== 'all' || alignmentTaskUpdateSort !== 'newest_first');
+            return Boolean(
+                claimType
+                || userId
+                || section
+                || supportKind
+                || followUpTaskFilter !== 'all'
+                || followUpTaskSort !== 'section_focus'
+                || followUpHistoryFilter !== 'all'
+                || followUpHistorySort !== 'section_focus'
+                || alignmentTaskUpdateFilter !== 'all'
+                || alignmentTaskUpdateSort !== 'newest_first'
+            );
         }
 
         function prefillResolutionForm(values) {
@@ -3624,8 +3891,11 @@
 
         function renderTasks(plan, planSummary) {
             const summaryChips = document.getElementById('task-summary-chips');
+            const filterSummary = document.getElementById('task-filter-summary');
             const container = document.getElementById('task-list');
             const tasks = (plan && plan.tasks) || [];
+            const taskFilterValue = document.getElementById('follow-up-task-filter').value || 'all';
+            const taskSortValue = document.getElementById('follow-up-task-sort').value || 'section_focus';
             const summaryLabels = [];
             if (planSummary) {
                 summaryLabels.push(`Tasks: ${planSummary.task_count || 0}`);
@@ -3658,6 +3928,12 @@
             summaryChips.innerHTML = summaryLabels.length
                 ? summaryLabels.map((label) => `<span class="chip">${label}</span>`).join('')
                 : '<span class="chip">No follow-up plan summary available.</span>';
+            filterSummary.innerHTML = [
+                `<span class="chip">filter: ${taskFilterValue}</span>`,
+                `<span class="chip">sort: ${taskSortValue}</span>`,
+                `<span class="chip">visible tasks: ${filterFollowUpTasks(tasks, taskFilterValue).length}</span>`,
+                `<span class="chip">total tasks: ${tasks.length}</span>`,
+            ].join('');
             if (!tasks.length) {
                 const summaryText = planSummary
                     ? `task_count=${planSummary.task_count || 0} suppressed=${planSummary.suppressed_task_count || 0}`
@@ -3665,11 +3941,12 @@
                 container.innerHTML = `<div class="task-card">${summaryText}</div>`;
                 return;
             }
-            const orderedTasks = sortBySectionFocus(
-                tasks,
-                scoreTaskForSectionFocus,
-                (task) => String(task && (task.claim_element || task.claim_element_id || '')),
-            );
+            const visibleTasks = filterFollowUpTasks(tasks, taskFilterValue);
+            const orderedTasks = sortFollowUpTasks(visibleTasks, taskSortValue);
+            if (!orderedTasks.length) {
+                container.innerHTML = '<div class="task-card">No follow-up tasks match the selected filter.</div>';
+                return;
+            }
             container.innerHTML = orderedTasks.map((task) => {
                 const focusScore = scoreTaskForSectionFocus(task);
                 const graphSourceContext = summarizeGraphSupportSourceContext(task.graph_support || {});
@@ -3739,9 +4016,12 @@
 
         function renderHistory(historyEntries, historySummary) {
             const summaryChips = document.getElementById('history-summary-chips');
+            const filterSummary = document.getElementById('history-filter-summary');
             const historyList = document.getElementById('history-list');
             const summaryLabels = [];
             const allHistoryEntries = Array.isArray(historyEntries) ? historyEntries : [];
+            const historyFilterValue = document.getElementById('follow-up-history-filter').value || 'all';
+            const historySortValue = document.getElementById('follow-up-history-sort').value || 'section_focus';
             const chronologyHistoryEntries = (Array.isArray(historyEntries) ? historyEntries : []).filter(
                 (entry) => String((entry && entry.follow_up_focus) || '').trim() === 'temporal_gap_closure',
             );
@@ -3839,14 +4119,16 @@
             summaryChips.innerHTML = summaryLabels.length
                 ? summaryLabels.map((label) => `<span class="chip">${label}</span>`).join('')
                 : '<span class="chip">No history summary available.</span>';
+            filterSummary.innerHTML = [
+                `<span class="chip">filter: ${historyFilterValue}</span>`,
+                `<span class="chip">sort: ${historySortValue}</span>`,
+                `<span class="chip">visible history: ${filterFollowUpHistory(allHistoryEntries, historyFilterValue).length}</span>`,
+                `<span class="chip">total history: ${allHistoryEntries.length}</span>`,
+            ].join('');
 
-            const entries = sortBySectionFocus(
-                historyEntries || [],
-                scoreHistoryEntryForSectionFocus,
-                (entry) => String(entry && (entry.claim_element_text || entry.claim_element_id || entry.timestamp || '')),
-            );
+            const entries = sortFollowUpHistory(filterFollowUpHistory(historyEntries || [], historyFilterValue), historySortValue);
             if (!entries.length) {
-                historyList.innerHTML = '<div class="history-card">No follow-up history returned.</div>';
+                historyList.innerHTML = '<div class="history-card">No follow-up history matches the selected filter.</div>';
                 return;
             }
 
@@ -4430,6 +4712,54 @@
                 return;
             }
             renderIntakeCaseSummary(reviewRenderState.payload.intake_case_summary || null);
+        });
+        document.getElementById('follow-up-task-filter').addEventListener('change', () => {
+            syncReviewIntentUrl(persistReviewIntent({
+                follow_up_task_filter: document.getElementById('follow-up-task-filter').value || 'all',
+                follow_up_task_sort: document.getElementById('follow-up-task-sort').value || 'section_focus',
+                follow_up_history_filter: document.getElementById('follow-up-history-filter').value || 'all',
+                follow_up_history_sort: document.getElementById('follow-up-history-sort').value || 'section_focus',
+            }));
+            if (!reviewRenderState.payload) {
+                return;
+            }
+            renderPayload(reviewRenderState.payload);
+        });
+        document.getElementById('follow-up-task-sort').addEventListener('change', () => {
+            syncReviewIntentUrl(persistReviewIntent({
+                follow_up_task_filter: document.getElementById('follow-up-task-filter').value || 'all',
+                follow_up_task_sort: document.getElementById('follow-up-task-sort').value || 'section_focus',
+                follow_up_history_filter: document.getElementById('follow-up-history-filter').value || 'all',
+                follow_up_history_sort: document.getElementById('follow-up-history-sort').value || 'section_focus',
+            }));
+            if (!reviewRenderState.payload) {
+                return;
+            }
+            renderPayload(reviewRenderState.payload);
+        });
+        document.getElementById('follow-up-history-filter').addEventListener('change', () => {
+            syncReviewIntentUrl(persistReviewIntent({
+                follow_up_task_filter: document.getElementById('follow-up-task-filter').value || 'all',
+                follow_up_task_sort: document.getElementById('follow-up-task-sort').value || 'section_focus',
+                follow_up_history_filter: document.getElementById('follow-up-history-filter').value || 'all',
+                follow_up_history_sort: document.getElementById('follow-up-history-sort').value || 'section_focus',
+            }));
+            if (!reviewRenderState.payload) {
+                return;
+            }
+            renderPayload(reviewRenderState.payload);
+        });
+        document.getElementById('follow-up-history-sort').addEventListener('change', () => {
+            syncReviewIntentUrl(persistReviewIntent({
+                follow_up_task_filter: document.getElementById('follow-up-task-filter').value || 'all',
+                follow_up_task_sort: document.getElementById('follow-up-task-sort').value || 'section_focus',
+                follow_up_history_filter: document.getElementById('follow-up-history-filter').value || 'all',
+                follow_up_history_sort: document.getElementById('follow-up-history-sort').value || 'section_focus',
+            }));
+            if (!reviewRenderState.payload) {
+                return;
+            }
+            renderPayload(reviewRenderState.payload);
         });
         document.getElementById('alignment-task-update-sort').addEventListener('change', () => {
             syncReviewIntentUrl(persistReviewIntent({

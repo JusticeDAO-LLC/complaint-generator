@@ -1512,8 +1512,10 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 packet_summary = page.locator("#claim-support-packet-summary-chips").inner_text()
                 reasoning_summary = page.locator("#claim-reasoning-summary-chips").inner_text()
                 reasoning_flagged = page.locator("#claim-reasoning-flagged-list").inner_text()
+                task_filter_summary = page.locator("#task-filter-summary").inner_text()
                 task_summary = page.locator("#task-summary-chips").inner_text()
                 follow_up_tasks = page.locator("#task-list").inner_text()
+                history_filter_summary = page.locator("#history-filter-summary").inner_text()
                 history_summary = page.locator("#history-summary-chips").inner_text()
                 follow_up_history = page.locator("#history-list").inner_text()
 
@@ -1684,6 +1686,9 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "Chronology status: partial=1" in task_summary
                 assert "Chronology blockers: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.=1" in task_summary
                 assert "Chronology handoffs: Awaiting Testimony=1" in task_summary
+                assert "filter: all" in task_filter_summary
+                assert "sort: section_focus" in task_filter_summary
+                assert "visible tasks: 2" in task_filter_summary
                 assert "Causal connection" in follow_up_tasks
                 assert "handoff Awaiting Complainant Record" in follow_up_tasks
                 assert "chronology follow-up" in follow_up_tasks
@@ -1711,6 +1716,9 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "Outcomes:" in history_summary
                 assert "Resolution Handoff=1" in history_summary
                 assert "Search Exhausted=1" in history_summary
+                assert "filter: all" in history_filter_summary
+                assert "sort: section_focus" in history_filter_summary
+                assert "visible history: 2" in history_filter_summary
                 assert "Causal connection" in follow_up_history
                 assert "chronology follow-up" in follow_up_history
                 assert "chronology targeted" in follow_up_history
@@ -1728,6 +1736,54 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "gap: Event sequence" in follow_up_history
                 assert "covered facts: 1" in follow_up_history
                 assert "program: element_definition_search" in follow_up_history
+
+                page.select_option("#follow-up-task-filter", "chronology_only")
+                page.wait_for_function(
+                    "() => document.getElementById('task-filter-summary').textContent.includes('filter: chronology_only')"
+                )
+
+                filtered_task_summary = page.locator("#task-filter-summary").inner_text()
+                filtered_follow_up_tasks = page.locator("#task-list").inner_text()
+
+                assert "follow_up_task_filter=chronology_only" in page.url
+                assert "visible tasks: 1" in filtered_task_summary
+                assert "chronology follow-up" in filtered_follow_up_tasks
+                assert "chronology profile retaliation_temporal_profile_v1" in filtered_follow_up_tasks
+                assert "authority program element_definition_search" not in filtered_follow_up_tasks
+                assert "handoff Awaiting Complainant Record" not in filtered_follow_up_tasks
+
+                page.select_option("#follow-up-history-filter", "chronology_only")
+                page.wait_for_function(
+                    "() => document.getElementById('history-filter-summary').textContent.includes('filter: chronology_only')"
+                )
+
+                filtered_history_summary = page.locator("#history-filter-summary").inner_text()
+                filtered_follow_up_history = page.locator("#history-list").inner_text()
+
+                assert "follow_up_history_filter=chronology_only" in page.url
+                assert "visible history: 1" in filtered_history_summary
+                assert "chronology follow-up" in filtered_follow_up_history
+                assert "resolution: Awaiting Testimony" in filtered_follow_up_history
+                assert "Search Exhausted" not in filtered_follow_up_history
+
+                page.reload()
+                page.wait_for_function(
+                    "() => document.getElementById('task-filter-summary').textContent.includes('filter: chronology_only') && document.getElementById('history-filter-summary').textContent.includes('filter: chronology_only')"
+                )
+
+                reloaded_task_filter_summary = page.locator("#task-filter-summary").inner_text()
+                reloaded_history_filter_summary = page.locator("#history-filter-summary").inner_text()
+
+                assert page.locator("#follow-up-task-filter").input_value() == "chronology_only"
+                assert page.locator("#follow-up-history-filter").input_value() == "chronology_only"
+                assert "visible tasks: 1" in reloaded_task_filter_summary
+                assert "visible history: 1" in reloaded_history_filter_summary
+
+                page.select_option("#follow-up-task-filter", "all")
+                page.select_option("#follow-up-history-filter", "all")
+                page.wait_for_function(
+                    "() => document.getElementById('task-filter-summary').textContent.includes('filter: all') && document.getElementById('history-filter-summary').textContent.includes('filter: all')"
+                )
 
                 page.locator("#alignment-task-manual-review-list").get_by_text("Load Into Resolution Form").click()
 

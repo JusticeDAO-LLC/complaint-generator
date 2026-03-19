@@ -1219,6 +1219,11 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "resolution_applied_counts": {
                 "manual_review_resolved": 1,
             },
+            "temporal_gap_task_count": 0,
+            "temporal_gap_targeted_task_count": 0,
+            "temporal_rule_status_counts": {},
+            "temporal_rule_blocking_reason_counts": {},
+            "temporal_resolution_status_counts": {},
             "adaptive_retry_entry_count": 1,
             "priority_penalized_entry_count": 1,
             "adaptive_query_strategy_counts": {
@@ -2252,7 +2257,10 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
             "contradiction_candidates": 1,
         },
         "resolution_status_counts": {},
+        "temporal_resolution_status_counts": {},
         "resolution_applied_counts": {},
+        "temporal_rule_status_counts": {},
+        "temporal_rule_blocking_reason_counts": {},
         "adaptive_retry_task_count": 0,
         "priority_penalized_task_count": 0,
         "adaptive_query_strategy_counts": {},
@@ -3616,6 +3624,10 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
                     "proof_decision_source": "temporal_rule_partial",
                     "temporal_rule_profile_id": "retaliation_temporal_profile_v1",
                     "temporal_rule_status": "partial",
+                    "temporal_rule_blocking_reasons": [
+                        "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action."
+                    ],
+                    "resolution_status": "awaiting_testimony",
                     "has_graph_support": False,
                     "should_suppress_retrieval": False,
                     "graph_support": {"summary": {}, "results": []},

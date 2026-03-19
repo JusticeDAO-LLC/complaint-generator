@@ -650,6 +650,9 @@ def summarize_follow_up_history_claim(
     follow_up_focus_counts: Dict[str, int] = {}
     resolution_status_counts: Dict[str, int] = {}
     resolution_applied_counts: Dict[str, int] = {}
+    temporal_rule_status_counts: Dict[str, int] = {}
+    temporal_rule_blocking_reason_counts: Dict[str, int] = {}
+    temporal_resolution_status_counts: Dict[str, int] = {}
     adaptive_query_strategy_counts: Dict[str, int] = {}
     adaptive_retry_reason_counts: Dict[str, int] = {}
     selected_authority_program_type_counts: Dict[str, int] = {}
@@ -676,6 +679,7 @@ def summarize_follow_up_history_claim(
         follow_up_focus = str(entry.get("follow_up_focus") or "unknown")
         resolution_status = str(entry.get("resolution_status") or "")
         resolution_applied = str(entry.get("resolution_applied") or "")
+        temporal_rule_status = str(entry.get("temporal_rule_status") or "")
         adaptive_retry_applied = bool(entry.get("adaptive_retry_applied", False))
         adaptive_query_strategy = str(entry.get("adaptive_query_strategy") or "")
         adaptive_retry_reason = str(entry.get("adaptive_retry_reason") or "")
@@ -700,6 +704,21 @@ def summarize_follow_up_history_claim(
         if resolution_applied:
             resolution_applied_counts[resolution_applied] = (
                 resolution_applied_counts.get(resolution_applied, 0) + 1
+            )
+        if temporal_rule_status:
+            temporal_rule_status_counts[temporal_rule_status] = (
+                temporal_rule_status_counts.get(temporal_rule_status, 0) + 1
+            )
+        for reason in (entry.get("temporal_rule_blocking_reasons") or []):
+            normalized_reason = str(reason or "").strip()
+            if not normalized_reason:
+                continue
+            temporal_rule_blocking_reason_counts[normalized_reason] = (
+                temporal_rule_blocking_reason_counts.get(normalized_reason, 0) + 1
+            )
+        if follow_up_focus == "temporal_gap_closure" and resolution_status:
+            temporal_resolution_status_counts[resolution_status] = (
+                temporal_resolution_status_counts.get(resolution_status, 0) + 1
             )
         if adaptive_retry_applied:
             adaptive_retry_entry_count += 1
@@ -756,6 +775,25 @@ def summarize_follow_up_history_claim(
         "follow_up_focus_counts": follow_up_focus_counts,
         "resolution_status_counts": resolution_status_counts,
         "resolution_applied_counts": resolution_applied_counts,
+        "temporal_gap_task_count": len(
+            [
+                entry
+                for entry in entries
+                if isinstance(entry, dict)
+                and entry.get("follow_up_focus") == "temporal_gap_closure"
+            ]
+        ),
+        "temporal_gap_targeted_task_count": len(
+            [
+                entry
+                for entry in entries
+                if isinstance(entry, dict)
+                and entry.get("query_strategy") == "temporal_gap_targeted"
+            ]
+        ),
+        "temporal_rule_status_counts": temporal_rule_status_counts,
+        "temporal_rule_blocking_reason_counts": temporal_rule_blocking_reason_counts,
+        "temporal_resolution_status_counts": temporal_resolution_status_counts,
         "adaptive_retry_entry_count": adaptive_retry_entry_count,
         "priority_penalized_entry_count": priority_penalized_entry_count,
         "adaptive_query_strategy_counts": adaptive_query_strategy_counts,

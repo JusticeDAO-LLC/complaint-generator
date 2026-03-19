@@ -26,6 +26,10 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Save Document" in content
     assert "question-list" in content
     assert "Intake Case Summary" in content
+    assert "intake-next-action-banner" in content
+    assert "Validate promoted support" in content
+    assert "recommended action: ${nextAction.action}" in content
+    assert "Promoted testimony or document support is accumulating faster than packet validation is reaching resolved supported status." in content
     assert "intake-readiness-criteria-chips" in content
     assert "intake-claim-summary-chips" in content
     assert "intake-context-chips" in content

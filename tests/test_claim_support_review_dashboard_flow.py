@@ -552,6 +552,40 @@ def _build_dashboard_mediator() -> Mock:
                     "selected_search_program_type": "element_definition_search",
                     "selected_search_program_bias": "uncertain",
                     "selected_search_program_rule_bias": "procedural_prerequisite",
+                },
+                {
+                    "execution_id": 45,
+                    "claim_type": "retaliation",
+                    "claim_element_id": "retaliation:2",
+                    "claim_element_text": "Causal connection",
+                    "support_kind": "testimony",
+                    "query_text": "clarify retaliation chronology",
+                    "status": "escalated",
+                    "timestamp": "2026-03-12T13:00:00",
+                    "execution_mode": "resolution_handoff",
+                    "follow_up_focus": "temporal_gap_closure",
+                    "query_strategy": "temporal_gap_targeted",
+                    "primary_missing_fact": "Event sequence",
+                    "missing_fact_bundle": ["Event sequence"],
+                    "satisfied_fact_bundle": [],
+                    "resolution_status": "awaiting_testimony",
+                    "resolution_applied": "skipped_resolution_handoff",
+                    "intake_proof_leads": [
+                        {
+                            "lead_id": "lead:complainant:chronology",
+                            "owner": "complainant",
+                            "recommended_support_kind": "testimony",
+                            "description": "Chronology clarification from complainant",
+                        }
+                    ],
+                    "temporal_rule_profile_id": "retaliation_temporal_profile_v1",
+                    "temporal_rule_status": "partial",
+                    "temporal_rule_blocking_reasons": [
+                        "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.",
+                    ],
+                    "temporal_rule_follow_ups": [
+                        "Clarify whether the protected activity occurred before the adverse action.",
+                    ],
                 }
             ]
         }
@@ -649,7 +683,7 @@ def _build_dashboard_mediator() -> Mock:
     mediator.get_claim_follow_up_plan.return_value = {
         "claims": {
             "retaliation": {
-                "task_count": 1,
+                "task_count": 2,
                 "blocked_task_count": 0,
                 "tasks": [
                     {
@@ -694,6 +728,42 @@ def _build_dashboard_mediator() -> Mock:
                         "blocked_by_cooldown": False,
                         "should_suppress_retrieval": False,
                         "resolution_applied": "manual_review_resolved",
+                    },
+                    {
+                        "claim_element": "Causal connection",
+                        "claim_element_id": "retaliation:2",
+                        "status": "missing",
+                        "priority": "high",
+                        "recommended_action": "review_existing_support",
+                        "graph_support": {
+                            "summary": {},
+                            "results": [],
+                        },
+                        "follow_up_focus": "temporal_gap_closure",
+                        "query_strategy": "temporal_gap_targeted",
+                        "missing_support_kinds": ["testimony"],
+                        "primary_missing_fact": "Event sequence",
+                        "missing_fact_bundle": ["Event sequence"],
+                        "satisfied_fact_bundle": [],
+                        "blocked_by_cooldown": False,
+                        "should_suppress_retrieval": False,
+                        "resolution_status": "awaiting_testimony",
+                        "intake_proof_leads": [
+                            {
+                                "lead_id": "lead:complainant:chronology",
+                                "owner": "complainant",
+                                "recommended_support_kind": "testimony",
+                                "description": "Chronology clarification from complainant",
+                            }
+                        ],
+                        "temporal_rule_profile_id": "retaliation_temporal_profile_v1",
+                        "temporal_rule_status": "partial",
+                        "temporal_rule_blocking_reasons": [
+                            "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.",
+                        ],
+                        "temporal_rule_follow_ups": [
+                            "Clarify whether the protected activity occurred before the adverse action.",
+                        ],
                     }
                 ],
             }
@@ -807,6 +877,12 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert soup.find(id="signal-fallback-authorities") is not None
     assert soup.find(id="signal-low-quality-records") is not None
     assert soup.find(id="signal-parse-quality-tasks") is not None
+    assert soup.find(id="follow-up-task-filter") is not None
+    assert soup.find(id="follow-up-task-sort") is not None
+    assert soup.find(id="task-filter-summary") is not None
+    assert soup.find(id="follow-up-history-filter") is not None
+    assert soup.find(id="follow-up-history-sort") is not None
+    assert soup.find(id="history-filter-summary") is not None
     assert soup.find(id="history-list") is not None
     assert soup.find(id="history-summary-chips") is not None
     assert "authority program ${task.authority_search_program_summary.primary_program_type}" in page_html
@@ -820,8 +896,22 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert "Chronology follow-up tasks" in page_html
     assert "Chronology tasks:" in page_html
     assert "Chronology targeted:" in page_html
+    assert "Chronology status" in page_html
+    assert "Chronology blockers" in page_html
+    assert "Chronology handoffs" in page_html
     assert "chronology follow-up" in page_html
     assert "chronology targeted" in page_html
+    assert "chronology blocker:" in page_html
+    assert "Follow-Up Plan Filter" in page_html
+    assert "Follow-Up Plan Sort" in page_html
+    assert "Follow-Up History Filter" in page_html
+    assert "Follow-Up History Sort" in page_html
+    assert "follow_up_task_filter" in page_html
+    assert "follow_up_task_sort" in page_html
+    assert "follow_up_history_filter" in page_html
+    assert "follow_up_history_sort" in page_html
+    assert "No follow-up tasks match the selected filter." in page_html
+    assert "No follow-up history matches the selected filter." in page_html
     assert "program: ${entry.selected_search_program_type}" in page_html
     assert "rule bias: ${entry.selected_search_program_rule_bias}" in page_html
     assert "family: ${entry.source_family}" in page_html
@@ -1011,9 +1101,11 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_packets"][0]["lineage_summary"]["archive_url"] == "https://web.archive.org/web/20240101120000/https://example.com/timeline-email"
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_packets"][1]["lineage_summary"]["fallback_mode"] == "citation_title_only"
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["authority_treatment_summary"]["adverse_authority_link_count"] == 1
-    assert review_payload["follow_up_plan_summary"]["retaliation"]["task_count"] == 1
+    assert review_payload["follow_up_plan_summary"]["retaliation"]["task_count"] == 2
     assert review_payload["follow_up_plan_summary"]["retaliation"]["parse_quality_task_count"] == 1
     assert review_payload["follow_up_plan_summary"]["retaliation"]["quality_gap_targeted_task_count"] == 1
+    assert review_payload["follow_up_plan_summary"]["retaliation"]["temporal_gap_task_count"] == 1
+    assert review_payload["follow_up_plan_summary"]["retaliation"]["temporal_gap_targeted_task_count"] == 1
     assert review_payload["follow_up_plan_summary"]["retaliation"]["authority_search_program_task_count"] == 1
     assert review_payload["follow_up_plan_summary"]["retaliation"]["authority_search_program_type_counts"] == {
         "element_definition_search": 1,
@@ -1197,7 +1289,18 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert review_payload["follow_up_plan_summary"]["retaliation"]["resolution_applied_counts"] == {
         "manual_review_resolved": 1,
     }
+    assert review_payload["follow_up_plan_summary"]["retaliation"]["temporal_rule_status_counts"] == {
+        "partial": 1,
+    }
+    assert review_payload["follow_up_plan_summary"]["retaliation"]["temporal_rule_blocking_reason_counts"] == {
+        "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.": 1,
+    }
+    assert review_payload["follow_up_plan_summary"]["retaliation"]["temporal_resolution_status_counts"] == {
+        "awaiting_testimony": 1,
+    }
     assert review_payload["follow_up_history_summary"]["retaliation"]["manual_review_entry_count"] == 1
+    assert review_payload["follow_up_history_summary"]["retaliation"]["temporal_gap_task_count"] == 1
+    assert review_payload["follow_up_history_summary"]["retaliation"]["temporal_gap_targeted_task_count"] == 1
     assert review_payload["follow_up_history_summary"]["retaliation"]["selected_authority_program_type_counts"] == {
         "element_definition_search": 1,
     }
@@ -1219,8 +1322,23 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
         for entry in review_payload["follow_up_history"]["retaliation"]
     )
     assert review_payload["follow_up_history_summary"]["retaliation"]["resolution_applied_counts"] == {
+        "skipped_resolution_handoff": 1,
         "manual_review_resolved": 1,
     }
+    assert review_payload["follow_up_history_summary"]["retaliation"]["temporal_rule_status_counts"] == {
+        "partial": 1,
+    }
+    assert review_payload["follow_up_history_summary"]["retaliation"]["temporal_rule_blocking_reason_counts"] == {
+        "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.": 1,
+    }
+    assert review_payload["follow_up_history_summary"]["retaliation"]["temporal_resolution_status_counts"] == {
+        "awaiting_testimony": 1,
+    }
+    assert any(
+        entry.get("temporal_rule_profile_id") == "retaliation_temporal_profile_v1"
+        and entry.get("temporal_rule_status") == "partial"
+        for entry in review_payload["follow_up_history"]["retaliation"]
+    )
 
     resolution_payload = await resolve_route.endpoint(
         ClaimSupportManualReviewResolveRequest(
@@ -1234,6 +1352,7 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     )
     assert resolution_payload["resolution_result"]["status"] == "resolved_manual_review"
     assert resolution_payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["resolution_applied_counts"] == {
+        "skipped_resolution_handoff": 1,
         "manual_review_resolved": 1,
     }
 
