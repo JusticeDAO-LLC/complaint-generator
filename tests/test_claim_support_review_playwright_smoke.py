@@ -200,6 +200,7 @@ def _build_hook_backed_browser_mediator(db_path: str):
         },
         "alignment_evidence_tasks": [
             {
+                "task_id": "retaliation:retaliation:3:fill_evidence_gaps",
                 "claim_type": "retaliation",
                 "claim_element_id": "retaliation:3",
                 "claim_element_label": "Causal connection",
@@ -212,6 +213,14 @@ def _build_hook_backed_browser_mediator(db_path: str):
                 "task_priority": "high",
                 "resolution_status": "still_open",
                 "resolution_notes": "",
+                "temporal_rule_profile_id": "retaliation_temporal_profile_v1",
+                "temporal_rule_status": "partial",
+                "temporal_rule_blocking_reasons": [
+                    "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.",
+                ],
+                "temporal_rule_follow_ups": [
+                    "Clarify whether the protected activity occurred before the adverse action.",
+                ],
             }
         ],
         "alignment_task_updates": [
@@ -279,6 +288,13 @@ def _build_hook_backed_browser_mediator(db_path: str):
             "temporal_issue_count": 1,
             "temporal_partial_order_ready_element_count": 0,
             "temporal_warning_count": 1,
+            "temporal_gap_task_count": 1,
+            "temporal_gap_targeted_task_count": 1,
+            "temporal_rule_status_counts": {"partial": 1},
+            "temporal_rule_blocking_reason_counts": {
+                "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.": 1,
+            },
+            "temporal_resolution_status_counts": {"still_open": 1},
         },
     }
 
@@ -1587,6 +1603,431 @@ def test_document_builder_smoke_routes_workflow_priority_back_to_manual_review()
             os.unlink(db_path)
 
 
+@pytest.mark.parametrize(
+    (
+        "action",
+        "title_text",
+        "expected_section",
+        "expected_support_kind",
+        "expected_filter",
+        "expected_sort",
+        "expected_focus_label",
+        "expected_lane_label",
+    ),
+    [
+        (
+            "address_gaps",
+            "Resolve intake gaps before drafting",
+            "summary_of_facts",
+            "evidence",
+            "active",
+            "newest_first",
+            "Summary Of Facts",
+            "Evidence",
+        ),
+        (
+            "continue_denoising",
+            "Continue intake denoising before drafting",
+            "summary_of_facts",
+            "evidence",
+            "active",
+            "newest_first",
+            "Summary Of Facts",
+            "Evidence",
+        ),
+        (
+            "build_knowledge_graph",
+            "Review intake graph inputs before drafting",
+            "summary_of_facts",
+            "evidence",
+            "active",
+            "newest_first",
+            "Summary Of Facts",
+            "Evidence",
+        ),
+        (
+            "build_dependency_graph",
+            "Review dependency inputs before drafting",
+            "chronology",
+            "evidence",
+            "active",
+            "newest_first",
+            "Chronology",
+            "Evidence",
+        ),
+        (
+            "build_legal_graph",
+            "Review legal graph inputs before drafting",
+            "claims_for_relief",
+            "authority",
+            "manual_review",
+            "manual_review_first",
+            "Claims For Relief",
+            "Authority",
+        ),
+        (
+            "perform_neurosymbolic_matching",
+            "Review matching inputs before drafting",
+            "claims_for_relief",
+            "authority",
+            "manual_review",
+            "manual_review_first",
+            "Claims For Relief",
+            "Authority",
+        ),
+    ],
+)
+def test_document_builder_smoke_routes_workflow_priority_to_focused_review_surface(
+    action,
+    title_text,
+    expected_section,
+    expected_support_kind,
+    expected_filter,
+    expected_sort,
+    expected_focus_label,
+    expected_lane_label,
+):
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    next_action_summary = {
+        "next_action": {
+            "action": action,
+            "claim_type": "retaliation",
+        },
+        "contradiction_summary": {"count": 1},
+        "question_candidate_summary": {"count": 2},
+        "claim_support_packet_summary": {
+            "proof_readiness_score": 0.45,
+        },
+    }
+    payload = {
+        "generated_at": "2026-03-16T20:00:00+00:00",
+        "draft": {
+            "court_header": "IN THE UNITED STATES DISTRICT COURT",
+            "case_caption": {
+                "plaintiffs": ["Jane Doe"],
+                "defendants": ["Acme Corporation"],
+            },
+            "summary_of_facts": ["Plaintiff reported discrimination to HR."],
+            "factual_allegation_paragraphs": ["1. Plaintiff reported discrimination to HR."],
+            "legal_standards": ["Title VII prohibits retaliation."],
+            "claims_for_relief": [],
+            "requested_relief": ["Compensatory damages."],
+            "draft_text": "Sample draft text.",
+            "exhibits": [],
+        },
+        "drafting_readiness": {"status": "warning", "sections": {}, "claims": [], "warning_count": 1},
+        "filing_checklist": [],
+        "review_links": {
+            "dashboard_url": "/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+            "intake_case_summary": next_action_summary,
+            "intake_status": {
+                "current_phase": "formalization",
+                "score": 0.74,
+                "remaining_gap_count": 0,
+                "contradiction_count": 1,
+                "ready_to_advance": False,
+                "blockers": ["review_inputs_pending"],
+                "contradictions": [],
+            },
+        },
+        "document_optimization": {
+            "status": "optimized",
+            "method": "actor_mediator_critic_optimizer",
+            "optimizer_backend": "upstream_agentic",
+            "initial_score": 0.5,
+            "final_score": 0.7,
+            "accepted_iterations": 1,
+            "iteration_count": 1,
+            "optimized_sections": ["factual_allegations"],
+            "trace_storage": {"status": "available", "cid": "bafy-test", "size": 123, "pinned": True},
+            "intake_status": {
+                "current_phase": "formalization",
+                "score": 0.74,
+                "remaining_gap_count": 0,
+                "contradiction_count": 1,
+                "ready_to_advance": False,
+                "blockers": ["review_inputs_pending"],
+                "contradictions": [],
+            },
+            "intake_case_summary": next_action_summary,
+        },
+    }
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for document workflow-priority focused review coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+
+        app = _build_document_review_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(f"{base_url}/document?claim_type=retaliation&user_id=browser-smoke-text-link")
+                page.evaluate("payload => window.renderPreview(payload)", payload)
+                page.wait_for_function(
+                    "() => document.getElementById('document-workflow-priority') !== null"
+                )
+
+                workflow_text = page.locator("#document-workflow-priority").inner_text()
+
+                assert title_text in workflow_text
+                assert f"recommended action: {action}" in workflow_text
+
+                page.click("#document-workflow-action-link")
+                page.wait_for_url("**/claim-support-review?**")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+                page.wait_for_function(
+                    f"() => document.getElementById('section-focus-chip-row').textContent.includes('{expected_focus_label}')"
+                )
+
+                focus_chips = page.locator("#section-focus-chip-row").inner_text()
+                prefill_context = page.locator("#prefill-context-line").inner_text()
+
+                assert f"section={expected_section}" in page.url
+                assert f"follow_up_support_kind={expected_support_kind}" in page.url
+                assert f"alignment_task_update_filter={expected_filter}" in page.url
+                if expected_sort == "newest_first":
+                    assert "alignment_task_update_sort=" not in page.url
+                else:
+                    assert f"alignment_task_update_sort={expected_sort}" in page.url
+                assert page.locator("#support-kind").input_value() == expected_support_kind
+                assert page.locator("#alignment-task-update-sort").input_value() == expected_sort
+                assert expected_focus_label in focus_chips
+                assert f"Focused lane: {expected_lane_label}." in prefill_context
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+def test_document_builder_smoke_routes_workflow_priority_to_support_packet_review():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    next_action_summary = {
+        "next_action": {
+            "action": "build_claim_support_packets",
+            "claim_type": "retaliation",
+        },
+        "contradiction_summary": {"count": 1},
+        "question_candidate_summary": {"count": 1},
+        "claim_support_packet_summary": {
+            "proof_readiness_score": 0.45,
+        },
+    }
+    payload = {
+        "generated_at": "2026-03-16T20:00:00+00:00",
+        "draft": {
+            "court_header": "IN THE UNITED STATES DISTRICT COURT",
+            "case_caption": {
+                "plaintiffs": ["Jane Doe"],
+                "defendants": ["Acme Corporation"],
+            },
+            "summary_of_facts": ["Plaintiff reported discrimination to HR."],
+            "factual_allegation_paragraphs": ["1. Plaintiff reported discrimination to HR."],
+            "legal_standards": ["Title VII prohibits retaliation."],
+            "claims_for_relief": [],
+            "requested_relief": ["Compensatory damages."],
+            "draft_text": "Sample draft text.",
+            "exhibits": [],
+        },
+        "drafting_readiness": {"status": "warning", "sections": {}, "claims": [], "warning_count": 1},
+        "filing_checklist": [],
+        "review_links": {
+            "dashboard_url": "/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+            "intake_case_summary": next_action_summary,
+            "intake_status": {
+                "current_phase": "evidence",
+                "score": 0.74,
+                "remaining_gap_count": 0,
+                "contradiction_count": 1,
+                "ready_to_advance": False,
+                "blockers": ["packet_build_pending"],
+                "contradictions": [],
+            },
+        },
+        "document_optimization": {
+            "status": "optimized",
+            "method": "actor_mediator_critic_optimizer",
+            "optimizer_backend": "upstream_agentic",
+            "initial_score": 0.5,
+            "final_score": 0.7,
+            "accepted_iterations": 1,
+            "iteration_count": 1,
+            "optimized_sections": ["factual_allegations"],
+            "trace_storage": {"status": "available", "cid": "bafy-test", "size": 123, "pinned": True},
+            "intake_status": {
+                "current_phase": "evidence",
+                "score": 0.74,
+                "remaining_gap_count": 0,
+                "contradiction_count": 1,
+                "ready_to_advance": False,
+                "blockers": ["packet_build_pending"],
+                "contradictions": [],
+            },
+            "intake_case_summary": next_action_summary,
+        },
+    }
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for support packet review routing coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+
+        app = _build_document_review_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(f"{base_url}/document?claim_type=retaliation&user_id=browser-smoke-text-link")
+                page.evaluate("payload => window.renderPreview(payload)", payload)
+                page.wait_for_function(
+                    "() => document.getElementById('document-workflow-priority') !== null"
+                )
+
+                workflow_text = page.locator("#document-workflow-priority").inner_text()
+
+                assert "Build support packets before drafting" in workflow_text
+                assert "recommended action: build_claim_support_packets" in workflow_text
+
+                page.click("#document-workflow-action-link")
+                page.wait_for_url("**/claim-support-review?**")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                assert "claim_type=retaliation" in page.url
+                assert "follow_up_support_kind=evidence" in page.url
+                assert "alignment_task_update_filter=active" in page.url
+                assert "alignment_task_update_sort=" not in page.url
+                assert page.locator("#claim-type").input_value() == "retaliation"
+                assert page.locator("#support-kind").input_value() == "evidence"
+                assert page.locator("#alignment-task-update-sort").input_value() == "newest_first"
+                assert "Opened from document workflow." in page.locator("#prefill-context-line").inner_text()
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+def test_document_builder_smoke_marks_complete_evidence_as_ready_for_drafting():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    next_action_summary = {
+        "next_action": {
+            "action": "complete_evidence",
+            "claim_type": "retaliation",
+        },
+        "contradiction_summary": {"count": 0},
+        "question_candidate_summary": {"count": 0},
+        "claim_support_packet_summary": {
+            "proof_readiness_score": 0.94,
+        },
+    }
+    payload = {
+        "generated_at": "2026-03-16T20:00:00+00:00",
+        "draft": {
+            "court_header": "IN THE UNITED STATES DISTRICT COURT",
+            "case_caption": {
+                "plaintiffs": ["Jane Doe"],
+                "defendants": ["Acme Corporation"],
+            },
+            "summary_of_facts": ["Plaintiff reported discrimination to HR."],
+            "factual_allegation_paragraphs": ["1. Plaintiff reported discrimination to HR."],
+            "legal_standards": ["Title VII prohibits retaliation."],
+            "claims_for_relief": [],
+            "requested_relief": ["Compensatory damages."],
+            "draft_text": "Sample draft text.",
+            "exhibits": [],
+        },
+        "drafting_readiness": {"status": "ready", "sections": {}, "claims": [], "warning_count": 0},
+        "filing_checklist": [],
+        "review_links": {
+            "dashboard_url": "/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+            "intake_case_summary": next_action_summary,
+            "intake_status": {
+                "current_phase": "evidence",
+                "score": 1.0,
+                "remaining_gap_count": 0,
+                "contradiction_count": 0,
+                "ready_to_advance": True,
+                "blockers": [],
+                "contradictions": [],
+            },
+        },
+        "document_optimization": {
+            "status": "optimized",
+            "method": "actor_mediator_critic_optimizer",
+            "optimizer_backend": "upstream_agentic",
+            "initial_score": 0.5,
+            "final_score": 0.7,
+            "accepted_iterations": 1,
+            "iteration_count": 1,
+            "optimized_sections": ["factual_allegations"],
+            "trace_storage": {"status": "available", "cid": "bafy-test", "size": 123, "pinned": True},
+            "intake_status": {
+                "current_phase": "evidence",
+                "score": 1.0,
+                "remaining_gap_count": 0,
+                "contradiction_count": 0,
+                "ready_to_advance": True,
+                "blockers": [],
+                "contradictions": [],
+            },
+            "intake_case_summary": next_action_summary,
+        },
+    }
+
+    app = _build_document_browser_smoke_app()
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page()
+            page.goto(f"{base_url}/document?claim_type=retaliation&user_id=browser-smoke-text-link")
+            page.evaluate("payload => window.renderPreview(payload)", payload)
+            page.wait_for_function(
+                "() => document.getElementById('document-workflow-priority') !== null"
+            )
+
+            workflow_card = page.locator("#document-workflow-priority")
+            workflow_text = workflow_card.inner_text()
+
+            assert workflow_card.get_attribute("data-status") == "ready"
+            assert "Evidence is ready for formal drafting" in workflow_text
+            assert "recommended action: complete_evidence" in workflow_text
+            assert "focus claim: retaliation" in workflow_text.lower()
+            assert "proof readiness: 0.94" in workflow_text
+            assert "Open Review Dashboard" in workflow_text
+
+            browser.close()
+
+
 def test_document_builder_smoke_marks_generate_formal_complaint_as_current_priority():
     if not PLAYWRIGHT_AVAILABLE:
         pytest.skip("Playwright not available")
@@ -1794,6 +2235,18 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "quality target: high_quality_document" in alignment_tasks
                 assert "priority: high" in alignment_tasks
                 assert "resolution: still_open" in alignment_tasks
+                assert "Alignment chronology summary" in alignment_tasks
+                assert "Chronology tasks: 1" in alignment_tasks
+                assert "Chronology targeted: 1" in alignment_tasks
+                assert "Chronology status: Partial=1" in alignment_tasks
+                assert "Chronology blockers: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.=1" in alignment_tasks
+                assert "Chronology handoffs: Still Open=1" in alignment_tasks
+                assert "chronology follow-up" in alignment_tasks
+                assert "chronology targeted" in alignment_tasks
+                assert "temporal rule: Partial" in alignment_tasks
+                assert "chronology profile: retaliation_temporal_profile_v1" in alignment_tasks
+                assert "chronology blocker: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action." in alignment_tasks
+                assert "chronology follow-up: Clarify whether the protected activity occurred before the adverse action." in alignment_tasks
                 assert "manual review blockers: 1" in manual_review_summary
                 assert "claims impacted: 1" in manual_review_summary
                 assert "Manual review blocker for retaliation" in manual_review_list
@@ -1826,6 +2279,11 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "packet temporal issues: 1" in packet_summary
                 assert "packet temporal ready elements: 0" in packet_summary
                 assert "packet temporal warnings: 1" in packet_summary
+                assert "packet chronology tasks: 1" in packet_summary
+                assert "packet chronology targeted: 1" in packet_summary
+                assert "packet chronology status: Partial=1" in packet_summary
+                assert "packet chronology blockers: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.=1" in packet_summary
+                assert "packet chronology handoffs: Still Open=1" in packet_summary
                 assert "Bridge elements: 1" in reasoning_summary
                 assert "Bridge available: 1" in reasoning_summary
                 assert "TDFOL formulas: 2" in reasoning_summary
@@ -3308,6 +3766,11 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
             assert "Alignment fallback lanes: Authority 1, Testimony 1" in trace_evidence
             assert "Alignment quality targets: High Quality Document 1" in trace_evidence
             assert "Alignment handoffs: Awaiting Complainant Record 1" in trace_evidence
+            assert "Alignment chronology tasks: 1" in trace_evidence
+            assert "Alignment chronology targeted: 1" in trace_evidence
+            assert "Alignment chronology status: Partial=1" in trace_evidence
+            assert "Alignment chronology blockers: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.=1" in trace_evidence
+            assert "Alignment chronology handoffs: Still Open=1" in trace_evidence
             assert "Packet blocking covered: 0.50" in trace_evidence
             assert "Packet credible support: 0.50" in trace_evidence
             assert "Packet draft ready: 0.00" in trace_evidence
@@ -3322,6 +3785,11 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
             assert "Packet temporal issues: 1" in trace_evidence
             assert "Packet temporal ready elements: 0" in trace_evidence
             assert "Packet temporal warnings: 1" in trace_evidence
+            assert "Packet chronology tasks: 1" in trace_evidence
+            assert "Packet chronology targeted: 1" in trace_evidence
+            assert "Packet chronology status: Partial=1" in trace_evidence
+            assert "Packet chronology blockers: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.=1" in trace_evidence
+            assert "Packet chronology handoffs: Still Open=1" in trace_evidence
             handoff_trace_text = page.locator("#traceEvidenceHandoffs").inner_text()
             assert "Evidence Handoffs" in handoff_trace_text
             assert "Evidence handoffs: 1" in handoff_trace_text
@@ -3353,6 +3821,40 @@ def test_document_builder_smoke_confirms_intake_summary_handoff():
     if not PLAYWRIGHT_AVAILABLE:
         pytest.skip("Playwright not available")
 
+    next_action_summary = {
+        "next_action": {
+            "action": "confirm_intake_summary",
+            "claim_type": "retaliation",
+        },
+        "candidate_claims": [
+            {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.87},
+            {"claim_type": "wrongful_termination", "label": "Wrongful Termination", "confidence": 0.79},
+        ],
+        "candidate_claim_summary": {
+            "count": 2,
+            "claim_types": ["retaliation", "wrongful_termination"],
+            "average_confidence": 0.83,
+            "top_claim_type": "retaliation",
+            "top_confidence": 0.87,
+            "ambiguous_claim_count": 0,
+            "ambiguity_flag_count": 0,
+            "ambiguity_flag_counts": {},
+            "close_leading_claims": False,
+        },
+        "complainant_summary_confirmation": {
+            "status": "pending",
+            "confirmed": False,
+            "confirmation_source": "complainant",
+            "confirmation_note": "",
+            "summary_snapshot_index": 0,
+            "current_summary_snapshot": {
+                "candidate_claim_count": 2,
+                "canonical_fact_count": 1,
+                "proof_lead_count": 1,
+            },
+            "confirmed_summary_snapshot": {},
+        },
+    }
     payload = {
         "generated_at": "2026-03-15T20:00:00+00:00",
         "draft": {
@@ -3371,7 +3873,10 @@ def test_document_builder_smoke_confirms_intake_summary_handoff():
         },
         "drafting_readiness": {"sections": {}, "claims": [], "warnings": []},
         "filing_checklist": [],
-        "review_links": {},
+        "review_links": {
+            "dashboard_url": "/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+            "intake_case_summary": next_action_summary,
+        },
         "review_intent": {
             "user_id": "browser-smoke-text-link",
             "claim_type": "retaliation",
@@ -3413,36 +3918,7 @@ def test_document_builder_smoke_confirms_intake_summary_handoff():
                 ],
             },
             "intake_constraints": [],
-            "intake_case_summary": {
-                "candidate_claims": [
-                    {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.87},
-                    {"claim_type": "wrongful_termination", "label": "Wrongful Termination", "confidence": 0.79},
-                ],
-                "candidate_claim_summary": {
-                    "count": 2,
-                    "claim_types": ["retaliation", "wrongful_termination"],
-                    "average_confidence": 0.83,
-                    "top_claim_type": "retaliation",
-                    "top_confidence": 0.87,
-                    "ambiguous_claim_count": 0,
-                    "ambiguity_flag_count": 0,
-                    "ambiguity_flag_counts": {},
-                    "close_leading_claims": False,
-                },
-                "complainant_summary_confirmation": {
-                    "status": "pending",
-                    "confirmed": False,
-                    "confirmation_source": "complainant",
-                    "confirmation_note": "",
-                    "summary_snapshot_index": 0,
-                    "current_summary_snapshot": {
-                        "candidate_claim_count": 2,
-                        "canonical_fact_count": 1,
-                        "proof_lead_count": 1,
-                    },
-                    "confirmed_summary_snapshot": {},
-                },
-            },
+            "intake_case_summary": next_action_summary,
             "claim_support_packet_summary": {},
             "section_history": [],
             "initial_review": {},
@@ -3474,12 +3950,17 @@ def test_document_builder_smoke_confirms_intake_summary_handoff():
                 page.goto(f"{base_url}/document")
                 page.evaluate("payload => window.renderPreview(payload)", payload)
                 page.wait_for_function(
-                    "() => document.getElementById('confirm-intake-summary-button') !== null"
+                    "() => document.getElementById('document-workflow-priority') !== null"
                 )
 
                 assert "intake summary handoff" in page.locator("#previewRoot").inner_text().lower()
+                workflow_text = page.locator("#document-workflow-priority").inner_text()
+                assert "Confirm intake summary before drafting" in workflow_text
+                assert "recommended action: confirm_intake_summary" in workflow_text
+                assert "Confirm intake summary" in workflow_text
+
                 page.fill("#confirm-intake-summary-note", "Reviewed with complainant for evidence handoff")
-                page.click("#confirm-intake-summary-button")
+                page.click("#document-workflow-action-link")
 
                 page.wait_for_function(
                     "() => document.getElementById('previewRoot').innerText.includes('Confirmed at')"

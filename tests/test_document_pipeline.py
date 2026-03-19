@@ -117,6 +117,58 @@ def _document_page_inline_script(page_html: str) -> str:
     raise AssertionError('Expected inline document page script with optimization validation hooks.')
 
 
+def _assert_normalized_intake_status(
+    actual: dict,
+    *,
+    score: float,
+    current_phase: str | None = "intake",
+    remaining_gap_count: int = 2,
+    contradiction_count: int = 1,
+    blockers: list[str] | None = None,
+    include_extended_fields: bool = True,
+) -> None:
+    expected_blockers = blockers or ["resolve_contradictions", "collect_missing_timeline_details"]
+
+    if current_phase is None:
+        assert "current_phase" not in actual
+    else:
+        assert actual["current_phase"] == current_phase
+    assert actual["ready_to_advance"] is False
+    assert actual["score"] == score
+    assert actual["remaining_gap_count"] == remaining_gap_count
+    assert actual["contradiction_count"] == contradiction_count
+    assert actual["blockers"] == expected_blockers
+    contradiction = actual["contradictions"][0]
+    assert contradiction["summary"] == "Complaint date conflicts with schedule-cut date"
+    assert contradiction["left_text"] == ""
+    assert contradiction["right_text"] == ""
+    assert contradiction["question"] == "What were the exact dates for the complaint and schedule change?"
+    assert contradiction["severity"] == "high"
+    assert contradiction["category"] == ""
+
+    if include_extended_fields:
+        assert actual["contradiction_summary"] == {
+            "count": 1,
+            "lane_counts": {},
+            "status_counts": {},
+            "severity_counts": {"high": 1},
+            "corroboration_required_count": 0,
+            "affected_claim_type_counts": {},
+            "affected_element_counts": {},
+        }
+        assert contradiction["contradiction_id"] == ""
+        assert contradiction["recommended_resolution_lane"] == ""
+        assert contradiction["current_resolution_status"] == ""
+        assert contradiction["external_corroboration_required"] is False
+        assert contradiction["affected_claim_types"] == []
+        assert contradiction["affected_element_ids"] == []
+        assert actual["criteria"] == {}
+        assert actual["blocking_contradictions"] == []
+        assert actual["candidate_claim_count"] == 0
+        assert actual["canonical_fact_count"] == 0
+        assert actual["proof_lead_count"] == 0
+
+
 def _build_live_hf_optimization_request(
     *,
     model_name: str,
@@ -831,24 +883,7 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     assert report["router_usage"]["ipfs_store_attempted"] is True
     assert report["router_usage"]["ipfs_store_succeeded"] is True
     assert report["router_usage"]["llm_providers_used"] == ["test-provider"]
-    assert report["intake_status"] == {
-        "current_phase": "intake",
-        "ready_to_advance": False,
-        "score": 0.44,
-        "remaining_gap_count": 2,
-        "contradiction_count": 1,
-        "blockers": ["resolve_contradictions", "collect_missing_timeline_details"],
-        "contradictions": [
-            {
-                "summary": "Complaint date conflicts with schedule-cut date",
-                "left_text": "",
-                "right_text": "",
-                "question": "What were the exact dates for the complaint and schedule change?",
-                "severity": "high",
-                "category": "",
-            }
-        ],
-    }
+    _assert_normalized_intake_status(report["intake_status"], score=0.44)
     assert report["intake_constraints"] == [
         {
             "severity": "warning",
@@ -2242,23 +2277,12 @@ def test_review_api_multiclaim_section_links_include_targeted_claim_urls():
             for warning in payload["drafting_readiness"]["claims"][1]["warnings"]
         )
         assert payload["filing_checklist"][0]["review_url"] == "/claim-support-review?section=claims_for_relief"
-        assert payload["filing_checklist"][0]["intake_status"] == {
-            "score": 0.44,
-            "ready_to_advance": False,
-            "remaining_gap_count": 2,
-            "contradiction_count": 1,
-            "blockers": ["resolve_contradictions", "collect_missing_timeline_details"],
-            "contradictions": [
-                {
-                    "summary": "Complaint date conflicts with schedule-cut date",
-                    "left_text": "",
-                    "right_text": "",
-                    "question": "What were the exact dates for the complaint and schedule change?",
-                    "severity": "high",
-                    "category": "",
-                }
-            ],
-        }
+        _assert_normalized_intake_status(
+            payload["filing_checklist"][0]["intake_status"],
+            score=0.44,
+            current_phase=None,
+            include_extended_fields=False,
+        )
         assert payload["filing_checklist"][0]["review_intent"] == {
             "user_id": None,
             "claim_type": None,
@@ -2267,23 +2291,12 @@ def test_review_api_multiclaim_section_links_include_targeted_claim_urls():
             "review_url": "/claim-support-review?section=claims_for_relief",
         }
         assert payload["filing_checklist"][1]["review_url"] == "/claim-support-review?claim_type=retaliation"
-        assert payload["filing_checklist"][1]["intake_status"] == {
-            "score": 0.44,
-            "ready_to_advance": False,
-            "remaining_gap_count": 2,
-            "contradiction_count": 1,
-            "blockers": ["resolve_contradictions", "collect_missing_timeline_details"],
-            "contradictions": [
-                {
-                    "summary": "Complaint date conflicts with schedule-cut date",
-                    "left_text": "",
-                    "right_text": "",
-                    "question": "What were the exact dates for the complaint and schedule change?",
-                    "severity": "high",
-                    "category": "",
-                }
-            ],
-        }
+        _assert_normalized_intake_status(
+            payload["filing_checklist"][1]["intake_status"],
+            score=0.44,
+            current_phase=None,
+            include_extended_fields=False,
+        )
         assert payload["filing_checklist"][1]["review_intent"] == {
             "user_id": None,
             "claim_type": "retaliation",
@@ -2385,11 +2398,15 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
                                 'claim_type': 'retaliation',
                                 'claim_element_id': 'causation',
                                 'claim_element_label': 'Causal connection',
+                                'action': 'fill_temporal_chronology_gap',
                                 'preferred_support_kind': 'evidence',
                                 'fallback_lanes': ['authority', 'testimony'],
                                 'source_quality_target': 'high_quality_document',
                                 'resolution_status': 'still_open',
                                 'resolution_notes': '',
+                                'temporal_rule_profile_id': 'retaliation_temporal_profile_v1',
+                                'temporal_rule_status': 'partial',
+                                'temporal_rule_blocking_reasons': ['Need ordering between report and termination.'],
                             }
                         ],
                         'claim_support_packet_summary': {
@@ -2397,6 +2414,11 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
                             'proof_readiness_score': 0.47,
                             'claim_support_unresolved_without_review_path_count': 1,
                             'evidence_completion_ready': False,
+                            'temporal_gap_task_count': 1,
+                            'temporal_gap_targeted_task_count': 1,
+                            'temporal_rule_status_counts': {'partial': 1},
+                            'temporal_rule_blocking_reason_counts': {'Need ordering between report and termination.': 1},
+                            'temporal_resolution_status_counts': {'still_open': 1},
                         },
                     },
                 }
@@ -2416,6 +2438,8 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
     assert payload['trace']['intake_constraints'][0]['code'] == 'intake_blocker'
     assert payload['trace']['intake_case_summary']['alignment_evidence_tasks'][0]['fallback_lanes'] == ['authority', 'testimony']
     assert payload['trace']['intake_case_summary']['claim_support_packet_summary']['proof_readiness_score'] == 0.47
+    assert payload['trace']['intake_case_summary']['alignment_evidence_tasks'][0]['temporal_rule_status'] == 'partial'
+    assert payload['trace']['intake_case_summary']['claim_support_packet_summary']['temporal_gap_task_count'] == 1
 
 
 def test_review_surface_document_builder_flow_serves_page_and_supports_api_round_trip():
@@ -2648,24 +2672,7 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
                 },
             },
         }
-        assert payload['review_links']['intake_status'] == {
-            'current_phase': 'intake',
-            'ready_to_advance': False,
-            'score': 0.38,
-            'remaining_gap_count': 2,
-            'contradiction_count': 1,
-            'blockers': ['resolve_contradictions', 'collect_missing_timeline_details'],
-            'contradictions': [
-                {
-                    'summary': 'Complaint date conflicts with schedule-cut date',
-                    'left_text': '',
-                    'right_text': '',
-                    'question': 'What were the exact dates for the complaint and schedule change?',
-                    'severity': 'high',
-                    'category': '',
-                }
-            ],
-        }
+        _assert_normalized_intake_status(payload['review_links']['intake_status'], score=0.38)
         assert payload.get('document_optimization') in (None, {})
         assert any(
             warning.get('code') == 'intake_blocker'
@@ -3036,24 +3043,7 @@ def test_review_surface_returns_document_optimization_contract_end_to_end(monkey
     assert report['intake_case_summary']['claim_support_packet_summary']['claim_count'] == 2
     assert report['intake_case_summary']['claim_support_packet_summary']['proof_readiness_score'] == 0.47
     assert report['intake_case_summary']['claim_support_packet_summary']['evidence_completion_ready'] is False
-    assert report['intake_status'] == {
-        'current_phase': 'intake',
-        'ready_to_advance': False,
-        'score': 0.38,
-        'remaining_gap_count': 2,
-        'contradiction_count': 1,
-        'blockers': ['resolve_contradictions', 'collect_missing_timeline_details'],
-        'contradictions': [
-            {
-                'summary': 'Complaint date conflicts with schedule-cut date',
-                'left_text': '',
-                'right_text': '',
-                'question': 'What were the exact dates for the complaint and schedule change?',
-                'severity': 'high',
-                'category': '',
-            }
-        ],
-    }
+    _assert_normalized_intake_status(report['intake_status'], score=0.38)
     assert report['intake_constraints'] == [
         {
             'severity': 'warning',

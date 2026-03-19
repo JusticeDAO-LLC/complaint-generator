@@ -32,6 +32,13 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "recent-validation-outcome-status" in content
     assert "recent-validation-outcome-chips" in content
     assert "recent-validation-outcome-notes" in content
+    assert "alignment-promotion-drift-card" in content
+    assert "alignment-promotion-drift-title" in content
+    assert "alignment-promotion-drift-status" in content
+    assert "alignment-promotion-drift-chips" in content
+    assert "alignment-promotion-drift-notes" in content
+    assert "alignment-validation-focus-list" in content
+    assert "Promotion Drift Summary" in content
     assert "Validate promoted support" in content
     assert "intake-next-action-open-promoted" in content
     assert "Review promoted updates" in content
@@ -114,8 +121,20 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "promoted testimony:" in content
     assert "promoted document:" in content
     assert "promotion drift:" in content
+    assert "resolved supported:" in content
     assert "pending conversion:" in content
     assert "drift ratio:" in content
+    assert "Promoted support and packet validation are moving at a comparable pace." in content
+    assert "validation target:" in content
+    assert "promotion kind:" in content
+    assert "Validation focus for ${humanizeQueryValue(claimType || 'claim')} / ${humanizeQueryValue(claimElementId || 'element')}" in content
+    assert "Promoted support for this element still needs validation before packet support can be treated as settled." in content
+    assert "validation-focus-open-promoted-button" in content
+    assert "validation-focus-prefill-testimony-button" in content
+    assert "validation-focus-prefill-document-button" in content
+    assert "Showing promoted alignment updates for the selected validation target." in content
+    assert "Testimony form prefilled from validation focus target." in content
+    assert "Document form prefilled from validation focus target." in content
     assert "prefill-testimony-update-button" in content
     assert "prefill-document-update-button" in content
     assert "Load Into Document Form" in content
@@ -438,6 +457,17 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "document-workflow-action-link" in content
     assert "renderWorkflowPriority(reviewLinks, intakeCaseSummary, manualReviewClaims, pendingReviewClaims)" in content
     assert "resolveDocumentWorkflowAction(reviewLinks, intakeCaseSummary)" in content
+    assert "Confirm intake summary before drafting" in content
+    assert "Resolve intake gaps before drafting" in content
+    assert "Continue intake denoising before drafting" in content
+    assert "actionKind = 'button'" in content
+    assert 'onclick="confirmIntakeSummaryFromDocument()"' in content
+    assert "Review intake graph inputs before drafting" in content
+    assert "Review dependency inputs before drafting" in content
+    assert "Review legal graph inputs before drafting" in content
+    assert "Review matching inputs before drafting" in content
+    assert "Build support packets before drafting" in content
+    assert "Evidence is ready for formal drafting" in content
     assert "Intake Review Signals" in content
     assert "Intake blockers:" in content
     assert "Tracked intake contradictions:" in content
@@ -532,6 +562,16 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Packet temporal issues:" in content
     assert "Packet temporal ready elements:" in content
     assert "Packet temporal warnings:" in content
+    assert "Alignment chronology tasks:" in content
+    assert "Alignment chronology targeted:" in content
+    assert "Alignment chronology status:" in content
+    assert "Alignment chronology blockers:" in content
+    assert "Alignment chronology handoffs:" in content
+    assert "Packet chronology tasks:" in content
+    assert "Packet chronology targeted:" in content
+    assert "Packet chronology status:" in content
+    assert "Packet chronology blockers:" in content
+    assert "Packet chronology handoffs:" in content
     assert "renderTriageChipRow" in content
     assert "triage-chip" in content
     assert "Question Blocking Levels" in content
@@ -715,6 +755,16 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "Packet temporal issues:" in content
     assert "Packet temporal ready elements:" in content
     assert "Packet temporal warnings:" in content
+    assert "Alignment chronology tasks:" in content
+    assert "Alignment chronology targeted:" in content
+    assert "Alignment chronology status:" in content
+    assert "Alignment chronology blockers:" in content
+    assert "Alignment chronology handoffs:" in content
+    assert "Packet chronology tasks:" in content
+    assert "Packet chronology targeted:" in content
+    assert "Packet chronology status:" in content
+    assert "Packet chronology blockers:" in content
+    assert "Packet chronology handoffs:" in content
     assert "Corroboration-required contradictions:" in content
     assert "Contradiction lanes:" in content
     assert "Affected elements" in content

@@ -1251,6 +1251,23 @@ class TestPhaseManager:
                 },
             ],
         )
+        pm.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_validation_focus_summary',
+            {
+                'count': 1,
+                'claim_type_counts': {'retaliation': 1},
+                'promotion_kind_counts': {'testimony': 1},
+                'targets': [
+                    {
+                        'claim_type': 'retaliation',
+                        'claim_element_id': 'causation',
+                        'promotion_kind': 'testimony',
+                        'evidence_sequence': 2,
+                    }
+                ],
+            },
+        )
 
         assert pm.is_phase_complete(ComplaintPhase.EVIDENCE)
         action = pm.get_next_action()
@@ -1259,6 +1276,83 @@ class TestPhaseManager:
         assert action['drift_summary']['drift_flag'] is True
         assert action['claim_type'] == 'retaliation'
         assert action['claim_element_id'] == 'causation'
+        assert action['validation_focus_summary']['count'] == 1
+        assert action['validation_target_count'] == 1
+        assert action['primary_validation_target']['claim_element_id'] == 'causation'
+
+    def test_validate_promoted_support_action_uses_primary_focus_target_when_multiple_targets_exist(self):
+        """Promotion drift should still expose a primary validation target when multiple promoted items exist."""
+        pm = PhaseManager()
+        pm.current_phase = ComplaintPhase.EVIDENCE
+
+        pm.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'claim_support_packets',
+            {
+                'retaliation': {
+                    'claim_type': 'retaliation',
+                    'elements': [
+                        {
+                            'element_id': 'protected_activity',
+                            'support_status': 'partially_supported',
+                            'recommended_next_step': 'collect_witness_support',
+                            'resolution_status': 'awaiting_testimony',
+                            'contradiction_count': 0,
+                        },
+                        {
+                            'element_id': 'adverse_action',
+                            'support_status': 'partially_supported',
+                            'recommended_next_step': 'collect_documentary_support',
+                            'resolution_status': 'awaiting_document',
+                            'contradiction_count': 0,
+                        },
+                    ],
+                }
+            },
+        )
+        pm.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_promotion_drift_summary',
+            {
+                'drift_flag': True,
+                'promoted_count': 2,
+                'resolved_supported_count': 0,
+                'pending_conversion_count': 2,
+                'drift_ratio': 1.0,
+            },
+        )
+        pm.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_validation_focus_summary',
+            {
+                'count': 2,
+                'claim_type_counts': {'retaliation': 2},
+                'promotion_kind_counts': {'document': 1, 'testimony': 1},
+                'targets': [
+                    {
+                        'claim_type': 'retaliation',
+                        'claim_element_id': 'adverse_action',
+                        'promotion_kind': 'document',
+                        'evidence_sequence': 4,
+                    },
+                    {
+                        'claim_type': 'retaliation',
+                        'claim_element_id': 'protected_activity',
+                        'promotion_kind': 'testimony',
+                        'evidence_sequence': 3,
+                    },
+                ],
+            },
+        )
+
+        action = pm.get_next_action()
+
+        assert action['action'] == 'validate_promoted_support'
+        assert action['validation_target_count'] == 2
+        assert action['claim_type'] == 'retaliation'
+        assert action['claim_element_id'] == 'adverse_action'
+        assert action['primary_validation_target']['claim_element_id'] == 'adverse_action'
+        assert action['primary_validation_target']['promotion_kind'] == 'document'
 
     def test_evidence_phase_blocks_on_contradicted_claim_support_packets(self):
         """Contradicted support packets should prevent evidence completion and suggest conflict resolution."""

@@ -367,6 +367,7 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
     alignment_task_updates = raw_status.get("alignment_task_updates")
     alignment_task_update_history = raw_status.get("alignment_task_update_history")
     recent_validation_outcome = raw_status.get("recent_validation_outcome")
+    alignment_validation_focus_summary = raw_status.get("alignment_validation_focus_summary")
     alignment_promotion_drift_summary = raw_status.get("alignment_promotion_drift_summary")
     next_action = raw_status.get("next_action")
     question_candidate_summary = raw_status.get("question_candidate_summary")
@@ -465,6 +466,11 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
         "alignment_task_update_summary": alignment_task_update_summary,
         "recent_validation_outcome": (
             recent_validation_outcome if isinstance(recent_validation_outcome, dict) else {}
+        ),
+        "alignment_validation_focus_summary": (
+            alignment_validation_focus_summary
+            if isinstance(alignment_validation_focus_summary, dict)
+            else {}
         ),
         "alignment_promotion_drift_summary": (
             alignment_promotion_drift_summary

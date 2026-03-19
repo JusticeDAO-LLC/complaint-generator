@@ -793,6 +793,9 @@ class TestMediatorThreePhaseIntegration:
         assert status['alignment_task_update_summary']['promoted_testimony_count'] == 1
         assert status['alignment_task_update_summary']['promoted_document_count'] == 1
         assert status['alignment_task_update_summary']['resolution_status_counts']['promoted_to_testimony'] == 1
+        assert status['alignment_validation_focus_summary']['count'] == 2
+        assert status['alignment_validation_focus_summary']['claim_type_counts']['retaliation'] == 2
+        assert status['alignment_validation_focus_summary']['targets'][0]['promotion_kind'] == 'document'
         assert status['alignment_promotion_drift_summary']['promoted_count'] == 2
         assert status['alignment_promotion_drift_summary']['pending_conversion_count'] == 2
         assert status['alignment_promotion_drift_summary']['drift_flag'] is True

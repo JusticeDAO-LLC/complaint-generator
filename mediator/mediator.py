@@ -6476,6 +6476,80 @@ class Mediator:
 			'drift_flag': drift_flag,
 		}
 
+	def _summarize_alignment_validation_focus(
+		self,
+		alignment_task_updates: Any,
+		alignment_task_update_history: Any,
+	) -> Dict[str, Any]:
+		visible_updates = (
+			alignment_task_update_history
+			if isinstance(alignment_task_update_history, list) and alignment_task_update_history
+			else alignment_task_updates
+		)
+		latest_by_key: Dict[str, Dict[str, Any]] = {}
+		for index, update in enumerate(visible_updates if isinstance(visible_updates, list) else []):
+			if not isinstance(update, dict):
+				continue
+			task_id = str(update.get('task_id') or '').strip()
+			claim_type = str(update.get('claim_type') or '').strip()
+			claim_element_id = str(update.get('claim_element_id') or '').strip()
+			if not task_id and not (claim_type and claim_element_id):
+				continue
+			key = task_id or f'{claim_type}:{claim_element_id}'
+			try:
+				sequence = int(update.get('evidence_sequence', index) or index)
+			except (TypeError, ValueError):
+				sequence = index
+			previous = latest_by_key.get(key)
+			try:
+				previous_sequence = int(previous.get('evidence_sequence', -1) or -1) if isinstance(previous, dict) else -1
+			except (TypeError, ValueError):
+				previous_sequence = -1
+			if previous is None or sequence >= previous_sequence:
+				latest_by_key[key] = dict(update)
+
+		claim_type_counts: Dict[str, int] = {}
+		promotion_kind_counts: Dict[str, int] = {}
+		targets: List[Dict[str, Any]] = []
+		for update in latest_by_key.values():
+			resolution_status = str(update.get('resolution_status') or '').strip().lower()
+			if resolution_status not in {'promoted_to_testimony', 'promoted_to_document'}:
+				continue
+			claim_type = str(update.get('claim_type') or '').strip()
+			claim_element_id = str(update.get('claim_element_id') or '').strip()
+			promotion_kind = str(update.get('promotion_kind') or '').strip().lower()
+			if not promotion_kind and resolution_status.startswith('promoted_to_'):
+				promotion_kind = resolution_status.removeprefix('promoted_to_')
+			if claim_type:
+				claim_type_counts[claim_type] = claim_type_counts.get(claim_type, 0) + 1
+			if promotion_kind:
+				promotion_kind_counts[promotion_kind] = promotion_kind_counts.get(promotion_kind, 0) + 1
+			targets.append(
+				{
+					'task_id': str(update.get('task_id') or '').strip(),
+					'claim_type': claim_type,
+					'claim_element_id': claim_element_id,
+					'promotion_kind': promotion_kind,
+					'promotion_ref': str(update.get('promotion_ref') or '').strip(),
+					'answer_preview': str(update.get('answer_preview') or '').strip(),
+					'evidence_sequence': int(update.get('evidence_sequence', 0) or 0),
+				}
+			)
+
+		targets.sort(
+			key=lambda item: (
+				-int(item.get('evidence_sequence', 0) or 0),
+				str(item.get('claim_type') or ''),
+				str(item.get('claim_element_id') or ''),
+			)
+		)
+		return {
+			'count': len(targets),
+			'claim_type_counts': claim_type_counts,
+			'promotion_kind_counts': promotion_kind_counts,
+			'targets': targets,
+		}
+
 	def _summarize_recent_validation_outcome(
 		self,
 		alignment_task_updates: Any,
@@ -7740,6 +7814,10 @@ class Mediator:
 			alignment_task_update_history,
 			alignment_evidence_tasks,
 		)
+		alignment_validation_focus_summary = self._summarize_alignment_validation_focus(
+			alignment_task_updates,
+			alignment_task_update_history,
+		)
 		recent_validation_outcome = self._summarize_recent_validation_outcome(
 			alignment_task_updates,
 			alignment_task_update_history,
@@ -7808,6 +7886,7 @@ class Mediator:
 			'alignment_task_updates': alignment_task_updates if isinstance(alignment_task_updates, list) else [],
 			'alignment_task_update_history': alignment_task_update_history if isinstance(alignment_task_update_history, list) else [],
 			'alignment_task_update_summary': alignment_task_update_summary,
+			'alignment_validation_focus_summary': alignment_validation_focus_summary,
 			'recent_validation_outcome': recent_validation_outcome,
 			'alignment_promotion_drift_summary': self._summarize_alignment_promotion_drift(
 				alignment_task_update_summary,

@@ -1970,6 +1970,84 @@
                 .replace(/\b\w/g, (char) => char.toUpperCase());
         }
 
+        function incrementSummaryCount(target, label) {
+            const normalizedLabel = String(label || '').trim().toLowerCase();
+            if (!normalizedLabel) {
+                return;
+            }
+            target[normalizedLabel] = (target[normalizedLabel] || 0) + 1;
+        }
+
+        function normalizeSummaryCountMap(value) {
+            const source = value && typeof value === 'object' ? value : {};
+            const normalized = {};
+            Object.entries(source).forEach(([label, count]) => {
+                const normalizedLabel = String(label || '').trim();
+                const normalizedCount = Number(count || 0);
+                if (!normalizedLabel || !Number.isFinite(normalizedCount) || normalizedCount <= 0) {
+                    return;
+                }
+                normalized[normalizedLabel] = normalizedCount;
+            });
+            return normalized;
+        }
+
+        function isTemporalAlignmentTask(task) {
+            if (!task || typeof task !== 'object') {
+                return false;
+            }
+            const action = String(task.action || '').trim().toLowerCase();
+            const temporalRuleProfileId = String(task.temporal_rule_profile_id || '').trim();
+            const temporalRuleStatus = String(task.temporal_rule_status || '').trim();
+            const temporalRuleBlockingReasons = Array.isArray(task.temporal_rule_blocking_reasons)
+                ? task.temporal_rule_blocking_reasons.filter((reason) => String(reason || '').trim())
+                : [];
+            const temporalRuleFollowUps = Array.isArray(task.temporal_rule_follow_ups)
+                ? task.temporal_rule_follow_ups.filter((item) => String(item || '').trim())
+                : [];
+            return Boolean(
+                action === 'fill_temporal_chronology_gap'
+                || temporalRuleProfileId
+                || temporalRuleStatus
+                || temporalRuleBlockingReasons.length
+                || temporalRuleFollowUps.length
+            );
+        }
+
+        function summarizeTemporalAlignmentTasks(tasks) {
+            const taskList = Array.isArray(tasks) ? tasks : [];
+            const summary = {
+                count: taskList.filter((task) => task && typeof task === 'object').length,
+                temporal_gap_task_count: 0,
+                temporal_gap_targeted_task_count: 0,
+                temporal_rule_status_counts: {},
+                temporal_rule_blocking_reason_counts: {},
+                temporal_resolution_status_counts: {},
+            };
+            taskList.forEach((task) => {
+                if (!task || typeof task !== 'object' || !isTemporalAlignmentTask(task)) {
+                    return;
+                }
+                summary.temporal_gap_task_count += 1;
+                const temporalRuleStatus = String(task.temporal_rule_status || '').trim().toLowerCase();
+                if (temporalRuleStatus === 'partial' || temporalRuleStatus === 'failed') {
+                    summary.temporal_gap_targeted_task_count += 1;
+                }
+                incrementSummaryCount(summary.temporal_rule_status_counts, temporalRuleStatus);
+                (Array.isArray(task.temporal_rule_blocking_reasons) ? task.temporal_rule_blocking_reasons : []).forEach((reason) => {
+                    incrementSummaryCount(summary.temporal_rule_blocking_reason_counts, reason);
+                });
+                incrementSummaryCount(summary.temporal_resolution_status_counts, task.resolution_status);
+            });
+            return summary;
+        }
+
+        function formatSummaryCountLine(counts, { humanizeLabels = true } = {}) {
+            return Object.entries(normalizeSummaryCountMap(counts))
+                .map(([label, count]) => `${humanizeLabels ? humanizeKey(label) : label}=${count}`)
+                .join(', ');
+        }
+
         const FOLLOW_UP_HANDOFF_STATUSES = new Set([
             'awaiting_complainant_record',
             'awaiting_third_party_record',
@@ -2299,8 +2377,14 @@
             let description = 'The review dashboard still has a higher-priority step than drafting for this matter.';
             let actionLabel = 'Open Review Dashboard';
             let actionUrl = dashboardUrl;
+            let actionKind = 'link';
 
-            if (action === 'validate_promoted_support') {
+            if (action === 'confirm_intake_summary') {
+                title = 'Confirm intake summary before drafting';
+                description = 'The current intake summary snapshot still needs complainant confirmation before drafting should continue.';
+                actionLabel = 'Confirm intake summary';
+                actionKind = 'button';
+            } else if (action === 'validate_promoted_support') {
                 title = 'Validate promoted support before drafting';
                 description = 'Promoted testimony or document support still needs validation before the draft can rely on it.';
                 actionLabel = 'Review promoted updates';
@@ -2336,28 +2420,32 @@
             } else if (action === 'build_knowledge_graph') {
                 title = 'Review intake graph inputs before drafting';
                 description = 'The intake graph inputs are not complete enough to support a stable draft handoff yet.';
-                actionLabel = 'Open Review Dashboard';
-                actionUrl = dashboardUrl;
+                actionLabel = 'Review intake graph inputs';
+                actionUrl = appendSectionReviewIntentToReviewUrl(resolveSectionReviewUrl('summary_of_facts', {}, reviewLinks), 'summary_of_facts');
             } else if (action === 'build_dependency_graph') {
                 title = 'Review dependency inputs before drafting';
                 description = 'Cross-section dependency mapping is still incomplete, so the case theory may not be stable enough for drafting.';
-                actionLabel = 'Open Review Dashboard';
-                actionUrl = dashboardUrl;
+                actionLabel = 'Review dependency inputs';
+                actionUrl = appendSectionReviewIntentToReviewUrl(resolveSectionReviewUrl('chronology', {}, reviewLinks), 'chronology');
             } else if (action === 'build_legal_graph') {
                 title = 'Review legal graph inputs before drafting';
                 description = 'Formalization still needs the legal graph that organizes statutes and requirements for this complaint.';
                 actionLabel = 'Review legal graph inputs';
-                actionUrl = baseClaimUrl;
+                actionUrl = appendSectionReviewIntentToReviewUrl(resolveSectionReviewUrl('claims_for_relief', {}, reviewLinks), 'claims_for_relief');
             } else if (action === 'perform_neurosymbolic_matching') {
                 title = 'Review matching inputs before drafting';
                 description = 'Formal claim-to-law matching is still pending, so the draft may outrun the current legal targeting.';
                 actionLabel = 'Review matching inputs';
-                actionUrl = baseClaimUrl;
+                actionUrl = appendSectionReviewIntentToReviewUrl(resolveSectionReviewUrl('claims_for_relief', {}, reviewLinks), 'claims_for_relief');
             } else if (action === 'build_claim_support_packets') {
                 title = 'Build support packets before drafting';
                 description = 'Evidence has been collected, but the packet-building step still needs to run before the draft can rely on those signals.';
-                actionLabel = 'Open Review Dashboard';
-                actionUrl = dashboardUrl;
+                actionLabel = 'Build support packets';
+                actionUrl = appendAlignmentTaskViewToReviewUrl(
+                    appendSupportKindToReviewUrl(baseClaimUrl, 'evidence'),
+                    'active',
+                    'newest_first',
+                );
             } else if (action === 'complete_evidence') {
                 status = 'ready';
                 title = 'Evidence is ready for formal drafting';
@@ -2401,6 +2489,7 @@
                 description,
                 actionLabel,
                 actionUrl,
+                actionKind,
                 dashboardUrl,
                 chips,
             };
@@ -2416,9 +2505,12 @@
             if (!workflowPriority) {
                 return '';
             }
-            const secondaryDashboardLink = workflowPriority.actionUrl !== workflowPriority.dashboardUrl
+            const secondaryDashboardLink = workflowPriority.actionKind !== 'link' || workflowPriority.actionUrl !== workflowPriority.dashboardUrl
                 ? `<a class="inline-link" data-review-intent-link="true" href="${escapeHtml(workflowPriority.dashboardUrl)}">Open Review Dashboard</a>`
                 : '';
+            const primaryActionControl = workflowPriority.actionKind === 'button'
+                ? `<button type="button" class="secondary" id="document-workflow-action-link" onclick="confirmIntakeSummaryFromDocument()">${escapeHtml(workflowPriority.actionLabel)}</button>`
+                : `<a class="inline-link" data-review-intent-link="true" id="document-workflow-action-link" href="${escapeHtml(workflowPriority.actionUrl)}">${escapeHtml(workflowPriority.actionLabel)}</a>`;
             return `
                 <div class="intake-handoff-card" id="document-workflow-priority" data-status="${escapeHtml(workflowPriority.status)}">
                     <div class="readiness-subtitle">Workflow Priority</div>
@@ -2429,7 +2521,7 @@
                     <div class="preview-meta">${escapeHtml(workflowPriority.description)}</div>
                     <div class="triage-chip-row">${workflowPriority.chips.join('')}</div>
                     <div class="inline-link-row" style="margin-top: 12px;">
-                        <a class="inline-link" data-review-intent-link="true" id="document-workflow-action-link" href="${escapeHtml(workflowPriority.actionUrl)}">${escapeHtml(workflowPriority.actionLabel)}</a>
+                        ${primaryActionControl}
                         ${secondaryDashboardLink}
                     </div>
                 </div>
@@ -3122,6 +3214,9 @@
             const remedyProfile = intakeCaseSummary.remedy_profile && typeof intakeCaseSummary.remedy_profile === 'object' ? intakeCaseSummary.remedy_profile : {};
             const questionCandidateSummary = intakeCaseSummary.question_candidate_summary && typeof intakeCaseSummary.question_candidate_summary === 'object' ? intakeCaseSummary.question_candidate_summary : {};
             const alignmentEvidenceTasks = Array.isArray(intakeCaseSummary.alignment_evidence_tasks) ? intakeCaseSummary.alignment_evidence_tasks : [];
+            const alignmentTaskSummary = intakeCaseSummary.alignment_task_summary && typeof intakeCaseSummary.alignment_task_summary === 'object'
+                ? intakeCaseSummary.alignment_task_summary
+                : summarizeTemporalAlignmentTasks(alignmentEvidenceTasks);
             const claimSupportPacketSummary = intakeCaseSummary.claim_support_packet_summary && typeof intakeCaseSummary.claim_support_packet_summary === 'object' ? intakeCaseSummary.claim_support_packet_summary : {};
             const questionSourceCounts = questionCandidateSummary.source_counts && typeof questionCandidateSummary.source_counts === 'object' ? questionCandidateSummary.source_counts : {};
             const questionGoalCounts = questionCandidateSummary.question_goal_counts && typeof questionCandidateSummary.question_goal_counts === 'object' ? questionCandidateSummary.question_goal_counts : {};
@@ -3380,6 +3475,21 @@
                 Object.keys(questionBlockingCounts).length
                     ? `Question blocking levels: ${Object.entries(questionBlockingCounts).map(([level, count]) => `${humanizeKey(level)} ${count}`).join(', ')}`
                     : '',
+                alignmentTaskSummary.temporal_gap_task_count != null
+                    ? `Alignment chronology tasks: ${Number(alignmentTaskSummary.temporal_gap_task_count || 0)}`
+                    : '',
+                alignmentTaskSummary.temporal_gap_targeted_task_count != null
+                    ? `Alignment chronology targeted: ${Number(alignmentTaskSummary.temporal_gap_targeted_task_count || 0)}`
+                    : '',
+                formatSummaryCountLine(alignmentTaskSummary.temporal_rule_status_counts)
+                    ? `Alignment chronology status: ${formatSummaryCountLine(alignmentTaskSummary.temporal_rule_status_counts)}`
+                    : '',
+                formatSummaryCountLine(alignmentTaskSummary.temporal_rule_blocking_reason_counts, { humanizeLabels: false })
+                    ? `Alignment chronology blockers: ${formatSummaryCountLine(alignmentTaskSummary.temporal_rule_blocking_reason_counts, { humanizeLabels: false })}`
+                    : '',
+                formatSummaryCountLine(alignmentTaskSummary.temporal_resolution_status_counts)
+                    ? `Alignment chronology handoffs: ${formatSummaryCountLine(alignmentTaskSummary.temporal_resolution_status_counts)}`
+                    : '',
                 claimSupportPacketSummary.claim_count != null ? `Packet claims: ${claimSupportPacketSummary.claim_count}` : '',
                 claimSupportPacketSummary.element_count != null ? `Packet elements: ${claimSupportPacketSummary.element_count}` : '',
                 claimSupportPacketSummary.status_counts && typeof claimSupportPacketSummary.status_counts === 'object'
@@ -3426,6 +3536,21 @@
                     : '',
                 claimSupportPacketSummary.temporal_warning_count != null
                     ? `Packet temporal warnings: ${Number(claimSupportPacketSummary.temporal_warning_count || 0)}`
+                    : '',
+                claimSupportPacketSummary.temporal_gap_task_count != null
+                    ? `Packet chronology tasks: ${Number(claimSupportPacketSummary.temporal_gap_task_count || 0)}`
+                    : '',
+                claimSupportPacketSummary.temporal_gap_targeted_task_count != null
+                    ? `Packet chronology targeted: ${Number(claimSupportPacketSummary.temporal_gap_targeted_task_count || 0)}`
+                    : '',
+                formatSummaryCountLine(claimSupportPacketSummary.temporal_rule_status_counts)
+                    ? `Packet chronology status: ${formatSummaryCountLine(claimSupportPacketSummary.temporal_rule_status_counts)}`
+                    : '',
+                formatSummaryCountLine(claimSupportPacketSummary.temporal_rule_blocking_reason_counts, { humanizeLabels: false })
+                    ? `Packet chronology blockers: ${formatSummaryCountLine(claimSupportPacketSummary.temporal_rule_blocking_reason_counts, { humanizeLabels: false })}`
+                    : '',
+                formatSummaryCountLine(claimSupportPacketSummary.temporal_resolution_status_counts)
+                    ? `Packet chronology handoffs: ${formatSummaryCountLine(claimSupportPacketSummary.temporal_resolution_status_counts)}`
                     : '',
                 Array.isArray(claimSupportPacketSummary.recommended_actions) && claimSupportPacketSummary.recommended_actions.length
                     ? `Packet next steps: ${claimSupportPacketSummary.recommended_actions.join(' | ')}`

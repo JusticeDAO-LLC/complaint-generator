@@ -279,6 +279,25 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
             "drift_ratio": 1.0,
             "drift_flag": True,
         },
+        "alignment_validation_focus_summary": {
+            "count": 2,
+            "claim_type_counts": {"retaliation": 2},
+            "promotion_kind_counts": {"testimony": 1, "document": 1},
+            "targets": [
+                {
+                    "claim_type": "retaliation",
+                    "claim_element_id": "adverse_action",
+                    "promotion_kind": "document",
+                    "evidence_sequence": 4,
+                },
+                {
+                    "claim_type": "retaliation",
+                    "claim_element_id": "protected_activity",
+                    "promotion_kind": "testimony",
+                    "evidence_sequence": 3,
+                },
+            ],
+        },
         "next_action": {
             "action": "validate_promoted_support",
             "pending_conversion_count": 2,
@@ -428,6 +447,11 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
         "still_open": 1,
         "partially_addressed": 1,
         "promoted_to_testimony": 1,
+    }
+    assert summary["alignment_validation_focus_summary"]["count"] == 2
+    assert summary["alignment_validation_focus_summary"]["promotion_kind_counts"] == {
+        "testimony": 1,
+        "document": 1,
     }
     assert summary["recent_validation_outcome"]["resolution_status"] == "resolved_supported"
     assert summary["recent_validation_outcome"]["improved"] is True

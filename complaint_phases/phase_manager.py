@@ -639,12 +639,46 @@ class PhaseManager:
             'pending_conversion_count': pending_conversion_count,
             'promoted_count': promoted_count,
         }
+        validation_focus_summary = data.get('alignment_validation_focus_summary')
+        if isinstance(validation_focus_summary, dict):
+            action['validation_focus_summary'] = validation_focus_summary
+            action['validation_target_count'] = int(validation_focus_summary.get('count', 0) or 0)
+            targets = validation_focus_summary.get('targets')
+            if isinstance(targets, list) and targets and isinstance(targets[0], dict):
+                action['primary_validation_target'] = dict(targets[0])
         if len(focused_claim_types) == 1:
             action['claim_type'] = next(iter(focused_claim_types))
         if len(focused_element_keys) == 1:
             focused_claim_type, focused_element_id = next(iter(focused_element_keys))
             action['claim_type'] = focused_claim_type
             action['claim_element_id'] = focused_element_id
+        elif isinstance(validation_focus_summary, dict):
+            targets = validation_focus_summary.get('targets')
+            if isinstance(targets, list) and targets and isinstance(targets[0], dict):
+                focused_target = targets[0]
+                focused_claim_type = str(focused_target.get('claim_type') or '').strip()
+                focused_element_id = str(focused_target.get('claim_element_id') or '').strip()
+                if focused_claim_type:
+                    action['claim_type'] = focused_claim_type
+                if focused_element_id:
+                    action['claim_element_id'] = focused_element_id
+        elif promoted_targets:
+            promoted_targets.sort(
+                key=lambda update: int(update.get('evidence_sequence', 0) or 0),
+                reverse=True,
+            )
+            primary_target = promoted_targets[0]
+            action['primary_validation_target'] = {
+                'task_id': str(primary_target.get('task_id') or '').strip(),
+                'claim_type': str(primary_target.get('claim_type') or '').strip(),
+                'claim_element_id': str(primary_target.get('claim_element_id') or '').strip(),
+                'promotion_kind': self._normalize_evidence_escalation_status(
+                    str(primary_target.get('promotion_kind') or '').strip()
+                    or str(primary_target.get('resolution_status') or '').strip().removeprefix('promoted_to_')
+                ),
+                'promotion_ref': str(primary_target.get('promotion_ref') or '').strip(),
+                'evidence_sequence': int(primary_target.get('evidence_sequence', 0) or 0),
+            }
         return action
 
     def _get_next_packet_evidence_action(self, packets: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any] | None:
@@ -977,6 +1011,9 @@ class PhaseManager:
                     'action': 'resolve_support_conflicts',
                     'recommended_actions': list(data.get('claim_support_recommended_actions', [])),
                 }
+            drift_action = self._get_alignment_promotion_drift_action(data)
+            if drift_action is not None:
+                return drift_action
             if prioritized_alignment_tasks:
                 first_task = prioritized_alignment_tasks[0]
                 return {
@@ -991,9 +1028,6 @@ class PhaseManager:
             packet_action = self._get_next_packet_evidence_action(packets, data)
             if packet_action is not None:
                 return packet_action
-            drift_action = self._get_alignment_promotion_drift_action(data)
-            if drift_action is not None:
-                return drift_action
             if self._is_evidence_complete():
                 return {
                     'action': 'complete_evidence',

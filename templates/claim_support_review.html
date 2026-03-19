@@ -937,6 +937,15 @@
                         <div class="chip-row" id="recent-validation-outcome-chips"></div>
                         <div class="resolution-feedback-body" id="recent-validation-outcome-notes"></div>
                     </div>
+                    <div class="resolution-feedback" id="alignment-promotion-drift-card" hidden>
+                        <div class="resolution-feedback-head">
+                            <div class="resolution-feedback-title" id="alignment-promotion-drift-title">Promotion Drift Summary</div>
+                            <span class="status-pill" id="alignment-promotion-drift-status">stable</span>
+                        </div>
+                        <div class="chip-row" id="alignment-promotion-drift-chips"></div>
+                        <div class="resolution-feedback-body" id="alignment-promotion-drift-notes"></div>
+                    </div>
+                    <div class="question-list" id="alignment-validation-focus-list"></div>
                     <div class="chip-row" id="intake-case-claim-chips"></div>
                     <div class="chip-row" id="intake-claim-summary-chips" style="margin-top: 10px;"></div>
                     <div class="chip-row" id="intake-section-chips" style="margin-top: 10px;"></div>
@@ -1513,6 +1522,93 @@
             return String(value || '')
                 .replace(/_/g, ' ')
                 .replace(/\b\w/g, (char) => char.toUpperCase());
+        }
+
+        function incrementSummaryCount(counts, label) {
+            const normalizedLabel = String(label || '').trim();
+            if (!normalizedLabel) {
+                return;
+            }
+            counts[normalizedLabel] = Number(counts[normalizedLabel] || 0) + 1;
+        }
+
+        function normalizeSummaryCountMap(value) {
+            const source = value && typeof value === 'object' ? value : {};
+            const normalized = {};
+            Object.entries(source).forEach(([label, count]) => {
+                const normalizedLabel = String(label || '').trim();
+                const normalizedCount = Number(count || 0);
+                if (!normalizedLabel || !Number.isFinite(normalizedCount) || normalizedCount <= 0) {
+                    return;
+                }
+                normalized[normalizedLabel] = normalizedCount;
+            });
+            return normalized;
+        }
+
+        function isTemporalAlignmentTask(task) {
+            if (!task || typeof task !== 'object') {
+                return false;
+            }
+            const action = String(task.action || '').trim().toLowerCase();
+            const temporalRuleProfileId = String(task.temporal_rule_profile_id || '').trim();
+            const temporalRuleStatus = String(task.temporal_rule_status || '').trim();
+            const temporalRuleBlockingReasons = Array.isArray(task.temporal_rule_blocking_reasons)
+                ? task.temporal_rule_blocking_reasons.filter((reason) => String(reason || '').trim())
+                : [];
+            const temporalRuleFollowUps = Array.isArray(task.temporal_rule_follow_ups)
+                ? task.temporal_rule_follow_ups.filter((item) => String(item || '').trim())
+                : [];
+            return Boolean(
+                action === 'fill_temporal_chronology_gap'
+                || temporalRuleProfileId
+                || temporalRuleStatus
+                || temporalRuleBlockingReasons.length
+                || temporalRuleFollowUps.length
+            );
+        }
+
+        function summarizeTemporalAlignmentTasks(tasks) {
+            const taskList = Array.isArray(tasks) ? tasks : [];
+            const summary = {
+                count: taskList.filter((task) => task && typeof task === 'object').length,
+                status_counts: {},
+                resolution_status_counts: {},
+                temporal_gap_task_count: 0,
+                temporal_gap_targeted_task_count: 0,
+                temporal_rule_status_counts: {},
+                temporal_rule_blocking_reason_counts: {},
+                temporal_resolution_status_counts: {},
+            };
+            taskList.forEach((task) => {
+                if (!task || typeof task !== 'object') {
+                    return;
+                }
+                const supportStatus = String(task.support_status || '').trim().toLowerCase();
+                const resolutionStatus = String(task.resolution_status || '').trim().toLowerCase();
+                incrementSummaryCount(summary.status_counts, supportStatus);
+                incrementSummaryCount(summary.resolution_status_counts, resolutionStatus);
+                if (!isTemporalAlignmentTask(task)) {
+                    return;
+                }
+                summary.temporal_gap_task_count += 1;
+                const temporalRuleStatus = String(task.temporal_rule_status || '').trim().toLowerCase();
+                if (temporalRuleStatus === 'partial' || temporalRuleStatus === 'failed') {
+                    summary.temporal_gap_targeted_task_count += 1;
+                }
+                incrementSummaryCount(summary.temporal_rule_status_counts, temporalRuleStatus);
+                (Array.isArray(task.temporal_rule_blocking_reasons) ? task.temporal_rule_blocking_reasons : []).forEach((reason) => {
+                    incrementSummaryCount(summary.temporal_rule_blocking_reason_counts, reason);
+                });
+                incrementSummaryCount(summary.temporal_resolution_status_counts, resolutionStatus);
+            });
+            return summary;
+        }
+
+        function formatSummaryCountLine(counts, { humanizeLabels = true } = {}) {
+            return Object.entries(normalizeSummaryCountMap(counts))
+                .map(([label, count]) => `${humanizeLabels ? humanizeQueryValue(label) : label}=${count}`)
+                .join(', ');
         }
 
         const FOLLOW_UP_HANDOFF_STATUSES = new Set([
@@ -2541,6 +2637,12 @@
             const recentValidationOutcomeStatus = document.getElementById('recent-validation-outcome-status');
             const recentValidationOutcomeChips = document.getElementById('recent-validation-outcome-chips');
             const recentValidationOutcomeNotes = document.getElementById('recent-validation-outcome-notes');
+            const alignmentPromotionDriftCard = document.getElementById('alignment-promotion-drift-card');
+            const alignmentPromotionDriftTitle = document.getElementById('alignment-promotion-drift-title');
+            const alignmentPromotionDriftStatus = document.getElementById('alignment-promotion-drift-status');
+            const alignmentPromotionDriftChips = document.getElementById('alignment-promotion-drift-chips');
+            const alignmentPromotionDriftNotes = document.getElementById('alignment-promotion-drift-notes');
+            const alignmentValidationFocusList = document.getElementById('alignment-validation-focus-list');
             const intakeCaseSummary = summary && typeof summary === 'object' ? summary : {};
             const nextAction = intakeCaseSummary.next_action && typeof intakeCaseSummary.next_action === 'object'
                 ? intakeCaseSummary.next_action
@@ -2599,6 +2701,9 @@
             const alignmentEvidenceTasks = Array.isArray(intakeCaseSummary.alignment_evidence_tasks)
                 ? intakeCaseSummary.alignment_evidence_tasks
                 : [];
+            const alignmentTaskSummary = intakeCaseSummary.alignment_task_summary && typeof intakeCaseSummary.alignment_task_summary === 'object'
+                ? intakeCaseSummary.alignment_task_summary
+                : summarizeTemporalAlignmentTasks(alignmentEvidenceTasks);
             const alignmentTaskUpdates = Array.isArray(intakeCaseSummary.alignment_task_updates)
                 ? intakeCaseSummary.alignment_task_updates
                 : [];
@@ -2607,6 +2712,9 @@
                 : [];
             const alignmentPromotionDriftSummary = intakeCaseSummary.alignment_promotion_drift_summary && typeof intakeCaseSummary.alignment_promotion_drift_summary === 'object'
                 ? intakeCaseSummary.alignment_promotion_drift_summary
+                : {};
+            const alignmentValidationFocusSummary = intakeCaseSummary.alignment_validation_focus_summary && typeof intakeCaseSummary.alignment_validation_focus_summary === 'object'
+                ? intakeCaseSummary.alignment_validation_focus_summary
                 : {};
             const recentValidationOutcome = intakeCaseSummary.recent_validation_outcome && typeof intakeCaseSummary.recent_validation_outcome === 'object'
                 ? intakeCaseSummary.recent_validation_outcome
@@ -2667,6 +2775,91 @@
                 recentValidationOutcomeCard.classList.remove('is-error');
                 recentValidationOutcomeChips.innerHTML = '';
                 recentValidationOutcomeNotes.textContent = '';
+            }
+
+            const alignmentPromotionDriftRatio = Number(alignmentPromotionDriftSummary.drift_ratio || 0);
+            const alignmentPromotionPendingConversionCount = Number(alignmentPromotionDriftSummary.pending_conversion_count || 0);
+            const alignmentPromotionPromotedCount = Number(alignmentPromotionDriftSummary.promoted_count || 0);
+            const alignmentPromotionResolvedSupportedCount = Number(alignmentPromotionDriftSummary.resolved_supported_count || 0);
+            const alignmentPromotionProofReadinessScore = Number(alignmentPromotionDriftSummary.proof_readiness_score || 0);
+            const hasAlignmentPromotionDriftSummary = Boolean(
+                alignmentPromotionDriftSummary.drift_flag
+                || alignmentPromotionPromotedCount
+                || alignmentPromotionPendingConversionCount
+                || alignmentPromotionResolvedSupportedCount
+                || alignmentPromotionProofReadinessScore
+            );
+
+            if (hasAlignmentPromotionDriftSummary) {
+                alignmentPromotionDriftCard.hidden = false;
+                alignmentPromotionDriftCard.classList.toggle('is-error', Boolean(alignmentPromotionDriftSummary.drift_flag));
+                alignmentPromotionDriftTitle.textContent = 'Promotion Drift Summary';
+                alignmentPromotionDriftStatus.textContent = alignmentPromotionDriftSummary.drift_flag ? 'warning' : 'stable';
+                alignmentPromotionDriftChips.innerHTML = [
+                    `<span class="chip">promoted updates: ${alignmentPromotionPromotedCount}</span>`,
+                    `<span class="chip">resolved supported: ${alignmentPromotionResolvedSupportedCount}</span>`,
+                    `<span class="chip">pending conversion: ${alignmentPromotionPendingConversionCount}</span>`,
+                    `<span class="chip">drift ratio: ${alignmentPromotionDriftRatio.toFixed(2)}</span>`,
+                    `<span class="chip">proof readiness: ${alignmentPromotionProofReadinessScore.toFixed(2)}</span>`,
+                ].join('');
+                alignmentPromotionDriftNotes.textContent = alignmentPromotionDriftSummary.drift_flag
+                    ? 'Promoted testimony or document support is accumulating faster than packet validation is reaching resolved supported status.'
+                    : 'Promoted support and packet validation are moving at a comparable pace.';
+            } else {
+                alignmentPromotionDriftCard.hidden = true;
+                alignmentPromotionDriftCard.classList.remove('is-error');
+                alignmentPromotionDriftChips.innerHTML = '';
+                alignmentPromotionDriftNotes.textContent = '';
+            }
+
+            const validationFocusTargets = Array.isArray(alignmentValidationFocusSummary.targets)
+                ? alignmentValidationFocusSummary.targets
+                : [];
+            if (!validationFocusTargets.length) {
+                alignmentValidationFocusList.innerHTML = '';
+            } else {
+                alignmentValidationFocusList.innerHTML = validationFocusTargets.map((target) => {
+                    const claimType = String(target.claim_type || '').trim();
+                    const claimElementId = String(target.claim_element_id || '').trim();
+                    const promotionKind = String(target.promotion_kind || '').trim();
+                    const evidenceSequence = Number(target.evidence_sequence || 0);
+                    const focusChips = [
+                        `<span class="chip">validation target: ${humanizeQueryValue(claimElementId || 'unknown')}</span>`,
+                        `<span class="chip">claim: ${humanizeQueryValue(claimType || 'unknown')}</span>`,
+                        `<span class="chip">promotion kind: ${humanizeQueryValue(promotionKind || 'unknown')}</span>`,
+                        `<span class="chip">evidence event: ${evidenceSequence}</span>`,
+                    ];
+                    if (target.promotion_ref) {
+                        focusChips.push(`<span class="chip">promotion ref: ${target.promotion_ref}</span>`);
+                    }
+                    return `
+                        <article class="task-card">
+                            <strong>Validation focus for ${humanizeQueryValue(claimType || 'claim')} / ${humanizeQueryValue(claimElementId || 'element')}</strong>
+                            <div class="chip-row" style="margin-top: 8px;">${focusChips.join('')}</div>
+                            <div style="margin-top: 8px;">Promoted support for this element still needs validation before packet support can be treated as settled.</div>
+                            <div class="button-row" style="margin-top: 12px;">
+                                <button
+                                    class="button-secondary validation-focus-open-promoted-button"
+                                    type="button"
+                                    data-claim-type="${claimType}"
+                                    data-claim-element-id="${claimElementId}"
+                                >Review promoted updates</button>
+                                <button
+                                    class="button-tertiary validation-focus-prefill-testimony-button"
+                                    type="button"
+                                    data-claim-type="${claimType}"
+                                    data-claim-element-id="${claimElementId}"
+                                >Prefill testimony validation</button>
+                                <button
+                                    class="button-tertiary validation-focus-prefill-document-button"
+                                    type="button"
+                                    data-claim-type="${claimType}"
+                                    data-claim-element-id="${claimElementId}"
+                                >Prefill document validation</button>
+                            </div>
+                        </article>
+                    `;
+                }).join('');
             }
 
             if (nextAction.action === 'validate_promoted_support') {
@@ -3343,6 +3536,39 @@
             if (claimSupportPacketSummary.temporal_warning_count !== undefined) {
                 packetChips.push(`<span class="chip">packet temporal warnings: ${Number(claimSupportPacketSummary.temporal_warning_count || 0)}</span>`);
             }
+            const packetChronologyTaskCount = claimSupportPacketSummary.temporal_gap_task_count !== undefined
+                ? Number(claimSupportPacketSummary.temporal_gap_task_count || 0)
+                : Number(alignmentTaskSummary.temporal_gap_task_count || 0);
+            const packetChronologyTargetedCount = claimSupportPacketSummary.temporal_gap_targeted_task_count !== undefined
+                ? Number(claimSupportPacketSummary.temporal_gap_targeted_task_count || 0)
+                : Number(alignmentTaskSummary.temporal_gap_targeted_task_count || 0);
+            const packetChronologyStatusCounts = Object.keys(normalizeSummaryCountMap(claimSupportPacketSummary.temporal_rule_status_counts)).length
+                ? normalizeSummaryCountMap(claimSupportPacketSummary.temporal_rule_status_counts)
+                : normalizeSummaryCountMap(alignmentTaskSummary.temporal_rule_status_counts);
+            const packetChronologyBlockerCounts = Object.keys(normalizeSummaryCountMap(claimSupportPacketSummary.temporal_rule_blocking_reason_counts)).length
+                ? normalizeSummaryCountMap(claimSupportPacketSummary.temporal_rule_blocking_reason_counts)
+                : normalizeSummaryCountMap(alignmentTaskSummary.temporal_rule_blocking_reason_counts);
+            const packetChronologyResolutionCounts = Object.keys(normalizeSummaryCountMap(claimSupportPacketSummary.temporal_resolution_status_counts)).length
+                ? normalizeSummaryCountMap(claimSupportPacketSummary.temporal_resolution_status_counts)
+                : normalizeSummaryCountMap(alignmentTaskSummary.temporal_resolution_status_counts);
+            if (packetChronologyTaskCount > 0) {
+                packetChips.push(`<span class="chip">packet chronology tasks: ${packetChronologyTaskCount}</span>`);
+            }
+            if (packetChronologyTargetedCount > 0) {
+                packetChips.push(`<span class="chip">packet chronology targeted: ${packetChronologyTargetedCount}</span>`);
+            }
+            const packetChronologyStatusLine = formatSummaryCountLine(packetChronologyStatusCounts);
+            if (packetChronologyStatusLine) {
+                packetChips.push(`<span class="chip">packet chronology status: ${packetChronologyStatusLine}</span>`);
+            }
+            const packetChronologyBlockerLine = formatSummaryCountLine(packetChronologyBlockerCounts, { humanizeLabels: false });
+            if (packetChronologyBlockerLine) {
+                packetChips.push(`<span class="chip">packet chronology blockers: ${packetChronologyBlockerLine}</span>`);
+            }
+            const packetChronologyResolutionLine = formatSummaryCountLine(packetChronologyResolutionCounts);
+            if (packetChronologyResolutionLine) {
+                packetChips.push(`<span class="chip">packet chronology handoffs: ${packetChronologyResolutionLine}</span>`);
+            }
             recommendedActions.forEach((action) => {
                 packetChips.push(`<span class="chip">packet next: ${action}</span>`);
             });
@@ -3391,7 +3617,42 @@
             if (!alignmentEvidenceTasks.length) {
                 alignmentTaskContainer.innerHTML = '<div class="task-card">Alignment evidence tasks: no shared unsupported element tasks available.</div>';
             } else {
-                alignmentTaskContainer.innerHTML = alignmentEvidenceTasks.map((task) => {
+                const chronologySummaryChips = [];
+                const alignmentChronologyTaskCount = Number(alignmentTaskSummary.temporal_gap_task_count || 0);
+                const alignmentChronologyTargetedCount = Number(alignmentTaskSummary.temporal_gap_targeted_task_count || 0);
+                const alignmentChronologyStatusLine = formatSummaryCountLine(alignmentTaskSummary.temporal_rule_status_counts);
+                const alignmentChronologyBlockerLine = formatSummaryCountLine(alignmentTaskSummary.temporal_rule_blocking_reason_counts, { humanizeLabels: false });
+                const alignmentChronologyResolutionLine = formatSummaryCountLine(alignmentTaskSummary.temporal_resolution_status_counts);
+                if (alignmentChronologyTaskCount > 0) {
+                    chronologySummaryChips.push(`<span class="chip">Chronology tasks: ${alignmentChronologyTaskCount}</span>`);
+                }
+                if (alignmentChronologyTargetedCount > 0) {
+                    chronologySummaryChips.push(`<span class="chip">Chronology targeted: ${alignmentChronologyTargetedCount}</span>`);
+                }
+                if (alignmentChronologyStatusLine) {
+                    chronologySummaryChips.push(`<span class="chip">Chronology status: ${alignmentChronologyStatusLine}</span>`);
+                }
+                if (alignmentChronologyBlockerLine) {
+                    chronologySummaryChips.push(`<span class="chip">Chronology blockers: ${alignmentChronologyBlockerLine}</span>`);
+                }
+                if (alignmentChronologyResolutionLine) {
+                    chronologySummaryChips.push(`<span class="chip">Chronology handoffs: ${alignmentChronologyResolutionLine}</span>`);
+                }
+                const chronologySummaryCard = chronologySummaryChips.length ? `
+                    <article class="task-card">
+                        <div class="row-head">
+                            <div>
+                                <div class="row-title">Alignment chronology summary</div>
+                                <div class="meta">Timeline-sensitive evidence routing across shared intake and packet elements</div>
+                            </div>
+                            <span class="badge">${alignmentChronologyTaskCount}</span>
+                        </div>
+                        <div class="chip-row" style="margin-top: 10px;">
+                            ${chronologySummaryChips.join('')}
+                        </div>
+                    </article>
+                ` : '';
+                alignmentTaskContainer.innerHTML = chronologySummaryCard + alignmentEvidenceTasks.map((task) => {
                     const chips = [
                         `<span class="chip">element: ${task.claim_element_id || 'unknown'}</span>`,
                         `<span class="chip">label: ${task.claim_element_label || task.claim_element_id || 'unknown'}</span>`,
@@ -3418,6 +3679,32 @@
                     if (task.resolution_notes) {
                         chips.push(`<span class="chip">notes: ${task.resolution_notes}</span>`);
                     }
+                    const temporalRuleStatus = String(task.temporal_rule_status || '').trim();
+                    const temporalRuleBlockingReasons = Array.isArray(task.temporal_rule_blocking_reasons)
+                        ? task.temporal_rule_blocking_reasons.filter((reason) => String(reason || '').trim())
+                        : [];
+                    const temporalRuleFollowUps = Array.isArray(task.temporal_rule_follow_ups)
+                        ? task.temporal_rule_follow_ups.filter((followUp) => String(followUp || '').trim())
+                        : [];
+                    const chronologyFocused = isTemporalAlignmentTask(task);
+                    if (chronologyFocused) {
+                        chips.push('<span class="chip">chronology follow-up</span>');
+                    }
+                    if (temporalRuleStatus && ['partial', 'failed'].includes(temporalRuleStatus.toLowerCase())) {
+                        chips.push('<span class="chip">chronology targeted</span>');
+                    }
+                    if (temporalRuleStatus) {
+                        chips.push(`<span class="chip">temporal rule: ${humanizeQueryValue(temporalRuleStatus)}</span>`);
+                    }
+                    if (task.temporal_rule_profile_id) {
+                        chips.push(`<span class="chip">chronology profile: ${task.temporal_rule_profile_id}</span>`);
+                    }
+                    temporalRuleBlockingReasons.slice(0, 2).forEach((reason) => {
+                        chips.push(`<span class="chip">chronology blocker: ${reason}</span>`);
+                    });
+                    temporalRuleFollowUps.slice(0, 2).forEach((followUp) => {
+                        chips.push(`<span class="chip">chronology follow-up: ${followUp}</span>`);
+                    });
                     return `
                         <article class="task-card">
                             <div class="row-head">
@@ -5621,6 +5908,17 @@
                 setStatus('Showing promoted alignment updates that still need validation.');
                 return;
             }
+            const validationFocusOpenPromotedButton = event.target.closest('.validation-focus-open-promoted-button');
+            if (validationFocusOpenPromotedButton) {
+                openAlignmentUpdateFilter(
+                    'promoted',
+                    'pending_review_first',
+                    validationFocusOpenPromotedButton.dataset.claimType || '',
+                    validationFocusOpenPromotedButton.dataset.claimElementId || '',
+                );
+                setStatus('Showing promoted alignment updates for the selected validation target.');
+                return;
+            }
             const prefillPromotedTestimonyButton = event.target.closest('#intake-next-action-prefill-testimony');
             if (prefillPromotedTestimonyButton) {
                 prefillPromotedValidationForm(
@@ -5631,6 +5929,16 @@
                 setStatus('Testimony form prefilled from focused promoted-support validation.');
                 return;
             }
+            const validationFocusPrefillTestimonyButton = event.target.closest('.validation-focus-prefill-testimony-button');
+            if (validationFocusPrefillTestimonyButton) {
+                prefillPromotedValidationForm(
+                    'testimony',
+                    validationFocusPrefillTestimonyButton.dataset.claimType || '',
+                    validationFocusPrefillTestimonyButton.dataset.claimElementId || '',
+                );
+                setStatus('Testimony form prefilled from validation focus target.');
+                return;
+            }
             const prefillPromotedDocumentButton = event.target.closest('#intake-next-action-prefill-document');
             if (prefillPromotedDocumentButton) {
                 prefillPromotedValidationForm(
@@ -5639,6 +5947,16 @@
                     prefillPromotedDocumentButton.dataset.claimElementId || '',
                 );
                 setStatus('Document form prefilled from focused promoted-support validation.');
+                return;
+            }
+            const validationFocusPrefillDocumentButton = event.target.closest('.validation-focus-prefill-document-button');
+            if (validationFocusPrefillDocumentButton) {
+                prefillPromotedValidationForm(
+                    'document',
+                    validationFocusPrefillDocumentButton.dataset.claimType || '',
+                    validationFocusPrefillDocumentButton.dataset.claimElementId || '',
+                );
+                setStatus('Document form prefilled from validation focus target.');
                 return;
             }
             const reviewConflictsBannerButton = event.target.closest('#intake-next-action-review-conflicts');

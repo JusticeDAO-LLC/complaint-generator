@@ -379,6 +379,84 @@
                 .replace(/\b\w/g, (match) => match.toUpperCase());
         }
 
+        function incrementSummaryCount(target, label) {
+            const normalizedLabel = String(label || '').trim().toLowerCase();
+            if (!normalizedLabel) {
+                return;
+            }
+            target[normalizedLabel] = (target[normalizedLabel] || 0) + 1;
+        }
+
+        function normalizeSummaryCountMap(value) {
+            const source = value && typeof value === 'object' ? value : {};
+            const normalized = {};
+            Object.entries(source).forEach(([label, count]) => {
+                const normalizedLabel = String(label || '').trim();
+                const normalizedCount = Number(count || 0);
+                if (!normalizedLabel || !Number.isFinite(normalizedCount) || normalizedCount <= 0) {
+                    return;
+                }
+                normalized[normalizedLabel] = normalizedCount;
+            });
+            return normalized;
+        }
+
+        function isTemporalAlignmentTask(task) {
+            if (!task || typeof task !== 'object') {
+                return false;
+            }
+            const action = String(task.action || '').trim().toLowerCase();
+            const temporalRuleProfileId = String(task.temporal_rule_profile_id || '').trim();
+            const temporalRuleStatus = String(task.temporal_rule_status || '').trim();
+            const temporalRuleBlockingReasons = Array.isArray(task.temporal_rule_blocking_reasons)
+                ? task.temporal_rule_blocking_reasons.filter((reason) => String(reason || '').trim())
+                : [];
+            const temporalRuleFollowUps = Array.isArray(task.temporal_rule_follow_ups)
+                ? task.temporal_rule_follow_ups.filter((item) => String(item || '').trim())
+                : [];
+            return Boolean(
+                action === 'fill_temporal_chronology_gap'
+                || temporalRuleProfileId
+                || temporalRuleStatus
+                || temporalRuleBlockingReasons.length
+                || temporalRuleFollowUps.length
+            );
+        }
+
+        function summarizeTemporalAlignmentTasks(tasks) {
+            const taskList = Array.isArray(tasks) ? tasks : [];
+            const summary = {
+                count: taskList.filter((task) => task && typeof task === 'object').length,
+                temporal_gap_task_count: 0,
+                temporal_gap_targeted_task_count: 0,
+                temporal_rule_status_counts: {},
+                temporal_rule_blocking_reason_counts: {},
+                temporal_resolution_status_counts: {},
+            };
+            taskList.forEach((task) => {
+                if (!task || typeof task !== 'object' || !isTemporalAlignmentTask(task)) {
+                    return;
+                }
+                summary.temporal_gap_task_count += 1;
+                const temporalRuleStatus = String(task.temporal_rule_status || '').trim().toLowerCase();
+                if (temporalRuleStatus === 'partial' || temporalRuleStatus === 'failed') {
+                    summary.temporal_gap_targeted_task_count += 1;
+                }
+                incrementSummaryCount(summary.temporal_rule_status_counts, temporalRuleStatus);
+                (Array.isArray(task.temporal_rule_blocking_reasons) ? task.temporal_rule_blocking_reasons : []).forEach((reason) => {
+                    incrementSummaryCount(summary.temporal_rule_blocking_reason_counts, reason);
+                });
+                incrementSummaryCount(summary.temporal_resolution_status_counts, task.resolution_status);
+            });
+            return summary;
+        }
+
+        function formatSummaryCountLine(counts, { humanizeLabels = true } = {}) {
+            return Object.entries(normalizeSummaryCountMap(counts))
+                .map(([label, count]) => `${humanizeLabels ? humanizeKey(label) : label}=${count}`)
+                .join(', ');
+        }
+
         const FOLLOW_UP_HANDOFF_STATUSES = new Set([
             'awaiting_complainant_record',
             'awaiting_third_party_record',
@@ -1107,6 +1185,9 @@
             const remedyProfile = intakeCaseSummary.remedy_profile && typeof intakeCaseSummary.remedy_profile === 'object' ? intakeCaseSummary.remedy_profile : {};
             const questionCandidateSummary = intakeCaseSummary.question_candidate_summary && typeof intakeCaseSummary.question_candidate_summary === 'object' ? intakeCaseSummary.question_candidate_summary : {};
             const alignmentEvidenceTasks = Array.isArray(intakeCaseSummary.alignment_evidence_tasks) ? intakeCaseSummary.alignment_evidence_tasks : [];
+            const alignmentTaskSummary = intakeCaseSummary.alignment_task_summary && typeof intakeCaseSummary.alignment_task_summary === 'object'
+                ? intakeCaseSummary.alignment_task_summary
+                : summarizeTemporalAlignmentTasks(alignmentEvidenceTasks);
             const claimSupportPacketSummary = intakeCaseSummary.claim_support_packet_summary && typeof intakeCaseSummary.claim_support_packet_summary === 'object' ? intakeCaseSummary.claim_support_packet_summary : {};
             const questionGoalCounts = questionCandidateSummary.question_goal_counts && typeof questionCandidateSummary.question_goal_counts === 'object' ? questionCandidateSummary.question_goal_counts : {};
             const questionSectionCounts = questionCandidateSummary.phase1_section_counts && typeof questionCandidateSummary.phase1_section_counts === 'object' ? questionCandidateSummary.phase1_section_counts : {};
@@ -1326,6 +1407,21 @@
                     Object.keys(alignmentResolutionStatusCounts).length
                         ? `Alignment handoffs: ${Object.entries(alignmentResolutionStatusCounts).map(([status, count]) => `${humanizeKey(status)} ${count}`).join(', ')}`
                         : '',
+                    alignmentTaskSummary.temporal_gap_task_count != null
+                        ? `Alignment chronology tasks: ${Number(alignmentTaskSummary.temporal_gap_task_count || 0)}`
+                        : '',
+                    alignmentTaskSummary.temporal_gap_targeted_task_count != null
+                        ? `Alignment chronology targeted: ${Number(alignmentTaskSummary.temporal_gap_targeted_task_count || 0)}`
+                        : '',
+                    formatSummaryCountLine(alignmentTaskSummary.temporal_rule_status_counts)
+                        ? `Alignment chronology status: ${formatSummaryCountLine(alignmentTaskSummary.temporal_rule_status_counts)}`
+                        : '',
+                    formatSummaryCountLine(alignmentTaskSummary.temporal_rule_blocking_reason_counts, { humanizeLabels: false })
+                        ? `Alignment chronology blockers: ${formatSummaryCountLine(alignmentTaskSummary.temporal_rule_blocking_reason_counts, { humanizeLabels: false })}`
+                        : '',
+                    formatSummaryCountLine(alignmentTaskSummary.temporal_resolution_status_counts)
+                        ? `Alignment chronology handoffs: ${formatSummaryCountLine(alignmentTaskSummary.temporal_resolution_status_counts)}`
+                        : '',
                     claimSupportPacketSummary.claim_count != null ? `Packet claims: ${claimSupportPacketSummary.claim_count}` : '',
                     claimSupportPacketSummary.element_count != null ? `Packet elements: ${claimSupportPacketSummary.element_count}` : '',
                     claimSupportPacketSummary.status_counts && typeof claimSupportPacketSummary.status_counts === 'object'
@@ -1372,6 +1468,21 @@
                         : '',
                     claimSupportPacketSummary.temporal_warning_count != null
                         ? `Packet temporal warnings: ${Number(claimSupportPacketSummary.temporal_warning_count || 0)}`
+                        : '',
+                    claimSupportPacketSummary.temporal_gap_task_count != null
+                        ? `Packet chronology tasks: ${Number(claimSupportPacketSummary.temporal_gap_task_count || 0)}`
+                        : '',
+                    claimSupportPacketSummary.temporal_gap_targeted_task_count != null
+                        ? `Packet chronology targeted: ${Number(claimSupportPacketSummary.temporal_gap_targeted_task_count || 0)}`
+                        : '',
+                    formatSummaryCountLine(claimSupportPacketSummary.temporal_rule_status_counts)
+                        ? `Packet chronology status: ${formatSummaryCountLine(claimSupportPacketSummary.temporal_rule_status_counts)}`
+                        : '',
+                    formatSummaryCountLine(claimSupportPacketSummary.temporal_rule_blocking_reason_counts, { humanizeLabels: false })
+                        ? `Packet chronology blockers: ${formatSummaryCountLine(claimSupportPacketSummary.temporal_rule_blocking_reason_counts, { humanizeLabels: false })}`
+                        : '',
+                    formatSummaryCountLine(claimSupportPacketSummary.temporal_resolution_status_counts)
+                        ? `Packet chronology handoffs: ${formatSummaryCountLine(claimSupportPacketSummary.temporal_resolution_status_counts)}`
                         : '',
                     Array.isArray(claimSupportPacketSummary.recommended_actions) && claimSupportPacketSummary.recommended_actions.length
                         ? `Packet next steps: ${claimSupportPacketSummary.recommended_actions.join(' | ')}`

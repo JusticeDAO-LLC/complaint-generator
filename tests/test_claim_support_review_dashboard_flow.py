@@ -899,8 +899,15 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert "Chronology status" in page_html
     assert "Chronology blockers" in page_html
     assert "Chronology handoffs" in page_html
+    assert "Alignment chronology summary" in page_html
+    assert "packet chronology tasks:" in page_html
+    assert "packet chronology targeted:" in page_html
+    assert "packet chronology status:" in page_html
+    assert "packet chronology blockers:" in page_html
+    assert "packet chronology handoffs:" in page_html
     assert "chronology follow-up" in page_html
     assert "chronology targeted" in page_html
+    assert "chronology profile:" in page_html
     assert "chronology blocker:" in page_html
     assert "Follow-Up Plan Filter" in page_html
     assert "Follow-Up Plan Sort" in page_html
