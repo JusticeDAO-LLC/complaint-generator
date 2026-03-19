@@ -257,7 +257,7 @@ def test_render_markdown_includes_outstanding_intake_gaps_section():
     assert "- Search fallback: Requested hybrid search, but vector support is unavailable; using lexical results instead." in markdown
 
 
-def test_extract_search_summary_prefers_seed_metadata():
+def test_extract_search_summary_uses_seed_metadata_when_no_grounded_summary_is_available():
     seed = {
         '_meta': {
             'hacc_search_mode': 'hybrid',
@@ -279,6 +279,42 @@ def test_extract_search_summary_prefers_seed_metadata():
         'requested_search_mode': 'hybrid',
         'effective_search_mode': 'lexical_only',
         'fallback_note': 'Requested hybrid search, but vector support is unavailable; using lexical results instead.',
+    }
+
+
+def test_extract_search_summary_prefers_grounded_run_summary_over_stale_seed_defaults():
+    seed = {
+        '_meta': {
+            'hacc_search_mode': 'package',
+            'hacc_effective_search_mode': 'package',
+        },
+        'key_facts': {
+            'search_summary': {
+                'requested_search_mode': 'package',
+                'effective_search_mode': 'package',
+            }
+        },
+    }
+    grounding_bundle = {
+        'search_summary': {
+            'requested_search_mode': 'package',
+            'effective_search_mode': 'hybrid',
+            'fallback_note': 'Grounded run used the shared hybrid backend.',
+        }
+    }
+    evidence_upload_report = {
+        'search_summary': {
+            'requested_search_mode': 'package',
+            'effective_search_mode': 'hybrid',
+        }
+    }
+
+    summary = MODULE._extract_search_summary(seed, grounding_bundle, evidence_upload_report)
+
+    assert summary == {
+        'requested_search_mode': 'package',
+        'effective_search_mode': 'hybrid',
+        'fallback_note': 'Grounded run used the shared hybrid backend.',
     }
 
 

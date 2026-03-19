@@ -131,8 +131,7 @@ def _extract_search_summary(
     stored: Dict[str, Any] = {}
     for candidate in candidates:
         if isinstance(candidate, dict) and candidate:
-            stored = dict(candidate)
-            break
+            stored.update({key: value for key, value in dict(candidate).items() if value not in (None, "")})
 
     requested_mode = str(
         stored.get("requested_search_mode")
