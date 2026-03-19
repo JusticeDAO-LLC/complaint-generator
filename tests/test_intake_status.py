@@ -612,3 +612,51 @@ def test_build_intake_case_review_summary_includes_confirmed_handoff_metadata():
             },
         },
     }
+
+
+    def test_build_intake_case_review_summary_preserves_precomputed_alignment_task_summary():
+        mediator = Mock()
+        mediator.get_three_phase_status.return_value = {
+            "alignment_evidence_tasks": [
+                {
+                    "task_id": "retaliation:causation:fill_evidence_gaps",
+                    "claim_type": "retaliation",
+                    "claim_element_id": "causation",
+                    "claim_element_label": "Causal connection",
+                    "action": "fill_evidence_gaps",
+                    "support_status": "unsupported",
+                    "resolution_status": "still_open",
+                }
+            ],
+            "alignment_task_summary": {
+                "count": 1,
+                "status_counts": {"unsupported": 1},
+                "resolution_status_counts": {"still_open": 1},
+                "temporal_gap_task_count": 1,
+                "temporal_gap_targeted_task_count": 1,
+                "temporal_rule_status_counts": {"partial": 1},
+                "temporal_rule_blocking_reason_counts": {"Need retaliation chronology sequencing.": 1},
+                "temporal_resolution_status_counts": {"still_open": 1},
+            },
+            "claim_support_packet_summary": {
+                "claim_count": 1,
+                "proof_readiness_score": 0.25,
+            },
+        }
+
+        summary = build_intake_case_review_summary(mediator)
+
+        assert summary["alignment_task_summary"] == {
+            "count": 1,
+            "status_counts": {"unsupported": 1},
+            "resolution_status_counts": {"still_open": 1},
+            "temporal_gap_task_count": 1,
+            "temporal_gap_targeted_task_count": 1,
+            "temporal_rule_status_counts": {"partial": 1},
+            "temporal_rule_blocking_reason_counts": {"Need retaliation chronology sequencing.": 1},
+            "temporal_resolution_status_counts": {"still_open": 1},
+        }
+        assert summary["claim_support_packet_summary"]["temporal_gap_task_count"] == 1
+        assert summary["claim_support_packet_summary"]["temporal_rule_blocking_reason_counts"] == {
+            "Need retaliation chronology sequencing.": 1,
+        }

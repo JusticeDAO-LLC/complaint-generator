@@ -101,6 +101,49 @@ def _build_alignment_evidence_task_summary(alignment_evidence_tasks: Any) -> Dic
     return summary
 
 
+def _merge_alignment_task_summary(raw_summary: Any, alignment_evidence_tasks: Any) -> Dict[str, Any]:
+    derived_summary = _build_alignment_evidence_task_summary(alignment_evidence_tasks)
+    provided_summary = raw_summary if isinstance(raw_summary, dict) else {}
+    return {
+        "count": int(provided_summary.get("count", derived_summary.get("count", 0)) or 0),
+        "status_counts": dict(provided_summary.get("status_counts", derived_summary.get("status_counts", {})) or {}),
+        "resolution_status_counts": dict(
+            provided_summary.get("resolution_status_counts", derived_summary.get("resolution_status_counts", {})) or {}
+        ),
+        "temporal_gap_task_count": int(
+            provided_summary.get("temporal_gap_task_count", derived_summary.get("temporal_gap_task_count", 0)) or 0
+        ),
+        "temporal_gap_targeted_task_count": int(
+            provided_summary.get(
+                "temporal_gap_targeted_task_count",
+                derived_summary.get("temporal_gap_targeted_task_count", 0),
+            )
+            or 0
+        ),
+        "temporal_rule_status_counts": dict(
+            provided_summary.get(
+                "temporal_rule_status_counts",
+                derived_summary.get("temporal_rule_status_counts", {}),
+            )
+            or {}
+        ),
+        "temporal_rule_blocking_reason_counts": dict(
+            provided_summary.get(
+                "temporal_rule_blocking_reason_counts",
+                derived_summary.get("temporal_rule_blocking_reason_counts", {}),
+            )
+            or {}
+        ),
+        "temporal_resolution_status_counts": dict(
+            provided_summary.get(
+                "temporal_resolution_status_counts",
+                derived_summary.get("temporal_resolution_status_counts", {}),
+            )
+            or {}
+        ),
+    }
+
+
 def _build_candidate_claim_summary(candidate_claims: Any) -> Dict[str, Any]:
     claims = candidate_claims if isinstance(candidate_claims, list) else []
     normalized_claims = [claim for claim in claims if isinstance(claim, dict)]
@@ -373,6 +416,7 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
     question_candidate_summary = raw_status.get("question_candidate_summary")
     adversarial_intake_priority_summary = raw_status.get("adversarial_intake_priority_summary")
     claim_support_packet_summary = raw_status.get("claim_support_packet_summary")
+    raw_alignment_task_summary = raw_status.get("alignment_task_summary")
     candidate_claim_summary = _build_candidate_claim_summary(candidate_claims)
     contradiction_summary = summarize_intake_contradictions(
         _extract_normalized_intake_contradictions(raw_status)
@@ -383,7 +427,7 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
         alignment_task_update_history,
         alignment_evidence_tasks,
     )
-    alignment_task_summary = _build_alignment_evidence_task_summary(alignment_evidence_tasks)
+    alignment_task_summary = _merge_alignment_task_summary(raw_alignment_task_summary, alignment_evidence_tasks)
     claim_support_packet_summary_value = (
         claim_support_packet_summary if isinstance(claim_support_packet_summary, dict) else {}
     )
