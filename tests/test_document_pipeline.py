@@ -445,6 +445,16 @@ def _build_mediator() -> Mock:
                 "resolution_notes": "",
             }
         ],
+        "alignment_task_summary": {
+            "count": 1,
+            "status_counts": {"unsupported": 1},
+            "resolution_status_counts": {"still_open": 1},
+            "temporal_gap_task_count": 1,
+            "temporal_gap_targeted_task_count": 1,
+            "temporal_rule_status_counts": {"partial": 1},
+            "temporal_rule_blocking_reason_counts": {"Need retaliation chronology sequencing.": 1},
+            "temporal_resolution_status_counts": {"still_open": 1},
+        },
         "claim_support_packet_summary": {
             "claim_count": 2,
             "element_count": 6,
@@ -707,6 +717,16 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
                 "resolution_notes": "",
             }
         ],
+        "alignment_task_summary": {
+            "count": 1,
+            "status_counts": {"unsupported": 1},
+            "resolution_status_counts": {"still_open": 1},
+            "temporal_gap_task_count": 1,
+            "temporal_gap_targeted_task_count": 1,
+            "temporal_rule_status_counts": {"partial": 1},
+            "temporal_rule_blocking_reason_counts": {"Need retaliation chronology sequencing.": 1},
+            "temporal_resolution_status_counts": {"still_open": 1},
+        },
         "claim_support_packet_summary": {
             "claim_count": 2,
             "element_count": 6,
@@ -934,6 +954,10 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     assert stored_traces[0]["intake_case_summary"]["proof_lead_summary"]["count"] == 1
     assert stored_traces[0]["intake_case_summary"]["question_candidate_summary"]["count"] == 1
     assert stored_traces[0]["intake_case_summary"]["question_candidate_summary"]["phase1_section_counts"]["proof_leads"] == 1
+    assert stored_traces[0]["intake_case_summary"]["alignment_task_summary"]["temporal_gap_task_count"] == 1
+    assert stored_traces[0]["intake_case_summary"]["alignment_task_summary"]["temporal_rule_blocking_reason_counts"] == {
+        "Need retaliation chronology sequencing.": 1,
+    }
     assert stored_traces[0]["intake_case_summary"]["claim_support_packet_summary"]["claim_count"] == 2
     assert stored_traces[0]["iterations"][0]["change_manifest"]
     assert stored_traces[0]["iterations"][0]["change_manifest"][0]["field"] == "factual_allegations"
@@ -2017,7 +2041,14 @@ def test_review_api_live_huggingface_router_optimization_smoke(tmp_path):
     if used_arch_router:
         assert final_review_metadata.get("arch_router_model_name") == os.getenv("HF_ARCH_ROUTER_MODEL", "katanemo/Arch-Router-1.5B")
         assert final_review_metadata.get("arch_router_status") in {"selected", "fallback"}
-        assert final_review_metadata.get("arch_router_selected_route") in {"legal_reasoning", "drafting", "unknown_path", None}
+        assert final_review_metadata.get("arch_router_selected_route") in {
+            "legal_reasoning",
+            "drafting",
+            "route_legal_reasoning",
+            "route_drafting",
+            "unknown_path",
+            None,
+        }
         selected_model = final_review_metadata.get("arch_router_selected_model")
         assert selected_model in {model_name, os.getenv("HF_ROUTER_ARCH_REASONING_MODEL", "").strip() or model_name, ""}
     assert payload["artifacts"]["txt"]["path"]
@@ -3056,6 +3087,10 @@ def test_review_surface_returns_document_optimization_contract_end_to_end(monkey
     assert report['intake_case_summary']['question_candidate_summary']['question_goal_counts']['identify_supporting_proof'] == 1
     assert report['intake_case_summary']['alignment_evidence_tasks'][0]['fallback_lanes'] == ['authority', 'testimony']
     assert report['intake_case_summary']['alignment_evidence_tasks'][0]['source_quality_target'] == 'high_quality_document'
+    assert report['intake_case_summary']['alignment_task_summary']['temporal_gap_task_count'] == 1
+    assert report['intake_case_summary']['alignment_task_summary']['temporal_rule_blocking_reason_counts'] == {
+        'Need retaliation chronology sequencing.': 1,
+    }
     assert report['intake_case_summary']['claim_support_packet_summary']['claim_count'] == 2
     assert report['intake_case_summary']['claim_support_packet_summary']['proof_readiness_score'] == 0.47
     assert report['intake_case_summary']['claim_support_packet_summary']['evidence_completion_ready'] is False

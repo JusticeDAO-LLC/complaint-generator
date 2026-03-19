@@ -2904,6 +2904,16 @@
                 intakeNextActionTitle.textContent = 'Validate promoted support';
                 intakeNextActionStatus.textContent = 'validate_promoted_support';
                 intakeNextActionChips.innerHTML = validationChips.join('');
+                const primaryValidationClaimType = String(
+                    primaryValidationTarget.claim_type
+                    || nextAction.claim_type
+                    || ''
+                ).trim();
+                const primaryValidationElementId = String(
+                    primaryValidationTarget.claim_element_id
+                    || nextAction.claim_element_id
+                    || ''
+                ).trim();
                 intakeNextActionNotes.innerHTML = `
                     Promoted testimony or document support is accumulating faster than packet validation is reaching resolved supported status.
                     ${primaryValidationTarget.claim_element_id ? `Primary validation target: ${humanizeQueryValue(primaryValidationTarget.claim_element_id)}.` : ''}
@@ -2913,23 +2923,23 @@
                             class="button-secondary"
                             id="intake-next-action-open-promoted"
                             type="button"
-                            data-claim-type="${nextAction.claim_type || ''}"
-                            data-claim-element-id="${nextAction.claim_element_id || ''}"
+                            data-claim-type="${primaryValidationClaimType}"
+                            data-claim-element-id="${primaryValidationElementId}"
                         >Review promoted updates</button>
-                        ${focusedPromotedElementId ? `
+                        ${primaryValidationElementId ? `
                             <button
                                 class="button-tertiary"
                                 id="intake-next-action-prefill-testimony"
                                 type="button"
-                                data-claim-type="${nextAction.claim_type || ''}"
-                                data-claim-element-id="${nextAction.claim_element_id || ''}"
+                                data-claim-type="${primaryValidationClaimType}"
+                                data-claim-element-id="${primaryValidationElementId}"
                             >Prefill testimony validation</button>
                             <button
                                 class="button-tertiary"
                                 id="intake-next-action-prefill-document"
                                 type="button"
-                                data-claim-type="${nextAction.claim_type || ''}"
-                                data-claim-element-id="${nextAction.claim_element_id || ''}"
+                                data-claim-type="${primaryValidationClaimType}"
+                                data-claim-element-id="${primaryValidationElementId}"
                             >Prefill document validation</button>
                         ` : ''}
                     </div>

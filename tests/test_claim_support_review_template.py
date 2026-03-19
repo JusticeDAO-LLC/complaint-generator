@@ -79,6 +79,10 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "primary promotion kind: ${humanizeQueryValue(primaryValidationTarget.promotion_kind)}" in content
     assert "Promoted testimony or document support is accumulating faster than packet validation is reaching resolved supported status." in content
     assert "Primary validation target: ${humanizeQueryValue(primaryValidationTarget.claim_element_id)}." in content
+    assert "const primaryValidationClaimType = String(" in content
+    assert "const primaryValidationElementId = String(" in content
+    assert "data-claim-type=\"${primaryValidationClaimType}\"" in content
+    assert "data-claim-element-id=\"${primaryValidationElementId}\"" in content
     assert "intake-readiness-criteria-chips" in content
     assert "intake-claim-summary-chips" in content
     assert "intake-context-chips" in content

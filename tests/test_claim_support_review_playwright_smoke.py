@@ -1269,10 +1269,19 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
                         "claim_type": "retaliation",
                         "claim_element_id": "retaliation:3",
                         "claim_element_label": "Proof Leads",
+                        "action": "fill_temporal_chronology_gap",
                         "preferred_support_kind": "evidence",
                         "fallback_lanes": ["authority", "testimony"],
                         "source_quality_target": "high_quality_document",
                         "resolution_status": "awaiting_complainant_record",
+                        "temporal_rule_profile_id": "retaliation_temporal_profile_v1",
+                        "temporal_rule_status": "partial",
+                        "temporal_rule_blocking_reasons": [
+                            "Retaliation chronology still needs documentary sequencing for the proof lead bundle.",
+                        ],
+                        "temporal_rule_follow_ups": [
+                            "Confirm whether the protected activity report predates the termination email.",
+                        ],
                         "intake_proof_leads": [
                             {
                                 "lead_id": "lead:complainant:record",
@@ -1302,6 +1311,13 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
                     "temporal_issue_count": 1,
                     "temporal_partial_order_ready_element_count": 0,
                     "temporal_warning_count": 1,
+                    "temporal_gap_task_count": 1,
+                    "temporal_gap_targeted_task_count": 1,
+                    "temporal_rule_status_counts": {"partial": 1},
+                    "temporal_rule_blocking_reason_counts": {
+                        "Retaliation chronology still needs documentary sequencing for the proof lead bundle.": 1,
+                    },
+                    "temporal_resolution_status_counts": {"awaiting_complainant_record": 1},
                 },
                 "alignment_task_update_history": [
                     {
@@ -1466,6 +1482,16 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
             assert "Packet temporal issues: 1" in preview_text
             assert "Packet temporal ready elements: 0" in preview_text
             assert "Packet temporal warnings: 1" in preview_text
+            assert "Alignment chronology tasks: 1" in preview_text
+            assert "Alignment chronology targeted: 1" in preview_text
+            assert "Alignment chronology status: Partial=1" in preview_text
+            assert "Alignment chronology blockers: Retaliation chronology still needs documentary sequencing for the proof lead bundle.=1" in preview_text
+            assert "Alignment chronology handoffs: Awaiting Complainant Record=1" in preview_text
+            assert "Packet chronology tasks: 1" in preview_text
+            assert "Packet chronology targeted: 1" in preview_text
+            assert "Packet chronology status: Partial=1" in preview_text
+            assert "Packet chronology blockers: Retaliation chronology still needs documentary sequencing for the proof lead bundle.=1" in preview_text
+            assert "Packet chronology handoffs: Awaiting Complainant Record=1" in preview_text
             normalized_preview_text = preview_text.lower()
             assert "intake summary handoff" in normalized_preview_text
             assert "Status" in preview_text
