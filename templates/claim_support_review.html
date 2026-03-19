@@ -2866,14 +2866,24 @@
                 const driftSummary = nextAction.drift_summary && typeof nextAction.drift_summary === 'object'
                     ? nextAction.drift_summary
                     : alignmentPromotionDriftSummary;
+                const primaryValidationTarget = nextAction.primary_validation_target && typeof nextAction.primary_validation_target === 'object'
+                    ? nextAction.primary_validation_target
+                    : (validationFocusTargets.length && typeof validationFocusTargets[0] === 'object' ? validationFocusTargets[0] : {});
                 const driftRatio = Number(driftSummary.drift_ratio || 0);
                 const pendingConversionCount = Number(nextAction.pending_conversion_count || driftSummary.pending_conversion_count || 0);
                 const promotedCount = Number(nextAction.promoted_count || driftSummary.promoted_count || 0);
+                const validationTargetCount = Number(
+                    nextAction.validation_target_count
+                    || alignmentValidationFocusSummary.count
+                    || validationFocusTargets.length
+                    || 0
+                );
                 const proofReadinessScore = Number(driftSummary.proof_readiness_score || 0);
                 const validationChips = [
                     `<span class="chip">recommended action: ${nextAction.action}</span>`,
                     `<span class="chip">pending conversion: ${pendingConversionCount}</span>`,
                     `<span class="chip">promoted updates: ${promotedCount}</span>`,
+                    `<span class="chip">validation targets: ${validationTargetCount}</span>`,
                     `<span class="chip">drift ratio: ${driftRatio.toFixed(2)}</span>`,
                     `<span class="chip">proof readiness: ${proofReadinessScore.toFixed(2)}</span>`,
                 ];
@@ -2883,6 +2893,12 @@
                 if (focusedPromotedElementId) {
                     validationChips.push(`<span class="chip">focus element: ${humanizeQueryValue(focusedPromotedElementId)}</span>`);
                 }
+                if (primaryValidationTarget.claim_element_id) {
+                    validationChips.push(`<span class="chip">primary target: ${humanizeQueryValue(primaryValidationTarget.claim_element_id)}</span>`);
+                }
+                if (primaryValidationTarget.promotion_kind) {
+                    validationChips.push(`<span class="chip">primary promotion kind: ${humanizeQueryValue(primaryValidationTarget.promotion_kind)}</span>`);
+                }
                 intakeNextActionBanner.hidden = false;
                 intakeNextActionBanner.classList.remove('is-error');
                 intakeNextActionTitle.textContent = 'Validate promoted support';
@@ -2890,6 +2906,7 @@
                 intakeNextActionChips.innerHTML = validationChips.join('');
                 intakeNextActionNotes.innerHTML = `
                     Promoted testimony or document support is accumulating faster than packet validation is reaching resolved supported status.
+                    ${primaryValidationTarget.claim_element_id ? `Primary validation target: ${humanizeQueryValue(primaryValidationTarget.claim_element_id)}.` : ''}
                     Review and validate saved support before treating the evidence phase as truly settled.
                     <div class="button-row" style="margin-top: 12px;">
                         <button

@@ -1,4 +1,6 @@
 import os
+import importlib
+import types
 
 import pytest
 
@@ -9,12 +11,36 @@ pytestmark = pytest.mark.no_auto_network
 
 
 def _live_hf_token() -> str:
-    return (
+    token = (
         os.getenv("HF_TOKEN", "").strip()
         or os.getenv("HUGGINGFACE_HUB_TOKEN", "").strip()
         or os.getenv("HUGGINGFACE_API_KEY", "").strip()
         or os.getenv("HF_API_TOKEN", "").strip()
     )
+    if token:
+        return token
+
+    try:
+        hub = importlib.import_module("huggingface_hub")
+        getter = getattr(hub, "get_token", None)
+        resolved = getter() if callable(getter) else ""
+        if resolved is not None and str(resolved).strip():
+            return str(resolved).strip()
+    except Exception:
+        return ""
+    return ""
+
+
+def _live_hf_bill_to_header() -> dict[str, str]:
+    bill_to = (
+        os.getenv("IPFS_DATASETS_PY_HF_BILL_TO", "").strip()
+        or os.getenv("HUGGINGFACE_BILL_TO", "").strip()
+        or os.getenv("HF_BILL_TO", "").strip()
+        or os.getenv("HF_ORGANIZATION", "").strip()
+        or os.getenv("HUGGINGFACE_ORG", "").strip()
+        or os.getenv("OPENROUTER_HF_BILL_TO", "").strip()
+    )
+    return {"X-HF-Bill-To": bill_to} if bill_to else {}
 
 
 def _clear_hf_router_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -24,7 +50,10 @@ def _clear_hf_router_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "HUGGINGFACE_API_KEY",
         "HF_API_TOKEN",
         "IPFS_DATASETS_PY_HF_BILL_TO",
+        "HUGGINGFACE_BILL_TO",
         "HF_BILL_TO",
+        "HF_ORGANIZATION",
+        "HUGGINGFACE_ORG",
         "OPENROUTER_HF_BILL_TO",
     ):
         monkeypatch.delenv(key, raising=False)
@@ -176,6 +205,56 @@ def test_generate_text_with_metadata_propagates_hf_bill_to(monkeypatch):
     assert observed["bill_to"] == "Publicus"
 
 
+def test_generate_text_with_metadata_uses_hf_organization_alias_for_bill_to(monkeypatch):
+    observed = {}
+    _clear_hf_router_env(monkeypatch)
+
+    def _fake_generate_text(prompt: str, *, provider=None, model_name=None, **kwargs):
+        observed["provider"] = provider
+        observed["bill_to"] = os.environ.get("OPENROUTER_HF_BILL_TO")
+        return "metadata-ok"
+
+    monkeypatch.setattr(llm, "generate_text", _fake_generate_text)
+    monkeypatch.setenv("HF_TOKEN", "hf-test-token")
+    monkeypatch.setenv("HF_ORGANIZATION", "Publicus")
+
+    payload = llm.generate_text_with_metadata(
+        "Prompt",
+        provider="huggingface_router",
+        model_name="meta-llama/Llama-3.3-70B-Instruct",
+        base_url="https://router.huggingface.co/v1",
+    )
+
+    assert payload["status"] == "available"
+    assert payload["hf_bill_to"] == "Publicus"
+    assert observed["provider"] == "openrouter"
+    assert observed["bill_to"] == "Publicus"
+
+
+def test_generate_text_with_metadata_uses_hf_cli_token_fallback(monkeypatch):
+    observed = {}
+    _clear_hf_router_env(monkeypatch)
+
+    def _fake_generate_text(prompt: str, *, provider=None, model_name=None, **kwargs):
+        observed["provider"] = provider
+        observed["api_key"] = os.environ.get("IPFS_DATASETS_PY_OPENROUTER_API_KEY")
+        return "metadata-ok"
+
+    monkeypatch.setattr(llm, "generate_text", _fake_generate_text)
+    monkeypatch.setattr(llm.importlib, "import_module", lambda name: types.SimpleNamespace(get_token=lambda: "cli-token"))
+
+    payload = llm.generate_text_with_metadata(
+        "Prompt",
+        provider="huggingface_router",
+        model_name="meta-llama/Llama-3.3-70B-Instruct",
+        base_url="https://router.huggingface.co/v1",
+    )
+
+    assert payload["status"] == "available"
+    assert observed["provider"] == "openrouter"
+    assert observed["api_key"] == "cli-token"
+
+
 def test_generate_text_with_metadata_treats_huggingface_base_url_as_remote(monkeypatch):
     observed = {}
     _clear_hf_router_env(monkeypatch)
@@ -312,6 +391,7 @@ def test_generate_text_via_router_falls_back_when_arch_router_returns_unknown_ro
 
 def test_generate_text_via_router_reports_missing_hf_token_before_router_call(monkeypatch):
     _clear_hf_router_env(monkeypatch)
+    monkeypatch.setattr(llm, "_resolve_hf_token", lambda env_overrides=None: "")
 
     def _unexpected_generate_text(*args, **kwargs):
         raise AssertionError("router generate_text should not be called without an HF token")
@@ -348,13 +428,13 @@ def test_generate_text_with_metadata_live_huggingface_router_smoke():
         pytest.skip(f"llm_router unavailable: {llm.LLM_ROUTER_ERROR}")
 
     if not _live_hf_token():
-        pytest.skip("Set HF_TOKEN or HUGGINGFACE_HUB_TOKEN to run the live Hugging Face router smoke test")
+        pytest.skip("Set a Hugging Face token in the environment or log in with huggingface_hub to run the live Hugging Face router smoke test")
 
     model_name, payload = _run_live_hf_router_smoke(
         "Reply with exactly OK.",
         headers={
             "X-Title": "Complaint Generator Smoke Test",
-            **({"X-HF-Bill-To": os.getenv("IPFS_DATASETS_PY_HF_BILL_TO", "").strip()} if os.getenv("IPFS_DATASETS_PY_HF_BILL_TO", "").strip() else {}),
+            **_live_hf_bill_to_header(),
         },
         max_tokens=8,
         temperature=0.0,

@@ -1,6 +1,7 @@
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
+import importlib
 import os
 import json
 import zipfile
@@ -20,18 +21,33 @@ pytestmark = pytest.mark.no_auto_network
 
 
 def _live_hf_token() -> str:
-    return (
+    token = (
         os.getenv("HF_TOKEN", "").strip()
         or os.getenv("HUGGINGFACE_HUB_TOKEN", "").strip()
         or os.getenv("HUGGINGFACE_API_KEY", "").strip()
         or os.getenv("HF_API_TOKEN", "").strip()
     )
+    if token:
+        return token
+
+    try:
+        hub = importlib.import_module("huggingface_hub")
+        getter = getattr(hub, "get_token", None)
+        resolved = getter() if callable(getter) else ""
+        if resolved is not None and str(resolved).strip():
+            return str(resolved).strip()
+    except Exception:
+        return ""
+    return ""
 
 
 def _live_hf_bill_to_header() -> dict:
     bill_to = (
         os.getenv("IPFS_DATASETS_PY_HF_BILL_TO", "").strip()
+        or os.getenv("HUGGINGFACE_BILL_TO", "").strip()
         or os.getenv("HF_BILL_TO", "").strip()
+        or os.getenv("HF_ORGANIZATION", "").strip()
+        or os.getenv("HUGGINGFACE_ORG", "").strip()
         or os.getenv("OPENROUTER_HF_BILL_TO", "").strip()
     )
     return {"X-HF-Bill-To": bill_to} if bill_to else {}
@@ -1972,7 +1988,7 @@ def test_review_api_live_huggingface_router_optimization_smoke(tmp_path):
         pytest.skip("llm_router unavailable for live optimization smoke test")
 
     if not _live_hf_token():
-        pytest.skip("Set HF_TOKEN or HUGGINGFACE_HUB_TOKEN to run the live Hugging Face router API smoke test")
+        pytest.skip("Set a Hugging Face token in the environment or log in with huggingface_hub to run the live Hugging Face router API smoke test")
 
     mediator = _build_mediator()
     mediator.build_formal_complaint_document_package.side_effect = (
@@ -3091,7 +3107,7 @@ def test_review_surface_live_huggingface_router_optimization_smoke(tmp_path):
         pytest.skip('llm_router unavailable for live review-surface smoke test')
 
     if not _live_hf_token():
-        pytest.skip('Set HF_TOKEN or HUGGINGFACE_HUB_TOKEN to run the live Hugging Face router review-surface smoke test')
+        pytest.skip('Set a Hugging Face token in the environment or log in with huggingface_hub to run the live Hugging Face router review-surface smoke test')
 
     mediator = _build_mediator()
     mediator.build_formal_complaint_document_package.side_effect = (

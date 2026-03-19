@@ -3603,11 +3603,20 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
                         "claim_type": "retaliation",
                         "claim_element_id": "retaliation:2",
                         "claim_element_label": "Claims For Relief",
+                        "action": "fill_temporal_chronology_gap",
                         "preferred_support_kind": "evidence",
                         "fallback_lanes": ["authority", "testimony"],
                         "source_quality_target": "high_quality_document",
                         "resolution_status": "awaiting_complainant_record",
                         "resolution_notes": "",
+                        "temporal_rule_profile_id": "retaliation_temporal_profile_v1",
+                        "temporal_rule_status": "partial",
+                        "temporal_rule_blocking_reasons": [
+                            "Retaliation timeline lacks a clear ordering between protected activity and termination.",
+                        ],
+                        "temporal_rule_follow_ups": [
+                            "Confirm whether the protected activity occurred before the termination notice.",
+                        ],
                         "intake_proof_leads": [
                             {
                                 "lead_id": "lead:complainant:record",
@@ -3637,6 +3646,13 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
                     "temporal_issue_count": 1,
                     "temporal_partial_order_ready_element_count": 0,
                     "temporal_warning_count": 1,
+                    "temporal_gap_task_count": 1,
+                    "temporal_gap_targeted_task_count": 1,
+                    "temporal_rule_status_counts": {"partial": 1},
+                    "temporal_rule_blocking_reason_counts": {
+                        "Retaliation timeline lacks a clear ordering between protected activity and termination.": 1,
+                    },
+                    "temporal_resolution_status_counts": {"awaiting_complainant_record": 1},
                 },
                 "alignment_task_update_history": [
                     {
@@ -3769,8 +3785,8 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
             assert "Alignment chronology tasks: 1" in trace_evidence
             assert "Alignment chronology targeted: 1" in trace_evidence
             assert "Alignment chronology status: Partial=1" in trace_evidence
-            assert "Alignment chronology blockers: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.=1" in trace_evidence
-            assert "Alignment chronology handoffs: Still Open=1" in trace_evidence
+            assert "Alignment chronology blockers: Retaliation timeline lacks a clear ordering between protected activity and termination.=1" in trace_evidence
+            assert "Alignment chronology handoffs: Awaiting Complainant Record=1" in trace_evidence
             assert "Packet blocking covered: 0.50" in trace_evidence
             assert "Packet credible support: 0.50" in trace_evidence
             assert "Packet draft ready: 0.00" in trace_evidence
@@ -3788,8 +3804,8 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
             assert "Packet chronology tasks: 1" in trace_evidence
             assert "Packet chronology targeted: 1" in trace_evidence
             assert "Packet chronology status: Partial=1" in trace_evidence
-            assert "Packet chronology blockers: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.=1" in trace_evidence
-            assert "Packet chronology handoffs: Still Open=1" in trace_evidence
+            assert "Packet chronology blockers: Retaliation timeline lacks a clear ordering between protected activity and termination.=1" in trace_evidence
+            assert "Packet chronology handoffs: Awaiting Complainant Record=1" in trace_evidence
             handoff_trace_text = page.locator("#traceEvidenceHandoffs").inner_text()
             assert "Evidence Handoffs" in handoff_trace_text
             assert "Evidence handoffs: 1" in handoff_trace_text

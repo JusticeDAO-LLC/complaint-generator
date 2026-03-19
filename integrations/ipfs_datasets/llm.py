@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import importlib
 import json
 import os
 import re
@@ -44,6 +45,28 @@ def _env_value(name: str, overrides: Optional[Mapping[str, str]] = None) -> str:
 	return os.getenv(name, "").strip()
 
 
+def _resolve_hf_token(env_overrides: Optional[Mapping[str, str]] = None) -> str:
+	token = (
+		_env_value("IPFS_DATASETS_PY_OPENROUTER_API_KEY", env_overrides)
+		or _env_value("HF_TOKEN", env_overrides)
+		or _env_value("HUGGINGFACE_HUB_TOKEN", env_overrides)
+		or _env_value("HUGGINGFACE_API_KEY", env_overrides)
+		or _env_value("HF_API_TOKEN", env_overrides)
+	)
+	if token:
+		return token
+
+	try:
+		hub = importlib.import_module("huggingface_hub")
+		getter = getattr(hub, "get_token", None)
+		resolved = getter() if callable(getter) else ""
+		if resolved is not None and str(resolved).strip():
+			return str(resolved).strip()
+	except Exception:
+		return ""
+	return ""
+
+
 def _provider_preflight_error(
 	*,
 	effective_provider: str,
@@ -59,13 +82,7 @@ def _provider_preflight_error(
 			requested_provider in {"hf", "huggingface"} and "huggingface.co" in router_base_url
 		)
 		if is_hf_router_request:
-			hf_token = (
-				_env_value("IPFS_DATASETS_PY_OPENROUTER_API_KEY", env_overrides)
-				or _env_value("HF_TOKEN")
-				or _env_value("HUGGINGFACE_HUB_TOKEN")
-				or _env_value("HUGGINGFACE_API_KEY")
-				or _env_value("HF_API_TOKEN")
-			)
+			hf_token = _resolve_hf_token(env_overrides)
 			if not hf_token:
 				return (
 					"Hugging Face router unavailable: missing token. "
@@ -340,17 +357,15 @@ def _build_huggingface_router_request(
 		"LLM_ROUTER_ARCH_BASE_URL",
 	) or HF_ROUTER_DEFAULT_BASE_URL
 
-	api_key = _pop_first_string(call_options, "api_key", "token", "access_token") or bearer_token or _coalesce_env(
-		"HF_TOKEN",
-		"HUGGINGFACE_HUB_TOKEN",
-		"HUGGINGFACE_API_KEY",
-		"HF_API_TOKEN",
-	)
+	api_key = _pop_first_string(call_options, "api_key", "token", "access_token") or bearer_token or _resolve_hf_token()
 	referer = _pop_first_string(call_options, "http_referer", "referer") or headers.pop("HTTP-Referer", "") or headers.pop("Referer", "")
 	app_title = _pop_first_string(call_options, "app_title") or headers.pop("X-Title", "")
 	bill_to = _pop_first_string(call_options, "bill_to", "hf_bill_to") or headers.pop("X-HF-Bill-To", "") or _coalesce_env(
 		"IPFS_DATASETS_PY_HF_BILL_TO",
+		"HUGGINGFACE_BILL_TO",
 		"HF_BILL_TO",
+		"HF_ORGANIZATION",
+		"HUGGINGFACE_ORG",
 		"OPENROUTER_HF_BILL_TO",
 	)
 

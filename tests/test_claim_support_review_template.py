@@ -40,6 +40,7 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "alignment-validation-focus-list" in content
     assert "Promotion Drift Summary" in content
     assert "Validate promoted support" in content
+    assert "validation targets: ${validationTargetCount}" in content
     assert "intake-next-action-open-promoted" in content
     assert "Review promoted updates" in content
     assert "intake-next-action-prefill-testimony" in content
@@ -74,7 +75,10 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "recommended action: ${nextAction.action}" in content
     assert "focus claim: ${humanizeQueryValue(focusedPromotedClaimType)}" in content
     assert "focus element: ${humanizeQueryValue(focusedPromotedElementId)}" in content
+    assert "primary target: ${humanizeQueryValue(primaryValidationTarget.claim_element_id)}" in content
+    assert "primary promotion kind: ${humanizeQueryValue(primaryValidationTarget.promotion_kind)}" in content
     assert "Promoted testimony or document support is accumulating faster than packet validation is reaching resolved supported status." in content
+    assert "Primary validation target: ${humanizeQueryValue(primaryValidationTarget.claim_element_id)}." in content
     assert "intake-readiness-criteria-chips" in content
     assert "intake-claim-summary-chips" in content
     assert "intake-context-chips" in content
