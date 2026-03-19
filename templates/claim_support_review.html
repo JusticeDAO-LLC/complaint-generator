@@ -2746,6 +2746,96 @@
                         <button class="button-secondary" id="intake-next-action-review-denoising" type="button">Review denoising queue</button>
                     </div>
                 `;
+            } else if (nextAction.action === 'build_legal_graph') {
+                const candidateClaimCount = Number(candidateClaimSummary.count || 0);
+                const targetedClaims = intakeLegalTargetingSummary.claims && typeof intakeLegalTargetingSummary.claims === 'object'
+                    ? intakeLegalTargetingSummary.claims
+                    : intakeMatchingSummary.claims && typeof intakeMatchingSummary.claims === 'object'
+                        ? intakeMatchingSummary.claims
+                        : {};
+                const targetedClaimEntries = Object.entries(targetedClaims);
+                const openLegalElementCount = targetedClaimEntries.reduce((total, [, claim]) => {
+                    if (!claim || typeof claim !== 'object') {
+                        return total;
+                    }
+                    return total + Number(claim.missing_requirement_count || 0);
+                }, 0);
+                const questionCandidateCount = Number(questionCandidateSummary.count || 0);
+                const legalGraphChips = [
+                    '<span class="chip">recommended action: build_legal_graph</span>',
+                    `<span class="chip">candidate claims: ${candidateClaimCount}</span>`,
+                    `<span class="chip">targeted claims: ${targetedClaimEntries.length}</span>`,
+                    `<span class="chip">open legal elements: ${openLegalElementCount}</span>`,
+                    `<span class="chip">question candidates: ${questionCandidateCount}</span>`,
+                ];
+                intakeNextActionBanner.hidden = false;
+                intakeNextActionBanner.classList.remove('is-error');
+                intakeNextActionTitle.textContent = 'Build legal graph';
+                intakeNextActionStatus.textContent = 'build_legal_graph';
+                intakeNextActionChips.innerHTML = legalGraphChips.join('');
+                intakeNextActionNotes.innerHTML = `
+                    Claim targeting is available, but the legal graph that organizes statutes and requirements has not been built yet.
+                    Review unresolved legal elements and mapped question targets before building the formalization graph.
+                    <div class="button-row" style="margin-top: 12px;">
+                        <button class="button-secondary" id="intake-next-action-review-legal-graph" type="button">Review legal graph inputs</button>
+                    </div>
+                `;
+            } else if (nextAction.action === 'perform_neurosymbolic_matching') {
+                const targetedClaims = intakeLegalTargetingSummary.claims && typeof intakeLegalTargetingSummary.claims === 'object'
+                    ? intakeLegalTargetingSummary.claims
+                    : intakeMatchingSummary.claims && typeof intakeMatchingSummary.claims === 'object'
+                        ? intakeMatchingSummary.claims
+                        : {};
+                const targetedClaimEntries = Object.entries(targetedClaims);
+                const openLegalElementCount = targetedClaimEntries.reduce((total, [, claim]) => {
+                    if (!claim || typeof claim !== 'object') {
+                        return total;
+                    }
+                    return total + Number(claim.missing_requirement_count || 0);
+                }, 0);
+                const questionCandidateCount = Number(questionCandidateSummary.count || 0);
+                const matchingChips = [
+                    '<span class="chip">recommended action: perform_neurosymbolic_matching</span>',
+                    `<span class="chip">targeted claims: ${targetedClaimEntries.length}</span>`,
+                    `<span class="chip">open legal elements: ${openLegalElementCount}</span>`,
+                    `<span class="chip">question candidates: ${questionCandidateCount}</span>`,
+                ];
+                intakeNextActionBanner.hidden = false;
+                intakeNextActionBanner.classList.remove('is-error');
+                intakeNextActionTitle.textContent = 'Perform neurosymbolic matching';
+                intakeNextActionStatus.textContent = 'perform_neurosymbolic_matching';
+                intakeNextActionChips.innerHTML = matchingChips.join('');
+                intakeNextActionNotes.innerHTML = `
+                    The legal graph is available, but formal claim-to-law matching still needs operator review support.
+                    Review unresolved legal elements and matching questions before running the neurosymbolic matcher.
+                    <div class="button-row" style="margin-top: 12px;">
+                        <button class="button-secondary" id="intake-next-action-review-matching" type="button">Review matching inputs</button>
+                    </div>
+                `;
+            } else if (nextAction.action === 'generate_formal_complaint') {
+                const claimCount = Number(claimSupportPacketSummary.claim_count || 0);
+                const elementCount = Number(claimSupportPacketSummary.element_count || 0);
+                const proofReadinessScore = Number(claimSupportPacketSummary.proof_readiness_score || 0);
+                const draftReadyRatio = Number(claimSupportPacketSummary.draft_ready_element_ratio || 0);
+                const generationChips = [
+                    '<span class="chip">recommended action: generate_formal_complaint</span>',
+                    `<span class="chip">claims: ${claimCount}</span>`,
+                    `<span class="chip">elements: ${elementCount}</span>`,
+                    `<span class="chip">packet draft ready: ${draftReadyRatio.toFixed(2)}</span>`,
+                    `<span class="chip">proof readiness: ${proofReadinessScore.toFixed(2)}</span>`,
+                ];
+                intakeNextActionBanner.hidden = false;
+                intakeNextActionBanner.classList.remove('is-error');
+                intakeNextActionTitle.textContent = 'Generate formal complaint';
+                intakeNextActionStatus.textContent = 'generate_formal_complaint';
+                intakeNextActionChips.innerHTML = generationChips.join('');
+                intakeNextActionNotes.innerHTML = `
+                    Formalization is ready to move from matching outputs into a draft complaint package.
+                    Open the formal complaint builder with the current claim and user context preserved.
+                    <div class="button-row" style="margin-top: 12px;">
+                        <button class="button-secondary" id="intake-next-action-open-formal-generator" type="button">Open formal complaint builder</button>
+                    </div>
+                `;
             } else if (nextAction.action === 'build_claim_support_packets') {
                 const recommendedActions = Array.isArray(nextAction.recommended_actions) ? nextAction.recommended_actions : [];
                 const packetElementCount = Number(claimSupportPacketSummary.element_count || 0);
@@ -3432,6 +3522,7 @@
                         validationOutcome
                         && String(validationOutcome.claimType || '').trim().toLowerCase() === String(update.claim_type || '').trim().toLowerCase()
                         && String(validationOutcome.claimElementId || '').trim().toLowerCase() === String(update.claim_element_id || '').trim().toLowerCase()
+                        && Number(validationOutcome.evidenceSequence || 0) === Number(update.evidence_sequence || 0)
                     );
                     const resolutionLabel = normalizedResolutionStatus === 'answered_pending_review'
                         ? 'answered, pending review'
@@ -5033,6 +5124,7 @@
                     claimElementId: focus.claimElementId,
                     improved: validationImproved,
                     refreshedStatus,
+                    evidenceSequence: Number(refreshedUpdate && refreshedUpdate.evidence_sequence || 0),
                     sourceKind: focus.sourceKind || '',
                 };
                 if (validationImproved) {
@@ -5232,6 +5324,24 @@
             const focusTarget = document.getElementById('intake-contradiction-list')
                 || document.getElementById('question-list')
                 || document.getElementById('intake-matching-summary-list');
+            if (focusTarget && typeof focusTarget.scrollIntoView === 'function') {
+                focusTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        function openLegalGraphInputsReview() {
+            const focusTarget = document.getElementById('intake-matching-summary-list')
+                || document.getElementById('question-list')
+                || document.getElementById('intake-canonical-fact-list');
+            if (focusTarget && typeof focusTarget.scrollIntoView === 'function') {
+                focusTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        function openNeurosymbolicMatchingReview() {
+            const focusTarget = document.getElementById('intake-matching-summary-list')
+                || document.getElementById('question-list')
+                || document.getElementById('claim-reasoning-flagged-list');
             if (focusTarget && typeof focusTarget.scrollIntoView === 'function') {
                 focusTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
@@ -5508,6 +5618,18 @@
                 setStatus('Showing contradictions and targeted questions for continued intake denoising.');
                 return;
             }
+            const reviewLegalGraphBannerButton = event.target.closest('#intake-next-action-review-legal-graph');
+            if (reviewLegalGraphBannerButton) {
+                openLegalGraphInputsReview();
+                setStatus('Showing unresolved legal elements and question targets for legal graph review.');
+                return;
+            }
+            const reviewMatchingBannerButton = event.target.closest('#intake-next-action-review-matching');
+            if (reviewMatchingBannerButton) {
+                openNeurosymbolicMatchingReview();
+                setStatus('Showing unresolved legal elements and question targets for neurosymbolic matching.');
+                return;
+            }
             const prefillResolutionBannerButton = event.target.closest('#intake-next-action-prefill-resolution');
             if (prefillResolutionBannerButton) {
                 prefillResolutionForm({
@@ -5535,6 +5657,11 @@
             }
             const openDocumentBuilderBannerButton = event.target.closest('#intake-next-action-open-document-builder');
             if (openDocumentBuilderBannerButton) {
+                openDocumentDraftingHandoff();
+                return;
+            }
+            const openFormalGeneratorBannerButton = event.target.closest('#intake-next-action-open-formal-generator');
+            if (openFormalGeneratorBannerButton) {
                 openDocumentDraftingHandoff();
                 return;
             }

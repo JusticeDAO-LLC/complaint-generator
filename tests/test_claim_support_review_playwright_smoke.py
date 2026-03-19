@@ -2353,6 +2353,213 @@ def test_claim_support_review_dashboard_smoke_reviews_denoising_queue_from_next_
             os.unlink(db_path)
 
 
+def test_claim_support_review_dashboard_smoke_reviews_legal_graph_inputs_from_next_action_banner():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for legal-graph next-action smoke coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+        status_payload = mediator.get_three_phase_status.return_value
+        status_payload["next_action"] = {"action": "build_legal_graph"}
+        status_payload["intake_legal_targeting_summary"] = {
+            "claims": {
+                "retaliation": {
+                    "missing_requirement_count": 2,
+                    "missing_requirement_names": ["Adverse action", "Causation"],
+                    "missing_requirement_element_ids": ["retaliation:2", "retaliation:3"],
+                    "mapped_candidates": [{"target_element_id": "retaliation:2"}],
+                }
+            }
+        }
+        status_payload["question_candidate_summary"] = {
+            "count": 2,
+            "candidates": [
+                {"target_element_id": "retaliation:2", "question_goal": "establish_element"},
+                {"target_element_id": "retaliation:3", "question_goal": "identify_supporting_proof"},
+            ],
+        }
+
+        app = _build_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(
+                    f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
+                )
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                next_action_banner = page.locator("#intake-next-action-banner").inner_text()
+
+                assert "Build legal graph" in next_action_banner
+                assert "recommended action: build_legal_graph" in next_action_banner
+                assert "candidate claims: 2" in next_action_banner
+                assert "targeted claims: 1" in next_action_banner
+                assert "open legal elements: 2" in next_action_banner
+                assert "question candidates: 2" in next_action_banner
+
+                page.click("#intake-next-action-review-legal-graph")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Showing unresolved legal elements and question targets for legal graph review.')"
+                )
+
+                assert "Unresolved legal elements for retaliation" in page.locator("#intake-matching-summary-list").inner_text()
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+def test_claim_support_review_dashboard_smoke_reviews_neurosymbolic_matching_from_next_action_banner():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for matching next-action smoke coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+        status_payload = mediator.get_three_phase_status.return_value
+        status_payload["next_action"] = {"action": "perform_neurosymbolic_matching"}
+        status_payload["intake_matching_summary"] = {
+            "claims": {
+                "retaliation": {
+                    "matcher_confidence": 0.52,
+                    "missing_requirement_count": 2,
+                    "missing_requirement_names": ["Adverse action", "Causation"],
+                    "missing_requirement_element_ids": ["retaliation:2", "retaliation:3"],
+                    "mapped_candidates": [
+                        {"target_element_id": "retaliation:2"},
+                        {"target_element_id": "retaliation:3"},
+                    ],
+                }
+            }
+        }
+        status_payload["question_candidate_summary"] = {
+            "count": 2,
+            "candidates": [
+                {"target_element_id": "retaliation:2", "question_goal": "establish_element"},
+                {"target_element_id": "retaliation:3", "question_goal": "identify_supporting_proof"},
+            ],
+        }
+
+        app = _build_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(
+                    f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
+                )
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                next_action_banner = page.locator("#intake-next-action-banner").inner_text()
+
+                assert "Perform neurosymbolic matching" in next_action_banner
+                assert "recommended action: perform_neurosymbolic_matching" in next_action_banner
+                assert "targeted claims: 1" in next_action_banner
+                assert "open legal elements: 2" in next_action_banner
+                assert "question candidates: 2" in next_action_banner
+
+                page.click("#intake-next-action-review-matching")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Showing unresolved legal elements and question targets for neurosymbolic matching.')"
+                )
+
+                matching_text = page.locator("#intake-matching-summary-list").inner_text()
+                assert "missing legal elements: 2" in matching_text
+                assert "question target: retaliation:2" in matching_text
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+def test_claim_support_review_dashboard_smoke_opens_formal_builder_from_generate_formal_complaint_banner():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for generate-formal-complaint next-action smoke coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+        status_payload = mediator.get_three_phase_status.return_value
+        status_payload["next_action"] = {"action": "generate_formal_complaint"}
+        status_payload["claim_support_packet_summary"] = {
+            **dict(status_payload.get("claim_support_packet_summary") or {}),
+            "claim_count": 1,
+            "element_count": 3,
+            "draft_ready_element_ratio": 1.0,
+            "proof_readiness_score": 0.98,
+        }
+
+        app = _build_document_review_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(
+                    f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
+                )
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                next_action_banner = page.locator("#intake-next-action-banner").inner_text()
+
+                assert "Generate formal complaint" in next_action_banner
+                assert "recommended action: generate_formal_complaint" in next_action_banner
+                assert "claims: 1" in next_action_banner
+                assert "elements: 3" in next_action_banner
+                assert "packet draft ready: 1.00" in next_action_banner
+                assert "proof readiness: 0.98" in next_action_banner
+
+                page.click("#intake-next-action-open-formal-generator")
+                page.wait_for_url(f"{base_url}/document?claim_type=retaliation&user_id=browser-smoke-text-link")
+
+                assert "Formal Complaint Builder" in page.locator("body").inner_text()
+                assert "Generate Formal Complaint" in page.locator("body").inner_text()
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
 def test_claim_support_review_dashboard_smoke_reviews_evidence_gap_task_from_next_action_banner():
     if not PLAYWRIGHT_AVAILABLE:
         pytest.skip("Playwright not available")

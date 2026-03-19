@@ -750,6 +750,48 @@ class TestPhaseManager:
         assert 'action' in action
         assert action['action'] == 'build_knowledge_graph'
 
+    def test_formalization_next_action_builds_legal_graph_first(self):
+        """Formalization should start by building the legal graph when it is missing."""
+        pm = PhaseManager()
+        pm.current_phase = ComplaintPhase.FORMALIZATION
+
+        action = pm.get_next_action()
+
+        assert action['action'] == 'build_legal_graph'
+
+    def test_formalization_next_action_runs_matching_after_legal_graph_exists(self):
+        """Formalization should request neurosymbolic matching once the legal graph is available."""
+        pm = PhaseManager()
+        pm.current_phase = ComplaintPhase.FORMALIZATION
+        pm.update_phase_data(ComplaintPhase.FORMALIZATION, 'legal_graph', {'nodes': ['rule_1']})
+
+        action = pm.get_next_action()
+
+        assert action['action'] == 'perform_neurosymbolic_matching'
+
+    def test_formalization_next_action_generates_formal_complaint_after_matching(self):
+        """Formalization should move to complaint generation after matching completes."""
+        pm = PhaseManager()
+        pm.current_phase = ComplaintPhase.FORMALIZATION
+        pm.update_phase_data(ComplaintPhase.FORMALIZATION, 'legal_graph', {'nodes': ['rule_1']})
+        pm.update_phase_data(ComplaintPhase.FORMALIZATION, 'matching_complete', True)
+
+        action = pm.get_next_action()
+
+        assert action['action'] == 'generate_formal_complaint'
+
+    def test_formalization_next_action_completes_after_complaint_generation(self):
+        """Formalization should report completion once a formal complaint exists."""
+        pm = PhaseManager()
+        pm.current_phase = ComplaintPhase.FORMALIZATION
+        pm.update_phase_data(ComplaintPhase.FORMALIZATION, 'legal_graph', {'nodes': ['rule_1']})
+        pm.update_phase_data(ComplaintPhase.FORMALIZATION, 'matching_complete', True)
+        pm.update_phase_data(ComplaintPhase.FORMALIZATION, 'formal_complaint', {'draft_text': 'Complaint draft'})
+
+        action = pm.get_next_action()
+
+        assert action['action'] == 'complete_formalization'
+
     def test_intake_readiness_reports_semantic_blockers(self):
         """Test semantic blockers are included in intake readiness."""
         pm = PhaseManager()

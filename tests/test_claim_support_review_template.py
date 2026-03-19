@@ -48,8 +48,13 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Review dependency inputs" in content
     assert "intake-next-action-review-denoising" in content
     assert "Review denoising queue" in content
+    assert "intake-next-action-review-legal-graph" in content
+    assert "Review legal graph inputs" in content
+    assert "intake-next-action-review-matching" in content
+    assert "Review matching inputs" in content
     assert "intake-next-action-open-document-builder" in content
     assert "Open formal complaint builder" in content
+    assert "intake-next-action-open-formal-generator" in content
     assert "intake-next-action-confirm-summary" in content
     assert "Confirm intake summary" in content
     assert "intake-next-action-review-gaps" in content
@@ -122,6 +127,7 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Validation support for ${humanizedElement}" in content
     assert "postSaveValidationFocus" in content
     assert "lastValidationOutcome" in content
+    assert "evidenceSequence" in content
     assert "findMatchingAlignmentUpdate(payload, focus.claimType, focus.claimElementId)" in content
     assert "Validation save improved support for ${focus.claimElementId || 'the targeted element'} and returned you to the promoted update lane." in content
     assert "Validation save recorded for ${focus.claimElementId || 'the targeted element'}; the refreshed update still needs support validation." in content
@@ -140,6 +146,16 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Intake contradictions or open clarification paths still need another denoising pass before the case theory can settle." in content
     assert "openDenoisingQueueReview()" in content
     assert "Showing contradictions and targeted questions for continued intake denoising." in content
+    assert "recommended action: build_legal_graph" in content
+    assert "Claim targeting is available, but the legal graph that organizes statutes and requirements has not been built yet." in content
+    assert "openLegalGraphInputsReview()" in content
+    assert "Showing unresolved legal elements and question targets for legal graph review." in content
+    assert "recommended action: perform_neurosymbolic_matching" in content
+    assert "The legal graph is available, but formal claim-to-law matching still needs operator review support." in content
+    assert "openNeurosymbolicMatchingReview()" in content
+    assert "Showing unresolved legal elements and question targets for neurosymbolic matching." in content
+    assert "recommended action: generate_formal_complaint" in content
+    assert "Formalization is ready to move from matching outputs into a draft complaint package." in content
     assert "recommended action: build_claim_support_packets" in content
     assert "Evidence records exist, but the claim support packet still needs an explicit packet build before evidence review can be trusted." in content
     assert "recommended action: resolve_support_conflicts" in content

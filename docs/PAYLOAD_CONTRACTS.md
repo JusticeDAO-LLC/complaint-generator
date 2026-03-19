@@ -2435,6 +2435,32 @@ Representative response shape:
               "audit_query": "manual_review::retaliation::retaliation:2::resolve_contradiction"
             }
           }
+        },
+        {
+          "claim_element": "Causal connection",
+          "execution_mode": "resolution_handoff",
+          "follow_up_focus": "temporal_gap_closure",
+          "query_strategy": "temporal_gap_targeted",
+          "primary_missing_fact": "Event sequence",
+          "missing_fact_bundle": ["Event sequence"],
+          "resolution_status": "awaiting_testimony",
+          "resolution_applied": "skipped_resolution_handoff",
+          "temporal_rule_profile_id": "retaliation_temporal_profile_v1",
+          "temporal_rule_status": "partial",
+          "temporal_rule_blocking_reasons": [
+            "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action."
+          ],
+          "temporal_rule_follow_ups": [
+            {
+              "lane": "clarify_with_complainant",
+              "reason": "Clarify whether the protected activity occurred before the adverse action."
+            }
+          ],
+          "skipped": {
+            "escalation": {
+              "reason": "awaiting_testimony_collection"
+            }
+          }
         }
       ]
     }
@@ -2442,24 +2468,39 @@ Representative response shape:
   "follow_up_execution_summary": {
     "retaliation": {
       "executed_task_count": 1,
-      "skipped_task_count": 1,
+      "skipped_task_count": 2,
       "suppressed_task_count": 0,
       "cooldown_skipped_task_count": 0,
       "manual_review_task_count": 1,
       "contradiction_task_count": 1,
       "reasoning_gap_task_count": 0,
+      "temporal_gap_task_count": 1,
+      "temporal_gap_targeted_task_count": 1,
       "semantic_cluster_count": 1,
       "semantic_duplicate_count": 0,
       "follow_up_focus_counts": {
-        "contradiction_resolution": 2
+        "contradiction_resolution": 2,
+        "temporal_gap_closure": 1
       },
       "query_strategy_counts": {
-        "contradiction_targeted": 2
+        "contradiction_targeted": 2,
+        "temporal_gap_targeted": 1
       },
       "proof_decision_source_counts": {
         "contradiction_candidates": 2
       },
-      "resolution_applied_counts": {},
+      "resolution_applied_counts": {
+        "skipped_resolution_handoff": 1
+      },
+      "temporal_rule_status_counts": {
+        "partial": 1
+      },
+      "temporal_rule_blocking_reason_counts": {
+        "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.": 1
+      },
+      "temporal_resolution_status_counts": {
+        "awaiting_testimony": 1
+      },
       "adaptive_retry_task_count": 0,
       "priority_penalized_task_count": 0,
       "adaptive_query_strategy_counts": {},
@@ -2536,6 +2577,8 @@ Interpretation notes:
 - `execution_mode` distinguishes normal retrieval work from contradiction-driven `manual_review` or mixed `review_and_retrieve` tasks.
 - `follow_up_focus` captures whether the task is closing an ordinary support gap, a rule-guided factual gap (`fact_gap_closure`), an adverse-authority review (`adverse_authority_review`), a contradiction-heavy element, or a reasoning-specific gap such as `logic_unprovable` or `ontology_validation_failed`.
 - `query_strategy` records whether generated search text used the standard support-gap templates, rule-guided fact-gap prompts (`rule_fact_targeted`), adverse-authority review prompts (`adverse_authority_targeted`), contradiction-targeted retrieval prompts, or reasoning-gap-targeted prompts derived from proof diagnostics.
+- `execution_mode="resolution_handoff"` identifies follow-up work that did not run retrieval because the planner routed the task directly into a testimony or complainant-record handoff lane.
+- `resolution_applied="skipped_resolution_handoff"` marks those chronology handoffs in the execution ledger, and accompanying fields such as `temporal_rule_profile_id`, `temporal_rule_status`, `temporal_rule_blocking_reasons`, and `temporal_rule_follow_ups` preserve the timing failure that triggered the handoff.
 - `manual_review` skips are also written into the `claim_follow_up_execution` DuckDB ledger with `support_kind="manual_review"`, so contradiction-resolution work has an audit trail even when no retrieval runs.
 - Adverse-authority review tasks are also kept visible even when graph support is already strong, because duplicated factual support does not resolve a questioned, limiting, or otherwise adverse authority record.
 - Operator resolutions can be appended to that same ledger as `status="resolved_manual_review"` events, carrying fields such as `resolution_status`, `resolution_notes`, and `related_execution_id`.
