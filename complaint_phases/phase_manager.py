@@ -643,9 +643,13 @@ class PhaseManager:
         if isinstance(validation_focus_summary, dict):
             action['validation_focus_summary'] = validation_focus_summary
             action['validation_target_count'] = int(validation_focus_summary.get('count', 0) or 0)
-            targets = validation_focus_summary.get('targets')
-            if isinstance(targets, list) and targets and isinstance(targets[0], dict):
-                action['primary_validation_target'] = dict(targets[0])
+            primary_target = validation_focus_summary.get('primary_target')
+            if isinstance(primary_target, dict) and primary_target:
+                action['primary_validation_target'] = dict(primary_target)
+            else:
+                targets = validation_focus_summary.get('targets')
+                if isinstance(targets, list) and targets and isinstance(targets[0], dict):
+                    action['primary_validation_target'] = dict(targets[0])
         if len(focused_claim_types) == 1:
             action['claim_type'] = next(iter(focused_claim_types))
         if len(focused_element_keys) == 1:
@@ -653,9 +657,8 @@ class PhaseManager:
             action['claim_type'] = focused_claim_type
             action['claim_element_id'] = focused_element_id
         elif isinstance(validation_focus_summary, dict):
-            targets = validation_focus_summary.get('targets')
-            if isinstance(targets, list) and targets and isinstance(targets[0], dict):
-                focused_target = targets[0]
+            focused_target = action.get('primary_validation_target')
+            if isinstance(focused_target, dict) and focused_target:
                 focused_claim_type = str(focused_target.get('claim_type') or '').strip()
                 focused_element_id = str(focused_target.get('claim_element_id') or '').strip()
                 if focused_claim_type:

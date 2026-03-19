@@ -6543,10 +6543,12 @@ class Mediator:
 				str(item.get('claim_element_id') or ''),
 			)
 		)
+		primary_target = dict(targets[0]) if targets else {}
 		return {
 			'count': len(targets),
 			'claim_type_counts': claim_type_counts,
 			'promotion_kind_counts': promotion_kind_counts,
+			'primary_target': primary_target,
 			'targets': targets,
 		}
 
@@ -7883,6 +7885,7 @@ class Mediator:
 				claim_support_packets,
 			),
 			'alignment_evidence_tasks': alignment_evidence_tasks if isinstance(alignment_evidence_tasks, list) else [],
+			'alignment_task_summary': alignment_task_summary,
 			'alignment_task_updates': alignment_task_updates if isinstance(alignment_task_updates, list) else [],
 			'alignment_task_update_history': alignment_task_update_history if isinstance(alignment_task_update_history, list) else [],
 			'alignment_task_update_summary': alignment_task_update_summary,

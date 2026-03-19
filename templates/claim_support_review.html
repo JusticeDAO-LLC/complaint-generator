@@ -2815,28 +2815,65 @@
             const validationFocusTargets = Array.isArray(alignmentValidationFocusSummary.targets)
                 ? alignmentValidationFocusSummary.targets
                 : [];
-            if (!validationFocusTargets.length) {
+            const summaryPrimaryValidationTarget = nextAction.primary_validation_target && typeof nextAction.primary_validation_target === 'object'
+                ? nextAction.primary_validation_target
+                : {};
+            const orderedValidationFocusTargets = [...validationFocusTargets].sort((left, right) => {
+                const leftClaimType = String(left && left.claim_type || '').trim();
+                const leftElementId = String(left && left.claim_element_id || '').trim();
+                const rightClaimType = String(right && right.claim_type || '').trim();
+                const rightElementId = String(right && right.claim_element_id || '').trim();
+                const leftPrimary = Number(
+                    String(summaryPrimaryValidationTarget.claim_type || '').trim() === leftClaimType
+                    && String(summaryPrimaryValidationTarget.claim_element_id || '').trim() === leftElementId
+                );
+                const rightPrimary = Number(
+                    String(summaryPrimaryValidationTarget.claim_type || '').trim() === rightClaimType
+                    && String(summaryPrimaryValidationTarget.claim_element_id || '').trim() === rightElementId
+                );
+                if (leftPrimary !== rightPrimary) {
+                    return rightPrimary - leftPrimary;
+                }
+                const leftSequence = Number(left && left.evidence_sequence || 0);
+                const rightSequence = Number(right && right.evidence_sequence || 0);
+                if (leftSequence !== rightSequence) {
+                    return rightSequence - leftSequence;
+                }
+                return `${leftClaimType}:${leftElementId}`.localeCompare(`${rightClaimType}:${rightElementId}`);
+            });
+            if (!orderedValidationFocusTargets.length) {
                 alignmentValidationFocusList.innerHTML = '';
             } else {
-                alignmentValidationFocusList.innerHTML = validationFocusTargets.map((target) => {
+                alignmentValidationFocusList.innerHTML = orderedValidationFocusTargets.map((target) => {
                     const claimType = String(target.claim_type || '').trim();
                     const claimElementId = String(target.claim_element_id || '').trim();
                     const promotionKind = String(target.promotion_kind || '').trim();
                     const evidenceSequence = Number(target.evidence_sequence || 0);
+                    const isPrimaryValidationTarget = Boolean(
+                        String(summaryPrimaryValidationTarget.claim_type || '').trim() === claimType
+                        && String(summaryPrimaryValidationTarget.claim_element_id || '').trim() === claimElementId
+                    );
                     const focusChips = [
                         `<span class="chip">validation target: ${humanizeQueryValue(claimElementId || 'unknown')}</span>`,
                         `<span class="chip">claim: ${humanizeQueryValue(claimType || 'unknown')}</span>`,
                         `<span class="chip">promotion kind: ${humanizeQueryValue(promotionKind || 'unknown')}</span>`,
                         `<span class="chip">evidence event: ${evidenceSequence}</span>`,
                     ];
+                    if (isPrimaryValidationTarget) {
+                        focusChips.push('<span class="chip contradicted">primary validation target</span>');
+                    }
                     if (target.promotion_ref) {
                         focusChips.push(`<span class="chip">promotion ref: ${target.promotion_ref}</span>`);
                     }
                     return `
-                        <article class="task-card">
+                        <article class="task-card ${isPrimaryValidationTarget ? 'is-section-focus' : ''}">
                             <strong>Validation focus for ${humanizeQueryValue(claimType || 'claim')} / ${humanizeQueryValue(claimElementId || 'element')}</strong>
                             <div class="chip-row" style="margin-top: 8px;">${focusChips.join('')}</div>
-                            <div style="margin-top: 8px;">Promoted support for this element still needs validation before packet support can be treated as settled.</div>
+                            <div style="margin-top: 8px;">
+                                ${isPrimaryValidationTarget
+                                    ? 'This is the current primary validation target from the promoted-support banner.'
+                                    : 'Promoted support for this element still needs validation before packet support can be treated as settled.'}
+                            </div>
                             <div class="button-row" style="margin-top: 12px;">
                                 <button
                                     class="button-secondary validation-focus-open-promoted-button"
@@ -2866,16 +2903,18 @@
                 const driftSummary = nextAction.drift_summary && typeof nextAction.drift_summary === 'object'
                     ? nextAction.drift_summary
                     : alignmentPromotionDriftSummary;
-                const primaryValidationTarget = nextAction.primary_validation_target && typeof nextAction.primary_validation_target === 'object'
+                const primaryValidationTarget = summaryPrimaryValidationTarget && typeof summaryPrimaryValidationTarget === 'object' && Object.keys(summaryPrimaryValidationTarget).length
+                    ? summaryPrimaryValidationTarget
+                    : (nextAction.primary_validation_target && typeof nextAction.primary_validation_target === 'object'
                     ? nextAction.primary_validation_target
-                    : (validationFocusTargets.length && typeof validationFocusTargets[0] === 'object' ? validationFocusTargets[0] : {});
+                    : (orderedValidationFocusTargets.length && typeof orderedValidationFocusTargets[0] === 'object' ? orderedValidationFocusTargets[0] : {}));
                 const driftRatio = Number(driftSummary.drift_ratio || 0);
                 const pendingConversionCount = Number(nextAction.pending_conversion_count || driftSummary.pending_conversion_count || 0);
                 const promotedCount = Number(nextAction.promoted_count || driftSummary.promoted_count || 0);
                 const validationTargetCount = Number(
                     nextAction.validation_target_count
                     || alignmentValidationFocusSummary.count
-                    || validationFocusTargets.length
+                    || orderedValidationFocusTargets.length
                     || 0
                 );
                 const proofReadinessScore = Number(driftSummary.proof_readiness_score || 0);
@@ -2899,6 +2938,9 @@
                 if (primaryValidationTarget.promotion_kind) {
                     validationChips.push(`<span class="chip">primary promotion kind: ${humanizeQueryValue(primaryValidationTarget.promotion_kind)}</span>`);
                 }
+                if (primaryValidationTarget.promotion_ref) {
+                    validationChips.push(`<span class="chip">primary promotion ref: ${primaryValidationTarget.promotion_ref}</span>`);
+                }
                 intakeNextActionBanner.hidden = false;
                 intakeNextActionBanner.classList.remove('is-error');
                 intakeNextActionTitle.textContent = 'Validate promoted support';
@@ -2917,6 +2959,7 @@
                 intakeNextActionNotes.innerHTML = `
                     Promoted testimony or document support is accumulating faster than packet validation is reaching resolved supported status.
                     ${primaryValidationTarget.claim_element_id ? `Primary validation target: ${humanizeQueryValue(primaryValidationTarget.claim_element_id)}.` : ''}
+                    ${primaryValidationTarget.promotion_ref ? `Primary promotion ref: ${primaryValidationTarget.promotion_ref}.` : ''}
                     Review and validate saved support before treating the evidence phase as truly settled.
                     <div class="button-row" style="margin-top: 12px;">
                         <button

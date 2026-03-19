@@ -26,6 +26,18 @@ def test_build_intake_status_summary_preserves_legacy_alias_fields():
             "canonical_fact_count": 2,
             "proof_lead_count": 0,
         },
+        "next_action": {
+            "action": "validate_promoted_support",
+            "claim_type": "retaliation",
+            "claim_element_id": "adverse_action",
+            "validation_target_count": 2,
+            "primary_validation_target": {
+                "claim_type": "retaliation",
+                "claim_element_id": "adverse_action",
+                "promotion_kind": "document",
+                "promotion_ref": "doc:retaliation:1",
+            },
+        },
     }
 
     summary = build_intake_status_summary(mediator, include_iteration_count=True)
@@ -50,6 +62,24 @@ def test_build_intake_status_summary_preserves_legacy_alias_fields():
         "criteria": {
             "case_theory_coherent": True,
             "minimum_proof_path_present": False,
+        },
+        "next_action": {
+            "action": "validate_promoted_support",
+            "claim_type": "retaliation",
+            "claim_element_id": "adverse_action",
+            "validation_target_count": 2,
+            "primary_validation_target": {
+                "claim_type": "retaliation",
+                "claim_element_id": "adverse_action",
+                "promotion_kind": "document",
+                "promotion_ref": "doc:retaliation:1",
+            },
+        },
+        "primary_validation_target": {
+            "claim_type": "retaliation",
+            "claim_element_id": "adverse_action",
+            "promotion_kind": "document",
+            "promotion_ref": "doc:retaliation:1",
         },
         "contradictions": [
             {
@@ -283,6 +313,12 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
             "count": 2,
             "claim_type_counts": {"retaliation": 2},
             "promotion_kind_counts": {"testimony": 1, "document": 1},
+            "primary_target": {
+                "claim_type": "retaliation",
+                "claim_element_id": "adverse_action",
+                "promotion_kind": "document",
+                "evidence_sequence": 4,
+            },
             "targets": [
                 {
                     "claim_type": "retaliation",
@@ -449,6 +485,7 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
         "promoted_to_testimony": 1,
     }
     assert summary["alignment_validation_focus_summary"]["count"] == 2
+    assert summary["alignment_validation_focus_summary"]["primary_target"]["claim_element_id"] == "adverse_action"
     assert summary["alignment_validation_focus_summary"]["promotion_kind_counts"] == {
         "testimony": 1,
         "document": 1,

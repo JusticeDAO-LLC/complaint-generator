@@ -344,6 +344,30 @@ def build_intake_status_summary(
         contradiction_count = int(readiness.get("contradiction_count"))
     except (TypeError, ValueError):
         contradiction_count = len(normalized_contradictions)
+    next_action = raw_status.get("next_action")
+    next_action = next_action if isinstance(next_action, dict) else {}
+    compact_next_action: Dict[str, Any] = {}
+    primary_validation_target = {}
+    if next_action:
+        compact_next_action["action"] = str(next_action.get("action") or "").strip()
+        if "claim_type" in next_action:
+            compact_next_action["claim_type"] = str(next_action.get("claim_type") or "").strip()
+        if "claim_element_id" in next_action:
+            compact_next_action["claim_element_id"] = str(next_action.get("claim_element_id") or "").strip()
+        if "validation_target_count" in next_action:
+            try:
+                compact_next_action["validation_target_count"] = int(next_action.get("validation_target_count") or 0)
+            except (TypeError, ValueError):
+                compact_next_action["validation_target_count"] = 0
+        primary_validation_target_value = next_action.get("primary_validation_target")
+        if isinstance(primary_validation_target_value, dict) and primary_validation_target_value:
+            primary_validation_target = {
+                "claim_type": str(primary_validation_target_value.get("claim_type") or "").strip(),
+                "claim_element_id": str(primary_validation_target_value.get("claim_element_id") or "").strip(),
+                "promotion_kind": str(primary_validation_target_value.get("promotion_kind") or "").strip(),
+                "promotion_ref": str(primary_validation_target_value.get("promotion_ref") or "").strip(),
+            }
+            compact_next_action["primary_validation_target"] = primary_validation_target
 
     summary = {
         "current_phase": str(raw_status.get("current_phase") or "").strip(),
@@ -364,6 +388,8 @@ def build_intake_status_summary(
             if isinstance(readiness.get("blocking_contradictions"), list)
             else []
         ),
+        "next_action": compact_next_action,
+        "primary_validation_target": primary_validation_target,
         "candidate_claim_count": int(readiness.get("candidate_claim_count", 0) or 0),
         "canonical_fact_count": int(readiness.get("canonical_fact_count", 0) or 0),
         "proof_lead_count": int(readiness.get("proof_lead_count", 0) or 0),

@@ -198,6 +198,12 @@ def _build_checklist_intake_status(intake_status: Dict[str, Any]) -> Dict[str, A
     blocker_list = [str(item).strip() for item in blockers] if isinstance(blockers, list) else []
     contradictions = intake_status.get("contradictions")
     contradiction_list = contradictions if isinstance(contradictions, list) else []
+    next_action = intake_status.get("next_action") if isinstance(intake_status.get("next_action"), dict) else {}
+    primary_validation_target = (
+        intake_status.get("primary_validation_target")
+        if isinstance(intake_status.get("primary_validation_target"), dict)
+        else {}
+    )
     return {
         "score": float(intake_status.get("score") or 0.0),
         "ready_to_advance": bool(intake_status.get("ready_to_advance", False)),
@@ -205,6 +211,8 @@ def _build_checklist_intake_status(intake_status: Dict[str, Any]) -> Dict[str, A
         "contradiction_count": int(intake_status.get("contradiction_count") or len(contradiction_list)),
         "blockers": blocker_list,
         "contradictions": contradiction_list[:2],
+        "next_action": next_action,
+        "primary_validation_target": primary_validation_target,
     }
 
 

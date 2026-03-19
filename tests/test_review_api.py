@@ -261,6 +261,16 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                     "evidence_sequence": 2,
                 }
             ],
+            "alignment_task_summary": {
+                "count": 1,
+                "status_counts": {"unsupported": 1},
+                "resolution_status_counts": {"still_open": 1},
+                "temporal_gap_task_count": 1,
+                "temporal_gap_targeted_task_count": 1,
+                "temporal_rule_status_counts": {"partial": 1},
+                "temporal_rule_blocking_reason_counts": {"Need retaliation chronology sequencing.": 1},
+                "temporal_resolution_status_counts": {"still_open": 1},
+            },
         }
         mediator.get_claim_coverage_matrix.return_value = {
             "claims": {
@@ -915,6 +925,8 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 }
             ],
             "blocking_contradictions": [],
+            "next_action": {},
+            "primary_validation_target": {},
             "candidate_claim_count": 2,
             "canonical_fact_count": 2,
             "proof_lead_count": 1,
@@ -1017,6 +1029,16 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             }
         ]
         assert intake_case_summary["alignment_task_update_history"][1]["evidence_sequence"] == 2
+        assert intake_case_summary["alignment_task_summary"] == {
+            "count": 1,
+            "status_counts": {"unsupported": 1},
+            "resolution_status_counts": {"still_open": 1},
+            "temporal_gap_task_count": 1,
+            "temporal_gap_targeted_task_count": 1,
+            "temporal_rule_status_counts": {"partial": 1},
+            "temporal_rule_blocking_reason_counts": {"Need retaliation chronology sequencing.": 1},
+            "temporal_resolution_status_counts": {"still_open": 1},
+        }
         assert intake_case_summary["alignment_task_update_summary"] == {
             "count": 2,
             "status_counts": {"active": 2},
@@ -1068,15 +1090,17 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         if "evidence_completion_ready" in claim_support_packet_summary:
             assert claim_support_packet_summary["evidence_completion_ready"] is False
         if "temporal_gap_task_count" in claim_support_packet_summary:
-            assert claim_support_packet_summary["temporal_gap_task_count"] == 0
+            assert claim_support_packet_summary["temporal_gap_task_count"] == 1
         if "temporal_gap_targeted_task_count" in claim_support_packet_summary:
-            assert claim_support_packet_summary["temporal_gap_targeted_task_count"] == 0
+            assert claim_support_packet_summary["temporal_gap_targeted_task_count"] == 1
         if "temporal_rule_status_counts" in claim_support_packet_summary:
-            assert claim_support_packet_summary["temporal_rule_status_counts"] == {}
+            assert claim_support_packet_summary["temporal_rule_status_counts"] == {"partial": 1}
         if "temporal_rule_blocking_reason_counts" in claim_support_packet_summary:
-            assert claim_support_packet_summary["temporal_rule_blocking_reason_counts"] == {}
+            assert claim_support_packet_summary["temporal_rule_blocking_reason_counts"] == {
+                "Need retaliation chronology sequencing.": 1,
+            }
         if "temporal_resolution_status_counts" in claim_support_packet_summary:
-            assert claim_support_packet_summary["temporal_resolution_status_counts"] == {}
+            assert claim_support_packet_summary["temporal_resolution_status_counts"] == {"still_open": 1}
         assert (
             payload["claim_coverage_matrix"]["retaliation"]["status_counts"]["covered"]
             == 1

@@ -38,6 +38,7 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "alignment-promotion-drift-chips" in content
     assert "alignment-promotion-drift-notes" in content
     assert "alignment-validation-focus-list" in content
+    assert "const orderedValidationFocusTargets = [...validationFocusTargets].sort((left, right) => {" in content
     assert "Promotion Drift Summary" in content
     assert "Validate promoted support" in content
     assert "validation targets: ${validationTargetCount}" in content
@@ -77,8 +78,10 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "focus element: ${humanizeQueryValue(focusedPromotedElementId)}" in content
     assert "primary target: ${humanizeQueryValue(primaryValidationTarget.claim_element_id)}" in content
     assert "primary promotion kind: ${humanizeQueryValue(primaryValidationTarget.promotion_kind)}" in content
+    assert "primary promotion ref: ${primaryValidationTarget.promotion_ref}" in content
     assert "Promoted testimony or document support is accumulating faster than packet validation is reaching resolved supported status." in content
     assert "Primary validation target: ${humanizeQueryValue(primaryValidationTarget.claim_element_id)}." in content
+    assert "Primary promotion ref: ${primaryValidationTarget.promotion_ref}." in content
     assert "const primaryValidationClaimType = String(" in content
     assert "const primaryValidationElementId = String(" in content
     assert "data-claim-type=\"${primaryValidationClaimType}\"" in content
@@ -137,6 +140,11 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "promotion kind:" in content
     assert "Validation focus for ${humanizeQueryValue(claimType || 'claim')} / ${humanizeQueryValue(claimElementId || 'element')}" in content
     assert "Promoted support for this element still needs validation before packet support can be treated as settled." in content
+    assert "primary validation target" in content
+    assert "task-card ${isPrimaryValidationTarget ? 'is-section-focus' : ''}" in content
+    assert "This is the current primary validation target from the promoted-support banner." in content
+    assert "return rightPrimary - leftPrimary;" in content
+    assert "return rightSequence - leftSequence;" in content
     assert "validation-focus-open-promoted-button" in content
     assert "validation-focus-prefill-testimony-button" in content
     assert "validation-focus-prefill-document-button" in content

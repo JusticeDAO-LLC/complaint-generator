@@ -795,6 +795,7 @@ class TestMediatorThreePhaseIntegration:
         assert status['alignment_task_update_summary']['resolution_status_counts']['promoted_to_testimony'] == 1
         assert status['alignment_validation_focus_summary']['count'] == 2
         assert status['alignment_validation_focus_summary']['claim_type_counts']['retaliation'] == 2
+        assert status['alignment_validation_focus_summary']['primary_target']['claim_element_id'] == 'adverse_action'
         assert status['alignment_validation_focus_summary']['targets'][0]['promotion_kind'] == 'document'
         assert status['alignment_promotion_drift_summary']['promoted_count'] == 2
         assert status['alignment_promotion_drift_summary']['pending_conversion_count'] == 2
@@ -1284,7 +1285,13 @@ class TestMediatorThreePhaseIntegration:
                     }
                 ],
                 'canonical_facts': [{'fact_id': 'fact_001'}],
-                'proof_leads': [],
+                'proof_leads': [
+                    {
+                        'lead_id': 'lead_001',
+                        'lead_type': 'testimony',
+                        'description': 'Complainant can clarify the chronology of the protected activity and discipline.',
+                    }
+                ],
                 'contradiction_queue': [],
                 'open_items': [
                     {
@@ -1382,6 +1389,29 @@ class TestMediatorThreePhaseIntegration:
             'Establish chronology:' in item
             for item in result['alignment_evidence_tasks'][0]['success_criteria']
         )
+
+        status = mediator.get_three_phase_status()
+
+        assert status['alignment_evidence_tasks'][0]['action'] == 'fill_temporal_chronology_gap'
+        assert status['alignment_task_summary'] == {
+            'count': 1,
+            'status_counts': {'partially_supported': 1},
+            'resolution_status_counts': {'awaiting_testimony': 1},
+            'temporal_gap_task_count': 1,
+            'temporal_gap_targeted_task_count': 1,
+            'temporal_rule_status_counts': {'partial': 1},
+            'temporal_rule_blocking_reason_counts': {
+                'Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.': 1,
+            },
+            'temporal_resolution_status_counts': {'awaiting_testimony': 1},
+        }
+        assert status['claim_support_packet_summary']['temporal_gap_task_count'] == 1
+        assert status['claim_support_packet_summary']['temporal_gap_targeted_task_count'] == 1
+        assert status['claim_support_packet_summary']['temporal_rule_status_counts'] == {'partial': 1}
+        assert status['claim_support_packet_summary']['temporal_rule_blocking_reason_counts'] == {
+            'Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.': 1,
+        }
+        assert status['claim_support_packet_summary']['temporal_resolution_status_counts'] == {'awaiting_testimony': 1}
 
     def test_build_claim_support_packets_tracks_partial_fact_bundle_coverage(self):
         """Packet construction should only clear the bundle prompts actually covered by support facts."""
