@@ -1911,6 +1911,53 @@ class TestMediatorThreePhaseIntegration:
         assert history[-1]['resolution_status'] == 'promoted_to_document'
         assert history[-1]['evidence_sequence'] == 4
 
+    def test_get_three_phase_status_includes_recent_validation_outcome(self):
+        """Status should expose the latest promoted or validated outcome for non-browser consumers."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_task_update_history',
+            [
+                {
+                    'task_id': 'retaliation:protected_activity:fill_evidence_gaps',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'resolution_status': 'promoted_to_document',
+                    'current_support_status': 'partially_supported',
+                    'promotion_kind': 'document',
+                    'promotion_ref': 'doc:retaliation:1',
+                    'evidence_sequence': 3,
+                },
+                {
+                    'task_id': 'retaliation:protected_activity:fill_evidence_gaps',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'resolution_status': 'resolved_supported',
+                    'current_support_status': 'resolved_supported',
+                    'promotion_kind': 'document',
+                    'promotion_ref': 'doc:retaliation:1',
+                    'evidence_sequence': 4,
+                },
+            ],
+        )
+
+        status = mediator.get_three_phase_status()
+
+        assert status['recent_validation_outcome']['claim_type'] == 'retaliation'
+        assert status['recent_validation_outcome']['claim_element_id'] == 'protected_activity'
+        assert status['recent_validation_outcome']['resolution_status'] == 'resolved_supported'
+        assert status['recent_validation_outcome']['evidence_sequence'] == 4
+        assert status['recent_validation_outcome']['improved'] is True
+
     def test_requirement_answer_can_satisfy_registry_backed_claim_element(self):
         """Requirement answers should tag and satisfy registry-backed claim elements when the requirement name is recognizable."""
         from mediator.mediator import Mediator

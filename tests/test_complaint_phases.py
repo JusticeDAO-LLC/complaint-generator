@@ -1178,6 +1178,9 @@ class TestPhaseManager:
         assert action['action'] == 'complete_evidence'
         assert pm.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_unresolved_without_review_path_count') == 0
         assert pm.get_phase_data(ComplaintPhase.EVIDENCE, 'reviewable_escalation_ratio') == 1.0
+        assert pm.get_phase_data(ComplaintPhase.EVIDENCE, 'temporal_gap_task_count') == 0
+        assert pm.get_phase_data(ComplaintPhase.EVIDENCE, 'temporal_gap_targeted_task_count') == 0
+        assert pm.get_phase_data(ComplaintPhase.EVIDENCE, 'temporal_resolution_status_counts') == {}
 
     def test_evidence_phase_prioritizes_validation_when_promotion_drift_is_flagged(self):
         """Promotion drift should steer next_action toward validation before generic evidence completion."""

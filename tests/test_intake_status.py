@@ -193,22 +193,34 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
         },
         "alignment_evidence_tasks": [
             {
-                "action": "fill_evidence_gaps",
+                "action": "fill_temporal_chronology_gap",
+                "task_id": "retaliation:protected_activity:fill_temporal_chronology_gap",
                 "claim_type": "retaliation",
                 "claim_element_id": "protected_activity",
                 "claim_element_label": "Protected activity",
                 "support_status": "unsupported",
                 "blocking": True,
-                "preferred_support_kind": "evidence",
+                "preferred_support_kind": "testimony",
                 "fallback_lanes": ["authority", "testimony"],
-                "source_quality_target": "high_quality_document",
-                "resolution_status": "still_open",
+                "source_quality_target": "credible_testimony",
+                "resolution_status": "awaiting_testimony",
                 "resolution_notes": "",
+                "temporal_rule_profile_id": "retaliation_temporal_profile_v1",
+                "temporal_rule_status": "partial",
+                "temporal_rule_blocking_reasons": [
+                    "Retaliation chronology remains unresolved.",
+                ],
+                "temporal_rule_follow_ups": [
+                    {
+                        "lane": "clarify_with_complainant",
+                        "reason": "Confirm the protected activity preceded the adverse action.",
+                    }
+                ],
             }
         ],
         "alignment_task_updates": [
             {
-                "task_id": "retaliation:protected_activity:fill_evidence_gaps",
+                "task_id": "retaliation:protected_activity:fill_temporal_chronology_gap",
                 "claim_type": "retaliation",
                 "claim_element_id": "protected_activity",
                 "resolution_status": "partially_addressed",
@@ -217,7 +229,7 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
         ],
         "alignment_task_update_history": [
             {
-                "task_id": "retaliation:protected_activity:fill_evidence_gaps",
+                "task_id": "retaliation:protected_activity:fill_temporal_chronology_gap",
                 "claim_type": "retaliation",
                 "claim_element_id": "protected_activity",
                 "resolution_status": "still_open",
@@ -225,7 +237,7 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
                 "evidence_sequence": 1,
             },
             {
-                "task_id": "retaliation:protected_activity:fill_evidence_gaps",
+                "task_id": "retaliation:protected_activity:fill_temporal_chronology_gap",
                 "claim_type": "retaliation",
                 "claim_element_id": "protected_activity",
                 "resolution_status": "partially_addressed",
@@ -233,7 +245,7 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
                 "evidence_sequence": 2,
             },
             {
-                "task_id": "retaliation:protected_activity:fill_evidence_gaps",
+                "task_id": "retaliation:protected_activity:fill_temporal_chronology_gap",
                 "claim_type": "retaliation",
                 "claim_element_id": "protected_activity",
                 "resolution_status": "promoted_to_testimony",
@@ -249,6 +261,16 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
                 "evidence_sequence": 4,
             }
         ],
+        "recent_validation_outcome": {
+            "claim_type": "retaliation",
+            "claim_element_id": "protected_activity",
+            "resolution_status": "resolved_supported",
+            "current_support_status": "resolved_supported",
+            "evidence_sequence": 4,
+            "promotion_ref": "doc:retaliation:1",
+            "promotion_kind": "document",
+            "improved": True,
+        },
         "alignment_promotion_drift_summary": {
             "promoted_count": 2,
             "resolved_supported_count": 0,
@@ -379,13 +401,36 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["intake_evidence_alignment_summary"]["claims"]["retaliation"]["intake_only_element_ids"] == ["causation"]
     assert summary["alignment_evidence_tasks"][0]["claim_element_id"] == "protected_activity"
     assert summary["alignment_evidence_tasks"][0]["fallback_lanes"] == ["authority", "testimony"]
-    assert summary["alignment_evidence_tasks"][0]["source_quality_target"] == "high_quality_document"
+    assert summary["alignment_evidence_tasks"][0]["source_quality_target"] == "credible_testimony"
+    assert summary["alignment_task_summary"] == {
+        "count": 1,
+        "status_counts": {"unsupported": 1},
+        "resolution_status_counts": {"awaiting_testimony": 1},
+        "temporal_gap_task_count": 1,
+        "temporal_gap_targeted_task_count": 1,
+        "temporal_rule_status_counts": {"partial": 1},
+        "temporal_rule_blocking_reason_counts": {"Retaliation chronology remains unresolved.": 1},
+        "temporal_resolution_status_counts": {"awaiting_testimony": 1},
+    }
     assert summary["alignment_task_updates"][0]["resolution_status"] == "partially_addressed"
     assert summary["alignment_task_update_history"][1]["evidence_sequence"] == 2
     assert summary["alignment_task_update_summary"]["count"] == 4
     assert summary["alignment_task_update_summary"]["promoted_testimony_count"] == 1
     assert summary["alignment_task_update_summary"]["promoted_document_count"] == 1
     assert summary["alignment_task_update_summary"]["resolution_status_counts"]["promoted_to_testimony"] == 1
+    assert summary["alignment_task_update_summary"]["temporal_gap_task_count"] == 3
+    assert summary["alignment_task_update_summary"]["temporal_gap_targeted_task_count"] == 3
+    assert summary["alignment_task_update_summary"]["temporal_rule_status_counts"] == {"partial": 3}
+    assert summary["alignment_task_update_summary"]["temporal_rule_blocking_reason_counts"] == {
+        "Retaliation chronology remains unresolved.": 3,
+    }
+    assert summary["alignment_task_update_summary"]["temporal_resolution_status_counts"] == {
+        "still_open": 1,
+        "partially_addressed": 1,
+        "promoted_to_testimony": 1,
+    }
+    assert summary["recent_validation_outcome"]["resolution_status"] == "resolved_supported"
+    assert summary["recent_validation_outcome"]["improved"] is True
     assert summary["alignment_promotion_drift_summary"]["promoted_count"] == 2
     assert summary["alignment_promotion_drift_summary"]["drift_flag"] is True
     assert summary["next_action"]["action"] == "validate_promoted_support"
@@ -408,6 +453,15 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["claim_support_packet_summary"]["supported_blocking_element_ratio"] == 0.5
     assert summary["claim_support_packet_summary"]["proof_readiness_score"] == 0.5
     assert summary["claim_support_packet_summary"]["claim_support_unresolved_without_review_path_count"] == 1
+    assert summary["claim_support_packet_summary"]["temporal_gap_task_count"] == 1
+    assert summary["claim_support_packet_summary"]["temporal_gap_targeted_task_count"] == 1
+    assert summary["claim_support_packet_summary"]["temporal_rule_status_counts"] == {"partial": 1}
+    assert summary["claim_support_packet_summary"]["temporal_rule_blocking_reason_counts"] == {
+        "Retaliation chronology remains unresolved.": 1,
+    }
+    assert summary["claim_support_packet_summary"]["temporal_resolution_status_counts"] == {
+        "awaiting_testimony": 1,
+    }
     assert summary["claim_support_packet_summary"]["evidence_completion_ready"] is False
 
 

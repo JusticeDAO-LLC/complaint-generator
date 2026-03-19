@@ -1026,6 +1026,11 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             },
             "promoted_testimony_count": 0,
             "promoted_document_count": 0,
+            "temporal_gap_task_count": 0,
+            "temporal_gap_targeted_task_count": 0,
+            "temporal_rule_status_counts": {},
+            "temporal_rule_blocking_reason_counts": {},
+            "temporal_resolution_status_counts": {},
         }
         claim_support_packet_summary = intake_case_summary["claim_support_packet_summary"]
         assert claim_support_packet_summary["claim_count"] == 1
@@ -1062,6 +1067,16 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             assert claim_support_packet_summary["proof_readiness_score"] == 0.45
         if "evidence_completion_ready" in claim_support_packet_summary:
             assert claim_support_packet_summary["evidence_completion_ready"] is False
+        if "temporal_gap_task_count" in claim_support_packet_summary:
+            assert claim_support_packet_summary["temporal_gap_task_count"] == 0
+        if "temporal_gap_targeted_task_count" in claim_support_packet_summary:
+            assert claim_support_packet_summary["temporal_gap_targeted_task_count"] == 0
+        if "temporal_rule_status_counts" in claim_support_packet_summary:
+            assert claim_support_packet_summary["temporal_rule_status_counts"] == {}
+        if "temporal_rule_blocking_reason_counts" in claim_support_packet_summary:
+            assert claim_support_packet_summary["temporal_rule_blocking_reason_counts"] == {}
+        if "temporal_resolution_status_counts" in claim_support_packet_summary:
+            assert claim_support_packet_summary["temporal_resolution_status_counts"] == {}
         assert (
             payload["claim_coverage_matrix"]["retaliation"]["status_counts"]["covered"]
             == 1

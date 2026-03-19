@@ -929,6 +929,14 @@
                         <div class="chip-row" id="intake-next-action-chips"></div>
                         <div class="resolution-feedback-body" id="intake-next-action-notes"></div>
                     </div>
+                    <div class="resolution-feedback" id="recent-validation-outcome-card" hidden>
+                        <div class="resolution-feedback-head">
+                            <div class="resolution-feedback-title" id="recent-validation-outcome-title">Recent Validation Outcome</div>
+                            <span class="status-pill" id="recent-validation-outcome-status">resolved_supported</span>
+                        </div>
+                        <div class="chip-row" id="recent-validation-outcome-chips"></div>
+                        <div class="resolution-feedback-body" id="recent-validation-outcome-notes"></div>
+                    </div>
                     <div class="chip-row" id="intake-case-claim-chips"></div>
                     <div class="chip-row" id="intake-claim-summary-chips" style="margin-top: 10px;"></div>
                     <div class="chip-row" id="intake-section-chips" style="margin-top: 10px;"></div>
@@ -2528,6 +2536,11 @@
             const intakeNextActionStatus = document.getElementById('intake-next-action-status');
             const intakeNextActionChips = document.getElementById('intake-next-action-chips');
             const intakeNextActionNotes = document.getElementById('intake-next-action-notes');
+            const recentValidationOutcomeCard = document.getElementById('recent-validation-outcome-card');
+            const recentValidationOutcomeTitle = document.getElementById('recent-validation-outcome-title');
+            const recentValidationOutcomeStatus = document.getElementById('recent-validation-outcome-status');
+            const recentValidationOutcomeChips = document.getElementById('recent-validation-outcome-chips');
+            const recentValidationOutcomeNotes = document.getElementById('recent-validation-outcome-notes');
             const intakeCaseSummary = summary && typeof summary === 'object' ? summary : {};
             const nextAction = intakeCaseSummary.next_action && typeof intakeCaseSummary.next_action === 'object'
                 ? intakeCaseSummary.next_action
@@ -2595,6 +2608,9 @@
             const alignmentPromotionDriftSummary = intakeCaseSummary.alignment_promotion_drift_summary && typeof intakeCaseSummary.alignment_promotion_drift_summary === 'object'
                 ? intakeCaseSummary.alignment_promotion_drift_summary
                 : {};
+            const recentValidationOutcome = intakeCaseSummary.recent_validation_outcome && typeof intakeCaseSummary.recent_validation_outcome === 'object'
+                ? intakeCaseSummary.recent_validation_outcome
+                : {};
             const visibleAlignmentTaskUpdates = alignmentTaskUpdateHistory.length
                 ? alignmentTaskUpdateHistory
                 : alignmentTaskUpdates;
@@ -2612,6 +2628,46 @@
             const claimSupportPacketSummary = intakeCaseSummary.claim_support_packet_summary && typeof intakeCaseSummary.claim_support_packet_summary === 'object'
                 ? intakeCaseSummary.claim_support_packet_summary
                 : {};
+
+            if (recentValidationOutcome.claim_element_id || recentValidationOutcome.claim_type) {
+                const validationStatus = String(
+                    recentValidationOutcome.resolution_status
+                    || recentValidationOutcome.current_support_status
+                    || 'unknown'
+                ).trim();
+                const outcomeChips = [];
+                if (recentValidationOutcome.claim_type) {
+                    outcomeChips.push(`<span class="chip">claim: ${humanizeQueryValue(recentValidationOutcome.claim_type)}</span>`);
+                }
+                if (recentValidationOutcome.claim_element_id) {
+                    outcomeChips.push(`<span class="chip">element: ${humanizeQueryValue(recentValidationOutcome.claim_element_id)}</span>`);
+                }
+                if (recentValidationOutcome.evidence_sequence !== undefined) {
+                    outcomeChips.push(`<span class="chip">evidence event: ${Number(recentValidationOutcome.evidence_sequence || 0)}</span>`);
+                }
+                if (recentValidationOutcome.promotion_kind) {
+                    outcomeChips.push(`<span class="chip">promotion: ${humanizeQueryValue(recentValidationOutcome.promotion_kind)}</span>`);
+                }
+                if (recentValidationOutcome.promotion_ref) {
+                    outcomeChips.push(`<span class="chip">promotion ref: ${recentValidationOutcome.promotion_ref}</span>`);
+                }
+                if (recentValidationOutcome.current_support_status) {
+                    outcomeChips.push(`<span class="chip">support: ${humanizeQueryValue(recentValidationOutcome.current_support_status)}</span>`);
+                }
+                recentValidationOutcomeCard.hidden = false;
+                recentValidationOutcomeCard.classList.toggle('is-error', !recentValidationOutcome.improved);
+                recentValidationOutcomeTitle.textContent = 'Recent Validation Outcome';
+                recentValidationOutcomeStatus.textContent = validationStatus || 'unknown';
+                recentValidationOutcomeChips.innerHTML = outcomeChips.join('');
+                recentValidationOutcomeNotes.textContent = recentValidationOutcome.improved
+                    ? 'The latest backend-tracked validation event resolved support for this claim element.'
+                    : 'The latest backend-tracked validation event did not fully resolve support for this claim element yet.';
+            } else {
+                recentValidationOutcomeCard.hidden = true;
+                recentValidationOutcomeCard.classList.remove('is-error');
+                recentValidationOutcomeChips.innerHTML = '';
+                recentValidationOutcomeNotes.textContent = '';
+            }
 
             if (nextAction.action === 'validate_promoted_support') {
                 const driftSummary = nextAction.drift_summary && typeof nextAction.drift_summary === 'object'

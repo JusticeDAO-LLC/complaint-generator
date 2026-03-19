@@ -1464,6 +1464,222 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
             browser.close()
 
 
+def test_document_builder_smoke_routes_workflow_priority_back_to_manual_review():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    next_action_summary = {
+        "next_action": {
+            "action": "resolve_support_conflicts",
+            "claim_type": "retaliation",
+            "claim_element_id": "retaliation:3",
+            "support_status": "contradicted",
+        },
+        "contradiction_summary": {"count": 1},
+        "question_candidate_summary": {"count": 2},
+        "claim_support_packet_summary": {
+            "claim_support_reviewable_escalation_count": 1,
+            "proof_readiness_score": 0.45,
+        },
+    }
+    payload = {
+        "generated_at": "2026-03-16T20:00:00+00:00",
+        "draft": {
+            "court_header": "IN THE UNITED STATES DISTRICT COURT",
+            "case_caption": {
+                "plaintiffs": ["Jane Doe"],
+                "defendants": ["Acme Corporation"],
+            },
+            "summary_of_facts": ["Plaintiff reported discrimination to HR."],
+            "factual_allegation_paragraphs": ["1. Plaintiff reported discrimination to HR."],
+            "legal_standards": ["Title VII prohibits retaliation."],
+            "claims_for_relief": [],
+            "requested_relief": ["Compensatory damages."],
+            "draft_text": "Sample draft text.",
+            "exhibits": [],
+        },
+        "drafting_readiness": {"status": "warning", "sections": {}, "claims": [], "warning_count": 1},
+        "filing_checklist": [],
+        "review_links": {
+            "dashboard_url": "/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+            "intake_case_summary": next_action_summary,
+            "intake_status": {
+                "current_phase": "evidence",
+                "score": 0.74,
+                "remaining_gap_count": 0,
+                "contradiction_count": 1,
+                "ready_to_advance": False,
+                "blockers": ["manual_review_pending"],
+                "contradictions": [],
+            },
+        },
+        "document_optimization": {
+            "status": "optimized",
+            "method": "actor_mediator_critic_optimizer",
+            "optimizer_backend": "upstream_agentic",
+            "initial_score": 0.5,
+            "final_score": 0.7,
+            "accepted_iterations": 1,
+            "iteration_count": 1,
+            "optimized_sections": ["factual_allegations"],
+            "trace_storage": {"status": "available", "cid": "bafy-test", "size": 123, "pinned": True},
+            "intake_status": {
+                "current_phase": "evidence",
+                "score": 0.74,
+                "remaining_gap_count": 0,
+                "contradiction_count": 1,
+                "ready_to_advance": False,
+                "blockers": ["manual_review_pending"],
+                "contradictions": [],
+            },
+            "intake_case_summary": next_action_summary,
+        },
+    }
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for document workflow-priority manual review coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+
+        app = _build_document_review_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(f"{base_url}/document?claim_type=retaliation&user_id=browser-smoke-text-link")
+                page.evaluate("payload => window.renderPreview(payload)", payload)
+                page.wait_for_function(
+                    "() => document.getElementById('document-workflow-priority') !== null"
+                )
+
+                workflow_text = page.locator("#document-workflow-priority").inner_text()
+
+                assert "workflow priority" in workflow_text.lower()
+                assert "Resolve support conflicts before drafting" in workflow_text
+                assert "recommended action: resolve_support_conflicts" in workflow_text
+                assert "focus claim: retaliation" in workflow_text.lower()
+                assert "packet escalations: 1" in workflow_text
+
+                page.click("#document-workflow-action-link")
+                page.wait_for_url("**/claim-support-review?**")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                assert "claim_type=retaliation" in page.url
+                assert "alignment_task_update_filter=manual_review" in page.url
+                assert "alignment_task_update_sort=manual_review_first" in page.url
+                assert page.locator("#alignment-task-update-filter").input_value() == "manual_review"
+                assert page.locator("#alignment-task-update-sort").input_value() == "manual_review_first"
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+def test_document_builder_smoke_marks_generate_formal_complaint_as_current_priority():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    next_action_summary = {
+        "next_action": {
+            "action": "generate_formal_complaint",
+            "claim_type": "retaliation",
+        },
+        "contradiction_summary": {"count": 0},
+        "question_candidate_summary": {"count": 0},
+        "claim_support_packet_summary": {
+            "proof_readiness_score": 0.98,
+        },
+    }
+    payload = {
+        "generated_at": "2026-03-16T20:00:00+00:00",
+        "draft": {
+            "court_header": "IN THE UNITED STATES DISTRICT COURT",
+            "case_caption": {
+                "plaintiffs": ["Jane Doe"],
+                "defendants": ["Acme Corporation"],
+            },
+            "summary_of_facts": ["Plaintiff reported discrimination to HR."],
+            "factual_allegation_paragraphs": ["1. Plaintiff reported discrimination to HR."],
+            "legal_standards": ["Title VII prohibits retaliation."],
+            "claims_for_relief": [],
+            "requested_relief": ["Compensatory damages."],
+            "draft_text": "Sample draft text.",
+            "exhibits": [],
+        },
+        "drafting_readiness": {"status": "ready", "sections": {}, "claims": [], "warning_count": 0},
+        "filing_checklist": [],
+        "review_links": {
+            "dashboard_url": "/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+            "intake_case_summary": next_action_summary,
+            "intake_status": {
+                "current_phase": "formalization",
+                "score": 1.0,
+                "remaining_gap_count": 0,
+                "contradiction_count": 0,
+                "ready_to_advance": True,
+                "blockers": [],
+                "contradictions": [],
+            },
+        },
+        "document_optimization": {
+            "status": "optimized",
+            "method": "actor_mediator_critic_optimizer",
+            "optimizer_backend": "upstream_agentic",
+            "initial_score": 0.5,
+            "final_score": 0.7,
+            "accepted_iterations": 1,
+            "iteration_count": 1,
+            "optimized_sections": ["factual_allegations"],
+            "trace_storage": {"status": "available", "cid": "bafy-test", "size": 123, "pinned": True},
+            "intake_status": {
+                "current_phase": "formalization",
+                "score": 1.0,
+                "remaining_gap_count": 0,
+                "contradiction_count": 0,
+                "ready_to_advance": True,
+                "blockers": [],
+                "contradictions": [],
+            },
+            "intake_case_summary": next_action_summary,
+        },
+    }
+
+    app = _build_document_browser_smoke_app()
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page()
+            page.goto(f"{base_url}/document?claim_type=retaliation&user_id=browser-smoke-text-link")
+            page.evaluate("payload => window.renderPreview(payload)", payload)
+            page.wait_for_function(
+                "() => document.getElementById('document-workflow-priority') !== null"
+            )
+
+            workflow_card = page.locator("#document-workflow-priority")
+            workflow_text = workflow_card.inner_text()
+
+            assert workflow_card.get_attribute("data-status") == "ready"
+            assert "Drafting is the current workflow priority" in workflow_text
+            assert "recommended action: generate_formal_complaint" in workflow_text
+            assert "focus claim: retaliation" in workflow_text.lower()
+            assert "proof readiness: 0.98" in workflow_text
+            assert "Open Review Dashboard" in workflow_text
+
+            browser.close()
+
+
 def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment():
     if not PLAYWRIGHT_AVAILABLE:
         pytest.skip("Playwright not available")

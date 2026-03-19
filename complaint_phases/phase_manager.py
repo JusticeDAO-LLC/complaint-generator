@@ -407,6 +407,11 @@ class PhaseManager:
 
         alignment_tasks = data.get('alignment_evidence_tasks')
         task_resolution_by_element: Dict[tuple[str, str], str] = {}
+        temporal_gap_task_count = 0
+        temporal_gap_targeted_task_count = 0
+        temporal_rule_status_counts: Dict[str, int] = {}
+        temporal_rule_blocking_reason_counts: Dict[str, int] = {}
+        temporal_resolution_status_counts: Dict[str, int] = {}
         for task in alignment_tasks if isinstance(alignment_tasks, list) else []:
             if not isinstance(task, dict):
                 continue
@@ -417,6 +422,35 @@ class PhaseManager:
             task_resolution_by_element[(claim_type, element_id)] = self._normalize_evidence_escalation_status(
                 task.get('resolution_status')
             )
+            is_temporal_task = bool(
+                str(task.get('action') or '').strip().lower() == 'fill_temporal_chronology_gap'
+                or str(task.get('temporal_rule_profile_id') or '').strip()
+                or str(task.get('temporal_rule_status') or '').strip()
+                or list(task.get('temporal_rule_blocking_reasons', []) or [])
+                or list(task.get('temporal_rule_follow_ups', []) or [])
+            )
+            if not is_temporal_task:
+                continue
+            temporal_gap_task_count += 1
+            temporal_rule_status = str(task.get('temporal_rule_status') or '').strip().lower()
+            if temporal_rule_status in {'partial', 'failed'}:
+                temporal_gap_targeted_task_count += 1
+            if temporal_rule_status:
+                temporal_rule_status_counts[temporal_rule_status] = (
+                    temporal_rule_status_counts.get(temporal_rule_status, 0) + 1
+                )
+            for reason in (task.get('temporal_rule_blocking_reasons') or []):
+                normalized_reason = str(reason or '').strip()
+                if not normalized_reason:
+                    continue
+                temporal_rule_blocking_reason_counts[normalized_reason] = (
+                    temporal_rule_blocking_reason_counts.get(normalized_reason, 0) + 1
+                )
+            resolution_status = self._normalize_evidence_escalation_status(task.get('resolution_status'))
+            if resolution_status:
+                temporal_resolution_status_counts[resolution_status] = (
+                    temporal_resolution_status_counts.get(resolution_status, 0) + 1
+                )
 
         total_claims = 0
         total_elements = 0
@@ -506,6 +540,11 @@ class PhaseManager:
             'reviewable_escalation_ratio': reviewable_escalation_ratio,
             'claim_support_reviewable_escalation_count': reviewable_escalation_count,
             'claim_support_unresolved_without_review_path_count': unresolved_without_review_path_count,
+            'temporal_gap_task_count': temporal_gap_task_count,
+            'temporal_gap_targeted_task_count': temporal_gap_targeted_task_count,
+            'temporal_rule_status_counts': temporal_rule_status_counts,
+            'temporal_rule_blocking_reason_counts': temporal_rule_blocking_reason_counts,
+            'temporal_resolution_status_counts': temporal_resolution_status_counts,
             'proof_readiness_score': proof_readiness_score,
             'evidence_completion_ready': evidence_completion_ready,
         }

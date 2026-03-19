@@ -27,6 +27,11 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "question-list" in content
     assert "Intake Case Summary" in content
     assert "intake-next-action-banner" in content
+    assert "recent-validation-outcome-card" in content
+    assert "Recent Validation Outcome" in content
+    assert "recent-validation-outcome-status" in content
+    assert "recent-validation-outcome-chips" in content
+    assert "recent-validation-outcome-notes" in content
     assert "Validate promoted support" in content
     assert "intake-next-action-open-promoted" in content
     assert "Review promoted updates" in content
@@ -128,6 +133,9 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "postSaveValidationFocus" in content
     assert "lastValidationOutcome" in content
     assert "evidenceSequence" in content
+    assert "recentValidationOutcome" in content
+    assert "The latest backend-tracked validation event resolved support for this claim element." in content
+    assert "The latest backend-tracked validation event did not fully resolve support for this claim element yet." in content
     assert "findMatchingAlignmentUpdate(payload, focus.claimType, focus.claimElementId)" in content
     assert "Validation save improved support for ${focus.claimElementId || 'the targeted element'} and returned you to the promoted update lane." in content
     assert "Validation save recorded for ${focus.claimElementId || 'the targeted element'}; the refreshed update still needs support validation." in content
@@ -425,6 +433,11 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "data-review-intent-link=\"true\"" in content
     assert "persistReviewIntent({ review_url: node.getAttribute('href') || '' })" in content
     assert "payload.review_intent" in content
+    assert "Workflow Priority" in content
+    assert "document-workflow-priority" in content
+    assert "document-workflow-action-link" in content
+    assert "renderWorkflowPriority(reviewLinks, intakeCaseSummary, manualReviewClaims, pendingReviewClaims)" in content
+    assert "resolveDocumentWorkflowAction(reviewLinks, intakeCaseSummary)" in content
     assert "Intake Review Signals" in content
     assert "Intake blockers:" in content
     assert "Tracked intake contradictions:" in content
@@ -458,6 +471,8 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Source Drilldown" in content
     assert "Open Claim Support Review" in content
     assert "Open Review Dashboard" in content
+    assert "Review manual conflicts" in content
+    assert "Drafting is the current workflow priority" in content
     assert "buildClaimReviewUrl" in content
     assert "resolveClaimReviewUrl" in content
     assert "resolveSectionReviewUrl" in content

@@ -5580,6 +5580,11 @@ class Mediator:
 			'temporal_issue_count': 0,
 			'temporal_partial_order_ready_element_count': 0,
 			'temporal_warning_count': 0,
+			'temporal_gap_task_count': 0,
+			'temporal_gap_targeted_task_count': 0,
+			'temporal_rule_status_counts': {},
+			'temporal_rule_blocking_reason_counts': {},
+			'temporal_resolution_status_counts': {},
 		}
 		if not isinstance(packets, dict):
 			return summary
@@ -5635,6 +5640,60 @@ class Mediator:
 				max(0.0, min(1.0, (summary['credible_support_ratio'] * 0.45) + (summary['draft_ready_element_ratio'] * 0.4) + (high_quality_parse_ratio * 0.15) - contradiction_penalty)),
 				3,
 			)
+		return summary
+
+	def _summarize_alignment_evidence_tasks(self, alignment_evidence_tasks: Any) -> Dict[str, Any]:
+		tasks = alignment_evidence_tasks if isinstance(alignment_evidence_tasks, list) else []
+		summary = {
+			'count': 0,
+			'status_counts': {},
+			'resolution_status_counts': {},
+			'temporal_gap_task_count': 0,
+			'temporal_gap_targeted_task_count': 0,
+			'temporal_rule_status_counts': {},
+			'temporal_rule_blocking_reason_counts': {},
+			'temporal_resolution_status_counts': {},
+		}
+		for task in tasks:
+			if not isinstance(task, dict):
+				continue
+			summary['count'] += 1
+			support_status = str(task.get('support_status') or '').strip().lower()
+			if support_status:
+				summary['status_counts'][support_status] = summary['status_counts'].get(support_status, 0) + 1
+			resolution_status = str(task.get('resolution_status') or '').strip().lower()
+			if resolution_status:
+				summary['resolution_status_counts'][resolution_status] = (
+					summary['resolution_status_counts'].get(resolution_status, 0) + 1
+				)
+			is_temporal_task = bool(
+				str(task.get('action') or '').strip().lower() == 'fill_temporal_chronology_gap'
+				or str(task.get('temporal_rule_profile_id') or '').strip()
+				or str(task.get('temporal_rule_status') or '').strip()
+				or list(task.get('temporal_rule_blocking_reasons', []) or [])
+				or list(task.get('temporal_rule_follow_ups', []) or [])
+			)
+			if not is_temporal_task:
+				continue
+			summary['temporal_gap_task_count'] += 1
+			temporal_rule_status = str(task.get('temporal_rule_status') or '').strip().lower()
+			if temporal_rule_status in {'partial', 'failed'}:
+				summary['temporal_gap_targeted_task_count'] += 1
+			if temporal_rule_status:
+				summary['temporal_rule_status_counts'][temporal_rule_status] = (
+					summary['temporal_rule_status_counts'].get(temporal_rule_status, 0) + 1
+				)
+			for reason in (task.get('temporal_rule_blocking_reasons') or []):
+				normalized_reason = str(reason or '').strip()
+				if not normalized_reason:
+					continue
+				summary['temporal_rule_blocking_reason_counts'][normalized_reason] = (
+					summary['temporal_rule_blocking_reason_counts'].get(normalized_reason, 0) + 1
+				)
+			if resolution_status:
+				summary['temporal_resolution_status_counts'][resolution_status] = (
+					summary['temporal_resolution_status_counts'].get(resolution_status, 0) + 1
+				)
 		return summary
 
 	def _summarize_question_candidates(self, candidates: Any) -> Dict[str, Any]:
@@ -6303,6 +6362,7 @@ class Mediator:
 		self,
 		alignment_task_updates: Any,
 		alignment_task_update_history: Any,
+		alignment_evidence_tasks: Any = None,
 	) -> Dict[str, Any]:
 		visible_updates = [
 			dict(item)
@@ -6319,7 +6379,22 @@ class Mediator:
 			'resolution_status_counts': {},
 			'promoted_testimony_count': 0,
 			'promoted_document_count': 0,
+			'temporal_gap_task_count': 0,
+			'temporal_gap_targeted_task_count': 0,
+			'temporal_rule_status_counts': {},
+			'temporal_rule_blocking_reason_counts': {},
+			'temporal_resolution_status_counts': {},
 		}
+		task_lookup: Dict[str, Dict[str, Any]] = {}
+		for task in (alignment_evidence_tasks if isinstance(alignment_evidence_tasks, list) else []):
+			if not isinstance(task, dict):
+				continue
+			task_id = str(task.get('task_id') or '').strip()
+			claim_type = str(task.get('claim_type') or '').strip()
+			claim_element_id = str(task.get('claim_element_id') or '').strip()
+			task_key = task_id or (f'{claim_type}:{claim_element_id}' if claim_type and claim_element_id else '')
+			if task_key:
+				task_lookup[task_key] = dict(task)
 		for item in visible_updates:
 			status = str(item.get('status') or '').strip().lower()
 			if status:
@@ -6333,6 +6408,39 @@ class Mediator:
 				summary['promoted_testimony_count'] += 1
 			if resolution_status == 'promoted_to_document':
 				summary['promoted_document_count'] += 1
+			task_id = str(item.get('task_id') or '').strip()
+			claim_type = str(item.get('claim_type') or '').strip()
+			claim_element_id = str(item.get('claim_element_id') or '').strip()
+			task_key = task_id or (f'{claim_type}:{claim_element_id}' if claim_type and claim_element_id else '')
+			task = task_lookup.get(task_key, {}) if task_key else {}
+			is_temporal_task = bool(
+				str(task.get('action') or '').strip().lower() == 'fill_temporal_chronology_gap'
+				or str(task.get('temporal_rule_profile_id') or '').strip()
+				or str(task.get('temporal_rule_status') or '').strip()
+				or list(task.get('temporal_rule_blocking_reasons', []) or [])
+				or list(task.get('temporal_rule_follow_ups', []) or [])
+			)
+			if not is_temporal_task:
+				continue
+			summary['temporal_gap_task_count'] += 1
+			temporal_rule_status = str(task.get('temporal_rule_status') or '').strip().lower()
+			if temporal_rule_status in {'partial', 'failed'}:
+				summary['temporal_gap_targeted_task_count'] += 1
+			if temporal_rule_status:
+				summary['temporal_rule_status_counts'][temporal_rule_status] = (
+					summary['temporal_rule_status_counts'].get(temporal_rule_status, 0) + 1
+				)
+			for reason in (task.get('temporal_rule_blocking_reasons') or []):
+				normalized_reason = str(reason or '').strip()
+				if not normalized_reason:
+					continue
+				summary['temporal_rule_blocking_reason_counts'][normalized_reason] = (
+					summary['temporal_rule_blocking_reason_counts'].get(normalized_reason, 0) + 1
+				)
+			if resolution_status:
+				summary['temporal_resolution_status_counts'][resolution_status] = (
+					summary['temporal_resolution_status_counts'].get(resolution_status, 0) + 1
+				)
 		return summary
 
 	def _summarize_alignment_promotion_drift(
@@ -6366,6 +6474,53 @@ class Mediator:
 			'proof_readiness_score': round(proof_readiness_score, 3),
 			'drift_ratio': drift_ratio,
 			'drift_flag': drift_flag,
+		}
+
+	def _summarize_recent_validation_outcome(
+		self,
+		alignment_task_updates: Any,
+		alignment_task_update_history: Any,
+	) -> Dict[str, Any]:
+		visible_updates = (
+			alignment_task_update_history
+			if isinstance(alignment_task_update_history, list) and alignment_task_update_history
+			else alignment_task_updates
+		)
+		candidates: List[Dict[str, Any]] = []
+		for update in visible_updates if isinstance(visible_updates, list) else []:
+			if not isinstance(update, dict):
+				continue
+			resolution_status = str(update.get('resolution_status') or '').strip().lower()
+			current_support_status = str(update.get('current_support_status') or '').strip().lower()
+			if resolution_status not in {'promoted_to_testimony', 'promoted_to_document', 'resolved_supported'}:
+				continue
+			candidates.append(dict(update))
+
+		if not candidates:
+			return {}
+
+		def _sequence_value(item: Dict[str, Any]) -> int:
+			try:
+				return int(item.get('evidence_sequence', 0) or 0)
+			except (TypeError, ValueError):
+				return 0
+
+		latest = max(candidates, key=_sequence_value)
+		resolution_status = str(latest.get('resolution_status') or '').strip().lower()
+		current_support_status = str(latest.get('current_support_status') or '').strip().lower()
+		improved = bool(
+			resolution_status == 'resolved_supported'
+			or current_support_status == 'resolved_supported'
+		)
+		return {
+			'claim_type': str(latest.get('claim_type') or ''),
+			'claim_element_id': str(latest.get('claim_element_id') or ''),
+			'resolution_status': resolution_status,
+			'current_support_status': current_support_status,
+			'evidence_sequence': _sequence_value(latest),
+			'promotion_ref': str(latest.get('promotion_ref') or ''),
+			'promotion_kind': str(latest.get('promotion_kind') or ''),
+			'improved': improved,
 		}
 
 	def _retire_answered_alignment_evidence_tasks(
@@ -7571,7 +7726,21 @@ class Mediator:
 		remedy_profile = intake_case_file.get('remedy_profile', {}) if isinstance(intake_case_file, dict) else {}
 		complainant_summary_confirmation = intake_case_file.get('complainant_summary_confirmation', {}) if isinstance(intake_case_file, dict) else {}
 		claim_support_packet_summary = self._summarize_claim_support_packets(claim_support_packets)
+		alignment_task_summary = self._summarize_alignment_evidence_tasks(alignment_evidence_tasks)
+		claim_support_packet_summary = {
+			**claim_support_packet_summary,
+			'temporal_gap_task_count': int(alignment_task_summary.get('temporal_gap_task_count', 0) or 0),
+			'temporal_gap_targeted_task_count': int(alignment_task_summary.get('temporal_gap_targeted_task_count', 0) or 0),
+			'temporal_rule_status_counts': dict(alignment_task_summary.get('temporal_rule_status_counts', {}) or {}),
+			'temporal_rule_blocking_reason_counts': dict(alignment_task_summary.get('temporal_rule_blocking_reason_counts', {}) or {}),
+			'temporal_resolution_status_counts': dict(alignment_task_summary.get('temporal_resolution_status_counts', {}) or {}),
+		}
 		alignment_task_update_summary = self._summarize_alignment_task_update_status(
+			alignment_task_updates,
+			alignment_task_update_history,
+			alignment_evidence_tasks,
+		)
+		recent_validation_outcome = self._summarize_recent_validation_outcome(
 			alignment_task_updates,
 			alignment_task_update_history,
 		)
@@ -7639,6 +7808,7 @@ class Mediator:
 			'alignment_task_updates': alignment_task_updates if isinstance(alignment_task_updates, list) else [],
 			'alignment_task_update_history': alignment_task_update_history if isinstance(alignment_task_update_history, list) else [],
 			'alignment_task_update_summary': alignment_task_update_summary,
+			'recent_validation_outcome': recent_validation_outcome,
 			'alignment_promotion_drift_summary': self._summarize_alignment_promotion_drift(
 				alignment_task_update_summary,
 				claim_support_packet_summary,
