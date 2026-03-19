@@ -234,6 +234,8 @@ print(f"Success rate: {stats['successful_sessions']}/{stats['total_sessions']}")
 - Tracks trends over time
 - Generates actionable recommendations
 - Prioritizes improvements
+- Summarizes weakest uncovered intake objectives
+- Recommends likely patch-target files based on those intake gaps
 
 **Classes**:
 - `OptimizationReport`: Comprehensive optimization insights
@@ -256,6 +258,21 @@ print("Recommendations:")
 for rec in report.recommendations:
     print(f"  - {rec}")
 ```
+
+Recent intake-aware additions:
+
+- The critic now records `intake_priority_expected`, `intake_priority_covered`, and `intake_priority_missing`.
+- The optimizer aggregates those results into `intake_priority_performance`.
+- Agentic autopatch task descriptions now include the weakest unresolved intake objectives.
+- The optimizer can now recommend likely patch targets such as:
+  - `adversarial_harness/session.py`
+  - `mediator/mediator.py`
+  - `adversarial_harness/complainant.py`
+
+That recommendation path is consumed by `hacc_adversarial_runner.py`, which can either:
+
+- print the requested, recommended, and selected autopatch scope for review, or
+- use `--use-recommended-autopatch-targets` to let the optimizer's recommendation drive the autopatch target selection directly
 
 ## Usage
 
