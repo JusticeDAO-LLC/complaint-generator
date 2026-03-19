@@ -1,11 +1,10 @@
 import inspect
-import sys
 from types import SimpleNamespace
 
 import adversarial_harness.hacc_evidence as hacc_evidence_module
 
 
-def test_load_hacc_engine_imports_hacc_research_package(tmp_path, monkeypatch):
+def test_load_hacc_engine_loads_engine_module_from_file(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     engine_dir = repo_root / "hacc_research"
     engine_dir.mkdir(parents=True)
@@ -15,24 +14,38 @@ def test_load_hacc_engine_imports_hacc_research_package(tmp_path, monkeypatch):
     fake_module = SimpleNamespace(HACCResearchEngine=fake_engine)
     captured = {}
 
-    def fake_import_module(name):
+    class FakeLoader:
+        def exec_module(self, module):
+            captured["executed_module"] = module
+            module.HACCResearchEngine = fake_engine
+
+    fake_spec = SimpleNamespace(loader=FakeLoader())
+
+    def fake_spec_from_file_location(name, location):
         captured["module_name"] = name
+        captured["location"] = location
+        return fake_spec
+
+    def fake_module_from_spec(spec):
+        captured["spec"] = spec
         return fake_module
 
     monkeypatch.setattr(hacc_evidence_module, "_repo_root", lambda: repo_root)
-    monkeypatch.setattr(hacc_evidence_module.importlib, "import_module", fake_import_module)
-    monkeypatch.setattr(hacc_evidence_module.sys, "path", list(sys.path))
+    monkeypatch.setattr(hacc_evidence_module.importlib.util, "spec_from_file_location", fake_spec_from_file_location)
+    monkeypatch.setattr(hacc_evidence_module.importlib.util, "module_from_spec", fake_module_from_spec)
 
     engine_cls = hacc_evidence_module._load_hacc_engine()
 
-    assert captured["module_name"] == "hacc_research"
-    assert str(repo_root) in hacc_evidence_module.sys.path
+    assert captured["module_name"] == "hacc_research.engine"
+    assert captured["location"] == repo_root / "hacc_research" / "engine.py"
+    assert captured["spec"] is fake_spec
+    assert captured["executed_module"] is fake_module
     assert engine_cls is fake_engine
 
 
-def test_load_hacc_engine_source_avoids_spec_loader_regression():
+def test_load_hacc_engine_source_uses_file_based_loader():
     source = inspect.getsource(hacc_evidence_module._load_hacc_engine)
 
-    assert 'importlib.import_module("hacc_research")' in source
-    assert "spec_from_file_location" not in source
-    assert "module_from_spec" not in source
+    assert "spec_from_file_location" in source
+    assert "module_from_spec" in source
+    assert 'importlib.import_module("hacc_research")' not in source
