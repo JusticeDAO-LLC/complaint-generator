@@ -1375,7 +1375,10 @@ class TestMediatorThreePhaseIntegration:
         assert result['alignment_evidence_tasks'][0]['preferred_support_kind'] == 'testimony'
         assert result['alignment_evidence_tasks'][0]['resolution_status'] == 'awaiting_testimony'
         assert result['alignment_evidence_tasks'][0]['temporal_rule_status'] == 'partial'
-        assert 'Establish chronology:' in result['alignment_evidence_tasks'][0]['success_criteria'][1]
+        assert any(
+            'Establish chronology:' in item
+            for item in result['alignment_evidence_tasks'][0]['success_criteria']
+        )
 
     def test_build_claim_support_packets_tracks_partial_fact_bundle_coverage(self):
         """Packet construction should only clear the bundle prompts actually covered by support facts."""

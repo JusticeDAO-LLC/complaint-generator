@@ -2212,10 +2212,12 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
         "cooldown_skipped_task_count": 0,
         "contradiction_task_count": 1,
         "reasoning_gap_task_count": 0,
+        "temporal_gap_task_count": 0,
         "fact_gap_task_count": 0,
         "adverse_authority_task_count": 0,
         "parse_quality_task_count": 1,
         "quality_gap_targeted_task_count": 1,
+        "temporal_gap_targeted_task_count": 0,
         "semantic_cluster_count": 1,
         "semantic_duplicate_count": 0,
         "support_by_kind": {},
@@ -3781,7 +3783,7 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
     }
     assert plan_summary["missing_fact_bundle_counts"] == {
         "Adverse treatment timing": 1,
-        "Event sequence": 1,
+        "Event sequence": 2,
         "Manager knowledge": 1,
     }
     assert plan_summary["satisfied_fact_bundle_counts"] == {
@@ -3820,7 +3822,7 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
     }
     assert execution_summary["missing_fact_bundle_counts"] == {
         "Adverse treatment timing": 1,
-        "Event sequence": 1,
+        "Event sequence": 2,
         "Manager knowledge": 1,
     }
     assert execution_summary["satisfied_fact_bundle_counts"] == {

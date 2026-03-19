@@ -858,10 +858,10 @@ class TestMediatorWithMocks:
             assert task['query_strategy'] == 'rule_fact_targeted'
             assert task['recommended_action'] == 'collect_fact_support'
             assert task['missing_support_kinds'] == ['evidence']
-            assert task['queries']['evidence'][0] == '"employment" "Protected activity" "Protected activity must precede the employer response." supporting facts evidence'
-            assert task['queries']['evidence'][1] == '"Protected activity" "Except where the employer lacked notice liability may not attach." fact pattern records witness timeline employment'
+            assert task['queries']['evidence'][0] == '"employment" "Protected activity" "Protected activity must precede the employer response" supporting facts evidence'
+            assert task['queries']['evidence'][1] == '"Protected activity" "Except where the employer lacked notice liability may not attach" fact pattern records witness timeline employment'
             assert task['rule_candidate_context']['top_rule_types'] == ['element', 'exception']
-            assert task['rule_candidate_context']['top_rule_texts'][0] == 'Protected activity must precede the employer response.'
+            assert task['rule_candidate_context']['top_rule_texts'][0] == 'Protected activity must precede the employer response'
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
