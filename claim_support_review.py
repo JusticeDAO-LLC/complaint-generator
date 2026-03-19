@@ -2077,6 +2077,13 @@ def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any
                 if task.get("follow_up_focus") == "reasoning_gap_closure"
             ]
         ),
+        "temporal_gap_task_count": len(
+            [
+                task
+                for task in tasks
+                if task.get("follow_up_focus") == "temporal_gap_closure"
+            ]
+        ),
         "fact_gap_task_count": len(
             [task for task in tasks if task.get("follow_up_focus") == "fact_gap_closure"]
         ),
@@ -2099,6 +2106,13 @@ def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any
                 task
                 for task in tasks
                 if task.get("query_strategy") == "quality_gap_targeted"
+            ]
+        ),
+        "temporal_gap_targeted_task_count": len(
+            [
+                task
+                for task in tasks
+                if task.get("query_strategy") == "temporal_gap_targeted"
             ]
         ),
         "semantic_cluster_count": graph_support_metrics["semantic_cluster_count"],
@@ -2226,6 +2240,9 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
         "reasoning_gap_task_count": len(
             [task for task in all_tasks if task.get("follow_up_focus") == "reasoning_gap_closure"]
         ),
+        "temporal_gap_task_count": len(
+            [task for task in all_tasks if task.get("follow_up_focus") == "temporal_gap_closure"]
+        ),
         "fact_gap_task_count": len(
             [task for task in all_tasks if task.get("follow_up_focus") == "fact_gap_closure"]
         ),
@@ -2241,6 +2258,9 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
         ),
         "quality_gap_targeted_task_count": len(
             [task for task in all_tasks if task.get("query_strategy") == "quality_gap_targeted"]
+        ),
+        "temporal_gap_targeted_task_count": len(
+            [task for task in all_tasks if task.get("query_strategy") == "temporal_gap_targeted"]
         ),
         "semantic_cluster_count": graph_support_metrics["semantic_cluster_count"],
         "semantic_duplicate_count": graph_support_metrics["semantic_duplicate_count"],

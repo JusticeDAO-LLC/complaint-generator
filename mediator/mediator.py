@@ -1550,6 +1550,7 @@ class Mediator:
 		authority_treatment_summary: Dict[str, Any] = None,
 		rule_candidate_context: Dict[str, Any] = None,
 		missing_fact_bundle: List[str] = None,
+		temporal_rule_profile: Dict[str, Any] = None,
 	) -> Dict[str, List[str]]:
 		queries: Dict[str, List[str]] = {}
 		proof_gap_types = self._extract_proof_gap_types(proof_gaps or [])
@@ -1557,6 +1558,7 @@ class Mediator:
 		support_kind_counts = support_by_kind if isinstance(support_by_kind, dict) else {}
 		treatment_summary = authority_treatment_summary if isinstance(authority_treatment_summary, dict) else {}
 		rule_context = rule_candidate_context if isinstance(rule_candidate_context, dict) else {}
+		temporal_profile = temporal_rule_profile if isinstance(temporal_rule_profile, dict) else {}
 		rule_texts = list(rule_context.get('top_rule_texts') or [])
 		rule_types = [str(value).replace('_', ' ') for value in (rule_context.get('top_rule_types') or []) if value]
 		primary_rule_text = rule_texts[0] if rule_texts else ''
@@ -1575,12 +1577,33 @@ class Mediator:
 			for gap_type in proof_gap_types
 			if gap_type != 'contradiction_candidates'
 		)[:80].strip()
+		temporal_follow_ups = [
+			follow_up
+			for follow_up in (temporal_profile.get('recommended_follow_ups') or [])
+			if isinstance(follow_up, dict)
+		]
+		temporal_reason_fragments = [
+			self._normalize_rule_query_text(reason)
+			for reason in list(temporal_profile.get('blocking_reasons') or [])
+			if self._normalize_rule_query_text(reason)
+		]
+		for follow_up in temporal_follow_ups:
+			reason = self._normalize_rule_query_text(follow_up.get('reason'))
+			if reason:
+				temporal_reason_fragments.append(reason)
+		primary_temporal_reason = temporal_reason_fragments[0] if temporal_reason_fragments else ''
+		secondary_temporal_reason = temporal_reason_fragments[1] if len(temporal_reason_fragments) > 1 else ''
 
 		def _compose_query(*parts: str) -> str:
 			return ' '.join(part for part in parts if part).strip()
 
 		contradiction_targeted = validation_status == 'contradicted' and bool(missing_support_kinds)
 		reasoning_targeted = self._is_reasoning_gap_follow_up(proof_gap_types, decision_trace)
+		temporal_rule_targeted = self._is_temporal_rule_gap_follow_up(
+			proof_gap_types,
+			decision_trace,
+			temporal_profile,
+		)
 		fact_gap_targeted = recommended_action == 'collect_fact_support'
 		adverse_authority_targeted = recommended_action == 'review_adverse_authority'
 		quality_targeted = recommended_action == 'improve_parse_quality' and not contradiction_targeted and not reasoning_targeted
@@ -1604,6 +1627,12 @@ class Mediator:
 					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'facts distinguish adverse authority', exception_rule_text or primary_rule_text),
 					_compose_query(f'"{element_text}"', 'rebuttal evidence questioned authority', claim_type, exception_rule_text),
 					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'record facts overcome adverse treatment', ' '.join(rule_types[:2])),
+				]
+			elif temporal_rule_targeted:
+				queries['evidence'] = [
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'timeline chronology dated record', primary_temporal_reason),
+					_compose_query(f'"{element_text}"', 'protected activity adverse action timeline', secondary_temporal_reason or primary_temporal_reason, claim_type),
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'event sequence date anchor testimony document', primary_temporal_reason),
 				]
 			elif fact_gap_targeted:
 				queries['evidence'] = [
@@ -1646,6 +1675,12 @@ class Mediator:
 					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'distinguish questioned authority later treatment', adverse_terms),
 					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'adverse authority exception limitation', f'"{exception_rule_text}"' if exception_rule_text else ''),
 					_compose_query(f'"{element_text}"', 'good law treatment distinguishing case', claim_type),
+				]
+			elif temporal_rule_targeted:
+				queries['authority'] = [
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'temporal causation chronology case law', primary_temporal_reason),
+					_compose_query(f'"{element_text}"', 'protected activity before adverse action precedent', claim_type, secondary_temporal_reason),
+					_compose_query(f'"{claim_type}"', f'"{element_text}"', 'temporal proximity ordering legal standard'),
 				]
 			elif reasoning_targeted:
 				queries['authority'] = [
@@ -1690,6 +1725,7 @@ class Mediator:
 			authority_treatment_summary=task.get('authority_treatment_summary') if isinstance(task.get('authority_treatment_summary'), dict) else {},
 			rule_candidate_context=task.get('rule_candidate_context') if isinstance(task.get('rule_candidate_context'), dict) else {},
 			missing_fact_bundle=list(task.get('missing_fact_bundle') or []),
+			temporal_rule_profile=task.get('temporal_rule_profile') if isinstance(task.get('temporal_rule_profile'), dict) else {},
 		)
 		recommended_queries = [
 			str(item).strip()
@@ -1722,6 +1758,56 @@ class Mediator:
 			or decision_source in {'logic_unprovable', 'logic_proof_partial', 'ontology_validation_failed'}
 			or ontology_validation_signal == 'invalid'
 		)
+
+	def _is_temporal_rule_gap_follow_up(
+		self,
+		proof_gap_types: List[str],
+		proof_decision_trace: Dict[str, Any] = None,
+		temporal_rule_profile: Dict[str, Any] = None,
+	) -> bool:
+		decision_trace = proof_decision_trace if isinstance(proof_decision_trace, dict) else {}
+		profile = temporal_rule_profile if isinstance(temporal_rule_profile, dict) else {}
+		decision_source = str(decision_trace.get('decision_source') or '')
+		temporal_rule_status = str(
+			profile.get('status')
+			or decision_trace.get('temporal_rule_status')
+			or ''
+		)
+		return (
+			'temporal_rule_partial' in (proof_gap_types or [])
+			or 'temporal_rule_failed' in (proof_gap_types or [])
+			or decision_source in {'temporal_rule_partial', 'temporal_rule_failed'}
+			or temporal_rule_status in {'partial', 'failed'}
+		)
+
+	def _preferred_support_kind_for_temporal_rule_profile(
+		self,
+		temporal_rule_profile: Dict[str, Any],
+		fallback: str,
+	) -> str:
+		profile = temporal_rule_profile if isinstance(temporal_rule_profile, dict) else {}
+		lanes = {
+			str(follow_up.get('lane') or '').strip().lower()
+			for follow_up in (profile.get('recommended_follow_ups') or [])
+			if isinstance(follow_up, dict)
+		}
+		if lanes & {'clarify_with_complainant', 'capture_testimony'}:
+			return 'testimony'
+		if 'request_document' in lanes:
+			return 'evidence'
+		return fallback
+
+	def _temporal_rule_resolution_status(self, temporal_rule_profile: Dict[str, Any]) -> str:
+		profile = temporal_rule_profile if isinstance(temporal_rule_profile, dict) else {}
+		for follow_up in (profile.get('recommended_follow_ups') or []):
+			if not isinstance(follow_up, dict):
+				continue
+			lane = str(follow_up.get('lane') or '').strip().lower()
+			if lane in {'clarify_with_complainant', 'capture_testimony'}:
+				return 'awaiting_testimony'
+			if lane == 'request_document':
+				return 'awaiting_complainant_record'
+		return ''
 
 	def _build_follow_up_record_metadata(self, task: Dict[str, Any], **extra: Any) -> Dict[str, Any]:
 		graph_summary = ((task.get('graph_support') or {}).get('summary', {})) if isinstance(task.get('graph_support'), dict) else {}
@@ -1763,6 +1849,10 @@ class Mediator:
 			'ontology_validation_signal': task.get('ontology_validation_signal', ''),
 			'proof_gap_count': int(task.get('proof_gap_count', 0) or 0),
 			'proof_gap_types': list(task.get('proof_gap_types') or []),
+			'temporal_rule_profile_id': str(task.get('temporal_rule_profile_id') or ''),
+			'temporal_rule_status': str(task.get('temporal_rule_status') or ''),
+			'temporal_rule_blocking_reasons': list(task.get('temporal_rule_blocking_reasons') or []),
+			'temporal_rule_follow_ups': list(task.get('temporal_rule_follow_ups') or []),
 			'missing_support_kinds': list(task.get('missing_support_kinds') or []),
 			'missing_fact_bundle': list(task.get('missing_fact_bundle') or []),
 			'satisfied_fact_bundle': list(task.get('satisfied_fact_bundle') or []),
@@ -1831,6 +1921,8 @@ class Mediator:
 			return {'contradiction_candidates'}
 		if follow_up_focus == 'reasoning_gap_closure':
 			return {'logic_unprovable', 'ontology_validation_failed'}
+		if follow_up_focus == 'temporal_gap_closure':
+			return {'temporal_rule_partial', 'temporal_rule_failed'}
 		return set()
 
 	def _normalized_support_gap_decision_source(self, task: Dict[str, Any]) -> str:
@@ -1866,7 +1958,7 @@ class Mediator:
 				continue
 			metadata = entry.get('metadata', {}) if isinstance(entry.get('metadata'), dict) else {}
 			follow_up_focus = str(entry.get('follow_up_focus') or metadata.get('follow_up_focus') or '')
-			if follow_up_focus != 'reasoning_gap_closure':
+			if follow_up_focus not in {'reasoning_gap_closure', 'temporal_gap_closure'}:
 				continue
 			try:
 				result_count = int(metadata.get('result_count', 0) or 0)
@@ -1913,7 +2005,7 @@ class Mediator:
 		task: Dict[str, Any],
 		retrieval_feedback_state_map: Dict[str, Dict[str, Any]],
 	) -> Dict[str, Any]:
-		if task.get('follow_up_focus') != 'reasoning_gap_closure':
+		if task.get('follow_up_focus') not in {'reasoning_gap_closure', 'temporal_gap_closure'}:
 			return task
 		if task.get('execution_mode') == 'manual_review':
 			return task
@@ -1948,7 +2040,11 @@ class Mediator:
 		):
 			adaptive_retry_state['applied'] = True
 			adaptive_retry_state['priority_penalty'] = 1
-			adaptive_retry_state['reason'] = 'repeated_zero_result_reasoning_gap'
+			adaptive_retry_state['reason'] = (
+				'repeated_zero_result_temporal_gap'
+				if task.get('follow_up_focus') == 'temporal_gap_closure'
+				else 'repeated_zero_result_reasoning_gap'
+			)
 			if list(task.get('missing_support_kinds') or []):
 				adaptive_retry_state['adaptive_query_strategy'] = 'standard_gap_targeted'
 				task['query_strategy'] = 'standard_gap_targeted'
@@ -2066,7 +2162,14 @@ class Mediator:
 		proof_gaps = element.get('proof_gaps', []) if isinstance(element.get('proof_gaps'), list) else []
 		proof_gap_types = self._extract_proof_gap_types(proof_gaps)
 		proof_decision_trace = element.get('proof_decision_trace', {}) if isinstance(element.get('proof_decision_trace'), dict) else {}
+		reasoning_diagnostics = element.get('reasoning_diagnostics', {}) if isinstance(element.get('reasoning_diagnostics'), dict) else {}
+		temporal_rule_profile = reasoning_diagnostics.get('temporal_rule_profile', {}) if isinstance(reasoning_diagnostics.get('temporal_rule_profile'), dict) else {}
 		reasoning_gap_targeted = self._is_reasoning_gap_follow_up(proof_gap_types, proof_decision_trace)
+		temporal_gap_targeted = self._is_temporal_rule_gap_follow_up(
+			proof_gap_types,
+			proof_decision_trace,
+			temporal_rule_profile,
+		)
 		queries = self._build_follow_up_queries(
 			claim_type,
 			element_text,
@@ -2079,10 +2182,13 @@ class Mediator:
 			authority_treatment_summary=authority_treatment_summary,
 			rule_candidate_context=rule_candidate_context,
 			missing_fact_bundle=list(element.get('missing_fact_bundle', []) or []),
+			temporal_rule_profile=temporal_rule_profile,
 		)
 		if validation_status == 'contradicted':
 			priority = 'high'
 		elif recommended_action == 'review_adverse_authority':
+			priority = 'high'
+		elif temporal_gap_targeted:
 			priority = 'high'
 		elif reasoning_gap_targeted:
 			priority = 'high'
@@ -2097,6 +2203,10 @@ class Mediator:
 			execution_mode = 'review_and_retrieve'
 		elif recommended_action == 'review_adverse_authority':
 			execution_mode = 'manual_review'
+		elif temporal_gap_targeted and missing_support_kinds:
+			execution_mode = 'review_and_retrieve'
+		elif temporal_gap_targeted:
+			execution_mode = 'manual_review'
 		elif reasoning_gap_targeted and missing_support_kinds:
 			execution_mode = 'review_and_retrieve'
 		elif reasoning_gap_targeted:
@@ -2108,6 +2218,8 @@ class Mediator:
 			follow_up_focus = 'adverse_authority_review'
 		elif recommended_action == 'collect_fact_support':
 			follow_up_focus = 'fact_gap_closure'
+		elif temporal_gap_targeted:
+			follow_up_focus = 'temporal_gap_closure'
 		elif reasoning_gap_targeted:
 			follow_up_focus = 'reasoning_gap_closure'
 		elif recommended_action == 'improve_parse_quality':
@@ -2119,6 +2231,8 @@ class Mediator:
 			query_strategy = 'adverse_authority_targeted'
 		elif follow_up_focus == 'fact_gap_closure':
 			query_strategy = 'rule_fact_targeted'
+		elif follow_up_focus == 'temporal_gap_closure':
+			query_strategy = 'temporal_gap_targeted'
 		elif follow_up_focus == 'reasoning_gap_closure':
 			query_strategy = 'reasoning_gap_targeted'
 		elif follow_up_focus == 'parse_quality_improvement':
@@ -2127,6 +2241,13 @@ class Mediator:
 			element.get('preferred_support_kind')
 			or self._default_preferred_support_kind(missing_support_kinds)
 		).strip().lower()
+		preferred_support_kind = self._preferred_support_kind_for_temporal_rule_profile(
+			temporal_rule_profile,
+			preferred_support_kind,
+		)
+		resolution_status = str(element.get('resolution_status') or '').strip().lower()
+		if not resolution_status and temporal_gap_targeted:
+			resolution_status = self._temporal_rule_resolution_status(temporal_rule_profile)
 		return {
 			'claim_type': claim_type,
 			'claim_element_id': element.get('element_id'),
@@ -2145,6 +2266,11 @@ class Mediator:
 			'authority_treatment_summary': authority_treatment_summary,
 			'authority_rule_candidate_summary': authority_rule_candidate_summary,
 			'rule_candidate_context': rule_candidate_context,
+			'temporal_rule_profile': temporal_rule_profile,
+			'temporal_rule_profile_id': str(temporal_rule_profile.get('profile_id') or ''),
+			'temporal_rule_status': str(temporal_rule_profile.get('status') or ''),
+			'temporal_rule_blocking_reasons': list(temporal_rule_profile.get('blocking_reasons', []) or []),
+			'temporal_rule_follow_ups': list(temporal_rule_profile.get('recommended_follow_ups', []) or []),
 			'execution_mode': execution_mode,
 			'requires_manual_review': execution_mode in {'manual_review', 'review_and_retrieve'},
 			'reasoning_backed': bool(((element.get('reasoning_diagnostics') or {}).get('backend_available_count', 0) or 0) > 0),
@@ -2162,7 +2288,7 @@ class Mediator:
 			'satisfied_fact_bundle': list(element.get('satisfied_fact_bundle', []) or []),
 			'intake_origin_refs': list(element.get('intake_origin_refs', []) or []),
 			'intake_proof_leads': list(element.get('intake_proof_leads', []) or []),
-			'resolution_status': str(element.get('resolution_status') or '').strip().lower(),
+			'resolution_status': resolution_status,
 			'success_criteria': list(element.get('success_criteria', []) or []),
 			'recommended_queries': list(element.get('recommended_queries', []) or []),
 			'queries': queries,
@@ -2303,7 +2429,7 @@ class Mediator:
 				'adverse_authority_search': 5,
 			})
 			rule_signal_bias = 'procedural_prerequisite'
-		elif has_element_rules and focus in {'fact_gap_closure', 'reasoning_gap_closure'}:
+		elif has_element_rules and focus in {'fact_gap_closure', 'reasoning_gap_closure', 'temporal_gap_closure'}:
 			priority_by_type.update({
 				'element_definition_search': 1,
 				'fact_pattern_search': 2,
@@ -2444,7 +2570,7 @@ class Mediator:
 				'suppress': False,
 				'reason': '',
 			}
-		if task.get('follow_up_focus') in {'reasoning_gap_closure', 'parse_quality_improvement'}:
+		if task.get('follow_up_focus') in {'reasoning_gap_closure', 'temporal_gap_closure', 'parse_quality_improvement'}:
 			return {
 				'suppress': False,
 				'reason': '',
@@ -2561,6 +2687,11 @@ class Mediator:
 				)
 				if task.get('validation_status') == 'contradicted' and not task.get('manual_review_resolved'):
 					adjusted_priority_score = 3
+				if task.get('follow_up_focus') == 'temporal_gap_closure':
+					adjusted_priority_score = max(
+						adjusted_priority_score,
+						3 if task.get('execution_mode') == 'manual_review' else 2,
+					)
 				if task.get('follow_up_focus') == 'reasoning_gap_closure':
 					adjusted_priority_score = max(
 						adjusted_priority_score,
@@ -2576,7 +2707,7 @@ class Mediator:
 				adaptive_retry_state = task.get('adaptive_retry_state', {}) if isinstance(task.get('adaptive_retry_state'), dict) else {}
 				adaptive_priority_penalty = int(adaptive_retry_state.get('priority_penalty', 0) or 0)
 				if adaptive_priority_penalty:
-					minimum_priority = 2 if task.get('follow_up_focus') in {'reasoning_gap_closure', 'parse_quality_improvement'} else 1
+					minimum_priority = 2 if task.get('follow_up_focus') in {'reasoning_gap_closure', 'temporal_gap_closure', 'parse_quality_improvement'} else 1
 					adjusted_priority_score = max(minimum_priority, adjusted_priority_score - adaptive_priority_penalty)
 				task['graph_support'] = graph_support
 				task['has_graph_support'] = bool(graph_support.get('results'))
@@ -5309,6 +5440,10 @@ class Mediator:
 						'temporal_issue_count': int(((reasoning_diagnostics.get('temporal_summary') or {}).get('issue_count', 0)) or 0),
 						'temporal_partial_order_ready': bool(((reasoning_diagnostics.get('temporal_summary') or {}).get('partial_order_ready', False))),
 						'temporal_warning_count': int(((reasoning_diagnostics.get('temporal_summary') or {}).get('warning_count', 0)) or 0),
+						'temporal_rule_profile_id': str(((reasoning_diagnostics.get('temporal_rule_profile') or {}).get('profile_id', '')) or ''),
+						'temporal_rule_status': str(((reasoning_diagnostics.get('temporal_rule_profile') or {}).get('status', '')) or ''),
+						'temporal_rule_blocking_reasons': list(((reasoning_diagnostics.get('temporal_rule_profile') or {}).get('blocking_reasons', [])) or []),
+						'temporal_rule_follow_ups': list(((reasoning_diagnostics.get('temporal_rule_profile') or {}).get('recommended_follow_ups', [])) or []),
 						'parse_quality_flags': self._extract_parse_quality_flags(element),
 						'recommended_next_step': str(element.get('recommended_action') or ''),
 						'contradiction_count': int(element.get('contradiction_candidate_count', 0) or 0),
@@ -5812,6 +5947,10 @@ class Mediator:
 						'satisfied_fact_bundle': list(packet_element.get('satisfied_fact_bundle', []) or []),
 						'missing_fact_bundle': list(packet_element.get('missing_fact_bundle', []) or []),
 						'missing_support_kinds': list(packet_element.get('missing_support_kinds', []) or []),
+						'temporal_rule_profile_id': str(packet_element.get('temporal_rule_profile_id') or ''),
+						'temporal_rule_status': str(packet_element.get('temporal_rule_status') or ''),
+						'temporal_rule_blocking_reasons': list(packet_element.get('temporal_rule_blocking_reasons', []) or []),
+						'temporal_rule_follow_ups': list(packet_element.get('temporal_rule_follow_ups', []) or []),
 						'recommended_next_step': str(packet_element.get('recommended_next_step') or '').strip(),
 						'intake_open_item_ids': [item_id for item_id in matching_open_item_ids if item_id],
 						'intake_proof_lead_ids': [lead_id for lead_id in matching_proof_lead_ids if lead_id],
@@ -5859,7 +5998,16 @@ class Mediator:
 				support_status = str(element.get('support_status') or '').strip().lower()
 				if support_status not in {'unsupported', 'partially_supported', 'contradicted'}:
 					continue
-				action = 'resolve_support_conflicts' if support_status == 'contradicted' else 'fill_evidence_gaps'
+				temporal_rule_status = str(element.get('temporal_rule_status') or '').strip().lower()
+				temporal_follow_ups = [
+					dict(follow_up)
+					for follow_up in (element.get('temporal_rule_follow_ups', []) or [])
+					if isinstance(follow_up, dict)
+				]
+				temporal_gap_targeted = temporal_rule_status in {'partial', 'failed'}
+				action = 'resolve_support_conflicts' if support_status == 'contradicted' else (
+					'fill_temporal_chronology_gap' if temporal_gap_targeted else 'fill_evidence_gaps'
+				)
 				claim_element_id = str(element.get('element_id') or '').strip()
 				claim_element_label = str(element.get('label') or element.get('element_id') or '').strip()
 				preferred_evidence_classes = list(element.get('preferred_evidence_classes', []) or [])
@@ -5872,18 +6020,34 @@ class Mediator:
 					if isinstance(lead, dict)
 				]
 				preferred_support_kind = self._resolve_task_preferred_support_kind(missing_support_kinds, preferred_evidence_classes)
+				preferred_support_kind = self._preferred_support_kind_for_temporal_rule_profile(
+					{'recommended_follow_ups': temporal_follow_ups},
+					preferred_support_kind,
+				)
 				fallback_support_kinds = self._resolve_task_fallback_support_kinds(preferred_support_kind, preferred_evidence_classes)
 				source_quality_target = 'credible_testimony' if preferred_support_kind == 'testimony' else 'high_quality_document'
 				task_priority = 'high' if support_status == 'contradicted' or bool(element.get('blocking', False)) else 'medium'
+				if temporal_gap_targeted:
+					task_priority = 'high'
 				success_criteria = [
 					f'Element {claim_element_label} reaches supported status',
 				]
 				if missing_fact_bundle:
 					success_criteria.append(f'Collect support addressing: {missing_fact_bundle[0]}')
+				if temporal_gap_targeted and element.get('temporal_rule_blocking_reasons'):
+					success_criteria.append(
+						f'Establish chronology: {str((element.get("temporal_rule_blocking_reasons") or [""])[0] or "").strip()}'
+					)
 				recommended_witness_prompts = [
 					f'Who can give first-hand testimony about {bundle_item} for {claim_element_label}?'
 					for bundle_item in missing_fact_bundle[:2]
 				]
+				if temporal_gap_targeted:
+					recommended_witness_prompts.extend(
+						str(follow_up.get('reason') or '').strip()
+						for follow_up in temporal_follow_ups
+						if str(follow_up.get('reason') or '').strip()
+					)
 				resolution_status = self._derive_alignment_task_resolution_status(
 					support_status,
 					missing_fact_bundle,
@@ -5907,6 +6071,10 @@ class Mediator:
 						'task_priority': task_priority,
 						'missing_fact_bundle': missing_fact_bundle,
 						'satisfied_fact_bundle': satisfied_fact_bundle,
+						'temporal_rule_profile_id': str(element.get('temporal_rule_profile_id') or ''),
+						'temporal_rule_status': temporal_rule_status,
+						'temporal_rule_blocking_reasons': list(element.get('temporal_rule_blocking_reasons', []) or []),
+						'temporal_rule_follow_ups': temporal_follow_ups,
 						'intake_origin_refs': [
 							f'open_item:{item_id}'
 							for item_id in (element.get('intake_open_item_ids', []) or [])

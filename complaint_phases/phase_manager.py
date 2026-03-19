@@ -540,6 +540,26 @@ class PhaseManager:
             actionable_tasks.append(task)
         return actionable_tasks
 
+    def _get_alignment_promotion_drift_action(self, data: Dict[str, Any]) -> Dict[str, Any] | None:
+        drift_summary = data.get('alignment_promotion_drift_summary')
+        if not isinstance(drift_summary, dict):
+            return None
+        if not bool(drift_summary.get('drift_flag')):
+            return None
+
+        promoted_count = int(drift_summary.get('promoted_count', 0) or 0)
+        pending_conversion_count = int(drift_summary.get('pending_conversion_count', 0) or 0)
+        if promoted_count <= 0 and pending_conversion_count <= 0:
+            return None
+
+        return {
+            'action': 'validate_promoted_support',
+            'recommended_actions': list(data.get('claim_support_recommended_actions', [])),
+            'drift_summary': drift_summary,
+            'pending_conversion_count': pending_conversion_count,
+            'promoted_count': promoted_count,
+        }
+
     def _get_next_packet_evidence_action(self, packets: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any] | None:
         alignment_tasks = data.get('alignment_evidence_tasks')
         task_resolution_by_element: Dict[tuple[str, str], str] = {}
@@ -884,6 +904,9 @@ class PhaseManager:
             packet_action = self._get_next_packet_evidence_action(packets, data)
             if packet_action is not None:
                 return packet_action
+            drift_action = self._get_alignment_promotion_drift_action(data)
+            if drift_action is not None:
+                return drift_action
             if self._is_evidence_complete():
                 return {
                     'action': 'complete_evidence',

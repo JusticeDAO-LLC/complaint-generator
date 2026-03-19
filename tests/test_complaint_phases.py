@@ -1137,6 +1137,60 @@ class TestPhaseManager:
         assert pm.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_unresolved_without_review_path_count') == 0
         assert pm.get_phase_data(ComplaintPhase.EVIDENCE, 'reviewable_escalation_ratio') == 1.0
 
+    def test_evidence_phase_prioritizes_validation_when_promotion_drift_is_flagged(self):
+        """Promotion drift should steer next_action toward validation before generic evidence completion."""
+        pm = PhaseManager()
+        pm.current_phase = ComplaintPhase.EVIDENCE
+
+        pm.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'claim_support_packets',
+            {
+                'retaliation': {
+                    'claim_type': 'retaliation',
+                    'elements': [
+                        {
+                            'element_id': 'causation',
+                            'support_status': 'unsupported',
+                            'recommended_next_step': 'collect_witness_support',
+                            'resolution_status': 'awaiting_testimony',
+                            'contradiction_count': 0,
+                        },
+                    ],
+                }
+            },
+        )
+        pm.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_evidence_tasks',
+            [
+                {
+                    'task_id': 'retaliation:causation:fill_evidence_gaps',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'causation',
+                    'support_status': 'unsupported',
+                    'resolution_status': 'awaiting_testimony',
+                }
+            ],
+        )
+        pm.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_promotion_drift_summary',
+            {
+                'drift_flag': True,
+                'promoted_count': 3,
+                'resolved_supported_count': 1,
+                'pending_conversion_count': 2,
+                'drift_ratio': 0.6667,
+            },
+        )
+
+        assert pm.is_phase_complete(ComplaintPhase.EVIDENCE)
+        action = pm.get_next_action()
+        assert action['action'] == 'validate_promoted_support'
+        assert action['pending_conversion_count'] == 2
+        assert action['drift_summary']['drift_flag'] is True
+
     def test_evidence_phase_blocks_on_contradicted_claim_support_packets(self):
         """Contradicted support packets should prevent evidence completion and suggest conflict resolution."""
         pm = PhaseManager()
