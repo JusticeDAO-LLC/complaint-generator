@@ -225,6 +225,15 @@ def test_render_markdown_includes_outstanding_intake_gaps_section():
         "supporting_evidence": [],
         "requested_relief": [],
         "grounded_evidence_summary": [],
+        "grounding_overview": {
+            "evidence_summary": "HACC policy language supporting grievance, appeal, and adverse-action protections.",
+            "anchor_sections": ["grievance_hearing", "appeal_rights"],
+            "anchor_passage_count": 2,
+            "upload_candidate_count": 2,
+            "mediator_packet_count": 2,
+            "uploaded_evidence_count": 1,
+            "top_documents": ["ADMINISTRATIVE PLAN", "ADMISSIONS AND CONTINUED OCCUPANCY POLICY"],
+        },
         "search_summary": {
             "requested_search_mode": "hybrid",
             "effective_search_mode": "lexical_only",
@@ -239,6 +248,9 @@ def test_render_markdown_includes_outstanding_intake_gaps_section():
     assert "- when the key events happened, including the complaint, notice, review or hearing request, and any denial or termination decision" in markdown
     assert "## Follow-Up Questions" in markdown
     assert "- When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?" in markdown
+    assert "## Grounding Overview" in markdown
+    assert "- Anchor sections: grievance_hearing, appeal_rights" in markdown
+    assert "- Top documents: ADMINISTRATIVE PLAN, ADMISSIONS AND CONTINUED OCCUPANCY POLICY" in markdown
     assert "## Search Summary" in markdown
     assert "- Requested search mode: hybrid" in markdown
     assert "- Effective search mode: lexical_only" in markdown
@@ -268,6 +280,30 @@ def test_extract_search_summary_prefers_seed_metadata():
         'effective_search_mode': 'lexical_only',
         'fallback_note': 'Requested hybrid search, but vector support is unavailable; using lexical results instead.',
     }
+
+
+def test_grounding_overview_lines_formats_compact_summary():
+    lines = MODULE._grounding_overview_lines(
+        {
+            "evidence_summary": "HACC policy language supporting grievance, appeal, and adverse-action protections.",
+            "anchor_sections": ["grievance_hearing", "appeal_rights"],
+            "anchor_passage_count": 2,
+            "upload_candidate_count": 2,
+            "mediator_packet_count": 2,
+            "uploaded_evidence_count": 1,
+            "top_documents": ["ADMINISTRATIVE PLAN", "ADMISSIONS AND CONTINUED OCCUPANCY POLICY"],
+        }
+    )
+
+    assert lines == [
+        "Evidence summary: HACC policy language supporting grievance, appeal, and adverse-action protections.",
+        "Anchor sections: grievance_hearing, appeal_rights",
+        "Anchor passages: 2",
+        "Upload candidates: 2",
+        "Mediator evidence packets: 2",
+        "Uploaded evidence items: 1",
+        "Top documents: ADMINISTRATIVE PLAN, ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+    ]
 
 
 def test_build_intake_follow_up_worksheet_creates_fillable_items():

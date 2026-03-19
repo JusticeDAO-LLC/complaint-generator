@@ -3067,12 +3067,22 @@ def main(argv: List[str] | None = None) -> int:
         if args.grounding_bundle
         else (grounded_run_dir / "grounding_bundle.json" if grounded_run_dir else auto_discovered.get("grounding_bundle"))
     )
+    grounding_overview_path = (
+        grounded_run_dir / "grounding_overview.json"
+        if grounded_run_dir
+        else auto_discovered.get("grounding_overview")
+    )
     evidence_upload_report_path = (
         Path(args.evidence_upload_report).resolve()
         if args.evidence_upload_report
         else (grounded_run_dir / "evidence_upload_report.json" if grounded_run_dir else auto_discovered.get("evidence_upload_report"))
     )
     grounding_bundle = _load_optional_json(grounding_bundle_path)
+    grounding_overview = _derive_grounding_overview(
+        grounding_bundle,
+        _load_optional_json(evidence_upload_report_path),
+        _load_optional_json(grounding_overview_path),
+    )
     evidence_upload_report = _load_optional_json(evidence_upload_report_path)
     completed_intake_worksheet_path = Path(args.completed_intake_worksheet).resolve() if args.completed_intake_worksheet else None
     completed_intake_worksheet = _load_optional_json(completed_intake_worksheet_path)
@@ -3114,6 +3124,7 @@ def main(argv: List[str] | None = None) -> int:
         "outstanding_intake_follow_up_questions": _outstanding_intake_follow_up_questions(seed, best_session),
         "requested_relief": _requested_relief_for_forum(args.filing_forum),
         "grounded_evidence_summary": _grounded_summary_lines(grounding_bundle, evidence_upload_report),
+        "grounding_overview": grounding_overview,
         "search_summary": search_summary,
         "selection_rationale": selection_rationale,
         "source_artifacts": {
@@ -3122,6 +3133,7 @@ def main(argv: List[str] | None = None) -> int:
             "selection_source": selection_source,
             "grounded_run_dir": str(grounded_run_dir) if grounded_run_dir else None,
             "grounding_bundle_json": str(grounding_bundle_path) if grounding_bundle_path else None,
+            "grounding_overview_json": str(grounding_overview_path) if grounding_overview_path else None,
             "evidence_upload_report_json": str(evidence_upload_report_path) if evidence_upload_report_path else None,
             "completed_intake_worksheet_json": str(completed_intake_worksheet_path) if completed_intake_worksheet_path else None,
             "search_summary": search_summary,
