@@ -746,6 +746,40 @@ def _build_hook_backed_browser_mediator(db_path: str):
                     "selected_search_program_type": "element_definition_search",
                     "selected_search_program_bias": "uncertain",
                     "selected_search_program_rule_bias": "procedural_prerequisite",
+                },
+                {
+                    "execution_id": 45,
+                    "claim_type": "retaliation",
+                    "claim_element_id": "retaliation:3",
+                    "claim_element_text": "Causal connection",
+                    "support_kind": "testimony",
+                    "query_text": 'clarify retaliation chronology',
+                    "status": "escalated",
+                    "timestamp": "2026-03-12T13:00:00",
+                    "execution_mode": "resolution_handoff",
+                    "follow_up_focus": "temporal_gap_closure",
+                    "query_strategy": "temporal_gap_targeted",
+                    "primary_missing_fact": "Event sequence",
+                    "missing_fact_bundle": ["Event sequence"],
+                    "satisfied_fact_bundle": [],
+                    "resolution_status": "awaiting_testimony",
+                    "resolution_applied": "skipped_resolution_handoff",
+                    "intake_proof_leads": [
+                        {
+                            "lead_id": "lead:complainant:chronology",
+                            "owner": "complainant",
+                            "recommended_support_kind": "testimony",
+                            "description": "Chronology clarification from complainant",
+                        }
+                    ],
+                    "temporal_rule_profile_id": "retaliation_temporal_profile_v1",
+                    "temporal_rule_status": "partial",
+                    "temporal_rule_blocking_reasons": [
+                        "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action."
+                    ],
+                    "temporal_rule_follow_ups": [
+                        "Clarify whether the protected activity occurred before the adverse action."
+                    ],
                 }
             ]
         }
@@ -754,7 +788,7 @@ def _build_hook_backed_browser_mediator(db_path: str):
         "claims": {
             "retaliation": {
                 "claim_type": "retaliation",
-                "task_count": 3,
+                "task_count": 2,
                 "tasks": [
                     {
                         "claim_element_id": "retaliation:3",
@@ -801,6 +835,42 @@ def _build_hook_backed_browser_mediator(db_path: str):
                                     "content_origin": "authority_reference_fallback",
                                 }
                             ],
+                        },
+                    },
+                    {
+                        "claim_element_id": "retaliation:3",
+                        "claim_element": "Causal connection",
+                        "status": "missing",
+                        "priority": "high",
+                        "recommended_action": "review_existing_support",
+                        "follow_up_focus": "temporal_gap_closure",
+                        "query_strategy": "temporal_gap_targeted",
+                        "primary_missing_fact": "Event sequence",
+                        "missing_fact_bundle": ["Event sequence"],
+                        "satisfied_fact_bundle": [],
+                        "missing_support_kinds": ["testimony"],
+                        "resolution_status": "awaiting_testimony",
+                        "blocked_by_cooldown": False,
+                        "should_suppress_retrieval": False,
+                        "intake_proof_leads": [
+                            {
+                                "lead_id": "lead:complainant:chronology",
+                                "owner": "complainant",
+                                "recommended_support_kind": "testimony",
+                                "description": "Chronology clarification from complainant",
+                            }
+                        ],
+                        "temporal_rule_profile_id": "retaliation_temporal_profile_v1",
+                        "temporal_rule_status": "partial",
+                        "temporal_rule_blocking_reasons": [
+                            "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action."
+                        ],
+                        "temporal_rule_follow_ups": [
+                            "Clarify whether the protected activity occurred before the adverse action."
+                        ],
+                        "graph_support": {
+                            "summary": {},
+                            "results": [],
                         },
                     }
                 ],
@@ -1604,28 +1674,55 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text("ProtectedActivity(fact_001)").first.is_visible()
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text("AdverseAction(fact_termination)").first.is_visible()
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text("Happens(fact_termination,t_2026_03_24)").first.is_visible()
-                assert "Tasks: 1" in task_summary
-                assert "Primary gaps: Manager knowledge=1" in task_summary
-                assert "Gap coverage: Event sequence=1, Manager knowledge=1" in task_summary
+                assert "Tasks: 2" in task_summary
+                assert "Chronology tasks: 1" in task_summary
+                assert "Chronology targeted: 1" in task_summary
+                assert "Primary gaps: Event sequence=1, Manager knowledge=1" in task_summary
+                assert "Gap coverage: Event sequence=2, Manager knowledge=1" in task_summary
                 assert "Covered facts: Protected activity=1" in task_summary
-                assert "Handoffs: Awaiting Complainant Record=1" in task_summary
+                assert "Handoffs: Awaiting Complainant Record=1, Awaiting Testimony=1" in task_summary
+                assert "Chronology status: partial=1" in task_summary
+                assert "Chronology blockers: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.=1" in task_summary
+                assert "Chronology handoffs: Awaiting Testimony=1" in task_summary
                 assert "Causal connection" in follow_up_tasks
                 assert "handoff Awaiting Complainant Record" in follow_up_tasks
+                assert "chronology follow-up" in follow_up_tasks
+                assert "chronology targeted" in follow_up_tasks
+                assert "handoff Awaiting Testimony" in follow_up_tasks
+                assert "temporal rule Partial" in follow_up_tasks
+                assert "chronology profile retaliation_temporal_profile_v1" in follow_up_tasks
+                assert "chronology blocker: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action." in follow_up_tasks
+                assert "chronology follow-up: Clarify whether the protected activity occurred before the adverse action." in follow_up_tasks
                 assert "quality target High Quality Document" in follow_up_tasks
                 assert "proof lead complainant / evidence / Termination email held by complainant" in follow_up_tasks
+                assert "proof lead complainant / testimony / Chronology clarification from complainant" in follow_up_tasks
                 assert "primary gap Manager knowledge" in follow_up_tasks
                 assert "gap: Manager knowledge" in follow_up_tasks
                 assert "gap: Event sequence" in follow_up_tasks
                 assert "covered facts 1" in follow_up_tasks
                 assert "authority program element_definition_search" in follow_up_tasks
-                assert "Primary gaps: Manager knowledge=1" in history_summary
-                assert "Gap coverage: Event sequence=1, Manager knowledge=1" in history_summary
+                assert "Primary gaps: Event sequence=1, Manager knowledge=1" in history_summary
+                assert "Gap coverage: Event sequence=2, Manager knowledge=1" in history_summary
                 assert "Covered facts: Protected activity=1" in history_summary
-                assert "Outcomes: Search Exhausted=1" in history_summary
+                assert "Handoffs: Awaiting Testimony=1" in history_summary
+                assert "Chronology status: partial=1" in history_summary
+                assert "Chronology blockers: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.=1" in history_summary
+                assert "Chronology handoffs: Awaiting Testimony=1" in history_summary
+                assert "Outcomes:" in history_summary
+                assert "Resolution Handoff=1" in history_summary
+                assert "Search Exhausted=1" in history_summary
                 assert "Causal connection" in follow_up_history
+                assert "chronology follow-up" in follow_up_history
+                assert "chronology targeted" in follow_up_history
+                assert "temporal rule: Partial" in follow_up_history
+                assert "chronology profile: retaliation_temporal_profile_v1" in follow_up_history
+                assert "chronology blocker: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action." in follow_up_history
+                assert "chronology follow-up: Clarify whether the protected activity occurred before the adverse action." in follow_up_history
+                assert "resolution: Awaiting Testimony" in follow_up_history
                 assert "resolution: Search Exhausted" in follow_up_history
                 assert "quality target: High Quality Document" in follow_up_history
                 assert "proof lead: complainant / evidence / Termination email held by complainant" in follow_up_history
+                assert "proof lead: complainant / testimony / Chronology clarification from complainant" in follow_up_history
                 assert "primary gap: Manager knowledge" in follow_up_history
                 assert "gap: Manager knowledge" in follow_up_history
                 assert "gap: Event sequence" in follow_up_history

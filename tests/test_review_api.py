@@ -3730,6 +3730,10 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
                     "proof_decision_source": "temporal_rule_partial",
                     "temporal_rule_profile_id": "retaliation_temporal_profile_v1",
                     "temporal_rule_status": "partial",
+                    "temporal_rule_blocking_reasons": [
+                        "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action."
+                    ],
+                    "resolution_status": "awaiting_testimony",
                     "skipped": {"escalation": {"reason": "awaiting_testimony_collection"}},
                     "graph_support": {"summary": {}, "results": []},
                     "authority_rule_candidate_summary": {},
@@ -3790,6 +3794,11 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
         "Adverse action": 1,
         "Protected activity": 1,
     }
+    assert plan_summary["temporal_rule_status_counts"] == {"partial": 1}
+    assert plan_summary["temporal_rule_blocking_reason_counts"] == {
+        "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.": 1,
+    }
+    assert plan_summary["temporal_resolution_status_counts"] == {"awaiting_testimony": 1}
 
     assert execution_summary["fact_gap_task_count"] == 1
     assert execution_summary["adverse_authority_task_count"] == 1
@@ -3839,6 +3848,11 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
         "adverse_authority_targeted": 1,
         "temporal_gap_targeted": 1,
     }
+    assert execution_summary["temporal_rule_status_counts"] == {"partial": 1}
+    assert execution_summary["temporal_rule_blocking_reason_counts"] == {
+        "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.": 1,
+    }
+    assert execution_summary["temporal_resolution_status_counts"] == {"awaiting_testimony": 1}
 
 
 def test_summarize_claim_reasoning_review_includes_temporal_handoff_summary():

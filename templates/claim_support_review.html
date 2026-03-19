@@ -878,6 +878,11 @@
                     <h2 style="margin-top: 18px;">Follow-Up Signals</h2>
                     <div class="signal-grid">
                         <div class="signal-card">
+                            <span class="signal-label">Chronology follow-up tasks</span>
+                            <span class="signal-number" id="signal-temporal-gap-tasks">0</span>
+                            <div class="chip-row" id="signal-temporal-gap-task-chips"></div>
+                        </div>
+                        <div class="signal-card">
                             <span class="signal-label">Plan normalized tasks</span>
                             <span class="signal-number" id="signal-plan-normalized">0</span>
                             <div class="chip-row" id="signal-plan-normalized-chips"></div>
@@ -1782,6 +1787,19 @@
                     </div>
                 </details>
             `;
+        }
+
+        function formatTemporalFollowUpItem(item) {
+            if (!item) {
+                return '';
+            }
+            if (typeof item === 'string') {
+                return item;
+            }
+            if (typeof item === 'object') {
+                return String(item.reason || item.description || item.lane || '').trim();
+            }
+            return String(item).trim();
         }
 
         function renderClaimReasoningReview(review) {
@@ -3307,6 +3325,11 @@
             const sourceContextSignals = buildFollowUpSourceSignalCounts(planSummary);
             const parseQualityTaskCount = Number((planSummary && planSummary.parse_quality_task_count) || 0);
             const parseQualityTaskSignals = {};
+            const temporalGapTaskCount = Number((planSummary && planSummary.temporal_gap_task_count) || 0);
+            const temporalGapTargetedCount = Number((planSummary && planSummary.temporal_gap_targeted_task_count) || 0);
+            const historyTemporalGapTaskCount = Number((historySummary && historySummary.temporal_gap_task_count) || 0);
+            const historyTemporalGapTargetedCount = Number((historySummary && historySummary.temporal_gap_targeted_task_count) || 0);
+            const temporalGapSignals = {};
             if (parseQualityTaskCount) {
                 parseQualityTaskSignals.parse_quality_improvement = parseQualityTaskCount;
             }
@@ -3314,10 +3337,24 @@
             if (qualityGapTargetedCount) {
                 parseQualityTaskSignals.quality_gap_targeted = qualityGapTargetedCount;
             }
+            if (temporalGapTaskCount) {
+                temporalGapSignals['Plan chronology'] = temporalGapTaskCount;
+            }
+            if (temporalGapTargetedCount) {
+                temporalGapSignals['Plan targeted'] = temporalGapTargetedCount;
+            }
+            if (historyTemporalGapTaskCount) {
+                temporalGapSignals['History chronology'] = historyTemporalGapTaskCount;
+            }
+            if (historyTemporalGapTargetedCount) {
+                temporalGapSignals['History targeted'] = historyTemporalGapTargetedCount;
+            }
+            document.getElementById('signal-temporal-gap-tasks').textContent = temporalGapTaskCount;
             document.getElementById('signal-plan-normalized').textContent = planNormalized;
             document.getElementById('signal-history-normalized').textContent = historyNormalized;
             document.getElementById('signal-parse-quality-tasks').textContent = parseQualityTaskCount;
             document.getElementById('signal-follow-up-source-context').textContent = sourceContextCount;
+            renderSignalChips('signal-temporal-gap-task-chips', temporalGapSignals, 'No chronology follow-up tasks');
             renderSignalChips('signal-plan-normalized-chips', planResolutionCounts, 'No normalized plan tasks');
             renderSignalChips('signal-history-normalized-chips', historyResolutionCounts, 'No normalized history events');
             renderSignalChips('signal-parse-quality-task-chips', parseQualityTaskSignals, 'No parse remediation tasks');
@@ -3593,10 +3630,19 @@
             if (planSummary) {
                 summaryLabels.push(`Tasks: ${planSummary.task_count || 0}`);
                 summaryLabels.push(`Suppressed: ${planSummary.suppressed_task_count || 0}`);
+                if (Number(planSummary.temporal_gap_task_count || 0)) {
+                    summaryLabels.push(`Chronology tasks: ${planSummary.temporal_gap_task_count}`);
+                }
+                if (Number(planSummary.temporal_gap_targeted_task_count || 0)) {
+                    summaryLabels.push(`Chronology targeted: ${planSummary.temporal_gap_targeted_task_count}`);
+                }
                 const primaryGapLabel = buildCountSummaryLabel('Primary gaps', planSummary.primary_missing_fact_counts || {});
                 const missingGapLabel = buildCountSummaryLabel('Gap coverage', planSummary.missing_fact_bundle_counts || {});
                 const coveredFactLabel = buildCountSummaryLabel('Covered facts', planSummary.satisfied_fact_bundle_counts || {});
                 const handoffLabel = buildResolutionCountSummaryLabel('Handoffs', planSummary.resolution_status_counts || {}, 2, { requireHandoff: true });
+                const chronologyStatusLabel = buildCountSummaryLabel('Chronology status', planSummary.temporal_rule_status_counts || {}, 2);
+                const chronologyBlockerLabel = buildCountSummaryLabel('Chronology blockers', planSummary.temporal_rule_blocking_reason_counts || {}, 1);
+                const chronologyHandoffLabel = buildResolutionCountSummaryLabel('Chronology handoffs', planSummary.temporal_resolution_status_counts || {}, 2, { requireHandoff: true });
                 const outcomeLabel = buildResolutionCountSummaryLabel('Outcomes', planSummary.resolution_applied_counts || {}, 2, {
                     includeKeys: ['skipped_resolution_handoff', 'insufficient_support_after_search', 'manual_review_resolved'],
                 });
@@ -3604,6 +3650,9 @@
                 if (missingGapLabel) summaryLabels.push(missingGapLabel);
                 if (coveredFactLabel) summaryLabels.push(coveredFactLabel);
                 if (handoffLabel) summaryLabels.push(handoffLabel);
+                if (chronologyStatusLabel) summaryLabels.push(chronologyStatusLabel);
+                if (chronologyBlockerLabel) summaryLabels.push(chronologyBlockerLabel);
+                if (chronologyHandoffLabel) summaryLabels.push(chronologyHandoffLabel);
                 if (outcomeLabel) summaryLabels.push(outcomeLabel);
             }
             summaryChips.innerHTML = summaryLabels.length
@@ -3626,6 +3675,9 @@
                 const graphSourceContext = summarizeGraphSupportSourceContext(task.graph_support || {});
                 const satisfiedFactBundle = normalizeFactBundle(task.satisfied_fact_bundle);
                 const resolutionStatus = String(task.resolution_status || '').trim();
+                const temporalRuleStatus = String(task.temporal_rule_status || '').trim();
+                const temporalRuleBlockers = Array.isArray(task.temporal_rule_blocking_reasons) ? task.temporal_rule_blocking_reasons.filter(Boolean) : [];
+                const temporalRuleFollowUps = Array.isArray(task.temporal_rule_follow_ups) ? task.temporal_rule_follow_ups.filter(Boolean) : [];
                 const proofLeadLabels = summarizeProofLeadLabels(task.intake_proof_leads, 2);
                 const handoffStatus = isFollowUpHandoffStatus(resolutionStatus);
                 const badgeLabel = handoffStatus ? formatFollowUpResolutionLabel(resolutionStatus) : (task.status || 'task');
@@ -3650,9 +3702,13 @@
                         ${(task.missing_support_kinds || []).map((kind) => `<span class="chip">Need ${kind}</span>`).join('')}
                         ${task.follow_up_focus ? `<span class="chip">focus ${task.follow_up_focus}</span>` : ''}
                         ${task.query_strategy ? `<span class="chip">strategy ${task.query_strategy}</span>` : ''}
+                        ${task.follow_up_focus === 'temporal_gap_closure' ? '<span class="chip">chronology follow-up</span>' : ''}
+                        ${task.query_strategy === 'temporal_gap_targeted' ? '<span class="chip">chronology targeted</span>' : ''}
                         ${task.primary_missing_fact ? `<span class="chip">primary gap ${task.primary_missing_fact}</span>` : ''}
                         ${renderFactBundleChips('gap', task.missing_fact_bundle)}
                         ${satisfiedFactBundle.length ? `<span class="chip">covered facts ${satisfiedFactBundle.length}</span>` : ''}
+                        ${temporalRuleStatus ? `<span class="chip">temporal rule ${formatFollowUpResolutionLabel(temporalRuleStatus)}</span>` : ''}
+                        ${task.temporal_rule_profile_id ? `<span class="chip">chronology profile ${task.temporal_rule_profile_id}</span>` : ''}
                         ${resolutionStatus ? `<span class="chip">${handoffStatus ? 'handoff' : 'resolution'} ${formatFollowUpResolutionLabel(resolutionStatus)}</span>` : ''}
                         ${task.source_quality_target ? `<span class="chip">quality target ${formatFollowUpResolutionLabel(task.source_quality_target)}</span>` : ''}
                         ${proofLeadLabels.map((label) => `<span class="chip">proof lead ${label}</span>`).join('')}
@@ -3666,6 +3722,8 @@
                         ${task.resolution_applied ? `<span class="chip">normalized: ${task.resolution_applied}</span>` : ''}
                         ${renderSourceContextChips(graphSourceContext, 'No graph source context')}
                     </div>
+                    ${temporalRuleBlockers.length ? `<div class="meta" style="margin-top: 10px;">chronology blocker: ${temporalRuleBlockers[0]}</div>` : ''}
+                    ${temporalRuleFollowUps.length ? `<div class="meta" style="margin-top: 6px;">chronology follow-up: ${formatTemporalFollowUpItem(temporalRuleFollowUps[0])}</div>` : ''}
                     <div class="button-row" style="margin-top: 12px;">
                         <button
                             class="button-tertiary prefill-resolution-button"
@@ -3683,10 +3741,20 @@
             const summaryChips = document.getElementById('history-summary-chips');
             const historyList = document.getElementById('history-list');
             const summaryLabels = [];
+            const allHistoryEntries = Array.isArray(historyEntries) ? historyEntries : [];
+            const chronologyHistoryEntries = (Array.isArray(historyEntries) ? historyEntries : []).filter(
+                (entry) => String((entry && entry.follow_up_focus) || '').trim() === 'temporal_gap_closure',
+            );
             if (historySummary) {
                 summaryLabels.push(`Entries: ${historySummary.total_entry_count || 0}`);
                 summaryLabels.push(`Manual review: ${historySummary.manual_review_entry_count || 0}`);
                 summaryLabels.push(`Resolved: ${historySummary.resolved_entry_count || 0}`);
+                if (Number(historySummary.temporal_gap_task_count || 0)) {
+                    summaryLabels.push(`Chronology tasks: ${historySummary.temporal_gap_task_count}`);
+                }
+                if (Number(historySummary.temporal_gap_targeted_task_count || 0)) {
+                    summaryLabels.push(`Chronology targeted: ${historySummary.temporal_gap_targeted_task_count}`);
+                }
                 const latestAttemptedAt = historySummary.latest_attempted_at || 'none';
                 summaryLabels.push(`Latest: ${latestAttemptedAt}`);
                 const selectedProgramTypes = Object.entries(historySummary.selected_authority_program_type_counts || {});
@@ -3715,6 +3783,9 @@
                 const missingGapLabel = buildCountSummaryLabel('Gap coverage', historySummary.missing_fact_bundle_counts || {});
                 const coveredFactLabel = buildCountSummaryLabel('Covered facts', historySummary.satisfied_fact_bundle_counts || {});
                 const handoffLabel = buildResolutionCountSummaryLabel('Handoffs', historySummary.resolution_status_counts || {}, 2, { requireHandoff: true });
+                const chronologyStatusLabel = buildCountSummaryLabel('Chronology status', historySummary.temporal_rule_status_counts || {}, 2);
+                const chronologyBlockerLabel = buildCountSummaryLabel('Chronology blockers', historySummary.temporal_rule_blocking_reason_counts || {}, 1);
+                const chronologyHandoffLabel = buildResolutionCountSummaryLabel('Chronology handoffs', historySummary.temporal_resolution_status_counts || {}, 2, { requireHandoff: true });
                 const outcomeLabel = buildResolutionCountSummaryLabel('Outcomes', historySummary.resolution_applied_counts || {}, 2, {
                     includeKeys: ['skipped_resolution_handoff', 'insufficient_support_after_search', 'manual_review_resolved'],
                 });
@@ -3722,7 +3793,48 @@
                 if (missingGapLabel) summaryLabels.push(missingGapLabel);
                 if (coveredFactLabel) summaryLabels.push(coveredFactLabel);
                 if (handoffLabel) summaryLabels.push(handoffLabel);
+                if (chronologyStatusLabel) summaryLabels.push(chronologyStatusLabel);
+                if (chronologyBlockerLabel) summaryLabels.push(chronologyBlockerLabel);
+                if (chronologyHandoffLabel) summaryLabels.push(chronologyHandoffLabel);
                 if (outcomeLabel) summaryLabels.push(outcomeLabel);
+            }
+            if (chronologyHistoryEntries.length) {
+                const chronologyStatusCounts = {};
+                const chronologyBlockerCounts = {};
+                const chronologyHandoffCounts = {};
+                chronologyHistoryEntries.forEach((entry) => {
+                    const temporalRuleStatus = String(entry.temporal_rule_status || '').trim();
+                    if (temporalRuleStatus) {
+                        chronologyStatusCounts[temporalRuleStatus] = (chronologyStatusCounts[temporalRuleStatus] || 0) + 1;
+                    }
+                    const blockers = Array.isArray(entry.temporal_rule_blocking_reasons) ? entry.temporal_rule_blocking_reasons.filter(Boolean) : [];
+                    blockers.forEach((reason) => {
+                        chronologyBlockerCounts[reason] = (chronologyBlockerCounts[reason] || 0) + 1;
+                    });
+                    const resolutionStatus = String(entry.resolution_status || '').trim();
+                    if (isFollowUpHandoffStatus(resolutionStatus)) {
+                        chronologyHandoffCounts[resolutionStatus] = (chronologyHandoffCounts[resolutionStatus] || 0) + 1;
+                    }
+                });
+                const chronologyStatusLabel = buildCountSummaryLabel('Chronology status', chronologyStatusCounts, 2);
+                const chronologyBlockerLabel = buildCountSummaryLabel('Chronology blockers', chronologyBlockerCounts, 1);
+                const chronologyHandoffLabel = buildResolutionCountSummaryLabel('Chronology handoffs', chronologyHandoffCounts, 2, { requireHandoff: true });
+                if (chronologyStatusLabel && !summaryLabels.includes(chronologyStatusLabel)) summaryLabels.push(chronologyStatusLabel);
+                if (chronologyBlockerLabel && !summaryLabels.includes(chronologyBlockerLabel)) summaryLabels.push(chronologyBlockerLabel);
+                if (chronologyHandoffLabel && !summaryLabels.includes(chronologyHandoffLabel)) summaryLabels.push(chronologyHandoffLabel);
+            }
+            if (allHistoryEntries.length && !summaryLabels.some((label) => label.startsWith('Outcomes: '))) {
+                const historyOutcomeCounts = {};
+                allHistoryEntries.forEach((entry) => {
+                    const resolutionApplied = String(entry.resolution_applied || '').trim();
+                    if (resolutionApplied) {
+                        historyOutcomeCounts[resolutionApplied] = (historyOutcomeCounts[resolutionApplied] || 0) + 1;
+                    }
+                });
+                const historyOutcomeLabel = buildResolutionCountSummaryLabel('Outcomes', historyOutcomeCounts, 2, {
+                    includeKeys: ['skipped_resolution_handoff', 'insufficient_support_after_search', 'manual_review_resolved'],
+                });
+                if (historyOutcomeLabel) summaryLabels.push(historyOutcomeLabel);
             }
             summaryChips.innerHTML = summaryLabels.length
                 ? summaryLabels.map((label) => `<span class="chip">${label}</span>`).join('')
@@ -3744,6 +3856,9 @@
                 const focusPin = renderFocusPin(focusScore);
                 const satisfiedFactBundle = normalizeFactBundle(entry.satisfied_fact_bundle);
                 const resolutionStatus = String(entry.resolution_status || '').trim();
+                const temporalRuleStatus = String(entry.temporal_rule_status || '').trim();
+                const temporalRuleBlockers = Array.isArray(entry.temporal_rule_blocking_reasons) ? entry.temporal_rule_blocking_reasons.filter(Boolean) : [];
+                const temporalRuleFollowUps = Array.isArray(entry.temporal_rule_follow_ups) ? entry.temporal_rule_follow_ups.filter(Boolean) : [];
                 const proofLeadLabels = summarizeProofLeadLabels(entry.intake_proof_leads, 2);
                 const handoffStatus = isFollowUpHandoffStatus(resolutionStatus);
                 const badgeLabel = resolutionStatus ? formatFollowUpResolutionLabel(resolutionStatus) : (entry.status || 'history');
@@ -3753,9 +3868,15 @@
                 if (entry.support_kind) chips.push(`<span class="chip">${entry.support_kind}</span>`);
                 if (entry.status) chips.push(`<span class="chip">${entry.status}</span>`);
                 if (entry.query_strategy) chips.push(`<span class="chip">${entry.query_strategy}</span>`);
+                if (entry.follow_up_focus === 'temporal_gap_closure') chips.push('<span class="chip">chronology follow-up</span>');
+                if (entry.query_strategy === 'temporal_gap_targeted') chips.push('<span class="chip">chronology targeted</span>');
                 if (entry.primary_missing_fact) chips.push(`<span class="chip">primary gap: ${entry.primary_missing_fact}</span>`);
                 chips.push(renderFactBundleChips('gap', entry.missing_fact_bundle));
                 if (satisfiedFactBundle.length) chips.push(`<span class="chip">covered facts: ${satisfiedFactBundle.length}</span>`);
+                if (temporalRuleStatus) chips.push(`<span class="chip">temporal rule: ${formatFollowUpResolutionLabel(temporalRuleStatus)}</span>`);
+                if (entry.temporal_rule_profile_id) chips.push(`<span class="chip">chronology profile: ${entry.temporal_rule_profile_id}</span>`);
+                temporalRuleBlockers.forEach((reason) => chips.push(`<span class="chip">chronology blocker: ${reason}</span>`));
+                temporalRuleFollowUps.forEach((item) => chips.push(`<span class="chip">chronology follow-up: ${formatTemporalFollowUpItem(item)}</span>`));
                 if (resolutionStatus) chips.push(`<span class="chip">${handoffStatus ? 'handoff' : 'resolution'}: ${formatFollowUpResolutionLabel(resolutionStatus)}</span>`);
                 if (entry.source_quality_target) chips.push(`<span class="chip">quality target: ${formatFollowUpResolutionLabel(entry.source_quality_target)}</span>`);
                 proofLeadLabels.forEach((label) => chips.push(`<span class="chip">proof lead: ${label}</span>`));
@@ -3766,7 +3887,7 @@
                 if (entry.artifact_family) chips.push(`<span class="chip">artifact: ${entry.artifact_family}</span>`);
                 if (entry.content_origin) chips.push(`<span class="chip">origin: ${entry.content_origin}</span>`);
                 if (entry.resolution_applied) chips.push(`<span class="chip">normalized: ${entry.resolution_applied}</span>`);
-                if (entry.resolution_status) chips.push(`<span class="chip">resolution: ${entry.resolution_status}</span>`);
+                if (entry.resolution_status) chips.push(`<span class="chip">resolution: ${formatFollowUpResolutionLabel(entry.resolution_status)}</span>`);
                 return `
                     <article class="history-card">
                         <div class="row-head">
@@ -3777,6 +3898,8 @@
                             <span class="badge ${badgeClass}">${badgeLabel}</span>
                         </div>
                         <div class="chip-row">${focusPin}${chips.join('')}</div>
+                        ${temporalRuleBlockers.length ? `<div class="meta" style="margin-top: 10px;">chronology blocker: ${temporalRuleBlockers[0]}</div>` : ''}
+                        ${temporalRuleFollowUps.length ? `<div class="meta" style="margin-top: 6px;">chronology follow-up: ${formatTemporalFollowUpItem(temporalRuleFollowUps[0])}</div>` : ''}
                         <div class="button-row" style="margin-top: 12px;">
                             <button
                                 class="button-tertiary prefill-resolution-button"

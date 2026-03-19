@@ -2025,6 +2025,9 @@ def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any
     proof_decision_source_counts: Dict[str, int] = {}
     resolution_status_counts: Dict[str, int] = {}
     resolution_applied_counts: Dict[str, int] = {}
+    temporal_rule_status_counts: Dict[str, int] = {}
+    temporal_rule_blocking_reason_counts: Dict[str, int] = {}
+    temporal_resolution_status_counts: Dict[str, int] = {}
     for task in tasks:
         action = str(task.get("recommended_action") or "unspecified")
         recommended_actions[action] = recommended_actions.get(action, 0) + 1
@@ -2045,6 +2048,22 @@ def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any
         if resolution_applied:
             resolution_applied_counts[resolution_applied] = (
                 resolution_applied_counts.get(resolution_applied, 0) + 1
+            )
+        temporal_rule_status = str(task.get("temporal_rule_status") or "")
+        if temporal_rule_status:
+            temporal_rule_status_counts[temporal_rule_status] = (
+                temporal_rule_status_counts.get(temporal_rule_status, 0) + 1
+            )
+        for reason in (task.get("temporal_rule_blocking_reasons") or []):
+            normalized_reason = str(reason or "").strip()
+            if not normalized_reason:
+                continue
+            temporal_rule_blocking_reason_counts[normalized_reason] = (
+                temporal_rule_blocking_reason_counts.get(normalized_reason, 0) + 1
+            )
+        if focus == "temporal_gap_closure" and resolution_status:
+            temporal_resolution_status_counts[resolution_status] = (
+                temporal_resolution_status_counts.get(resolution_status, 0) + 1
             )
     graph_support_metrics = _aggregate_graph_support_metrics(tasks)
     adaptive_retry_metrics = _aggregate_adaptive_retry_metrics(tasks)
@@ -2131,7 +2150,10 @@ def _summarize_follow_up_plan_claim(claim_plan: Dict[str, Any]) -> Dict[str, Any
         "query_strategy_counts": query_strategy_counts,
         "proof_decision_source_counts": proof_decision_source_counts,
         "resolution_status_counts": resolution_status_counts,
+        "temporal_resolution_status_counts": temporal_resolution_status_counts,
         "resolution_applied_counts": resolution_applied_counts,
+        "temporal_rule_status_counts": temporal_rule_status_counts,
+        "temporal_rule_blocking_reason_counts": temporal_rule_blocking_reason_counts,
         "adaptive_retry_task_count": adaptive_retry_metrics["adaptive_retry_task_count"],
         "priority_penalized_task_count": adaptive_retry_metrics[
             "priority_penalized_task_count"
@@ -2204,6 +2226,9 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
     proof_decision_source_counts: Dict[str, int] = {}
     resolution_status_counts: Dict[str, int] = {}
     resolution_applied_counts: Dict[str, int] = {}
+    temporal_rule_status_counts: Dict[str, int] = {}
+    temporal_rule_blocking_reason_counts: Dict[str, int] = {}
+    temporal_resolution_status_counts: Dict[str, int] = {}
     for task in all_tasks:
         focus = str(task.get("follow_up_focus") or "unknown")
         follow_up_focus_counts[focus] = follow_up_focus_counts.get(focus, 0) + 1
@@ -2222,6 +2247,22 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
         if resolution_applied:
             resolution_applied_counts[resolution_applied] = (
                 resolution_applied_counts.get(resolution_applied, 0) + 1
+            )
+        temporal_rule_status = str(task.get("temporal_rule_status") or "")
+        if temporal_rule_status:
+            temporal_rule_status_counts[temporal_rule_status] = (
+                temporal_rule_status_counts.get(temporal_rule_status, 0) + 1
+            )
+        for reason in (task.get("temporal_rule_blocking_reasons") or []):
+            normalized_reason = str(reason or "").strip()
+            if not normalized_reason:
+                continue
+            temporal_rule_blocking_reason_counts[normalized_reason] = (
+                temporal_rule_blocking_reason_counts.get(normalized_reason, 0) + 1
+            )
+        if focus == "temporal_gap_closure" and resolution_status:
+            temporal_resolution_status_counts[resolution_status] = (
+                temporal_resolution_status_counts.get(resolution_status, 0) + 1
             )
     graph_support_metrics = _aggregate_graph_support_metrics(executed_tasks + skipped_tasks)
     adaptive_retry_metrics = _aggregate_adaptive_retry_metrics(all_tasks)
@@ -2278,7 +2319,10 @@ def _summarize_follow_up_execution_claim(claim_execution: Dict[str, Any]) -> Dic
         "query_strategy_counts": query_strategy_counts,
         "proof_decision_source_counts": proof_decision_source_counts,
         "resolution_status_counts": resolution_status_counts,
+        "temporal_resolution_status_counts": temporal_resolution_status_counts,
         "resolution_applied_counts": resolution_applied_counts,
+        "temporal_rule_status_counts": temporal_rule_status_counts,
+        "temporal_rule_blocking_reason_counts": temporal_rule_blocking_reason_counts,
         "adaptive_retry_task_count": adaptive_retry_metrics["adaptive_retry_task_count"],
         "priority_penalized_task_count": adaptive_retry_metrics[
             "priority_penalized_task_count"

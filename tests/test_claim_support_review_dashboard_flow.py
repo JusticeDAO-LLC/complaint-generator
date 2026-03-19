@@ -800,6 +800,7 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert soup.find(id="signal-plan-normalized") is not None
     assert soup.find(id="signal-history-normalized") is not None
     assert soup.find(id="signal-follow-up-source-context") is not None
+    assert soup.find(id="signal-temporal-gap-tasks") is not None
     assert soup.find(id="intake-status-chips") is not None
     assert soup.find(id="intake-contradiction-list") is not None
     assert soup.find(id="signal-archive-captures") is not None
@@ -816,6 +817,11 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert "History biases: ${selectedProgramBiases.map(([label, count]) => `${label}=${count}`).join(', ')}" in page_html
     assert "History rule biases: ${selectedProgramRuleBiases.map(([label, count]) => `${label}=${count}`).join(', ')}" in page_html
     assert "History source context:" in page_html
+    assert "Chronology follow-up tasks" in page_html
+    assert "Chronology tasks:" in page_html
+    assert "Chronology targeted:" in page_html
+    assert "chronology follow-up" in page_html
+    assert "chronology targeted" in page_html
     assert "program: ${entry.selected_search_program_type}" in page_html
     assert "rule bias: ${entry.selected_search_program_rule_bias}" in page_html
     assert "family: ${entry.source_family}" in page_html
