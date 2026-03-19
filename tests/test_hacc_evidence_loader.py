@@ -4,20 +4,19 @@ from types import SimpleNamespace
 import adversarial_harness.hacc_evidence as hacc_evidence_module
 
 
-def test_load_hacc_engine_uses_package_import(tmp_path, monkeypatch):
+def test_load_hacc_engine_imports_hacc_research_package(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     engine_dir = repo_root / "hacc_research"
     engine_dir.mkdir(parents=True)
-    (engine_dir / "engine.py").write_text("class HACCResearchEngine:\n    pass\n", encoding="utf-8")
+    (engine_dir / "engine.py").write_text("", encoding="utf-8")
 
-    class FakeEngine:
-        pass
-
-    captured = {}
+    captured = {"before_path": list(sys.path)}
+    fake_engine = type("FakeEngine", (), {"SOURCE": "package-import"})
+    fake_module = SimpleNamespace(HACCResearchEngine=fake_engine)
 
     def fake_import_module(name):
         captured["module_name"] = name
-        return SimpleNamespace(HACCResearchEngine=FakeEngine)
+        return fake_module
 
     monkeypatch.setattr(hacc_evidence_module, "_repo_root", lambda: repo_root)
     monkeypatch.setattr(hacc_evidence_module.importlib, "import_module", fake_import_module)
@@ -27,4 +26,4 @@ def test_load_hacc_engine_uses_package_import(tmp_path, monkeypatch):
 
     assert captured["module_name"] == "hacc_research"
     assert str(repo_root) in hacc_evidence_module.sys.path
-    assert engine_cls is FakeEngine
+    assert engine_cls is fake_engine
