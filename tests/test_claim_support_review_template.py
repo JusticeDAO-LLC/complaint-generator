@@ -40,6 +40,16 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Load into resolution form" in content
     assert "intake-next-action-review-evidence-task" in content
     assert "Review evidence task" in content
+    assert "intake-next-action-build-packets" in content
+    assert "Build claim support packets" in content
+    assert "intake-next-action-review-knowledge-graph" in content
+    assert "Review intake graph inputs" in content
+    assert "intake-next-action-review-dependencies" in content
+    assert "Review dependency inputs" in content
+    assert "intake-next-action-review-denoising" in content
+    assert "Review denoising queue" in content
+    assert "intake-next-action-open-document-builder" in content
+    assert "Open formal complaint builder" in content
     assert "intake-next-action-confirm-summary" in content
     assert "Confirm intake summary" in content
     assert "intake-next-action-review-gaps" in content
@@ -110,8 +120,28 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "prefillPromotedValidationForm(" in content
     assert "Validation follow-up for promoted support tied to ${humanizedElement}." in content
     assert "Validation support for ${humanizedElement}" in content
+    assert "postSaveValidationFocus" in content
+    assert "lastValidationOutcome" in content
+    assert "findMatchingAlignmentUpdate(payload, focus.claimType, focus.claimElementId)" in content
+    assert "Validation save improved support for ${focus.claimElementId || 'the targeted element'} and returned you to the promoted update lane." in content
+    assert "Validation save recorded for ${focus.claimElementId || 'the targeted element'}; the refreshed update still needs support validation." in content
+    assert "validation ${validationOutcome.improved ? 'improved' : 'still needs review'}" in content
     assert "Testimony form prefilled from focused promoted-support validation." in content
     assert "Document form prefilled from focused promoted-support validation." in content
+    assert "recommended action: build_knowledge_graph" in content
+    assert "Intake facts and timeline anchors are present, but the knowledge graph has not been built into an operator-reviewable structure yet." in content
+    assert "openKnowledgeGraphInputsReview()" in content
+    assert "Showing timeline and canonical fact inputs for intake graph building." in content
+    assert "recommended action: build_dependency_graph" in content
+    assert "Intake sections are populated enough to map cross-section dependencies, but the dependency graph has not been built yet." in content
+    assert "openDependencyGraphInputsReview()" in content
+    assert "Showing alignment and contradiction inputs for dependency graph review." in content
+    assert "recommended action: continue_denoising" in content
+    assert "Intake contradictions or open clarification paths still need another denoising pass before the case theory can settle." in content
+    assert "openDenoisingQueueReview()" in content
+    assert "Showing contradictions and targeted questions for continued intake denoising." in content
+    assert "recommended action: build_claim_support_packets" in content
+    assert "Evidence records exist, but the claim support packet still needs an explicit packet build before evidence review can be trusted." in content
     assert "recommended action: resolve_support_conflicts" in content
     assert "manual review blockers: ${manualReviewBlockers.length}" in content
     assert "packet escalations: ${reviewableEscalations}" in content
@@ -128,6 +158,11 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Priority evidence is still missing for a shared intake-to-packet element." in content
     assert "openEvidenceTaskReview(" in content
     assert "Showing priority evidence task and preferred support lane." in content
+    assert "recommended action: complete_evidence" in content
+    assert "packet completion ready: ${evidenceCompletionReady ? 'yes' : 'no'}" in content
+    assert "proof readiness: ${proofReadinessScore.toFixed(2)}" in content
+    assert "Evidence support is sufficiently assembled to move from packet review into formal complaint drafting." in content
+    assert "openDocumentDraftingHandoff()" in content
     assert "recommended action: confirm_intake_summary" in content
     assert "recommended action: address_gaps" in content
     assert "gap count: ${actionGaps.length}" in content

@@ -1135,6 +1135,11 @@ Representative shape:
       "follow_up_focus_counts": {},
       "resolution_status_counts": {},
       "resolution_applied_counts": {},
+      "temporal_gap_task_count": 0,
+      "temporal_gap_targeted_task_count": 0,
+      "temporal_rule_status_counts": {},
+      "temporal_rule_blocking_reason_counts": {},
+      "temporal_resolution_status_counts": {},
       "adaptive_retry_entry_count": 0,
       "priority_penalized_entry_count": 0,
       "adaptive_query_strategy_counts": {},
@@ -1161,6 +1166,8 @@ Representative shape:
       "suppressed_task_count": 0,
       "contradiction_task_count": 0,
       "reasoning_gap_task_count": 0,
+      "temporal_gap_task_count": 0,
+      "temporal_gap_targeted_task_count": 0,
       "semantic_cluster_count": 1,
       "semantic_duplicate_count": 2,
       "follow_up_focus_counts": {
@@ -1173,6 +1180,9 @@ Representative shape:
         "missing_support": 1,
         "partial_support": 1
       },
+      "temporal_rule_status_counts": {},
+      "temporal_rule_blocking_reason_counts": {},
+      "temporal_resolution_status_counts": {},
       "resolution_applied_counts": {},
       "recommended_actions": {
         "collect_initial_support": 1,
@@ -1186,6 +1196,11 @@ Representative shape:
       "suppressed_task_count": 0,
       "contradiction_task_count": 0,
       "reasoning_gap_task_count": 0,
+      "temporal_gap_task_count": 0,
+      "temporal_gap_targeted_task_count": 0,
+      "temporal_rule_status_counts": {},
+      "temporal_rule_blocking_reason_counts": {},
+      "temporal_resolution_status_counts": {},
       "semantic_cluster_count": 0,
       "semantic_duplicate_count": 0,
       "follow_up_focus_counts": {},
@@ -1749,6 +1764,8 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
       "reasoning_gap_task_count": 0,
       "fact_gap_task_count": 0,
       "adverse_authority_task_count": 0,
+      "temporal_gap_task_count": 0,
+      "temporal_gap_targeted_task_count": 0,
       "semantic_cluster_count": 1,
       "semantic_duplicate_count": 2,
       "support_by_kind": {
@@ -1791,6 +1808,9 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
         "heuristic_contradictions": 1,
         "missing_support": 1
       },
+      "temporal_rule_status_counts": {},
+      "temporal_rule_blocking_reason_counts": {},
+      "temporal_resolution_status_counts": {},
       "resolution_applied_counts": {
         "manual_review_resolved": 1
       },
@@ -1830,12 +1850,17 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
       "cooldown_skipped_task_count": 0,
       "fact_gap_task_count": 0,
       "adverse_authority_task_count": 0,
+      "temporal_gap_task_count": 0,
+      "temporal_gap_targeted_task_count": 0,
       "semantic_cluster_count": 3,
       "semantic_duplicate_count": 4,
       "support_by_kind": {
         "evidence": 1,
         "authority": 1
       },
+      "temporal_rule_status_counts": {},
+      "temporal_rule_blocking_reason_counts": {},
+      "temporal_resolution_status_counts": {},
       "support_by_source": {
         "evidence": 1,
         "legal_authorities": 1
@@ -2068,31 +2093,83 @@ Representative response shape:
       ]
     }
   },
+  "follow_up_history": {
+    "retaliation": [
+      {
+        "execution_id": 45,
+        "claim_type": "retaliation",
+        "claim_element_id": "retaliation:3",
+        "claim_element_text": "Causal connection",
+        "support_kind": "testimony",
+        "query_text": "clarify retaliation chronology",
+        "status": "escalated",
+        "timestamp": "2026-03-12T13:00:00",
+        "execution_mode": "resolution_handoff",
+        "follow_up_focus": "temporal_gap_closure",
+        "query_strategy": "temporal_gap_targeted",
+        "primary_missing_fact": "Event sequence",
+        "missing_fact_bundle": ["Event sequence"],
+        "satisfied_fact_bundle": [],
+        "resolution_status": "awaiting_testimony",
+        "resolution_applied": "skipped_resolution_handoff",
+        "temporal_rule_profile_id": "retaliation_temporal_profile_v1",
+        "temporal_rule_status": "partial",
+        "temporal_rule_blocking_reasons": [
+          "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action."
+        ],
+        "temporal_rule_follow_ups": [
+          {
+            "lane": "clarify_with_complainant",
+            "reason": "Clarify whether the protected activity occurred before the adverse action."
+          }
+        ]
+      }
+    ]
+  },
   "follow_up_history_summary": {
     "retaliation": {
-      "total_entry_count": 2,
+      "total_entry_count": 3,
       "status_counts": {
         "skipped_manual_review": 1,
-        "executed": 1
+        "executed": 1,
+        "escalated": 1
       },
       "support_kind_counts": {
         "manual_review": 1,
-        "authority": 1
+        "authority": 1,
+        "testimony": 1
       },
       "execution_mode_counts": {
         "manual_review": 1,
-        "retrieve_support": 1
+        "retrieve_support": 1,
+        "resolution_handoff": 1
       },
       "query_strategy_counts": {
-        "standard_gap_targeted": 2
+        "standard_gap_targeted": 2,
+        "temporal_gap_targeted": 1
       },
       "follow_up_focus_counts": {
         "contradiction_resolution": 1,
-        "support_gap_closure": 1
+        "support_gap_closure": 1,
+        "temporal_gap_closure": 1
       },
-      "resolution_status_counts": {},
+      "resolution_status_counts": {
+        "awaiting_testimony": 1
+      },
       "resolution_applied_counts": {
-        "manual_review_resolved": 1
+        "manual_review_resolved": 1,
+        "skipped_resolution_handoff": 1
+      },
+      "temporal_gap_task_count": 1,
+      "temporal_gap_targeted_task_count": 1,
+      "temporal_rule_status_counts": {
+        "partial": 1
+      },
+      "temporal_rule_blocking_reason_counts": {
+        "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.": 1
+      },
+      "temporal_resolution_status_counts": {
+        "awaiting_testimony": 1
       },
       "adaptive_retry_entry_count": 1,
       "priority_penalized_entry_count": 1,
@@ -2130,28 +2207,42 @@ Representative response shape:
       "manual_review_entry_count": 1,
       "resolved_entry_count": 0,
       "contradiction_related_entry_count": 1,
-      "latest_attempted_at": "2026-03-12T10:15:00"
+      "latest_attempted_at": "2026-03-12T13:00:00"
     }
   },
   "follow_up_plan_summary": {
     "retaliation": {
-      "task_count": 2,
+      "task_count": 3,
       "blocked_task_count": 1,
       "suppressed_task_count": 1,
       "contradiction_task_count": 0,
       "reasoning_gap_task_count": 0,
+      "temporal_gap_task_count": 1,
       "parse_quality_task_count": 0,
+      "temporal_gap_targeted_task_count": 1,
       "quality_gap_targeted_task_count": 0,
       "semantic_cluster_count": 2,
       "semantic_duplicate_count": 3,
       "follow_up_focus_counts": {
-        "unknown": 2
+        "unknown": 2,
+        "temporal_gap_closure": 1
       },
       "query_strategy_counts": {
-        "unknown": 2
+        "unknown": 2,
+        "temporal_gap_targeted": 1
       },
       "proof_decision_source_counts": {
-        "unknown": 2
+        "unknown": 2,
+        "temporal_rule_partial": 1
+      },
+      "temporal_rule_status_counts": {
+        "partial": 1
+      },
+      "temporal_rule_blocking_reason_counts": {
+        "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.": 1
+      },
+      "temporal_resolution_status_counts": {
+        "awaiting_testimony": 1
       },
       "resolution_applied_counts": {
         "manual_review_resolved": 1
@@ -2163,19 +2254,33 @@ Representative response shape:
       "last_adaptive_retry": null,
       "recommended_actions": {
         "retrieve_more_support": 1,
-        "target_missing_support_kind": 1
+        "target_missing_support_kind": 1,
+        "review_existing_support": 1
       }
     }
   },
   "follow_up_execution_summary": {
     "retaliation": {
       "executed_task_count": 1,
-      "skipped_task_count": 2,
+      "skipped_task_count": 3,
       "suppressed_task_count": 1,
       "cooldown_skipped_task_count": 1,
+      "temporal_gap_task_count": 1,
+      "temporal_gap_targeted_task_count": 1,
       "semantic_cluster_count": 3,
       "semantic_duplicate_count": 4,
-      "resolution_applied_counts": {},
+      "temporal_rule_status_counts": {
+        "partial": 1
+      },
+      "temporal_rule_blocking_reason_counts": {
+        "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.": 1
+      },
+      "temporal_resolution_status_counts": {
+        "awaiting_testimony": 1
+      },
+      "resolution_applied_counts": {
+        "skipped_resolution_handoff": 1
+      },
       "adaptive_retry_task_count": 0,
       "priority_penalized_task_count": 0,
       "adaptive_query_strategy_counts": {},
@@ -2202,7 +2307,7 @@ Interpretation notes:
 - `claim_support_snapshots` exposes any persisted diagnostic snapshot ids reused by the review payload; when a stored snapshot no longer matches current support state it is marked with `is_stale=true` and the payload falls back to recomputation for that claim.
 - `claim_support_snapshot_summary` is the compact review-facing lifecycle view for those persisted diagnostics, so dashboard consumers can see freshness and pruning at a glance without iterating the raw snapshot entries.
 - `claim_reasoning_review` is the compact review-facing reasoning surface for flagged claim elements, capturing fallback ontology use plus unavailable or degraded adapter states without forcing clients to inspect every `reasoning_diagnostics` packet.
-- `follow_up_history` exposes recent rows from the persisted `claim_follow_up_execution` ledger, including contradiction-targeted retrieval attempts and manual-review audit events. When graph-backed follow-up tasks persisted source lineage, each history row can also flatten the dominant `source_family`, `record_scope`, `artifact_family`, `corpus_family`, and `content_origin` so history cards do not need to reopen nested graph-support payloads.
+- `follow_up_history` exposes recent rows from the persisted `claim_follow_up_execution` ledger, including contradiction-targeted retrieval attempts, chronology handoffs, and manual-review audit events. When graph-backed follow-up tasks persisted source lineage, each history row can also flatten the dominant `source_family`, `record_scope`, `artifact_family`, `corpus_family`, and `content_origin` so history cards do not need to reopen nested graph-support payloads. Chronology rows may also carry `temporal_rule_profile_id`, `temporal_rule_status`, `temporal_rule_blocking_reasons`, and `temporal_rule_follow_ups` so clients can inspect the exact timing failure behind the handoff.
 - `follow_up_history_summary` compresses that ledger into counts by status, support kind, execution mode, query strategy, contradiction focus, resolution normalization, adaptive retry markers, selected authority-program type, selected treatment-versus-rule bias, and persisted source-lineage families when authority or evidence execution stored graph-backed context. `last_adaptive_retry` highlights the most recent broadened retry with its claim element label, timestamp, and freshness classification.
 - `follow_up_history_summary` now also exposes chronology-specific aggregates when temporal follow-up work is present: `temporal_gap_task_count`, `temporal_gap_targeted_task_count`, `temporal_rule_status_counts`, `temporal_rule_blocking_reason_counts`, and `temporal_resolution_status_counts` so clients can separate timeline closure work from generic support retrieval.
 - `claim_coverage_summary` now carries compact parse-quality review signals such as `low_quality_parsed_record_count`, `parse_quality_issue_element_count`, and `parse_quality_issue_elements`, so dashboard clients can spot extraction-quality problems without traversing raw validation elements.
@@ -2383,13 +2488,25 @@ Representative response shape:
     "follow_up_history_summary": {
       "retaliation": {
         "total_entry_count": 2,
+        "temporal_gap_task_count": 1,
+        "temporal_gap_targeted_task_count": 1,
         "manual_review_entry_count": 1,
         "resolved_entry_count": 1,
         "resolution_status_counts": {
-          "resolved_supported": 1
+          "resolved_supported": 1,
+          "awaiting_testimony": 1
         },
         "resolution_applied_counts": {
           "manual_review_resolved": 1
+        },
+        "temporal_rule_status_counts": {
+          "partial": 1
+        },
+        "temporal_rule_blocking_reason_counts": {
+          "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.": 1
+        },
+        "temporal_resolution_status_counts": {
+          "awaiting_testimony": 1
         },
         "adaptive_retry_entry_count": 0,
         "priority_penalized_entry_count": 0,
@@ -2398,7 +2515,7 @@ Representative response shape:
         "zero_result_entry_count": 0,
         "last_adaptive_retry": null,
         "contradiction_related_entry_count": 2,
-        "latest_attempted_at": "2026-03-12T11:05:00"
+        "latest_attempted_at": "2026-03-12T13:00:00"
       }
     },
     "claim_coverage_summary": {
@@ -2595,6 +2712,35 @@ Follow-up planning payloads from `Mediator.get_claim_follow_up_plan(...)` now in
               }
             ]
           }
+        },
+        {
+          "claim_element_id": "retaliation:3",
+          "claim_element": "Causal connection",
+          "priority": "high",
+          "priority_score": 3,
+          "follow_up_focus": "temporal_gap_closure",
+          "query_strategy": "temporal_gap_targeted",
+          "missing_support_kinds": ["testimony"],
+          "recommended_action": "review_existing_support",
+          "primary_missing_fact": "Event sequence",
+          "missing_fact_bundle": ["Event sequence"],
+          "satisfied_fact_bundle": [],
+          "resolution_status": "awaiting_testimony",
+          "temporal_rule_profile_id": "retaliation_temporal_profile_v1",
+          "temporal_rule_status": "partial",
+          "temporal_rule_blocking_reasons": [
+            "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action."
+          ],
+          "temporal_rule_follow_ups": [
+            {
+              "lane": "clarify_with_complainant",
+              "reason": "Clarify whether the protected activity occurred before the adverse action."
+            }
+          ],
+          "graph_support": {
+            "summary": {},
+            "results": []
+          }
         }
       ]
     }
@@ -2608,7 +2754,10 @@ Interpretation notes:
 - `has_graph_support` is a quick boolean derived from whether any ranked fact results already exist for the task's claim element.
 - `graph_support_strength` classifies the ranked support snapshot as `none`, `moderate`, or `strong`.
 - `recommended_action` distinguishes ordinary retrieval from more specific modes such as `collect_fact_support` when rule candidates already identify the missing factual predicate, or `review_adverse_authority` when current authority support is adverse.
+- `follow_up_focus="temporal_gap_closure"` and `query_strategy="temporal_gap_targeted"` identify chronology-closure tasks that exist because legal timing is still insufficient, not because generic support is missing.
+- `resolution_status="awaiting_testimony"` or `awaiting_complainant_record` indicates the chronology task has already been routed into a human handoff lane instead of an immediate retrieval lane.
 - `authority_treatment_summary` carries the same supportive versus adverse authority signal used by claim coverage and review payloads, so planner consumers can tell when a task is driven by questioned or limiting authority rather than missing citations alone.
+- `temporal_rule_profile_id`, `temporal_rule_status`, `temporal_rule_blocking_reasons`, and `temporal_rule_follow_ups` surface the exact chronology rule failure and the recommended repair prompt so review clients, exports, and CLI summaries can explain why the task exists.
 - `authority_rule_candidate_summary` is the compact planner-facing count of extracted rule statements for the current claim element.
 - `rule_candidate_context.top_rule_texts` exposes the highest-confidence rule or exception snippets the planner used when building fact-gap-targeted follow-up queries.
 - `authority_search_programs` is present when the task includes authority retrieval; it carries the claim-aware legal search bundle built for that claim element, including support-versus-adverse intent and program type.

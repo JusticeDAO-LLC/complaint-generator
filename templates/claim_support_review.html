@@ -1179,7 +1179,48 @@
         };
         const reviewRenderState = {
             payload: null,
+            postSaveValidationFocus: null,
+            lastValidationOutcome: null,
         };
+
+        function normalizeAlignmentUpdateList(payload) {
+            const intakeCaseSummary = payload && payload.intake_case_summary && typeof payload.intake_case_summary === 'object'
+                ? payload.intake_case_summary
+                : {};
+            const history = Array.isArray(intakeCaseSummary.alignment_task_update_history)
+                ? intakeCaseSummary.alignment_task_update_history
+                : [];
+            const updates = Array.isArray(intakeCaseSummary.alignment_task_updates)
+                ? intakeCaseSummary.alignment_task_updates
+                : [];
+            return history.length ? history : updates;
+        }
+
+        function findMatchingAlignmentUpdate(payload, claimType, claimElementId) {
+            const normalizedClaimType = String(claimType || '').trim().toLowerCase();
+            const normalizedElementId = String(claimElementId || '').trim().toLowerCase();
+            if (!normalizedClaimType && !normalizedElementId) {
+                return null;
+            }
+            const candidates = normalizeAlignmentUpdateList(payload);
+            const matches = candidates.filter((update) => {
+                if (!update || typeof update !== 'object') {
+                    return false;
+                }
+                const updateClaimType = String(update.claim_type || '').trim().toLowerCase();
+                const updateElementId = String(update.claim_element_id || '').trim().toLowerCase();
+                return (!normalizedClaimType || updateClaimType === normalizedClaimType)
+                    && (!normalizedElementId || updateElementId === normalizedElementId);
+            });
+            if (!matches.length) {
+                return null;
+            }
+            return matches.reduce((best, update) => {
+                const bestSequence = Number(best && best.evidence_sequence || 0);
+                const updateSequence = Number(update && update.evidence_sequence || 0);
+                return updateSequence >= bestSequence ? update : best;
+            }, matches[0]);
+        }
 
         function filterAlignmentTaskUpdates(updates, filterValue) {
             const normalizedFilter = String(filterValue || 'all').trim().toLowerCase();
@@ -2627,6 +2668,108 @@
                         ` : ''}
                     </div>
                 `;
+            } else if (nextAction.action === 'build_knowledge_graph') {
+                const timelineAnchorCount = Number(timelineAnchorSummary.count || 0);
+                const canonicalFactCount = Number(canonicalFactSummary.count || 0);
+                const questionCandidateCount = Number(questionCandidateSummary.count || 0);
+                const readinessScore = Number(nextAction.intake_readiness_score || 0);
+                const knowledgeGraphChips = [
+                    '<span class="chip">recommended action: build_knowledge_graph</span>',
+                    `<span class="chip">timeline anchors: ${timelineAnchorCount}</span>`,
+                    `<span class="chip">canonical facts: ${canonicalFactCount}</span>`,
+                    `<span class="chip">question candidates: ${questionCandidateCount}</span>`,
+                ];
+                if (Number.isFinite(readinessScore) && readinessScore > 0) {
+                    knowledgeGraphChips.push(`<span class="chip">readiness score: ${readinessScore.toFixed(2)}</span>`);
+                }
+                intakeNextActionBanner.hidden = false;
+                intakeNextActionBanner.classList.remove('is-error');
+                intakeNextActionTitle.textContent = 'Build intake knowledge graph';
+                intakeNextActionStatus.textContent = 'build_knowledge_graph';
+                intakeNextActionChips.innerHTML = knowledgeGraphChips.join('');
+                intakeNextActionNotes.innerHTML = `
+                    Intake facts and timeline anchors are present, but the knowledge graph has not been built into an operator-reviewable structure yet.
+                    Focus the timeline and canonical fact diagnostics before advancing graph-dependent intake work.
+                    <div class="button-row" style="margin-top: 12px;">
+                        <button class="button-secondary" id="intake-next-action-review-knowledge-graph" type="button">Review intake graph inputs</button>
+                    </div>
+                `;
+            } else if (nextAction.action === 'build_dependency_graph') {
+                const alignedElementCount = Number(intakeEvidenceAlignmentSummary.aligned_element_count || 0);
+                const contradictionCount = Number(intakeCaseSummary.contradiction_summary && intakeCaseSummary.contradiction_summary.count || 0);
+                const alignmentTaskCount = alignmentEvidenceTasks.length;
+                const readinessScore = Number(nextAction.intake_readiness_score || 0);
+                const dependencyGraphChips = [
+                    '<span class="chip">recommended action: build_dependency_graph</span>',
+                    `<span class="chip">aligned elements: ${alignedElementCount}</span>`,
+                    `<span class="chip">alignment tasks: ${alignmentTaskCount}</span>`,
+                    `<span class="chip">contradictions: ${contradictionCount}</span>`,
+                ];
+                if (Number.isFinite(readinessScore) && readinessScore > 0) {
+                    dependencyGraphChips.push(`<span class="chip">readiness score: ${readinessScore.toFixed(2)}</span>`);
+                }
+                intakeNextActionBanner.hidden = false;
+                intakeNextActionBanner.classList.remove('is-error');
+                intakeNextActionTitle.textContent = 'Build intake dependency graph';
+                intakeNextActionStatus.textContent = 'build_dependency_graph';
+                intakeNextActionChips.innerHTML = dependencyGraphChips.join('');
+                intakeNextActionNotes.innerHTML = `
+                    Intake sections are populated enough to map cross-section dependencies, but the dependency graph has not been built yet.
+                    Review contradictions and alignment summaries before dependency-driven intake routing continues.
+                    <div class="button-row" style="margin-top: 12px;">
+                        <button class="button-secondary" id="intake-next-action-review-dependencies" type="button">Review dependency inputs</button>
+                    </div>
+                `;
+            } else if (nextAction.action === 'continue_denoising') {
+                const intakeBlockers = Array.isArray(nextAction.intake_blockers) ? nextAction.intake_blockers : [];
+                const contradictionCount = Number(intakeCaseSummary.contradiction_summary && intakeCaseSummary.contradiction_summary.count || 0);
+                const questionCandidateCount = Number(questionCandidateSummary.count || 0);
+                const readinessScore = Number(nextAction.intake_readiness_score || 0);
+                const denoisingChips = [
+                    '<span class="chip">recommended action: continue_denoising</span>',
+                    `<span class="chip">blockers: ${intakeBlockers.length}</span>`,
+                    `<span class="chip">contradictions: ${contradictionCount}</span>`,
+                    `<span class="chip">question candidates: ${questionCandidateCount}</span>`,
+                ];
+                if (Number.isFinite(readinessScore) && readinessScore > 0) {
+                    denoisingChips.push(`<span class="chip">readiness score: ${readinessScore.toFixed(2)}</span>`);
+                }
+                intakeNextActionBanner.hidden = false;
+                intakeNextActionBanner.classList.remove('is-error');
+                intakeNextActionTitle.textContent = 'Continue intake denoising';
+                intakeNextActionStatus.textContent = 'continue_denoising';
+                intakeNextActionChips.innerHTML = denoisingChips.join('');
+                intakeNextActionNotes.innerHTML = `
+                    Intake contradictions or open clarification paths still need another denoising pass before the case theory can settle.
+                    Review the contradiction queue and targeted questions that should drive the next intake refinement pass.
+                    <div class="button-row" style="margin-top: 12px;">
+                        <button class="button-secondary" id="intake-next-action-review-denoising" type="button">Review denoising queue</button>
+                    </div>
+                `;
+            } else if (nextAction.action === 'build_claim_support_packets') {
+                const recommendedActions = Array.isArray(nextAction.recommended_actions) ? nextAction.recommended_actions : [];
+                const packetElementCount = Number(claimSupportPacketSummary.element_count || 0);
+                const packetClaimCount = Number(claimSupportPacketSummary.claim_count || 0);
+                const packetBuildChips = [
+                    '<span class="chip">recommended action: build_claim_support_packets</span>',
+                    `<span class="chip">claims: ${packetClaimCount}</span>`,
+                    `<span class="chip">elements: ${packetElementCount}</span>`,
+                ];
+                recommendedActions.slice(0, 2).forEach((item) => {
+                    packetBuildChips.push(`<span class="chip">recommended lane: ${humanizeQueryValue(item)}</span>`);
+                });
+                intakeNextActionBanner.hidden = false;
+                intakeNextActionBanner.classList.remove('is-error');
+                intakeNextActionTitle.textContent = 'Build claim support packets';
+                intakeNextActionStatus.textContent = 'build_claim_support_packets';
+                intakeNextActionChips.innerHTML = packetBuildChips.join('');
+                intakeNextActionNotes.innerHTML = `
+                    Evidence records exist, but the claim support packet still needs an explicit packet build before evidence review can be trusted.
+                    Execute the packet-building follow-up to refresh packet statuses and downstream review surfaces.
+                    <div class="button-row" style="margin-top: 12px;">
+                        <button class="button-secondary" id="intake-next-action-build-packets" type="button">Build claim support packets</button>
+                    </div>
+                `;
             } else if (nextAction.action === 'resolve_support_conflicts') {
                 const recommendedActions = Array.isArray(nextAction.recommended_actions) ? nextAction.recommended_actions : [];
                 const reviewableEscalations = Number(claimSupportPacketSummary.claim_support_reviewable_escalation_count || manualReviewBlockers.length || 0);
@@ -2737,6 +2880,30 @@
                             data-claim-element-text="${(focusedActionElementLabel || nextAction.claim_element_id || '').replace(/"/g, '&quot;')}"
                             data-support-kind="${preferredSupportKind || ''}"
                         >Review evidence task</button>
+                    </div>
+                `;
+            } else if (nextAction.action === 'complete_evidence') {
+                const recommendedActions = Array.isArray(nextAction.recommended_actions) ? nextAction.recommended_actions : [];
+                const proofReadinessScore = Number(claimSupportPacketSummary.proof_readiness_score || 0);
+                const evidenceCompletionReady = Boolean(claimSupportPacketSummary.evidence_completion_ready);
+                const completionChips = [
+                    '<span class="chip">recommended action: complete_evidence</span>',
+                    `<span class="chip">packet completion ready: ${evidenceCompletionReady ? 'yes' : 'no'}</span>`,
+                    `<span class="chip">proof readiness: ${proofReadinessScore.toFixed(2)}</span>`,
+                ];
+                recommendedActions.slice(0, 2).forEach((item) => {
+                    completionChips.push(`<span class="chip">recommended lane: ${humanizeQueryValue(item)}</span>`);
+                });
+                intakeNextActionBanner.hidden = false;
+                intakeNextActionBanner.classList.remove('is-error');
+                intakeNextActionTitle.textContent = 'Begin formal complaint drafting';
+                intakeNextActionStatus.textContent = 'complete_evidence';
+                intakeNextActionChips.innerHTML = completionChips.join('');
+                intakeNextActionNotes.innerHTML = `
+                    Evidence support is sufficiently assembled to move from packet review into formal complaint drafting.
+                    Open the formal complaint builder with the current claim and user context preserved.
+                    <div class="button-row" style="margin-top: 12px;">
+                        <button class="button-secondary" id="intake-next-action-open-document-builder" type="button">Open formal complaint builder</button>
                     </div>
                 `;
             } else if (nextAction.action === 'address_gaps') {
@@ -3260,6 +3427,12 @@
                 alignmentTaskUpdateContainer.innerHTML = orderedAlignmentTaskUpdates.map((update) => {
                     const resolutionStatus = String(update.resolution_status || 'still_open').trim();
                     const normalizedResolutionStatus = resolutionStatus.toLowerCase();
+                    const validationOutcome = reviewRenderState.lastValidationOutcome;
+                    const validationOutcomeMatch = Boolean(
+                        validationOutcome
+                        && String(validationOutcome.claimType || '').trim().toLowerCase() === String(update.claim_type || '').trim().toLowerCase()
+                        && String(validationOutcome.claimElementId || '').trim().toLowerCase() === String(update.claim_element_id || '').trim().toLowerCase()
+                    );
                     const resolutionLabel = normalizedResolutionStatus === 'answered_pending_review'
                         ? 'answered, pending review'
                         : normalizedResolutionStatus === 'promoted_to_testimony'
@@ -3313,6 +3486,11 @@
                     }
                     if (update.answer_preview) {
                         chips.push(`<span class="chip">answer: ${update.answer_preview}</span>`);
+                    }
+                    if (validationOutcomeMatch) {
+                        chips.push(
+                            `<span class="chip ${validationOutcome.improved ? 'covered' : 'contradicted'}">validation ${validationOutcome.improved ? 'improved' : 'still needs review'}</span>`
+                        );
                     }
                     const prefillButtons = normalizedResolutionStatus === 'answered_pending_review'
                         ? `
@@ -4565,17 +4743,25 @@
             syncReviewIntentUrl(persistReviewIntent(payload));
             setStatus('Saving testimony...');
             try {
+                reviewRenderState.postSaveValidationFocus = payload.claim_element_id
+                    ? {
+                        claimType: payload.claim_type || '',
+                        claimElementId: payload.claim_element_id || '',
+                        sourceKind: 'testimony',
+                    }
+                    : null;
                 const result = await postJson('/api/claim-support/save-testimony', payload);
                 renderPayload(result.post_save_review || result);
                 document.getElementById('raw-output').textContent = JSON.stringify(result, null, 2);
                 if (result && result.recorded) {
                     clearTestimonyForm();
-                    setStatus('Testimony saved and review payload refreshed.');
                 } else {
+                    reviewRenderState.postSaveValidationFocus = null;
                     const error = (result && result.testimony_result && result.testimony_result.error) || result.error || 'unknown error';
                     setStatus(`Testimony was not saved: ${error}`);
                 }
             } catch (error) {
+                reviewRenderState.postSaveValidationFocus = null;
                 setStatus(`Testimony save failed: ${error.message}`);
             }
         }
@@ -4758,6 +4944,13 @@
             syncReviewIntentUrl(persistReviewIntent(payload));
             setStatus(selectedFile ? 'Uploading document...' : 'Saving document...');
             try {
+                reviewRenderState.postSaveValidationFocus = payload.claim_element_id
+                    ? {
+                        claimType: payload.claim_type || '',
+                        claimElementId: payload.claim_element_id || '',
+                        sourceKind: selectedFile ? 'document_upload' : 'document',
+                    }
+                    : null;
                 const result = selectedFile
                     ? await postFormData(
                         '/api/claim-support/upload-document',
@@ -4768,12 +4961,13 @@
                 document.getElementById('raw-output').textContent = JSON.stringify(result, null, 2);
                 if (result && result.recorded) {
                     clearDocumentForm();
-                    setStatus(selectedFile ? 'Document uploaded and review payload refreshed.' : 'Document saved and review payload refreshed.');
                 } else {
+                    reviewRenderState.postSaveValidationFocus = null;
                     const error = (result && result.document_result && result.document_result.error) || result.error || 'unknown error';
                     setStatus(`Document was not saved: ${error}`);
                 }
             } catch (error) {
+                reviewRenderState.postSaveValidationFocus = null;
                 setStatus(`Document save failed: ${error.message}`);
             }
         }
@@ -4826,6 +5020,28 @@
             renderTasks(plan, planSummary);
             renderHistory(historyEntries, historySummary);
             document.getElementById('raw-output').textContent = JSON.stringify(payload, null, 2);
+            if (reviewRenderState.postSaveValidationFocus) {
+                const focus = reviewRenderState.postSaveValidationFocus;
+                openAlignmentUpdateFilter('promoted', 'pending_review_first', focus.claimType, focus.claimElementId);
+                const refreshedUpdate = findMatchingAlignmentUpdate(payload, focus.claimType, focus.claimElementId);
+                const refreshedStatus = String(
+                    (refreshedUpdate && (refreshedUpdate.current_support_status || refreshedUpdate.resolution_status || refreshedUpdate.status)) || ''
+                ).trim().toLowerCase();
+                const validationImproved = refreshedStatus === 'resolved_supported';
+                reviewRenderState.lastValidationOutcome = {
+                    claimType: focus.claimType,
+                    claimElementId: focus.claimElementId,
+                    improved: validationImproved,
+                    refreshedStatus,
+                    sourceKind: focus.sourceKind || '',
+                };
+                if (validationImproved) {
+                    setStatus(`Validation save improved support for ${focus.claimElementId || 'the targeted element'} and returned you to the promoted update lane.`);
+                } else {
+                    setStatus(`Validation save recorded for ${focus.claimElementId || 'the targeted element'}; the refreshed update still needs support validation.`);
+                }
+                reviewRenderState.postSaveValidationFocus = null;
+            }
             finalizeSectionFocus();
         }
 
@@ -4977,6 +5193,47 @@
                 || document.getElementById('alignment-evidence-task-list');
             if (focusedCard && typeof focusedCard.scrollIntoView === 'function') {
                 focusedCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        function openDocumentDraftingHandoff() {
+            const intent = persistReviewIntent(baseRequest());
+            const params = new URLSearchParams();
+            if (intent && intent.claim_type) {
+                params.set('claim_type', intent.claim_type);
+            }
+            if (intent && intent.user_id) {
+                params.set('user_id', intent.user_id);
+            }
+            const targetUrl = params.toString() ? `/document?${params.toString()}` : '/document';
+            window.location.assign(targetUrl);
+        }
+
+        function openKnowledgeGraphInputsReview() {
+            const timelineSummary = document.getElementById('intake-timeline-summary-chips');
+            const timelineList = document.getElementById('intake-timeline-relation-list');
+            const factList = document.getElementById('intake-canonical-fact-list');
+            const focusTarget = timelineSummary || timelineList || factList;
+            if (focusTarget && typeof focusTarget.scrollIntoView === 'function') {
+                focusTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        function openDependencyGraphInputsReview() {
+            const focusTarget = document.getElementById('intake-evidence-alignment-summary-list')
+                || document.getElementById('alignment-evidence-task-list')
+                || document.getElementById('intake-contradiction-list');
+            if (focusTarget && typeof focusTarget.scrollIntoView === 'function') {
+                focusTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        function openDenoisingQueueReview() {
+            const focusTarget = document.getElementById('intake-contradiction-list')
+                || document.getElementById('question-list')
+                || document.getElementById('intake-matching-summary-list');
+            if (focusTarget && typeof focusTarget.scrollIntoView === 'function') {
+                focusTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
         }
 
@@ -5228,6 +5485,29 @@
                 setStatus('Showing manual-review conflicts that are blocking evidence completion.');
                 return;
             }
+            const buildPacketsBannerButton = event.target.closest('#intake-next-action-build-packets');
+            if (buildPacketsBannerButton) {
+                executeFollowUp();
+                return;
+            }
+            const reviewKnowledgeGraphBannerButton = event.target.closest('#intake-next-action-review-knowledge-graph');
+            if (reviewKnowledgeGraphBannerButton) {
+                openKnowledgeGraphInputsReview();
+                setStatus('Showing timeline and canonical fact inputs for intake graph building.');
+                return;
+            }
+            const reviewDependenciesBannerButton = event.target.closest('#intake-next-action-review-dependencies');
+            if (reviewDependenciesBannerButton) {
+                openDependencyGraphInputsReview();
+                setStatus('Showing alignment and contradiction inputs for dependency graph review.');
+                return;
+            }
+            const reviewDenoisingBannerButton = event.target.closest('#intake-next-action-review-denoising');
+            if (reviewDenoisingBannerButton) {
+                openDenoisingQueueReview();
+                setStatus('Showing contradictions and targeted questions for continued intake denoising.');
+                return;
+            }
             const prefillResolutionBannerButton = event.target.closest('#intake-next-action-prefill-resolution');
             if (prefillResolutionBannerButton) {
                 prefillResolutionForm({
@@ -5251,6 +5531,11 @@
                     reviewEvidenceTaskBannerButton.dataset.supportKind || '',
                 );
                 setStatus('Showing priority evidence task and preferred support lane.');
+                return;
+            }
+            const openDocumentBuilderBannerButton = event.target.closest('#intake-next-action-open-document-builder');
+            if (openDocumentBuilderBannerButton) {
+                openDocumentDraftingHandoff();
                 return;
             }
             const confirmSummaryBannerButton = event.target.closest('#intake-next-action-confirm-summary');
