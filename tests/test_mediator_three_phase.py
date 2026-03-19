@@ -1244,6 +1244,139 @@ class TestMediatorThreePhaseIntegration:
         assert result['alignment_evidence_tasks'][0]['intake_proof_leads'][0]['availability'] == 'available_from_complainant'
         assert result['next_action']['action'] == 'complete_evidence'
 
+    def test_advance_to_evidence_phase_marks_temporal_rule_gaps_as_chronology_tasks(self):
+        """Temporal-rule blockers should become chronology-specific evidence tasks with testimony escalation."""
+        from mediator.mediator import Mediator
+        from unittest.mock import Mock
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process(
+            'I complained, then I was disciplined later, but I need help organizing the dates.'
+        )
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', 0)
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'denoising_converged', True)
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'current_gaps', [])
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_gap_types', [])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'intake_case_file',
+            {
+                'candidate_claims': [
+                    {
+                        'claim_type': 'retaliation',
+                        'required_elements': [
+                            {
+                                'element_id': 'causation',
+                                'label': 'Causal connection',
+                                'blocking': True,
+                                'evidence_classes': ['witness_testimony'],
+                            },
+                        ],
+                    }
+                ],
+                'canonical_facts': [{'fact_id': 'fact_001'}],
+                'proof_leads': [],
+                'contradiction_queue': [],
+                'open_items': [
+                    {
+                        'open_item_id': 'element:retaliation:causation',
+                        'target_claim_type': 'retaliation',
+                        'target_element_id': 'causation',
+                    }
+                ],
+                'intake_sections': {
+                    'chronology': {'status': 'complete', 'missing_items': []},
+                    'actors': {'status': 'complete', 'missing_items': []},
+                    'conduct': {'status': 'complete', 'missing_items': []},
+                    'harm': {'status': 'complete', 'missing_items': []},
+                    'remedy': {'status': 'complete', 'missing_items': []},
+                    'proof_leads': {'status': 'complete', 'missing_items': []},
+                    'claim_elements': {'status': 'complete', 'missing_items': []},
+                },
+            },
+        )
+        mediator.get_claim_support_validation = Mock(return_value={
+            'claims': {
+                'retaliation': {
+                    'claim_type': 'retaliation',
+                    'validation_status': 'incomplete',
+                    'elements': [
+                        {
+                            'element_id': 'causation',
+                            'element_text': 'Causal connection',
+                            'validation_status': 'incomplete',
+                            'recommended_action': 'collect_missing_support_kind',
+                            'missing_support_kinds': ['evidence'],
+                            'contradiction_candidate_count': 0,
+                            'proof_gaps': [{'gap_type': 'temporal_rule_partial'}],
+                            'proof_gap_count': 1,
+                            'proof_decision_trace': {
+                                'decision_source': 'temporal_rule_partial',
+                                'temporal_rule_status': 'partial',
+                            },
+                            'reasoning_diagnostics': {
+                                'temporal_rule_profile': {
+                                    'profile_id': 'retaliation_temporal_profile_v1',
+                                    'status': 'partial',
+                                    'blocking_reasons': [
+                                        'Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.',
+                                    ],
+                                    'recommended_follow_ups': [
+                                        {
+                                            'lane': 'clarify_with_complainant',
+                                            'reason': 'Clarify whether the protected activity occurred before the adverse action.',
+                                        }
+                                    ],
+                                },
+                                'temporal_summary': {
+                                    'fact_count': 2,
+                                    'relation_count': 0,
+                                    'issue_count': 1,
+                                    'partial_order_ready': False,
+                                    'warning_count': 1,
+                                },
+                            },
+                            'gap_context': {
+                                'support_facts': [],
+                                'support_traces': [],
+                            },
+                        },
+                    ],
+                }
+            }
+        })
+        mediator.get_claim_support_gaps = Mock(return_value={
+            'claims': {
+                'retaliation': {
+                    'claim_type': 'retaliation',
+                    'unresolved_count': 1,
+                    'unresolved_elements': [
+                        {
+                            'element_id': 'causation',
+                            'element_text': 'Causal connection',
+                            'recommended_action': 'collect_missing_support_kind',
+                            'missing_support_kinds': ['evidence'],
+                        }
+                    ],
+                }
+            }
+        })
+
+        result = mediator.advance_to_evidence_phase()
+
+        assert result['alignment_evidence_tasks']
+        assert result['alignment_evidence_tasks'][0]['action'] == 'fill_temporal_chronology_gap'
+        assert result['alignment_evidence_tasks'][0]['preferred_support_kind'] == 'testimony'
+        assert result['alignment_evidence_tasks'][0]['resolution_status'] == 'awaiting_testimony'
+        assert result['alignment_evidence_tasks'][0]['temporal_rule_status'] == 'partial'
+        assert 'Establish chronology:' in result['alignment_evidence_tasks'][0]['success_criteria'][1]
+
     def test_build_claim_support_packets_tracks_partial_fact_bundle_coverage(self):
         """Packet construction should only clear the bundle prompts actually covered by support facts."""
         from mediator.mediator import Mediator

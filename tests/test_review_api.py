@@ -3505,7 +3505,7 @@ def test_claim_support_review_route_surfaces_proactively_repaired_legacy_testimo
 def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
     plan_summary = _summarize_follow_up_plan_claim(
         {
-            "task_count": 2,
+            "task_count": 3,
             "blocked_task_count": 0,
             "tasks": [
                 {
@@ -3603,6 +3603,21 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
                         "matched_claim_element_rule_count": 1,
                         "rule_type_counts": {"element": 1},
                     },
+                },
+                {
+                    "follow_up_focus": "temporal_gap_closure",
+                    "query_strategy": "temporal_gap_targeted",
+                    "recommended_action": "review_existing_support",
+                    "primary_missing_fact": "Event sequence",
+                    "missing_fact_bundle": ["Event sequence"],
+                    "satisfied_fact_bundle": [],
+                    "proof_decision_source": "temporal_rule_partial",
+                    "temporal_rule_profile_id": "retaliation_temporal_profile_v1",
+                    "temporal_rule_status": "partial",
+                    "has_graph_support": False,
+                    "should_suppress_retrieval": False,
+                    "graph_support": {"summary": {}, "results": []},
+                    "authority_rule_candidate_summary": {},
                 },
             ],
         }
@@ -3703,6 +3718,19 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
                         "matched_claim_element_rule_count": 1,
                         "rule_type_counts": {"element": 1},
                     },
+                },
+                {
+                    "follow_up_focus": "temporal_gap_closure",
+                    "query_strategy": "temporal_gap_targeted",
+                    "primary_missing_fact": "Event sequence",
+                    "missing_fact_bundle": ["Event sequence"],
+                    "satisfied_fact_bundle": [],
+                    "proof_decision_source": "temporal_rule_partial",
+                    "temporal_rule_profile_id": "retaliation_temporal_profile_v1",
+                    "temporal_rule_status": "partial",
+                    "skipped": {"escalation": {"reason": "awaiting_testimony_collection"}},
+                    "graph_support": {"summary": {}, "results": []},
+                    "authority_rule_candidate_summary": {},
                 }
             ],
         }
@@ -3710,6 +3738,8 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
 
     assert plan_summary["fact_gap_task_count"] == 1
     assert plan_summary["adverse_authority_task_count"] == 1
+    assert plan_summary["temporal_gap_task_count"] == 1
+    assert plan_summary["temporal_gap_targeted_task_count"] == 1
     assert plan_summary["rule_candidate_backed_task_count"] == 2
     assert plan_summary["total_rule_candidate_count"] == 3
     assert plan_summary["matched_claim_element_rule_count"] == 3
@@ -3732,17 +3762,21 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
     assert plan_summary["follow_up_focus_counts"] == {
         "fact_gap_closure": 1,
         "adverse_authority_review": 1,
+        "temporal_gap_closure": 1,
     }
     assert plan_summary["query_strategy_counts"] == {
         "rule_fact_targeted": 1,
         "adverse_authority_targeted": 1,
+        "temporal_gap_targeted": 1,
     }
     assert plan_summary["recommended_actions"] == {
         "collect_fact_support": 1,
         "review_adverse_authority": 1,
+        "review_existing_support": 1,
     }
     assert plan_summary["primary_missing_fact_counts"] == {
         "Adverse treatment timing": 1,
+        "Event sequence": 1,
         "Manager knowledge": 1,
     }
     assert plan_summary["missing_fact_bundle_counts"] == {
@@ -3757,6 +3791,8 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
 
     assert execution_summary["fact_gap_task_count"] == 1
     assert execution_summary["adverse_authority_task_count"] == 1
+    assert execution_summary["temporal_gap_task_count"] == 1
+    assert execution_summary["temporal_gap_targeted_task_count"] == 1
     assert execution_summary["manual_review_task_count"] == 1
     assert execution_summary["rule_candidate_backed_task_count"] == 2
     assert execution_summary["total_rule_candidate_count"] == 3
@@ -3779,6 +3815,7 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
     }
     assert execution_summary["primary_missing_fact_counts"] == {
         "Adverse treatment timing": 1,
+        "Event sequence": 1,
         "Manager knowledge": 1,
     }
     assert execution_summary["missing_fact_bundle_counts"] == {
@@ -3793,10 +3830,12 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
     assert execution_summary["follow_up_focus_counts"] == {
         "fact_gap_closure": 1,
         "adverse_authority_review": 1,
+        "temporal_gap_closure": 1,
     }
     assert execution_summary["query_strategy_counts"] == {
         "rule_fact_targeted": 1,
         "adverse_authority_targeted": 1,
+        "temporal_gap_targeted": 1,
     }
 
 

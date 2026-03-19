@@ -549,6 +549,87 @@ class TestMediatorWithMocks:
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
+    def test_follow_up_plan_routes_temporal_rule_gaps_into_chronology_follow_up(self):
+        """Temporal-rule blockers should surface as chronology-focused follow-up tasks with testimony handoff metadata."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_recent_follow_up_execution.side_effect = [
+                {'claims': {'retaliation': []}},
+                {'claims': {'retaliation': []}},
+            ]
+            mediator.claim_support.get_follow_up_execution_status = Mock(return_value={
+                'in_cooldown': False,
+            })
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'retaliation': {
+                        'required_support_kinds': ['evidence'],
+                        'elements': [
+                            {
+                                'element_id': 'causation',
+                                'element_text': 'Causal connection',
+                                'coverage_status': 'partially_supported',
+                                'validation_status': 'incomplete',
+                                'recommended_action': 'collect_missing_support_kind',
+                                'support_by_kind': {},
+                                'proof_gap_count': 1,
+                                'proof_gaps': [
+                                    {'gap_type': 'temporal_rule_partial'},
+                                ],
+                                'proof_decision_trace': {
+                                    'decision_source': 'temporal_rule_partial',
+                                    'temporal_rule_status': 'partial',
+                                    'logic_provable_count': 0,
+                                    'logic_unprovable_count': 0,
+                                    'ontology_validation_signal': 'valid',
+                                },
+                                'reasoning_diagnostics': {
+                                    'backend_available_count': 2,
+                                    'temporal_rule_profile': {
+                                        'profile_id': 'retaliation_temporal_profile_v1',
+                                        'status': 'partial',
+                                        'blocking_reasons': [
+                                            'Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.',
+                                        ],
+                                        'recommended_follow_ups': [
+                                            {
+                                                'lane': 'clarify_with_complainant',
+                                                'reason': 'Clarify whether the protected activity occurred before the adverse action.',
+                                            }
+                                        ],
+                                    },
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value=_make_graph_support_payload())
+
+            plan = mediator.get_claim_follow_up_plan(
+                claim_type='retaliation',
+                user_id='testuser',
+                required_support_kinds=['evidence'],
+            )
+            task = plan['claims']['retaliation']['tasks'][0]
+
+            assert task['follow_up_focus'] == 'temporal_gap_closure'
+            assert task['query_strategy'] == 'temporal_gap_targeted'
+            assert task['priority'] == 'high'
+            assert task['preferred_support_kind'] == 'testimony'
+            assert task['resolution_status'] == 'awaiting_testimony'
+            assert task['temporal_rule_profile_id'] == 'retaliation_temporal_profile_v1'
+            assert task['temporal_rule_status'] == 'partial'
+            assert task['queries']['evidence'][0] == '"retaliation" "Causal connection" timeline chronology dated record Retaliation causation lacks a clear temporal ordering from protected activity to adverse action'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
     def test_follow_up_plan_inherits_alignment_task_preferences(self):
         """Follow-up planning should inherit preferred support lane and query hints from evidence-phase alignment tasks."""
         try:

@@ -1450,6 +1450,7 @@ class Mediator:
 		text = re.sub(r'\s+', ' ', str(value or '').strip())
 		text = re.sub(r'["\']', '', text)
 		text = re.sub(r'\s+[\.,;:]+', '', text)
+		text = re.sub(r'[\.,;:]+$', '', text)
 		return text[:120].strip()
 
 	def _extract_rule_candidate_context(self, element: Dict[str, Any]) -> Dict[str, Any]:
