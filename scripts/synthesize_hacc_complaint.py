@@ -1540,9 +1540,12 @@ def _auto_discover_grounded_artifacts(results_path: Path) -> Dict[str, Path]:
     discovered: Dict[str, Path] = {}
     for base in candidates:
         grounding = base / "grounding_bundle.json"
+        grounding_overview = base / "grounding_overview.json"
         upload = base / "evidence_upload_report.json"
         if grounding.exists():
             discovered["grounding_bundle"] = grounding
+        if grounding_overview.exists():
+            discovered["grounding_overview"] = grounding_overview
         if upload.exists():
             discovered["evidence_upload_report"] = upload
     return discovered
@@ -1647,6 +1650,68 @@ def _grounded_summary_lines(
     complaint_chatbot_prompt = str(synthetic_prompts.get("complaint_chatbot_prompt") or "").strip()
     if complaint_chatbot_prompt:
         lines.append(complaint_chatbot_prompt)
+    return lines
+
+
+def _derive_grounding_overview(
+    grounding_bundle: Dict[str, Any],
+    upload_report: Dict[str, Any],
+    stored_overview: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    overview = dict(stored_overview or {})
+    if overview:
+        return overview
+
+    anchor_sections = [str(item) for item in list(grounding_bundle.get("anchor_sections") or []) if str(item)]
+    anchor_passages = [dict(item) for item in list(grounding_bundle.get("anchor_passages") or []) if isinstance(item, dict)]
+    upload_candidates = [dict(item) for item in list(grounding_bundle.get("upload_candidates") or []) if isinstance(item, dict)]
+    mediator_packets = [dict(item) for item in list(grounding_bundle.get("mediator_evidence_packets") or []) if isinstance(item, dict)]
+
+    top_documents: List[str] = []
+    for item in upload_candidates[:3]:
+        label = str(item.get("title") or item.get("relative_path") or item.get("source_path") or "").strip()
+        if label and label not in top_documents:
+            top_documents.append(label)
+
+    return {
+        "evidence_summary": str(grounding_bundle.get("evidence_summary") or "").strip(),
+        "anchor_sections": anchor_sections,
+        "anchor_passage_count": len(anchor_passages),
+        "upload_candidate_count": len(upload_candidates),
+        "mediator_packet_count": len(mediator_packets),
+        "uploaded_evidence_count": int(upload_report.get("upload_count") or 0),
+        "top_documents": top_documents,
+    }
+
+
+def _grounding_overview_lines(grounding_overview: Dict[str, Any]) -> List[str]:
+    overview = dict(grounding_overview or {})
+    if not overview:
+        return []
+
+    lines: List[str] = []
+    evidence_summary = str(overview.get("evidence_summary") or "").strip()
+    if evidence_summary:
+        lines.append(f"Evidence summary: {evidence_summary}")
+
+    anchor_sections = [str(item) for item in list(overview.get("anchor_sections") or []) if str(item)]
+    if anchor_sections:
+        lines.append(f"Anchor sections: {', '.join(anchor_sections)}")
+
+    count_labels = (
+        ("anchor_passage_count", "Anchor passages"),
+        ("upload_candidate_count", "Upload candidates"),
+        ("mediator_packet_count", "Mediator evidence packets"),
+        ("uploaded_evidence_count", "Uploaded evidence items"),
+    )
+    for key, label in count_labels:
+        value = overview.get(key)
+        if value not in (None, ""):
+            lines.append(f"{label}: {value}")
+
+    top_documents = [str(item) for item in list(overview.get("top_documents") or []) if str(item)]
+    if top_documents:
+        lines.append(f"Top documents: {', '.join(top_documents)}")
     return lines
 
 
@@ -2723,6 +2788,15 @@ def _render_markdown(package: Dict[str, Any]) -> str:
             "",
         ])
         lines.extend(f"- {item}" for item in grounded_summary)
+    grounding_overview = dict(package.get("grounding_overview") or {})
+    grounding_overview_lines = _grounding_overview_lines(grounding_overview)
+    if grounding_overview_lines:
+        lines.extend([
+            "",
+            "## Grounding Overview",
+            "",
+        ])
+        lines.extend(f"- {item}" for item in grounding_overview_lines)
     search_summary = dict(package.get("search_summary") or {})
     if search_summary:
         lines.extend([

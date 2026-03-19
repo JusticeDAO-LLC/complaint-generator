@@ -7,11 +7,8 @@ from __future__ import annotations
 import importlib
 import logging
 import re
-<<<<<<< Updated upstream
 import importlib.util
-=======
 import sys
->>>>>>> Stashed changes
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
