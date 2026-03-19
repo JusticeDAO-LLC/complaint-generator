@@ -28,7 +28,15 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Intake Case Summary" in content
     assert "intake-next-action-banner" in content
     assert "Validate promoted support" in content
+    assert "intake-next-action-open-promoted" in content
+    assert "Review promoted updates" in content
+    assert "intake-next-action-confirm-summary" in content
+    assert "Confirm intake summary" in content
+    assert "intake-next-action-review-gaps" in content
+    assert "Review intake gaps" in content
     assert "recommended action: ${nextAction.action}" in content
+    assert "focus claim: ${humanizeQueryValue(focusedPromotedClaimType)}" in content
+    assert "focus element: ${humanizeQueryValue(focusedPromotedElementId)}" in content
     assert "Promoted testimony or document support is accumulating faster than packet validation is reaching resolved supported status." in content
     assert "intake-readiness-criteria-chips" in content
     assert "intake-claim-summary-chips" in content
@@ -59,11 +67,13 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "evidence action ${task.action || 'fill_evidence_gaps'}" in content
     assert "element: ${task.claim_element_id || 'unknown'}" in content
     assert "pending_review" in content
+    assert "promoted" in content
     assert "promoted_testimony" in content
     assert "promoted_document" in content
     assert "answered_pending_review" in content
     assert "answered, pending review" in content
     assert "review state: awaiting support validation" in content
+    assert "Pinned for validation focus" in content
     assert "promoted_to_testimony" in content
     assert "promoted_to_document" in content
     assert "saved as testimony" in content
@@ -82,6 +92,24 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "prefillDocumentForm" in content
     assert "Testimony form prefilled from pending-review alignment update." in content
     assert "Document form prefilled from pending-review alignment update." in content
+    assert "data-claim-type=\"${nextAction.claim_type || ''}\"" in content
+    assert "data-claim-element-id=\"${nextAction.claim_element_id || ''}\"" in content
+    assert "openAlignmentUpdateFilter(" in content
+    assert "openPromotedUpdatesButton.dataset.claimType" in content
+    assert "openPromotedUpdatesButton.dataset.claimElementId" in content
+    assert "recommended action: confirm_intake_summary" in content
+    assert "recommended action: address_gaps" in content
+    assert "gap count: ${actionGaps.length}" in content
+    assert "question candidates: ${questionCandidateCount}" in content
+    assert "readiness score: ${readinessScore.toFixed(2)}" in content
+    assert "gap: ${humanizeQueryValue(gap)}" in content
+    assert "Intake still has unresolved proof or chronology gaps that should be clarified before handoff quality degrades." in content
+    assert "The latest intake summary snapshot is still waiting for complainant confirmation before the intake phase can fully settle." in content
+    assert "confirmSummaryBannerButton" in content
+    assert "confirmIntakeSummary();" in content
+    assert "openIntakeGapReview('summary_of_facts', 'question-list')" in content
+    assert "Showing unresolved intake gaps and targeted questions." in content
+    assert "Showing promoted alignment updates that still need validation." in content
     assert "intake only:" in content
     assert "evidence only:" in content
     assert "testimony-list" in content

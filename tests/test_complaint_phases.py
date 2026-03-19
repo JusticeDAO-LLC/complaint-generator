@@ -1184,12 +1184,36 @@ class TestPhaseManager:
                 'drift_ratio': 0.6667,
             },
         )
+        pm.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_task_update_history',
+            [
+                {
+                    'task_id': 'retaliation:causation:fill_evidence_gaps',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'causation',
+                    'resolution_status': 'promoted_to_document',
+                    'status': 'resolved',
+                    'evidence_sequence': 1,
+                },
+                {
+                    'task_id': 'retaliation:causation:fill_evidence_gaps',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'causation',
+                    'resolution_status': 'promoted_to_testimony',
+                    'status': 'resolved',
+                    'evidence_sequence': 2,
+                },
+            ],
+        )
 
         assert pm.is_phase_complete(ComplaintPhase.EVIDENCE)
         action = pm.get_next_action()
         assert action['action'] == 'validate_promoted_support'
         assert action['pending_conversion_count'] == 2
         assert action['drift_summary']['drift_flag'] is True
+        assert action['claim_type'] == 'retaliation'
+        assert action['claim_element_id'] == 'causation'
 
     def test_evidence_phase_blocks_on_contradicted_claim_support_packets(self):
         """Contradicted support packets should prevent evidence completion and suggest conflict resolution."""

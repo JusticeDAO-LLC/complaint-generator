@@ -552,13 +552,61 @@ class PhaseManager:
         if promoted_count <= 0 and pending_conversion_count <= 0:
             return None
 
-        return {
+        latest_updates: Dict[str, Dict[str, Any]] = {}
+        visible_updates = (
+            data.get('alignment_task_update_history')
+            if isinstance(data.get('alignment_task_update_history'), list) and data.get('alignment_task_update_history')
+            else data.get('alignment_task_updates')
+        )
+        for index, update in enumerate(visible_updates if isinstance(visible_updates, list) else []):
+            if not isinstance(update, dict):
+                continue
+            task_id = str(update.get('task_id') or '').strip()
+            claim_type = str(update.get('claim_type') or '').strip()
+            claim_element_id = str(update.get('claim_element_id') or '').strip()
+            if not task_id and not (claim_type and claim_element_id):
+                continue
+            key = task_id or f'{claim_type}:{claim_element_id}'
+            current_sequence = int(update.get('evidence_sequence', index) or index)
+            previous = latest_updates.get(key)
+            previous_sequence = int(previous.get('evidence_sequence', -1) or -1) if isinstance(previous, dict) else -1
+            if previous is None or current_sequence >= previous_sequence:
+                latest_updates[key] = dict(update)
+
+        promoted_targets = [
+            update for update in latest_updates.values()
+            if self._normalize_evidence_escalation_status(update.get('resolution_status'))
+            in {'promoted_to_testimony', 'promoted_to_document'}
+        ]
+        focused_claim_types = {
+            str(update.get('claim_type') or '').strip()
+            for update in promoted_targets
+            if str(update.get('claim_type') or '').strip()
+        }
+        focused_element_keys = {
+            (
+                str(update.get('claim_type') or '').strip(),
+                str(update.get('claim_element_id') or '').strip(),
+            )
+            for update in promoted_targets
+            if str(update.get('claim_type') or '').strip()
+            and str(update.get('claim_element_id') or '').strip()
+        }
+
+        action = {
             'action': 'validate_promoted_support',
             'recommended_actions': list(data.get('claim_support_recommended_actions', [])),
             'drift_summary': drift_summary,
             'pending_conversion_count': pending_conversion_count,
             'promoted_count': promoted_count,
         }
+        if len(focused_claim_types) == 1:
+            action['claim_type'] = next(iter(focused_claim_types))
+        if len(focused_element_keys) == 1:
+            focused_claim_type, focused_element_id = next(iter(focused_element_keys))
+            action['claim_type'] = focused_claim_type
+            action['claim_element_id'] = focused_element_id
+        return action
 
     def _get_next_packet_evidence_action(self, packets: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any] | None:
         alignment_tasks = data.get('alignment_evidence_tasks')
