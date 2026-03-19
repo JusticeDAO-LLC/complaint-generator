@@ -4,7 +4,7 @@ HACC evidence-backed seed generation for the adversarial harness.
 
 from __future__ import annotations
 
-import importlib
+import importlib.util
 import logging
 import re
 import sys
@@ -64,24 +64,22 @@ def _repo_root() -> Path:
 
 
 def _load_hacc_engine() -> Any:
-    repo_root = _repo_root()
-    package_path = repo_root / "hacc_research"
-    if not package_path.exists():
-        raise ModuleNotFoundError(f"HACCResearchEngine package not found at {package_path}")
+    engine_path = _repo_root() / "hacc_research" / "engine.py"
+    if not engine_path.exists():
+        raise ModuleNotFoundError(f"HACCResearchEngine not found at {engine_path}")
 
-    repo_root_str = str(repo_root)
-    if repo_root_str not in sys.path:
-        sys.path.insert(0, repo_root_str)
+    module_name = "hacc_research.engine"
+    spec = importlib.util.spec_from_file_location(module_name, engine_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load module spec for {engine_path}")
 
-    package = importlib.import_module("hacc_research")
-    engine_cls = getattr(package, "HACCResearchEngine", None)
-    if engine_cls is not None:
-        return engine_cls
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
 
-    engine_module = importlib.import_module("hacc_research.engine")
-    engine_cls = getattr(engine_module, "HACCResearchEngine", None)
+    engine_cls = getattr(module, "HACCResearchEngine", None)
     if engine_cls is None:
-        raise ImportError("hacc_research does not export HACCResearchEngine")
+        raise ImportError("hacc_research.engine does not export HACCResearchEngine")
     return engine_cls
 
 
