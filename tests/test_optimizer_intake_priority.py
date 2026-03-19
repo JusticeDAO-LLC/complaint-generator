@@ -147,3 +147,47 @@ def test_build_agentic_patch_task_can_autoselect_targets_from_intake_gaps():
         Path("adversarial_harness/complainant.py"),
     ]
     assert "Target files: adversarial_harness/session.py, mediator/mediator.py, adversarial_harness/complainant.py." in task.description
+
+
+def test_run_agentic_autopatch_caches_inner_generation_diagnostics_on_failure():
+    optimizer = Optimizer()
+    results = [_session_result("session_1", 0.72, {})]
+
+    class FailingAgenticOptimizer:
+        def __init__(self, *, agent_id, llm_router):
+            self.agent_id = agent_id
+            self.llm_router = llm_router
+            self._last_generation_diagnostics = [
+                {
+                    "file": "mediator/inquiries.py",
+                    "status": "error",
+                    "mode": "symbol_level",
+                    "error_message": "unexpected indent (<unknown>, line 3)",
+                }
+            ]
+
+        def optimize(self, task):
+            raise ValueError("unexpected indent (<unknown>, line 3)")
+
+    optimizer._load_agentic_optimizer_components = lambda: {
+        "OptimizationTask": lambda **kwargs: SimpleNamespace(**kwargs),
+        "OptimizationMethod": SimpleNamespace(ACTOR_CRITIC="ACTOR_CRITIC"),
+        "OptimizerLLMRouter": lambda **kwargs: SimpleNamespace(**kwargs),
+        "optimizer_classes": {"actor_critic": FailingAgenticOptimizer},
+    }
+
+    with pytest.raises(RuntimeError, match="generation diagnostics:"):
+        optimizer.run_agentic_autopatch(
+            results,
+            target_files=["mediator/mediator.py"],
+            method="actor_critic",
+        )
+
+    assert optimizer._last_agentic_generation_diagnostics == [
+        {
+            "file": "mediator/inquiries.py",
+            "status": "error",
+            "mode": "symbol_level",
+            "error_message": "unexpected indent (<unknown>, line 3)",
+        }
+    ]

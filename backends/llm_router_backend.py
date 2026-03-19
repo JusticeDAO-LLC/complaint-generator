@@ -10,6 +10,13 @@ from integrations.ipfs_datasets.llm import LLM_ROUTER_AVAILABLE, generate_text_v
 
 logger = logging.getLogger(__name__)
 
+_PROVIDER_ALIASES = {
+    'local': 'hf',
+    'local_hf': 'hf',
+    'huggingface': 'hf',
+    'hf': 'hf',
+}
+
 class LLMRouterBackend:
     """Backend that uses ipfs_datasets_py's llm_router for LLM routing."""
     
@@ -24,11 +31,12 @@ class LLMRouterBackend:
             **config: Additional configuration passed to generate_text
         """
         self.id = id
-        self.provider = provider or 'copilot_cli'
+        raw_provider = str(provider or 'copilot_cli').strip()
+        self.provider = _PROVIDER_ALIASES.get(raw_provider.lower(), raw_provider)
         if model is None:
             if self.provider == 'codex_cli':
                 self.model = 'gpt-5.3-codex'
-            elif str(self.provider).strip().lower() in {'hf_inference', 'hf_router', 'huggingface_inference', 'huggingface_router'}:
+            elif str(self.provider).strip().lower() in {'hf', 'local_hf', 'hf_inference', 'hf_router', 'huggingface_inference', 'huggingface_router'}:
                 self.model = (
                     os.getenv('LLM_ROUTER_FALLBACK_MODEL', '').strip()
                     or os.getenv('IPFS_DATASETS_PY_OPENROUTER_MODEL', '').strip()

@@ -38,7 +38,7 @@ class TestLLMRouterBackend:
                 )
                 
                 assert backend.id == 'test-router'
-                assert backend.provider == 'local_hf'
+                assert backend.provider == 'hf'
                 assert backend.model == 'gpt2'
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
@@ -66,8 +66,31 @@ class TestLLMRouterBackend:
                 # Verify the call arguments
                 call_args = mock_generate.call_args
                 assert call_args.kwargs['prompt'] == "Test prompt"
-                assert call_args.kwargs['provider'] == 'local_hf'
+                assert call_args.kwargs['provider'] == 'hf'
                 assert call_args.kwargs['model_name'] == 'gpt2'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_llm_router_backend_normalizes_local_provider_alias(self):
+        """Test that simple local provider aliases are normalized for the shared router."""
+        try:
+            mock_generate = Mock(return_value="Generated text response")
+
+            with patch('backends.llm_router_backend.generate_text', mock_generate):
+                from backends.llm_router_backend import LLMRouterBackend
+
+                backend = LLMRouterBackend(
+                    id='test-router',
+                    provider='local',
+                    model='gpt2'
+                )
+
+                response = backend("Test prompt")
+
+                assert response == "Generated text response"
+                assert backend.provider == 'hf'
+                call_args = mock_generate.call_args
+                assert call_args.kwargs['provider'] == 'hf'
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
     

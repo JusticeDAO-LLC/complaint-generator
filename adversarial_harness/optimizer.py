@@ -123,6 +123,8 @@ class Optimizer:
     def __init__(self):
         """Initialize optimizer."""
         self.history = []
+        self._last_agentic_generation_diagnostics: List[Dict[str, Any]] = []
+        self._last_agentic_optimizer: Any = None
 
     @staticmethod
     def _load_agentic_optimizer_components() -> Dict[str, Any]:
@@ -415,14 +417,42 @@ class Optimizer:
                 agent_id=agent_id,
                 llm_router=resolved_router,
             )
-        result = resolved_optimizer.optimize(task)
+        self._last_agentic_optimizer = resolved_optimizer
+        self._last_agentic_generation_diagnostics = []
+        try:
+            result = resolved_optimizer.optimize(task)
+        except Exception as exc:
+            diagnostics = getattr(resolved_optimizer, "_last_generation_diagnostics", None)
+            if isinstance(diagnostics, list):
+                self._last_agentic_generation_diagnostics = list(diagnostics)
+            if self._last_agentic_generation_diagnostics:
+                first = self._last_agentic_generation_diagnostics[0]
+                detail_parts = []
+                if first.get("file"):
+                    detail_parts.append(f"file={first['file']}")
+                if first.get("mode"):
+                    detail_parts.append(f"mode={first['mode']}")
+                if first.get("error_message"):
+                    detail_parts.append(f"detail={first['error_message']}")
+                preview = str(first.get("raw_response_preview") or "").strip()
+                if preview:
+                    compact_preview = " ".join(preview.split())
+                    detail_parts.append(f"raw_response_preview={compact_preview[:240]}")
+                if detail_parts:
+                    raise RuntimeError(f"{exc} | generation diagnostics: {'; '.join(detail_parts)}") from exc
+            raise
         result_metadata = getattr(result, "metadata", None)
         if not isinstance(result_metadata, dict):
             result_metadata = {}
             setattr(result, "metadata", result_metadata)
+        diagnostics = getattr(resolved_optimizer, "_last_generation_diagnostics", None)
+        if isinstance(diagnostics, list):
+            self._last_agentic_generation_diagnostics = list(diagnostics)
         result_metadata.setdefault("adversarial_report", report.to_dict())
         result_metadata.setdefault("target_files", [str(path) for path in task.target_files])
         result_metadata.setdefault("agentic_method", normalized_method)
+        if self._last_agentic_generation_diagnostics:
+            result_metadata.setdefault("generation_diagnostics", list(self._last_agentic_generation_diagnostics))
         return result
 
     @staticmethod
