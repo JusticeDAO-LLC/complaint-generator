@@ -311,6 +311,53 @@ def test_build_workflow_optimization_bundle_exposes_all_phases():
         if task["metadata"]["workflow_phase"] == "document_generation"
     )
     assert "coverage_remediation" in payload["shared_context"]
+    assert "complaint_type_performance" in payload["shared_context"]
+    assert "evidence_modality_performance" in payload["shared_context"]
+
+
+def test_analyze_tracks_complaint_type_and_evidence_modality_performance():
+    optimizer = Optimizer()
+
+    policy_result = _session_result(
+        "session_policy",
+        0.62,
+        {"adversarial_intake_priority_summary": {}},
+    )
+    policy_result.seed_complaint = {
+        "type": "policy_grievance",
+        "_meta": {"complaint_type": "housing_discrimination"},
+        "key_facts": {
+            "grounded_evidence_summary": "Grounded grievance support.",
+            "matched_rules": [{"rule": "Some policy rule"}],
+            "repository_evidence_candidates": [
+                {"title": "ADMINISTRATIVE PLAN", "source_path": "/tmp/admin_plan.pdf", "snippet": "Notice language."}
+            ],
+        },
+    }
+
+    image_result = _session_result(
+        "session_image",
+        0.41,
+        {"adversarial_intake_priority_summary": {}},
+    )
+    image_result.seed_complaint = {
+        "type": "narrative_intake",
+        "_meta": {"complaint_type": "retaliation"},
+        "key_facts": {
+            "repository_evidence_candidates": [
+                {"title": "Photo evidence", "source_path": "/tmp/photo.jpg", "snippet": "Apartment condition photo."}
+            ],
+        },
+    }
+
+    report = optimizer.analyze([policy_result, image_result])
+
+    assert "housing_discrimination" in report.complaint_type_performance
+    assert "retaliation" in report.complaint_type_performance
+    assert "uploaded_document" in report.evidence_modality_performance
+    assert "image_evidence" in report.evidence_modality_performance
+    assert any("complaint types" in recommendation for recommendation in report.recommendations)
+    assert any("evidence modalities" in recommendation for recommendation in report.recommendations)
 
 
 def test_analyze_without_successful_sessions_returns_critical_workflow_phase_plan():
