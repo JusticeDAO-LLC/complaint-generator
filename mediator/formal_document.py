@@ -291,6 +291,8 @@ def _contains_actor_marker(value: Any) -> bool:
             "supervisor",
             "director",
             "coordinator",
+            "name",
+            "title",
         )
     )
 
@@ -300,9 +302,48 @@ def _contains_causation_marker(value: Any) -> bool:
     if not lowered:
         return False
     return (
-        any(marker in lowered for marker in ("because", "as a result", "after", "following", "in retaliation", "retaliat"))
+        any(marker in lowered for marker in ("because", "as a result", "after", "following", "in retaliation", "retaliat", "days after", "weeks after", "shortly after"))
         and any(marker in lowered for marker in ("complained", "reported", "grievance", "appeal", "protected activity", "requested accommodation"))
         and any(marker in lowered for marker in ("adverse action", "termination", "denial", "loss of assistance", "retaliat"))
+    )
+
+
+def _contains_hearing_timing_marker(value: Any) -> bool:
+    lowered = str(value or "").lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "hearing request",
+            "requested a hearing",
+            "requested review",
+            "review request",
+            "informal hearing request",
+            "grievance request",
+        )
+    ) and any(marker in lowered for marker in ("date", "on ", "after", "before", "within", "days", "weeks"))
+
+
+def _contains_response_date_marker(value: Any) -> bool:
+    lowered = str(value or "").lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "response date",
+            "responded on",
+            "response was",
+            "review decision",
+            "hearing outcome",
+            "notice date",
+            "decision date",
+        )
+    ) and _contains_date_anchor(value)
+
+
+def _contains_staff_identity_marker(value: Any) -> bool:
+    lowered = str(value or "").lower()
+    return (
+        "hacc" in lowered
+        and any(marker in lowered for marker in ("name", "title", "staff", "caseworker", "manager", "officer", "specialist", "director"))
     )
 
 

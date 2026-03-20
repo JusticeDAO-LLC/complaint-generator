@@ -2931,7 +2931,10 @@ class FormalComplaintDocumentBuilder:
             return {}
 
         phases: Dict[str, Dict[str, Any]] = {}
-        graph_phase = self._build_graph_analysis_phase_guidance(phase_manager)
+        graph_phase = self._build_graph_analysis_phase_guidance(
+            phase_manager,
+            document_optimization=optimization_report,
+        )
         if graph_phase:
             phases["graph_analysis"] = graph_phase
 
@@ -2960,8 +2963,42 @@ class FormalComplaintDocumentBuilder:
         plan["recommended_order"] = ordered
         return plan
 
-    def _build_graph_analysis_phase_guidance(self, phase_manager: Any) -> Dict[str, Any]:
-        return build_graph_analysis_phase_guidance(phase_manager, audience="drafting")
+    def _build_graph_analysis_phase_guidance(
+        self,
+        phase_manager: Any,
+        *,
+        document_optimization: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        phase = build_graph_analysis_phase_guidance(phase_manager, audience="drafting")
+        if not phase:
+            return {}
+        updated = dict(phase)
+        signals = dict(updated.get("signals") or {})
+        optimization_report = document_optimization if isinstance(document_optimization, dict) else {}
+        temporal_handoff = (
+            optimization_report.get("claim_support_temporal_handoff")
+            if isinstance(optimization_report.get("claim_support_temporal_handoff"), dict)
+            else {}
+        )
+        unresolved_temporal_count = int(temporal_handoff.get("unresolved_temporal_issue_count", 0) or 0)
+        chronology_tasks = int(temporal_handoff.get("chronology_task_count", 0) or 0)
+        if unresolved_temporal_count > 0 or chronology_tasks > 0:
+            updated["status"] = "warning" if str(updated.get("status") or "").lower() == "ready" else updated.get("status")
+            summary = str(updated.get("summary") or "").strip()
+            suffix = (
+                f" Temporal graph alignment still has {unresolved_temporal_count} unresolved chronology issue(s) "
+                f"across {chronology_tasks} chronology task(s)."
+            )
+            updated["summary"] = f"{summary}{suffix}".strip()
+            actions = [str(item) for item in list(updated.get("recommended_actions") or []) if str(item).strip()]
+            actions.append(
+                "Resolve chronology edges for protected activity, hearing/review requests, response dates, and adverse-action outcomes before finalizing the complaint timeline."
+            )
+            updated["recommended_actions"] = _dedupe_text_values(actions)
+        signals["unresolved_temporal_issue_count"] = unresolved_temporal_count
+        signals["chronology_task_count"] = chronology_tasks
+        updated["signals"] = signals
+        return updated
 
     def _build_document_generation_phase_guidance(
         self,
@@ -2969,10 +3006,32 @@ class FormalComplaintDocumentBuilder:
         drafting_readiness: Dict[str, Any],
         document_optimization: Dict[str, Any],
     ) -> Dict[str, Any]:
-        return build_drafting_document_generation_phase_guidance(
+        phase = build_drafting_document_generation_phase_guidance(
             drafting_readiness=drafting_readiness,
             document_optimization=document_optimization,
         )
+        if not phase:
+            return {}
+        updated = dict(phase)
+        optimization_report = document_optimization if isinstance(document_optimization, dict) else {}
+        final_review = optimization_report.get("final_review") if isinstance(optimization_report.get("final_review"), dict) else {}
+        section_scores = final_review.get("section_scores") if isinstance(final_review.get("section_scores"), dict) else {}
+        intake_score = float(section_scores.get("intake_questioning") or 0.0)
+        if intake_score < 0.8:
+            updated["status"] = "warning" if str(updated.get("status") or "").lower() == "ready" else updated.get("status")
+            summary = str(updated.get("summary") or "").strip()
+            updated["summary"] = (
+                f"{summary} Document generation should preserve patchability while improving fact sequencing for retaliation causation and adverse-action chronology."
+            ).strip()
+            actions = [str(item) for item in list(updated.get("recommended_actions") or []) if str(item).strip()]
+            actions.append(
+                "Strengthen factual paragraphs so each adverse action is paired with exact date anchors, named/titled staff actors, hearing-request timing, response dates, and causation sequencing."
+            )
+            updated["recommended_actions"] = _dedupe_text_values(actions)
+        signals = dict(updated.get("signals") or {})
+        signals["intake_questioning_score"] = intake_score
+        updated["signals"] = signals
+        return updated
 
     def _build_intake_questioning_phase_guidance(
         self,
