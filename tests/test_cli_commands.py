@@ -327,6 +327,23 @@ def test_execute_follow_up_command_calls_mediator_builder():
 def test_execute_follow_up_command_prints_execution_quality_summary_before_json():
     mediator = Mock()
     mediator.build_claim_support_follow_up_execution_payload.return_value = {
+        'intake_status': {
+            'current_phase': 'evidence',
+            'ready_to_advance': False,
+            'score': 0.58,
+            'remaining_gap_count': 0,
+            'contradiction_count': 1,
+            'next_action': {
+                'action': 'validate_promoted_support',
+                'validation_target_count': 1,
+            },
+            'primary_validation_target': {
+                'claim_type': 'retaliation',
+                'claim_element_id': 'causation',
+                'promotion_kind': 'testimony',
+                'promotion_ref': 'testimony:retaliation:1',
+            },
+        },
         'follow_up_execution': {'retaliation': {'task_count': 1}},
         'follow_up_execution': {
             'retaliation': {
@@ -465,6 +482,10 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
     cli.execute_follow_up(['claim_type=retaliation'])
 
     rendered = cli.print_response.call_args[0][0]
+    assert 'intake status summary:' in rendered
+    assert '- phase=evidence ready=false score=0.58 gaps=0 contradictions=1' in rendered
+    assert 'next_action: validate_promoted_support targets=1' in rendered
+    assert 'primary_validation_target: retaliation / causation [testimony] ref=testimony:retaliation:1' in rendered
     assert 'follow-up execution quality summary:' in rendered
     assert '- retaliation: status=improved low_quality=1->0 parse_tasks=1' in rendered
     assert 'resolved: Causal connection' in rendered

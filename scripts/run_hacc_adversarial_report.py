@@ -89,6 +89,29 @@ def _select_llm_router_backend_config(
     return first_backend_id, first_backend_kwargs, probe_attempts, False
 
 
+def _serialize_phase_patch_tasks(optimizer: Any, results: list[Any], report: Any) -> list[Dict[str, Any]]:
+    fallback_components_getter = getattr(optimizer, "_fallback_agentic_optimizer_components", None)
+    components = fallback_components_getter() if callable(fallback_components_getter) else None
+    phase_tasks, _ = optimizer.build_phase_patch_tasks(
+        results,
+        report=report,
+        components=components,
+    )
+    payloads: list[Dict[str, Any]] = []
+    for task in list(phase_tasks or []):
+        payloads.append(
+            {
+                "task_id": str(getattr(task, "task_id", "") or ""),
+                "description": str(getattr(task, "description", "") or ""),
+                "target_files": [str(path) for path in list(getattr(task, "target_files", []) or [])],
+                "method": str(getattr(task, "method", "") or ""),
+                "priority": int(getattr(task, "priority", 0) or 0),
+                "metadata": dict(getattr(task, "metadata", {}) or {}),
+            }
+        )
+    return payloads
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run a HACC evidence-backed adversarial harness batch and write JSON/CSV/Markdown reports."
@@ -177,11 +200,14 @@ def main() -> int:
     )
 
     statistics = harness.get_statistics()
-    optimizer_report = Optimizer().analyze(results)
+    optimizer = Optimizer()
+    optimizer_report = optimizer.analyze(results)
     optimizer_payload = optimizer_report.to_dict()
+    workflow_phase_tasks = _serialize_phase_patch_tasks(optimizer, results, optimizer_report)
 
     results_path = output_dir / "adversarial_results.json"
     optimizer_path = output_dir / "optimizer_report.json"
+    workflow_tasks_path = output_dir / "workflow_phase_tasks.json"
     anchor_csv_path = output_dir / "anchor_section_coverage.csv"
     anchor_md_path = output_dir / "anchor_section_coverage.md"
     summary_path = output_dir / "run_summary.json"
@@ -203,9 +229,11 @@ def main() -> int:
         "router_report": router_report,
         "statistics": statistics,
         "workflow_phase_plan": optimizer_payload.get("workflow_phase_plan") or {},
+        "workflow_phase_task_count": len(workflow_phase_tasks),
         "artifacts": {
             "results_json": str(results_path),
             "optimizer_report_json": str(optimizer_path),
+            "workflow_phase_tasks_json": str(workflow_tasks_path),
             "anchor_section_coverage_csv": str(anchor_csv_path),
             "anchor_section_coverage_md": str(anchor_md_path),
             "session_state_dir": str(session_state_dir),
@@ -214,6 +242,8 @@ def main() -> int:
 
     with open(optimizer_path, "w", encoding="utf-8") as handle:
         json.dump(optimizer_payload, handle, indent=2)
+    with open(workflow_tasks_path, "w", encoding="utf-8") as handle:
+        json.dump(workflow_phase_tasks, handle, indent=2)
     with open(summary_path, "w", encoding="utf-8") as handle:
         json.dump(summary_payload, handle, indent=2)
 
@@ -222,6 +252,7 @@ def main() -> int:
     print(f"Selected backend: {selected_backend_id} (healthy={selected_backend_healthy})")
     print(f"Router status: {router_report.get('status')}")
     print(f"Successful sessions: {statistics.get('successful_sessions', 0)}/{statistics.get('total_sessions', 0)}")
+    print(f"Workflow phase tasks: {len(workflow_phase_tasks)}")
     return 0
 
 

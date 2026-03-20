@@ -236,15 +236,118 @@ def _build_confirmed_intake_summary_handoff_metadata(mediator: Any) -> Dict[str,
     }
 
 
+def _normalize_handoff_identity(value: Optional[str]) -> str:
+    return str(value or "").strip().lower()
+
+
+def _dedupe_handoff_ids(values: Any) -> List[str]:
+    normalized_values: List[str] = []
+    for value in values if isinstance(values, list) else []:
+        normalized = str(value or "").strip()
+        if normalized and normalized not in normalized_values:
+            normalized_values.append(normalized)
+    return normalized_values
+
+
+def _build_claim_support_temporal_handoff_metadata(
+    mediator: Any,
+    *,
+    claim_type: Optional[str] = None,
+    claim_element_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    get_status = getattr(mediator, "get_three_phase_status", None)
+    if not callable(get_status):
+        return {}
+
+    raw_status = get_status()
+    if not isinstance(raw_status, dict):
+        return {}
+
+    claim_support_packet_summary = raw_status.get("claim_support_packet_summary")
+    claim_support_packet_summary = (
+        claim_support_packet_summary
+        if isinstance(claim_support_packet_summary, dict)
+        else {}
+    )
+    alignment_evidence_tasks = raw_status.get("alignment_evidence_tasks")
+    alignment_evidence_tasks = (
+        alignment_evidence_tasks
+        if isinstance(alignment_evidence_tasks, list)
+        else []
+    )
+
+    normalized_claim_type = _normalize_handoff_identity(claim_type)
+    normalized_claim_element_id = _normalize_handoff_identity(claim_element_id)
+    matching_tasks = [
+        task for task in alignment_evidence_tasks
+        if isinstance(task, dict)
+        and (
+            not normalized_claim_type
+            or _normalize_handoff_identity(task.get("claim_type")) == normalized_claim_type
+        )
+        and (
+            not normalized_claim_element_id
+            or _normalize_handoff_identity(task.get("claim_element_id")) == normalized_claim_element_id
+        )
+    ]
+
+    temporal_handoff: Dict[str, Any] = {
+        "unresolved_temporal_issue_count": int(
+            claim_support_packet_summary.get("claim_support_unresolved_temporal_issue_count", 0) or 0
+        ),
+        "unresolved_temporal_issue_ids": _dedupe_handoff_ids(
+            claim_support_packet_summary.get("claim_support_unresolved_temporal_issue_ids")
+        ),
+    }
+    if claim_type:
+        temporal_handoff["claim_type"] = claim_type
+    if claim_element_id:
+        temporal_handoff["claim_element_id"] = claim_element_id
+
+    for field_name in (
+        "event_ids",
+        "temporal_fact_ids",
+        "temporal_relation_ids",
+        "timeline_issue_ids",
+        "temporal_issue_ids",
+    ):
+        values: List[str] = []
+        for task in matching_tasks:
+            values.extend(_dedupe_handoff_ids(task.get(field_name)))
+        if values:
+            temporal_handoff[field_name] = _dedupe_handoff_ids(values)
+
+    for field_name in ("temporal_proof_bundle_id", "temporal_proof_objective"):
+        for task in matching_tasks:
+            value = str(task.get(field_name) or "").strip()
+            if value:
+                temporal_handoff[field_name] = value
+                break
+
+    if len(temporal_handoff) <= (2 + int(bool(claim_type)) + int(bool(claim_element_id))) and not temporal_handoff.get("unresolved_temporal_issue_count"):
+        return {}
+
+    return {"claim_support_temporal_handoff": temporal_handoff}
+
+
 def _merge_intake_summary_handoff_metadata(
     metadata: Optional[Dict[str, Any]],
     mediator: Any,
+    *,
+    claim_type: Optional[str] = None,
+    claim_element_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     merged_metadata = dict(metadata or {})
     handoff_metadata = _build_confirmed_intake_summary_handoff_metadata(mediator)
-    if not handoff_metadata:
-        return merged_metadata
-    merged_metadata.update(handoff_metadata)
+    temporal_handoff_metadata = _build_claim_support_temporal_handoff_metadata(
+        mediator,
+        claim_type=claim_type,
+        claim_element_id=claim_element_id,
+    )
+    if handoff_metadata:
+        merged_metadata.update(handoff_metadata)
+    if temporal_handoff_metadata:
+        merged_metadata.update(temporal_handoff_metadata)
     return merged_metadata
 
 
@@ -2844,6 +2947,8 @@ def build_claim_support_testimony_payload(
         testimony_metadata = _merge_intake_summary_handoff_metadata(
             request.testimony_metadata,
             mediator,
+            claim_type=request.claim_type,
+            claim_element_id=request.claim_element_id,
         )
         testimony_result = save_claim_testimony_record(
             claim_type=request.claim_type,
@@ -2905,6 +3010,8 @@ def build_claim_support_document_payload(
         document_metadata = _merge_intake_summary_handoff_metadata(
             request.document_metadata,
             mediator,
+            claim_type=request.claim_type,
+            claim_element_id=request.claim_element_id,
         )
         document_result = save_claim_support_document(
             claim_type=request.claim_type,
@@ -2980,6 +3087,8 @@ def build_claim_support_uploaded_document_payload(
         merged_document_metadata = _merge_intake_summary_handoff_metadata(
             document_metadata,
             mediator,
+            claim_type=claim_type,
+            claim_element_id=claim_element_id,
         )
         document_result = save_claim_support_document(
             claim_type=claim_type,

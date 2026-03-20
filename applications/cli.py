@@ -558,6 +558,9 @@ class CLI:
 
 	def _format_execute_follow_up_output(self, payload):
 		sections = []
+		intake_status = payload.get('intake_status', {}) if isinstance(payload, dict) else {}
+		if isinstance(intake_status, dict) and intake_status:
+			sections.append(self._format_intake_status_summary(intake_status))
 		execution_quality_summary = payload.get('execution_quality_summary', {}) if isinstance(payload, dict) else {}
 		if isinstance(execution_quality_summary, dict) and execution_quality_summary:
 			sections.append(self._format_execution_quality_summary(execution_quality_summary))
