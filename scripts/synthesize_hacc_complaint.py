@@ -2255,12 +2255,28 @@ def _session_intake_priority_summary(session: Dict[str, Any]) -> Dict[str, Any]:
     return summary if isinstance(summary, dict) else {}
 
 
+def _normalize_intake_objective(value: Any) -> str:
+    objective_aliases = {
+        "staff_names": "staff_names_titles",
+        "staff_titles": "staff_names_titles",
+        "hearing_timing": "hearing_request_timing",
+        "response_timing": "response_dates",
+        "causation": "causation_link",
+        "adverse_action": "anchor_adverse_action",
+        "appeal_rights": "anchor_appeal_rights",
+    }
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    return objective_aliases.get(text, text)
+
+
 def _missing_case_facts_from_intake_priorities(session: Dict[str, Any]) -> List[str]:
     summary = _session_intake_priority_summary(session)
     uncovered = [
-        str(item).strip()
+        _normalize_intake_objective(item)
         for item in list(summary.get("uncovered_objectives") or [])
-        if str(item).strip()
+        if _normalize_intake_objective(item)
     ]
     if not uncovered:
         return []
@@ -2269,8 +2285,11 @@ def _missing_case_facts_from_intake_priorities(session: Dict[str, Any]) -> List[
         "anchor_adverse_action": "the exact denial, termination, threatened loss of assistance, or other adverse action HACC took or threatened",
         "timeline": "when the key events happened, including the complaint, notice, review or hearing request, and any denial or termination decision",
         "actors": "who at HACC made, communicated, or carried out each decision",
+        "staff_names_titles": "the HACC staff names and titles (or best-known titles) for each key decision or communication",
         "causation_link": "facts showing how protected activity led to adverse treatment, including timing, statements, and decision context",
         "anchor_appeal_rights": "whether written notice, an informal review, a grievance hearing, or an appeal was provided, requested, denied, or ignored",
+        "hearing_request_timing": "when hearing or review was requested and when HACC responded to that request",
+        "response_dates": "exact response dates for notice, hearing/review requests, and final decision communications",
         "harm_remedy": "the resulting housing harm and the remedy now being requested",
         "intake_follow_up": "the additional case-specific details needed to complete the intake record",
     }
@@ -2309,6 +2328,12 @@ def _classify_intake_question_objective(question_text: Any) -> str:
         return "causation_link"
     if any(token in lowered for token in ("when", "date", "timeline")):
         return "timeline"
+    if any(token in lowered for token in ("name and title", "names and titles", "staff name", "staff title", "best-known title")):
+        return "staff_names_titles"
+    if any(token in lowered for token in ("hearing request", "review request", "requested a hearing", "requested review")):
+        return "hearing_request_timing"
+    if any(token in lowered for token in ("response date", "responded on", "decision date", "hearing outcome date")):
+        return "response_dates"
     if any(token in lowered for token in ("who", "which person", "made, communicated", "carried out", "decision")):
         return "actors"
     if any(token in lowered for token in ("harm", "remedy", "loss", "relief")):
@@ -2324,9 +2349,12 @@ def _fallback_intake_follow_up_questions(uncovered: List[str], *, limit: int) ->
     templates: Dict[str, str] = {
         "timeline": "Please list the key events with dates (or closest date anchors): protected activity, notices, hearing/review requests, and adverse action outcomes.",
         "actors": "Who at HACC handled each step (intake, notice, review/hearing, final decision), and what did each person decide or communicate?",
+        "staff_names_titles": "For each key step, what are the HACC staff names and titles (or best-known titles) of the person who acted or communicated?",
         "causation_link": "What facts show the adverse treatment was because of your protected activity (timing, statements, pattern changes, or decision explanations)?",
         "anchor_adverse_action": "What exact adverse action did HACC take or threaten, on what date, and through what communication?",
         "anchor_appeal_rights": "What written notice, informal review, grievance hearing, or appeal rights were provided, requested, denied, or ignored?",
+        "hearing_request_timing": "When did you request hearing/review, how was the request made, and when did HACC respond?",
+        "response_dates": "What exact response dates did HACC provide for notice, hearing/review requests, and final decision communications?",
         "harm_remedy": "What concrete housing harm followed, and what remedy are you now requesting?",
     }
     questions: List[str] = []
@@ -2344,9 +2372,9 @@ def _fallback_intake_follow_up_questions(uncovered: List[str], *, limit: int) ->
 def _outstanding_intake_follow_up_questions(seed: Dict[str, Any], session: Dict[str, Any], limit: int = 5) -> List[str]:
     summary = _session_intake_priority_summary(session)
     uncovered = [
-        str(item).strip()
+        _normalize_intake_objective(item)
         for item in list(summary.get("uncovered_objectives") or [])
-        if str(item).strip()
+        if _normalize_intake_objective(item)
     ]
     if not uncovered:
         return []
@@ -2396,12 +2424,12 @@ def _merge_completed_intake_worksheet(session: Dict[str, Any], worksheet: Dict[s
     conversation_history = list(merged_session.get("conversation_history") or [])
     final_state = dict(merged_session.get("final_state") or {})
     summary = dict(final_state.get("adversarial_intake_priority_summary") or {})
-    covered = [str(item).strip() for item in list(summary.get("covered_objectives") or []) if str(item).strip()]
-    uncovered = [str(item).strip() for item in list(summary.get("uncovered_objectives") or []) if str(item).strip()]
+    covered = [_normalize_intake_objective(item) for item in list(summary.get("covered_objectives") or []) if _normalize_intake_objective(item)]
+    uncovered = [_normalize_intake_objective(item) for item in list(summary.get("uncovered_objectives") or []) if _normalize_intake_objective(item)]
     counts = {
-        str(key).strip(): int(value or 0)
+        _normalize_intake_objective(key): int(value or 0)
         for key, value in dict(summary.get("objective_question_counts") or {}).items()
-        if str(key).strip()
+        if _normalize_intake_objective(key)
     }
 
     for item in answered_items:
@@ -2413,7 +2441,7 @@ def _merge_completed_intake_worksheet(session: Dict[str, Any], worksheet: Dict[s
                 "question": item["question"],
             }
         )
-        objective = _classify_intake_question_objective(item["question"])
+        objective = _normalize_intake_objective(_classify_intake_question_objective(item["question"]))
         if objective:
             counts[objective] = counts.get(objective, 0) + 1
             if objective not in covered:

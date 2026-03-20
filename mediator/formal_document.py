@@ -1122,6 +1122,22 @@ class ComplaintDocumentBuilder:
             merged.append("HACC decision-makers for intake, review, hearing, and adverse-action steps should be identified by name or title.")
         if merged and not any(_contains_causation_marker(line) for line in merged):
             merged.append("After Plaintiff engaged in protected activity, HACC took adverse action, and the available timeline supports a causal connection.")
+        if merged and not any(_contains_hearing_timing_marker(line) for line in merged):
+            merged.append(
+                "Plaintiff requested an informal review or hearing on [date], and the complaint should state when that request was made in relation to each adverse-action step."
+            )
+        if merged and not any(_contains_response_date_marker(line) for line in merged):
+            merged.append(
+                "HACC response dates for notice, hearing/review requests, and final decision communications should be identified with exact dates."
+            )
+        if merged and not any(_contains_staff_identity_marker(line) for line in merged):
+            merged.append(
+                "For each key event, the complaint should identify the HACC staff member by name and title, or by the best-known title if the name is not yet confirmed."
+            )
+        if merged and not any("days after" in str(line).lower() or "weeks after" in str(line).lower() for line in merged):
+            merged.append(
+                "The complaint should describe the sequence between protected activity and adverse treatment using concrete timing, including whether action occurred days or weeks after protected activity."
+            )
         return _prune_near_duplicate_allegations(merged)[:18] or ["Plaintiff will supplement the factual record with additional detail."]
 
     def _build_affidavit(
