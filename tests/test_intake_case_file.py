@@ -477,6 +477,44 @@ def test_build_intake_case_file_merges_duplicate_relative_only_temporal_issues_f
     assert len(issues[0]["fact_ids"]) >= 2
 
 
+def test_build_intake_case_file_derives_anchor_dates_from_quantified_relative_retaliation_sequence():
+    builder = KnowledgeGraphBuilder()
+    complaint_text = (
+        "On March 1, 2025, I complained to HR about discrimination. "
+        "Two weeks after I complained to HR, my employer terminated me."
+    )
+
+    intake_case_file = build_intake_case_file(builder.build_from_text(complaint_text), complaint_text)
+
+    canonical_facts = intake_case_file["canonical_facts"]
+    adverse_facts = [fact for fact in canonical_facts if fact.get("predicate_family") == "adverse_action"]
+    causation_facts = [fact for fact in canonical_facts if fact.get("predicate_family") == "causation"]
+
+    assert any(
+        fact.get("temporal_context", {}).get("start_date") == "2025-03-15"
+        and fact.get("temporal_context", {}).get("derivation_mode") == "relative_anchor_offset"
+        for fact in adverse_facts
+    )
+    assert any(
+        fact.get("temporal_context", {}).get("start_date") == "2025-03-15"
+        and fact.get("temporal_context", {}).get("anchor_predicate_family") == "protected_activity"
+        for fact in causation_facts
+    )
+
+    fact_by_id = {
+        fact.get("fact_id"): fact
+        for fact in canonical_facts
+        if fact.get("fact_id")
+    }
+    assert any(
+        relation.get("relation_type") == "before"
+        and fact_by_id.get(relation.get("source_fact_id"), {}).get("predicate_family") == "protected_activity"
+        and fact_by_id.get(relation.get("target_fact_id"), {}).get("predicate_family") == "adverse_action"
+        for relation in intake_case_file["timeline_relations"]
+    )
+    assert intake_case_file["temporal_issue_registry"] == []
+
+
 def test_knowledge_graph_builder_extracts_named_staff_role_titles():
     builder = KnowledgeGraphBuilder()
     graph = builder.build_from_text(

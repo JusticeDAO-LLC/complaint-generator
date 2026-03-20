@@ -5,7 +5,7 @@ Helpers for building and summarizing the structured intake case file.
 from __future__ import annotations
 
 import calendar
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from itertools import combinations
 import re
 from typing import Any, Dict, List
@@ -184,6 +184,20 @@ _QUANTIFIED_RELATIVE_TEMPORAL_PATTERNS = (
     r"\b\d+\s+(?:day|week|month|year)s?\s+(?:after|before|later|earlier)\b",
     r"\b(?:a|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:day|week|month|year)s?\s+(?:after|before|later|earlier)\b",
 )
+
+_NUMBER_WORDS = {
+    "a": 1,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+}
 
 
 def _normalize_date_iso(year: int, month: int, day: int) -> str:
@@ -389,19 +403,208 @@ def _build_temporal_context(raw_value: Any, *, fallback_text: str = "") -> Dict[
     }
 
 
+def _parse_relative_offset(relative_markers: List[str]) -> Dict[str, Any] | None:
+    for marker in relative_markers if isinstance(relative_markers, list) else []:
+        normalized_marker = _normalize_text(marker).lower()
+        if not normalized_marker:
+            continue
+        if normalized_marker == "same day":
+            return {"quantity": 0, "unit": "day", "direction": "after", "marker": normalized_marker}
+        if normalized_marker == "next day":
+            return {"quantity": 1, "unit": "day", "direction": "after", "marker": normalized_marker}
+        if normalized_marker == "previous day":
+            return {"quantity": 1, "unit": "day", "direction": "before", "marker": normalized_marker}
+        match = re.search(
+            r"\b(?P<quantity>\d+|a|one|two|three|four|five|six|seven|eight|nine|ten)\s+"
+            r"(?P<unit>day|week|month|year)s?\s+(?P<direction>after|before|later|earlier)\b",
+            normalized_marker,
+            flags=re.IGNORECASE,
+        )
+        if not match:
+            continue
+        quantity_token = match.group("quantity").lower()
+        quantity = int(quantity_token) if quantity_token.isdigit() else _NUMBER_WORDS.get(quantity_token)
+        if quantity is None:
+            continue
+        direction = match.group("direction").lower()
+        if direction == "later":
+            direction = "after"
+        elif direction == "earlier":
+            direction = "before"
+        return {
+            "quantity": quantity,
+            "unit": match.group("unit").lower(),
+            "direction": direction,
+            "marker": normalized_marker,
+        }
+    return None
+
+
+def _relative_reference_families(fact: Dict[str, Any]) -> List[str]:
+    text_value = _normalize_text(fact.get("text") or "").lower()
+    families: List[str] = []
+
+    if any(token in text_value for token in ("complained", "complaint", "reported", "grievance", "hr", "human resources", "requested accommodation", "whistlebl")):
+        families.append("protected_activity")
+    if any(token in text_value for token in ("hearing", "appeal", "review", "grievance")):
+        families.append("hearing_process")
+    if any(token in text_value for token in ("notice", "letter", "email", "text", "message", "voicemail")):
+        families.append("notice_chain")
+    if any(token in text_value for token in ("response", "responded", "replied", "decision", "denied", "approved", "upheld", "rejected")):
+        families.append("response_timeline")
+
+    return _unique_normalized_strings(families)
+
+
+def _derive_relative_temporal_context_from_anchor(
+    fact: Dict[str, Any],
+    anchor_fact: Dict[str, Any],
+    relative_offset: Dict[str, Any],
+) -> Dict[str, Any] | None:
+    anchor_context = _coerce_dict(anchor_fact.get("temporal_context"))
+    anchor_start = _normalize_text(anchor_context.get("start_date") or "")
+    if not anchor_start or (anchor_context.get("granularity") or "") != "day":
+        return None
+
+    unit = _normalize_text(relative_offset.get("unit") or "").lower()
+    quantity = int(relative_offset.get("quantity") or 0)
+    direction = _normalize_text(relative_offset.get("direction") or "").lower()
+    if unit not in {"day", "week"} or direction not in {"after", "before"}:
+        return None
+
+    anchor_date = datetime.strptime(anchor_start, "%Y-%m-%d").date()
+    delta_days = quantity if unit == "day" else quantity * 7
+    if direction == "before":
+        delta_days *= -1
+    derived_date = anchor_date + timedelta(days=delta_days)
+    derived_iso = derived_date.isoformat()
+
+    original_context = _coerce_dict(fact.get("temporal_context"))
+    return {
+        **original_context,
+        "raw_text": _normalize_text(original_context.get("raw_text") or fact.get("event_date_or_range") or fact.get("text") or ""),
+        "start_date": derived_iso,
+        "end_date": derived_iso,
+        "granularity": "day",
+        "is_approximate": bool(original_context.get("is_approximate", False)),
+        "is_range": False,
+        "relative_markers": _unique_normalized_strings(original_context.get("relative_markers") or []),
+        "sortable_date": derived_iso,
+        "matched_text": _normalize_text(original_context.get("matched_text") or relative_offset.get("marker") or ""),
+        "derived_from_relative_anchor": True,
+        "anchor_fact_id": _normalize_text(anchor_fact.get("fact_id") or "") or None,
+        "anchor_predicate_family": _normalize_text(anchor_fact.get("predicate_family") or "").lower() or None,
+        "derivation_mode": "relative_anchor_offset",
+    }
+
+
+def _enrich_canonical_facts_with_relative_anchor_dates(canonical_facts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    normalized_facts = [
+        _normalize_canonical_fact_record(record)
+        for record in canonical_facts if isinstance(record, dict)
+    ]
+    anchored_by_family: Dict[str, List[Dict[str, Any]]] = {}
+    for fact in normalized_facts:
+        predicate_family = _normalize_text(fact.get("predicate_family") or "").lower()
+        start_date = _coerce_dict(fact.get("temporal_context")).get("start_date")
+        if predicate_family and start_date:
+            anchored_by_family.setdefault(predicate_family, []).append(fact)
+
+    enriched_facts: List[Dict[str, Any]] = []
+    for fact in normalized_facts:
+        temporal_context = _coerce_dict(fact.get("temporal_context"))
+        if temporal_context.get("start_date") or not temporal_context.get("relative_markers"):
+            enriched_facts.append(fact)
+            continue
+
+        relative_offset = _parse_relative_offset(list(temporal_context.get("relative_markers") or []))
+        reference_families = _relative_reference_families(fact)
+        predicate_family = _normalize_text(fact.get("predicate_family") or "").lower()
+        if not relative_offset or not reference_families:
+            enriched_facts.append(fact)
+            continue
+
+        candidate_anchors: List[Dict[str, Any]] = []
+        for family in reference_families:
+            if family == predicate_family:
+                continue
+            candidate_anchors.extend(anchored_by_family.get(family, []))
+
+        if not candidate_anchors:
+            enriched_facts.append(fact)
+            continue
+
+        candidate_anchors = sorted(
+            candidate_anchors,
+            key=lambda anchor: _normalize_text(_coerce_dict(anchor.get("temporal_context")).get("start_date") or ""),
+        )
+        anchor_fact = candidate_anchors[-1] if relative_offset.get("direction") == "after" else candidate_anchors[0]
+        derived_context = _derive_relative_temporal_context_from_anchor(fact, anchor_fact, relative_offset)
+        if not derived_context:
+            enriched_facts.append(fact)
+            continue
+
+        enriched_facts.append({
+            **fact,
+            "temporal_context": derived_context,
+        })
+
+    anchored_protected_activity_exists = any(
+        _normalize_text(fact.get("predicate_family") or "").lower() == "protected_activity"
+        and bool(_coerce_dict(fact.get("temporal_context")).get("start_date"))
+        for fact in enriched_facts
+    )
+    if not anchored_protected_activity_exists:
+        return enriched_facts
+
+    collapsed_facts: List[Dict[str, Any]] = []
+    for fact in enriched_facts:
+        predicate_family = _normalize_text(fact.get("predicate_family") or "").lower()
+        temporal_context = _coerce_dict(fact.get("temporal_context"))
+        text_value = _normalize_text(fact.get("text") or "")
+        if (
+            predicate_family == "protected_activity"
+            and not temporal_context.get("start_date")
+            and temporal_context.get("relative_markers")
+            and any(
+                _normalize_text(other.get("text") or "") == text_value
+                and _normalize_text(other.get("predicate_family") or "").lower() in {"adverse_action", "causation"}
+                and bool(_coerce_dict(other.get("temporal_context")).get("start_date"))
+                for other in enriched_facts
+                if other is not fact
+            )
+        ):
+            continue
+        collapsed_facts.append(fact)
+
+    return collapsed_facts
+
+
 def _normalize_canonical_fact_record(record: Any) -> Dict[str, Any]:
     fact = _coerce_dict(record)
     normalized_text = _normalize_text(fact.get("text") or "")
     fact_type = _normalize_text(fact.get("fact_type") or "general").lower() or "general"
+    existing_temporal_context = _coerce_dict(fact.get("temporal_context"))
     raw_event_date_or_range = _normalize_text(
         fact.get("event_date_or_range")
-        or _coerce_dict(fact.get("temporal_context")).get("raw_text")
+        or existing_temporal_context.get("raw_text")
         or ""
     ) or None
     temporal_context = _build_temporal_context(
         raw_event_date_or_range,
         fallback_text=normalized_text if fact_type == "timeline" else "",
     )
+    if (
+        not temporal_context.get("start_date")
+        and existing_temporal_context.get("start_date")
+        and _normalize_text(existing_temporal_context.get("raw_text") or raw_event_date_or_range or normalized_text)
+    ):
+        temporal_context = {
+            **temporal_context,
+            **existing_temporal_context,
+            "raw_text": _normalize_text(existing_temporal_context.get("raw_text") or raw_event_date_or_range or normalized_text),
+            "relative_markers": _unique_normalized_strings(existing_temporal_context.get("relative_markers") or []),
+        }
     source_artifact_ids = _unique_normalized_strings(
         list(fact.get("source_artifact_ids") or [])
         + ([fact.get("source_artifact_id")] if str(fact.get("source_artifact_id") or "").strip() else [])
@@ -963,6 +1166,10 @@ def build_canonical_facts(knowledge_graph) -> List[Dict[str, Any]]:
                     "fact_id": entity.id,
                     "text": fact_text,
                     "fact_type": _normalize_text(entity.attributes.get("fact_type") or "general").lower() or "general",
+                    "predicate_family": _normalize_text(
+                        entity.attributes.get("predicate_family") or entity.attributes.get("fact_type") or ""
+                    ).lower() or None,
+                    "event_label": _normalize_text(entity.attributes.get("event_label") or "") or None,
                     "claim_types": [],
                     "element_tags": [],
                     "event_date_or_range": _normalize_text(
@@ -1714,7 +1921,7 @@ def build_intake_sections(
 def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[str, Any]:
     """Build the initial structured intake case file from current graph state."""
     candidate_claims = build_candidate_claims(knowledge_graph)
-    canonical_facts = build_canonical_facts(knowledge_graph)
+    canonical_facts = _enrich_canonical_facts_with_relative_anchor_dates(build_canonical_facts(knowledge_graph))
     proof_leads = build_proof_leads(knowledge_graph)
     timeline_anchors = build_timeline_anchors(canonical_facts)
     timeline_relations = build_timeline_relations(canonical_facts)
@@ -1786,11 +1993,11 @@ def refresh_intake_sections(intake_case_file: Dict[str, Any], knowledge_graph) -
 def refresh_intake_case_file(intake_case_file: Dict[str, Any], knowledge_graph, *, append_snapshot: bool = False) -> Dict[str, Any]:
     """Refresh derived intake sections, open items, and summary snapshots."""
     case_file = _coerce_dict(intake_case_file)
-    case_file["canonical_facts"] = [
+    case_file["canonical_facts"] = _enrich_canonical_facts_with_relative_anchor_dates([
         _normalize_canonical_fact_record(record)
         for record in _coerce_list(case_file.get("canonical_facts"))
         if isinstance(record, dict)
-    ]
+    ])
     case_file["proof_leads"] = [
         _normalize_proof_lead_record(record)
         for record in _coerce_list(case_file.get("proof_leads"))

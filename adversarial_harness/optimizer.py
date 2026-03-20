@@ -893,6 +893,8 @@ class Optimizer:
             return selected or target_paths[:2]
 
         return target_paths
+
+    @staticmethod
     def _build_generalization_summary(
         performance: Dict[str, Dict[str, Any]],
         baseline_score: float,
