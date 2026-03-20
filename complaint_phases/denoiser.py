@@ -287,6 +287,31 @@ class ComplaintDenoiser:
         return any(cue in lowered for cue in cues)
 
 
+    def _extract_named_people_with_titles(self, text: str) -> List[Tuple[str, str]]:
+        if not text:
+            return []
+        results: List[Tuple[str, str]] = []
+        patterns = [
+            r"\b(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\s*,\s*(?P<title>[A-Za-z][A-Za-z\s/&-]{2,60})\b",
+            r"\b(?P<title>manager|supervisor|director|hr manager|hr specialist|hearing officer|appeals officer|landlord|owner)\s+(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b",
+        ]
+        for pattern in patterns:
+            for match in re.finditer(pattern, text or "", flags=re.IGNORECASE):
+                name = (match.group("name") or "").strip()
+                title = (match.group("title") or "").strip().lower()
+                if name and title:
+                    results.append((name, title))
+        deduped: List[Tuple[str, str]] = []
+        seen = set()
+        for name, title in results:
+            key = (name.lower(), title.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append((name, title))
+        return deduped
+
+
     def _update_responsible_parties_from_answer(self,
                                                answer: str,
                                                knowledge_graph: KnowledgeGraph,
@@ -314,6 +339,31 @@ class ComplaintDenoiser:
                     person.id,
                     "involves",
                     0.6,
+                )
+                if rel_created:
+                    updates["relationships_added"] += 1
+            added_any = True
+
+        for name, title in self._extract_named_people_with_titles(answer):
+            person, created = self._add_entity_if_missing(
+                knowledge_graph,
+                "person",
+                name,
+                {"role": title},
+                0.72,
+            )
+            if created:
+                updates["entities_updated"] += 1
+            elif person and not str((person.attributes or {}).get("role") or "").strip():
+                person.attributes["role"] = title
+                updates["entities_updated"] += 1
+            if claim_id and person:
+                _, rel_created = self._add_relationship_if_missing(
+                    knowledge_graph,
+                    claim_id,
+                    person.id,
+                    "involves",
+                    0.62,
                 )
                 if rel_created:
                     updates["relationships_added"] += 1
@@ -789,6 +839,12 @@ class ComplaintDenoiser:
             question_intent=question_intent,
         )
         question_payload['candidate_source'] = source
+        follow_up_tags = self._question_follow_up_tags(
+            question_type=question_type,
+            question_text=str(question_payload.get('question') or question_text or ''),
+            context=question_payload.get('context'),
+        )
+        question_payload['follow_up_tags'] = follow_up_tags
         question_payload['ranking_explanation'] = {
             'candidate_source': source,
             'priority': str(question_payload.get('priority') or priority or 'medium'),
@@ -801,8 +857,47 @@ class ComplaintDenoiser:
             'target_element_id': str(question_payload.get('target_element_id') or ''),
             'target_fact_type': str(question_payload.get('target_fact_type') or ''),
             'expected_update_kind': str(question_payload.get('expected_update_kind') or ''),
+            'follow_up_tags': list(follow_up_tags),
         }
         return question_payload
+
+    def _question_follow_up_tags(
+        self,
+        *,
+        question_type: str,
+        question_text: str,
+        context: Optional[Dict[str, Any]],
+    ) -> List[str]:
+        tags: List[str] = []
+        normalized_text = (question_text or "").lower()
+        context = context if isinstance(context, dict) else {}
+        gap_type = str(context.get('gap_type') or '').strip().lower()
+
+        if gap_type in {'missing_exact_action_dates', 'missing_hearing_request_date', 'missing_response_dates'}:
+            tags.append('exact_dates')
+        if gap_type in {'missing_staff_identity', 'missing_staff_title'}:
+            tags.append('staff_identity')
+        if gap_type in {'missing_written_notice'}:
+            tags.append('notice_chain')
+        if gap_type in {'retaliation_missing_causation', 'retaliation_missing_causation_link', 'retaliation_missing_sequencing_dates'}:
+            tags.append('retaliation_sequence')
+
+        if any(token in normalized_text for token in ('exact date', 'on what date', 'when did')):
+            tags.append('exact_dates')
+        if any(token in normalized_text for token in ('full name', 'title', 'role', 'who specifically')):
+            tags.append('staff_identity')
+        if any(token in normalized_text for token in ('notice', 'letter', 'email', 'message')):
+            tags.append('notice_chain')
+        if any(token in normalized_text for token in ('protected activity', 'adverse action', 'because of', 'soon after')):
+            tags.append('retaliation_sequence')
+
+        if question_type in {'timeline'} and 'exact_dates' not in tags:
+            tags.append('timeline')
+        deduped: List[str] = []
+        for tag in tags:
+            if tag and tag not in deduped:
+                deduped.append(tag)
+        return deduped
 
     def _build_contradiction_questions(
         self,
@@ -1049,7 +1144,40 @@ class ComplaintDenoiser:
                     context={
                         'missing_impact': gap.get('missing_impact'),
                         'missing_remedy': gap.get('missing_remedy'),
+                        'gap_type': gap.get('type'),
                     },
+                    priority='high',
+                ))
+            elif gap['type'] in {'missing_written_notice', 'missing_response_dates'}:
+                questions.append(self._question_candidate(
+                    source='knowledge_graph_gap',
+                    question_type='evidence',
+                    question_text=gap['suggested_question'],
+                    context={'gap_type': gap.get('type')},
+                    priority='high',
+                ))
+            elif gap['type'] in {'missing_hearing_request_date', 'missing_decision_timeline', 'missing_exact_action_dates'}:
+                questions.append(self._question_candidate(
+                    source='knowledge_graph_gap',
+                    question_type='timeline',
+                    question_text=gap['suggested_question'],
+                    context={'gap_type': gap.get('type')},
+                    priority='high',
+                ))
+            elif gap['type'] in {'missing_staff_identity', 'missing_staff_title'}:
+                questions.append(self._question_candidate(
+                    source='knowledge_graph_gap',
+                    question_type='responsible_party',
+                    question_text=gap['suggested_question'],
+                    context={'gap_type': gap.get('type')},
+                    priority='high',
+                ))
+            elif gap['type'] in {'retaliation_missing_causation', 'retaliation_missing_causation_link', 'retaliation_missing_sequencing_dates'}:
+                questions.append(self._question_candidate(
+                    source='knowledge_graph_gap',
+                    question_type='timeline',
+                    question_text=gap['suggested_question'],
+                    context={'gap_type': gap.get('type')},
                     priority='high',
                 ))
 
@@ -1071,6 +1199,31 @@ class ComplaintDenoiser:
                 ))
                 if len(questions) >= max_questions:
                     break
+            if len(questions) >= max_questions:
+                break
+
+        blocker_issues = []
+        if hasattr(dependency_graph, 'get_blocker_follow_up_issues'):
+            try:
+                blocker_issues = dependency_graph.get_blocker_follow_up_issues()
+            except Exception:
+                blocker_issues = []
+        for issue in blocker_issues[:max(0, max_questions - len(questions))]:
+            if not isinstance(issue, dict):
+                continue
+            questions.append(self._question_candidate(
+                source='dependency_graph_requirement',
+                question_type=str(issue.get('question_type') or 'timeline'),
+                question_text=str(issue.get('suggested_question') or 'Can you provide the missing follow-up details for this blocker?'),
+                context={
+                    'issue_id': issue.get('issue_id'),
+                    'issue_type': issue.get('issue_type'),
+                    'node_id': issue.get('node_id'),
+                    'node_name': issue.get('node_name'),
+                    'gap_type': issue.get('issue_type'),
+                },
+                priority='high' if str(issue.get('severity') or '').lower() == 'blocking' else 'medium',
+            ))
             if len(questions) >= max_questions:
                 break
 
@@ -1099,6 +1252,7 @@ class ComplaintDenoiser:
         blocking_map = {'blocking': 3.0, 'important': 2.0, 'informational': 1.0}
         qtype = str(candidate.get('type') or '').strip().lower()
         question_text = str(candidate.get('question') or '').strip().lower()
+        follow_up_tags = [str(tag).strip().lower() for tag in (candidate.get('follow_up_tags') or []) if str(tag).strip()]
         proof_priority = int(candidate.get('proof_priority', self._phase1_proof_priority(qtype)) or 0)
         blocking_level = str(candidate.get('blocking_level') or '').strip().lower()
         score = 0.0
@@ -1107,12 +1261,23 @@ class ComplaintDenoiser:
         score += blocking_map.get(blocking_level, 0.0)
         if qtype in {'timeline', 'contradiction', 'responsible_party', 'requirement'}:
             score += 1.5
+        if qtype == 'contradiction':
+            # Preserve contradiction-first behavior for clearly conflicting records.
+            score += 3.0
         if any(token in question_text for token in ('when', 'date', 'timeline', 'chronology', 'anchor')):
             score += 1.25
         if any(token in question_text for token in ('who', 'actor', 'manager', 'supervisor', 'organization')):
             score += 1.25
         if any(token in question_text for token in ('protected activity', 'adverse', 'retaliation', 'because', 'after')):
             score += 1.25
+        if 'exact_dates' in follow_up_tags:
+            score += 1.5
+        if 'staff_identity' in follow_up_tags:
+            score += 1.5
+        if 'notice_chain' in follow_up_tags:
+            score += 1.0
+        if 'retaliation_sequence' in follow_up_tags:
+            score += 2.0
         return score
 
     def _critic_penalty_candidate(self, candidate: Dict[str, Any]) -> float:
@@ -1120,6 +1285,7 @@ class ComplaintDenoiser:
             return 0.0
         question_text = str(candidate.get('question') or '').strip().lower()
         context = candidate.get('context') if isinstance(candidate.get('context'), dict) else {}
+        follow_up_tags = [str(tag).strip().lower() for tag in (candidate.get('follow_up_tags') or []) if str(tag).strip()]
         penalty = 0.0
         if not question_text:
             return 5.0
@@ -1141,6 +1307,12 @@ class ComplaintDenoiser:
             ('retaliation' in question_text or 'protected activity' in question_text)
             and not any(token in question_text for token in ('when', 'date', 'who'))
         ):
+            penalty += 1.0
+        if 'exact_dates' in follow_up_tags and not any(token in question_text for token in ('exact date', 'on what date', 'what date', 'when')):
+            penalty += 1.0
+        if 'staff_identity' in follow_up_tags and not any(token in question_text for token in ('full name', 'title', 'role', 'who')):
+            penalty += 1.0
+        if 'retaliation_sequence' in follow_up_tags and not any(token in question_text for token in ('protected activity', 'adverse', 'because', 'after')):
             penalty += 1.0
         return penalty
 

@@ -303,6 +303,13 @@ class Mediator:
 		question_goal = str(explanation.get('question_goal') or candidate.get('question_goal') or '').strip().lower()
 		candidate_source = str(explanation.get('candidate_source') or candidate.get('candidate_source') or '').strip().lower()
 		proof_priority = int(candidate.get('proof_priority', 99) or 99)
+		question_objective = str(
+			candidate.get('question_objective')
+			or explanation.get('question_objective')
+			or ''
+		).strip().lower()
+		question_type = str(candidate.get('type') or explanation.get('type') or '').strip().lower()
+		expected_proof_gain = str(candidate.get('expected_proof_gain') or '').strip().lower()
 		actor_critic_score = float(
 			candidate.get('actor_critic_score', explanation.get('actor_critic_score', 0.0)) or 0.0
 		)
@@ -318,6 +325,10 @@ class Mediator:
 				any(token in question_text for token in ('when', 'date', 'timeline', 'chronolog', 'sequence'))
 				and any(token in question_text for token in ('who', 'decision', 'decisionmaker', 'manager', 'supervisor', 'person'))
 			)
+			or (
+				(question_objective in {'establish_chronology', 'timeline'} or question_type == 'timeline')
+				and any(token in question_text for token in ('who', 'decision', 'decisionmaker', 'manager', 'supervisor', 'person'))
+			)
 			or 'actor-by-actor' in question_text
 			or 'actor by actor' in question_text
 		)
@@ -326,6 +337,12 @@ class Mediator:
 			and any(token in question_text for token in ('adverse', 'retaliat', 'denial', 'termination', 'disciplin'))
 			and any(token in question_text for token in ('because', 'after', 'linked', 'caus', 'reason'))
 		)
+		if not causation_match:
+			causation_match = bool(
+				question_objective in {'establish_causation', 'link_protected_activity_to_adverse_action'}
+				or question_type in {'retaliation', 'causation'}
+				or 'caus' in question_goal
+			)
 		phase1_section = str(explanation.get('phase1_section') or candidate.get('phase1_section') or '').strip().lower()
 
 		score = 0.0
@@ -358,6 +375,8 @@ class Mediator:
 			score += 11.0
 		if causation_match:
 			score += 12.0
+		if any(token in expected_proof_gain for token in ('date', 'timeline', 'chronolog', 'caus', 'because', 'adverse', 'protected activity')):
+			score += 4.0
 		score += {
 			'graph_analysis': 8.0,
 			'document_generation': 5.0,
@@ -378,6 +397,8 @@ class Mediator:
 			'actor_critic_score': actor_critic_score,
 			'date_anchor_timeline_match': date_anchor_timeline_match,
 			'protected_activity_causation_match': causation_match,
+			'question_objective': question_objective,
+			'question_type': question_type,
 			'phase1_section': phase1_section,
 		}
 		annotated['selector_score'] = score

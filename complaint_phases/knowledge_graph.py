@@ -1094,6 +1094,31 @@ class KnowledgeGraphBuilder:
                 'confidence': 0.55
             })
 
+        if any(token in lower_text for token in ('hearing', 'appeal', 'grievance')):
+            add_entity({
+                'type': 'fact',
+                'name': 'Hearing or appeal process event',
+                'attributes': {
+                    'fact_type': 'timeline',
+                    'predicate_family': 'hearing_process',
+                    'event_label': 'Hearing/appeal event',
+                    'description': short_description(text),
+                },
+                'confidence': 0.58,
+            })
+        if any(token in lower_text for token in ('response', 'responded', 'replied', 'denied', 'approved', 'ignored', 'no response')):
+            add_entity({
+                'type': 'fact',
+                'name': 'Agency/employer response event',
+                'attributes': {
+                    'fact_type': 'timeline',
+                    'predicate_family': 'response_timeline',
+                    'event_label': 'Response event',
+                    'description': short_description(text),
+                },
+                'confidence': 0.58,
+            })
+
         # If we still don't have any organization, add a generic employer when text implies one.
         has_org = any(e.get("type") == "organization" for e in entities if isinstance(e, dict))
         if not has_org and any(k in lower_text for k in ["company", "workplace", "organization", "business", "agency", "department", "school", "university", "hospital", "clinic"]):
@@ -1124,6 +1149,21 @@ class KnowledgeGraphBuilder:
                     'attributes': {'role': role},
                     'confidence': 0.7
                 })
+
+        for match in re.finditer(
+            r"\b(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\s*,\s*(?P<title>[A-Za-z][A-Za-z\s/&-]{2,60})\b",
+            text or "",
+        ):
+            name = (match.group("name") or "").strip()
+            title = (match.group("title") or "").strip().lower()
+            if not name or not title:
+                continue
+            add_entity({
+                'type': 'person',
+                'name': name,
+                'attributes': {'role': title},
+                'confidence': 0.68
+            })
 
         # Use LLM if available
         if self.mediator:
@@ -1271,6 +1311,12 @@ class KnowledgeGraphBuilder:
                         'target_id': protected_fact.id,
                         'type': 'follows_protected_activity',
                         'confidence': 0.55,
+                    })
+                    relationships.append({
+                        'source_id': adverse_fact.id,
+                        'target_id': protected_fact.id,
+                        'type': 'occurred_after',
+                        'confidence': 0.52,
                     })
             if any(token in (text or '').lower() for token in ('because', 'due to', 'in response to', 'soon after', 'after')):
                 for claim in retaliation_claims:

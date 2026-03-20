@@ -500,6 +500,51 @@ class TestComplaintDenoiser:
         assert first_evidence["question_intent"]["intent_type"] == "proof_lead_question"
         assert first_evidence["ranking_explanation"]["question_goal"] == "identify_supporting_proof"
 
+    def test_collect_question_candidates_includes_blocker_follow_up_gap_types(self):
+        denoiser = ComplaintDenoiser()
+
+        kg = KnowledgeGraph()
+        kg.add_entity(Entity("claim1", "claim", "Retaliation Claim", attributes={"claim_type": "retaliation"}))
+        kg.add_entity(Entity("fact1", "fact", "Hearing request", attributes={"fact_type": "timeline", "description": "I asked for a hearing."}))
+        kg.add_entity(Entity("fact2", "fact", "Notice reference", attributes={"fact_type": "timeline", "description": "I received a notice but do not have it."}))
+        kg.add_entity(Entity("person1", "person", "Manager", attributes={"role": "manager"}))
+
+        dg = DependencyGraph()
+        dg.add_node(DependencyNode("n1", NodeType.CLAIM, "Retaliation Claim"))
+
+        candidates = denoiser.collect_question_candidates(kg, dg, max_questions=16, intake_case_file={})
+        gap_types = {
+            str((candidate.get("context") or {}).get("gap_type") or "")
+            for candidate in candidates
+            if isinstance(candidate, dict)
+        }
+
+        assert "missing_hearing_request_date" in gap_types
+        assert "missing_written_notice" in gap_types
+        assert "missing_staff_identity" in gap_types
+
+    def test_select_question_candidates_prioritizes_exact_date_blocker_tags(self):
+        denoiser = ComplaintDenoiser()
+        candidates = [
+            denoiser._question_candidate(  # noqa: SLF001 - internal scoring contract test
+                source="knowledge_graph_gap",
+                question_type="clarification",
+                question_text="Can you provide more details?",
+                context={},
+                priority="medium",
+            ),
+            denoiser._question_candidate(  # noqa: SLF001 - internal scoring contract test
+                source="knowledge_graph_gap",
+                question_type="timeline",
+                question_text="What exact date did this happen and who made the decision?",
+                context={"gap_type": "missing_exact_action_dates"},
+                priority="high",
+            ),
+        ]
+        selected = denoiser.select_question_candidates(candidates, max_questions=2)
+        assert selected[0]["type"] == "timeline"
+        assert "exact_dates" in selected[0].get("follow_up_tags", [])
+
     def test_select_question_candidates_uses_selector_override_when_available(self):
         """Selection should honor an explicit override so routers/provers can choose among candidates."""
         denoiser = ComplaintDenoiser()

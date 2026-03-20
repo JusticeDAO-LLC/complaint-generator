@@ -306,6 +306,26 @@ Complaint:"""
 
         instructions = "\n".join([f"- {x}" for x in (self.personality_profile.get("instructions") or [])])
         evidence_text = self._format_context_evidence()
+        question_lower = str(question or "").lower()
+        focus_guidance: List[str] = []
+        if any(token in question_lower for token in ("when", "date", "timeline", "chronolog", "sequence", "step by step", "decision timeline")):
+            focus_guidance.append(
+                "Give the most specific date anchors you know (exact date, month/year, or relative anchors) and keep events in order."
+            )
+            focus_guidance.append(
+                "If multiple people acted, describe the timeline actor-by-actor (who acted, what they did, and when)."
+            )
+        if (
+            any(token in question_lower for token in ("protected activity", "complaint", "reported", "accommodation", "grievance", "appeal"))
+            and any(token in question_lower for token in ("adverse", "retaliat", "termination", "denial", "disciplin"))
+        ):
+            focus_guidance.append(
+                "State what protected activity you did, what adverse action followed, and the facts that make you think they are connected."
+            )
+            focus_guidance.append(
+                "Include names/roles of decision-makers and any notice/message dates if known."
+            )
+        focus_guidance_text = "\n".join([f"- {item}" for item in focus_guidance]) if focus_guidance else "- Answer naturally in your own words."
         grounded_facts_text = self._format_grounded_case_digest(
             key_facts=self.context.key_facts if isinstance(self.context.key_facts, dict) else {},
             story_facts=self.context.complainant_story_facts,
@@ -328,6 +348,9 @@ Recent conversation:
 {history_text}
 
 The mediator asks: "{question}"
+
+Question focus guidance:
+{focus_guidance_text}
 
 Respond naturally as this person would. Your response should:
 1. Answer the question based on your knowledge

@@ -324,3 +324,43 @@ def test_refresh_intake_case_file_builds_temporal_issue_registry_for_relative_an
             "inference_mode": "imported_temporal_contradiction",
         },
     ]
+
+
+def test_build_intake_case_file_adds_blocker_follow_up_summary_and_open_items():
+    knowledge_graph = KnowledgeGraph()
+    knowledge_graph.add_entity(
+        Entity(
+            id="claim:ret",
+            type="claim",
+            name="Retaliation Claim",
+            attributes={"claim_type": "retaliation", "description": "Retaliation after complaint."},
+        )
+    )
+    knowledge_graph.add_entity(
+        Entity(
+            id="fact:hear",
+            type="fact",
+            name="Hearing request",
+            attributes={"fact_type": "timeline", "description": "I requested a hearing."},
+        )
+    )
+
+    complaint_text = (
+        "I complained to HR and was terminated soon after. "
+        "I requested a hearing and received no response. "
+        "I got a notice but I do not have a copy."
+    )
+    intake_case_file = build_intake_case_file(knowledge_graph, complaint_text)
+
+    blocker_summary = intake_case_file["blocker_follow_up_summary"]
+    assert blocker_summary["blocking_item_count"] >= 3
+    blocker_ids = {item["blocker_id"] for item in blocker_summary["blocking_items"]}
+    assert "missing_written_notice_chain" in blocker_ids
+    assert "missing_hearing_request_timing" in blocker_ids
+    assert "missing_response_timing" in blocker_ids
+
+    blocker_open_items = [
+        item for item in intake_case_file["open_items"]
+        if item.get("kind") == "blocker_follow_up"
+    ]
+    assert blocker_open_items
