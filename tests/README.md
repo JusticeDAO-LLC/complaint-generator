@@ -211,6 +211,17 @@ python scripts/run_standard_regression.py --slice review
 python scripts/run_standard_regression.py --slice full
 ```
 
+The same slices are also available through editor and shell tooling:
+
+- VS Code tasks:
+  - `Standard Regression (Lean)`
+  - `Standard Regression (Review)`
+  - `Standard Regression (Full)`
+- Make targets:
+  - `make regression-lean`
+  - `make regression-review`
+  - `make regression-full`
+
 ### Test Naming Convention
 
 - Test files: `test_*.py` or `*_test.py`

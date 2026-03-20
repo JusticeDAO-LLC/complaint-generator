@@ -4794,6 +4794,17 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
                         "show protected activity preceded termination",
                     ],
                     "hybrid_bridge_element_count": 1,
+                    "flagged_elements": [
+                        {
+                            "element_id": "retaliation_element_001",
+                            "element_text": "Causal connection",
+                            "proof_artifact_status": "available",
+                            "proof_artifact_proof_status": "success",
+                            "proof_artifact_proof_id": "proof-retaliation-001",
+                            "proof_artifact_explanation_step_count": 1,
+                            "proof_artifact_explanation_text": "Protected activity preceded termination.",
+                        }
+                    ],
                 }
             },
             "intake_constraints": [],
@@ -4889,6 +4900,7 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
             assert "retaliation proof statuses: available=1" in review_snapshot_text
             assert "retaliation proof preview: proof-retaliation-001 | show protected activity preceded termination" in review_snapshot_text
             assert "retaliation hybrid bridge elements: 1" in review_snapshot_text
+            assert "retaliation proof detail: causal connection | artifact available | proof success | id proof-retaliation-001 | steps 1 | explanation protected activity preceded termination." in review_snapshot_text
 
             browser.close()
 

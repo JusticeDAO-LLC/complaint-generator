@@ -2334,24 +2334,6 @@
             `;
         }
 
-        function resolveDocumentWorkflowAction(reviewLinks, intakeCaseSummary) {
-            const primarySummary = intakeCaseSummary && typeof intakeCaseSummary === 'object'
-                ? intakeCaseSummary
-                : {};
-            const primaryAction = primarySummary.next_action && typeof primarySummary.next_action === 'object'
-                ? primarySummary.next_action
-                : {};
-            if (Object.keys(primaryAction).length) {
-                return primaryAction;
-            }
-            const fallbackSummary = reviewLinks && typeof reviewLinks.intake_case_summary === 'object'
-                ? reviewLinks.intake_case_summary
-                : {};
-            return fallbackSummary.next_action && typeof fallbackSummary.next_action === 'object'
-                ? fallbackSummary.next_action
-                : {};
-        }
-
         function resolveDocumentWorkflowPhasePriority(workflowPhasePlan) {
             const normalizedPlan = workflowPhasePlan && typeof workflowPhasePlan === 'object'
                 ? workflowPhasePlan
@@ -2372,130 +2354,110 @@
             const phase = phases[phaseName] && typeof phases[phaseName] === 'object' ? phases[phaseName] : {};
             if (!Object.keys(phase).length) {
                 return null;
+        function normalizeDocumentWorkflowPriorityPayload(workflowPriorityPayload, dashboardUrl, defaultDescription) {
+            const normalizedPayload = workflowPriorityPayload && typeof workflowPriorityPayload === 'object'
+                ? workflowPriorityPayload
+                : {};
+            if (!Object.keys(normalizedPayload).length) {
+                return null;
             }
-            const recommendedActions = Array.isArray(phase.recommended_actions)
-                ? phase.recommended_actions
-                    .map((entry) => entry && typeof entry === 'object' ? String(entry.recommended_action || '').trim() : String(entry || '').trim())
-                    .filter(Boolean)
+            const normalizedStatus = String(normalizedPayload.status || 'warning').trim().toLowerCase() || 'warning';
+            const chipLabels = Array.isArray(normalizedPayload.chip_labels)
+                ? normalizedPayload.chip_labels.filter(Boolean)
                 : [];
             return {
-                phaseName,
-                phase,
-                status: String(phase.status || 'ready').trim().toLowerCase() || 'ready',
-                primaryRecommendedAction: recommendedActions[0] || '',
+                status: normalizedStatus,
+                title: String(normalizedPayload.title || 'Review workflow priority before drafting').trim(),
+                description: String(normalizedPayload.description || '').trim()
+                    || defaultDescription,
+                actionLabel: String(normalizedPayload.action_label || 'Open Review Dashboard').trim(),
+                actionUrl: String(normalizedPayload.action_url || dashboardUrl).trim() || dashboardUrl,
+                actionKind: String(normalizedPayload.action_kind || 'link').trim() || 'link',
+                dashboardUrl: String(normalizedPayload.dashboard_url || dashboardUrl).trim() || dashboardUrl,
+                chips: chipLabels.map((label) => `<span class="triage-chip" data-tone="${normalizedStatus === 'ready' ? 'low' : 'important'}">${escapeHtml(label)}</span>`),
             };
         }
 
-        function buildDocumentWorkflowPriority(reviewLinks, intakeCaseSummary, workflowPhasePlan, manualReviewClaims, pendingReviewClaims) {
+        function buildDocumentWorkflowPriority(reviewLinks, workflowPhasePlan) {
+            const dashboardUrl = String((reviewLinks && reviewLinks.dashboard_url) || '').trim() || '/claim-support-review';
             const nextAction = resolveDocumentWorkflowAction(reviewLinks, intakeCaseSummary);
             const action = String(nextAction.action || '').trim().toLowerCase();
             const dashboardUrl = String((reviewLinks && reviewLinks.dashboard_url) || '').trim()
                 || buildClaimReviewUrl(nextAction.claim_type || '')
-                || '/claim-support-review';
-            const claimType = String(nextAction.claim_type || '').trim();
-            const claimElementId = String(nextAction.claim_element_id || '').trim();
-            const baseClaimUrl = claimType ? buildClaimReviewUrl(claimType) : dashboardUrl;
-            const contradictions = Number(intakeCaseSummary && intakeCaseSummary.contradiction_summary && intakeCaseSummary.contradiction_summary.count || 0);
-            const questionCandidates = Number(intakeCaseSummary && intakeCaseSummary.question_candidate_summary && intakeCaseSummary.question_candidate_summary.count || 0);
-            const blockers = Array.isArray(nextAction.intake_blockers) ? nextAction.intake_blockers : [];
-            const packetSummary = intakeCaseSummary && typeof intakeCaseSummary.claim_support_packet_summary === 'object'
-                ? intakeCaseSummary.claim_support_packet_summary
-                : {};
-
-            const workflowPriorityFromLinks = reviewLinks && typeof reviewLinks.workflow_priority === 'object'
-                ? reviewLinks.workflow_priority
-                : {};
-            if (Object.keys(workflowPriorityFromLinks).length) {
+            const normalizedWorkflowPriority = normalizeDocumentWorkflowPriorityPayload(
+                workflowPriorityFromLinks,
+                dashboardUrl,
+                'Workflow guidance still identifies a higher-priority step before drafting for this matter.',
+            );
+            if (normalizedWorkflowPriority) {
+                return normalizedWorkflowPriority;
                 const chipLabels = Array.isArray(workflowPriorityFromLinks.chip_labels)
                     ? workflowPriorityFromLinks.chip_labels.filter(Boolean)
-                    : [];
-                return {
-                    status: String(workflowPriorityFromLinks.status || 'warning').trim().toLowerCase() || 'warning',
-                    title: String(workflowPriorityFromLinks.title || 'Review workflow priority before drafting').trim(),
-                    description: String(workflowPriorityFromLinks.description || '').trim()
-                        || 'Workflow guidance still identifies a higher-priority step before drafting for this matter.',
-                    actionLabel: String(workflowPriorityFromLinks.action_label || 'Open Review Dashboard').trim(),
-                    actionUrl: String(workflowPriorityFromLinks.action_url || dashboardUrl).trim() || dashboardUrl,
-                    actionKind: String(workflowPriorityFromLinks.action_kind || 'link').trim() || 'link',
-                    dashboardUrl: String(workflowPriorityFromLinks.dashboard_url || dashboardUrl).trim() || dashboardUrl,
-                    chips: chipLabels.map((label) => `<span class="triage-chip" data-tone="${String(workflowPriorityFromLinks.status || 'warning').trim().toLowerCase() === 'ready' ? 'low' : 'important'}">${escapeHtml(label)}</span>`),
-                };
+            const workflowPhasePriorityFromLinks = reviewLinks && typeof reviewLinks.workflow_phase_priority === 'object'
+                ? reviewLinks.workflow_phase_priority
+                : {};
+            const normalizedWorkflowPhasePriority = normalizeDocumentWorkflowPriorityPayload(
+                workflowPhasePriorityFromLinks,
+                dashboardUrl,
+                'Workflow phase guidance still identifies a higher-priority step before drafting for this matter.',
+            );
+            if (normalizedWorkflowPhasePriority) {
+                return normalizedWorkflowPhasePriority;
+                if (primaryRecommendedAction) {
+
+            const workflowPhasePriority = resolveDocumentWorkflowPhasePriority(workflowPhasePlan);
+            if (!workflowPhasePriority) {
+                return null;
+            }
+            const phaseName = workflowPhasePriority.phaseName;
+            const phase = workflowPhasePriority.phase;
+            const phaseStatus = workflowPhasePriority.status;
+            const primaryRecommendedAction = workflowPhasePriority.primaryRecommendedAction;
+            let title = 'Review workflow priority before drafting';
+            let description = String(phase.summary || '').trim() || 'Workflow phase guidance still identifies a higher-priority step before drafting.';
+            let actionLabel = 'Open Review Dashboard';
+            let actionUrl = dashboardUrl;
+
+            if (phaseName === 'graph_analysis') {
+                title = phaseStatus === 'ready'
+                    ? 'Graph analysis is aligned for drafting'
+                    : 'Resolve graph analysis before drafting';
+                actionLabel = 'Review graph inputs';
+                actionUrl = appendSectionReviewIntentToReviewUrl(resolveSectionReviewUrl('summary_of_facts', {}, reviewLinks), 'summary_of_facts');
+            } else if (phaseName === 'document_generation') {
+                title = phaseStatus === 'ready'
+                    ? 'Drafting is aligned with workflow guidance'
+                    : 'Resolve drafting readiness before filing';
+                actionLabel = phaseStatus === 'ready' ? 'Open Review Dashboard' : 'Review drafting readiness';
+                actionUrl = phaseStatus === 'ready'
+                    ? dashboardUrl
+                    : appendSectionReviewIntentToReviewUrl(resolveSectionReviewUrl('claims_for_relief', {}, reviewLinks), 'claims_for_relief');
             }
 
-            if (!action) {
-                const workflowPhasePriorityFromLinks = reviewLinks && typeof reviewLinks.workflow_phase_priority === 'object'
-                    ? reviewLinks.workflow_phase_priority
-                    : {};
-                if (Object.keys(workflowPhasePriorityFromLinks).length) {
-                    const chipLabels = Array.isArray(workflowPhasePriorityFromLinks.chip_labels)
-                        ? workflowPhasePriorityFromLinks.chip_labels.filter(Boolean)
-                        : [];
-                    return {
-                        status: String(workflowPhasePriorityFromLinks.status || 'warning').trim().toLowerCase() || 'warning',
-                        title: String(workflowPhasePriorityFromLinks.title || 'Review workflow priority before drafting').trim(),
-                        description: String(workflowPhasePriorityFromLinks.description || '').trim()
-                            || 'Workflow phase guidance still identifies a higher-priority step before drafting for this matter.',
-                        actionLabel: String(workflowPhasePriorityFromLinks.action_label || 'Open Review Dashboard').trim(),
-                        actionUrl: String(workflowPhasePriorityFromLinks.action_url || dashboardUrl).trim() || dashboardUrl,
-                        actionKind: String(workflowPhasePriorityFromLinks.action_kind || 'link').trim() || 'link',
-                        dashboardUrl: String(workflowPhasePriorityFromLinks.dashboard_url || dashboardUrl).trim() || dashboardUrl,
-                        chips: chipLabels.map((label) => `<span class="triage-chip" data-tone="${String(workflowPhasePriorityFromLinks.status || 'warning').trim().toLowerCase() === 'ready' ? 'low' : 'important'}">${escapeHtml(label)}</span>`),
-                    };
-                }
-                const workflowPhasePriority = resolveDocumentWorkflowPhasePriority(workflowPhasePlan);
-                if (!workflowPhasePriority) {
-                    return null;
-                }
-                const phaseName = workflowPhasePriority.phaseName;
-                const phase = workflowPhasePriority.phase;
-                const phaseStatus = workflowPhasePriority.status;
-                const primaryRecommendedAction = workflowPhasePriority.primaryRecommendedAction;
-                let title = 'Review workflow priority before drafting';
-                let description = String(phase.summary || '').trim() || 'Workflow phase guidance still identifies a higher-priority step before drafting.';
-                let actionLabel = 'Open Review Dashboard';
-                let actionUrl = dashboardUrl;
-
-                if (phaseName === 'graph_analysis') {
-                    title = phaseStatus === 'ready'
-                        ? 'Graph analysis is aligned for drafting'
-                        : 'Resolve graph analysis before drafting';
-                    actionLabel = 'Review graph inputs';
-                    actionUrl = appendSectionReviewIntentToReviewUrl(resolveSectionReviewUrl('summary_of_facts', {}, reviewLinks), 'summary_of_facts');
-                } else if (phaseName === 'document_generation') {
-                    title = phaseStatus === 'ready'
-                        ? 'Drafting is aligned with workflow guidance'
-                        : 'Resolve drafting readiness before filing';
-                    actionLabel = phaseStatus === 'ready' ? 'Open Review Dashboard' : 'Review drafting readiness';
-                    actionUrl = phaseStatus === 'ready'
-                        ? dashboardUrl
-                        : appendSectionReviewIntentToReviewUrl(resolveSectionReviewUrl('claims_for_relief', {}, reviewLinks), 'claims_for_relief');
-                }
-
-                const chips = [
-                    `<span class="triage-chip" data-tone="${phaseStatus === 'ready' ? 'low' : 'important'}">workflow phase: ${escapeHtml(humanizeKey(phaseName))}</span>`,
-                    `<span class="triage-chip">phase status: ${escapeHtml(humanizeKey(phaseStatus))}</span>`,
-                ];
-                if (primaryRecommendedAction) {
+            const chips = [
+                `<span class="triage-chip" data-tone="${phaseStatus === 'ready' ? 'low' : 'important'}">workflow phase: ${escapeHtml(humanizeKey(phaseName))}</span>`,
+                `<span class="triage-chip">phase status: ${escapeHtml(humanizeKey(phaseStatus))}</span>`,
+            ];
+            if (primaryRecommendedAction) {
+                chips.push(`<span class="triage-chip">recommended action: ${escapeHtml(primaryRecommendedAction)}</span>`);
+            }
                     chips.push(`<span class="triage-chip">recommended action: ${escapeHtml(primaryRecommendedAction)}</span>`);
                 }
-
+                status: phaseStatus,
                 return {
                     status: phaseStatus,
                     title,
                     description,
-                    actionLabel,
+                actionKind: 'link',
                     actionUrl,
                     actionKind: 'link',
                     dashboardUrl,
                     chips,
                 };
-            }
+        function renderWorkflowPriority(reviewLinks, workflowPhasePlan) {
 
             let status = 'warning';
-            let title = 'Review workflow priority before drafting';
             let description = 'The review dashboard still has a higher-priority step than drafting for this matter.';
-            let actionLabel = 'Open Review Dashboard';
-            let actionUrl = dashboardUrl;
             let actionKind = 'link';
 
             if (action === 'confirm_intake_summary') {
@@ -3218,7 +3180,7 @@
                     <div class="readiness-title">Drafting Readiness</div>
                     <div class="preview-meta">Overall status: ${escapeHtml(readiness.status || 'ready')} | Warnings: ${escapeHtml(String(warningCount))}</div>
                     ${renderReviewLinks(reviewLinks)}
-                    ${renderWorkflowPriority(reviewLinks, intakeCaseSummary, workflowPhasePlan, manualReviewClaims, pendingReviewClaims)}
+                    ${renderWorkflowPriority(reviewLinks, workflowPhasePlan)}
                     ${renderIntakeSummaryConfirmation(reviewLinks, intakeCaseSummary)}
                     ${renderWorkflowPhaseGuidance(workflowPhasePlan)}
                     <div class="readiness-grid">${sectionCards}</div>

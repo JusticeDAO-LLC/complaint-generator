@@ -1,4 +1,13 @@
-.PHONY: canary-validate canary-smoke canary-sample
+.PHONY: canary-validate canary-smoke canary-sample regression-lean regression-review regression-full
+
+regression-lean:
+	.venv/bin/python scripts/run_standard_regression.py --slice lean
+
+regression-review:
+	.venv/bin/python scripts/run_standard_regression.py --slice review
+
+regression-full:
+	.venv/bin/python scripts/run_standard_regression.py --slice full
 
 canary-validate:
 	.venv/bin/python scripts/validate_canary_ops.py

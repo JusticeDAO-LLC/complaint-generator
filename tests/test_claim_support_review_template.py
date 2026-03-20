@@ -811,6 +811,8 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "Claim reasoning reviews:" in content
     assert "proof artifacts:" in content
     assert "proof preview:" in content
+    assert "proof detail:" in content
+    assert "explanation " in content
     assert "Candidate claims:" in content
     assert "Candidate claim count:" in content
     assert "Candidate claim average confidence:" in content

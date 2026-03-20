@@ -2584,6 +2584,16 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
                             'proof_artifact_explanation_element_count': 1,
                             'proof_artifact_status_counts': {'available': 1},
                             'proof_artifact_preview': ['proof-retaliation-001'],
+                            'flagged_elements': [
+                                {
+                                    'element_text': 'Causal connection',
+                                    'proof_artifact_status': 'available',
+                                    'proof_artifact_proof_status': 'success',
+                                    'proof_artifact_proof_id': 'proof-retaliation-001',
+                                    'proof_artifact_explanation_step_count': 1,
+                                    'proof_artifact_explanation_text': 'Protected activity preceded termination.',
+                                }
+                            ],
                         },
                     },
                     'intake_case_summary': {
@@ -2660,6 +2670,7 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
     }
     assert payload['trace']['claim_reasoning_review']['retaliation']['proof_artifact_element_count'] == 1
     assert payload['trace']['claim_reasoning_review']['retaliation']['proof_artifact_preview'] == ['proof-retaliation-001']
+    assert payload['trace']['claim_reasoning_review']['retaliation']['flagged_elements'][0]['proof_artifact_proof_id'] == 'proof-retaliation-001'
     assert payload['trace']['intake_case_summary']['alignment_evidence_tasks'][0]['fallback_lanes'] == ['authority', 'testimony']
     assert payload['trace']['intake_case_summary']['claim_support_packet_summary']['proof_readiness_score'] == 0.47
     assert payload['trace']['intake_case_summary']['alignment_evidence_tasks'][0]['temporal_rule_status'] == 'partial'
@@ -3314,6 +3325,8 @@ def test_review_surface_returns_document_optimization_contract_end_to_end(monkey
     assert report['claim_reasoning_review']['retaliation']['proof_artifact_element_count'] == 1
     assert report['claim_reasoning_review']['retaliation']['proof_artifact_available_element_count'] == 1
     assert report['claim_reasoning_review']['retaliation']['proof_artifact_status_counts'] == {'available': 1}
+    assert report['claim_reasoning_review']['retaliation']['flagged_elements'][0]['proof_artifact_proof_id'] == 'proof-retaliation-001'
+    assert report['claim_reasoning_review']['retaliation']['flagged_elements'][0]['proof_artifact_explanation_text'] == 'Protected activity preceded termination.'
     assert payload['claim_support_temporal_handoff'] == {
         'unresolved_temporal_issue_count': 1,
         'unresolved_temporal_issue_ids': ['temporal_issue_001'],

@@ -1067,6 +1067,47 @@
             return lines;
         }
 
+        function buildClaimReasoningFlaggedElementLines(reviewByClaim, maxClaims = 2, maxElementsPerClaim = 2) {
+            const normalized = normalizeClaimReasoningReview(reviewByClaim);
+            const entries = Object.entries(normalized).slice(0, maxClaims);
+            if (!entries.length) {
+                return [];
+            }
+            const lines = [];
+            entries.forEach(([claimType, review]) => {
+                const claimLabel = humanizeKey(claimType);
+                const flaggedElements = Array.isArray(review.flagged_elements)
+                    ? review.flagged_elements.filter((element) => element && typeof element === 'object').slice(0, maxElementsPerClaim)
+                    : [];
+                flaggedElements.forEach((element) => {
+                    const elementLabel = String(element.element_text || element.element_id || 'flagged element').trim();
+                    const fragments = [`${claimLabel} proof detail: ${elementLabel}`];
+                    if (element.proof_artifact_status) {
+                        fragments.push(`artifact ${humanizeKey(element.proof_artifact_status)}`);
+                    }
+                    if (element.proof_artifact_proof_status) {
+                        fragments.push(`proof ${humanizeKey(element.proof_artifact_proof_status)}`);
+                    }
+                    if (element.proof_artifact_proof_id) {
+                        fragments.push(`id ${String(element.proof_artifact_proof_id).trim()}`);
+                    }
+                    if (element.proof_artifact_explanation_step_count != null) {
+                        const stepCount = Number(element.proof_artifact_explanation_step_count || 0);
+                        if (stepCount > 0) {
+                            fragments.push(`steps ${stepCount}`);
+                        }
+                    }
+                    if (element.proof_artifact_explanation_text) {
+                        fragments.push(`explanation ${String(element.proof_artifact_explanation_text).trim()}`);
+                    } else if (element.proof_artifact_sentence) {
+                        fragments.push(`sentence ${String(element.proof_artifact_sentence).trim()}`);
+                    }
+                    lines.push(fragments.join(' | '));
+                });
+            });
+            return lines;
+        }
+
         function appendSupportKindToReviewUrl(reviewUrl, supportKind) {
             const normalizedUrl = String(reviewUrl || '').trim();
             const normalizedSupportKind = String(supportKind || '').trim();
@@ -1573,6 +1614,7 @@
                     finalReview.recommended_focus ? `Final recommended focus: ${humanizeKey(finalReview.recommended_focus)}` : '',
                     `Relief-targeted optimization: ${reliefTargeted ? 'yes' : 'no'}`,
                     ...buildClaimReasoningReviewLines(claimReasoningReview),
+                    ...buildClaimReasoningFlaggedElementLines(claimReasoningReview),
                 ].filter(Boolean),
             );
 
