@@ -71,11 +71,28 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "workflow-phase-guidance-card" in content
     assert "Workflow Phase Guidance" in content
     assert "workflowPhasePlan.recommended_order" in content
+    assert "workflowPhasePriorityFromPayload" in content
+    assert "resolveReviewWorkflowPhasePriority(workflowPhasePlanPayload)" in content
+    assert "workflowPhasePriority.action_id" in content
+    assert "workflowPhasePriority.action_label" in content
+    assert "workflowPhasePriority.chip_labels" in content
     assert "intake-next-action-open-formal-generator" in content
     assert "intake-next-action-confirm-summary" in content
     assert "Confirm intake summary" in content
     assert "intake-next-action-review-gaps" in content
     assert "Review intake gaps" in content
+    assert "intake-next-action-review-packet-readiness" in content
+    assert "Review packet readiness" in content
+    assert "Resolve graph analysis before drafting" in content
+    assert "Resolve drafting readiness before filing" in content
+    assert "workflow phase: ${humanizeQueryValue(prioritizedPhaseName)}" in content
+    assert "phase status: ${humanizeQueryValue(prioritizedPhase.status || 'warning')}" in content
+    assert "remaining gap count: ${remainingGapCount}" in content
+    assert "current gap count: ${currentGapCount}" in content
+    assert "knowledge graph enhanced: ${Boolean(graphEnhanced) ? 'yes' : 'no'}" in content
+    assert "unresolved temporal issues: ${unresolvedTemporalIssueCount}" in content
+    assert "unresolved without review path: ${unresolvedWithoutReviewPathCount}" in content
+    assert "Showing packet readiness summary and evidence blockers before drafting." in content
     assert "recommended action: ${nextAction.action}" in content
     assert "focus claim: ${humanizeQueryValue(focusedPromotedClaimType)}" in content
     assert "focus element: ${humanizeQueryValue(focusedPromotedElementId)}" in content
@@ -128,8 +145,11 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "chronology issues: ${taskTimelineIssueIds.length}" in content
     assert "Proof artifacts: ${Number(reviewData.proof_artifact_element_count || 0)}" in content
     assert "proof id ${escapeHtml(element.proof_artifact_proof_id)}" in content
+    assert "Copy proof ID" in content
+    assert "Copy proof explanation" in content
     assert "Proof artifact sentence" in content
     assert "Proof artifact notes" in content
+    assert "Proof explanation copied for ${proofExplanationButton.dataset.proofElement || 'the selected element'}." in content
     assert "Chronology event IDs" in content
     assert "Chronology relation IDs" in content
     assert "Chronology issue IDs" in content

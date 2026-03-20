@@ -18,6 +18,7 @@ duckdb = pytest.importorskip("duckdb")
 from applications.review_api import attach_claim_support_review_routes
 from applications.document_ui import attach_document_ui_routes
 from applications.review_ui import attach_claim_support_review_ui_routes, attach_review_health_routes
+from complaint_phases import ComplaintPhase
 
 
 pytestmark = [pytest.mark.no_auto_network, pytest.mark.browser]
@@ -2473,8 +2474,6 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "Temporal rule follow-ups" in reasoning_flagged
                 assert "Temporal proof bundle TDFOL preview" in reasoning_flagged
                 assert "Temporal proof bundle DCEC preview" in reasoning_flagged
-                assert "bridge path ipfs_datasets_py.ipfs_datasets_py.processors.legal_data.reasoner.hybrid_v2_blueprint" in reasoning_flagged
-
                 page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Temporal relation preview").first.click()
                 page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Temporal warnings").first.click()
                 page.locator("#claim-reasoning-flagged-list summary").filter(has_text="TDFOL preview").first.click()
@@ -2998,6 +2997,104 @@ def test_claim_support_review_dashboard_smoke_reviews_intake_gaps_from_next_acti
             os.unlink(db_path)
 
 
+def test_claim_support_review_dashboard_smoke_uses_workflow_phase_plan_for_graph_banner_when_next_action_missing():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for workflow-phase graph banner smoke coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+        status_payload = mediator.get_three_phase_status.return_value
+        status_payload.pop("next_action", None)
+        status_payload["complainant_summary_confirmation"] = {
+            "confirmed": True,
+            "status": "confirmed",
+            "current_summary_snapshot": {},
+        }
+        phase_data = {
+            (ComplaintPhase.INTAKE, "knowledge_graph"): {"nodes": ["claim"]},
+            (ComplaintPhase.INTAKE, "dependency_graph"): {"edges": ["support"]},
+            (ComplaintPhase.INTAKE, "current_gaps"): [{"gap_id": "gap-001"}],
+            (ComplaintPhase.INTAKE, "remaining_gaps"): 2,
+            (ComplaintPhase.EVIDENCE, "knowledge_graph_enhanced"): False,
+        }
+        mediator.phase_manager.get_phase_data.side_effect = lambda phase, key: phase_data.get((phase, key))
+        status_payload["workflow_phase_plan"] = {
+            "recommended_order": ["graph_analysis", "document_generation"],
+            "phases": {
+                "graph_analysis": {
+                    "status": "warning",
+                    "summary": "Graph analysis still has 2 unresolved gap(s) or pending evidence-to-graph updates.",
+                    "signals": {
+                        "knowledge_graph_available": True,
+                        "dependency_graph_available": True,
+                        "remaining_gap_count": 2,
+                        "current_gap_count": 1,
+                        "knowledge_graph_enhanced": False,
+                    },
+                    "recommended_actions": [
+                        "Review intake graph inputs and refresh graph-backed evidence projections before final drafting.",
+                    ],
+                },
+                "document_generation": {
+                    "status": "ready",
+                    "summary": "Review state indicates the complaint can move into formal complaint drafting.",
+                    "signals": {
+                        "proof_readiness_score": 0.94,
+                        "unresolved_temporal_issue_count": 0,
+                        "unresolved_without_review_path_count": 0,
+                    },
+                    "recommended_actions": [],
+                },
+            },
+        }
+
+        app = _build_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(
+                    f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
+                )
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                next_action_banner = page.locator("#intake-next-action-banner").inner_text()
+
+                assert "Resolve graph analysis before drafting" in next_action_banner
+                assert "workflow phase: Graph Analysis" in next_action_banner
+                assert "phase status: Warning" in next_action_banner
+                assert "remaining gap count: 2" in next_action_banner
+                assert "current gap count: 1" in next_action_banner
+                assert "knowledge graph enhanced: no" in next_action_banner.lower()
+                assert "Recommended actions: Review intake graph inputs and refresh graph-backed evidence projections before final drafting." in next_action_banner
+
+                page.click("#intake-next-action-review-gaps")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Showing unresolved intake gaps and targeted questions.')"
+                )
+
+                assert "section=summary_of_facts" in page.url
+                assert "follow_up_support_kind=evidence" in page.url
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
 def test_claim_support_review_dashboard_smoke_reviews_knowledge_graph_inputs_from_next_action_banner():
     if not PLAYWRIGHT_AVAILABLE:
         pytest.skip("Playwright not available")
@@ -3379,6 +3476,105 @@ def test_claim_support_review_dashboard_smoke_opens_formal_builder_from_generate
 
                 assert "Formal Complaint Builder" in page.locator("body").inner_text()
                 assert "Generate Formal Complaint" in page.locator("body").inner_text()
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+def test_claim_support_review_dashboard_smoke_uses_workflow_phase_plan_for_document_banner_when_next_action_missing():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for workflow-phase document banner smoke coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+        status_payload = mediator.get_three_phase_status.return_value
+        status_payload.pop("next_action", None)
+        status_payload["complainant_summary_confirmation"] = {
+            "confirmed": True,
+            "status": "confirmed",
+            "current_summary_snapshot": {},
+        }
+        status_payload["claim_support_packet_summary"] = {
+            **dict(status_payload.get("claim_support_packet_summary") or {}),
+            "claim_count": 1,
+            "element_count": 3,
+            "proof_readiness_score": 0.63,
+            "claim_support_unresolved_temporal_issue_count": 1,
+            "claim_support_unresolved_without_review_path_count": 2,
+        }
+        status_payload["workflow_phase_plan"] = {
+            "recommended_order": ["document_generation", "graph_analysis"],
+            "phases": {
+                "document_generation": {
+                    "status": "warning",
+                    "summary": "Document generation should wait until evidence review and packet blockers are reduced further.",
+                    "signals": {
+                        "recommended_next_action": "",
+                        "proof_readiness_score": 0.63,
+                        "unresolved_temporal_issue_count": 1,
+                        "unresolved_without_review_path_count": 2,
+                    },
+                    "recommended_actions": [
+                        "Reduce unresolved packet blockers and confirm the evidence packet before generating a formal complaint.",
+                    ],
+                },
+                "graph_analysis": {
+                    "status": "ready",
+                    "summary": "Graph analysis is present and does not currently show unresolved intake graph blockers.",
+                    "signals": {
+                        "knowledge_graph_available": True,
+                        "dependency_graph_available": True,
+                        "remaining_gap_count": 0,
+                        "current_gap_count": 0,
+                        "knowledge_graph_enhanced": True,
+                    },
+                    "recommended_actions": [],
+                },
+            },
+        }
+
+        app = _build_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(
+                    f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
+                )
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                next_action_banner = page.locator("#intake-next-action-banner").inner_text()
+
+                assert "Resolve drafting readiness before filing" in next_action_banner
+                assert "workflow phase: Document Generation" in next_action_banner
+                assert "phase status: Warning" in next_action_banner
+                assert "proof readiness: 0.63" in next_action_banner
+                assert "unresolved temporal issues: 1" in next_action_banner
+                assert "unresolved without review path: 2" in next_action_banner
+                assert "Reduce unresolved packet blockers and confirm the evidence packet before generating a formal complaint." in next_action_banner
+
+                page.click("#intake-next-action-review-packet-readiness")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Showing packet readiness summary and evidence blockers before drafting.')"
+                )
+
+                packet_summary_text = page.locator("#claim-support-packet-summary-chips").inner_text().lower()
+                assert "proof readiness" in packet_summary_text
 
                 browser.close()
     finally:

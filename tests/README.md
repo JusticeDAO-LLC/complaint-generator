@@ -139,6 +139,21 @@ Tests are organized using pytest markers (defined in `pytest.ini`):
 
 Most tests use mocks to avoid external dependencies, but integration tests may require actual backend initialization or optional dependencies to be installed.
 
+### Optional Test Dependencies
+
+Some review, browser, and persistence suites rely on optional packages such as `duckdb`, `fastapi`, `uvicorn`, `requests`, `bs4`, or `playwright`.
+
+- If a test module cannot provide useful coverage without one of those packages, prefer `pytest.importorskip(...)` at module import time instead of a hard import that fails collection.
+- Use this pattern for environment-specific suites like browser smokes, dashboard flows, and DuckDB-backed persistence checks.
+- Keep core backend and unit suites runnable without those optional packages whenever practical.
+- When adding a new optional dependency, document the install command near the relevant suite in this file.
+
+This keeps `pytest` behavior predictable in lean environments:
+
+- core suites still run and fail normally when behavior regresses
+- optional suites report as skipped rather than aborting collection
+- CI lanes that install the full stack still exercise the richer coverage
+
 ### Test Naming Convention
 
 - Test files: `test_*.py` or `*_test.py`

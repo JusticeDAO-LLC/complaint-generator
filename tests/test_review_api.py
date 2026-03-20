@@ -913,6 +913,33 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert payload["workflow_phase_plan"]["recommended_order"] == ["graph_analysis", "document_generation"]
         assert payload["workflow_phase_plan"]["phases"]["graph_analysis"]["status"] == "warning"
         assert payload["workflow_phase_plan"]["phases"]["document_generation"]["status"] == "warning"
+        assert payload["workflow_phase_priority"] == {
+            "phase_name": "graph_analysis",
+            "status": "warning",
+            "title": "Resolve graph analysis before drafting",
+            "summary": "Graph analysis still has 1 unresolved gap(s) or pending evidence-to-graph updates.",
+            "recommended_actions": [
+                "Review intake graph inputs and refresh graph-backed evidence projections before final drafting.",
+            ],
+            "chip_labels": [
+                "workflow phase: Graph Analysis",
+                "phase status: Warning",
+                "remaining gap count: 1",
+                "current gap count: 1",
+                "knowledge graph enhanced: no",
+            ],
+            "action_id": "review_intake_gaps",
+            "button_id": "intake-next-action-review-gaps",
+            "action_label": "Review intake gaps",
+            "status_message": "Showing unresolved intake gaps and targeted questions.",
+            "signals": {
+                "knowledge_graph_available": True,
+                "dependency_graph_available": True,
+                "remaining_gap_count": 1,
+                "current_gap_count": 1,
+                "knowledge_graph_enhanced": False,
+            },
+        }
         assert payload["primary_validation_target"] == {}
         assert payload["intake_status"] == {
             "current_phase": "intake",
@@ -1413,6 +1440,17 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 "hybrid_formalism": "",
                 "hybrid_reasoning_mode": "",
                 "hybrid_compiler_bridge_path": "",
+                "proof_artifact_available": False,
+                "proof_artifact_status": "",
+                "proof_artifact_proof_id": "",
+                "proof_artifact_proof_status": "",
+                "proof_artifact_sentence": "",
+                "proof_artifact_reason": "",
+                "proof_artifact_violation_count": 0,
+                "proof_artifact_explanation_format": "",
+                "proof_artifact_explanation_step_count": 0,
+                "proof_artifact_explanation_text": "",
+                "proof_artifact_theorem_export_metadata": {},
                 "temporal_fact_count": 0,
                 "temporal_relation_count": 0,
                 "temporal_issue_count": 0,
@@ -1881,6 +1919,11 @@ def test_claim_support_review_payload_reuses_persisted_diagnostic_snapshots():
         "temporal_proof_bundle_status_counts": {},
         "theorem_export_blocked_element_count": 0,
         "theorem_export_chronology_task_count": 0,
+        "proof_artifact_element_count": 0,
+        "proof_artifact_available_element_count": 0,
+        "proof_artifact_status_counts": {},
+        "proof_artifact_explanation_element_count": 0,
+        "proof_artifact_preview": [],
         "flagged_elements": [],
     }
     mediator.get_claim_support_diagnostic_snapshots.assert_called_once_with(
@@ -2011,6 +2054,11 @@ def test_claim_support_review_payload_recomputes_stale_diagnostic_snapshots():
         "temporal_proof_bundle_status_counts": {},
         "theorem_export_blocked_element_count": 0,
         "theorem_export_chronology_task_count": 0,
+        "proof_artifact_element_count": 0,
+        "proof_artifact_available_element_count": 0,
+        "proof_artifact_status_counts": {},
+        "proof_artifact_explanation_element_count": 0,
+        "proof_artifact_preview": [],
         "flagged_elements": [],
     }
     mediator.get_claim_support_gaps.assert_called_once_with(
@@ -2541,6 +2589,32 @@ def test_claim_support_review_payload_includes_confirmed_handoff_metadata():
         },
     }
     assert payload["recommended_next_action"] == ""
+    assert payload["workflow_phase_priority"] == {
+        "phase_name": "document_generation",
+        "status": "warning",
+        "title": "Resolve drafting readiness before filing",
+        "summary": "Document generation should wait until evidence review and packet blockers are reduced further.",
+        "recommended_actions": [
+            "Reduce unresolved packet blockers and confirm the evidence packet before generating a formal complaint.",
+        ],
+        "chip_labels": [
+            "workflow phase: Document Generation",
+            "phase status: Warning",
+            "proof readiness: 0.00",
+            "unresolved temporal issues: 0",
+            "unresolved without review path: 0",
+        ],
+        "action_id": "review_packet_readiness",
+        "button_id": "intake-next-action-review-packet-readiness",
+        "action_label": "Review packet readiness",
+        "status_message": "Showing packet readiness summary and evidence blockers before drafting.",
+        "signals": {
+            "recommended_next_action": "",
+            "proof_readiness_score": 0.0,
+            "unresolved_temporal_issue_count": 0,
+            "unresolved_without_review_path_count": 0,
+        },
+    }
     assert payload["primary_validation_target"] == {}
     assert payload["intake_status"]["intake_summary_handoff"] == payload["intake_summary_handoff"]
     assert payload["intake_case_summary"]["intake_summary_handoff"] == payload["intake_summary_handoff"]

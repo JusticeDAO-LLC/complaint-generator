@@ -2310,6 +2310,24 @@
                         ${(element.unavailable_adapters || []).map((name) => `<span class="chip">unavailable ${escapeHtml(name)}</span>`).join('')}
                         ${(element.degraded_adapters || []).map((name) => `<span class="chip">degraded ${escapeHtml(name)}</span>`).join('')}
                     </div>
+                    <div class="button-row" style="margin-top: 12px;">
+                        ${element.proof_artifact_proof_id ? `
+                            <button
+                                class="button-secondary proof-copy-id-button"
+                                type="button"
+                                data-proof-id="${escapeHtml(element.proof_artifact_proof_id)}"
+                                data-proof-element="${escapeHtml(element.element_text || element.element_id || 'claim element')}"
+                            >Copy proof ID</button>
+                        ` : ''}
+                        ${element.proof_artifact_explanation_text ? `
+                            <button
+                                class="button-tertiary proof-copy-explanation-button"
+                                type="button"
+                                data-proof-explanation="${escapeHtml(element.proof_artifact_explanation_text)}"
+                                data-proof-element="${escapeHtml(element.element_text || element.element_id || 'claim element')}"
+                            >Copy proof explanation</button>
+                        ` : ''}
+                    </div>
                     ${renderFormulaPreviewDetails('TDFOL preview', element.hybrid_tdfol_formula_preview || [], 'No TDFOL preview formulas for this element.')}
                     ${renderFormulaPreviewDetails('DCEC preview', element.hybrid_dcec_formula_preview || [], 'No DCEC preview formulas for this element.')}
                     ${renderFormulaPreviewDetails('Temporal rule blockers', element.temporal_rule_blocking_reasons || [], 'No temporal rule blockers for this element.')}
@@ -2768,12 +2786,136 @@
             const workflowPhasePlan = reviewRenderState.payload && reviewRenderState.payload.workflow_phase_plan && typeof reviewRenderState.payload.workflow_phase_plan === 'object'
                 ? reviewRenderState.payload.workflow_phase_plan
                 : {};
+            const workflowPhasePriorityFromPayload = reviewRenderState.payload && reviewRenderState.payload.workflow_phase_priority && typeof reviewRenderState.payload.workflow_phase_priority === 'object'
+                ? reviewRenderState.payload.workflow_phase_priority
+                : {};
             const workflowPhases = workflowPhasePlan.phases && typeof workflowPhasePlan.phases === 'object'
                 ? workflowPhasePlan.phases
                 : {};
             const workflowOrder = Array.isArray(workflowPhasePlan.recommended_order)
                 ? workflowPhasePlan.recommended_order.filter((phaseName) => workflowPhases[phaseName] && typeof workflowPhases[phaseName] === 'object')
                 : [];
+
+            function resolveReviewWorkflowPhasePriority(workflowPhasePlanPayload) {
+                if (!workflowPhasePlanPayload || typeof workflowPhasePlanPayload !== 'object') {
+                    return null;
+                }
+                const phaseMap = workflowPhasePlanPayload.phases && typeof workflowPhasePlanPayload.phases === 'object'
+                    ? workflowPhasePlanPayload.phases
+                    : {};
+                const orderedPhaseNames = Array.isArray(workflowPhasePlanPayload.recommended_order)
+                    ? workflowPhasePlanPayload.recommended_order.filter((phaseName) => phaseMap[phaseName] && typeof phaseMap[phaseName] === 'object')
+                    : [];
+                const prioritizedPhaseName = orderedPhaseNames.find((phaseName) => String(phaseMap[phaseName].status || 'ready').trim().toLowerCase() !== 'ready');
+                if (!prioritizedPhaseName) {
+                    return null;
+                }
+                const prioritizedPhase = phaseMap[prioritizedPhaseName] || {};
+                const prioritizedSignals = prioritizedPhase.signals && typeof prioritizedPhase.signals === 'object'
+                    ? prioritizedPhase.signals
+                    : {};
+                const prioritizedActions = Array.isArray(prioritizedPhase.recommended_actions)
+                    ? prioritizedPhase.recommended_actions.map((item) => {
+                        if (!item) {
+                            return '';
+                        }
+                        if (typeof item === 'string') {
+                            return item.trim();
+                        }
+                        if (typeof item === 'object') {
+                            return String(item.recommended_action || item.action || '').trim();
+                        }
+                        return String(item).trim();
+                    }).filter(Boolean)
+                    : [];
+                if (prioritizedPhaseName === 'graph_analysis') {
+                    const knowledgeGraphAvailable = Boolean(prioritizedSignals.knowledge_graph_available);
+                    const dependencyGraphAvailable = Boolean(prioritizedSignals.dependency_graph_available);
+                    const remainingGapCount = Number(prioritizedSignals.remaining_gap_count || 0);
+                    const currentGapCount = Number(prioritizedSignals.current_gap_count || 0);
+                    const graphEnhanced = prioritizedSignals.knowledge_graph_enhanced;
+                    if (!knowledgeGraphAvailable) {
+                        return {
+                            phaseName: prioritizedPhaseName,
+                            status: prioritizedPhase.status || 'warning',
+                            summary: prioritizedPhase.summary || '',
+                            actions: prioritizedActions,
+                            chips: [
+                                `<span class="chip">workflow phase: ${humanizeQueryValue(prioritizedPhaseName)}</span>`,
+                                `<span class="chip">phase status: ${humanizeQueryValue(prioritizedPhase.status || 'warning')}</span>`,
+                                '<span class="chip">knowledge graph available: no</span>',
+                                `<span class="chip">dependency graph available: ${dependencyGraphAvailable ? 'yes' : 'no'}</span>`,
+                            ],
+                            buttonId: 'intake-next-action-review-knowledge-graph',
+                            buttonLabel: 'Review intake graph inputs',
+                            statusMessage: 'Showing timeline and canonical fact inputs for intake graph building.',
+                        };
+                    }
+                    if (!dependencyGraphAvailable) {
+                        return {
+                            phaseName: prioritizedPhaseName,
+                            status: prioritizedPhase.status || 'warning',
+                            summary: prioritizedPhase.summary || '',
+                            actions: prioritizedActions,
+                            chips: [
+                                `<span class="chip">workflow phase: ${humanizeQueryValue(prioritizedPhaseName)}</span>`,
+                                `<span class="chip">phase status: ${humanizeQueryValue(prioritizedPhase.status || 'warning')}</span>`,
+                                '<span class="chip">knowledge graph available: yes</span>',
+                                '<span class="chip">dependency graph available: no</span>',
+                            ],
+                            buttonId: 'intake-next-action-review-dependencies',
+                            buttonLabel: 'Review dependency inputs',
+                            statusMessage: 'Showing alignment and contradiction inputs for dependency graph review.',
+                        };
+                    }
+                    const graphPhaseChips = [
+                        `<span class="chip">workflow phase: ${humanizeQueryValue(prioritizedPhaseName)}</span>`,
+                        `<span class="chip">phase status: ${humanizeQueryValue(prioritizedPhase.status || 'warning')}</span>`,
+                        `<span class="chip">remaining gap count: ${remainingGapCount}</span>`,
+                        `<span class="chip">current gap count: ${currentGapCount}</span>`,
+                    ];
+                    if (graphEnhanced !== undefined) {
+                        graphPhaseChips.push(`<span class="chip">knowledge graph enhanced: ${Boolean(graphEnhanced) ? 'yes' : 'no'}</span>`);
+                    }
+                    return {
+                        phaseName: prioritizedPhaseName,
+                        status: prioritizedPhase.status || 'warning',
+                        summary: prioritizedPhase.summary || '',
+                        actions: prioritizedActions,
+                        chips: graphPhaseChips,
+                        buttonId: 'intake-next-action-review-gaps',
+                        buttonLabel: 'Review intake gaps',
+                        statusMessage: 'Showing unresolved intake gaps and targeted questions.',
+                    };
+                }
+                if (prioritizedPhaseName === 'document_generation') {
+                    const recommendedNextAction = String(prioritizedSignals.recommended_next_action || '').trim();
+                    const proofReadinessScore = Number(prioritizedSignals.proof_readiness_score || 0);
+                    const unresolvedTemporalIssueCount = Number(prioritizedSignals.unresolved_temporal_issue_count || 0);
+                    const unresolvedWithoutReviewPathCount = Number(prioritizedSignals.unresolved_without_review_path_count || 0);
+                    const documentPhaseChips = [
+                        `<span class="chip">workflow phase: ${humanizeQueryValue(prioritizedPhaseName)}</span>`,
+                        `<span class="chip">phase status: ${humanizeQueryValue(prioritizedPhase.status || 'warning')}</span>`,
+                        `<span class="chip">proof readiness: ${proofReadinessScore.toFixed(2)}</span>`,
+                        `<span class="chip">unresolved temporal issues: ${unresolvedTemporalIssueCount}</span>`,
+                        `<span class="chip">unresolved without review path: ${unresolvedWithoutReviewPathCount}</span>`,
+                    ];
+                    if (recommendedNextAction) {
+                        documentPhaseChips.push(`<span class="chip">recommended action: ${recommendedNextAction}</span>`);
+                    }
+                    return {
+                        phaseName: prioritizedPhaseName,
+                        status: prioritizedPhase.status || 'warning',
+                        summary: prioritizedPhase.summary || '',
+                        actions: prioritizedActions,
+                        chips: documentPhaseChips,
+                        buttonId: 'intake-next-action-review-packet-readiness',
+                        buttonLabel: 'Review packet readiness',
+                        statusMessage: 'Showing packet readiness summary and evidence blockers before drafting.',
+                    };
+                }
+                return null;
+            }
 
             if (workflowOrder.length) {
                 const topPhaseName = workflowOrder[0];
@@ -3511,9 +3653,44 @@
                     </div>
                 `;
             } else {
-                intakeNextActionBanner.hidden = true;
-                intakeNextActionChips.innerHTML = '';
-                intakeNextActionNotes.textContent = '';
+                const workflowPhasePriority = Object.keys(workflowPhasePriorityFromPayload).length
+                    ? workflowPhasePriorityFromPayload
+                    : resolveReviewWorkflowPhasePriority(workflowPhasePlan);
+                if (workflowPhasePriority) {
+                    intakeNextActionBanner.hidden = false;
+                    intakeNextActionBanner.classList.toggle('is-error', String(workflowPhasePriority.status || '').trim().toLowerCase() === 'blocked');
+                    const workflowPhaseName = String(workflowPhasePriority.phase_name || workflowPhasePriority.phaseName || '').trim();
+                    const workflowPhaseChipLabels = Array.isArray(workflowPhasePriority.chip_labels)
+                        ? workflowPhasePriority.chip_labels.filter(Boolean)
+                        : Array.isArray(workflowPhasePriority.chips)
+                            ? workflowPhasePriority.chips.filter(Boolean)
+                            : [];
+                    const workflowPriorityActions = Array.isArray(workflowPhasePriority.recommended_actions)
+                        ? workflowPhasePriority.recommended_actions.filter(Boolean)
+                        : Array.isArray(workflowPhasePriority.actions)
+                            ? workflowPhasePriority.actions.filter(Boolean)
+                            : [];
+                    const workflowPriorityButtonId = workflowPhasePriority.button_id || workflowPhasePriority.buttonId || `intake-next-action-${workflowPhasePriority.action_id || 'workflow-phase-priority'}`;
+                    intakeNextActionTitle.textContent = workflowPhasePriority.title || (workflowPhaseName === 'graph_analysis'
+                        ? 'Resolve graph analysis before drafting'
+                        : 'Resolve drafting readiness before filing');
+                    intakeNextActionStatus.textContent = workflowPhasePriority.action_id
+                        ? `workflow_phase_${workflowPhasePriority.action_id}`
+                        : `workflow_phase_${workflowPhaseName || 'priority'}`;
+                    intakeNextActionChips.innerHTML = workflowPhaseChipLabels.map((label) => `<span class="chip">${escapeHtml(label)}</span>`).join('');
+                    intakeNextActionNotes.innerHTML = `
+                        ${escapeHtml(workflowPhasePriority.summary || '')}
+                        ${workflowPriorityActions.length ? `<div style="margin-top: 10px;">Recommended actions: ${escapeHtml(workflowPriorityActions.join(' | '))}</div>` : ''}
+                        <div class="button-row" style="margin-top: 12px;">
+                            <button class="button-secondary" id="${workflowPriorityButtonId}" type="button">${escapeHtml(workflowPhasePriority.action_label || workflowPhasePriority.buttonLabel || 'Review workflow priority')}</button>
+                        </div>
+                    `;
+                } else {
+                    intakeNextActionBanner.hidden = true;
+                    intakeNextActionBanner.classList.remove('is-error');
+                    intakeNextActionChips.innerHTML = '';
+                    intakeNextActionNotes.textContent = '';
+                }
             }
 
             claimContainer.innerHTML = candidateClaims.length
@@ -4358,17 +4535,16 @@
             return `${title}: ${visibleEntries.join(', ')}${suffix}`;
         }
 
-        async function copyPacketUrl(url, label) {
-            if (!url) {
-                throw new Error('No packet URL available to copy.');
-                return;
+        async function copyPlainText(value, emptyMessage) {
+            if (!value) {
+                throw new Error(emptyMessage || 'Nothing available to copy.');
             }
             if (navigator.clipboard && navigator.clipboard.writeText) {
-                await navigator.clipboard.writeText(url);
+                await navigator.clipboard.writeText(value);
                 return;
             }
             const input = document.createElement('textarea');
-            input.value = url;
+            input.value = value;
             input.setAttribute('readonly', 'readonly');
             input.style.position = 'absolute';
             input.style.left = '-9999px';
@@ -4376,6 +4552,10 @@
             input.select();
             document.execCommand('copy');
             document.body.removeChild(input);
+        }
+
+        async function copyPacketUrl(url, label) {
+            await copyPlainText(url, 'No packet URL available to copy.');
         }
 
         function openPacketUrl(url, label) {
@@ -5915,6 +6095,16 @@
             window.location.assign(targetUrl);
         }
 
+        function openPacketReadinessReview() {
+            const focusTarget = document.getElementById('claim-support-packet-summary-chips')
+                || document.getElementById('alignment-evidence-task-list')
+                || document.getElementById('alignment-task-manual-review-list')
+                || document.getElementById('alignment-task-update-list');
+            if (focusTarget && typeof focusTarget.scrollIntoView === 'function') {
+                focusTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
         function openKnowledgeGraphInputsReview() {
             const timelineSummary = document.getElementById('intake-timeline-summary-chips');
             const timelineList = document.getElementById('intake-timeline-relation-list');
@@ -6126,6 +6316,26 @@
                 applyPacketFilter(detailsElement, filterButton.getAttribute('data-filter-value') || 'all');
                 return;
             }
+            const proofIdButton = event.target.closest('.proof-copy-id-button');
+            if (proofIdButton) {
+                copyPlainText(
+                    proofIdButton.dataset.proofId || '',
+                    'No proof ID available to copy.',
+                )
+                    .then(() => setStatus(`Proof ID copied for ${proofIdButton.dataset.proofElement || 'the selected element'}.`))
+                    .catch((error) => setStatus(`Proof ID copy failed: ${error.message}`));
+                return;
+            }
+            const proofExplanationButton = event.target.closest('.proof-copy-explanation-button');
+            if (proofExplanationButton) {
+                copyPlainText(
+                    proofExplanationButton.dataset.proofExplanation || '',
+                    'No proof explanation available to copy.',
+                )
+                    .then(() => setStatus(`Proof explanation copied for ${proofExplanationButton.dataset.proofElement || 'the selected element'}.`))
+                    .catch((error) => setStatus(`Proof explanation copy failed: ${error.message}`));
+                return;
+            }
             const button = event.target.closest('.prefill-resolution-button');
             if (button) {
                 prefillResolutionForm({
@@ -6314,6 +6524,12 @@
             const openDocumentBuilderBannerButton = event.target.closest('#intake-next-action-open-document-builder');
             if (openDocumentBuilderBannerButton) {
                 openDocumentDraftingHandoff();
+                return;
+            }
+            const reviewPacketReadinessBannerButton = event.target.closest('#intake-next-action-review-packet-readiness');
+            if (reviewPacketReadinessBannerButton) {
+                openPacketReadinessReview();
+                setStatus('Showing packet readiness summary and evidence blockers before drafting.');
                 return;
             }
             const openFormalGeneratorBannerButton = event.target.closest('#intake-next-action-open-formal-generator');

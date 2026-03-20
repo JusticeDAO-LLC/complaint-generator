@@ -379,6 +379,148 @@ def _build_review_workflow_phase_plan(
     return build_workflow_phase_plan(phases)
 
 
+def _humanize_workflow_phase_priority_label(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "Unknown"
+    return text.replace("_", " ").replace("-", " ").title()
+
+
+def _build_review_workflow_phase_priority(
+    workflow_phase_plan: Dict[str, Any],
+) -> Dict[str, Any]:
+    if not isinstance(workflow_phase_plan, dict):
+        return {}
+
+    phases = workflow_phase_plan.get("phases") if isinstance(workflow_phase_plan.get("phases"), dict) else {}
+    ordered_phase_names = [
+        phase_name
+        for phase_name in (workflow_phase_plan.get("recommended_order") or [])
+        if isinstance(phase_name, str) and isinstance(phases.get(phase_name), dict)
+    ]
+    prioritized_phase_name = next(
+        (
+            phase_name
+            for phase_name in ordered_phase_names
+            if str((phases.get(phase_name) or {}).get("status") or "ready").strip().lower() != "ready"
+        ),
+        None,
+    )
+    if not prioritized_phase_name:
+        return {}
+
+    prioritized_phase = dict(phases.get(prioritized_phase_name) or {})
+    prioritized_status = str(prioritized_phase.get("status") or "warning").strip().lower() or "warning"
+    prioritized_signals = (
+        dict(prioritized_phase.get("signals") or {})
+        if isinstance(prioritized_phase.get("signals"), dict)
+        else {}
+    )
+    recommended_actions = []
+    for item in prioritized_phase.get("recommended_actions") or []:
+        if isinstance(item, str):
+            text = item.strip()
+        elif isinstance(item, dict):
+            text = str(item.get("recommended_action") or item.get("action") or "").strip()
+        else:
+            text = str(item or "").strip()
+        if text:
+            recommended_actions.append(text)
+
+    if prioritized_phase_name == "graph_analysis":
+        knowledge_graph_available = bool(prioritized_signals.get("knowledge_graph_available"))
+        dependency_graph_available = bool(prioritized_signals.get("dependency_graph_available"))
+        remaining_gap_count = int(prioritized_signals.get("remaining_gap_count") or 0)
+        current_gap_count = int(prioritized_signals.get("current_gap_count") or 0)
+        chip_labels = [
+            f"workflow phase: {_humanize_workflow_phase_priority_label(prioritized_phase_name)}",
+            f"phase status: {_humanize_workflow_phase_priority_label(prioritized_status)}",
+        ]
+        if not knowledge_graph_available:
+            chip_labels.extend(
+                [
+                    "knowledge graph available: no",
+                    f"dependency graph available: {'yes' if dependency_graph_available else 'no'}",
+                ]
+            )
+            action_id = "review_knowledge_graph_inputs"
+            button_id = "intake-next-action-review-knowledge-graph"
+            action_label = "Review intake graph inputs"
+            status_message = "Showing timeline and canonical fact inputs for intake graph building."
+        elif not dependency_graph_available:
+            chip_labels.extend(
+                [
+                    "knowledge graph available: yes",
+                    "dependency graph available: no",
+                ]
+            )
+            action_id = "review_dependency_inputs"
+            button_id = "intake-next-action-review-dependencies"
+            action_label = "Review dependency inputs"
+            status_message = "Showing alignment and contradiction inputs for dependency graph review."
+        else:
+            chip_labels.extend(
+                [
+                    f"remaining gap count: {remaining_gap_count}",
+                    f"current gap count: {current_gap_count}",
+                ]
+            )
+            if "knowledge_graph_enhanced" in prioritized_signals:
+                chip_labels.append(
+                    f"knowledge graph enhanced: {'yes' if bool(prioritized_signals.get('knowledge_graph_enhanced')) else 'no'}"
+                )
+            action_id = "review_intake_gaps"
+            button_id = "intake-next-action-review-gaps"
+            action_label = "Review intake gaps"
+            status_message = "Showing unresolved intake gaps and targeted questions."
+
+        return {
+            "phase_name": prioritized_phase_name,
+            "status": prioritized_status,
+            "title": "Resolve graph analysis before drafting",
+            "summary": str(prioritized_phase.get("summary") or "").strip(),
+            "recommended_actions": recommended_actions,
+            "chip_labels": chip_labels,
+            "action_id": action_id,
+            "button_id": button_id,
+            "action_label": action_label,
+            "status_message": status_message,
+            "signals": prioritized_signals,
+        }
+
+    if prioritized_phase_name == "document_generation":
+        proof_readiness_score = float(prioritized_signals.get("proof_readiness_score") or 0.0)
+        unresolved_temporal_issue_count = int(prioritized_signals.get("unresolved_temporal_issue_count") or 0)
+        unresolved_without_review_path_count = int(
+            prioritized_signals.get("unresolved_without_review_path_count") or 0
+        )
+        recommended_next_action = str(prioritized_signals.get("recommended_next_action") or "").strip()
+        chip_labels = [
+            f"workflow phase: {_humanize_workflow_phase_priority_label(prioritized_phase_name)}",
+            f"phase status: {_humanize_workflow_phase_priority_label(prioritized_status)}",
+            f"proof readiness: {proof_readiness_score:.2f}",
+            f"unresolved temporal issues: {unresolved_temporal_issue_count}",
+            f"unresolved without review path: {unresolved_without_review_path_count}",
+        ]
+        if recommended_next_action:
+            chip_labels.append(f"recommended action: {recommended_next_action}")
+        return {
+            "phase_name": prioritized_phase_name,
+            "status": prioritized_status,
+            "title": "Resolve drafting readiness before filing",
+            "summary": str(prioritized_phase.get("summary") or "").strip(),
+            "recommended_actions": recommended_actions,
+            "chip_labels": chip_labels,
+            "action_id": "review_packet_readiness",
+            "button_id": "intake-next-action-review-packet-readiness",
+            "action_label": "Review packet readiness",
+            "status_message": "Showing packet readiness summary and evidence blockers before drafting.",
+            "signals": prioritized_signals,
+        }
+
+    return {}
+
+
 def summarize_claim_support_snapshot_lifecycle(
     snapshots: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
@@ -2913,6 +3055,7 @@ def build_claim_support_review_payload(
         intake_status=intake_status,
         intake_case_summary=intake_case_summary,
     )
+    workflow_phase_priority = _build_review_workflow_phase_priority(workflow_phase_plan)
     handoff_metadata = _build_confirmed_intake_summary_handoff_metadata(mediator)
 
     payload: Dict[str, Any] = {
@@ -2927,6 +3070,7 @@ def build_claim_support_review_payload(
             else ""
         ),
         "workflow_phase_plan": workflow_phase_plan,
+        "workflow_phase_priority": workflow_phase_priority,
         "primary_validation_target": (
             dict(intake_status.get("primary_validation_target"))
             if isinstance(intake_status.get("primary_validation_target"), dict)

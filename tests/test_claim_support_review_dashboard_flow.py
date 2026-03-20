@@ -2,9 +2,9 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from bs4 import BeautifulSoup
-from fastapi import FastAPI
-from fastapi import Response
+BeautifulSoup = pytest.importorskip("bs4").BeautifulSoup
+FastAPI = pytest.importorskip("fastapi").FastAPI
+Response = pytest.importorskip("fastapi").Response
 
 from applications.review_api import attach_claim_support_review_routes
 from applications.review_ui import attach_claim_support_review_ui_routes
