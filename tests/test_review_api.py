@@ -122,6 +122,16 @@ def _build_hook_backed_review_api_mediator(db_path: str):
         "alignment_evidence_tasks": [],
         "alignment_task_updates": [],
         "alignment_task_update_history": [],
+        "alignment_task_summary": {
+            "count": 1,
+            "status_counts": {"unsupported": 1},
+            "resolution_status_counts": {"still_open": 1},
+            "temporal_gap_task_count": 1,
+            "temporal_gap_targeted_task_count": 1,
+            "temporal_rule_status_counts": {"partial": 1},
+            "temporal_rule_blocking_reason_counts": {"Need retaliation chronology sequencing.": 1},
+            "temporal_resolution_status_counts": {"still_open": 1},
+        },
     }
 
     return mediator, hook
@@ -2029,6 +2039,16 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
         "alignment_evidence_tasks": [],
         "alignment_task_updates": [],
         "alignment_task_update_history": [],
+        "alignment_task_summary": {
+            "count": 1,
+            "status_counts": {"unsupported": 1},
+            "resolution_status_counts": {"still_open": 1},
+            "temporal_gap_task_count": 1,
+            "temporal_gap_targeted_task_count": 1,
+            "temporal_rule_status_counts": {"partial": 1},
+            "temporal_rule_blocking_reason_counts": {"Need retaliation chronology sequencing.": 1},
+            "temporal_resolution_status_counts": {"still_open": 1},
+        },
     }
     mediator.execute_claim_follow_up_plan.return_value = {
         "claims": {
@@ -2425,6 +2445,16 @@ def test_claim_support_review_payload_includes_confirmed_handoff_metadata():
         "alignment_evidence_tasks": [],
         "alignment_task_updates": [],
         "alignment_task_update_history": [],
+        "alignment_task_summary": {
+            "count": 1,
+            "status_counts": {"unsupported": 1},
+            "resolution_status_counts": {"still_open": 1},
+            "temporal_gap_task_count": 1,
+            "temporal_gap_targeted_task_count": 1,
+            "temporal_rule_status_counts": {"partial": 1},
+            "temporal_rule_blocking_reason_counts": {"Need retaliation chronology sequencing.": 1},
+            "temporal_resolution_status_counts": {"still_open": 1},
+        },
     }
     mediator.get_claim_coverage_matrix.return_value = {
         "claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}
@@ -3011,6 +3041,16 @@ def test_claim_support_document_payload_persists_and_refreshes_review():
         "alignment_evidence_tasks": [],
         "alignment_task_updates": [],
         "alignment_task_update_history": [],
+        "alignment_task_summary": {
+            "count": 1,
+            "status_counts": {"unsupported": 1},
+            "resolution_status_counts": {"still_open": 1},
+            "temporal_gap_task_count": 1,
+            "temporal_gap_targeted_task_count": 1,
+            "temporal_rule_status_counts": {"partial": 1},
+            "temporal_rule_blocking_reason_counts": {"Need retaliation chronology sequencing.": 1},
+            "temporal_resolution_status_counts": {"still_open": 1},
+        },
     }
 
     payload = build_claim_support_document_payload(
@@ -3028,6 +3068,20 @@ def test_claim_support_document_payload_persists_and_refreshes_review():
     assert payload["recorded"] is True
     assert payload["document_result"]["cid"] == "QmDashboardDoc1"
     assert payload["post_save_review"]["document_summary"]["retaliation"]["record_count"] == 1
+    assert payload["post_save_review"]["intake_case_summary"]["alignment_task_summary"] == {
+        "count": 1,
+        "status_counts": {"unsupported": 1},
+        "resolution_status_counts": {"still_open": 1},
+        "temporal_gap_task_count": 1,
+        "temporal_gap_targeted_task_count": 1,
+        "temporal_rule_status_counts": {"partial": 1},
+        "temporal_rule_blocking_reason_counts": {"Need retaliation chronology sequencing.": 1},
+        "temporal_resolution_status_counts": {"still_open": 1},
+    }
+    assert payload["post_save_review"]["intake_case_summary"]["claim_support_packet_summary"]["temporal_gap_task_count"] == 1
+    assert payload["post_save_review"]["intake_case_summary"]["claim_support_packet_summary"]["temporal_rule_blocking_reason_counts"] == {
+        "Need retaliation chronology sequencing.": 1,
+    }
     mediator.save_claim_support_document.assert_called_once_with(
         claim_type="retaliation",
         user_id="state-user",
