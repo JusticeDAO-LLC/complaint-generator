@@ -1586,6 +1586,18 @@ class AgenticDocumentOptimizer:
         for evidence_row in support_context.get("evidence") or []:
             if isinstance(evidence_row, dict) and evidence_row.get("text"):
                 candidate_rows.append(dict(evidence_row))
+        intake_priorities = support_context.get("intake_priorities") if isinstance(support_context.get("intake_priorities"), dict) else {}
+        for prompt_text in intake_priorities.get("recommended_follow_up_prompts") or []:
+            normalized_prompt = str(prompt_text or "").strip()
+            if not normalized_prompt:
+                continue
+            candidate_rows.append(
+                {
+                    "claim_type": "intake_follow_up",
+                    "text": normalized_prompt,
+                    "kind": "intake_objective_prompt",
+                }
+            )
 
         ranked_rows = self._rank_candidates(query=query, candidates=candidate_rows)
         return {
@@ -1624,7 +1636,24 @@ class AgenticDocumentOptimizer:
                 normalized_candidates.append(
                     "After Plaintiff engaged in protected activity, HACC took adverse action, and the factual timeline supports a causal connection."
                 )
-            payload["factual_allegations"] = self._normalize_lines(normalized_candidates)[:10]
+            normalized_lower = " ".join(item.lower() for item in normalized_candidates)
+            if not any(token in normalized_lower for token in ("hearing request", "review request", "requested a hearing")):
+                normalized_candidates.append(
+                    "Plaintiff requested an informal review or hearing on [date], and the timing of that request should be documented in relation to each adverse-action step."
+                )
+            if not any(token in normalized_lower for token in ("response date", "responded on", "review decision date", "hearing outcome date")):
+                normalized_candidates.append(
+                    "HACC response dates for notice, hearing/review requests, and final decision communications should be identified with exact dates."
+                )
+            if not any(token in normalized_lower for token in ("name or title", "staff name", "staff title")):
+                normalized_candidates.append(
+                    "For each key event, the complaint should identify the HACC staff member by name and title, or by the best-known title if the name is not yet confirmed."
+                )
+            if not any(token in normalized_lower for token in ("shortly after", "within", "days after", "weeks after")):
+                normalized_candidates.append(
+                    "The complaint should state the sequencing between protected activity and adverse treatment using concrete timing (for example, days or weeks after the protected activity)."
+                )
+            payload["factual_allegations"] = self._normalize_lines(normalized_candidates)[:12]
         elif focus_section == "claims_for_relief":
             updated_claims: List[Dict[str, Any]] = []
             claim_supporting_facts: Dict[str, List[str]] = {}
@@ -1699,7 +1728,8 @@ class AgenticDocumentOptimizer:
         if focus_section == "factual_allegations":
             return (
                 "factual allegations pleading-ready support record date anchors "
-                "actor-by-actor decision timeline protected activity causation adverse action"
+                "actor-by-actor decision timeline protected activity causation adverse action "
+                "staff names titles hearing request timing response dates sequence of protected activity and adverse action"
             )
         if focus_section == "claims_for_relief":
             claim_titles = []
@@ -1708,7 +1738,8 @@ class AgenticDocumentOptimizer:
                     claim_titles.append(str(claim.get("claim_type") or claim.get("count_title") or ""))
             return (
                 "claims for relief causal linkage protected activity adverse action "
-                "decision-makers timeline " + " ".join(title for title in claim_titles if title)
+                "decision-makers timeline hearing request timing response dates staff names titles "
+                + " ".join(title for title in claim_titles if title)
             )
         if focus_section == "requested_relief":
             return "requested relief remedies damages injunction reinstatement back pay front pay"

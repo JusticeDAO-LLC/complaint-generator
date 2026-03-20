@@ -153,6 +153,45 @@ def _contains_causation_marker(value: Any) -> bool:
     )
 
 
+def _contains_hearing_timing_marker(value: Any) -> bool:
+    lowered = str(value or "").lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "hearing request",
+            "requested a hearing",
+            "requested review",
+            "review request",
+            "informal hearing request",
+            "grievance request",
+        )
+    ) and any(marker in lowered for marker in ("date", "on ", "after", "before", "within", "days", "weeks"))
+
+
+def _contains_response_date_marker(value: Any) -> bool:
+    lowered = str(value or "").lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "response date",
+            "responded on",
+            "response was",
+            "review decision",
+            "hearing outcome",
+            "notice date",
+            "decision date",
+        )
+    ) and _contains_date_anchor(value)
+
+
+def _contains_staff_identity_marker(value: Any) -> bool:
+    lowered = str(value or "").lower()
+    return (
+        "hacc" in lowered
+        and any(marker in lowered for marker in ("name", "title", "staff", "caseworker", "manager", "officer", "specialist", "director"))
+    )
+
+
 def _roman(index: int) -> str:
     numerals = [
         (1000, "M"),
@@ -1651,7 +1690,23 @@ class FormalComplaintDocumentBuilder:
                     return self._prune_near_duplicate_allegations(allegations)
 
         pruned = self._prune_near_duplicate_allegations(allegations)
-        return pruned or ["Additional factual development is required before filing."]
+        if pruned and not any(_contains_hearing_timing_marker(line) for line in pruned):
+            pruned.append(
+                "Plaintiff requested an informal review or hearing on [date], and the complaint should state when that request was made in relation to each adverse-action step."
+            )
+        if pruned and not any(_contains_response_date_marker(line) for line in pruned):
+            pruned.append(
+                "HACC response dates for notice, hearing/review requests, and final decision communications should be identified with exact dates."
+            )
+        if pruned and not any(_contains_staff_identity_marker(line) for line in pruned):
+            pruned.append(
+                "For each key event, the complaint should identify the HACC staff member by name and title, or by the best-known title if the name is not yet confirmed."
+            )
+        if pruned and not any("days after" in str(line).lower() or "weeks after" in str(line).lower() for line in pruned):
+            pruned.append(
+                "The complaint should describe the sequence between protected activity and adverse treatment using concrete timing, including whether action occurred days or weeks after protected activity."
+            )
+        return pruned[:24] or ["Additional factual development is required before filing."]
 
     def _attach_allegation_references(self, draft: Dict[str, Any]) -> None:
         allegation_lines = self._normalize_text_lines(
