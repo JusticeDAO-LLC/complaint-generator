@@ -749,6 +749,7 @@ def test_review_surface_optimization_trace_route_serves_trace_template():
     assert "Export Trace Bundle" in response.text
     assert "Iteration Changes" in response.text
     assert "Review Snapshot" in response.text
+    assert "Workflow Phase Guidance" in response.text
     assert "Accepted Only" in response.text
     assert "Rejected Only" in response.text
 
@@ -764,6 +765,12 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "Iteration Changes" in content
     assert "Accepted Changes" in content
     assert "Rejected Changes" in content
+    assert "Workflow Phase Guidance" in content
+    assert "traceWorkflowPhaseGuidance" in content
+    assert "resolveWorkflowPhasePlan" in content
+    assert "renderWorkflowPhaseGuidance" in content
+    assert "workflow_phase_plan" in content
+    assert "Recommended order:" in content
     assert "traceEvidenceList" in content
     assert "traceTemporalHandoff" in content
     assert "Intake Evidence Snapshot" in content

@@ -71,6 +71,24 @@ def _parse_iso_timestamp(value: Any) -> Optional[datetime]:
     return parsed.astimezone(timezone.utc)
 
 
+def _coerce_int(value: Any, default: int = 0) -> int:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return default
+        try:
+            return int(text)
+        except ValueError:
+            return default
+    return default
+
+
 def _classify_adaptive_retry_recency(timestamp: Any) -> Dict[str, Any]:
     parsed = _parse_iso_timestamp(timestamp)
     if not parsed:
@@ -367,7 +385,7 @@ def _build_review_workflow_phase_plan(
             knowledge_graph = get_phase_data(ComplaintPhase.INTAKE, "knowledge_graph")
             dependency_graph = get_phase_data(ComplaintPhase.INTAKE, "dependency_graph")
             current_gaps = get_phase_data(ComplaintPhase.INTAKE, "current_gaps") or []
-            remaining_gaps = int(get_phase_data(ComplaintPhase.INTAKE, "remaining_gaps") or 0)
+            remaining_gaps = _coerce_int(get_phase_data(ComplaintPhase.INTAKE, "remaining_gaps"), 0)
             knowledge_graph_enhanced = bool(
                 get_phase_data(ComplaintPhase.EVIDENCE, "knowledge_graph_enhanced")
             )

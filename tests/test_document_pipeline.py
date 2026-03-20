@@ -2477,6 +2477,33 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
             'data': json.dumps(
                 {
                     'user_id': 'state-user',
+                    'workflow_phase_plan': {
+                        'recommended_order': ['intake_questioning', 'graph_analysis', 'document_generation'],
+                        'phases': {
+                            'intake_questioning': {
+                                'status': 'ready',
+                                'summary': 'Intake objectives are adequately covered.',
+                            },
+                            'graph_analysis': {
+                                'status': 'warning',
+                                'summary': 'Knowledge graph gaps still need reduction before drafting.',
+                                'signals': {
+                                    'remaining_gap_count': 2,
+                                    'knowledge_graph_enhanced': False,
+                                },
+                                'recommended_actions': [
+                                    {'recommended_action': 'Fill unresolved graph gaps from intake evidence.'},
+                                ],
+                            },
+                            'document_generation': {
+                                'status': 'warning',
+                                'summary': 'Drafting should wait for graph cleanup and contradiction resolution.',
+                                'recommended_actions': [
+                                    {'recommended_action': 'Re-run document optimization after graph improvements.'},
+                                ],
+                            },
+                        },
+                    },
                     'intake_status': {
                         'current_phase': 'intake',
                         'score': 0.38,
@@ -2563,6 +2590,12 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
     assert payload['cid'] == 'bafy-doc-opt-report'
     assert payload['size'] == 128
     assert payload['trace']['intake_status']['current_phase'] == 'intake'
+    assert payload['trace']['workflow_phase_plan']['recommended_order'] == [
+        'intake_questioning',
+        'graph_analysis',
+        'document_generation',
+    ]
+    assert payload['trace']['workflow_phase_plan']['phases']['graph_analysis']['status'] == 'warning'
     assert payload['trace']['intake_constraints'][0]['code'] == 'intake_blocker'
     assert payload['trace']['claim_support_temporal_handoff'] == {
         'unresolved_temporal_issue_count': 1,

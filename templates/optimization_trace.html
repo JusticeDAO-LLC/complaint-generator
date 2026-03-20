@@ -344,6 +344,10 @@
                 <ul id="traceReviewList"><li class="muted">No trace loaded.</li></ul>
             </section>
             <section class="panel">
+                <h2>Workflow Phase Guidance</h2>
+                <div id="traceWorkflowPhaseGuidance" class="muted">No trace loaded.</div>
+            </section>
+            <section class="panel">
                 <h2>Intake Evidence Snapshot</h2>
                 <ul id="traceEvidenceList"><li class="muted">No trace loaded.</li></ul>
                 <div id="traceEvidenceHandoffs"></div>
@@ -1247,6 +1251,101 @@
             };
         }
 
+        function resolveWorkflowPhasePlan(trace) {
+            const candidates = [
+                trace && trace.workflow_phase_plan,
+                trace && trace.report_summary && trace.report_summary.workflow_phase_plan,
+                trace && trace.report && trace.report.workflow_phase_plan,
+                trace && trace.metadata && trace.metadata.report_summary && trace.metadata.report_summary.workflow_phase_plan,
+                trace && trace.task && trace.task.report_summary && trace.task.report_summary.workflow_phase_plan,
+                trace && trace.task && trace.task.metadata && trace.task.metadata.report_summary && trace.task.metadata.report_summary.workflow_phase_plan,
+            ];
+            for (const candidate of candidates) {
+                if (candidate && typeof candidate === 'object' && Object.keys(candidate).length) {
+                    return candidate;
+                }
+            }
+            return {};
+        }
+
+        function summarizeWorkflowPhaseSignalLines(signals) {
+            const normalizedSignals = signals && typeof signals === 'object' ? signals : {};
+            return Object.entries(normalizedSignals).flatMap(([key, value]) => {
+                if (Array.isArray(value)) {
+                    const entries = value.map((item) => String(item || '').trim()).filter(Boolean);
+                    return entries.length ? [`${humanizeKey(key)}: ${entries.join(', ')}`] : [];
+                }
+                if (value && typeof value === 'object') {
+                    const entries = Object.entries(value)
+                        .map(([entryKey, entryValue]) => {
+                            const normalizedValue = String(entryValue ?? '').trim();
+                            if (!normalizedValue) {
+                                return '';
+                            }
+                            return `${humanizeKey(entryKey)} ${normalizedValue}`;
+                        })
+                        .filter(Boolean);
+                    return entries.length ? [`${humanizeKey(key)}: ${entries.join(', ')}`] : [];
+                }
+                if (value === '' || value == null) {
+                    return [];
+                }
+                if (typeof value === 'boolean') {
+                    return [`${humanizeKey(key)}: ${value ? 'yes' : 'no'}`];
+                }
+                return [`${humanizeKey(key)}: ${String(value)}`];
+            });
+        }
+
+        function renderWorkflowPhaseGuidance(workflowPhasePlan) {
+            const normalizedPlan = workflowPhasePlan && typeof workflowPhasePlan === 'object' ? workflowPhasePlan : {};
+            const phases = normalizedPlan.phases && typeof normalizedPlan.phases === 'object' ? normalizedPlan.phases : {};
+            const orderedNames = Array.isArray(normalizedPlan.recommended_order)
+                ? normalizedPlan.recommended_order.map((value) => String(value || '').trim()).filter(Boolean)
+                : [];
+            if (!orderedNames.length || !Object.keys(phases).length) {
+                return '<div class="muted">No workflow phase guidance recorded for this trace.</div>';
+            }
+
+            const cards = orderedNames.map((phaseName, index) => {
+                const phase = phases[phaseName] && typeof phases[phaseName] === 'object' ? phases[phaseName] : {};
+                const title = String(phase.title || humanizeKey(phaseName)).trim();
+                const status = String(phase.status || 'ready').trim().toLowerCase();
+                const summary = String(phase.summary || '').trim();
+                const targetFiles = Array.isArray(phase.target_files)
+                    ? phase.target_files.map((value) => String(value || '').trim()).filter(Boolean)
+                    : [];
+                const recommendedActions = Array.isArray(phase.recommended_actions)
+                    ? phase.recommended_actions
+                        .map((entry) => entry && typeof entry === 'object' ? String(entry.recommended_action || '').trim() : String(entry || '').trim())
+                        .filter(Boolean)
+                    : [];
+                const signalLines = summarizeWorkflowPhaseSignalLines(phase.signals);
+                const detailLines = [
+                    summary,
+                    signalLines[0] || '',
+                    signalLines[1] || '',
+                    targetFiles.length ? `Targets: ${targetFiles.slice(0, 3).join(', ')}` : '',
+                    recommendedActions.length ? `Next actions: ${recommendedActions.slice(0, 3).join(' | ')}` : '',
+                ].filter(Boolean);
+                return `
+                    <div class="change-group ${status === 'ready' ? 'accepted' : 'rejected'}">
+                        <div class="change-group-title">
+                            <span>${escapeHtml(`${index + 1}. ${title}`)}</span>
+                            <span class="change-group-badge">${escapeHtml(humanizeKey(status))}</span>
+                        </div>
+                        <ul>${detailLines.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>
+                    </div>
+                `;
+            }).join('');
+
+            const orderedLabel = orderedNames.map((phaseName) => humanizeKey(phaseName)).join(' -> ');
+            return `
+                <div class="muted"><strong>Recommended order:</strong> ${escapeHtml(orderedLabel)}</div>
+                <div style="margin-top: 12px;">${cards}</div>
+            `;
+        }
+
         function renderTrace(payload) {
             activeTracePayload = payload;
             setExportEnabled(true);
@@ -1259,6 +1358,7 @@
             const filteredIterations = filterIterations(iterations);
             const initialReview = trace.initial_review && typeof trace.initial_review === 'object' ? trace.initial_review : {};
             const finalReview = trace.final_review && typeof trace.final_review === 'object' ? trace.final_review : {};
+            const workflowPhasePlan = resolveWorkflowPhasePlan(trace);
             const candidateClaims = Array.isArray(intakeCaseSummary.candidate_claims) ? intakeCaseSummary.candidate_claims : [];
             const candidateClaimSummary = buildCandidateClaimSummary(
                 candidateClaims,
@@ -1425,6 +1525,8 @@
                     `Relief-targeted optimization: ${reliefTargeted ? 'yes' : 'no'}`,
                 ].filter(Boolean),
             );
+
+            document.getElementById('traceWorkflowPhaseGuidance').innerHTML = renderWorkflowPhaseGuidance(workflowPhasePlan);
 
             renderList(
                 document.getElementById('traceEvidenceList'),
