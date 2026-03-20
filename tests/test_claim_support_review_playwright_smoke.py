@@ -1684,6 +1684,24 @@ def test_document_builder_smoke_uses_workflow_phase_plan_for_priority_when_next_
         "filing_checklist": [],
         "review_links": {
             "dashboard_url": "/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+            "workflow_phase_priority": {
+                "phase_name": "graph_analysis",
+                "status": "warning",
+                "title": "Resolve graph analysis before drafting",
+                "description": "Graph analysis still shows unresolved gaps before drafting.",
+                "action_label": "Review graph inputs",
+                "action_url": "/claim-support-review?claim_type=retaliation&section=summary_of_facts&user_id=browser-smoke-text-link&follow_up_support_kind=evidence",
+                "action_kind": "link",
+                "dashboard_url": "/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+                "recommended_actions": [
+                    "Resolve remaining intake graph gaps and refresh graph projections before filing.",
+                ],
+                "chip_labels": [
+                    "workflow phase: Graph Analysis",
+                    "phase status: Warning",
+                    "recommended action: Resolve remaining intake graph gaps and refresh graph projections before filing.",
+                ],
+            },
             "intake_case_summary": {
                 "contradiction_summary": {"count": 1},
                 "question_candidate_summary": {"count": 2},

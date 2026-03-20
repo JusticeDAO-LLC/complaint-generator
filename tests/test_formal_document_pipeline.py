@@ -347,6 +347,26 @@ def test_document_api_annotation_promotes_confirmed_intake_handoff():
             },
             'drafting_readiness': {
                 'status': 'warning',
+                'workflow_phase_plan': {
+                    'recommended_order': ['graph_analysis', 'document_generation'],
+                    'phases': {
+                        'graph_analysis': {
+                            'status': 'warning',
+                            'summary': 'Graph analysis still shows 0 unresolved gap(s) or unprojected evidence updates.',
+                            'recommended_actions': [
+                                'Resolve remaining intake graph gaps and refresh graph projections before filing.',
+                                'Project newly collected evidence into the complaint knowledge graph.',
+                            ],
+                        },
+                        'document_generation': {
+                            'status': 'warning',
+                            'summary': 'Document generation still has 1 section warning(s) and 1 claim warning(s) to review.',
+                            'recommended_actions': [
+                                'Review claims-for-relief, exhibits, and requested-relief warnings before filing.',
+                            ],
+                        },
+                    },
+                },
                 'sections': {
                     'claims_for_relief': {
                         'status': 'warning',
@@ -371,6 +391,25 @@ def test_document_api_annotation_promotes_confirmed_intake_handoff():
     assert payload['document_optimization']['intake_summary_handoff'] == payload['intake_summary_handoff']
     assert payload['review_links']['intake_status']['intake_summary_handoff'] == payload['intake_summary_handoff']
     assert payload['review_links']['intake_case_summary']['intake_summary_handoff'] == payload['intake_summary_handoff']
+    assert payload['review_links']['workflow_phase_priority'] == {
+        'phase_name': 'graph_analysis',
+        'status': 'warning',
+        'title': 'Resolve graph analysis before drafting',
+        'description': 'Graph analysis still shows 0 unresolved gap(s) or unprojected evidence updates.',
+        'action_label': 'Review graph inputs',
+        'action_url': '/claim-support-review?user_id=Jane+Doe&claim_type=retaliation&section=summary_of_facts&follow_up_support_kind=evidence',
+        'action_kind': 'link',
+        'dashboard_url': '/claim-support-review?user_id=Jane+Doe',
+        'recommended_actions': [
+            'Resolve remaining intake graph gaps and refresh graph projections before filing.',
+            'Project newly collected evidence into the complaint knowledge graph.',
+        ],
+        'chip_labels': [
+            'workflow phase: Graph Analysis',
+            'phase status: Warning',
+            'recommended action: Resolve remaining intake graph gaps and refresh graph projections before filing.',
+        ],
+    }
 
 
 def test_document_optimizer_report_promotes_confirmed_intake_handoff(monkeypatch):

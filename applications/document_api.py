@@ -1,7 +1,7 @@
 from pathlib import Path
 import json
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import APIRouter, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -188,6 +188,133 @@ def _build_review_intent(
         "section": section,
         "follow_up_support_kind": follow_up_support_kind,
         "review_url": _build_review_url(user_id=user_id, claim_type=claim_type, section=section),
+    }
+
+
+def _append_review_query_params(review_url: str, **params: Optional[str]) -> str:
+    normalized_url = str(review_url or "").strip() or "/claim-support-review"
+    split = urlsplit(normalized_url)
+    query = dict(parse_qsl(split.query, keep_blank_values=True))
+    for key, value in params.items():
+        text = str(value or "").strip()
+        if text:
+            query[key] = text
+    return urlunsplit((split.scheme, split.netloc, split.path, urlencode(query), split.fragment))
+
+
+def _humanize_workflow_priority_label(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "Unknown"
+    return text.replace("_", " ").replace("-", " ").title()
+
+
+def _build_document_review_workflow_phase_priority(
+    workflow_phase_plan: Dict[str, Any],
+    *,
+    user_id: Optional[str],
+    default_claim_type: Optional[str],
+    dashboard_url: str,
+    section_review_map: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    if not isinstance(workflow_phase_plan, dict):
+        return {}
+
+    phases = workflow_phase_plan.get("phases") if isinstance(workflow_phase_plan.get("phases"), dict) else {}
+    ordered_phase_names = [
+        phase_name
+        for phase_name in (workflow_phase_plan.get("recommended_order") or [])
+        if isinstance(phase_name, str) and isinstance(phases.get(phase_name), dict)
+    ]
+    if not ordered_phase_names:
+        return {}
+
+    prioritized_phase_name = next(
+        (
+            phase_name
+            for phase_name in ordered_phase_names
+            if str((phases.get(phase_name) or {}).get("status") or "ready").strip().lower() != "ready"
+        ),
+        ordered_phase_names[0],
+    )
+    prioritized_phase = dict(phases.get(prioritized_phase_name) or {})
+    if not prioritized_phase:
+        return {}
+
+    prioritized_status = str(prioritized_phase.get("status") or "ready").strip().lower() or "ready"
+    recommended_actions = []
+    for item in prioritized_phase.get("recommended_actions") or []:
+        if isinstance(item, str):
+            text = item.strip()
+        elif isinstance(item, dict):
+            text = str(item.get("recommended_action") or item.get("action") or "").strip()
+        else:
+            text = str(item or "").strip()
+        if text:
+            recommended_actions.append(text)
+    primary_recommended_action = recommended_actions[0] if recommended_actions else ""
+
+    if prioritized_phase_name == "graph_analysis":
+        section_key = "summary_of_facts"
+        section_target = section_review_map.get(section_key) or {}
+        section_context = section_target.get("review_context") if isinstance(section_target.get("review_context"), dict) else {}
+        action_url = _append_review_query_params(
+            str(
+                section_target.get("review_url")
+                or _build_review_url(
+                    user_id=user_id,
+                    claim_type=section_context.get("claim_type") or default_claim_type,
+                    section=section_key,
+                )
+            ),
+            follow_up_support_kind=_default_support_kind_for_section(section_key),
+        )
+        title = (
+            "Graph analysis is aligned for drafting"
+            if prioritized_status == "ready"
+            else "Resolve graph analysis before drafting"
+        )
+        action_label = "Review graph inputs"
+    elif prioritized_phase_name == "document_generation":
+        section_key = "claims_for_relief"
+        section_target = section_review_map.get(section_key) or {}
+        section_context = section_target.get("review_context") if isinstance(section_target.get("review_context"), dict) else {}
+        title = (
+            "Drafting is aligned with workflow guidance"
+            if prioritized_status == "ready"
+            else "Resolve drafting readiness before filing"
+        )
+        action_label = "Open Review Dashboard" if prioritized_status == "ready" else "Review drafting readiness"
+        action_url = dashboard_url if prioritized_status == "ready" else _append_review_query_params(
+            str(
+                section_target.get("review_url")
+                or _build_review_url(
+                    user_id=user_id,
+                    claim_type=section_context.get("claim_type") or default_claim_type,
+                    section=section_key,
+                )
+            ),
+            follow_up_support_kind=_default_support_kind_for_section(section_key),
+        )
+    else:
+        return {}
+
+    return {
+        "phase_name": prioritized_phase_name,
+        "status": prioritized_status,
+        "title": title,
+        "description": str(prioritized_phase.get("summary") or "").strip()
+        or "Workflow phase guidance still identifies a higher-priority step before drafting.",
+        "action_label": action_label,
+        "action_url": action_url,
+        "action_kind": "link",
+        "dashboard_url": dashboard_url,
+        "recommended_actions": recommended_actions,
+        "chip_labels": [
+            f"workflow phase: {_humanize_workflow_priority_label(prioritized_phase_name)}",
+            f"phase status: {_humanize_workflow_priority_label(prioritized_status)}",
+            *([f"recommended action: {primary_recommended_action}"] if primary_recommended_action else []),
+        ],
     }
 
 
@@ -483,6 +610,19 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
             document_optimization["trace_download_url"] = _build_optimization_trace_url(trace_cid)
             document_optimization["trace_view_url"] = _build_optimization_trace_view_url(trace_cid)
 
+    workflow_phase_plan = (
+        drafting_readiness.get("workflow_phase_plan")
+        if isinstance(drafting_readiness.get("workflow_phase_plan"), dict)
+        else {}
+    )
+    workflow_phase_priority = _build_document_review_workflow_phase_priority(
+        workflow_phase_plan,
+        user_id=resolved_user_id,
+        default_claim_type=preferred_claim_type,
+        dashboard_url=dashboard_url,
+        section_review_map=section_review_map,
+    )
+
     payload["review_links"] = {
         "dashboard_url": dashboard_url,
         "claims": claim_links,
@@ -494,6 +634,7 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
             if isinstance(intake_status.get("next_action"), dict)
             else ""
         ),
+        "workflow_phase_priority": workflow_phase_priority,
         "primary_validation_target": (
             dict(intake_status.get("primary_validation_target"))
             if isinstance(intake_status.get("primary_validation_target"), dict)

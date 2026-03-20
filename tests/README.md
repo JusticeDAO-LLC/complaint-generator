@@ -154,6 +154,63 @@ This keeps `pytest` behavior predictable in lean environments:
 - optional suites report as skipped rather than aborting collection
 - CI lanes that install the full stack still exercise the richer coverage
 
+#### Optional Dependency Matrix
+
+| Suite / File | Purpose | Optional dependencies | Lean environment behavior |
+| --- | --- | --- | --- |
+| `tests/test_review_api.py` | Review API payload and route coverage | `duckdb`, `fastapi` | Skip if DuckDB is unavailable |
+| `tests/test_claim_support_review_dashboard_flow.py` | Review dashboard HTML flow checks | `bs4`, `fastapi` | Skip if dashboard parsing or web stack is unavailable |
+| `tests/test_claim_support_review_playwright_smoke.py` | Real-browser review smoke | `duckdb`, `fastapi`, `uvicorn`, `requests`, `playwright` | Skip if browser or web stack is unavailable |
+| `tests/test_claim_support_hooks.py` | DuckDB-backed claim support persistence | `duckdb` | Skip if DuckDB is unavailable |
+| `tests/test_backfill_claim_testimony_links_cli.py` | DuckDB-backed CLI backfill behavior | `duckdb` | Skip if DuckDB is unavailable |
+| `tests/test_cli_commands.py` | CLI formatting and command routing | none beyond core test stack | Should run by default |
+| `tests/test_intake_status.py` | Intake/review summary shaping | none beyond core test stack | Should run by default |
+| `tests/test_mediator_three_phase.py` | Intake/evidence integration flow | none beyond core test stack | Should run by default |
+| `tests/test_complaint_phases.py` | Phase manager and denoiser behavior | none beyond core test stack | Should run by default |
+| `tests/test_mediator.py` | Core mediator behavior | none beyond core test stack | Should run by default |
+
+Use this as a rule of thumb:
+
+- If a suite verifies core logic, keep it runnable in a lean environment.
+- If a suite verifies a browser, dashboard, or DuckDB-backed persistence path, make the dependency explicit and skip cleanly when it is absent.
+
+#### Recommended Local Commands
+
+Use these as the default entry points when choosing a regression slice:
+
+```bash
+# Lean regression: core backend, phase flow, CLI, and intake status
+pytest -q \
+    tests/test_cli_commands.py \
+    tests/test_intake_status.py \
+    tests/test_mediator_three_phase.py \
+    tests/test_complaint_phases.py \
+    tests/test_mediator.py
+
+# Review regression without browser: review and persistence suites that may skip
+pytest -q \
+    tests/test_review_api.py \
+    tests/test_claim_support_review_dashboard_flow.py \
+    tests/test_claim_support_hooks.py \
+    tests/test_backfill_claim_testimony_links_cli.py
+
+# Full review/browser regression: requires the optional browser/web stack
+pytest -q \
+    tests/test_review_api.py \
+    tests/test_claim_support_review_dashboard_flow.py \
+    tests/test_claim_support_hooks.py \
+    tests/test_backfill_claim_testimony_links_cli.py \
+    tests/test_claim_support_review_playwright_smoke.py
+```
+
+The repo-local helper exposes the same slices without copy-pasting long commands:
+
+```bash
+python scripts/run_standard_regression.py --slice lean
+python scripts/run_standard_regression.py --slice review
+python scripts/run_standard_regression.py --slice full
+```
+
 ### Test Naming Convention
 
 - Test files: `test_*.py` or `*_test.py`
