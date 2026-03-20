@@ -160,3 +160,56 @@ def test_run_hybrid_reasoning_returns_temporal_bridge_bundle():
     assert 'Before(fact_1,fact_2)' in result['result']['tdfol_formulas']
     assert 'Happens(fact_1,t_2025_03_01)' in result['result']['dcec_formulas']
     assert result['temporal_reasoning_payload']['tdfol_formulas'] == result['result']['tdfol_formulas']
+
+
+def test_logic_entrypoints_preserve_claim_support_temporal_handoff():
+    predicates = [
+        {
+            'predicate_type': 'claim_element',
+            'claim_type': 'retaliation',
+            'predicate_id': 'retaliation:1',
+            'claim_element_id': 'retaliation:1',
+            'claim_element_text': 'Protected activity',
+        },
+        {
+            'predicate_type': 'temporal_fact',
+            'claim_type': 'retaliation',
+            'predicate_id': 'temporal_fact:fact_1',
+            'fact_id': 'fact_1',
+            'text': 'Employee complained to HR.',
+            'start_date': '2025-03-01',
+            'end_date': '2025-03-01',
+            'granularity': 'day',
+            'is_approximate': False,
+            'is_range': False,
+            'relative_markers': [],
+        },
+    ]
+    payload = {
+        'predicates': predicates,
+        'claim_support_temporal_handoff': {
+            'claim_type': 'retaliation',
+            'claim_element_id': 'retaliation:1',
+            'unresolved_temporal_issue_count': 1,
+            'unresolved_temporal_issue_ids': ['timeline-gap-001'],
+            'chronology_task_count': 1,
+            'event_ids': ['fact_1'],
+            'temporal_fact_ids': ['fact_1'],
+            'temporal_relation_ids': ['timeline_relation_001'],
+            'timeline_issue_ids': ['timeline-gap-001'],
+            'temporal_issue_ids': ['timeline-gap-001'],
+            'temporal_proof_bundle_ids': ['retaliation:1:bundle_001'],
+            'temporal_proof_objectives': ['resolve_temporal_rule_profile'],
+        },
+    }
+
+    proof_result = prove_claim_elements(payload)
+    contradiction_result = check_contradictions(payload)
+    hybrid_result = run_hybrid_reasoning(payload)
+
+    for result in (proof_result, contradiction_result, hybrid_result):
+        handoff = result['temporal_reasoning_payload']['claim_support_temporal_handoff']
+        assert handoff == payload['claim_support_temporal_handoff']
+        assert handoff['unresolved_temporal_issue_count'] == 1
+        assert handoff['event_ids'] == ['fact_1']
+        assert handoff['temporal_proof_bundle_ids'] == ['retaliation:1:bundle_001']

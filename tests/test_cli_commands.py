@@ -292,7 +292,7 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
     assert 'blockers: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.=1' in rendered
     assert 'handoffs: awaiting_testimony=1' in rendered
     assert 'follow-up history fact-target summary:' in rendered
-    assert '"claim_coverage_summary"' in rendered
+    assert '"claim_coverage_summary"' not in rendered
 
 
 def test_execute_follow_up_command_calls_mediator_builder():
@@ -522,7 +522,7 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
     assert 'blockers: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.=1' in rendered
     assert 'handoffs: awaiting_testimony=1' in rendered
     assert 'follow-up history fact-target summary:' in rendered
-    assert '"execution_quality_summary"' in rendered
+    assert '"execution_quality_summary"' not in rendered
 
 
 def test_execute_follow_up_command_prints_recommendation_when_parse_quality_still_needed():

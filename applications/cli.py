@@ -170,7 +170,7 @@ class CLI:
 			follow_up_support_kind=options.get('follow_up_support_kind'),
 			follow_up_max_tasks_per_claim=options.get('follow_up_max_tasks_per_claim', 3),
 		)
-		self.print_response(self._format_claim_review_output(payload, include_json=options.get('include_json', True)))
+		self.print_response(self._format_claim_review_output(payload, include_json=options.get('include_json', False)))
 
 	def _format_claim_review_output(self, payload, include_json=True):
 		sections = []
@@ -540,7 +540,7 @@ class CLI:
 			include_overview=options.get('include_overview', True),
 			include_follow_up_plan=options.get('include_follow_up_plan', True),
 		)
-		self.print_response(self._format_execute_follow_up_output(payload, include_json=options.get('include_json', True)))
+		self.print_response(self._format_execute_follow_up_output(payload, include_json=options.get('include_json', False)))
 
 	def _format_execute_follow_up_output(self, payload, include_json=True):
 		sections = []

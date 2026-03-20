@@ -73,7 +73,80 @@ def _build_temporal_formula_for_fact(event_symbol: str, temporal_fact: Dict[str,
     }
 
 
-def _build_temporal_reasoning_payload(predicates: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+def _normalize_claim_support_temporal_handoff(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+
+    def _normalize_text_list(items: Any) -> List[str]:
+        normalized_items: List[str] = []
+        for item in items if isinstance(items, list) else []:
+            text = str(item or "").strip()
+            if text and text not in normalized_items:
+                normalized_items.append(text)
+        return normalized_items
+
+    normalized = {
+        "claim_type": str(value.get("claim_type") or "").strip(),
+        "claim_element_id": str(value.get("claim_element_id") or "").strip(),
+        "unresolved_temporal_issue_count": int(value.get("unresolved_temporal_issue_count", 0) or 0),
+        "chronology_task_count": int(value.get("chronology_task_count", 0) or 0),
+        "unresolved_temporal_issue_ids": _normalize_text_list(value.get("unresolved_temporal_issue_ids")),
+        "event_ids": _normalize_text_list(value.get("event_ids")),
+        "temporal_fact_ids": _normalize_text_list(value.get("temporal_fact_ids")),
+        "temporal_relation_ids": _normalize_text_list(value.get("temporal_relation_ids")),
+        "timeline_issue_ids": _normalize_text_list(value.get("timeline_issue_ids")),
+        "temporal_issue_ids": _normalize_text_list(value.get("temporal_issue_ids")),
+        "temporal_proof_bundle_ids": _normalize_text_list(value.get("temporal_proof_bundle_ids")),
+        "temporal_proof_objectives": _normalize_text_list(value.get("temporal_proof_objectives")),
+    }
+    if not normalized["claim_type"]:
+        normalized.pop("claim_type")
+    if not normalized["claim_element_id"]:
+        normalized.pop("claim_element_id")
+    if not normalized.get("unresolved_temporal_issue_count") and not normalized.get("chronology_task_count") and not any(
+        normalized[key]
+        for key in (
+            "unresolved_temporal_issue_ids",
+            "event_ids",
+            "temporal_fact_ids",
+            "temporal_relation_ids",
+            "timeline_issue_ids",
+            "temporal_issue_ids",
+            "temporal_proof_bundle_ids",
+            "temporal_proof_objectives",
+        )
+    ):
+        return {}
+    return normalized
+
+
+def _normalize_logic_payload(payload_or_predicates: Any) -> Dict[str, Any]:
+    if isinstance(payload_or_predicates, dict):
+        raw_predicates = payload_or_predicates.get("predicates")
+        predicates = raw_predicates if isinstance(raw_predicates, list) else []
+        temporal_reasoning_payload = payload_or_predicates.get("temporal_reasoning_payload")
+        return {
+            "predicates": [predicate for predicate in predicates if isinstance(predicate, dict)],
+            "temporal_reasoning_payload": temporal_reasoning_payload if isinstance(temporal_reasoning_payload, dict) else {},
+            "claim_support_temporal_handoff": _normalize_claim_support_temporal_handoff(
+                payload_or_predicates.get("claim_support_temporal_handoff")
+            ),
+            "payload_keys": sorted(payload_or_predicates.keys()),
+        }
+
+    return {
+        "predicates": [predicate for predicate in payload_or_predicates if isinstance(predicate, dict)],
+        "temporal_reasoning_payload": {},
+        "claim_support_temporal_handoff": {},
+        "payload_keys": [],
+    }
+
+
+def _build_temporal_reasoning_payload(
+    predicates: Iterable[Dict[str, Any]],
+    *,
+    claim_support_temporal_handoff: Any = None,
+) -> Dict[str, Any]:
     predicate_list: List[Dict[str, Any]] = [
         predicate for predicate in predicates
         if isinstance(predicate, dict)
@@ -202,7 +275,7 @@ def _build_temporal_reasoning_payload(predicates: Iterable[Dict[str, Any]]) -> D
                 tdfol_formulas.append(f"Conflict({left_symbol},{right_symbol})")
                 dcec_formulas.append(f"Conflicts({left_symbol},{right_symbol})")
 
-    return {
+    temporal_reasoning_payload = {
         "formalism": "tdfol_dcec_bridge_v1",
         "claim_types": sorted(claim_type_counts.keys()),
         "claim_elements": claim_elements,
@@ -216,6 +289,10 @@ def _build_temporal_reasoning_payload(predicates: Iterable[Dict[str, Any]]) -> D
         "tdfol_formula_count": len(tdfol_formulas),
         "dcec_formula_count": len(dcec_formulas),
     }
+    normalized_handoff = _normalize_claim_support_temporal_handoff(claim_support_temporal_handoff)
+    if normalized_handoff:
+        temporal_reasoning_payload["claim_support_temporal_handoff"] = normalized_handoff
+    return temporal_reasoning_payload
 
 
 def _summarize_predicates(predicates: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
@@ -280,10 +357,14 @@ def legal_text_to_deontic(text: str) -> Dict[str, Any]:
     )
 
 
-def prove_claim_elements(predicates: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
-    predicate_list = list(predicates)
+def prove_claim_elements(predicates: Iterable[Dict[str, Any]] | Dict[str, Any]) -> Dict[str, Any]:
+    normalized_payload = _normalize_logic_payload(predicates)
+    predicate_list = normalized_payload["predicates"]
     predicate_summary = _summarize_predicates(predicate_list)
-    temporal_reasoning_payload = _build_temporal_reasoning_payload(predicate_list)
+    temporal_reasoning_payload = _build_temporal_reasoning_payload(
+        predicate_list,
+        claim_support_temporal_handoff=normalized_payload["claim_support_temporal_handoff"],
+    )
     return with_adapter_metadata(
         {
             "status": "not_implemented" if LOGIC_AVAILABLE else "unavailable",
@@ -300,10 +381,14 @@ def prove_claim_elements(predicates: Iterable[Dict[str, Any]]) -> Dict[str, Any]
     )
 
 
-def check_contradictions(predicates: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
-    predicate_list = list(predicates)
+def check_contradictions(predicates: Iterable[Dict[str, Any]] | Dict[str, Any]) -> Dict[str, Any]:
+    normalized_payload = _normalize_logic_payload(predicates)
+    predicate_list = normalized_payload["predicates"]
     predicate_summary = _summarize_predicates(predicate_list)
-    temporal_reasoning_payload = _build_temporal_reasoning_payload(predicate_list)
+    temporal_reasoning_payload = _build_temporal_reasoning_payload(
+        predicate_list,
+        claim_support_temporal_handoff=normalized_payload["claim_support_temporal_handoff"],
+    )
     return with_adapter_metadata(
         {
             "status": "not_implemented" if LOGIC_AVAILABLE else "unavailable",
@@ -320,15 +405,25 @@ def check_contradictions(predicates: Iterable[Dict[str, Any]]) -> Dict[str, Any]
 
 
 def run_hybrid_reasoning(payload: Dict[str, Any]) -> Dict[str, Any]:
-    normalized_payload = payload if isinstance(payload, dict) else {}
-    predicates = normalized_payload.get("predicates") if isinstance(normalized_payload.get("predicates"), list) else []
-    bridge_payload = normalized_payload.get("temporal_reasoning_payload")
+    normalized_payload = _normalize_logic_payload(payload)
+    predicates = normalized_payload["predicates"]
+    bridge_payload = normalized_payload["temporal_reasoning_payload"]
+    claim_support_temporal_handoff = normalized_payload["claim_support_temporal_handoff"]
     predicate_summary = _summarize_predicates(predicates)
 
     if isinstance(bridge_payload, dict) and bridge_payload:
-        temporal_reasoning_payload = bridge_payload
+        temporal_reasoning_payload = dict(bridge_payload)
     else:
-        temporal_reasoning_payload = _build_temporal_reasoning_payload(predicates)
+        temporal_reasoning_payload = _build_temporal_reasoning_payload(
+            predicates,
+            claim_support_temporal_handoff=claim_support_temporal_handoff,
+        )
+
+    if claim_support_temporal_handoff and not isinstance(
+        temporal_reasoning_payload.get("claim_support_temporal_handoff"),
+        dict,
+    ):
+        temporal_reasoning_payload["claim_support_temporal_handoff"] = claim_support_temporal_handoff
 
     result_payload = {
         "status": "success",
@@ -348,7 +443,7 @@ def run_hybrid_reasoning(payload: Dict[str, Any]) -> Dict[str, Any]:
                 else ""
             ),
         },
-        "payload_keys": sorted(normalized_payload.keys()),
+        "payload_keys": normalized_payload["payload_keys"],
         "predicate_count": predicate_summary.get("predicate_count", 0),
         "temporal_reasoning_payload": temporal_reasoning_payload,
     }

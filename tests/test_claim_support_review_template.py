@@ -68,6 +68,9 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Review matching inputs" in content
     assert "intake-next-action-open-document-builder" in content
     assert "Open formal complaint builder" in content
+    assert "workflow-phase-guidance-card" in content
+    assert "Workflow Phase Guidance" in content
+    assert "workflowPhasePlan.recommended_order" in content
     assert "intake-next-action-open-formal-generator" in content
     assert "intake-next-action-confirm-summary" in content
     assert "Confirm intake summary" in content

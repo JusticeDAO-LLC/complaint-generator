@@ -945,6 +945,14 @@
                         <div class="chip-row" id="alignment-promotion-drift-chips"></div>
                         <div class="resolution-feedback-body" id="alignment-promotion-drift-notes"></div>
                     </div>
+                    <div class="resolution-feedback" id="workflow-phase-guidance-card" hidden>
+                        <div class="resolution-feedback-head">
+                            <div class="resolution-feedback-title" id="workflow-phase-guidance-title">Workflow Phase Guidance</div>
+                            <span class="status-pill" id="workflow-phase-guidance-status">warning</span>
+                        </div>
+                        <div class="chip-row" id="workflow-phase-guidance-chips"></div>
+                        <div class="resolution-feedback-body" id="workflow-phase-guidance-notes"></div>
+                    </div>
                     <div class="question-list" id="alignment-validation-focus-list"></div>
                     <div class="chip-row" id="intake-case-claim-chips"></div>
                     <div class="chip-row" id="intake-claim-summary-chips" style="margin-top: 10px;"></div>
@@ -2642,6 +2650,11 @@
             const alignmentPromotionDriftStatus = document.getElementById('alignment-promotion-drift-status');
             const alignmentPromotionDriftChips = document.getElementById('alignment-promotion-drift-chips');
             const alignmentPromotionDriftNotes = document.getElementById('alignment-promotion-drift-notes');
+            const workflowPhaseGuidanceCard = document.getElementById('workflow-phase-guidance-card');
+            const workflowPhaseGuidanceTitle = document.getElementById('workflow-phase-guidance-title');
+            const workflowPhaseGuidanceStatus = document.getElementById('workflow-phase-guidance-status');
+            const workflowPhaseGuidanceChips = document.getElementById('workflow-phase-guidance-chips');
+            const workflowPhaseGuidanceNotes = document.getElementById('workflow-phase-guidance-notes');
             const alignmentValidationFocusList = document.getElementById('alignment-validation-focus-list');
             const intakeCaseSummary = summary && typeof summary === 'object' ? summary : {};
             const nextAction = intakeCaseSummary.next_action && typeof intakeCaseSummary.next_action === 'object'
@@ -2739,6 +2752,41 @@
             const claimSupportPacketSummary = intakeCaseSummary.claim_support_packet_summary && typeof intakeCaseSummary.claim_support_packet_summary === 'object'
                 ? intakeCaseSummary.claim_support_packet_summary
                 : {};
+            const workflowPhasePlan = reviewRenderState.payload && reviewRenderState.payload.workflow_phase_plan && typeof reviewRenderState.payload.workflow_phase_plan === 'object'
+                ? reviewRenderState.payload.workflow_phase_plan
+                : {};
+            const workflowPhases = workflowPhasePlan.phases && typeof workflowPhasePlan.phases === 'object'
+                ? workflowPhasePlan.phases
+                : {};
+            const workflowOrder = Array.isArray(workflowPhasePlan.recommended_order)
+                ? workflowPhasePlan.recommended_order.filter((phaseName) => workflowPhases[phaseName] && typeof workflowPhases[phaseName] === 'object')
+                : [];
+
+            if (workflowOrder.length) {
+                const topPhaseName = workflowOrder[0];
+                const topPhase = workflowPhases[topPhaseName] || {};
+                const topSignals = topPhase.signals && typeof topPhase.signals === 'object' ? topPhase.signals : {};
+                const topActions = Array.isArray(topPhase.recommended_actions) ? topPhase.recommended_actions.filter(Boolean) : [];
+                const workflowChips = workflowOrder.map((phaseName) => {
+                    const phase = workflowPhases[phaseName] || {};
+                    return `<span class="chip">${humanizeQueryValue(phaseName)}: ${humanizeQueryValue(phase.status || 'ready')}</span>`;
+                });
+                Object.entries(topSignals).slice(0, 3).forEach(([key, value]) => {
+                    if (value === null || value === '' || (Array.isArray(value) && !value.length)) {
+                        return;
+                    }
+                    workflowChips.push(`<span class="chip">${humanizeQueryValue(key)}: ${Array.isArray(value) ? value.join(', ') : humanizeQueryValue(value)}</span>`);
+                });
+                workflowPhaseGuidanceCard.hidden = false;
+                workflowPhaseGuidanceTitle.textContent = 'Workflow Phase Guidance';
+                workflowPhaseGuidanceStatus.textContent = topPhase.status || 'ready';
+                workflowPhaseGuidanceChips.innerHTML = workflowChips.join('');
+                workflowPhaseGuidanceNotes.innerHTML = `${escapeHtml(topPhase.summary || '')}${topActions.length ? `<div style="margin-top: 10px;">Recommended actions: ${escapeHtml(topActions.join(' | '))}</div>` : ''}`;
+            } else {
+                workflowPhaseGuidanceCard.hidden = true;
+                workflowPhaseGuidanceChips.innerHTML = '';
+                workflowPhaseGuidanceNotes.textContent = '';
+            }
 
             if (recentValidationOutcome.claim_element_id || recentValidationOutcome.claim_type) {
                 const validationStatus = String(

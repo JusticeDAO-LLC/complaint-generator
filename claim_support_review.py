@@ -39,6 +39,7 @@ except ModuleNotFoundError:
                 for name in getattr(self.__class__, "__annotations__", {})
             }
 
+from complaint_phases import ComplaintPhase
 from complaint_phases.denoiser import ComplaintDenoiser
 from intake_status import (
     build_intake_case_review_summary,
@@ -349,6 +350,131 @@ def _merge_intake_summary_handoff_metadata(
     if temporal_handoff_metadata:
         merged_metadata.update(temporal_handoff_metadata)
     return merged_metadata
+
+
+def _build_review_workflow_phase_plan(
+    mediator: Any,
+    *,
+    intake_status: Dict[str, Any],
+    intake_case_summary: Dict[str, Any],
+) -> Dict[str, Any]:
+    phase_manager = getattr(mediator, "phase_manager", None)
+    phases: Dict[str, Dict[str, Any]] = {}
+
+    if phase_manager is not None:
+        get_phase_data = getattr(phase_manager, "get_phase_data", None)
+        if callable(get_phase_data):
+            knowledge_graph = get_phase_data(ComplaintPhase.INTAKE, "knowledge_graph")
+            dependency_graph = get_phase_data(ComplaintPhase.INTAKE, "dependency_graph")
+            current_gaps = get_phase_data(ComplaintPhase.INTAKE, "current_gaps") or []
+            remaining_gaps = int(get_phase_data(ComplaintPhase.INTAKE, "remaining_gaps") or 0)
+            knowledge_graph_enhanced = bool(
+                get_phase_data(ComplaintPhase.EVIDENCE, "knowledge_graph_enhanced")
+            )
+            current_gap_count = len(current_gaps) if isinstance(current_gaps, list) else 0
+
+            if not knowledge_graph or not dependency_graph:
+                phases["graph_analysis"] = {
+                    "priority": 0,
+                    "status": "blocked",
+                    "summary": "Graph analysis is blocked because the intake knowledge graph or dependency graph is missing.",
+                    "signals": {
+                        "knowledge_graph_available": bool(knowledge_graph),
+                        "dependency_graph_available": bool(dependency_graph),
+                        "remaining_gap_count": remaining_gaps,
+                        "current_gap_count": current_gap_count,
+                        "knowledge_graph_enhanced": knowledge_graph_enhanced,
+                    },
+                    "recommended_actions": [
+                        "Build the intake knowledge graph and dependency graph before relying on cross-phase review outputs.",
+                    ],
+                }
+            elif remaining_gaps > 0 or current_gap_count > 0 or not knowledge_graph_enhanced:
+                phases["graph_analysis"] = {
+                    "priority": 0,
+                    "status": "warning",
+                    "summary": f"Graph analysis still has {max(remaining_gaps, current_gap_count)} unresolved gap(s) or pending evidence-to-graph updates.",
+                    "signals": {
+                        "knowledge_graph_available": True,
+                        "dependency_graph_available": True,
+                        "remaining_gap_count": remaining_gaps,
+                        "current_gap_count": current_gap_count,
+                        "knowledge_graph_enhanced": knowledge_graph_enhanced,
+                    },
+                    "recommended_actions": [
+                        "Review intake graph inputs and refresh graph-backed evidence projections before final drafting.",
+                    ],
+                }
+            else:
+                phases["graph_analysis"] = {
+                    "priority": 0,
+                    "status": "ready",
+                    "summary": "Graph analysis is present and does not currently show unresolved intake graph blockers.",
+                    "signals": {
+                        "knowledge_graph_available": True,
+                        "dependency_graph_available": True,
+                        "remaining_gap_count": remaining_gaps,
+                        "current_gap_count": current_gap_count,
+                        "knowledge_graph_enhanced": knowledge_graph_enhanced,
+                    },
+                    "recommended_actions": [],
+                }
+
+    next_action = intake_status.get("next_action") if isinstance(intake_status.get("next_action"), dict) else {}
+    next_action_name = str(next_action.get("action") or "").strip().lower()
+    packet_summary = (
+        intake_case_summary.get("claim_support_packet_summary")
+        if isinstance(intake_case_summary.get("claim_support_packet_summary"), dict)
+        else {}
+    )
+    unresolved_temporal_issue_count = int(packet_summary.get("claim_support_unresolved_temporal_issue_count", 0) or 0)
+    unresolved_review_path_count = int(packet_summary.get("claim_support_unresolved_without_review_path_count", 0) or 0)
+    proof_readiness_score = float(packet_summary.get("proof_readiness_score", 0.0) or 0.0)
+    if next_action_name in {"generate_formal_complaint", "complete_evidence"} and unresolved_temporal_issue_count <= 0:
+        phases["document_generation"] = {
+            "priority": 1,
+            "status": "ready",
+            "summary": "Review state indicates the complaint can move into formal complaint drafting.",
+            "signals": {
+                "recommended_next_action": next_action_name,
+                "proof_readiness_score": proof_readiness_score,
+                "unresolved_temporal_issue_count": unresolved_temporal_issue_count,
+                "unresolved_without_review_path_count": unresolved_review_path_count,
+            },
+            "recommended_actions": [],
+        }
+    else:
+        phases["document_generation"] = {
+            "priority": 1,
+            "status": "warning",
+            "summary": "Document generation should wait until evidence review and packet blockers are reduced further.",
+            "signals": {
+                "recommended_next_action": next_action_name,
+                "proof_readiness_score": proof_readiness_score,
+                "unresolved_temporal_issue_count": unresolved_temporal_issue_count,
+                "unresolved_without_review_path_count": unresolved_review_path_count,
+            },
+            "recommended_actions": [
+                "Use the review surface to resolve remaining evidence, chronology, or manual-review blockers before drafting.",
+            ],
+        }
+
+    if not phases:
+        return {}
+
+    status_rank = {"blocked": 0, "warning": 1, "ready": 2}
+    recommended_order = sorted(
+        phases.keys(),
+        key=lambda name: (
+            status_rank.get(str(phases[name].get("status") or "ready"), 3),
+            int(phases[name].get("priority") or 0),
+            name,
+        ),
+    )
+    return {
+        "recommended_order": recommended_order,
+        "phases": phases,
+    }
 
 
 def summarize_claim_support_snapshot_lifecycle(
@@ -2787,6 +2913,11 @@ def build_claim_support_review_payload(
     intake_contradiction_summary = summarize_intake_contradictions(
         intake_status.get("contradictions")
     )
+    workflow_phase_plan = _build_review_workflow_phase_plan(
+        mediator,
+        intake_status=intake_status,
+        intake_case_summary=intake_case_summary,
+    )
     handoff_metadata = _build_confirmed_intake_summary_handoff_metadata(mediator)
 
     payload: Dict[str, Any] = {
@@ -2800,6 +2931,7 @@ def build_claim_support_review_payload(
             if isinstance(intake_status.get("next_action"), dict)
             else ""
         ),
+        "workflow_phase_plan": workflow_phase_plan,
         "primary_validation_target": (
             dict(intake_status.get("primary_validation_target"))
             if isinstance(intake_status.get("primary_validation_target"), dict)

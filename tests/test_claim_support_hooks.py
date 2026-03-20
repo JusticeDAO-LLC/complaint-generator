@@ -2276,13 +2276,18 @@ class TestClaimSupportHook:
                         'implementation_status': 'not_implemented',
                     },
                 }
-            def _capture_prove(predicates):
+            def _capture_prove(payload):
+                captured['proof_payload'] = payload
+                predicates = payload.get('predicates', []) if isinstance(payload, dict) else []
                 captured['predicates'] = predicates
                 return {
                     'status': 'not_implemented',
                     'provable_elements': [],
                     'unprovable_elements': [],
                     'predicate_count': len(predicates),
+                    'temporal_reasoning_payload': {
+                        'claim_support_temporal_handoff': payload.get('claim_support_temporal_handoff', {}) if isinstance(payload, dict) else {},
+                    },
                     'metadata': {
                         'operation': 'prove_claim_elements',
                         'backend_available': False,
@@ -2290,12 +2295,17 @@ class TestClaimSupportHook:
                     },
                 }
 
-            def _capture_contradictions(predicates):
+            def _capture_contradictions(payload):
+                captured['contradiction_payload'] = payload
+                predicates = payload.get('predicates', []) if isinstance(payload, dict) else []
                 captured['contradiction_predicates'] = predicates
                 return {
                     'status': 'not_implemented',
                     'contradictions': [],
                     'predicate_count': len(predicates),
+                    'temporal_reasoning_payload': {
+                        'claim_support_temporal_handoff': payload.get('claim_support_temporal_handoff', {}) if isinstance(payload, dict) else {},
+                    },
                     'metadata': {
                         'operation': 'check_contradictions',
                         'backend_available': False,
@@ -2353,7 +2363,11 @@ class TestClaimSupportHook:
 
             assert diagnostics['predicate_count'] == len(captured['predicates'])
             assert len(captured['contradiction_predicates']) == len(captured['predicates'])
+            assert captured['proof_payload']['predicates'] == captured['predicates']
+            assert captured['contradiction_payload']['predicates'] == captured['predicates']
             assert captured['hybrid_payload']['predicates'] == captured['predicates']
+            assert captured['proof_payload']['claim_support_temporal_handoff'] == captured['hybrid_payload']['claim_support_temporal_handoff']
+            assert captured['contradiction_payload']['claim_support_temporal_handoff'] == captured['hybrid_payload']['claim_support_temporal_handoff']
             assert {'claim_element', 'support_trace', 'temporal_fact', 'temporal_proof_lead', 'temporal_relation', 'temporal_consistency', 'temporal_issue'} <= predicate_types
             assert 'Timeline fact: Employee complained to HR.' in captured['seed_text']
             assert 'Timeline relation: fact_1 before fact_2' in captured['seed_text']
@@ -2416,6 +2430,21 @@ class TestClaimSupportHook:
                     'dcec_formula_count': 2,
                 },
             }
+            assert diagnostics['claim_support_temporal_handoff'] == {
+                'claim_type': 'retaliation',
+                'claim_element_id': 'retaliation:1',
+                'unresolved_temporal_issue_count': 1,
+                'unresolved_temporal_issue_ids': ['temporal_reverse_before_001'],
+                'chronology_task_count': 1,
+                'event_ids': ['fact_1', 'fact_2'],
+                'temporal_fact_ids': ['fact_1', 'fact_2'],
+                'temporal_relation_ids': ['timeline_relation_001'],
+                'timeline_issue_ids': ['temporal_reverse_before_001'],
+                'temporal_issue_ids': ['temporal_reverse_before_001'],
+                'temporal_proof_bundle_ids': ['retaliation:retaliation_1:retaliation_temporal_profile_v1'],
+                'temporal_proof_objectives': ['retaliation_temporal_frame'],
+            }
+            assert captured['hybrid_payload']['claim_support_temporal_handoff'] == diagnostics['claim_support_temporal_handoff']
             temporal_fact_predicate = next(
                 predicate for predicate in captured['predicates']
                 if isinstance(predicate, dict) and predicate.get('predicate_type') == 'temporal_fact'

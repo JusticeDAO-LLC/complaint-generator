@@ -1396,6 +1396,85 @@ class ClaimSupportHook:
             },
         }
 
+    def _build_claim_support_temporal_handoff(
+        self,
+        claim_type: str,
+        element: Dict[str, Any],
+        temporal_context: Optional[Dict[str, Any]],
+        temporal_proof_bundle: Optional[Dict[str, Any]],
+        temporal_rule_profile: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        context = temporal_context if isinstance(temporal_context, dict) else {}
+        proof_bundle = temporal_proof_bundle if isinstance(temporal_proof_bundle, dict) else {}
+        profile = temporal_rule_profile if isinstance(temporal_rule_profile, dict) else {}
+
+        def _dedupe_text_values(values: Any) -> List[str]:
+            normalized_values: List[str] = []
+            for value in values if isinstance(values, list) else []:
+                normalized = str(value or '').strip()
+                if normalized and normalized not in normalized_values:
+                    normalized_values.append(normalized)
+            return normalized_values
+
+        fact_ids = _dedupe_text_values([
+            fact.get('fact_id')
+            for fact in (context.get('temporal_facts', []) or [])
+            if isinstance(fact, dict)
+        ])
+        relation_ids = _dedupe_text_values([
+            relation.get('relation_id')
+            for relation in (context.get('temporal_relations', []) or [])
+            if isinstance(relation, dict)
+        ])
+        issue_ids = _dedupe_text_values([
+            issue.get('issue_id') or issue.get('contradiction_id') or issue.get('dependency_id')
+            for issue in (context.get('temporal_issues', []) or [])
+            if isinstance(issue, dict)
+        ])
+        proof_bundle_id = str(proof_bundle.get('proof_bundle_id') or '').strip()
+        proof_objective = str(profile.get('rule_frame_id') or '').strip()
+        blocking_reasons = _dedupe_text_values(proof_bundle.get('blocking_reasons'))
+        recommended_follow_ups = _dedupe_text_values([
+            follow_up.get('action') or follow_up.get('prompt') or follow_up.get('label')
+            for follow_up in (proof_bundle.get('recommended_follow_ups', []) or [])
+            if isinstance(follow_up, dict)
+        ])
+
+        chronology_task_count = len(recommended_follow_ups) or len(blocking_reasons) or len(issue_ids)
+        temporal_handoff = {
+            'claim_type': str(claim_type or '').strip(),
+            'claim_element_id': str(element.get('element_id') or '').strip(),
+            'unresolved_temporal_issue_count': len(issue_ids),
+            'unresolved_temporal_issue_ids': issue_ids,
+            'chronology_task_count': chronology_task_count,
+            'event_ids': list(fact_ids),
+            'temporal_fact_ids': list(fact_ids),
+            'temporal_relation_ids': relation_ids,
+            'timeline_issue_ids': list(issue_ids),
+            'temporal_issue_ids': list(issue_ids),
+            'temporal_proof_bundle_ids': [proof_bundle_id] if proof_bundle_id else [],
+            'temporal_proof_objectives': [proof_objective] if proof_objective else [],
+        }
+        if not temporal_handoff['claim_type']:
+            temporal_handoff.pop('claim_type')
+        if not temporal_handoff['claim_element_id']:
+            temporal_handoff.pop('claim_element_id')
+        if not temporal_handoff['unresolved_temporal_issue_count'] and not temporal_handoff['chronology_task_count'] and not any(
+            temporal_handoff[key]
+            for key in (
+                'unresolved_temporal_issue_ids',
+                'event_ids',
+                'temporal_fact_ids',
+                'temporal_relation_ids',
+                'timeline_issue_ids',
+                'temporal_issue_ids',
+                'temporal_proof_bundle_ids',
+                'temporal_proof_objectives',
+            )
+        ):
+            return {}
+        return temporal_handoff
+
     def _build_validation_decision_trace(
         self,
         element: Dict[str, Any],
@@ -2248,10 +2327,6 @@ class ClaimSupportHook:
         )
         ontology_payload = ontology_build.get('ontology') if isinstance(ontology_build, dict) else None
         ontology_for_validation = ontology_payload if ontology_payload not in (None, '') else fallback_ontology
-        logic_proof = prove_claim_elements(predicates)
-        logic_contradictions = check_contradictions(predicates)
-        hybrid_reasoning = run_hybrid_reasoning({'predicates': predicates})
-        ontology_validation = validate_ontology(ontology_for_validation)
         temporal_rule_profile = evaluate_temporal_rule_profile(claim_type, element, temporal_context)
         temporal_proof_bundle = self._build_temporal_proof_bundle(
             claim_type,
@@ -2259,6 +2334,21 @@ class ClaimSupportHook:
             temporal_context,
             temporal_rule_profile,
         )
+        claim_support_temporal_handoff = self._build_claim_support_temporal_handoff(
+            claim_type,
+            element,
+            temporal_context,
+            temporal_proof_bundle,
+            temporal_rule_profile,
+        )
+        reasoning_payload = {
+            'predicates': predicates,
+            'claim_support_temporal_handoff': claim_support_temporal_handoff,
+        }
+        logic_proof = prove_claim_elements(reasoning_payload)
+        logic_contradictions = check_contradictions(reasoning_payload)
+        hybrid_reasoning = run_hybrid_reasoning(reasoning_payload)
+        ontology_validation = validate_ontology(ontology_for_validation)
 
         temporal_summary: Dict[str, Any] = {}
         if temporal_context:
@@ -2337,6 +2427,7 @@ class ClaimSupportHook:
             'temporal_summary': temporal_summary,
             'temporal_rule_profile': temporal_rule_profile,
             'temporal_proof_bundle': temporal_proof_bundle,
+            'claim_support_temporal_handoff': claim_support_temporal_handoff,
         }
 
     def _summarize_claim_reasoning_diagnostics(self, elements: List[Dict[str, Any]]) -> Dict[str, Any]:
