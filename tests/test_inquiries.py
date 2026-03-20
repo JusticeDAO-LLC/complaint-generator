@@ -48,6 +48,46 @@ class InquiriesTests(unittest.TestCase):
         self.assertEqual(mediator.state.inquiries[0]["answer"], "March 1, 2026")
         self.assertTrue(inquiries.is_complete())
 
+    def test_get_next_prioritizes_support_gap_then_dependency_then_priority(self) -> None:
+        mediator = SimpleNamespace(
+            state=SimpleNamespace(
+                complaint="I was denied a hearing.",
+                inquiries=[
+                    {
+                        "question": "What happened first?",
+                        "alternative_questions": [],
+                        "answer": None,
+                        "priority": "High",
+                        "support_gap_targeted": False,
+                        "dependency_gap_targeted": False,
+                    },
+                    {
+                        "question": "Who at HACC made the decision?",
+                        "alternative_questions": [],
+                        "answer": None,
+                        "priority": "Medium",
+                        "support_gap_targeted": True,
+                        "dependency_gap_targeted": True,
+                    },
+                    {
+                        "question": "What notice did you receive?",
+                        "alternative_questions": [],
+                        "answer": None,
+                        "priority": "Critical",
+                        "support_gap_targeted": True,
+                        "dependency_gap_targeted": False,
+                    },
+                ],
+            ),
+            query_backend=lambda prompt: "",
+        )
+        inquiries = Inquiries(mediator)
+
+        selected = inquiries.get_next()
+
+        self.assertIsNotNone(selected)
+        self.assertEqual(selected["question"], "Who at HACC made the decision?")
+
 
 if __name__ == "__main__":
     unittest.main()

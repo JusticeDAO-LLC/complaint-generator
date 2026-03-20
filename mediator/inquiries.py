@@ -109,70 +109,73 @@ class Inquiries:
 		self._register(question, inquiries, index)
 
 	def merge_legal_questions(self, questions: List[Dict[str, Any]]) -> int:
-		inquiries = self._state_inquiries()
-		if inquiries is None:
-			return 0
+	    inquiries = self._state_inquiries()
+	    if inquiries is None:
+	        return 0
 
-		index = self._index_for(inquiries)
-		gap_context = self._build_gap_context()
-		priority_terms = [
-			str(term).strip().lower()
-			for term in (gap_context.get("priority_terms") or [])
-			if str(term).strip()
-		]
+	    index = self._index_for(inquiries)
+	    gap_context = self._build_gap_context()
+	    priority_terms = [
+	        str(term).strip().lower()
+	        for term in (gap_context.get("priority_terms") or [])
+	        if str(term).strip()
+	    ]
 
-		merged = 0
-		for item in questions or []:
-			if not isinstance(item, dict):
-				continue
-			question_text = str(item.get("question") or "").strip()
-			if not question_text:
-				continue
+	    merged = 0
+	    for item in questions or []:
+	        if not isinstance(item, dict):
+	            continue
+	        question_text = str(item.get("question") or "").strip()
+	        if not question_text:
+	            continue
 
-			normalized = self._normalize_question(question_text)
-			dependency_gap_targeted = any(term in question_text.lower() for term in priority_terms)
-			existing = index.get(normalized)
-			if existing is not None:
-				existing_priority = self._priority_rank(existing.get("priority"))
-				incoming_priority = self._priority_rank(item.get("priority"))
-				if incoming_priority < existing_priority:
-					existing["priority"] = item.get("priority")
-				existing["support_gap_targeted"] = bool(
-					existing.get("support_gap_targeted") or item.get("support_gap_targeted")
-				)
-				existing["dependency_gap_targeted"] = bool(
-					existing.get("dependency_gap_targeted") or dependency_gap_targeted
-				)
-				existing["source"] = "legal_question"
-				if item.get("claim_type"):
-					existing["claim_type"] = item.get("claim_type")
-				if item.get("element"):
-					existing["element"] = item.get("element")
-				if item.get("provenance"):
-					existing["provenance"] = dict(item.get("provenance") or {})
-				if question_text != existing.get("question"):
-					existing.setdefault("alternative_questions", []).append(question_text)
-				merged += 1
-				continue
+	        normalized = self._normalize_question(question_text)
+	        dependency_gap_targeted = any(term in question_text.lower() for term in priority_terms)
+	        existing = index.get(normalized)
+	        if existing is not None:
+	            existing_priority = self._priority_rank(existing.get("priority"))
+	            incoming_priority = self._priority_rank(item.get("priority"))
+	            if incoming_priority < existing_priority:
+	                existing["priority"] = item.get("priority")
+	            existing["support_gap_targeted"] = bool(
+	                existing.get("support_gap_targeted") or item.get("support_gap_targeted")
+	            )
+	            existing["dependency_gap_targeted"] = bool(
+	                existing.get("dependency_gap_targeted") or dependency_gap_targeted
+	            )
+	            if not existing.get("source") or str(existing.get("source")).strip().lower() == "legal_question":
+	                existing["source"] = "legal_question"
+	            if item.get("claim_type"):
+	                existing["claim_type"] = item.get("claim_type")
+	            if item.get("element"):
+	                existing["element"] = item.get("element")
+	            if item.get("provenance"):
+	                existing["provenance"] = dict(item.get("provenance") or {})
+	            if question_text != existing.get("question"):
+	                alternatives = existing.setdefault("alternative_questions", [])
+	                if all(self._normalize_question(candidate) != normalized for candidate in alternatives):
+	                    alternatives.append(question_text)
+	            merged += 1
+	            continue
 
-			inquiry = {
-				"question": question_text,
-				"alternative_questions": list(item.get("alternative_questions") or []),
-				"answer": item.get("answer"),
-				"priority": item.get("priority", "Medium"),
-				"support_gap_targeted": bool(item.get("support_gap_targeted", False)),
-				"dependency_gap_targeted": dependency_gap_targeted,
-				"source": "legal_question",
-				"claim_type": item.get("claim_type"),
-				"element": item.get("element"),
-				"provenance": dict(item.get("provenance") or {}),
-			}
-			inquiries.append(inquiry)
-			index[normalized] = inquiry
-			merged += 1
+	        inquiry = {
+	            "question": question_text,
+	            "alternative_questions": list(item.get("alternative_questions") or []),
+	            "answer": item.get("answer"),
+	            "priority": item.get("priority", "Medium"),
+	            "support_gap_targeted": bool(item.get("support_gap_targeted", False)),
+	            "dependency_gap_targeted": dependency_gap_targeted,
+	            "source": "legal_question",
+	            "claim_type": item.get("claim_type"),
+	            "element": item.get("element"),
+	            "provenance": dict(item.get("provenance") or {}),
+	        }
+	        inquiries.append(inquiry)
+	        index[normalized] = inquiry
+	        merged += 1
 
-		self._index_signature = (id(inquiries), len(inquiries))
-		return merged
+	    self._index_signature = (id(inquiries), len(inquiries))
+	    return merged
 
 	def explain_inquiry(self, inquiry: Dict[str, Any]) -> Dict[str, Any]:
 		inquiry = dict(inquiry or {})

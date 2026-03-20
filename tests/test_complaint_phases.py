@@ -854,6 +854,24 @@ class TestPhaseManager:
         assert action['gaps'] == []
         assert action['intake_blockers'] == readiness['blockers']
 
+    def test_intake_action_completes_when_iteration_cap_hit_with_only_gap_blockers(self):
+        """Iteration cap should break the intake loop when only unresolved gaps remain."""
+        pm = PhaseManager()
+
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', {})
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', {})
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', 5)
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'denoising_converged', False)
+        pm.update_phase_data(ComplaintPhase.INTAKE, 'current_gaps', [])
+        pm.iteration_count = 20
+
+        readiness = pm.get_intake_readiness()
+        action = pm.get_next_action()
+
+        assert 'unresolved_gaps' in readiness['blockers']
+        assert action['action'] == 'complete_intake'
+        assert action['intake_blockers'] == readiness['blockers']
+
     def test_intake_readiness_includes_contradiction_details(self):
         """Test intake readiness returns concrete contradiction diagnostics."""
         pm = PhaseManager()

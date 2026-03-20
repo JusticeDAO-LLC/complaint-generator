@@ -1014,16 +1014,8 @@ class PhaseManager:
         gaps = data.get('current_gaps', [])
         gap_threshold = _INTAKE_GAPS_THRESHOLD
         remaining_gaps = data.get('remaining_gaps', float('inf'))
-        if (gaps and len(gaps) > 0) or remaining_gaps > gap_threshold:
-            return {
-                'action': 'address_gaps',
-                'gaps': gaps,
-                'intake_readiness_score': readiness['score'],
-                'intake_blockers': readiness['blockers'],
-            }
-
-        remaining_gaps = data.get('remaining_gaps', float('inf'))
-        if remaining_gaps > _INTAKE_GAPS_THRESHOLD:
+        denoising_iteration_cap_hit = self.iteration_count >= _DENOISING_MAX_ITERATIONS
+        if ((gaps and len(gaps) > 0) or remaining_gaps > gap_threshold) and not denoising_iteration_cap_hit:
             return {
                 'action': 'address_gaps',
                 'gaps': gaps,
@@ -1048,14 +1040,14 @@ class PhaseManager:
                 'intake_blockers': readiness['blockers'],
             }
 
-        if not data.get('denoising_converged', False) and self.iteration_count < _DENOISING_MAX_ITERATIONS:
+        if not data.get('denoising_converged', False) and not denoising_iteration_cap_hit:
             return {
                 'action': 'continue_denoising',
                 'intake_readiness_score': readiness['score'],
                 'intake_blockers': readiness['blockers'],
             }
 
-        if (data.get('denoising_converged', False) and remaining_gaps <= gap_threshold) or self.iteration_count >= _DENOISING_MAX_ITERATIONS:
+        if denoising_iteration_cap_hit or (data.get('denoising_converged', False) and remaining_gaps <= gap_threshold):
             return {
                 'action': 'complete_intake',
                 'intake_readiness_score': readiness['score'],
