@@ -123,7 +123,7 @@ optimizer = CustomOptimizer()
 results = optimizer.run(
     input_data="Input text",
     iterations=5,
-    context={"model": "gpt-4"}
+    context={"model": "gpt-5.3-codex"}
 )
 ```
 
@@ -174,7 +174,7 @@ Configuration object for optimizers.
 from ipfs_datasets_py.optimizers.common import OptimizerConfig
 
 config = OptimizerConfig(
-    model: str = "gpt-4",
+    model: str = "gpt-5.3-codex",
     temperature: float = 0.7,
     max_tokens: int = 2000,
     timeout_seconds: int = 30,
@@ -188,7 +188,7 @@ config = OptimizerConfig(
 ```
 
 **Parameters:**
-- `model` (str): LLM model name. Default: "gpt-4"
+- `model` (str): LLM model name. Default: "gpt-5.3-codex"
 - `temperature` (float): Generation temperature [0, 2]. Default: 0.7
 - `max_tokens` (int): Maximum tokens per call. Default: 2000
 - `timeout_seconds` (int): Request timeout. Default: 30
@@ -228,7 +228,7 @@ Convert configuration to dictionary.
 
 ```python
 config_dict = config.to_dict()
-# Returns: {'model': 'gpt-4', 'temperature': 0.7, ...}
+# Returns: {'model': 'gpt-5.3-codex', 'temperature': 0.7, ...}
 ```
 
 **Returns:**

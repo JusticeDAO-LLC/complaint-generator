@@ -97,7 +97,8 @@ High-level architecture of the complaint-generator system, showing how all compo
 - CID-based retrieval
 
 #### LLM Providers
-- OpenAI (GPT-4, GPT-3.5)
+- Codex (`gpt-5.3-codex`)
+- OpenAI
 - OpenRouter (multi-model access)
 - HuggingFace (open-source models)
 - Copilot CLI (GitHub Copilot)
@@ -417,7 +418,8 @@ Application Servers (N instances)
 - **IPFS** - Distributed storage
 
 ### LLM Integration
-- **OpenAI API** - GPT-4, GPT-3.5
+- **Codex** - `gpt-5.3-codex`
+- **OpenAI API**
 - **HuggingFace** - Open-source models
 - **Copilot CLI** - GitHub Copilot
 - **llama.cpp** - Local model inference

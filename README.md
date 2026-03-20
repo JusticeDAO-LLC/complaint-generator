@@ -52,7 +52,8 @@ Each type includes 390+ domain keywords, 90+ legal patterns, and automated decis
 
 Flexible AI backend integration with automatic fallback:
 
-- OpenAI (GPT-4, GPT-3.5)
+- Codex (`gpt-5.3-codex`)
+- OpenAI
 - Anthropic Claude (via OpenRouter)
 - Google Gemini
 - GitHub Copilot

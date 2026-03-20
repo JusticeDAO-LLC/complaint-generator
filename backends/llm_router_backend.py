@@ -50,7 +50,12 @@ class LLMRouterBackend:
                     or None
                 )
             elif self.provider:
-                self.model = 'gpt-5-mini'
+                self.model = (
+                    os.getenv('IPFS_DATASETS_PY_LLM_MODEL', '').strip()
+                    or os.getenv('COMPLAINT_GENERATOR_LLM_MODEL', '').strip()
+                    or os.getenv('LLM_ROUTER_MODEL', '').strip()
+                    or None
+                )
             else:
                 self.model = None
         else:

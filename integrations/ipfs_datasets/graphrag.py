@@ -284,7 +284,7 @@ def ingest_pdf_to_graphrag(
     *,
     metadata: Optional[Dict[str, Any]] = None,
     enable_ocr: bool = True,
-    target_llm: str = "gpt-4",
+    target_llm: str = "gpt-5.3-codex",
     chunk_strategy: str = "semantic",
     enable_cross_document: bool = True,
 ) -> Dict[str, Any]:
@@ -401,7 +401,7 @@ def batch_process_pdfs(
     batch_size: int = 5,
     parallel_workers: int = 3,
     enable_ocr: bool = True,
-    target_llm: str = "gpt-4",
+    target_llm: str = "gpt-5.3-codex",
     chunk_strategy: str = "semantic",
     enable_cross_document: bool = True,
     output_format: str = "detailed",

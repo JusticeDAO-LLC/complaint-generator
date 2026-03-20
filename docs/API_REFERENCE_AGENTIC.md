@@ -24,7 +24,7 @@ Main optimization agent for iterative artifact improvement using LLM-based feedb
 from ipfs_datasets_py.optimizers.agentic import AgenticOptimizer
 
 optimizer = AgenticOptimizer(
-    model: str = "gpt-4",
+    model: str = "gpt-5.3-codex",
     temperature: float = 0.7,
     max_iterations: int = 10,
     convergence_threshold: float = 0.95,
@@ -33,7 +33,7 @@ optimizer = AgenticOptimizer(
 ```
 
 **Parameters:**
-- `model` (str): LLM model to use. Default: "gpt-4"
+- `model` (str): LLM model to use. Default: "gpt-5.3-codex"
 - `temperature` (float): Generation temperature [0, 2]. Default: 0.7
 - `max_iterations` (int): Maximum optimization iterations. Default: 10
 - `convergence_threshold` (float): Quality threshold for early stopping [0, 1]. Default: 0.95
@@ -164,7 +164,7 @@ python -m ipfs_datasets_py.optimizers.agentic.cli optimize \
     --input artifact.txt \
     --objective "Maximize legal strength" \
     --output optimized.txt \
-    --model gpt-4 \
+    --model gpt-5.3-codex \
     --iterations 5
 ```
 
@@ -172,7 +172,7 @@ python -m ipfs_datasets_py.optimizers.agentic.cli optimize \
 - `--input` (str): Input file path
 - `--objective` (str): Optimization objective
 - `--output` (str): Output file path
-- `--model` (str): LLM model. Default: "gpt-4"
+- `--model` (str): LLM model. Default: "gpt-5.3-codex"
 - `--iterations` (int): Max iterations. Default: 10
 - `--temperature` (float): Model temperature. Default: 0.7
 - `--threshold` (float): Convergence threshold. Default: 0.95
@@ -196,7 +196,7 @@ python -m ipfs_datasets_py.optimizers.agentic.cli evaluate \
 - `--input` (str): Input file path
 - `--criteria` (List[str]): Evaluation criteria
 - `--output` (str): Output file for results
-- `--model` (str): LLM model. Default: "gpt-4"
+- `--model` (str): LLM model. Default: "gpt-5.3-codex"
 - `--format` (str): Output format (json/yaml/text). Default: "json"
 
 #### batch
@@ -351,14 +351,14 @@ Manage feedback collection and processing.
 from ipfs_datasets_py.optimizers.agentic import FeedbackLoop
 
 feedback_loop = FeedbackLoop(
-    model: str = "gpt-4",
+    model: str = "gpt-5.3-codex",
     max_feedback_rounds: int = 5,
     aggregation_strategy: str = "weighted_average"
 )
 ```
 
 **Parameters:**
-- `model` (str): LLM model. Default: "gpt-4"
+- `model` (str): LLM model. Default: "gpt-5.3-codex"
 - `max_feedback_rounds` (int): Max feedback cycles. Default: 5
 - `aggregation_strategy` (str): How to aggregate feedback. Default: "weighted_average"
 
@@ -712,6 +712,6 @@ for artifact in artifacts:
 
 1. **Batch Processing**: Use CLI `batch` command for multiple artifacts
 2. **Caching**: Enable caching to avoid re-evaluating identical artifacts
-3. **Model Selection**: Use `gpt-3.5-turbo` for fast feedback, `gpt-4` for complex reasoning
+3. **Model Selection**: Use a lighter router-backed model for fast feedback and `gpt-5.3-codex` for higher-quality reasoning
 4. **Convergence**: Set appropriate `convergence_threshold` to stop early when quality plateaus
 5. **Checkpointing**: Enable `auto_save` for long-running optimizations

@@ -27,9 +27,9 @@ The main class for generating knowledge graph ontologies from unstructured text 
 from ipfs_datasets_py.optimizers.graphrag import OntologyGenerator
 
 generator = OntologyGenerator(
-    extraction_model: str = "gpt-4",
-    relationship_llm: str = "gpt-4",
-    entity_llm: str = "gpt-4",
+    extraction_model: str = "gpt-5.3-codex",
+    relationship_llm: str = "gpt-5.3-codex",
+    entity_llm: str = "gpt-5.3-codex",
     use_batch_extraction: bool = False,
     max_chunk_size: int = 4000,
     use_descriptions: bool = True
@@ -37,9 +37,9 @@ generator = OntologyGenerator(
 ```
 
 **Parameters:**
-- `extraction_model` (str): LLM model for entity extraction. Default: "gpt-4"
-- `relationship_llm` (str): LLM model for relationship inference. Default: "gpt-4"
-- `entity_llm` (str): LLM model for entity enrichment. Default: "gpt-4"
+- `extraction_model` (str): LLM model for entity extraction. Default: "gpt-5.3-codex"
+- `relationship_llm` (str): LLM model for relationship inference. Default: "gpt-5.3-codex"
+- `entity_llm` (str): LLM model for entity enrichment. Default: "gpt-5.3-codex"
 - `use_batch_extraction` (bool): Enable batch processing mode. Default: False
 - `max_chunk_size` (int): Maximum text chunk size in characters. Default: 4000
 - `use_descriptions` (bool): Include entity descriptions. Default: True
@@ -954,4 +954,3 @@ print(f"Quality Assessment: {quality_report}")
 - **ipfs_datasets_py version:** Latest
 - **Python version:** ≥ 3.9
 - **Dependencies:** pydantic, aiolimiter, httpx
-

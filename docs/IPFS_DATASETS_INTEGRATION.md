@@ -149,7 +149,7 @@ validation_result = validate_ontology(ontology_result.get('ontology'))
 
 pdf_result = ingest_pdf_to_graphrag(
     "/data/housing_policy.pdf",
-    target_llm="gpt-4",
+    target_llm="gpt-5.3-codex",
 )
 
 graph_query = query_pdf_knowledge_graph(
