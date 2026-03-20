@@ -223,9 +223,17 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Showing manual-review conflicts that are blocking evidence completion." in content
     assert "Resolution form prefilled from blocking evidence conflict." in content
     assert "recommended action: fill_evidence_gaps" in content
+    assert "recommended action: fill_temporal_chronology_gap" in content
+    assert "chronology issues: ${unresolvedChronologyIssues.length}" in content
+    assert "chronology objective: ${humanizeQueryValue(focusedAlignmentTask.temporal_proof_objective)}" in content
     assert "preferred lane: ${humanizeQueryValue(preferredSupportKind)}" in content
     assert "quality target: ${humanizeQueryValue(focusedAlignmentTask.source_quality_target)}" in content
     assert "fallback lane: ${humanizeQueryValue(lane)}" in content
+    assert "Temporal ordering is still unresolved for a shared intake-to-packet element." in content
+    assert "Unresolved chronology issue IDs: ${unresolvedChronologyIssues.length ? unresolvedChronologyIssues.join(', ') : 'none recorded'}" in content
+    assert "intake-next-action-review-chronology-task" in content
+    assert "Review chronology task" in content
+    assert "Showing chronology blocker task and unresolved issue IDs." in content
     assert "Priority evidence is still missing for a shared intake-to-packet element." in content
     assert "openEvidenceTaskReview(" in content
     assert "Showing priority evidence task and preferred support lane." in content
@@ -585,6 +593,8 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Packet escalations:" in content
     assert "Packet proof readiness:" in content
     assert "Packet unresolved without path:" in content
+    assert "Packet unresolved chronology issues:" in content
+    assert "Packet chronology issue ids:" in content
     assert "Packet completion ready:" in content
     assert "Packet temporal facts:" in content
     assert "Packet temporal relations:" in content
@@ -782,6 +792,8 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "Packet escalations:" in content
     assert "Packet proof readiness:" in content
     assert "Packet unresolved without path:" in content
+    assert "Packet unresolved chronology issues:" in content
+    assert "Packet chronology issue ids:" in content
     assert "Packet completion ready:" in content
     assert "Packet temporal facts:" in content
     assert "Packet temporal relations:" in content

@@ -80,6 +80,7 @@ def _run_adversarial_autopatch_app(mediator: Any, application_config: Dict[str, 
         session_state_dir=application_config.get("session_state_dir"),
         marker_prefix=str(application_config.get("marker_prefix", "Launcher autopatch recommendation")),
         demo_backend=bool(application_config.get("demo_backend", False)),
+        phase_mode=str(application_config.get("phase_mode", "single") or "single"),
         backends=getattr(mediator, "backends", None),
     )
     warnings = list(((payload.get("runtime") or {}).get("preflight_warnings") or []))

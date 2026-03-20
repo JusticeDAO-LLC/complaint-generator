@@ -3232,6 +3232,80 @@
                         >Load into resolution form</button>
                     </div>
                 `;
+            } else if (nextAction.action === 'fill_temporal_chronology_gap') {
+                const prioritizedAlignmentTasks = Array.isArray(nextAction.alignment_tasks) ? nextAction.alignment_tasks : [];
+                const focusedAlignmentTask = prioritizedAlignmentTasks.find((task) => {
+                    if (!task || typeof task !== 'object') {
+                        return false;
+                    }
+                    const taskClaimType = String(task.claim_type || '').trim().toLowerCase();
+                    const taskElementId = String(task.claim_element_id || '').trim().toLowerCase();
+                    return (!focusedActionClaimType || taskClaimType === focusedActionClaimType)
+                        && (!focusedActionElementId || taskElementId === focusedActionElementId);
+                }) || alignmentEvidenceTasks.find((task) => {
+                    if (!task || typeof task !== 'object') {
+                        return false;
+                    }
+                    const taskClaimType = String(task.claim_type || '').trim().toLowerCase();
+                    const taskElementId = String(task.claim_element_id || '').trim().toLowerCase();
+                    return (!focusedActionClaimType || taskClaimType === focusedActionClaimType)
+                        && (!focusedActionElementId || taskElementId === focusedActionElementId);
+                }) || {};
+                const preferredSupportKind = String(focusedAlignmentTask.preferred_support_kind || '').trim().toLowerCase();
+                const fallbackLanes = Array.isArray(focusedAlignmentTask.fallback_lanes) ? focusedAlignmentTask.fallback_lanes : [];
+                const taskTemporalIssueIds = Array.isArray(focusedAlignmentTask.temporal_issue_ids)
+                    ? focusedAlignmentTask.temporal_issue_ids.filter((item) => String(item || '').trim())
+                    : [];
+                const taskTimelineIssueIds = Array.isArray(focusedAlignmentTask.timeline_issue_ids)
+                    ? focusedAlignmentTask.timeline_issue_ids.filter((item) => String(item || '').trim())
+                    : [];
+                const unresolvedChronologyIssues = Array.from(new Set([
+                    ...taskTemporalIssueIds,
+                    ...taskTimelineIssueIds,
+                ]));
+                const chronologyGapChips = [
+                    '<span class="chip">recommended action: fill_temporal_chronology_gap</span>',
+                    `<span class="chip">chronology issues: ${unresolvedChronologyIssues.length}</span>`,
+                ];
+                if (focusedActionClaimType) {
+                    chronologyGapChips.push(`<span class="chip">focus claim: ${humanizeQueryValue(focusedActionClaimType)}</span>`);
+                }
+                if (focusedActionElementId) {
+                    chronologyGapChips.push(`<span class="chip">focus element: ${humanizeQueryValue(focusedActionElementId)}</span>`);
+                }
+                if (focusedAlignmentTask.temporal_proof_objective) {
+                    chronologyGapChips.push(`<span class="chip">chronology objective: ${humanizeQueryValue(focusedAlignmentTask.temporal_proof_objective)}</span>`);
+                }
+                if (preferredSupportKind) {
+                    chronologyGapChips.push(`<span class="chip">preferred lane: ${humanizeQueryValue(preferredSupportKind)}</span>`);
+                }
+                if (focusedAlignmentTask.source_quality_target) {
+                    chronologyGapChips.push(`<span class="chip">quality target: ${humanizeQueryValue(focusedAlignmentTask.source_quality_target)}</span>`);
+                }
+                fallbackLanes.slice(0, 2).forEach((lane) => {
+                    chronologyGapChips.push(`<span class="chip">fallback lane: ${humanizeQueryValue(lane)}</span>`);
+                });
+                intakeNextActionBanner.hidden = false;
+                intakeNextActionBanner.classList.add('is-error');
+                intakeNextActionTitle.textContent = 'Resolve chronology blockers';
+                intakeNextActionStatus.textContent = 'fill_temporal_chronology_gap';
+                intakeNextActionChips.innerHTML = chronologyGapChips.join('');
+                intakeNextActionNotes.innerHTML = `
+                    Temporal ordering is still unresolved for a shared intake-to-packet element.
+                    Review the chronology task, inspect the unresolved issue IDs, and collect support that clears the temporal blocker before advancing evidence completion.
+                    <div style="margin-top: 10px; color: var(--muted); font-size: 0.9rem;">Unresolved chronology issue IDs: ${unresolvedChronologyIssues.length ? unresolvedChronologyIssues.join(', ') : 'none recorded'}</div>
+                    <div class="button-row" style="margin-top: 12px;">
+                        <button
+                            class="button-secondary"
+                            id="intake-next-action-review-chronology-task"
+                            type="button"
+                            data-claim-type="${nextAction.claim_type || ''}"
+                            data-claim-element-id="${nextAction.claim_element_id || ''}"
+                            data-claim-element-text="${(focusedActionElementLabel || nextAction.claim_element_id || '').replace(/"/g, '&quot;')}"
+                            data-support-kind="${preferredSupportKind || ''}"
+                        >Review chronology task</button>
+                    </div>
+                `;
             } else if (nextAction.action === 'fill_evidence_gaps') {
                 const prioritizedAlignmentTasks = Array.isArray(nextAction.alignment_tasks) ? nextAction.alignment_tasks : [];
                 const focusedAlignmentTask = prioritizedAlignmentTasks.find((task) => {
@@ -3605,6 +3679,15 @@
             }
             if (claimSupportPacketSummary.claim_support_unresolved_without_review_path_count !== undefined) {
                 packetChips.push(`<span class="chip">packet unresolved without path: ${Number(claimSupportPacketSummary.claim_support_unresolved_without_review_path_count || 0)}</span>`);
+            }
+            if (claimSupportPacketSummary.claim_support_unresolved_temporal_issue_count !== undefined) {
+                packetChips.push(`<span class="chip">packet unresolved chronology issues: ${Number(claimSupportPacketSummary.claim_support_unresolved_temporal_issue_count || 0)}</span>`);
+            }
+            const packetUnresolvedTemporalIssueIds = Array.isArray(claimSupportPacketSummary.claim_support_unresolved_temporal_issue_ids)
+                ? claimSupportPacketSummary.claim_support_unresolved_temporal_issue_ids.filter((item) => String(item || '').trim())
+                : [];
+            if (packetUnresolvedTemporalIssueIds.length) {
+                packetChips.push(`<span class="chip">packet chronology issue ids: ${packetUnresolvedTemporalIssueIds.join(', ')}</span>`);
             }
             if (claimSupportPacketSummary.proof_readiness_score !== undefined) {
                 packetChips.push(`<span class="chip">packet proof readiness: ${Number(claimSupportPacketSummary.proof_readiness_score || 0).toFixed(2)}</span>`);
@@ -6154,6 +6237,17 @@
                     reviewEvidenceTaskBannerButton.dataset.supportKind || '',
                 );
                 setStatus('Showing priority evidence task and preferred support lane.');
+                return;
+            }
+            const reviewChronologyTaskBannerButton = event.target.closest('#intake-next-action-review-chronology-task');
+            if (reviewChronologyTaskBannerButton) {
+                openEvidenceTaskReview(
+                    reviewChronologyTaskBannerButton.dataset.claimType || '',
+                    reviewChronologyTaskBannerButton.dataset.claimElementId || '',
+                    reviewChronologyTaskBannerButton.dataset.claimElementText || '',
+                    reviewChronologyTaskBannerButton.dataset.supportKind || '',
+                );
+                setStatus('Showing chronology blocker task and unresolved issue IDs.');
                 return;
             }
             const openDocumentBuilderBannerButton = event.target.closest('#intake-next-action-open-document-builder');

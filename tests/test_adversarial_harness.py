@@ -2124,6 +2124,7 @@ class TestOptimizer:
         assert task.target_files == [Path('adversarial_harness/session.py')]
         assert 'adversarial complainant/mediator loop' in task.description
         assert task.metadata['report_summary']['average_score'] == pytest.approx(0.61)
+        assert 'workflow_phase_plan' in task.metadata['report_summary']
         assert 'recommendations' in task.metadata['report_summary']
 
     def test_run_agentic_autopatch_invokes_upstream_optimizer_and_attaches_report(self, monkeypatch):

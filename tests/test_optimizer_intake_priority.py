@@ -109,6 +109,11 @@ def test_build_agentic_patch_task_includes_intake_priority_summary():
         "mediator/mediator.py",
         "adversarial_harness/complainant.py",
     ]
+    assert task.metadata["report_summary"]["workflow_phase_plan"]["recommended_order"]
+    assert task.metadata["report_summary"]["workflow_phase_plan"]["phases"]["intake_questioning"]["status"] in {
+        "critical",
+        "warning",
+    }
     assert "recommendations" in task.metadata["report_summary"]
 
 
@@ -147,6 +152,75 @@ def test_build_agentic_patch_task_can_autoselect_targets_from_intake_gaps():
         Path("adversarial_harness/complainant.py"),
     ]
     assert "Target files: adversarial_harness/session.py, mediator/mediator.py, adversarial_harness/complainant.py." in task.description
+
+
+def test_analyze_builds_workflow_phase_plan_for_intake_graph_and_document_steps():
+    optimizer = Optimizer()
+    result = _session_result(
+        "session_phase_plan",
+        0.58,
+        {
+            "adversarial_intake_priority_summary": {
+                "expected_objectives": ["documents", "harm_remedy", "timeline"],
+                "covered_objectives": ["timeline"],
+                "uncovered_objectives": ["documents", "harm_remedy"],
+            }
+        },
+    )
+    result.knowledge_graph_summary = {"total_entities": 0, "total_relationships": 0, "gaps": 4}
+    result.dependency_graph_summary = {"total_nodes": 0, "total_dependencies": 0, "satisfaction_rate": 0.0}
+
+    report = optimizer.analyze([result])
+
+    phase_plan = report.workflow_phase_plan
+    assert phase_plan["recommended_order"]
+    assert phase_plan["phases"]["intake_questioning"]["status"] == "critical"
+    assert phase_plan["phases"]["graph_analysis"]["status"] == "critical"
+    assert phase_plan["phases"]["document_generation"]["status"] in {"critical", "warning"}
+    assert "document_pipeline.py" in phase_plan["phases"]["document_generation"]["target_files"]
+    assert any(
+        action["focus"] == "exhibit_collection"
+        for action in phase_plan["phases"]["document_generation"]["recommended_actions"]
+    )
+
+
+def test_build_phase_patch_tasks_emits_non_ready_workflow_steps():
+    optimizer = Optimizer()
+    result = _session_result(
+        "session_phase_tasks",
+        0.58,
+        {
+            "adversarial_intake_priority_summary": {
+                "expected_objectives": ["documents", "harm_remedy", "timeline"],
+                "covered_objectives": ["timeline"],
+                "uncovered_objectives": ["documents", "harm_remedy"],
+            }
+        },
+    )
+    result.knowledge_graph_summary = {"total_entities": 0, "total_relationships": 0, "gaps": 4}
+    result.dependency_graph_summary = {"total_nodes": 0, "total_dependencies": 0, "satisfaction_rate": 0.0}
+
+    tasks, report = optimizer.build_phase_patch_tasks(
+        [result],
+        method="actor_critic",
+        components={
+            "OptimizationTask": lambda **kwargs: SimpleNamespace(**kwargs),
+            "OptimizationMethod": SimpleNamespace(ACTOR_CRITIC="ACTOR_CRITIC"),
+            "OptimizerLLMRouter": None,
+            "optimizer_classes": {},
+        },
+    )
+
+    ordered_names = report.workflow_phase_plan["recommended_order"]
+    emitted_names = [task.metadata["workflow_phase"] for task in tasks]
+
+    assert emitted_names == [
+        phase_name
+        for phase_name in ordered_names
+        if report.workflow_phase_plan["phases"][phase_name]["status"] != "ready"
+    ]
+    assert any("document_pipeline.py" in [str(path) for path in task.target_files] for task in tasks)
+    assert all(task.method == "ACTOR_CRITIC" for task in tasks)
 
 
 def test_run_agentic_autopatch_caches_inner_generation_diagnostics_on_failure():

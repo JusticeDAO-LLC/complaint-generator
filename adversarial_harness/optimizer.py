@@ -66,6 +66,7 @@ class OptimizationReport:
     intake_priority_performance: Dict[str, Any] | None = None
     coverage_remediation: Dict[str, Any] | None = None
     recommended_hacc_preset: str | None = None
+    workflow_phase_plan: Dict[str, Any] | None = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -106,6 +107,7 @@ class OptimizationReport:
             'intake_priority_performance': self.intake_priority_performance or {},
             'coverage_remediation': self.coverage_remediation or {},
             'recommended_hacc_preset': self.recommended_hacc_preset,
+            'workflow_phase_plan': self.workflow_phase_plan or {},
         }
 
 
@@ -258,6 +260,10 @@ class Optimizer:
             f"Target files: {target_labels}. Priorities from the latest adversarial batch: {focus_text}. "
             f"Preserve current behavior while improving router-backed question quality, information extraction, coverage, and patchability."
         )
+        phase_plan = dict(report.workflow_phase_plan or {})
+        phase_order = [str(value) for value in list(phase_plan.get("recommended_order") or []) if str(value)]
+        if phase_order:
+            description += " Phase focus order: " + ", ".join(phase_order[:3]) + "."
         if weakest_intake_objectives:
             description += (
                 " The weakest unresolved intake objectives were: "
@@ -306,7 +312,305 @@ class Optimizer:
         if any(objective in {"harm_remedy", "actors"} for objective in objectives):
             add_target("adversarial_harness/complainant.py")
 
+        if not recommendations and isinstance(report.workflow_phase_plan, dict):
+            phases = dict(report.workflow_phase_plan.get("phases") or {})
+            for phase_name in list(report.workflow_phase_plan.get("recommended_order") or []):
+                phase_payload = dict(phases.get(phase_name) or {})
+                if str(phase_payload.get("status") or "ready") == "ready":
+                    continue
+                for path in list(phase_payload.get("target_files") or []):
+                    add_target(str(path))
+
         return recommendations
+
+    @staticmethod
+    def _dedupe_text(values: List[str]) -> List[str]:
+        deduped: List[str] = []
+        seen = set()
+        for value in values:
+            text = str(value or "").strip()
+            if not text:
+                continue
+            lowered = text.lower()
+            if lowered in seen:
+                continue
+            seen.add(lowered)
+            deduped.append(text)
+        return deduped
+
+    @staticmethod
+    def _phase_status(severity: int) -> str:
+        if int(severity) >= 5:
+            return "critical"
+        if int(severity) > 0:
+            return "warning"
+        return "ready"
+
+    def _build_workflow_phase_plan(
+        self,
+        *,
+        question_quality_avg: float,
+        information_extraction_avg: float,
+        efficiency_avg: float,
+        coverage_avg: float,
+        graph_summary: Dict[str, Any],
+        coverage_remediation: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        intake_actions = list((coverage_remediation.get("intake_priorities") or {}).get("recommended_actions") or [])
+        intake_signals: List[str] = []
+        intake_recommendations: List[Dict[str, Any]] = []
+        intake_severity = 0
+
+        if intake_actions:
+            intake_signals.append(f"{len(intake_actions)} intake objectives remain uncovered")
+            intake_severity += 3
+            for item in intake_actions[:3]:
+                intake_recommendations.append(
+                    {
+                        "focus": str(item.get("objective") or "intake_priority"),
+                        "signal": "intake_coverage_gap",
+                        "recommended_action": str(item.get("recommended_action") or "Add a dedicated intake fallback question."),
+                    }
+                )
+        if question_quality_avg < 0.7:
+            intake_signals.append(f"question quality average is {question_quality_avg:.2f}")
+            intake_severity += 2 if question_quality_avg < 0.6 else 1
+            intake_recommendations.append(
+                {
+                    "focus": "mediator_questioning",
+                    "signal": "question_quality",
+                    "recommended_action": "Tighten mediator prompts so each question is specific to the unresolved factual gap and references the strongest available evidence anchor.",
+                }
+            )
+        if efficiency_avg < 0.7:
+            intake_signals.append(f"efficiency average is {efficiency_avg:.2f}")
+            intake_severity += 2 if efficiency_avg < 0.6 else 1
+            intake_recommendations.append(
+                {
+                    "focus": "question_deduplication",
+                    "signal": "efficiency",
+                    "recommended_action": "Prefer unanswered objectives before revisiting covered topics, and deduplicate repeated mediator questions across turns.",
+                }
+            )
+        if coverage_avg < 0.7:
+            intake_signals.append(f"coverage average is {coverage_avg:.2f}")
+            intake_severity += 2 if coverage_avg < 0.6 else 1
+            intake_recommendations.append(
+                {
+                    "focus": "intake_flow",
+                    "signal": "coverage",
+                    "recommended_action": "Keep timeline, actors, documents, witnesses, and harm/remedy prompts ahead of generic wrap-up questions so intake exits with fewer factual gaps.",
+                }
+            )
+
+        graph_signals: List[str] = []
+        graph_recommendations: List[Dict[str, Any]] = []
+        graph_severity = 0
+        kg_with = int(graph_summary.get("kg_sessions_with_data") or 0)
+        dg_with = int(graph_summary.get("dg_sessions_with_data") or 0)
+        kg_empty = int(graph_summary.get("kg_sessions_empty") or 0)
+        dg_empty = int(graph_summary.get("dg_sessions_empty") or 0)
+        kg_avg_entities = self._safe_float(graph_summary.get("kg_avg_total_entities"))
+        dg_avg_nodes = self._safe_float(graph_summary.get("dg_avg_total_nodes"))
+        kg_avg_gaps = self._safe_float(graph_summary.get("kg_avg_gaps"))
+        kg_gap_delta = self._safe_float(graph_summary.get("kg_avg_gaps_delta_per_iter"))
+        kg_entities_delta = self._safe_float(graph_summary.get("kg_avg_entities_delta_per_iter"))
+        kg_relationships_delta = self._safe_float(graph_summary.get("kg_avg_relationships_delta_per_iter"))
+        dg_satisfaction_rate = self._safe_float(graph_summary.get("dg_avg_satisfaction_rate"))
+        kg_not_reducing = int(graph_summary.get("kg_sessions_gaps_not_reducing") or 0)
+
+        if kg_with == 0:
+            graph_signals.append("knowledge graph summaries are missing from analyzed sessions")
+            graph_severity += 2
+            graph_recommendations.append(
+                {
+                    "focus": "knowledge_graph_capture",
+                    "signal": "kg_missing",
+                    "recommended_action": "Ensure adversarial sessions persist knowledge-graph summaries so optimizer feedback can steer entity extraction and gap reduction.",
+                }
+            )
+        elif kg_empty == kg_with:
+            graph_signals.append("knowledge graphs are empty across analyzed sessions")
+            graph_severity += 3
+            graph_recommendations.append(
+                {
+                    "focus": "knowledge_graph_extraction",
+                    "signal": "kg_empty",
+                    "recommended_action": "Strengthen entity and relationship extraction so intake answers produce a usable knowledge graph before denoising or drafting.",
+                }
+            )
+        elif kg_avg_entities is not None and kg_avg_entities < 2.0:
+            graph_signals.append(f"knowledge graphs average only {kg_avg_entities:.2f} entities")
+            graph_severity += 1
+            graph_recommendations.append(
+                {
+                    "focus": "knowledge_graph_growth",
+                    "signal": "kg_small",
+                    "recommended_action": "Add lightweight structured extraction for dates, actors, actions, injuries, and documents so the knowledge graph is not too sparse for downstream reasoning.",
+                }
+            )
+
+        if dg_with == 0:
+            graph_signals.append("dependency graph summaries are missing from analyzed sessions")
+            graph_severity += 2
+            graph_recommendations.append(
+                {
+                    "focus": "dependency_graph_capture",
+                    "signal": "dg_missing",
+                    "recommended_action": "Ensure dependency-graph summaries are captured so missing legal elements can be targeted during denoising.",
+                }
+            )
+        elif dg_empty == dg_with:
+            graph_signals.append("dependency graphs are empty across analyzed sessions")
+            graph_severity += 3
+            graph_recommendations.append(
+                {
+                    "focus": "dependency_graph_population",
+                    "signal": "dg_empty",
+                    "recommended_action": "Expand claim-to-requirement modeling so dependency graphs capture missing legal elements and evidence dependencies before drafting.",
+                }
+            )
+        elif dg_avg_nodes is not None and dg_avg_nodes < 2.0:
+            graph_signals.append(f"dependency graphs average only {dg_avg_nodes:.2f} nodes")
+            graph_severity += 1
+
+        if kg_avg_gaps is not None and kg_avg_gaps >= 3.0:
+            graph_signals.append(f"knowledge graphs average {kg_avg_gaps:.2f} unresolved gaps")
+            graph_severity += 2
+            graph_recommendations.append(
+                {
+                    "focus": "gap_reduction",
+                    "signal": "kg_gap_count",
+                    "recommended_action": "Improve denoiser gap selection and answer processing so each turn closes a concrete knowledge-graph gap instead of only restating the narrative.",
+                }
+            )
+        if kg_not_reducing > 0 or (kg_gap_delta is not None and kg_gap_delta >= 0.0):
+            graph_signals.append("knowledge-graph gaps are not reliably shrinking across iterations")
+            graph_severity += 2
+            graph_recommendations.append(
+                {
+                    "focus": "iterative_graph_updates",
+                    "signal": "kg_gap_delta",
+                    "recommended_action": "Make answer processing update entities, relationships, and satisfied requirements deterministically when the complainant supplies the missing field.",
+                }
+            )
+        if kg_entities_delta is not None and kg_entities_delta < 0.1:
+            graph_signals.append("knowledge-graph entity growth per iteration is low")
+            graph_severity += 1
+        if kg_relationships_delta is not None and kg_relationships_delta < 0.05:
+            graph_signals.append("knowledge-graph relationship growth per iteration is low")
+            graph_severity += 1
+        if dg_satisfaction_rate is not None and dg_satisfaction_rate < 0.2:
+            graph_signals.append(f"dependency satisfaction rate is only {dg_satisfaction_rate:.2f}")
+            graph_severity += 2
+
+        document_signals: List[str] = []
+        document_recommendations: List[Dict[str, Any]] = []
+        document_severity = 0
+        uncovered_objectives = [
+            str(value)
+            for value in list((coverage_remediation.get("intake_priorities") or {}).get("uncovered_objectives") or [])
+            if str(value)
+        ]
+        if "documents" in uncovered_objectives:
+            document_signals.append("document-focused intake objectives are still uncovered")
+            document_severity += 2
+            document_recommendations.append(
+                {
+                    "focus": "exhibit_collection",
+                    "signal": "documents_objective",
+                    "recommended_action": "Carry early document-request prompts into drafting handoff so exhibits, notices, grievances, and emails are reflected in the complaint package.",
+                }
+            )
+        if "harm_remedy" in uncovered_objectives:
+            document_signals.append("harm/remedy objectives are still uncovered")
+            document_severity += 1
+            document_recommendations.append(
+                {
+                    "focus": "requested_relief",
+                    "signal": "harm_remedy_objective",
+                    "recommended_action": "Strengthen the handoff from intake to requested-relief generation so the draft captures both the injury and the remedy sought.",
+                }
+            )
+        if information_extraction_avg < 0.7:
+            document_signals.append(f"information extraction average is {information_extraction_avg:.2f}")
+            document_severity += 2 if information_extraction_avg < 0.6 else 1
+            document_recommendations.append(
+                {
+                    "focus": "drafting_handoff",
+                    "signal": "information_extraction",
+                    "recommended_action": "Promote structured intake facts, anchors, and evidence references directly into summary-of-facts and claim-support generation before document optimization runs.",
+                }
+            )
+        if coverage_avg < 0.7:
+            document_signals.append(f"overall coverage average is {coverage_avg:.2f}")
+            document_severity += 1
+        if graph_severity > 0:
+            document_signals.append("drafting depends on stronger graph and denoising handoffs")
+            document_severity += 1
+            document_recommendations.append(
+                {
+                    "focus": "graph_to_document_handoff",
+                    "signal": "graph_dependency",
+                    "recommended_action": "Gate document generation on graph completeness signals and surface unresolved factual or legal gaps in drafting readiness before formalization.",
+                }
+            )
+
+        phases = {
+            "intake_questioning": {
+                "status": self._phase_status(intake_severity),
+                "severity": intake_severity,
+                "summary": "Improve complainant and mediator questioning so intake exits with stronger factual, evidentiary, and anchor coverage.",
+                "signals": self._dedupe_text(intake_signals),
+                "recommended_actions": intake_recommendations[:4],
+                "target_files": [
+                    "adversarial_harness/session.py",
+                    "mediator/mediator.py",
+                    "adversarial_harness/complainant.py",
+                ],
+            },
+            "graph_analysis": {
+                "status": self._phase_status(graph_severity),
+                "severity": graph_severity,
+                "summary": "Improve knowledge-graph and dependency-graph population so denoising and legal reasoning operate on structured facts instead of raw narrative alone.",
+                "signals": self._dedupe_text(graph_signals),
+                "recommended_actions": graph_recommendations[:4],
+                "target_files": [
+                    "complaint_phases/knowledge_graph.py",
+                    "complaint_phases/dependency_graph.py",
+                    "complaint_phases/denoiser.py",
+                    "mediator/mediator.py",
+                ],
+            },
+            "document_generation": {
+                "status": self._phase_status(document_severity),
+                "severity": document_severity,
+                "summary": "Improve drafting handoff so complaint generation reflects the collected facts, exhibits, and unresolved gaps at formalization time.",
+                "signals": self._dedupe_text(document_signals),
+                "recommended_actions": document_recommendations[:4],
+                "target_files": [
+                    "document_pipeline.py",
+                    "document_optimization.py",
+                    "mediator/formal_document.py",
+                ],
+            },
+        }
+
+        ordered_names = [
+            name
+            for name, _payload in sorted(
+                phases.items(),
+                key=lambda item: (-int(item[1].get("severity") or 0), item[0]),
+            )
+        ]
+        for priority, name in enumerate(ordered_names, start=1):
+            phases[name]["priority"] = priority
+            phases[name].pop("severity", None)
+
+        return {
+            "recommended_order": ordered_names,
+            "phases": phases,
+        }
 
     def build_agentic_patch_task(
         self,
@@ -360,11 +664,88 @@ class Optimizer:
                         (report.intake_priority_performance or {}).get("sessions_with_full_coverage") or 0
                     ),
                     "recommended_target_files": [str(path) for path in recommended_targets],
+                    "workflow_phase_plan": dict(report.workflow_phase_plan or {}),
                 },
                 **dict(metadata or {}),
             },
         )
         return task, report
+
+    def build_phase_patch_tasks(
+        self,
+        results: List[Any],
+        *,
+        method: str = "actor_critic",
+        priority: int = 70,
+        constraints: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        report: Optional[OptimizationReport] = None,
+        components: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[List[Any], OptimizationReport]:
+        components = components or self._load_agentic_optimizer_components()
+        task_cls = components["OptimizationTask"]
+        method_enum = components["OptimizationMethod"]
+
+        normalized_method = str(method or "actor_critic").strip().lower().replace("-", "_")
+        if normalized_method not in {"actor_critic", "adversarial", "test_driven", "chaos"}:
+            raise ValueError(f"Unsupported agentic optimization method: {method}")
+
+        report = report or self.analyze(results)
+        workflow_phase_plan = dict(report.workflow_phase_plan or {})
+        phases = dict(workflow_phase_plan.get("phases") or {})
+        ordered_names = [
+            str(value)
+            for value in list(workflow_phase_plan.get("recommended_order") or [])
+            if str(value)
+        ]
+
+        tasks: List[Any] = []
+        timestamp = datetime.now(UTC).strftime('%Y%m%d_%H%M%S')
+        for phase_name in ordered_names:
+            phase_payload = dict(phases.get(phase_name) or {})
+            if str(phase_payload.get("status") or "ready") == "ready":
+                continue
+            target_paths = [Path(path) for path in list(phase_payload.get("target_files") or [])]
+            phase_actions = [
+                str(item.get("recommended_action") or "").strip()
+                for item in list(phase_payload.get("recommended_actions") or [])
+                if str(item.get("recommended_action") or "").strip()
+            ]
+            description = (
+                f"Use the {normalized_method} optimizer to improve the complaint-generator {phase_name.replace('_', ' ')} phase. "
+                f"Target files: {', '.join(str(path) for path in target_paths) or 'auto-detected phase files'}. "
+                f"Phase goal: {str(phase_payload.get('summary') or '').strip()}"
+            )
+            if phase_actions:
+                description += " Recommended actions: " + "; ".join(phase_actions[:3]) + "."
+
+            tasks.append(
+                task_cls(
+                    task_id=f"adversarial_autopatch_{phase_name}_{timestamp}",
+                    description=description,
+                    target_files=target_paths,
+                    method=getattr(method_enum, normalized_method.upper()),
+                    priority=int(priority),
+                    constraints=dict(constraints or {}),
+                    metadata={
+                        "source": "adversarial_harness",
+                        "workflow_phase": phase_name,
+                        "workflow_phase_priority": int(phase_payload.get("priority") or 0),
+                        "workflow_phase_status": str(phase_payload.get("status") or "ready"),
+                        "workflow_phase_summary": str(phase_payload.get("summary") or ""),
+                        "workflow_phase_actions": phase_actions,
+                        "report_summary": {
+                            "average_score": report.average_score,
+                            "score_trend": report.score_trend,
+                            "priority_improvements": list(report.priority_improvements or []),
+                            "workflow_phase_plan": workflow_phase_plan,
+                        },
+                        **dict(metadata or {}),
+                    },
+                )
+            )
+
+        return tasks, report
 
     def run_agentic_autopatch(
         self,
@@ -775,6 +1156,29 @@ class Optimizer:
             anchor_missing=self._most_common(all_anchor_missing, top_n=5),
             intake_priority_performance=intake_priority_performance,
         )
+        workflow_phase_plan = self._build_workflow_phase_plan(
+            question_quality_avg=sum(question_quality_scores) / len(question_quality_scores),
+            information_extraction_avg=sum(info_extraction_scores) / len(info_extraction_scores),
+            efficiency_avg=sum(efficiency_scores) / len(efficiency_scores),
+            coverage_avg=sum(coverage_scores) / len(coverage_scores),
+            graph_summary={
+                "kg_sessions_with_data": kg_with,
+                "dg_sessions_with_data": dg_with,
+                "kg_sessions_empty": kg_empty,
+                "dg_sessions_empty": dg_empty,
+                "kg_avg_total_entities": _avg_int(kg_entities_vals),
+                "kg_avg_total_relationships": _avg_int(kg_rels_vals),
+                "kg_avg_gaps": _avg_int(kg_gaps_vals),
+                "dg_avg_total_nodes": _avg_int(dg_nodes_vals),
+                "dg_avg_total_dependencies": _avg_int(dg_deps_vals),
+                "dg_avg_satisfaction_rate": _avg_float(dg_rate_vals),
+                "kg_avg_entities_delta_per_iter": _avg_float(kg_entities_delta_vals),
+                "kg_avg_relationships_delta_per_iter": _avg_float(kg_rels_delta_vals),
+                "kg_avg_gaps_delta_per_iter": _avg_float(kg_gaps_delta_vals),
+                "kg_sessions_gaps_not_reducing": kg_gaps_not_reducing,
+            },
+            coverage_remediation=coverage_remediation,
+        )
         recommended_hacc_preset = None
         if hacc_preset_performance:
             recommended_hacc_preset = max(
@@ -886,6 +1290,7 @@ class Optimizer:
             intake_priority_performance=intake_priority_performance,
             coverage_remediation=coverage_remediation,
             recommended_hacc_preset=recommended_hacc_preset,
+            workflow_phase_plan=workflow_phase_plan,
         )
         
         self.history.append(report)
@@ -1207,7 +1612,67 @@ class Optimizer:
             common_weaknesses=["All sessions failed"],
             common_strengths=[],
             recommendations=["Debug system failures before optimization"],
-            priority_improvements=["Fix system stability"]
+            priority_improvements=["Fix system stability"],
+            workflow_phase_plan={
+                "recommended_order": ["intake_questioning", "graph_analysis", "document_generation"],
+                "phases": {
+                    "intake_questioning": {
+                        "priority": 1,
+                        "status": "critical",
+                        "summary": "No successful sessions were available to assess intake questioning.",
+                        "signals": ["No successful sessions were analyzed"],
+                        "recommended_actions": [
+                            {
+                                "focus": "system_stability",
+                                "signal": "no_data",
+                                "recommended_action": "Restore a stable adversarial session flow before tuning intake prompts.",
+                            }
+                        ],
+                        "target_files": [
+                            "adversarial_harness/session.py",
+                            "mediator/mediator.py",
+                            "adversarial_harness/complainant.py",
+                        ],
+                    },
+                    "graph_analysis": {
+                        "priority": 2,
+                        "status": "critical",
+                        "summary": "No successful sessions were available to assess graph population or denoising.",
+                        "signals": ["No successful sessions were analyzed"],
+                        "recommended_actions": [
+                            {
+                                "focus": "system_stability",
+                                "signal": "no_data",
+                                "recommended_action": "Restore a stable adversarial session flow before tuning graph extraction and dependency tracking.",
+                            }
+                        ],
+                        "target_files": [
+                            "complaint_phases/knowledge_graph.py",
+                            "complaint_phases/dependency_graph.py",
+                            "complaint_phases/denoiser.py",
+                            "mediator/mediator.py",
+                        ],
+                    },
+                    "document_generation": {
+                        "priority": 3,
+                        "status": "critical",
+                        "summary": "No successful sessions were available to assess drafting handoff quality.",
+                        "signals": ["No successful sessions were analyzed"],
+                        "recommended_actions": [
+                            {
+                                "focus": "system_stability",
+                                "signal": "no_data",
+                                "recommended_action": "Restore a stable adversarial session flow before tuning document-generation handoffs.",
+                            }
+                        ],
+                        "target_files": [
+                            "document_pipeline.py",
+                            "document_optimization.py",
+                            "mediator/formal_document.py",
+                        ],
+                    },
+                },
+            },
         )
     
     def get_history(self) -> List[OptimizationReport]:

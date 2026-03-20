@@ -155,6 +155,42 @@ class DemoPatchOptimizer:
         )
 
 
+def _serialize_autopatch_result(result: Any) -> Dict[str, Any]:
+    return {
+        "success": bool(getattr(result, "success", False)),
+        "patch_path": str(getattr(result, "patch_path", "")),
+        "patch_cid": str(getattr(result, "patch_cid", "")),
+        "metadata": dict(getattr(result, "metadata", {}) or {}),
+    }
+
+
+def _run_phase_autopatches(
+    *,
+    optimizer: Optimizer,
+    results: Sequence[Any],
+    patch_optimizer: Any,
+    method: str = "actor_critic",
+) -> tuple[list[Dict[str, Any]], OptimizationReport]:
+    phase_tasks, report = optimizer.build_phase_patch_tasks(
+        list(results),
+        method=method,
+    )
+    phase_payloads: list[Dict[str, Any]] = []
+    for task in phase_tasks:
+        phase_result = patch_optimizer.optimize(task)
+        phase_payload = _serialize_autopatch_result(phase_result)
+        phase_payload.update(
+            {
+                "phase": str(task.metadata.get("workflow_phase") or ""),
+                "phase_status": str(task.metadata.get("workflow_phase_status") or "ready"),
+                "phase_priority": int(task.metadata.get("workflow_phase_priority") or 0),
+                "target_files": [str(path) for path in list(getattr(task, "target_files", []) or [])],
+            }
+        )
+        phase_payloads.append(phase_payload)
+    return phase_payloads, report
+
+
 def _summarize_runtime_health(results: Sequence[Any]) -> Dict[str, Any]:
     critic_fallback_sessions = 0
     session_errors = 0
@@ -253,6 +289,7 @@ def run_demo_autopatch_batch(
     max_parallel: int = 1,
     session_state_dir: str | Path | None = None,
     marker_prefix: str = "Demo autopatch recommendation",
+    phase_mode: str = "single",
 ) -> Dict[str, Any]:
     resolved_project_root = Path(project_root)
     resolved_output_dir = Path(output_dir)
@@ -281,28 +318,37 @@ def run_demo_autopatch_batch(
 
     optimizer = Optimizer()
     report = optimizer.analyze(results)
+    normalized_phase_mode = str(phase_mode or "single").strip().lower().replace("-", "_")
+    if normalized_phase_mode not in {"single", "workflow"}:
+        raise ValueError(f"Unsupported phase mode: {phase_mode}")
+    patch_optimizer = DemoPatchOptimizer(
+        project_root=resolved_project_root,
+        output_dir=resolved_output_dir,
+        marker_prefix=marker_prefix,
+    )
     autopatch_result = optimizer.run_agentic_autopatch(
         results,
         target_files=[str(target_file)],
         method="actor_critic",
         llm_router=object(),
-        optimizer=DemoPatchOptimizer(
-            project_root=resolved_project_root,
-            output_dir=resolved_output_dir,
-            marker_prefix=marker_prefix,
-        ),
+        optimizer=patch_optimizer,
         report=report,
     )
+    phase_payloads: list[Dict[str, Any]] = []
+    if normalized_phase_mode == "workflow":
+        phase_payloads, report = _run_phase_autopatches(
+            optimizer=optimizer,
+            results=results,
+            patch_optimizer=patch_optimizer,
+            method="actor_critic",
+        )
 
     payload = {
         "num_results": len(results),
         "report": report.to_dict(),
-        "autopatch": {
-            "success": bool(getattr(autopatch_result, "success", False)),
-            "patch_path": str(getattr(autopatch_result, "patch_path", "")),
-            "patch_cid": str(getattr(autopatch_result, "patch_cid", "")),
-            "metadata": dict(getattr(autopatch_result, "metadata", {}) or {}),
-        },
+        "autopatch": _serialize_autopatch_result(autopatch_result),
+        "phase_mode": normalized_phase_mode,
+        "phase_tasks": phase_payloads,
         "runtime": {
             "mode": "demo",
             **_summarize_runtime_health(results),
@@ -328,6 +374,7 @@ def run_adversarial_autopatch_batch(
     backends: Sequence[Any] | None = None,
     mediator_factory: Callable[..., Any] | None = None,
     probe_prompt: str = 'Reply with exactly OK.',
+    phase_mode: str = "single",
 ) -> Dict[str, Any]:
     if demo_backend or not backends:
         payload = run_demo_autopatch_batch(
@@ -339,6 +386,7 @@ def run_adversarial_autopatch_batch(
             max_parallel=max_parallel,
             session_state_dir=session_state_dir,
             marker_prefix=marker_prefix,
+            phase_mode=phase_mode,
         )
         return payload
 
@@ -375,28 +423,37 @@ def run_adversarial_autopatch_batch(
 
     optimizer = Optimizer()
     report = optimizer.analyze(results)
+    normalized_phase_mode = str(phase_mode or "single").strip().lower().replace("-", "_")
+    if normalized_phase_mode not in {"single", "workflow"}:
+        raise ValueError(f"Unsupported phase mode: {phase_mode}")
+    patch_optimizer = DemoPatchOptimizer(
+        project_root=resolved_project_root,
+        output_dir=resolved_output_dir,
+        marker_prefix=marker_prefix,
+    )
     autopatch_result = optimizer.run_agentic_autopatch(
         results,
         target_files=[str(target_file)],
         method="actor_critic",
         llm_router=object(),
-        optimizer=DemoPatchOptimizer(
-            project_root=resolved_project_root,
-            output_dir=resolved_output_dir,
-            marker_prefix=marker_prefix,
-        ),
+        optimizer=patch_optimizer,
         report=report,
     )
+    phase_payloads: list[Dict[str, Any]] = []
+    if normalized_phase_mode == "workflow":
+        phase_payloads, report = _run_phase_autopatches(
+            optimizer=optimizer,
+            results=results,
+            patch_optimizer=patch_optimizer,
+            method="actor_critic",
+        )
 
     payload = {
         "num_results": len(results),
         "report": report.to_dict(),
-        "autopatch": {
-            "success": bool(getattr(autopatch_result, "success", False)),
-            "patch_path": str(getattr(autopatch_result, "patch_path", "")),
-            "patch_cid": str(getattr(autopatch_result, "patch_cid", "")),
-            "metadata": dict(getattr(autopatch_result, "metadata", {}) or {}),
-        },
+        "autopatch": _serialize_autopatch_result(autopatch_result),
+        "phase_mode": normalized_phase_mode,
+        "phase_tasks": phase_payloads,
         "runtime": {
             "mode": "live",
             "backend_count": len(resolved_backends),

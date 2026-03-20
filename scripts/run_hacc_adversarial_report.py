@@ -177,7 +177,8 @@ def main() -> int:
     )
 
     statistics = harness.get_statistics()
-    optimizer_report = Optimizer().analyze(results).to_dict()
+    optimizer_report = Optimizer().analyze(results)
+    optimizer_payload = optimizer_report.to_dict()
 
     results_path = output_dir / "adversarial_results.json"
     optimizer_path = output_dir / "optimizer_report.json"
@@ -201,6 +202,7 @@ def main() -> int:
         "use_vector_search": args.use_vector_search,
         "router_report": router_report,
         "statistics": statistics,
+        "workflow_phase_plan": optimizer_payload.get("workflow_phase_plan") or {},
         "artifacts": {
             "results_json": str(results_path),
             "optimizer_report_json": str(optimizer_path),
@@ -211,7 +213,7 @@ def main() -> int:
     }
 
     with open(optimizer_path, "w", encoding="utf-8") as handle:
-        json.dump(optimizer_report, handle, indent=2)
+        json.dump(optimizer_payload, handle, indent=2)
     with open(summary_path, "w", encoding="utf-8") as handle:
         json.dump(summary_payload, handle, indent=2)
 

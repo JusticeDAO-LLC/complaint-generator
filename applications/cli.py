@@ -722,6 +722,7 @@ class CLI:
 			session_state_dir=options.get('session_state_dir'),
 			marker_prefix='CLI autopatch recommendation',
 			demo_backend=options.get('demo_backend', True),
+			phase_mode=options.get('phase_mode', 'single'),
 			backends=getattr(self.mediator, 'backends', None),
 		)
 		self.print_response(self._format_adversarial_autopatch_output(payload))
@@ -746,6 +747,17 @@ class CLI:
 			lines.append(f"success: {bool(autopatch.get('success', False))}")
 			lines.append(f"patch_path: {autopatch.get('patch_path', '')}")
 			lines.append(f"patch_cid: {autopatch.get('patch_cid', '')}")
+		phase_mode = str(payload.get('phase_mode', 'single') or 'single')
+		lines.append(f"phase_mode: {phase_mode}")
+		phase_tasks = payload.get('phase_tasks', []) if isinstance(payload.get('phase_tasks'), list) else []
+		if phase_tasks:
+			lines.append(f"phase_tasks: {len(phase_tasks)}")
+			for item in phase_tasks:
+				if not isinstance(item, dict):
+					continue
+				lines.append(
+					f"- {item.get('phase', '')}: success={bool(item.get('success', False))} patch_path={item.get('patch_path', '')}"
+				)
 		lines.append(json.dumps(payload, indent=2, default=str))
 		return '\n'.join(lines)
 
