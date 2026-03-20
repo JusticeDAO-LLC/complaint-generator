@@ -5,7 +5,9 @@ import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
-import duckdb
+import pytest
+
+duckdb = pytest.importorskip("duckdb")
 
 
 def _load_cli_module():

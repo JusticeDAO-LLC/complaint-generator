@@ -1630,6 +1630,131 @@ def test_document_builder_smoke_routes_workflow_priority_back_to_manual_review()
             os.unlink(db_path)
 
 
+def test_document_builder_smoke_uses_workflow_phase_plan_for_priority_when_next_action_missing():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    payload = {
+        "generated_at": "2026-03-16T20:00:00+00:00",
+        "draft": {
+            "court_header": "IN THE UNITED STATES DISTRICT COURT",
+            "case_caption": {
+                "plaintiffs": ["Jane Doe"],
+                "defendants": ["Acme Corporation"],
+            },
+            "summary_of_facts": ["Plaintiff reported discrimination to HR."],
+            "factual_allegation_paragraphs": ["1. Plaintiff reported discrimination to HR."],
+            "legal_standards": ["Title VII prohibits retaliation."],
+            "claims_for_relief": [],
+            "requested_relief": ["Compensatory damages."],
+            "draft_text": "Sample draft text.",
+            "exhibits": [],
+        },
+        "drafting_readiness": {
+            "status": "warning",
+            "sections": {},
+            "claims": [],
+            "warning_count": 1,
+            "workflow_phase_plan": {
+                "recommended_order": ["graph_analysis", "document_generation"],
+                "phases": {
+                    "graph_analysis": {
+                        "status": "warning",
+                        "summary": "Graph analysis still shows unresolved gaps before drafting.",
+                        "signals": {
+                            "remaining_gap_count": 2,
+                            "knowledge_graph_enhanced": False,
+                        },
+                        "recommended_actions": [
+                            "Resolve remaining intake graph gaps and refresh graph projections before filing.",
+                        ],
+                    },
+                    "document_generation": {
+                        "status": "ready",
+                        "summary": "Document generation is aligned with the current filing-readiness checks.",
+                        "signals": {
+                            "drafting_readiness_status": "ready",
+                        },
+                        "recommended_actions": [],
+                    },
+                },
+            },
+        },
+        "filing_checklist": [],
+        "review_links": {
+            "dashboard_url": "/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+            "intake_case_summary": {
+                "contradiction_summary": {"count": 1},
+                "question_candidate_summary": {"count": 2},
+                "claim_support_packet_summary": {
+                    "proof_readiness_score": 0.45,
+                },
+            },
+            "intake_status": {
+                "current_phase": "formalization",
+                "score": 0.74,
+                "remaining_gap_count": 2,
+                "contradiction_count": 1,
+                "ready_to_advance": False,
+                "blockers": ["graph_refresh_pending"],
+                "contradictions": [],
+            },
+        },
+        "document_optimization": {
+            "status": "optimized",
+            "method": "actor_mediator_critic_optimizer",
+            "optimizer_backend": "upstream_agentic",
+            "initial_score": 0.5,
+            "final_score": 0.7,
+            "accepted_iterations": 1,
+            "iteration_count": 1,
+            "optimized_sections": ["factual_allegations"],
+            "trace_storage": {"status": "available", "cid": "bafy-test", "size": 123, "pinned": True},
+        },
+    }
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for workflow-phase fallback coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+
+        app = _build_document_review_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(f"{base_url}/document?claim_type=retaliation&user_id=browser-smoke-text-link")
+                page.evaluate("payload => window.renderPreview(payload)", payload)
+                page.wait_for_function(
+                    "() => document.getElementById('document-workflow-priority') !== null"
+                )
+
+                workflow_text = page.locator("#document-workflow-priority").inner_text()
+                workflow_link = page.locator("#document-workflow-action-link").get_attribute("href")
+
+                assert "Resolve graph analysis before drafting" in workflow_text
+                assert "workflow phase: Graph Analysis" in workflow_text
+                assert "phase status: Warning" in workflow_text
+                assert "recommended action: Resolve remaining intake graph gaps and refresh graph projections before filing." in workflow_text
+                assert workflow_link is not None
+                assert "section=summary_of_facts" in workflow_link
+                assert "follow_up_support_kind=evidence" in workflow_link
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
 @pytest.mark.parametrize(
     (
         "action",

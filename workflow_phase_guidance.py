@@ -35,7 +35,11 @@ def _safe_phase_call(phase_manager: Any, phase: ComplaintPhase, key: str) -> Any
         return None
 
 
-def build_workflow_phase_plan(phases: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+def build_workflow_phase_plan(
+    phases: Dict[str, Dict[str, Any]],
+    *,
+    status_rank: Dict[str, int] | None = None,
+) -> Dict[str, Any]:
     normalized_phases = {
         str(name): dict(payload or {})
         for name, payload in (phases or {}).items()
@@ -44,11 +48,11 @@ def build_workflow_phase_plan(phases: Dict[str, Dict[str, Any]]) -> Dict[str, An
     if not normalized_phases:
         return {}
 
-    status_rank = {"blocked": 0, "warning": 1, "ready": 2}
+    normalized_status_rank = dict(status_rank or {"blocked": 0, "warning": 1, "ready": 2})
     recommended_order = sorted(
         normalized_phases.keys(),
         key=lambda name: (
-            status_rank.get(str(normalized_phases[name].get("status") or "ready"), 3),
+            normalized_status_rank.get(str(normalized_phases[name].get("status") or "ready"), len(normalized_status_rank) + 1),
             int(normalized_phases[name].get("priority") or 0),
             name,
         ),

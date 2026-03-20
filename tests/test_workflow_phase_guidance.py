@@ -71,6 +71,31 @@ def test_build_workflow_phase_plan_orders_and_warns_by_status_priority():
     ]
 
 
+def test_build_workflow_phase_plan_supports_custom_status_ranking():
+    plan = build_workflow_phase_plan(
+        {
+            "document_generation": {
+                "priority": 2,
+                "status": "warning",
+                "summary": "Document follow-up needed.",
+            },
+            "intake_questioning": {
+                "priority": 3,
+                "status": "critical",
+                "summary": "Intake is missing core facts.",
+            },
+            "graph_analysis": {
+                "priority": 1,
+                "status": "warning",
+                "summary": "Graph updates needed.",
+            },
+        },
+        status_rank={"critical": 0, "warning": 1, "ready": 2},
+    )
+
+    assert plan["recommended_order"] == ["intake_questioning", "graph_analysis", "document_generation"]
+
+
 def test_document_generation_phase_guidance_supports_review_and_drafting_contexts():
     review_phase = build_review_document_generation_phase_guidance(
         intake_status={"next_action": {"action": "generate_formal_complaint"}},

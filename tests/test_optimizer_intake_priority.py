@@ -223,6 +223,25 @@ def test_build_phase_patch_tasks_emits_non_ready_workflow_steps():
     assert all(task.method == "ACTOR_CRITIC" for task in tasks)
 
 
+def test_analyze_without_successful_sessions_returns_critical_workflow_phase_plan():
+    optimizer = Optimizer()
+    result = _session_result("session_failed", 0.18, {})
+    result.success = False
+
+    report = optimizer.analyze([result])
+
+    assert report.num_sessions_analyzed == 0
+    assert report.common_weaknesses == ["All sessions failed"]
+    assert report.workflow_phase_plan["recommended_order"] == [
+        "intake_questioning",
+        "graph_analysis",
+        "document_generation",
+    ]
+    assert report.workflow_phase_plan["phases"]["intake_questioning"]["status"] == "critical"
+    assert report.workflow_phase_plan["phases"]["graph_analysis"]["status"] == "critical"
+    assert report.workflow_phase_plan["phases"]["document_generation"]["status"] == "critical"
+
+
 def test_run_agentic_autopatch_caches_inner_generation_diagnostics_on_failure():
     optimizer = Optimizer()
     results = [_session_result("session_1", 0.72, {})]

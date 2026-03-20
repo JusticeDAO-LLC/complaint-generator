@@ -494,18 +494,21 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Workflow Priority" in content
     assert "document-workflow-priority" in content
     assert "document-workflow-action-link" in content
-    assert "renderWorkflowPriority(reviewLinks, intakeCaseSummary, manualReviewClaims, pendingReviewClaims)" in content
+    assert "renderWorkflowPriority(reviewLinks, intakeCaseSummary, workflowPhasePlan, manualReviewClaims, pendingReviewClaims)" in content
     assert "resolveDocumentWorkflowAction(reviewLinks, intakeCaseSummary)" in content
+    assert "resolveDocumentWorkflowPhasePriority(workflowPhasePlan)" in content
     assert "Confirm intake summary before drafting" in content
     assert "Resolve intake gaps before drafting" in content
     assert "Continue intake denoising before drafting" in content
     assert "actionKind = 'button'" in content
     assert 'onclick="confirmIntakeSummaryFromDocument()"' in content
     assert "Review intake graph inputs before drafting" in content
+    assert "Resolve graph analysis before drafting" in content
     assert "Review dependency inputs before drafting" in content
     assert "Review legal graph inputs before drafting" in content
     assert "Review matching inputs before drafting" in content
     assert "Build support packets before drafting" in content
+    assert "Resolve drafting readiness before filing" in content
     assert "Evidence is ready for formal drafting" in content
     assert "Intake Review Signals" in content
     assert "Intake blockers:" in content

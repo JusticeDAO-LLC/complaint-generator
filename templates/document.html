@@ -2352,13 +2352,43 @@
                 : {};
         }
 
-        function buildDocumentWorkflowPriority(reviewLinks, intakeCaseSummary, manualReviewClaims, pendingReviewClaims) {
-            const nextAction = resolveDocumentWorkflowAction(reviewLinks, intakeCaseSummary);
-            const action = String(nextAction.action || '').trim().toLowerCase();
-            if (!action) {
+        function resolveDocumentWorkflowPhasePriority(workflowPhasePlan) {
+            const normalizedPlan = workflowPhasePlan && typeof workflowPhasePlan === 'object'
+                ? workflowPhasePlan
+                : {};
+            const phases = normalizedPlan.phases && typeof normalizedPlan.phases === 'object'
+                ? normalizedPlan.phases
+                : {};
+            const orderedNames = Array.isArray(normalizedPlan.recommended_order)
+                ? normalizedPlan.recommended_order.map((value) => String(value || '').trim()).filter(Boolean)
+                : Object.keys(phases);
+            if (!orderedNames.length) {
                 return null;
             }
+            const phaseName = orderedNames.find((name) => {
+                const phase = phases[name] && typeof phases[name] === 'object' ? phases[name] : {};
+                return String(phase.status || 'ready').trim().toLowerCase() !== 'ready';
+            }) || orderedNames[0];
+            const phase = phases[phaseName] && typeof phases[phaseName] === 'object' ? phases[phaseName] : {};
+            if (!Object.keys(phase).length) {
+                return null;
+            }
+            const recommendedActions = Array.isArray(phase.recommended_actions)
+                ? phase.recommended_actions
+                    .map((entry) => entry && typeof entry === 'object' ? String(entry.recommended_action || '').trim() : String(entry || '').trim())
+                    .filter(Boolean)
+                : [];
+            return {
+                phaseName,
+                phase,
+                status: String(phase.status || 'ready').trim().toLowerCase() || 'ready',
+                primaryRecommendedAction: recommendedActions[0] || '',
+            };
+        }
 
+        function buildDocumentWorkflowPriority(reviewLinks, intakeCaseSummary, workflowPhasePlan, manualReviewClaims, pendingReviewClaims) {
+            const nextAction = resolveDocumentWorkflowAction(reviewLinks, intakeCaseSummary);
+            const action = String(nextAction.action || '').trim().toLowerCase();
             const dashboardUrl = String((reviewLinks && reviewLinks.dashboard_url) || '').trim()
                 || buildClaimReviewUrl(nextAction.claim_type || '')
                 || '/claim-support-review';
@@ -2371,6 +2401,56 @@
             const packetSummary = intakeCaseSummary && typeof intakeCaseSummary.claim_support_packet_summary === 'object'
                 ? intakeCaseSummary.claim_support_packet_summary
                 : {};
+
+            if (!action) {
+                const workflowPhasePriority = resolveDocumentWorkflowPhasePriority(workflowPhasePlan);
+                if (!workflowPhasePriority) {
+                    return null;
+                }
+                const phaseName = workflowPhasePriority.phaseName;
+                const phase = workflowPhasePriority.phase;
+                const phaseStatus = workflowPhasePriority.status;
+                const primaryRecommendedAction = workflowPhasePriority.primaryRecommendedAction;
+                let title = 'Review workflow priority before drafting';
+                let description = String(phase.summary || '').trim() || 'Workflow phase guidance still identifies a higher-priority step before drafting.';
+                let actionLabel = 'Open Review Dashboard';
+                let actionUrl = dashboardUrl;
+
+                if (phaseName === 'graph_analysis') {
+                    title = phaseStatus === 'ready'
+                        ? 'Graph analysis is aligned for drafting'
+                        : 'Resolve graph analysis before drafting';
+                    actionLabel = 'Review graph inputs';
+                    actionUrl = appendSectionReviewIntentToReviewUrl(resolveSectionReviewUrl('summary_of_facts', {}, reviewLinks), 'summary_of_facts');
+                } else if (phaseName === 'document_generation') {
+                    title = phaseStatus === 'ready'
+                        ? 'Drafting is aligned with workflow guidance'
+                        : 'Resolve drafting readiness before filing';
+                    actionLabel = phaseStatus === 'ready' ? 'Open Review Dashboard' : 'Review drafting readiness';
+                    actionUrl = phaseStatus === 'ready'
+                        ? dashboardUrl
+                        : appendSectionReviewIntentToReviewUrl(resolveSectionReviewUrl('claims_for_relief', {}, reviewLinks), 'claims_for_relief');
+                }
+
+                const chips = [
+                    `<span class="triage-chip" data-tone="${phaseStatus === 'ready' ? 'low' : 'important'}">workflow phase: ${escapeHtml(humanizeKey(phaseName))}</span>`,
+                    `<span class="triage-chip">phase status: ${escapeHtml(humanizeKey(phaseStatus))}</span>`,
+                ];
+                if (primaryRecommendedAction) {
+                    chips.push(`<span class="triage-chip">recommended action: ${escapeHtml(primaryRecommendedAction)}</span>`);
+                }
+
+                return {
+                    status: phaseStatus,
+                    title,
+                    description,
+                    actionLabel,
+                    actionUrl,
+                    actionKind: 'link',
+                    dashboardUrl,
+                    chips,
+                };
+            }
 
             let status = 'warning';
             let title = 'Review workflow priority before drafting';
@@ -2495,10 +2575,11 @@
             };
         }
 
-        function renderWorkflowPriority(reviewLinks, intakeCaseSummary, manualReviewClaims, pendingReviewClaims) {
+        function renderWorkflowPriority(reviewLinks, intakeCaseSummary, workflowPhasePlan, manualReviewClaims, pendingReviewClaims) {
             const workflowPriority = buildDocumentWorkflowPriority(
                 reviewLinks,
                 intakeCaseSummary,
+                workflowPhasePlan,
                 manualReviewClaims,
                 pendingReviewClaims,
             );
@@ -3098,7 +3179,7 @@
                     <div class="readiness-title">Drafting Readiness</div>
                     <div class="preview-meta">Overall status: ${escapeHtml(readiness.status || 'ready')} | Warnings: ${escapeHtml(String(warningCount))}</div>
                     ${renderReviewLinks(reviewLinks)}
-                    ${renderWorkflowPriority(reviewLinks, intakeCaseSummary, manualReviewClaims, pendingReviewClaims)}
+                    ${renderWorkflowPriority(reviewLinks, intakeCaseSummary, workflowPhasePlan, manualReviewClaims, pendingReviewClaims)}
                     ${renderIntakeSummaryConfirmation(reviewLinks, intakeCaseSummary)}
                     ${renderWorkflowPhaseGuidance(workflowPhasePlan)}
                     <div class="readiness-grid">${sectionCards}</div>

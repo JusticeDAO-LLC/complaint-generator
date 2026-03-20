@@ -1,3 +1,5 @@
+
+from workflow_phase_guidance import build_workflow_phase_plan
 """
 Optimizer Module
 
@@ -607,10 +609,10 @@ class Optimizer:
             phases[name]["priority"] = priority
             phases[name].pop("severity", None)
 
-        return {
-            "recommended_order": ordered_names,
-            "phases": phases,
-        }
+        return build_workflow_phase_plan(
+            phases,
+            status_rank={"critical": 0, "warning": 1, "ready": 2},
+        )
 
     def build_agentic_patch_task(
         self,
@@ -1599,6 +1601,63 @@ class Optimizer:
     
     def _empty_report(self, num_sessions: int) -> OptimizationReport:
         """Create empty report when no successful sessions."""
+        fallback_phases = {
+            "intake_questioning": {
+                "priority": 1,
+                "status": "critical",
+                "summary": "No successful sessions were available to assess intake questioning.",
+                "signals": ["No successful sessions were analyzed"],
+                "recommended_actions": [
+                    {
+                        "focus": "system_stability",
+                        "signal": "no_data",
+                        "recommended_action": "Restore a stable adversarial session flow before tuning intake prompts.",
+                    }
+                ],
+                "target_files": [
+                    "adversarial_harness/session.py",
+                    "mediator/mediator.py",
+                    "adversarial_harness/complainant.py",
+                ],
+            },
+            "graph_analysis": {
+                "priority": 2,
+                "status": "critical",
+                "summary": "No successful sessions were available to assess graph population or denoising.",
+                "signals": ["No successful sessions were analyzed"],
+                "recommended_actions": [
+                    {
+                        "focus": "system_stability",
+                        "signal": "no_data",
+                        "recommended_action": "Restore a stable adversarial session flow before tuning graph extraction and dependency tracking.",
+                    }
+                ],
+                "target_files": [
+                    "complaint_phases/knowledge_graph.py",
+                    "complaint_phases/dependency_graph.py",
+                    "complaint_phases/denoiser.py",
+                    "mediator/mediator.py",
+                ],
+            },
+            "document_generation": {
+                "priority": 3,
+                "status": "critical",
+                "summary": "No successful sessions were available to assess drafting handoff quality.",
+                "signals": ["No successful sessions were analyzed"],
+                "recommended_actions": [
+                    {
+                        "focus": "system_stability",
+                        "signal": "no_data",
+                        "recommended_action": "Restore a stable adversarial session flow before tuning document-generation handoffs.",
+                    }
+                ],
+                "target_files": [
+                    "document_pipeline.py",
+                    "document_optimization.py",
+                    "mediator/formal_document.py",
+                ],
+            },
+        }
         return OptimizationReport(
             timestamp=datetime.now(UTC).isoformat(),
             num_sessions_analyzed=0,
@@ -1613,66 +1672,10 @@ class Optimizer:
             common_strengths=[],
             recommendations=["Debug system failures before optimization"],
             priority_improvements=["Fix system stability"],
-            workflow_phase_plan={
-                "recommended_order": ["intake_questioning", "graph_analysis", "document_generation"],
-                "phases": {
-                    "intake_questioning": {
-                        "priority": 1,
-                        "status": "critical",
-                        "summary": "No successful sessions were available to assess intake questioning.",
-                        "signals": ["No successful sessions were analyzed"],
-                        "recommended_actions": [
-                            {
-                                "focus": "system_stability",
-                                "signal": "no_data",
-                                "recommended_action": "Restore a stable adversarial session flow before tuning intake prompts.",
-                            }
-                        ],
-                        "target_files": [
-                            "adversarial_harness/session.py",
-                            "mediator/mediator.py",
-                            "adversarial_harness/complainant.py",
-                        ],
-                    },
-                    "graph_analysis": {
-                        "priority": 2,
-                        "status": "critical",
-                        "summary": "No successful sessions were available to assess graph population or denoising.",
-                        "signals": ["No successful sessions were analyzed"],
-                        "recommended_actions": [
-                            {
-                                "focus": "system_stability",
-                                "signal": "no_data",
-                                "recommended_action": "Restore a stable adversarial session flow before tuning graph extraction and dependency tracking.",
-                            }
-                        ],
-                        "target_files": [
-                            "complaint_phases/knowledge_graph.py",
-                            "complaint_phases/dependency_graph.py",
-                            "complaint_phases/denoiser.py",
-                            "mediator/mediator.py",
-                        ],
-                    },
-                    "document_generation": {
-                        "priority": 3,
-                        "status": "critical",
-                        "summary": "No successful sessions were available to assess drafting handoff quality.",
-                        "signals": ["No successful sessions were analyzed"],
-                        "recommended_actions": [
-                            {
-                                "focus": "system_stability",
-                                "signal": "no_data",
-                                "recommended_action": "Restore a stable adversarial session flow before tuning document-generation handoffs.",
-                            }
-                        ],
-                        "target_files": [
-                            "document_pipeline.py",
-                            "document_optimization.py",
-                            "mediator/formal_document.py",
-                        ],
-                    },
-                },
-            },
+            workflow_phase_plan=build_workflow_phase_plan(
+                fallback_phases,
+                status_rank={"critical": 0, "warning": 1, "ready": 2},
+            ),
         )
     
     def get_history(self) -> List[OptimizationReport]:

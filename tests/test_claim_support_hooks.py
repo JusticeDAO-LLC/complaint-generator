@@ -5,8 +5,9 @@ import os
 import tempfile
 from unittest.mock import Mock, patch
 
-import duckdb
 import pytest
+
+duckdb = pytest.importorskip("duckdb")
 
 from complaint_analysis.temporal_rule_profiles import evaluate_temporal_rule_profile
 
