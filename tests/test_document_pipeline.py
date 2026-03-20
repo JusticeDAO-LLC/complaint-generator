@@ -432,7 +432,7 @@ def _build_mediator() -> Mock:
         "alignment_evidence_tasks": [
             {
                 "task_id": "retaliation:causation:fill_evidence_gaps",
-                "action": "fill_evidence_gaps",
+                "action": "fill_temporal_chronology_gap",
                 "claim_type": "retaliation",
                 "claim_element_id": "causation",
                 "claim_element_label": "Causal connection",
@@ -443,6 +443,13 @@ def _build_mediator() -> Mock:
                 "source_quality_target": "high_quality_document",
                 "resolution_status": "still_open",
                 "resolution_notes": "",
+                "event_ids": ["event_001"],
+                "temporal_fact_ids": ["fact_001"],
+                "temporal_relation_ids": ["timeline_relation_001"],
+                "timeline_issue_ids": ["temporal_issue_001"],
+                "temporal_issue_ids": ["temporal_issue_001"],
+                "temporal_proof_bundle_id": "retaliation:causation:bundle_001",
+                "temporal_proof_objective": "establish_retaliation_sequence",
             }
         ],
         "alignment_task_summary": {
@@ -468,6 +475,8 @@ def _build_mediator() -> Mock:
             "supported_blocking_element_ratio": 0.5,
             "proof_readiness_score": 0.47,
             "claim_support_unresolved_without_review_path_count": 1,
+            "claim_support_unresolved_temporal_issue_count": 1,
+            "claim_support_unresolved_temporal_issue_ids": ["temporal_issue_001"],
             "evidence_completion_ready": False,
         },
         "intake_readiness": {
@@ -671,6 +680,19 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
     assert result["draft"]["jury_demand"]["text"] == "Plaintiff demands a trial by jury on all issues so triable."
     assert "JURY DEMAND" in result["draft"]["draft_text"]
     assert "AFFIDAVIT OF JANE DOE REGARDING RETALIATION" in result["draft"]["draft_text"]
+    assert result["claim_support_temporal_handoff"] == {
+        "unresolved_temporal_issue_count": 1,
+        "unresolved_temporal_issue_ids": ["temporal_issue_001"],
+        "chronology_task_count": 1,
+        "event_ids": ["event_001"],
+        "temporal_fact_ids": ["fact_001"],
+        "temporal_relation_ids": ["timeline_relation_001"],
+        "timeline_issue_ids": ["temporal_issue_001"],
+        "temporal_issue_ids": ["temporal_issue_001"],
+        "temporal_proof_bundle_ids": ["retaliation:causation:bundle_001"],
+        "temporal_proof_objectives": ["establish_retaliation_sequence"],
+    }
+    assert result["draft"]["source_context"]["claim_support_temporal_handoff"] == result["claim_support_temporal_handoff"]
 
 
 def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -2533,6 +2555,20 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         mediator.build_formal_complaint_document_package.return_value = {
             "draft": {
                 "title": "Jane Doe v. Acme Corporation",
+                "source_context": {
+                    "claim_support_temporal_handoff": {
+                        "unresolved_temporal_issue_count": 1,
+                        "unresolved_temporal_issue_ids": ["temporal_issue_001"],
+                        "chronology_task_count": 1,
+                        "event_ids": ["event_001"],
+                        "temporal_fact_ids": ["fact_001"],
+                        "temporal_relation_ids": ["timeline_relation_001"],
+                        "timeline_issue_ids": ["temporal_issue_001"],
+                        "temporal_issue_ids": ["temporal_issue_001"],
+                        "temporal_proof_bundle_ids": ["retaliation:causation:bundle_001"],
+                        "temporal_proof_objectives": ["establish_retaliation_sequence"],
+                    }
+                },
                 "court_header": "IN THE UNITED STATES DISTRICT COURT FOR THE DISTRICT OF COLUMBIA",
                 "case_caption": {
                     "plaintiffs": ["Jane Doe"],
@@ -2584,6 +2620,18 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
                     "filename": artifact_path.name,
                     "size_bytes": artifact_path.stat().st_size,
                 }
+            },
+            "claim_support_temporal_handoff": {
+                "unresolved_temporal_issue_count": 1,
+                "unresolved_temporal_issue_ids": ["temporal_issue_001"],
+                "chronology_task_count": 1,
+                "event_ids": ["event_001"],
+                "temporal_fact_ids": ["fact_001"],
+                "temporal_relation_ids": ["timeline_relation_001"],
+                "timeline_issue_ids": ["temporal_issue_001"],
+                "temporal_issue_ids": ["temporal_issue_001"],
+                "temporal_proof_bundle_ids": ["retaliation:causation:bundle_001"],
+                "temporal_proof_objectives": ["establish_retaliation_sequence"],
             },
             "output_formats": ["docx"],
             "generated_at": "2026-03-12T12:00:00+00:00",
@@ -2719,6 +2767,19 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
                 },
             },
         }
+        assert payload['claim_support_temporal_handoff'] == {
+            'unresolved_temporal_issue_count': 1,
+            'unresolved_temporal_issue_ids': ['temporal_issue_001'],
+            'chronology_task_count': 1,
+            'event_ids': ['event_001'],
+            'temporal_fact_ids': ['fact_001'],
+            'temporal_relation_ids': ['timeline_relation_001'],
+            'timeline_issue_ids': ['temporal_issue_001'],
+            'temporal_issue_ids': ['temporal_issue_001'],
+            'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
+            'temporal_proof_objectives': ['establish_retaliation_sequence'],
+        }
+        assert payload['draft']['source_context']['claim_support_temporal_handoff'] == payload['claim_support_temporal_handoff']
         _assert_normalized_intake_status(payload['review_links']['intake_status'], score=0.38)
         assert payload.get('document_optimization') in (None, {})
         assert any(
@@ -3094,6 +3155,19 @@ def test_review_surface_returns_document_optimization_contract_end_to_end(monkey
     assert report['intake_case_summary']['claim_support_packet_summary']['claim_count'] == 2
     assert report['intake_case_summary']['claim_support_packet_summary']['proof_readiness_score'] == 0.47
     assert report['intake_case_summary']['claim_support_packet_summary']['evidence_completion_ready'] is False
+    assert payload['claim_support_temporal_handoff'] == {
+        'unresolved_temporal_issue_count': 1,
+        'unresolved_temporal_issue_ids': ['temporal_issue_001'],
+        'chronology_task_count': 1,
+        'event_ids': ['event_001'],
+        'temporal_fact_ids': ['fact_001'],
+        'temporal_relation_ids': ['timeline_relation_001'],
+        'timeline_issue_ids': ['temporal_issue_001'],
+        'temporal_issue_ids': ['temporal_issue_001'],
+        'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
+        'temporal_proof_objectives': ['establish_retaliation_sequence'],
+    }
+    assert payload['draft']['source_context']['claim_support_temporal_handoff'] == payload['claim_support_temporal_handoff']
     _assert_normalized_intake_status(report['intake_status'], score=0.38)
     assert report['intake_constraints'] == [
         {

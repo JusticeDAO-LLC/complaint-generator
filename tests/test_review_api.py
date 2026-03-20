@@ -2870,6 +2870,39 @@ def test_claim_support_testimony_payload_persists_and_refreshes_review():
     }
     mediator.get_user_evidence.return_value = []
     mediator.summarize_claim_support.return_value = {"claims": {"retaliation": {}}}
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "iteration_count": 1,
+        "intake_readiness": {"ready_to_advance": True},
+        "complainant_summary_confirmation": {
+            "status": "confirmed",
+            "confirmed": True,
+            "confirmed_at": "2026-03-17T10:00:00+00:00",
+            "confirmation_note": "ready for evidence handoff",
+            "confirmation_source": "dashboard",
+            "summary_snapshot_index": 0,
+            "current_summary_snapshot": {"candidate_claim_count": 1, "canonical_fact_count": 1, "proof_lead_count": 1},
+            "confirmed_summary_snapshot": {"candidate_claim_count": 1, "canonical_fact_count": 1, "proof_lead_count": 1},
+        },
+        "claim_support_packet_summary": {
+            "claim_support_unresolved_temporal_issue_count": 1,
+            "claim_support_unresolved_temporal_issue_ids": ["temporal_issue_001"],
+        },
+        "alignment_evidence_tasks": [
+            {
+                "task_id": "retaliation:retaliation:2:fill_temporal_chronology_gap",
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:2",
+                "event_ids": ["event_001"],
+                "temporal_fact_ids": ["fact_001"],
+                "temporal_relation_ids": ["timeline_relation_001"],
+                "timeline_issue_ids": ["temporal_issue_001"],
+                "temporal_issue_ids": ["temporal_issue_001"],
+                "temporal_proof_bundle_id": "retaliation:causation:bundle_001",
+                "temporal_proof_objective": "establish_retaliation_sequence",
+            }
+        ],
+    }
 
     payload = build_claim_support_testimony_payload(
         mediator,
@@ -2899,7 +2932,35 @@ def test_claim_support_testimony_payload_persists_and_refreshes_review():
         harm=None,
         firsthand_status="firsthand",
         source_confidence=0.9,
-        metadata={},
+        metadata={
+            "intake_summary_handoff": {
+                "current_phase": "intake",
+                "ready_to_advance": True,
+                "complainant_summary_confirmation": {
+                    "status": "confirmed",
+                    "confirmed": True,
+                    "confirmed_at": "2026-03-17T10:00:00+00:00",
+                    "confirmation_note": "ready for evidence handoff",
+                    "confirmation_source": "dashboard",
+                    "summary_snapshot_index": 0,
+                    "current_summary_snapshot": {"candidate_claim_count": 1, "canonical_fact_count": 1, "proof_lead_count": 1},
+                    "confirmed_summary_snapshot": {"candidate_claim_count": 1, "canonical_fact_count": 1, "proof_lead_count": 1},
+                },
+            },
+            "claim_support_temporal_handoff": {
+                "unresolved_temporal_issue_count": 1,
+                "unresolved_temporal_issue_ids": ["temporal_issue_001"],
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:2",
+                "event_ids": ["event_001"],
+                "temporal_fact_ids": ["fact_001"],
+                "temporal_relation_ids": ["timeline_relation_001"],
+                "timeline_issue_ids": ["temporal_issue_001"],
+                "temporal_issue_ids": ["temporal_issue_001"],
+                "temporal_proof_bundle_id": "retaliation:causation:bundle_001",
+                "temporal_proof_objective": "establish_retaliation_sequence",
+            },
+        },
     )
 
 
@@ -3053,9 +3114,27 @@ def test_claim_support_document_payload_persists_and_refreshes_review():
             "confirmed_summary_snapshot": {"candidate_claim_count": 1, "canonical_fact_count": 1, "proof_lead_count": 1},
         },
         "question_candidate_summary": {},
-        "claim_support_packet_summary": {},
+        "claim_support_packet_summary": {
+            "claim_support_unresolved_temporal_issue_count": 1,
+            "claim_support_unresolved_temporal_issue_ids": ["temporal_issue_001"],
+            "temporal_gap_task_count": 1,
+            "temporal_rule_blocking_reason_counts": {"Need retaliation chronology sequencing.": 1},
+        },
         "intake_evidence_alignment_summary": {},
-        "alignment_evidence_tasks": [],
+        "alignment_evidence_tasks": [
+            {
+                "task_id": "retaliation:retaliation:2:fill_temporal_chronology_gap",
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:2",
+                "event_ids": ["event_001"],
+                "temporal_fact_ids": ["fact_001"],
+                "temporal_relation_ids": ["timeline_relation_001"],
+                "timeline_issue_ids": ["temporal_issue_001"],
+                "temporal_issue_ids": ["temporal_issue_001"],
+                "temporal_proof_bundle_id": "retaliation:causation:bundle_001",
+                "temporal_proof_objective": "establish_retaliation_sequence",
+            }
+        ],
         "alignment_task_updates": [],
         "alignment_task_update_history": [],
         "alignment_task_summary": {
@@ -3096,6 +3175,8 @@ def test_claim_support_document_payload_persists_and_refreshes_review():
         "temporal_resolution_status_counts": {"still_open": 1},
     }
     assert payload["post_save_review"]["intake_case_summary"]["claim_support_packet_summary"]["temporal_gap_task_count"] == 1
+    assert payload["post_save_review"]["intake_case_summary"]["claim_support_packet_summary"]["claim_support_unresolved_temporal_issue_count"] == 1
+    assert payload["post_save_review"]["intake_case_summary"]["claim_support_packet_summary"]["claim_support_unresolved_temporal_issue_ids"] == ["temporal_issue_001"]
     assert payload["post_save_review"]["intake_case_summary"]["claim_support_packet_summary"]["temporal_rule_blocking_reason_counts"] == {
         "Need retaliation chronology sequencing.": 1,
     }
@@ -3124,6 +3205,19 @@ def test_claim_support_document_payload_persists_and_refreshes_review():
                     "current_summary_snapshot": {"candidate_claim_count": 1, "canonical_fact_count": 1, "proof_lead_count": 1},
                     "confirmed_summary_snapshot": {"candidate_claim_count": 1, "canonical_fact_count": 1, "proof_lead_count": 1},
                 },
+            },
+            "claim_support_temporal_handoff": {
+                "unresolved_temporal_issue_count": 1,
+                "unresolved_temporal_issue_ids": ["temporal_issue_001"],
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:2",
+                "event_ids": ["event_001"],
+                "temporal_fact_ids": ["fact_001"],
+                "temporal_relation_ids": ["timeline_relation_001"],
+                "timeline_issue_ids": ["temporal_issue_001"],
+                "temporal_issue_ids": ["temporal_issue_001"],
+                "temporal_proof_bundle_id": "retaliation:causation:bundle_001",
+                "temporal_proof_objective": "establish_retaliation_sequence",
             },
         },
     )
@@ -3161,9 +3255,25 @@ def test_claim_support_upload_document_route_accepts_multipart_file():
             "confirmed_summary_snapshot": {"candidate_claim_count": 1, "canonical_fact_count": 1, "proof_lead_count": 1},
         },
         "question_candidate_summary": {},
-        "claim_support_packet_summary": {},
+        "claim_support_packet_summary": {
+            "claim_support_unresolved_temporal_issue_count": 1,
+            "claim_support_unresolved_temporal_issue_ids": ["temporal_issue_001"],
+        },
         "intake_evidence_alignment_summary": {},
-        "alignment_evidence_tasks": [],
+        "alignment_evidence_tasks": [
+            {
+                "task_id": "retaliation:retaliation:2:fill_temporal_chronology_gap",
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:2",
+                "event_ids": ["event_001"],
+                "temporal_fact_ids": ["fact_001"],
+                "temporal_relation_ids": ["timeline_relation_001"],
+                "timeline_issue_ids": ["temporal_issue_001"],
+                "temporal_issue_ids": ["temporal_issue_001"],
+                "temporal_proof_bundle_id": "retaliation:causation:bundle_001",
+                "temporal_proof_objective": "establish_retaliation_sequence",
+            }
+        ],
         "alignment_task_updates": [],
         "alignment_task_update_history": [],
     }
@@ -3216,6 +3326,19 @@ def test_claim_support_upload_document_route_accepts_multipart_file():
                     "current_summary_snapshot": {"candidate_claim_count": 1, "canonical_fact_count": 1, "proof_lead_count": 1},
                     "confirmed_summary_snapshot": {"candidate_claim_count": 1, "canonical_fact_count": 1, "proof_lead_count": 1},
                 },
+            },
+            "claim_support_temporal_handoff": {
+                "unresolved_temporal_issue_count": 1,
+                "unresolved_temporal_issue_ids": ["temporal_issue_001"],
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:2",
+                "event_ids": ["event_001"],
+                "temporal_fact_ids": ["fact_001"],
+                "temporal_relation_ids": ["timeline_relation_001"],
+                "timeline_issue_ids": ["temporal_issue_001"],
+                "temporal_issue_ids": ["temporal_issue_001"],
+                "temporal_proof_bundle_id": "retaliation:causation:bundle_001",
+                "temporal_proof_objective": "establish_retaliation_sequence",
             },
         },
     )

@@ -140,6 +140,12 @@ class CLI:
 			options[key.replace('-', '_')] = parsed_value
 		return positionals, options
 
+	def _humanize_cli_label(self, value):
+		text = str(value or '').strip()
+		if not text:
+			return ''
+		return text.replace('_', ' ').replace('-', ' ').title()
+
 	def claim_review(self, args):
 		positionals, options = self._parse_command_options(args)
 		claim_type = options.get('claim_type')
@@ -258,10 +264,10 @@ class CLI:
 			promotion_kind = str(primary_validation_target.get('promotion_kind') or '')
 			promotion_ref = str(primary_validation_target.get('promotion_ref') or '')
 			target_parts = [part for part in (target_claim_type, target_element_id) if part]
-			target_label = ' / '.join(target_parts) if target_parts else 'unspecified'
+			target_label = ' / '.join(self._humanize_cli_label(part) for part in target_parts) if target_parts else 'unspecified'
 			target_line = f'  primary_validation_target: {target_label}'
 			if promotion_kind:
-				target_line += f' [{promotion_kind}]'
+				target_line += f' [{self._humanize_cli_label(promotion_kind)}]'
 			if promotion_ref:
 				target_line += f' ref={promotion_ref}'
 			lines.append(target_line)
@@ -656,10 +662,10 @@ class CLI:
 					target_parts.append(target_claim_type)
 				if target_element_id:
 					target_parts.append(target_element_id)
-				target_label = ' / '.join(target_parts) if target_parts else claim_type
+				target_label = ' / '.join(self._humanize_cli_label(part) for part in target_parts) if target_parts else self._humanize_cli_label(claim_type)
 				target_line = f'  validation target: {target_label}'
 				if promotion_kind:
-					target_line += f' [{promotion_kind}]'
+					target_line += f' [{self._humanize_cli_label(promotion_kind)}]'
 				if promotion_ref:
 					target_line += f' ref={promotion_ref}'
 				lines.append(target_line)

@@ -252,7 +252,7 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
     assert 'intake status summary:' in rendered
     assert '- phase=evidence ready=false score=0.67 gaps=1 contradictions=0' in rendered
     assert 'next_action: validate_promoted_support targets=2' in rendered
-    assert 'primary_validation_target: retaliation / adverse_action [document] ref=doc:retaliation:1' in rendered
+    assert 'primary_validation_target: Retaliation / Adverse Action [Document] ref=doc:retaliation:1' in rendered
     assert 'claim review quality summary:' in rendered
     assert '- retaliation: low_quality=2 issue_elements=1 avg_quality=62.50 authority_supportive=1 authority_adverse=1 authority_uncertain=1' in rendered
     assert 'refresh: Causal connection' in rendered
@@ -485,7 +485,7 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
     assert 'intake status summary:' in rendered
     assert '- phase=evidence ready=false score=0.58 gaps=0 contradictions=1' in rendered
     assert 'next_action: validate_promoted_support targets=1' in rendered
-    assert 'primary_validation_target: retaliation / causation [testimony] ref=testimony:retaliation:1' in rendered
+    assert 'primary_validation_target: Retaliation / Causation [Testimony] ref=testimony:retaliation:1' in rendered
     assert 'follow-up execution quality summary:' in rendered
     assert '- retaliation: status=improved low_quality=1->0 parse_tasks=1' in rendered
     assert 'resolved: Causal connection' in rendered
@@ -552,7 +552,7 @@ def test_execute_follow_up_command_prints_recommendation_when_parse_quality_stil
 
     rendered = cli.print_response.call_args[0][0]
     assert 'recommendation: improve_parse_quality still needed' in rendered
-    assert 'validation target: retaliation / adverse_action [document] ref=doc:retaliation:1' in rendered
+    assert 'validation target: Retaliation / Adverse Action [Document] ref=doc:retaliation:1' in rendered
 
 
 def test_export_complaint_command_calls_document_package_builder():

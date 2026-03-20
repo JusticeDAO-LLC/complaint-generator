@@ -4,6 +4,7 @@ import logging
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Dict
 
 
@@ -112,6 +113,43 @@ def _serialize_phase_patch_tasks(optimizer: Any, results: list[Any], report: Any
     return payloads
 
 
+def _materialize_phase_autopatch_artifacts(
+    *,
+    project_root: Path,
+    output_dir: Path,
+    phase_tasks: list[Dict[str, Any]],
+    marker_prefix: str,
+) -> list[Dict[str, Any]]:
+    from adversarial_harness.demo_autopatch import DemoPatchOptimizer
+
+    patch_output_dir = output_dir / "phase_autopatches"
+    patch_optimizer = DemoPatchOptimizer(
+        project_root=project_root,
+        output_dir=patch_output_dir,
+        marker_prefix=marker_prefix,
+    )
+    payloads: list[Dict[str, Any]] = []
+    for task in list(phase_tasks or []):
+        task_payload = dict(task or {})
+        patch_result = patch_optimizer.optimize(
+            SimpleNamespace(
+                target_files=[Path(path) for path in list(task_payload.get("target_files") or [])],
+                metadata=dict(task_payload.get("metadata") or {}),
+            )
+        )
+        payloads.append(
+            {
+                "phase": str((task_payload.get("metadata") or {}).get("workflow_phase") or ""),
+                "task_id": str(task_payload.get("task_id") or ""),
+                "success": bool(getattr(patch_result, "success", False)),
+                "patch_path": str(getattr(patch_result, "patch_path", "") or ""),
+                "patch_cid": str(getattr(patch_result, "patch_cid", "") or ""),
+                "metadata": dict(getattr(patch_result, "metadata", {}) or {}),
+            }
+        )
+    return payloads
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run a HACC evidence-backed adversarial harness batch and write JSON/CSV/Markdown reports."
@@ -131,6 +169,11 @@ def main() -> int:
     parser.add_argument("--disable-local-ipfs-fallback", action="store_true")
     parser.add_argument("--probe-llm-router", action="store_true")
     parser.add_argument("--probe-embeddings-router", action="store_true")
+    parser.add_argument(
+        "--emit-phase-autopatch-artifacts",
+        action="store_true",
+        help="Write demo phase-scoped autopatch artifacts for each workflow phase task",
+    )
     parser.add_argument(
         "--output-dir",
         default=None,
@@ -208,6 +251,7 @@ def main() -> int:
     results_path = output_dir / "adversarial_results.json"
     optimizer_path = output_dir / "optimizer_report.json"
     workflow_tasks_path = output_dir / "workflow_phase_tasks.json"
+    workflow_phase_autopatch_path = output_dir / "workflow_phase_autopatch_results.json"
     anchor_csv_path = output_dir / "anchor_section_coverage.csv"
     anchor_md_path = output_dir / "anchor_section_coverage.md"
     summary_path = output_dir / "run_summary.json"
@@ -215,6 +259,15 @@ def main() -> int:
     harness.save_results(str(results_path))
     harness.save_anchor_section_report(str(anchor_csv_path), format="csv")
     harness.save_anchor_section_report(str(anchor_md_path), format="markdown")
+
+    workflow_phase_autopatch_results: list[Dict[str, Any]] = []
+    if args.emit_phase_autopatch_artifacts:
+        workflow_phase_autopatch_results = _materialize_phase_autopatch_artifacts(
+            project_root=PROJECT_ROOT,
+            output_dir=output_dir,
+            phase_tasks=workflow_phase_tasks,
+            marker_prefix="HACC workflow autopatch recommendation",
+        )
 
     summary_payload = {
         "timestamp": datetime.now(UTC).isoformat(),
@@ -230,10 +283,12 @@ def main() -> int:
         "statistics": statistics,
         "workflow_phase_plan": optimizer_payload.get("workflow_phase_plan") or {},
         "workflow_phase_task_count": len(workflow_phase_tasks),
+        "workflow_phase_autopatch_count": len(workflow_phase_autopatch_results),
         "artifacts": {
             "results_json": str(results_path),
             "optimizer_report_json": str(optimizer_path),
             "workflow_phase_tasks_json": str(workflow_tasks_path),
+            "workflow_phase_autopatch_results_json": str(workflow_phase_autopatch_path) if workflow_phase_autopatch_results else "",
             "anchor_section_coverage_csv": str(anchor_csv_path),
             "anchor_section_coverage_md": str(anchor_md_path),
             "session_state_dir": str(session_state_dir),
@@ -244,6 +299,9 @@ def main() -> int:
         json.dump(optimizer_payload, handle, indent=2)
     with open(workflow_tasks_path, "w", encoding="utf-8") as handle:
         json.dump(workflow_phase_tasks, handle, indent=2)
+    if workflow_phase_autopatch_results:
+        with open(workflow_phase_autopatch_path, "w", encoding="utf-8") as handle:
+            json.dump(workflow_phase_autopatch_results, handle, indent=2)
     with open(summary_path, "w", encoding="utf-8") as handle:
         json.dump(summary_payload, handle, indent=2)
 
@@ -253,6 +311,8 @@ def main() -> int:
     print(f"Router status: {router_report.get('status')}")
     print(f"Successful sessions: {statistics.get('successful_sessions', 0)}/{statistics.get('total_sessions', 0)}")
     print(f"Workflow phase tasks: {len(workflow_phase_tasks)}")
+    if workflow_phase_autopatch_results:
+        print(f"Workflow phase autopatches: {len(workflow_phase_autopatch_results)}")
     return 0
 
 
