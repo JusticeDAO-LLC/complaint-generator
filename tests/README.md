@@ -222,6 +222,18 @@ The same slices are also available through editor and shell tooling:
   - `make regression-review`
   - `make regression-full`
 
+For the HACC grounding workflow, use the focused helper:
+
+```bash
+python scripts/run_hacc_grounding_regression.py --list
+python scripts/run_hacc_grounding_regression.py --skip-smoke
+```
+
+That helper now covers both:
+
+- the HACC seed-generation regression
+- the HACC evidence loader regression in `tests/test_hacc_evidence_loader.py`
+
 ### Test Naming Convention
 
 - Test files: `test_*.py` or `*_test.py`

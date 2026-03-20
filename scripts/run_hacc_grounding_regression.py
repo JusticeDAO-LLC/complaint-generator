@@ -51,6 +51,7 @@ def build_hacc_seed_test_command(python_executable: str) -> list[str]:
         "pytest",
         "-q",
         str(WORKSPACE_ROOT / "tests" / "test_hacc_evidence_seed_generation.py"),
+        str(PROJECT_ROOT / "tests" / "test_hacc_evidence_loader.py"),
     ]
 
 
