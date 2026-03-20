@@ -65,6 +65,8 @@ class OptimizationReport:
     worst_score: float = 1.0
     hacc_preset_performance: Dict[str, Dict[str, Any]] | None = None
     anchor_section_performance: Dict[str, Dict[str, Any]] | None = None
+    complaint_type_performance: Dict[str, Dict[str, Any]] | None = None
+    evidence_modality_performance: Dict[str, Dict[str, Any]] | None = None
     intake_priority_performance: Dict[str, Any] | None = None
     coverage_remediation: Dict[str, Any] | None = None
     recommended_hacc_preset: str | None = None
@@ -106,6 +108,8 @@ class OptimizationReport:
             'worst_score': self.worst_score,
             'hacc_preset_performance': self.hacc_preset_performance or {},
             'anchor_section_performance': self.anchor_section_performance or {},
+            'complaint_type_performance': self.complaint_type_performance or {},
+            'evidence_modality_performance': self.evidence_modality_performance or {},
             'intake_priority_performance': self.intake_priority_performance or {},
             'coverage_remediation': self.coverage_remediation or {},
             'recommended_hacc_preset': self.recommended_hacc_preset,
@@ -925,6 +929,8 @@ class Optimizer:
             "recommendations": list(report.recommendations or []),
             "common_weaknesses": list(report.common_weaknesses or []),
             "common_strengths": list(report.common_strengths or []),
+            "complaint_type_performance": dict(report.complaint_type_performance or {}),
+            "evidence_modality_performance": dict(report.evidence_modality_performance or {}),
             "intake_priority_performance": dict(report.intake_priority_performance or {}),
             "coverage_remediation": dict(report.coverage_remediation or {}),
         }
@@ -1172,6 +1178,94 @@ class Optimizer:
             "anchor_sections": anchor_sections,
         }
 
+    def _extract_diversity_meta(self, result: Any) -> Dict[str, Any]:
+        seed = getattr(result, "seed_complaint", None)
+        if not isinstance(seed, dict):
+            return {"complaint_types": [], "evidence_modalities": []}
+
+        meta = dict(seed.get("_meta") or {})
+        key_facts = dict(seed.get("key_facts") or {})
+        complaint_types: List[str] = []
+        evidence_modalities: List[str] = []
+
+        for candidate in (
+            seed.get("type"),
+            meta.get("seed_source"),
+            meta.get("complaint_type"),
+            key_facts.get("complaint_type"),
+            key_facts.get("category"),
+        ):
+            value = str(candidate or "").strip().lower()
+            if value:
+                complaint_types.append(value)
+
+        evidence_candidates: List[Any] = []
+        for field in (
+            seed.get("hacc_evidence"),
+            key_facts.get("anchor_passages"),
+            key_facts.get("repository_evidence_candidates"),
+            key_facts.get("supporting_evidence"),
+        ):
+            if isinstance(field, list):
+                evidence_candidates.extend(field)
+
+        if key_facts.get("matched_rules"):
+            evidence_modalities.append("policy_rule")
+        if key_facts.get("grounded_evidence_summary"):
+            evidence_modalities.append("grounded_summary")
+
+        for candidate in evidence_candidates:
+            if isinstance(candidate, dict):
+                source_path = str(
+                    candidate.get("source_path")
+                    or candidate.get("path")
+                    or candidate.get("file_path")
+                    or ""
+                ).strip().lower()
+                title = str(candidate.get("title") or candidate.get("label") or "").strip().lower()
+                text = " ".join(
+                    [
+                        title,
+                        str(candidate.get("snippet") or ""),
+                        str(candidate.get("summary") or ""),
+                    ]
+                ).lower()
+                if source_path.endswith((".pdf", ".doc", ".docx")):
+                    evidence_modalities.append("uploaded_document")
+                elif source_path.endswith((".png", ".jpg", ".jpeg", ".gif", ".tif", ".tiff")):
+                    evidence_modalities.append("image_evidence")
+                elif source_path.endswith((".eml", ".msg")):
+                    evidence_modalities.append("email_record")
+                elif source_path.endswith((".txt", ".md")):
+                    evidence_modalities.append("text_record")
+                elif source_path.endswith((".json", ".csv", ".xlsx")):
+                    evidence_modalities.append("structured_record")
+                elif "administrative plan" in text or "acop" in text or "policy" in text:
+                    evidence_modalities.append("policy_document")
+                elif source_path:
+                    evidence_modalities.append("file_evidence")
+            elif isinstance(candidate, str) and candidate.strip():
+                evidence_modalities.append("text_record")
+
+        if not evidence_modalities and bool(meta.get("include_hacc_evidence")):
+            evidence_modalities.append("policy_document")
+
+        def _dedupe(values: List[str]) -> List[str]:
+            seen = set()
+            output: List[str] = []
+            for value in values:
+                norm = str(value or "").strip().lower()
+                if not norm or norm in seen:
+                    continue
+                seen.add(norm)
+                output.append(norm)
+            return output
+
+        return {
+            "complaint_types": _dedupe(complaint_types) or ["general_complaint"],
+            "evidence_modalities": _dedupe(evidence_modalities) or ["narrative_only"],
+        }
+
     def _summarize_group_scores(self, grouped_scores: Dict[str, List[float]]) -> Dict[str, Dict[str, Any]]:
         summary: Dict[str, Dict[str, Any]] = {}
         for key, scores in grouped_scores.items():
@@ -1283,6 +1377,8 @@ class Optimizer:
         all_anchor_covered = []
         preset_scores: Dict[str, List[float]] = {}
         anchor_section_scores: Dict[str, List[float]] = {}
+        complaint_type_scores: Dict[str, List[float]] = {}
+        evidence_modality_scores: Dict[str, List[float]] = {}
         
         for result in successful:
             all_strengths.extend(result.critic_score.strengths)
@@ -1297,6 +1393,13 @@ class Optimizer:
             for section in list(seed_meta.get("anchor_sections") or []):
                 if isinstance(section, str) and section:
                     anchor_section_scores.setdefault(section, []).append(result.critic_score.overall_score)
+            diversity_meta = self._extract_diversity_meta(result)
+            for complaint_type in list(diversity_meta.get("complaint_types") or []):
+                if isinstance(complaint_type, str) and complaint_type:
+                    complaint_type_scores.setdefault(complaint_type, []).append(result.critic_score.overall_score)
+            for modality in list(diversity_meta.get("evidence_modalities") or []):
+                if isinstance(modality, str) and modality:
+                    evidence_modality_scores.setdefault(modality, []).append(result.critic_score.overall_score)
         
         # Find most common
         common_strengths = self._most_common(all_strengths, top_n=5)
@@ -1347,6 +1450,8 @@ class Optimizer:
         trend = self._determine_trend(scores)
         hacc_preset_performance = self._summarize_group_scores(preset_scores)
         anchor_section_performance = self._summarize_group_scores(anchor_section_scores)
+        complaint_type_performance = self._summarize_group_scores(complaint_type_scores)
+        evidence_modality_performance = self._summarize_group_scores(evidence_modality_scores)
         intake_priority_performance = self._summarize_intake_priority(successful)
         coverage_remediation = self._build_coverage_remediation(
             anchor_missing=self._most_common(all_anchor_missing, top_n=5),
@@ -1409,6 +1514,46 @@ class Optimizer:
                 recommendations.append(
                     "Decision-tree coverage is weakest for these seeded anchor sections: "
                     + ", ".join(weak_labels) + ". Add more explicit branch logic for them."
+                )
+
+        if complaint_type_performance:
+            weak_complaint_types = [
+                name
+                for name, payload in sorted(
+                    complaint_type_performance.items(),
+                    key=lambda item: (float(item[1].get("average_score") or 0.0), int(item[1].get("count") or 0)),
+                )[:3]
+                if float(payload.get("average_score") or 0.0) < avg_score
+            ]
+            if weak_complaint_types:
+                recommendations.append(
+                    "Generalization is weakest for these complaint types: "
+                    + ", ".join(weak_complaint_types)
+                    + ". Expand intake prompts, graph updates, and drafting logic so they do not rely on a single complaint template."
+                )
+                priority_improvements.insert(
+                    0,
+                    "Improve complaint-type generalization: " + ", ".join(weak_complaint_types[:3]),
+                )
+
+        if evidence_modality_performance:
+            weak_modalities = [
+                name
+                for name, payload in sorted(
+                    evidence_modality_performance.items(),
+                    key=lambda item: (float(item[1].get("average_score") or 0.0), int(item[1].get("count") or 0)),
+                )[:3]
+                if float(payload.get("average_score") or 0.0) < avg_score
+            ]
+            if weak_modalities:
+                recommendations.append(
+                    "Evidence handling is weakest for these evidence modalities: "
+                    + ", ".join(weak_modalities)
+                    + ". Improve evidence ingestion, graph extraction, and complaint drafting handoff for those submission types."
+                )
+                priority_improvements.insert(
+                    0,
+                    "Improve evidence-modality coverage: " + ", ".join(weak_modalities[:3]),
                 )
 
         if intake_priority_performance:
@@ -1483,6 +1628,8 @@ class Optimizer:
             worst_score=worst_result.critic_score.overall_score,
             hacc_preset_performance=hacc_preset_performance,
             anchor_section_performance=anchor_section_performance,
+            complaint_type_performance=complaint_type_performance,
+            evidence_modality_performance=evidence_modality_performance,
             intake_priority_performance=intake_priority_performance,
             coverage_remediation=coverage_remediation,
             recommended_hacc_preset=recommended_hacc_preset,
