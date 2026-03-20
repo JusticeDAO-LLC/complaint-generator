@@ -810,6 +810,7 @@ class Optimizer:
         metadata: Optional[Dict[str, Any]] = None,
         report: Optional[OptimizationReport] = None,
         components: Optional[Dict[str, Any]] = None,
+        include_ready_phases: bool = True,
     ) -> Tuple[List[Any], OptimizationReport]:
         components = components or self._load_agentic_optimizer_components()
         task_cls = components["OptimizationTask"]
@@ -832,7 +833,7 @@ class Optimizer:
         timestamp = datetime.now(UTC).strftime('%Y%m%d_%H%M%S')
         for phase_name in ordered_names:
             phase_payload = dict(phases.get(phase_name) or {})
-            if str(phase_payload.get("status") or "ready") == "ready":
+            if not include_ready_phases and str(phase_payload.get("status") or "ready") == "ready":
                 continue
             target_paths = [Path(path) for path in list(phase_payload.get("target_files") or [])]
             phase_constraints = self._workflow_phase_constraints(phase_name, target_paths)
@@ -907,6 +908,7 @@ class Optimizer:
         for task in tasks:
             phase_tasks.append(
                 {
+                    "phase_name": str(dict(getattr(task, "metadata", {}) or {}).get("workflow_phase") or ""),
                     "task_id": str(getattr(task, "task_id", "")),
                     "description": str(getattr(task, "description", "")),
                     "target_files": [str(path) for path in list(getattr(task, "target_files", []) or [])],

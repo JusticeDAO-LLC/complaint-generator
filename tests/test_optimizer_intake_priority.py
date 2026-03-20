@@ -184,7 +184,7 @@ def test_analyze_builds_workflow_phase_plan_for_intake_graph_and_document_steps(
     )
 
 
-def test_build_phase_patch_tasks_emits_non_ready_workflow_steps():
+def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
     optimizer = Optimizer()
     result = _session_result(
         "session_phase_tasks",
@@ -214,15 +214,16 @@ def test_build_phase_patch_tasks_emits_non_ready_workflow_steps():
     ordered_names = report.workflow_phase_plan["recommended_order"]
     emitted_names = [task.metadata["workflow_phase"] for task in tasks]
 
-    assert emitted_names == [
-        phase_name
-        for phase_name in ordered_names
-        if report.workflow_phase_plan["phases"][phase_name]["status"] != "ready"
-    ]
+    assert emitted_names == ordered_names
     assert any("document_pipeline.py" in [str(path) for path in task.target_files] for task in tasks)
     assert all(task.method == "ACTOR_CRITIC" for task in tasks)
+    intake_task = next(task for task in tasks if task.metadata["workflow_phase"] == "intake_questioning")
     graph_task = next(task for task in tasks if task.metadata["workflow_phase"] == "graph_analysis")
     document_task = next(task for task in tasks if task.metadata["workflow_phase"] == "document_generation")
+    assert "target_symbols" in intake_task.constraints
+    assert any(path.endswith("session.py") for path in intake_task.constraints["target_symbols"])
+    assert "workflow_capabilities" in intake_task.metadata
+    assert "complainant_prompting" in intake_task.metadata["workflow_capabilities"]
     assert "target_symbols" in graph_task.constraints
     assert any(path.endswith("knowledge_graph.py") for path in graph_task.constraints["target_symbols"])
     assert "workflow_capabilities" in graph_task.metadata
@@ -230,6 +231,44 @@ def test_build_phase_patch_tasks_emits_non_ready_workflow_steps():
     assert "target_symbols" in document_task.constraints
     assert any(path.endswith("document_pipeline.py") for path in document_task.constraints["target_symbols"])
     assert "document_optimization" in document_task.metadata["workflow_capabilities"]
+
+
+def test_build_phase_patch_tasks_can_skip_ready_workflow_steps():
+    optimizer = Optimizer()
+    result = _session_result(
+        "session_phase_tasks_skip_ready",
+        0.58,
+        {
+            "adversarial_intake_priority_summary": {
+                "expected_objectives": ["documents", "harm_remedy", "timeline"],
+                "covered_objectives": ["timeline"],
+                "uncovered_objectives": ["documents", "harm_remedy"],
+            }
+        },
+    )
+    result.knowledge_graph_summary = {"total_entities": 0, "total_relationships": 0, "gaps": 4}
+    result.dependency_graph_summary = {"total_nodes": 0, "total_dependencies": 0, "satisfaction_rate": 0.0}
+
+    tasks, report = optimizer.build_phase_patch_tasks(
+        [result],
+        method="actor_critic",
+        include_ready_phases=False,
+        components={
+            "OptimizationTask": lambda **kwargs: SimpleNamespace(**kwargs),
+            "OptimizationMethod": SimpleNamespace(ACTOR_CRITIC="ACTOR_CRITIC"),
+            "OptimizerLLMRouter": None,
+            "optimizer_classes": {},
+        },
+    )
+
+    ordered_names = report.workflow_phase_plan["recommended_order"]
+    emitted_names = [task.metadata["workflow_phase"] for task in tasks]
+
+    assert emitted_names == [
+        phase_name
+        for phase_name in ordered_names
+        if report.workflow_phase_plan["phases"][phase_name]["status"] != "ready"
+    ]
 
 
 def test_build_workflow_optimization_bundle_exposes_all_phases():
@@ -265,6 +304,7 @@ def test_build_workflow_optimization_bundle_exposes_all_phases():
     assert len(payload["phase_tasks"]) == 3
     phase_names = [task["metadata"]["workflow_phase"] for task in payload["phase_tasks"]]
     assert phase_names == report.workflow_phase_plan["recommended_order"]
+    assert [task["phase_name"] for task in payload["phase_tasks"]] == report.workflow_phase_plan["recommended_order"]
     assert any(
         "scripts/synthesize_hacc_complaint.py" in task["target_files"]
         for task in payload["phase_tasks"]
