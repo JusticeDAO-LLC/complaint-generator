@@ -481,6 +481,33 @@ def test_document_optimizer_report_promotes_confirmed_intake_handoff(monkeypatch
     assert stored_trace_payloads[0]['intake_case_summary']['intake_summary_handoff'] == report['intake_summary_handoff']
 
 
+def test_score_factual_allegations_rewards_timing_and_staff_detail():
+    optimizer = document_optimization.AgenticDocumentOptimizer(
+        mediator=_build_seeded_mediator(),
+        max_iterations=1,
+        target_score=0.95,
+        persist_artifacts=False,
+    )
+
+    baseline_score = optimizer._score_factual_allegations(
+        [
+            'Plaintiff engaged in protected activity.',
+            'Defendant later took adverse action.',
+        ],
+        [],
+    )
+    enhanced_score = optimizer._score_factual_allegations(
+        [
+            'On January 5, 2026, Plaintiff requested a hearing review from Case Manager Jordan Lee.',
+            'Housing Director Maya Chen responded on January 12, 2026 with the decision date for the hearing outcome.',
+            'Days after Plaintiff made the protected complaint, HACC took adverse action.',
+        ],
+        [],
+    )
+
+    assert enhanced_score > baseline_score
+
+
 def test_document_package_promotes_confirmed_intake_handoff(tmp_path):
     mediator = _build_seeded_mediator()
     builder = FormalComplaintDocumentBuilder(mediator)
