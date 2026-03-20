@@ -458,6 +458,11 @@ def summarize_claim_reasoning_review(
     temporal_proof_bundle_status_counts: Dict[str, int] = {}
     theorem_export_blocked_element_count = 0
     theorem_export_chronology_task_count = 0
+    proof_artifact_element_count = 0
+    proof_artifact_available_element_count = 0
+    proof_artifact_status_counts: Dict[str, int] = {}
+    proof_artifact_explanation_element_count = 0
+    proof_artifact_preview: List[str] = []
 
     for element in elements:
         if not isinstance(element, dict):
@@ -507,6 +512,45 @@ def summarize_claim_reasoning_review(
             for formula in (hybrid_result.get("dcec_formulas", []) or [])
             if str(formula).strip()
         ]
+        proof_artifact = hybrid_result.get("proof_artifact", {})
+        if not isinstance(proof_artifact, dict):
+            proof_artifact = {}
+        element_proof_artifact_available = bool(proof_artifact.get("available", False))
+        element_proof_artifact_status = str(
+            proof_artifact.get("status") or ""
+        ).strip()
+        element_proof_artifact_proof_id = str(
+            proof_artifact.get("proof_id") or ""
+        ).strip()
+        element_proof_artifact_proof_status = str(
+            proof_artifact.get("proof_status") or ""
+        ).strip()
+        element_proof_artifact_sentence = str(
+            proof_artifact.get("sentence") or ""
+        ).strip()
+        element_proof_artifact_reason = str(
+            proof_artifact.get("reason") or ""
+        ).strip()
+        element_proof_artifact_violation_count = int(
+            proof_artifact.get("violation_count", 0) or 0
+        )
+        proof_artifact_explanation = proof_artifact.get("explanation", {})
+        if not isinstance(proof_artifact_explanation, dict):
+            proof_artifact_explanation = {}
+        element_proof_artifact_explanation_format = str(
+            proof_artifact_explanation.get("format") or ""
+        ).strip()
+        element_proof_artifact_explanation_steps = list(
+            proof_artifact_explanation.get("steps", []) or []
+        )
+        element_proof_artifact_explanation_text = str(
+            proof_artifact_explanation.get("text") or ""
+        ).strip()
+        element_proof_artifact_theorem_export_metadata = proof_artifact.get(
+            "theorem_export_metadata", {}
+        )
+        if not isinstance(element_proof_artifact_theorem_export_metadata, dict):
+            element_proof_artifact_theorem_export_metadata = {}
         temporal_summary = reasoning.get("temporal_summary", {})
         if not isinstance(temporal_summary, dict):
             temporal_summary = {}
@@ -653,6 +697,25 @@ def summarize_claim_reasoning_review(
         theorem_export_chronology_task_count += int(
             element_theorem_export_metadata.get("chronology_task_count", 0) or 0
         )
+        if proof_artifact:
+            proof_artifact_element_count += 1
+            proof_artifact_status_counts[element_proof_artifact_status or "unknown"] = (
+                proof_artifact_status_counts.get(element_proof_artifact_status or "unknown", 0)
+                + 1
+            )
+        if element_proof_artifact_available:
+            proof_artifact_available_element_count += 1
+        if element_proof_artifact_explanation_steps or element_proof_artifact_explanation_text:
+            proof_artifact_explanation_element_count += 1
+        for preview_value in (
+            element_proof_artifact_proof_id,
+            element_proof_artifact_sentence,
+            element_proof_artifact_reason,
+        ):
+            if preview_value and preview_value not in proof_artifact_preview:
+                proof_artifact_preview.append(preview_value)
+            if len(proof_artifact_preview) >= preview_limit:
+                break
         for warning in element_temporal_warnings:
             if warning not in temporal_warning_preview:
                 temporal_warning_preview.append(warning)
@@ -690,6 +753,7 @@ def summarize_claim_reasoning_review(
             or degraded_adapters
             or str(element.get("validation_status") or "") == "contradicted"
             or hybrid_bridge_used
+            or proof_artifact
             or element_temporal_fact_count
             or element_temporal_relation_count
             or element_temporal_issue_count
@@ -719,6 +783,17 @@ def summarize_claim_reasoning_review(
                 "hybrid_formalism": element_formalism,
                 "hybrid_reasoning_mode": element_reasoning_mode,
                 "hybrid_compiler_bridge_path": element_compiler_bridge_path,
+                "proof_artifact_available": element_proof_artifact_available,
+                "proof_artifact_status": element_proof_artifact_status,
+                "proof_artifact_proof_id": element_proof_artifact_proof_id,
+                "proof_artifact_proof_status": element_proof_artifact_proof_status,
+                "proof_artifact_sentence": element_proof_artifact_sentence,
+                "proof_artifact_reason": element_proof_artifact_reason,
+                "proof_artifact_violation_count": element_proof_artifact_violation_count,
+                "proof_artifact_explanation_format": element_proof_artifact_explanation_format,
+                "proof_artifact_explanation_step_count": len(element_proof_artifact_explanation_steps),
+                "proof_artifact_explanation_text": element_proof_artifact_explanation_text,
+                "proof_artifact_theorem_export_metadata": element_proof_artifact_theorem_export_metadata,
                 "temporal_fact_count": element_temporal_fact_count,
                 "temporal_relation_count": element_temporal_relation_count,
                 "temporal_issue_count": element_temporal_issue_count,
@@ -779,6 +854,11 @@ def summarize_claim_reasoning_review(
         "temporal_proof_bundle_status_counts": temporal_proof_bundle_status_counts,
         "theorem_export_blocked_element_count": theorem_export_blocked_element_count,
         "theorem_export_chronology_task_count": theorem_export_chronology_task_count,
+        "proof_artifact_element_count": proof_artifact_element_count,
+        "proof_artifact_available_element_count": proof_artifact_available_element_count,
+        "proof_artifact_status_counts": proof_artifact_status_counts,
+        "proof_artifact_explanation_element_count": proof_artifact_explanation_element_count,
+        "proof_artifact_preview": proof_artifact_preview,
         "flagged_elements": flagged_elements,
     }
 

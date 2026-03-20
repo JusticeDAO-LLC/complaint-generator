@@ -156,6 +156,11 @@ def test_run_hybrid_reasoning_returns_temporal_bridge_bundle():
     assert result['result']['timeline_event_count'] == 1
     assert result['result']['temporal_relation_count'] == 1
     assert result['result']['contradiction_signal_count'] == 0
+    assert result['result']['proof_artifact']['available'] is True
+    assert result['result']['proof_artifact']['status'] == 'success'
+    assert isinstance(result['result']['proof_artifact']['proof_id'], str)
+    assert result['result']['proof_artifact']['proof_id']
+    assert result['result']['proof_artifact']['explanation']['proof_id'] == result['result']['proof_artifact']['proof_id']
     assert 'forall t (AtTime(t,t_2025_03_01) -> Fact(fact_1,t))' in result['result']['tdfol_formulas']
     assert 'Before(fact_1,fact_2)' in result['result']['tdfol_formulas']
     assert 'Happens(fact_1,t_2025_03_01)' in result['result']['dcec_formulas']
@@ -220,3 +225,8 @@ def test_logic_entrypoints_preserve_claim_support_temporal_handoff():
         assert theorem_export_metadata['temporal_issue_ids'] == ['timeline-gap-001']
 
     assert hybrid_result['result']['theorem_export_metadata'] == hybrid_result['temporal_reasoning_payload']['theorem_export_metadata']
+    proof_artifact = hybrid_result['result']['proof_artifact']
+    assert proof_artifact['available'] is True
+    assert proof_artifact['theorem_export_metadata'] == hybrid_result['temporal_reasoning_payload']['theorem_export_metadata']
+    assert proof_artifact['claim_support_temporal_handoff'] == payload['claim_support_temporal_handoff']
+    assert proof_artifact['explanation']['theorem_export_metadata'] == hybrid_result['temporal_reasoning_payload']['theorem_export_metadata']

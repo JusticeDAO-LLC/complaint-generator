@@ -2174,6 +2174,8 @@
                 `<span class="chip">Flagged elements: ${Number(reviewData.flagged_element_count || 0)}</span>`,
                 `<span class="chip">Bridge elements: ${Number(reviewData.hybrid_bridge_element_count || 0)}</span>`,
                 `<span class="chip">Bridge available: ${Number(reviewData.hybrid_bridge_available_element_count || 0)}</span>`,
+                `<span class="chip">Proof artifacts: ${Number(reviewData.proof_artifact_element_count || 0)}</span>`,
+                `<span class="chip">Proof ready: ${Number(reviewData.proof_artifact_available_element_count || 0)}</span>`,
                 `<span class="chip">TDFOL formulas: ${Number(reviewData.hybrid_tdfol_formula_count || 0)}</span>`,
                 `<span class="chip">DCEC formulas: ${Number(reviewData.hybrid_dcec_formula_count || 0)}</span>`,
                 `<span class="chip">Temporal facts: ${Number(reviewData.temporal_fact_count || 0)}</span>`,
@@ -2220,11 +2222,14 @@
                         <span class="chip">rule partial ${Number(reviewData.temporal_rule_profile_partial_element_count || 0)}</span>
                         <span class="chip">rule failed ${Number(reviewData.temporal_rule_profile_failed_element_count || 0)}</span>
                         <span class="chip">proof bundles ${Number(reviewData.temporal_proof_bundle_count || 0)}</span>
+                        <span class="chip">proof explanations ${Number(reviewData.proof_artifact_explanation_element_count || 0)}</span>
                         ${Object.entries(reviewData.temporal_relation_type_counts && typeof reviewData.temporal_relation_type_counts === 'object' ? reviewData.temporal_relation_type_counts : {}).map(([relationType, count]) => `<span class="chip">${humanizeQueryValue(relationType)} ${Number(count || 0)}</span>`).join('')}
                         ${Object.entries(reviewData.temporal_proof_bundle_status_counts && typeof reviewData.temporal_proof_bundle_status_counts === 'object' ? reviewData.temporal_proof_bundle_status_counts : {}).map(([status, count]) => `<span class="chip">bundle ${humanizeQueryValue(status)} ${Number(count || 0)}</span>`).join('')}
+                        ${Object.entries(reviewData.proof_artifact_status_counts && typeof reviewData.proof_artifact_status_counts === 'object' ? reviewData.proof_artifact_status_counts : {}).map(([status, count]) => `<span class="chip">proof ${humanizeQueryValue(status)} ${Number(count || 0)}</span>`).join('')}
                     </div>
                     ${renderFormulaPreviewDetails('Temporal relation preview', reviewData.temporal_relation_preview || [], 'No temporal relation preview available.')}
                     ${renderFormulaPreviewDetails('Temporal warnings', reviewData.temporal_warning_preview || [], 'No temporal warnings surfaced.')}
+                    ${renderFormulaPreviewDetails('Proof artifact preview', reviewData.proof_artifact_preview || [], 'No proof artifacts surfaced yet.')}
                 </div>
             ` : '';
 
@@ -2286,6 +2291,12 @@
                         ${element.hybrid_formalism ? `<span class="chip">formalism ${escapeHtml(element.hybrid_formalism)}</span>` : ''}
                         ${element.hybrid_reasoning_mode ? `<span class="chip">mode ${escapeHtml(element.hybrid_reasoning_mode)}</span>` : ''}
                         ${element.hybrid_compiler_bridge_path ? `<span class="chip">bridge path ${escapeHtml(element.hybrid_compiler_bridge_path)}</span>` : ''}
+                        ${element.proof_artifact_available ? '<span class="chip">proof artifact ready</span>' : ''}
+                        ${element.proof_artifact_status ? `<span class="chip">proof ${humanizeQueryValue(element.proof_artifact_status)}</span>` : ''}
+                        ${element.proof_artifact_proof_status ? `<span class="chip">proof status ${humanizeQueryValue(element.proof_artifact_proof_status)}</span>` : ''}
+                        ${element.proof_artifact_proof_id ? `<span class="chip">proof id ${escapeHtml(element.proof_artifact_proof_id)}</span>` : ''}
+                        ${element.proof_artifact_explanation_format ? `<span class="chip">explanation ${escapeHtml(element.proof_artifact_explanation_format)}</span>` : ''}
+                        ${element.proof_artifact_explanation_step_count ? `<span class="chip">explanation steps ${Number(element.proof_artifact_explanation_step_count || 0)}</span>` : ''}
                         ${element.temporal_fact_count ? `<span class="chip">temporal facts ${Number(element.temporal_fact_count || 0)}</span>` : ''}
                         ${element.temporal_relation_count ? `<span class="chip">temporal relations ${Number(element.temporal_relation_count || 0)}</span>` : ''}
                         ${element.temporal_issue_count ? `<span class="chip">temporal issues ${Number(element.temporal_issue_count || 0)}</span>` : ''}
@@ -2304,6 +2315,8 @@
                     ${renderFormulaPreviewDetails('Temporal rule blockers', element.temporal_rule_blocking_reasons || [], 'No temporal rule blockers for this element.')}
                     ${renderFormulaPreviewDetails('Temporal rule warnings', element.temporal_rule_warnings || [], 'No temporal rule warnings for this element.')}
                     ${renderFormulaPreviewDetails('Temporal rule follow-ups', temporalRuleFollowUpPreview, 'No temporal rule follow-ups for this element.')}
+                    ${renderFormulaPreviewDetails('Proof artifact sentence', element.proof_artifact_sentence ? [element.proof_artifact_sentence] : [], 'No proof artifact sentence for this element.')}
+                    ${renderFormulaPreviewDetails('Proof artifact notes', [element.proof_artifact_reason || '', element.proof_artifact_explanation_text || ''].filter(Boolean), 'No proof artifact notes for this element.')}
                     ${renderFormulaPreviewDetails('Temporal proof bundle facts', element.temporal_proof_bundle_fact_ids || [], 'No temporal proof bundle facts for this element.')}
                     ${renderFormulaPreviewDetails('Temporal proof bundle relations', element.temporal_proof_bundle_relation_ids || [], 'No temporal proof bundle relations for this element.')}
                     ${renderFormulaPreviewDetails('Temporal proof bundle issues', element.temporal_proof_bundle_issue_ids || [], 'No temporal proof bundle issues for this element.')}

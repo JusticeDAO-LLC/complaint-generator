@@ -17,6 +17,10 @@ _z3_module, _z3_error = import_module_optional(
 _reasoner_module, _reasoner_error = import_module_optional(
     "ipfs_datasets_py.ipfs_datasets_py.processors.legal_data.reasoner.hybrid_v2_blueprint"
 )
+if _reasoner_module is None:
+    _reasoner_module, _reasoner_error = import_module_optional(
+        "ipfs_datasets_py.processors.legal_data.reasoner.hybrid_v2_blueprint"
+    )
 
 LOGIC_AVAILABLE = any(
     value is not None
@@ -25,6 +29,7 @@ LOGIC_AVAILABLE = any(
 LOGIC_ERROR = _logic_error or _fol_error or _deontic_error or _tdfol_error or _z3_error
 REASONER_BRIDGE_AVAILABLE = _reasoner_module is not None
 REASONER_BRIDGE_ERROR = _reasoner_error
+REASONER_BRIDGE_PATH = getattr(_reasoner_module, "__name__", "") if _reasoner_module is not None else ""
 
 
 def _normalize_logic_symbol(value: Any, *, prefix: str) -> str:
@@ -323,6 +328,113 @@ def _build_temporal_reasoning_payload(
     return temporal_reasoning_payload
 
 
+def _derive_reasoner_sentence(
+    predicates: Iterable[Dict[str, Any]],
+    temporal_reasoning_payload: Dict[str, Any],
+) -> str:
+    claim_element_text = ""
+    claim_type = ""
+
+    for predicate in predicates:
+        if not isinstance(predicate, dict):
+            continue
+        if str(predicate.get("predicate_type") or "") != "claim_element":
+            continue
+        claim_element_text = str(predicate.get("claim_element_text") or "").strip()
+        claim_type = str(predicate.get("claim_type") or "").strip()
+        if claim_element_text:
+            break
+
+    if not claim_type:
+        claim_types = list(temporal_reasoning_payload.get("claim_types", []) or [])
+        claim_type = str(claim_types[0] or "").strip() if claim_types else ""
+
+    seed_text = claim_element_text or claim_type
+    seed_text = str(seed_text or "").strip().strip(".")
+    if not seed_text:
+        return ""
+
+    lowered = seed_text.lower()
+    if " shall not " in f" {lowered} " or " shall " in f" {lowered} " or " may " in f" {lowered} ":
+        return seed_text if seed_text.endswith(".") else seed_text + "."
+
+    return f"Claimant shall establish {seed_text.lower()}."
+
+
+def _build_reasoner_proof_artifact(
+    predicates: Iterable[Dict[str, Any]],
+    temporal_reasoning_payload: Dict[str, Any],
+    claim_support_temporal_handoff: Dict[str, Any],
+) -> Dict[str, Any]:
+    if not REASONER_BRIDGE_AVAILABLE or _reasoner_module is None:
+        return {
+            "available": False,
+            "status": "unavailable",
+            "reason": str(REASONER_BRIDGE_ERROR or "reasoner_bridge_unavailable"),
+        }
+
+    run_pipeline = getattr(_reasoner_module, "run_v2_pipeline_with_defaults", None)
+    check_compliance = getattr(_reasoner_module, "check_compliance", None)
+    explain_proof = getattr(_reasoner_module, "explain_proof", None)
+    if not callable(run_pipeline) or not callable(check_compliance) or not callable(explain_proof):
+        return {
+            "available": False,
+            "status": "unavailable",
+            "reason": "reasoner_bridge_missing_entrypoints",
+        }
+
+    sentence = _derive_reasoner_sentence(predicates, temporal_reasoning_payload)
+    if not sentence:
+        return {
+            "available": False,
+            "status": "unavailable",
+            "reason": "missing_reasoner_sentence",
+        }
+
+    theorem_export_metadata = dict(temporal_reasoning_payload.get("theorem_export_metadata") or {})
+    try:
+        pipeline = run_pipeline(
+            sentence,
+            theorem_export_metadata=theorem_export_metadata,
+            claim_support_temporal_handoff=claim_support_temporal_handoff,
+        )
+        compliance = check_compliance(
+            {
+                "ir": pipeline.get("ir"),
+                "facts": {},
+                "events": [],
+                "theorem_export_metadata": theorem_export_metadata,
+                "claim_support_temporal_handoff": claim_support_temporal_handoff,
+            },
+            {},
+        )
+        proof_id = str(compliance.get("proof_id") or "").strip()
+        explanation = explain_proof(proof_id, format="json") if proof_id else {}
+        return {
+            "available": True,
+            "status": "success",
+            "sentence": sentence,
+            "proof_id": proof_id,
+            "proof_status": compliance.get("status"),
+            "violation_count": compliance.get("violation_count"),
+            "theorem_export_metadata": dict(compliance.get("theorem_export_metadata") or theorem_export_metadata),
+            "claim_support_temporal_handoff": dict(
+                compliance.get("claim_support_temporal_handoff") or claim_support_temporal_handoff
+            ),
+            "explanation": explanation if isinstance(explanation, dict) else {},
+            "prover_report": dict(pipeline.get("prover_report") or {}),
+        }
+    except Exception as exc:
+        return {
+            "available": False,
+            "status": "error",
+            "reason": str(exc),
+            "sentence": sentence,
+            "theorem_export_metadata": theorem_export_metadata,
+            "claim_support_temporal_handoff": dict(claim_support_temporal_handoff or {}),
+        }
+
+
 def _summarize_predicates(predicates: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     predicate_list: List[Dict[str, Any]] = [
         predicate for predicate in predicates
@@ -452,6 +564,19 @@ def run_hybrid_reasoning(payload: Dict[str, Any]) -> Dict[str, Any]:
         dict,
     ):
         temporal_reasoning_payload["claim_support_temporal_handoff"] = claim_support_temporal_handoff
+    if claim_support_temporal_handoff and not isinstance(
+        temporal_reasoning_payload.get("theorem_export_metadata"),
+        dict,
+    ):
+        temporal_reasoning_payload["theorem_export_metadata"] = _build_theorem_export_metadata(
+            claim_support_temporal_handoff
+        )
+
+    proof_artifact = _build_reasoner_proof_artifact(
+        predicates,
+        temporal_reasoning_payload,
+        claim_support_temporal_handoff,
+    )
 
     result_payload = {
         "status": "success",
@@ -466,10 +591,9 @@ def run_hybrid_reasoning(payload: Dict[str, Any]) -> Dict[str, Any]:
             "contradiction_signal_count": len(temporal_reasoning_payload.get("contradiction_signals", []) or []),
             "reasoning_mode": "temporal_bridge",
             "compiler_bridge_available": REASONER_BRIDGE_AVAILABLE,
+            "proof_artifact": proof_artifact,
             "compiler_bridge_path": (
-                "ipfs_datasets_py.ipfs_datasets_py.processors.legal_data.reasoner.hybrid_v2_blueprint"
-                if REASONER_BRIDGE_AVAILABLE
-                else ""
+                REASONER_BRIDGE_PATH if REASONER_BRIDGE_AVAILABLE else ""
             ),
         },
         "payload_keys": normalized_payload["payload_keys"],
@@ -487,9 +611,7 @@ def run_hybrid_reasoning(payload: Dict[str, Any]) -> Dict[str, Any]:
             "reasoning_mode": "temporal_bridge",
             "compiler_bridge_available": REASONER_BRIDGE_AVAILABLE,
             "compiler_bridge_path": (
-                "ipfs_datasets_py.ipfs_datasets_py.processors.legal_data.reasoner.hybrid_v2_blueprint"
-                if REASONER_BRIDGE_AVAILABLE
-                else ""
+                REASONER_BRIDGE_PATH if REASONER_BRIDGE_AVAILABLE else ""
             ),
         },
     )

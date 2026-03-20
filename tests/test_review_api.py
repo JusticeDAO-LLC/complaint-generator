@@ -4140,6 +4140,35 @@ def test_summarize_claim_reasoning_review_includes_temporal_handoff_summary():
                                 "implementation_status": "implemented",
                             }
                         },
+                        "hybrid_reasoning": {
+                            "result": {
+                                "compiler_bridge_available": True,
+                                "formalism": "tdfol_dcec_bridge_v1",
+                                "reasoning_mode": "temporal_bridge",
+                                "compiler_bridge_path": "ipfs_datasets_py.processors.legal_data.reasoner.hybrid_v2_blueprint",
+                                "proof_artifact": {
+                                    "available": True,
+                                    "status": "success",
+                                    "proof_id": "pf2_abcd1234",
+                                    "proof_status": "non_compliant",
+                                    "sentence": "Claimant shall establish protected activity.",
+                                    "violation_count": 1,
+                                    "theorem_export_metadata": {
+                                        "contract_version": "claim_support_temporal_handoff_v1",
+                                        "claim_type": "retaliation",
+                                        "claim_element_id": "retaliation:1",
+                                        "chronology_blocked": True,
+                                        "chronology_task_count": 1,
+                                    },
+                                    "explanation": {
+                                        "format": "json",
+                                        "proof_id": "pf2_abcd1234",
+                                        "text": "Proof pf2_abcd1234: compliance=non_compliant",
+                                        "steps": [{"step_id": "s1"}],
+                                    },
+                                },
+                            },
+                        },
                         "temporal_summary": {
                             "fact_count": 2,
                             "proof_lead_count": 1,
@@ -4222,6 +4251,14 @@ def test_summarize_claim_reasoning_review_includes_temporal_handoff_summary():
     assert review["temporal_proof_bundle_status_counts"] == {"partial": 1}
     assert review["theorem_export_blocked_element_count"] == 1
     assert review["theorem_export_chronology_task_count"] == 1
+    assert review["proof_artifact_element_count"] == 1
+    assert review["proof_artifact_available_element_count"] == 1
+    assert review["proof_artifact_status_counts"] == {"success": 1}
+    assert review["proof_artifact_explanation_element_count"] == 1
+    assert review["proof_artifact_preview"] == [
+        "pf2_abcd1234",
+        "Claimant shall establish protected activity.",
+    ]
     assert review["flagged_elements"][0]["temporal_fact_count"] == 2
     assert review["flagged_elements"][0]["temporal_relation_count"] == 1
     assert review["flagged_elements"][0]["temporal_issue_count"] == 1
@@ -4262,6 +4299,15 @@ def test_summarize_claim_reasoning_review_includes_temporal_handoff_summary():
         "Happens(fact_001,t_2025_03_10)",
         "Happens(fact_termination,t_2025_03_24)",
     ]
+    assert review["flagged_elements"][0]["proof_artifact_available"] is True
+    assert review["flagged_elements"][0]["proof_artifact_status"] == "success"
+    assert review["flagged_elements"][0]["proof_artifact_proof_id"] == "pf2_abcd1234"
+    assert review["flagged_elements"][0]["proof_artifact_proof_status"] == "non_compliant"
+    assert review["flagged_elements"][0]["proof_artifact_sentence"] == "Claimant shall establish protected activity."
+    assert review["flagged_elements"][0]["proof_artifact_violation_count"] == 1
+    assert review["flagged_elements"][0]["proof_artifact_explanation_format"] == "json"
+    assert review["flagged_elements"][0]["proof_artifact_explanation_step_count"] == 1
+    assert review["flagged_elements"][0]["proof_artifact_explanation_text"] == "Proof pf2_abcd1234: compliance=non_compliant"
     assert review["flagged_elements"][0]["theorem_export_metadata"] == {
         "contract_version": "claim_support_temporal_handoff_v1",
         "claim_type": "retaliation",
@@ -4278,6 +4324,13 @@ def test_summarize_claim_reasoning_review_includes_temporal_handoff_summary():
         "temporal_issue_ids": ["temporal_issue_001"],
         "temporal_proof_bundle_ids": ["retaliation:retaliation_1:retaliation_temporal_profile_v1"],
         "temporal_proof_objectives": ["retaliation_temporal_frame"],
+    }
+    assert review["flagged_elements"][0]["proof_artifact_theorem_export_metadata"] == {
+        "contract_version": "claim_support_temporal_handoff_v1",
+        "claim_type": "retaliation",
+        "claim_element_id": "retaliation:1",
+        "chronology_blocked": True,
+        "chronology_task_count": 1,
     }
 
 

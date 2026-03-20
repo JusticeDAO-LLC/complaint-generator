@@ -126,6 +126,10 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "chronology events: ${taskEventIds.length}" in content
     assert "chronology relations: ${taskTemporalRelationIds.length}" in content
     assert "chronology issues: ${taskTimelineIssueIds.length}" in content
+    assert "Proof artifacts: ${Number(reviewData.proof_artifact_element_count || 0)}" in content
+    assert "proof id ${escapeHtml(element.proof_artifact_proof_id)}" in content
+    assert "Proof artifact sentence" in content
+    assert "Proof artifact notes" in content
     assert "Chronology event IDs" in content
     assert "Chronology relation IDs" in content
     assert "Chronology issue IDs" in content
