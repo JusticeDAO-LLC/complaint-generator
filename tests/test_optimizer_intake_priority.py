@@ -221,6 +221,56 @@ def test_build_phase_patch_tasks_emits_non_ready_workflow_steps():
     ]
     assert any("document_pipeline.py" in [str(path) for path in task.target_files] for task in tasks)
     assert all(task.method == "ACTOR_CRITIC" for task in tasks)
+    graph_task = next(task for task in tasks if task.metadata["workflow_phase"] == "graph_analysis")
+    document_task = next(task for task in tasks if task.metadata["workflow_phase"] == "document_generation")
+    assert "target_symbols" in graph_task.constraints
+    assert any(path.endswith("knowledge_graph.py") for path in graph_task.constraints["target_symbols"])
+    assert "workflow_capabilities" in graph_task.metadata
+    assert "knowledge_graph_population" in graph_task.metadata["workflow_capabilities"]
+    assert "target_symbols" in document_task.constraints
+    assert any(path.endswith("document_pipeline.py") for path in document_task.constraints["target_symbols"])
+    assert "document_optimization" in document_task.metadata["workflow_capabilities"]
+
+
+def test_build_workflow_optimization_bundle_exposes_all_phases():
+    optimizer = Optimizer()
+    result = _session_result(
+        "session_workflow_bundle",
+        0.55,
+        {
+            "adversarial_intake_priority_summary": {
+                "expected_objectives": ["documents", "harm_remedy", "timeline"],
+                "covered_objectives": ["timeline"],
+                "uncovered_objectives": ["documents", "harm_remedy"],
+            }
+        },
+    )
+    result.knowledge_graph_summary = {"total_entities": 0, "total_relationships": 0, "gaps": 5}
+    result.dependency_graph_summary = {"total_nodes": 1, "total_dependencies": 0, "satisfaction_rate": 0.0}
+
+    bundle, report = optimizer.build_workflow_optimization_bundle(
+        [result],
+        method="actor_critic",
+        components={
+            "OptimizationTask": lambda **kwargs: SimpleNamespace(**kwargs),
+            "OptimizationMethod": SimpleNamespace(ACTOR_CRITIC="ACTOR_CRITIC"),
+            "OptimizerLLMRouter": None,
+            "optimizer_classes": {},
+        },
+    )
+
+    payload = bundle.to_dict()
+    assert report.workflow_phase_plan["recommended_order"] == payload["workflow_phase_plan"]["recommended_order"]
+    assert payload["global_objectives"]
+    assert len(payload["phase_tasks"]) == 3
+    phase_names = [task["metadata"]["workflow_phase"] for task in payload["phase_tasks"]]
+    assert phase_names == report.workflow_phase_plan["recommended_order"]
+    assert any(
+        "scripts/synthesize_hacc_complaint.py" in task["target_files"]
+        for task in payload["phase_tasks"]
+        if task["metadata"]["workflow_phase"] == "document_generation"
+    )
+    assert "coverage_remediation" in payload["shared_context"]
 
 
 def test_analyze_without_successful_sessions_returns_critical_workflow_phase_plan():

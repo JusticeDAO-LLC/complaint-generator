@@ -18,7 +18,7 @@ from .complainant import Complainant, ComplaintGenerator, ComplaintContext
 from .critic import Critic, CriticScore
 from .session import AdversarialSession, SessionResult
 from .harness import AdversarialHarness
-from .optimizer import Optimizer, OptimizationReport
+from .optimizer import Optimizer, OptimizationReport, WorkflowOptimizationBundle
 from .seed_complaints import SeedComplaintLibrary, ComplaintTemplate
 from .hacc_evidence import (
     build_hacc_evidence_seeds,
@@ -43,6 +43,7 @@ __all__ = [
     'AdversarialHarness',
     'Optimizer',
     'OptimizationReport',
+    'WorkflowOptimizationBundle',
     'SeedComplaintLibrary',
     'ComplaintTemplate',
     'build_hacc_evidence_seeds',

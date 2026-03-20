@@ -113,6 +113,30 @@ class OptimizationReport:
         }
 
 
+@dataclass
+class WorkflowOptimizationBundle:
+    """Serializable optimization bundle spanning the full complaint workflow."""
+
+    timestamp: str
+    num_sessions_analyzed: int
+    average_score: float
+    workflow_phase_plan: Dict[str, Any]
+    global_objectives: List[str]
+    phase_tasks: List[Dict[str, Any]]
+    shared_context: Dict[str, Any]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "timestamp": self.timestamp,
+            "num_sessions_analyzed": self.num_sessions_analyzed,
+            "average_score": self.average_score,
+            "workflow_phase_plan": dict(self.workflow_phase_plan or {}),
+            "global_objectives": list(self.global_objectives or []),
+            "phase_tasks": list(self.phase_tasks or []),
+            "shared_context": dict(self.shared_context or {}),
+        }
+
+
 class Optimizer:
     """
     Analyzes critic feedback to provide optimization recommendations.
@@ -581,7 +605,7 @@ class Optimizer:
                     "complaint_phases/knowledge_graph.py",
                     "complaint_phases/dependency_graph.py",
                     "complaint_phases/denoiser.py",
-                    "mediator/mediator.py",
+                    "complaint_phases/intake_case_file.py",
                 ],
             },
             "document_generation": {
@@ -593,6 +617,7 @@ class Optimizer:
                 "target_files": [
                     "document_pipeline.py",
                     "document_optimization.py",
+                    "scripts/synthesize_hacc_complaint.py",
                     "mediator/formal_document.py",
                 ],
             },
@@ -613,6 +638,108 @@ class Optimizer:
             phases,
             status_rank={"critical": 0, "warning": 1, "ready": 2},
         )
+
+    @staticmethod
+    def _workflow_phase_capabilities(phase_name: str) -> List[str]:
+        capabilities = {
+            "intake_questioning": [
+                "complainant_prompting",
+                "mediator_question_ordering",
+                "intake_priority_coverage",
+                "anchor_section_coverage",
+            ],
+            "graph_analysis": [
+                "knowledge_graph_population",
+                "dependency_graph_population",
+                "gap_reduction",
+                "timeline_and_proof_modeling",
+            ],
+            "document_generation": [
+                "drafting_readiness",
+                "document_optimization",
+                "complaint_synthesis",
+                "evidence_to_exhibit_handoff",
+            ],
+        }
+        return list(capabilities.get(str(phase_name), []))
+
+    @staticmethod
+    def _workflow_phase_constraints(
+        phase_name: str,
+        target_paths: List[Path],
+    ) -> Dict[str, Any]:
+        target_map: Dict[str, List[str]] = {}
+        for path in target_paths:
+            key = path.as_posix()
+            if str(phase_name) == "intake_questioning":
+                if path.name == "session.py":
+                    target_map[key] = [
+                        "_inject_intake_prompt_questions",
+                        "_reprioritize_candidates_for_intake_objectives",
+                        "_summarize_intake_priority_coverage",
+                    ]
+                elif path.name == "mediator.py":
+                    target_map[key] = [
+                        "build_inquiry_gap_context",
+                    ]
+                elif path.name == "complainant.py":
+                    target_map[key] = [
+                        "build_default_context",
+                    ]
+            elif str(phase_name) == "graph_analysis":
+                if path.name == "knowledge_graph.py":
+                    target_map[key] = [
+                        "build_from_text",
+                        "_extract_entities",
+                        "_extract_relationships",
+                    ]
+                elif path.name == "dependency_graph.py":
+                    target_map[key] = [
+                        "build_from_claims",
+                        "get_claim_readiness",
+                    ]
+                elif path.name == "denoiser.py":
+                    target_map[key] = [
+                        "process_answer",
+                        "_build_claim_element_questions",
+                        "_build_proof_lead_questions",
+                    ]
+                elif path.name == "intake_case_file.py":
+                    target_map[key] = [
+                        "build_intake_case_file",
+                        "build_timeline_consistency_summary",
+                        "build_open_items",
+                    ]
+            elif str(phase_name) == "document_generation":
+                if path.name == "document_pipeline.py":
+                    target_map[key] = [
+                        "build_package",
+                        "_build_runtime_workflow_phase_plan",
+                        "_build_drafting_readiness",
+                    ]
+                elif path.name == "document_optimization.py":
+                    target_map[key] = [
+                        "optimize_draft",
+                        "_build_support_context",
+                        "_heuristic_review",
+                    ]
+                elif path.name == "synthesize_hacc_complaint.py":
+                    target_map[key] = [
+                        "_merge_seed_with_grounding",
+                        "_factual_allegations",
+                        "_claims_theory",
+                    ]
+                elif path.name == "formal_document.py":
+                    target_map[key] = [
+                        "ComplaintDocumentBuilder",
+                    ]
+        if not target_map:
+            return {}
+        return {
+            "target_symbols": target_map,
+            "workflow_phase": str(phase_name),
+            "preserve_interfaces": True,
+        }
 
     def build_agentic_patch_task(
         self,
@@ -708,6 +835,7 @@ class Optimizer:
             if str(phase_payload.get("status") or "ready") == "ready":
                 continue
             target_paths = [Path(path) for path in list(phase_payload.get("target_files") or [])]
+            phase_constraints = self._workflow_phase_constraints(phase_name, target_paths)
             phase_actions = [
                 str(item.get("recommended_action") or "").strip()
                 for item in list(phase_payload.get("recommended_actions") or [])
@@ -728,7 +856,10 @@ class Optimizer:
                     target_files=target_paths,
                     method=getattr(method_enum, normalized_method.upper()),
                     priority=int(priority),
-                    constraints=dict(constraints or {}),
+                    constraints={
+                        **dict(constraints or {}),
+                        **phase_constraints,
+                    },
                     metadata={
                         "source": "adversarial_harness",
                         "workflow_phase": phase_name,
@@ -736,6 +867,7 @@ class Optimizer:
                         "workflow_phase_status": str(phase_payload.get("status") or "ready"),
                         "workflow_phase_summary": str(phase_payload.get("summary") or ""),
                         "workflow_phase_actions": phase_actions,
+                        "workflow_capabilities": self._workflow_phase_capabilities(phase_name),
                         "report_summary": {
                             "average_score": report.average_score,
                             "score_trend": report.score_trend,
@@ -748,6 +880,66 @@ class Optimizer:
             )
 
         return tasks, report
+
+    def build_workflow_optimization_bundle(
+        self,
+        results: List[Any],
+        *,
+        method: str = "actor_critic",
+        priority: int = 70,
+        constraints: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        report: Optional[OptimizationReport] = None,
+        components: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[WorkflowOptimizationBundle, OptimizationReport]:
+        components = components or self._load_agentic_optimizer_components()
+        tasks, report = self.build_phase_patch_tasks(
+            results,
+            method=method,
+            priority=priority,
+            constraints=constraints,
+            metadata=metadata,
+            report=report,
+            components=components,
+        )
+
+        phase_tasks: List[Dict[str, Any]] = []
+        for task in tasks:
+            phase_tasks.append(
+                {
+                    "task_id": str(getattr(task, "task_id", "")),
+                    "description": str(getattr(task, "description", "")),
+                    "target_files": [str(path) for path in list(getattr(task, "target_files", []) or [])],
+                    "method": str(getattr(task, "method", "")),
+                    "priority": int(getattr(task, "priority", priority) or priority),
+                    "constraints": dict(getattr(task, "constraints", {}) or {}),
+                    "metadata": dict(getattr(task, "metadata", {}) or {}),
+                }
+            )
+
+        shared_context = {
+            "recommended_hacc_preset": report.recommended_hacc_preset,
+            "priority_improvements": list(report.priority_improvements or []),
+            "recommendations": list(report.recommendations or []),
+            "common_weaknesses": list(report.common_weaknesses or []),
+            "common_strengths": list(report.common_strengths or []),
+            "intake_priority_performance": dict(report.intake_priority_performance or {}),
+            "coverage_remediation": dict(report.coverage_remediation or {}),
+        }
+        bundle = WorkflowOptimizationBundle(
+            timestamp=datetime.now(UTC).isoformat(),
+            num_sessions_analyzed=report.num_sessions_analyzed,
+            average_score=float(report.average_score or 0.0),
+            workflow_phase_plan=dict(report.workflow_phase_plan or {}),
+            global_objectives=[
+                "Improve complainant and mediator questioning across diverse complaint types.",
+                "Improve knowledge-graph and dependency-graph extraction, gap closure, and legal-issue analysis.",
+                "Improve drafting and synthesis so complaint outputs reflect the collected facts, evidence, and unresolved gaps.",
+            ],
+            phase_tasks=phase_tasks,
+            shared_context=shared_context,
+        )
+        return bundle, report
 
     def run_agentic_autopatch(
         self,
