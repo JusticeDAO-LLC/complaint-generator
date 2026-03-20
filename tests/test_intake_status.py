@@ -415,6 +415,10 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["canonical_fact_intent_summary"]["question_objective_counts"]["satisfy_claim_requirement"] == 1
     assert summary["proof_lead_summary"]["count"] == 1
     assert summary["proof_lead_intent_summary"]["question_objective_counts"]["identify_supporting_evidence"] == 1
+    assert summary["event_ledger_summary"] == {
+        "count": 1,
+        "events": [{"temporal_fact_id": "fact_1", "temporal_status": "anchored"}],
+    }
     assert summary["temporal_fact_registry_summary"] == {
         "count": 1,
         "facts": [{"temporal_fact_id": "fact_1", "temporal_status": "anchored"}],

@@ -2668,6 +2668,9 @@
             const proofLeadIntentSummary = intakeCaseSummary.proof_lead_intent_summary && typeof intakeCaseSummary.proof_lead_intent_summary === 'object'
                 ? intakeCaseSummary.proof_lead_intent_summary
                 : {};
+            const eventLedgerSummary = intakeCaseSummary.event_ledger_summary && typeof intakeCaseSummary.event_ledger_summary === 'object'
+                ? intakeCaseSummary.event_ledger_summary
+                : {};
             const timelineAnchorSummary = intakeCaseSummary.timeline_anchor_summary && typeof intakeCaseSummary.timeline_anchor_summary === 'object'
                 ? intakeCaseSummary.timeline_anchor_summary
                 : {};
@@ -3428,6 +3431,9 @@
                 : '<span class="chip">No intake sections available.</span>';
 
             const contextChips = [];
+            if (eventLedgerSummary.count !== undefined) {
+                contextChips.push(`<span class="chip">event ledger: ${Number(eventLedgerSummary.count || 0)}</span>`);
+            }
             if (timelineAnchorSummary.count !== undefined) {
                 contextChips.push(`<span class="chip">timeline anchors: ${Number(timelineAnchorSummary.count || 0)}</span>`);
             }
@@ -3447,10 +3453,25 @@
                 : '<span class="chip">No structured intake context available.</span>';
 
             const canonicalFacts = Array.isArray(canonicalFactSummary.facts) ? canonicalFactSummary.facts : [];
+            const eventLedgerEntries = Array.isArray(eventLedgerSummary.events) ? eventLedgerSummary.events : [];
             const canonicalFactIntentLines = summarizeIntakeIntentLines(canonicalFactIntentSummary, 'canonical fact');
-            if (!canonicalFacts.length && !canonicalFactIntentLines.length) {
+            if (!canonicalFacts.length && !canonicalFactIntentLines.length && !eventLedgerEntries.length) {
                 factContainer.innerHTML = '<div class="task-card">Canonical Fact Table: no structured facts available.</div>';
             } else {
+                const eventLedgerCard = eventLedgerEntries.length ? `
+                    <article class="task-card">
+                        <div class="row-head">
+                            <div>
+                                <div class="row-title">Event Ledger</div>
+                                <div class="meta">Stable chronology objects carried from intake into evidence review</div>
+                            </div>
+                            <span class="badge">${Number(eventLedgerSummary.count || eventLedgerEntries.length || 0)}</span>
+                        </div>
+                        <div class="chip-row" style="margin-top: 10px;">
+                            ${eventLedgerEntries.slice(0, 8).map((event) => `<span class="chip">event: ${event.event_id || event.temporal_fact_id || event.fact_id || 'unknown'}</span>`).join('')}
+                        </div>
+                    </article>
+                ` : '';
                 const intentCard = canonicalFactIntentLines.length ? `
                     <article class="task-card">
                         <div class="row-head">
@@ -3465,7 +3486,7 @@
                         </div>
                     </article>
                 ` : '';
-                factContainer.innerHTML = intentCard + canonicalFacts.map((fact) => `
+                factContainer.innerHTML = eventLedgerCard + intentCard + canonicalFacts.map((fact) => `
                     <article class="task-card">
                         <div class="row-head">
                             <div>
@@ -3749,6 +3770,17 @@
                     if (task.resolution_notes) {
                         chips.push(`<span class="chip">notes: ${task.resolution_notes}</span>`);
                     }
+                    const taskEventIds = Array.isArray(task.event_ids)
+                        ? task.event_ids.filter((item) => String(item || '').trim())
+                        : [];
+                    const taskTemporalRelationIds = Array.isArray(task.temporal_relation_ids)
+                        ? task.temporal_relation_ids.filter((item) => String(item || '').trim())
+                        : [];
+                    const taskTimelineIssueIds = Array.isArray(task.timeline_issue_ids)
+                        ? task.timeline_issue_ids.filter((item) => String(item || '').trim())
+                        : (Array.isArray(task.temporal_issue_ids)
+                            ? task.temporal_issue_ids.filter((item) => String(item || '').trim())
+                            : []);
                     const temporalRuleStatus = String(task.temporal_rule_status || '').trim();
                     const temporalRuleBlockingReasons = Array.isArray(task.temporal_rule_blocking_reasons)
                         ? task.temporal_rule_blocking_reasons.filter((reason) => String(reason || '').trim())
@@ -3769,12 +3801,32 @@
                     if (task.temporal_rule_profile_id) {
                         chips.push(`<span class="chip">chronology profile: ${task.temporal_rule_profile_id}</span>`);
                     }
+                    if (task.temporal_proof_bundle_id) {
+                        chips.push(`<span class="chip">chronology bundle: ${task.temporal_proof_bundle_id}</span>`);
+                    }
+                    if (task.temporal_proof_objective) {
+                        chips.push(`<span class="chip">chronology objective: ${humanizeQueryValue(task.temporal_proof_objective)}</span>`);
+                    }
+                    if (taskEventIds.length) {
+                        chips.push(`<span class="chip">chronology events: ${taskEventIds.length}</span>`);
+                    }
+                    if (taskTemporalRelationIds.length) {
+                        chips.push(`<span class="chip">chronology relations: ${taskTemporalRelationIds.length}</span>`);
+                    }
+                    if (taskTimelineIssueIds.length) {
+                        chips.push(`<span class="chip">chronology issues: ${taskTimelineIssueIds.length}</span>`);
+                    }
                     temporalRuleBlockingReasons.slice(0, 2).forEach((reason) => {
                         chips.push(`<span class="chip">chronology blocker: ${reason}</span>`);
                     });
                     temporalRuleFollowUps.slice(0, 2).forEach((followUp) => {
                         chips.push(`<span class="chip">chronology follow-up: ${followUp}</span>`);
                     });
+                    const chronologyDetails = [
+                        renderFormulaPreviewDetails('Chronology event IDs', taskEventIds, 'No chronology event IDs linked to this task.'),
+                        renderFormulaPreviewDetails('Chronology relation IDs', taskTemporalRelationIds, 'No chronology relation IDs linked to this task.'),
+                        renderFormulaPreviewDetails('Chronology issue IDs', taskTimelineIssueIds, 'No chronology issue IDs linked to this task.'),
+                    ].join('');
                     return `
                         <article class="task-card">
                             <div class="row-head">
@@ -3787,6 +3839,11 @@
                             <div class="chip-row" style="margin-top: 10px;">
                                 ${chips.join('')}
                             </div>
+                            ${chronologyFocused || taskEventIds.length || taskTemporalRelationIds.length || taskTimelineIssueIds.length ? `
+                                <div style="margin-top: 12px;">
+                                    ${chronologyDetails}
+                                </div>
+                            ` : ''}
                         </article>
                     `;
                 }).join('');

@@ -97,7 +97,11 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "ambiguity: ${humanizeQueryValue(flag)}" in content
     assert "average confidence: ${Number(candidateClaimSummary.average_confidence || 0).toFixed(2)}" in content
     assert "claim disambiguation: ${candidateClaimSummary.close_leading_claims ? 'needed' : 'stable'}" in content
+    assert "event ledger: ${Number(eventLedgerSummary.count || 0)}" in content
     assert "timeline anchors: ${Number(timelineAnchorSummary.count || 0)}" in content
+    assert "Event Ledger" in content
+    assert "Stable chronology objects carried from intake into evidence review" in content
+    assert "event: ${event.event_id || event.temporal_fact_id || event.fact_id || 'unknown'}" in content
     assert "harm profile: ${harmCategories.map((item) => humanizeQueryValue(item)).join(', ')}" in content
     assert "remedy profile: ${remedyCategories.map((item) => humanizeQueryValue(item)).join(', ')}" in content
     assert "Intake matching summary" in content
@@ -114,6 +118,14 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Alignment task for ${task.claim_type || 'claim'}" in content
     assert "evidence action ${task.action || 'fill_evidence_gaps'}" in content
     assert "element: ${task.claim_element_id || 'unknown'}" in content
+    assert "chronology bundle: ${task.temporal_proof_bundle_id}" in content
+    assert "chronology objective: ${humanizeQueryValue(task.temporal_proof_objective)}" in content
+    assert "chronology events: ${taskEventIds.length}" in content
+    assert "chronology relations: ${taskTemporalRelationIds.length}" in content
+    assert "chronology issues: ${taskTimelineIssueIds.length}" in content
+    assert "Chronology event IDs" in content
+    assert "Chronology relation IDs" in content
+    assert "Chronology issue IDs" in content
     assert "pending_review" in content
     assert "promoted" in content
     assert "promoted_testimony" in content

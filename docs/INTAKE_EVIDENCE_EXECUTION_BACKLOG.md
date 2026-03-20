@@ -1,6 +1,6 @@
 # Intake and Evidence Execution Backlog
 
-Date: 2026-03-15
+Date: 2026-03-20
 Status: Active execution backlog
 
 Companion docs:
@@ -28,6 +28,7 @@ The emphasis is execution, not redesign. The repo already has the core primitive
 
 | ID | Workstream | Priority | Outcome |
 |---|---|---|---|
+| W0 | Timeline ledger and chronology handoff | P0 | Intake and evidence share one durable event-level chronology substrate |
 | W1 | Intake schema and answer normalization | P0 | Intake emits reusable, structured case facts |
 | W2 | Proof-directed question planning | P0 | Questions are ranked by proof gain and novelty |
 | W3 | Claim ambiguity and contradiction workflow | P0 | Uncertainty becomes explicit and actionable |
@@ -36,6 +37,41 @@ The emphasis is execution, not redesign. The repo already has the core primitive
 | W6 | Proof-readiness scoring and phase gates | P0 | Phase transitions depend on real support quality |
 | W7 | Review and trace payload expansion | P1 | Operators can inspect why a case is or is not ready |
 | W8 | Adversarial and regression enforcement | P0 | Improvements are measurable and test-protected |
+
+## Batch 0: Timeline Ledger Foundation
+
+Status: Planned
+Priority: P0
+
+### Goal
+
+Make chronology a durable cross-phase object instead of a collection of summaries inferred separately in intake and evidence.
+
+### Primary files
+
+- [complaint_phases/intake_case_file.py](../complaint_phases/intake_case_file.py)
+- [mediator/mediator.py](../mediator/mediator.py)
+- [complaint_phases/phase_manager.py](../complaint_phases/phase_manager.py)
+- [intake_status.py](../intake_status.py)
+
+### Tasks
+
+- [ ] add canonical `event_ledger`, `timeline_relations`, `timeline_anchors`, and `timeline_issues` state to the intake case file
+- [ ] update `_apply_intake_answer_to_case_file(...)` so chronology answers create or update stable event and anchor records instead of only appending free-standing facts
+- [ ] update `advance_to_evidence_phase(...)`, `_summarize_intake_evidence_alignment(...)`, and `_build_alignment_evidence_tasks(...)` so temporal tasks carry event IDs, relation IDs, issue IDs, and proof objectives
+- [ ] extend readiness and packet summaries so unresolved timeline issues and unsupported order assumptions appear as first-class blockers
+- [ ] preserve the new ledger fields through `get_three_phase_status()` and `intake_status` review builders without recomputation loss
+
+### Acceptance criteria
+
+- the same event IDs and relation IDs created during intake are visible in evidence tasks and downstream review payloads
+- chronology blockers can be explained in terms of missing anchors, missing relations, or contradictory events rather than only packet-level temporal weakness
+
+### Suggested validation
+
+- `./.venv/bin/python -m pytest tests/test_mediator_three_phase.py -q`
+- `./.venv/bin/python -m pytest tests/test_intake_status.py -q`
+- `./.venv/bin/python -m pytest tests/test_review_api.py -q`
 
 ## Batch 1: Intake Structure Foundation
 

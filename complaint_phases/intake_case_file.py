@@ -550,6 +550,27 @@ def build_temporal_fact_registry(
     return registry
 
 
+def build_event_ledger(temporal_fact_registry: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    ledger: List[Dict[str, Any]] = []
+    for index, record in enumerate(temporal_fact_registry if isinstance(temporal_fact_registry, list) else [], start=1):
+        fact = _coerce_dict(record)
+        event_id = _normalize_text(
+            fact.get("event_id")
+            or fact.get("temporal_fact_id")
+            or fact.get("fact_id")
+            or f"event_{index:03d}"
+        )
+        ledger.append(
+            {
+                **fact,
+                "event_id": event_id,
+                "temporal_fact_id": _normalize_text(fact.get("temporal_fact_id") or event_id) or event_id,
+                "ledger_version": "event_ledger.v1",
+            }
+        )
+    return ledger
+
+
 def build_temporal_relation_registry(
     canonical_facts: List[Dict[str, Any]],
     timeline_relations: List[Dict[str, Any]],
@@ -1291,6 +1312,7 @@ def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[st
     temporal_fact_registry = build_temporal_fact_registry(canonical_facts, timeline_anchors)
     temporal_relation_registry = build_temporal_relation_registry(canonical_facts, timeline_relations)
     temporal_issue_registry = build_temporal_issue_registry(canonical_facts, [])
+    event_ledger = build_event_ledger(temporal_fact_registry)
     proof_leads = _link_proof_leads_to_timeline_anchors(proof_leads, timeline_anchors)
     intake_sections = build_intake_sections(
         knowledge_graph,
@@ -1310,6 +1332,7 @@ def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[st
         "temporal_fact_registry": temporal_fact_registry,
         "temporal_relation_registry": temporal_relation_registry,
         "temporal_issue_registry": temporal_issue_registry,
+        "event_ledger": event_ledger,
         "timeline_consistency_summary": build_timeline_consistency_summary(
             canonical_facts,
             timeline_anchors,
@@ -1363,6 +1386,9 @@ def refresh_intake_case_file(intake_case_file: Dict[str, Any], knowledge_graph, 
     case_file["temporal_fact_registry"] = build_temporal_fact_registry(
         _coerce_list(case_file.get("canonical_facts")),
         _coerce_list(case_file.get("timeline_anchors")),
+    )
+    case_file["event_ledger"] = build_event_ledger(
+        _coerce_list(case_file.get("temporal_fact_registry"))
     )
     case_file["temporal_relation_registry"] = build_temporal_relation_registry(
         _coerce_list(case_file.get("canonical_facts")),

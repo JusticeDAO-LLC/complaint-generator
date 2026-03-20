@@ -1344,6 +1344,12 @@ class TestMediatorThreePhaseIntegration:
                                         }
                                     ],
                                 },
+                                'temporal_proof_bundle': {
+                                    'proof_bundle_id': 'retaliation:causation:retaliation_temporal_profile_v1',
+                                    'temporal_fact_ids': ['fact_001', 'fact_termination'],
+                                    'temporal_relation_ids': ['timeline_relation_001'],
+                                    'temporal_issue_ids': ['temporal_issue_001'],
+                                },
                                 'temporal_summary': {
                                     'fact_count': 2,
                                     'relation_count': 0,
@@ -1385,6 +1391,10 @@ class TestMediatorThreePhaseIntegration:
         assert result['alignment_evidence_tasks'][0]['preferred_support_kind'] == 'testimony'
         assert result['alignment_evidence_tasks'][0]['resolution_status'] == 'awaiting_testimony'
         assert result['alignment_evidence_tasks'][0]['temporal_rule_status'] == 'partial'
+        assert 'event_ids' in result['alignment_evidence_tasks'][0]
+        assert 'temporal_relation_ids' in result['alignment_evidence_tasks'][0]
+        assert 'timeline_issue_ids' in result['alignment_evidence_tasks'][0]
+        assert 'temporal_proof_bundle_id' in result['alignment_evidence_tasks'][0]
         assert any(
             'Establish chronology:' in item
             for item in result['alignment_evidence_tasks'][0]['success_criteria']

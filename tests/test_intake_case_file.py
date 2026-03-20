@@ -98,6 +98,14 @@ def test_build_intake_case_file_adds_structured_temporal_context_and_anchor_fiel
             "source_ref": "fact:1",
         }
     ]
+    assert intake_case_file["event_ledger"] == [
+        {
+            **intake_case_file["temporal_fact_registry"][0],
+            "event_id": "fact:1",
+            "temporal_fact_id": "fact:1",
+            "ledger_version": "event_ledger.v1",
+        }
+    ]
     assert intake_case_file["temporal_relation_registry"] == []
     assert intake_case_file["temporal_issue_registry"] == []
     assert intake_case_file["timeline_relations"] == []
@@ -191,6 +199,8 @@ def test_refresh_intake_case_file_backfills_temporal_context_and_links_proof_lea
     ]
     assert refreshed["temporal_fact_registry"][0]["temporal_fact_id"] == "fact_1"
     assert refreshed["temporal_fact_registry"][0]["timeline_anchor_ids"] == [timeline_anchor["anchor_id"]]
+    assert refreshed["event_ledger"][0]["event_id"] == "fact_1"
+    assert refreshed["event_ledger"][0]["ledger_version"] == "event_ledger.v1"
     assert refreshed["temporal_relation_registry"] == [
         {
             "relation_id": "timeline_relation_001",

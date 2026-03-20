@@ -421,6 +421,7 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
     canonical_fact_intent_summary = raw_status.get("canonical_fact_intent_summary")
     proof_lead_summary = raw_status.get("proof_lead_summary")
     proof_lead_intent_summary = raw_status.get("proof_lead_intent_summary")
+    event_ledger_summary = raw_status.get("event_ledger_summary")
     timeline_anchor_summary = raw_status.get("timeline_anchor_summary")
     temporal_fact_registry_summary = raw_status.get("temporal_fact_registry_summary")
     temporal_relation_registry_summary = raw_status.get("temporal_relation_registry_summary")
@@ -485,6 +486,21 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
             proof_lead_intent_summary
             if isinstance(proof_lead_intent_summary, dict)
             else {}
+        ),
+        "event_ledger_summary": (
+            event_ledger_summary
+            if isinstance(event_ledger_summary, dict)
+            else (
+                {
+                    "count": int((temporal_fact_registry_summary or {}).get("count", 0) or 0),
+                    "events": list((temporal_fact_registry_summary or {}).get("facts", []) or []),
+                }
+                if isinstance(temporal_fact_registry_summary, dict) and temporal_fact_registry_summary
+                else {
+                    "count": int((canonical_fact_summary or {}).get("count", 0) or 0),
+                    "events": list((canonical_fact_summary or {}).get("facts", []) or []),
+                }
+            )
         ),
         "temporal_fact_registry_summary": (
             temporal_fact_registry_summary if isinstance(temporal_fact_registry_summary, dict) else {}

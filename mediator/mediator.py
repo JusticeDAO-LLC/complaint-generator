@@ -5906,11 +5906,49 @@ class Mediator:
 		candidate_claims = intake_case.get('candidate_claims', []) if isinstance(intake_case.get('candidate_claims'), list) else []
 		proof_leads = intake_case.get('proof_leads', []) if isinstance(intake_case.get('proof_leads'), list) else []
 		open_items = intake_case.get('open_items', []) if isinstance(intake_case.get('open_items'), list) else []
+		event_ledger = intake_case.get('event_ledger', []) if isinstance(intake_case.get('event_ledger'), list) else []
+		temporal_issue_registry = intake_case.get('temporal_issue_registry', []) if isinstance(intake_case.get('temporal_issue_registry'), list) else []
 		proof_lead_map = {
 			str(lead.get('lead_id') or '').strip(): lead
 			for lead in proof_leads
 			if isinstance(lead, dict) and str(lead.get('lead_id') or '').strip()
 		}
+		event_ids_by_claim_element: Dict[tuple[str, str], List[str]] = {}
+		for event in event_ledger:
+			if not isinstance(event, dict):
+				continue
+			event_id = str(event.get('event_id') or event.get('temporal_fact_id') or event.get('fact_id') or '').strip()
+			if not event_id:
+				continue
+			for claim_type_value in (event.get('claim_types') or []):
+				normalized_claim_type = str(claim_type_value or '').strip().lower()
+				if not normalized_claim_type:
+					continue
+				for element_tag in (event.get('element_tags') or []):
+					normalized_element_tag = str(element_tag or '').strip().lower()
+					if not normalized_element_tag:
+						continue
+					event_ids_by_claim_element.setdefault((normalized_claim_type, normalized_element_tag), [])
+					if event_id not in event_ids_by_claim_element[(normalized_claim_type, normalized_element_tag)]:
+						event_ids_by_claim_element[(normalized_claim_type, normalized_element_tag)].append(event_id)
+		issue_ids_by_claim_element: Dict[tuple[str, str], List[str]] = {}
+		for issue in temporal_issue_registry:
+			if not isinstance(issue, dict):
+				continue
+			issue_id = str(issue.get('issue_id') or '').strip()
+			if not issue_id:
+				continue
+			for claim_type_value in (issue.get('claim_types') or []):
+				normalized_claim_type = str(claim_type_value or '').strip().lower()
+				if not normalized_claim_type:
+					continue
+				for element_tag in (issue.get('element_tags') or []):
+					normalized_element_tag = str(element_tag or '').strip().lower()
+					if not normalized_element_tag:
+						continue
+					issue_ids_by_claim_element.setdefault((normalized_claim_type, normalized_element_tag), [])
+					if issue_id not in issue_ids_by_claim_element[(normalized_claim_type, normalized_element_tag)]:
+						issue_ids_by_claim_element[(normalized_claim_type, normalized_element_tag)].append(issue_id)
 
 		claim_types = set(packets.keys())
 		for claim in candidate_claims:
@@ -5963,6 +6001,27 @@ class Mediator:
 					continue
 				support_status = packet_status_by_element[element_id]
 				packet_element = packet_element_map.get(element_id, {}) if isinstance(packet_element_map.get(element_id), dict) else {}
+				reasoning_diagnostics = packet_element.get('reasoning_diagnostics', {}) if isinstance(packet_element.get('reasoning_diagnostics'), dict) else {}
+				temporal_proof_bundle = reasoning_diagnostics.get('temporal_proof_bundle', {}) if isinstance(reasoning_diagnostics.get('temporal_proof_bundle'), dict) else {}
+				temporal_fact_ids = [
+					str(item).strip()
+					for item in (temporal_proof_bundle.get('temporal_fact_ids') or [])
+					if str(item).strip()
+				]
+				if not temporal_fact_ids:
+					temporal_fact_ids = list(event_ids_by_claim_element.get((str(claim_type).strip().lower(), element_id.lower()), []))
+				temporal_relation_ids = [
+					str(item).strip()
+					for item in (temporal_proof_bundle.get('temporal_relation_ids') or [])
+					if str(item).strip()
+				]
+				temporal_issue_ids = [
+					str(item).strip()
+					for item in (temporal_proof_bundle.get('temporal_issue_ids') or [])
+					if str(item).strip()
+				]
+				if not temporal_issue_ids:
+					temporal_issue_ids = list(issue_ids_by_claim_element.get((str(claim_type).strip().lower(), element_id.lower()), []))
 				matching_open_item_ids = [
 					str(item.get('open_item_id') or '')
 					for item in open_items
@@ -6007,6 +6066,10 @@ class Mediator:
 						'satisfied_fact_bundle': list(packet_element.get('satisfied_fact_bundle', []) or []),
 						'missing_fact_bundle': list(packet_element.get('missing_fact_bundle', []) or []),
 						'missing_support_kinds': list(packet_element.get('missing_support_kinds', []) or []),
+						'temporal_proof_bundle_id': str(temporal_proof_bundle.get('proof_bundle_id') or '').strip(),
+						'temporal_fact_ids': temporal_fact_ids,
+						'temporal_relation_ids': temporal_relation_ids,
+						'temporal_issue_ids': temporal_issue_ids,
 						'temporal_rule_profile_id': str(packet_element.get('temporal_rule_profile_id') or ''),
 						'temporal_rule_status': str(packet_element.get('temporal_rule_status') or ''),
 						'temporal_rule_blocking_reasons': list(packet_element.get('temporal_rule_blocking_reasons', []) or []),
@@ -6131,6 +6194,17 @@ class Mediator:
 						'task_priority': task_priority,
 						'missing_fact_bundle': missing_fact_bundle,
 						'satisfied_fact_bundle': satisfied_fact_bundle,
+						'temporal_proof_objective': (
+							'resolve_temporal_rule_profile'
+							if temporal_gap_targeted
+							else ''
+						),
+						'event_ids': list(element.get('temporal_fact_ids', []) or []),
+						'temporal_fact_ids': list(element.get('temporal_fact_ids', []) or []),
+						'temporal_relation_ids': list(element.get('temporal_relation_ids', []) or []),
+						'timeline_issue_ids': list(element.get('temporal_issue_ids', []) or []),
+						'temporal_issue_ids': list(element.get('temporal_issue_ids', []) or []),
+						'temporal_proof_bundle_id': str(element.get('temporal_proof_bundle_id') or '').strip(),
 						'temporal_rule_profile_id': str(element.get('temporal_rule_profile_id') or ''),
 						'temporal_rule_status': temporal_rule_status,
 						'temporal_rule_blocking_reasons': list(element.get('temporal_rule_blocking_reasons', []) or []),
@@ -7783,6 +7857,7 @@ class Mediator:
 		candidate_claims = intake_case_file.get('candidate_claims', []) if isinstance(intake_case_file, dict) else []
 		canonical_facts = intake_case_file.get('canonical_facts', []) if isinstance(intake_case_file, dict) else []
 		proof_leads = intake_case_file.get('proof_leads', []) if isinstance(intake_case_file, dict) else []
+		event_ledger = intake_case_file.get('event_ledger', []) if isinstance(intake_case_file, dict) else []
 		temporal_fact_registry = intake_case_file.get('temporal_fact_registry', []) if isinstance(intake_case_file, dict) else []
 		temporal_relation_registry = intake_case_file.get('temporal_relation_registry', []) if isinstance(intake_case_file, dict) else []
 		temporal_issue_registry = intake_case_file.get('temporal_issue_registry', []) if isinstance(intake_case_file, dict) else []
@@ -7840,6 +7915,10 @@ class Mediator:
 			'proof_lead_summary': {
 				'count': len(proof_leads),
 				'proof_leads': proof_leads,
+			},
+			'event_ledger_summary': {
+				'count': len(event_ledger) if isinstance(event_ledger, list) else 0,
+				'events': event_ledger if isinstance(event_ledger, list) else [],
 			},
 			'proof_lead_intent_summary': self._summarize_intake_record_intents(proof_leads),
 			'temporal_fact_registry_summary': {

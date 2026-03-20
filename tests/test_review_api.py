@@ -985,6 +985,13 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "proof_leads": [{"lead_id": "lead_001"}],
         }
         assert intake_case_summary["proof_lead_intent_summary"] == {}
+        assert intake_case_summary["event_ledger_summary"] == {
+            "count": 2,
+            "events": [
+                {"fact_id": "fact_001"},
+                {"fact_id": "fact_002"},
+            ],
+        }
         assert intake_case_summary["complainant_summary_confirmation"] == {}
         assert intake_case_summary["contradiction_summary"] == {
             "count": 1,
