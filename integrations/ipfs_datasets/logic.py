@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import inspect
 from typing import Any, Dict, Iterable, List
 
 from .loader import import_module_optional
@@ -393,11 +394,21 @@ def _build_reasoner_proof_artifact(
 
     theorem_export_metadata = dict(temporal_reasoning_payload.get("theorem_export_metadata") or {})
     try:
-        pipeline = run_pipeline(
-            sentence,
-            theorem_export_metadata=theorem_export_metadata,
-            claim_support_temporal_handoff=claim_support_temporal_handoff,
-        )
+        pipeline_kwargs = {
+            "theorem_export_metadata": theorem_export_metadata,
+            "claim_support_temporal_handoff": claim_support_temporal_handoff,
+        }
+        try:
+            supported_parameters = set(inspect.signature(run_pipeline).parameters)
+        except (TypeError, ValueError):
+            supported_parameters = set()
+        if supported_parameters:
+            pipeline_kwargs = {
+                key: value
+                for key, value in pipeline_kwargs.items()
+                if key in supported_parameters
+            }
+        pipeline = run_pipeline(sentence, **pipeline_kwargs)
         compliance = check_compliance(
             {
                 "ir": pipeline.get("ir"),

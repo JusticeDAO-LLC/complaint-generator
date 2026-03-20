@@ -21,8 +21,8 @@ Add the LLM Router backend to your `config.llm_router.json`:
         {
             "id": "llm-router",
             "type": "llm_router",
-            "provider": "copilot_cli",
-            "model": "gpt-5-mini",
+            "provider": "codex",
+            "model": "gpt-5.3-codex",
             "max_tokens": 128
         }
     ],
@@ -30,6 +30,13 @@ Add the LLM Router backend to your `config.llm_router.json`:
         "backends": ["llm-router"]
     }
 }
+```
+
+For HACC workflows in this repo, the current recommended live route is:
+
+```bash
+python3 hacc_adversarial_runner.py --provider codex --model gpt-5.3-codex
+python3 hacc_grounded_pipeline.py --provider codex --model gpt-5.3-codex
 ```
 
 ### Using OpenRouter

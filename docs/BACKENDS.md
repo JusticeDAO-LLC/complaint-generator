@@ -19,8 +19,8 @@ The primary backend that routes requests to multiple LLM providers with automati
 
 - **OpenRouter** - Access to multiple models through a unified API
 - **HuggingFace** - Open-source models via HuggingFace API
-- **Copilot CLI** - GitHub Copilot integration
 - **Codex** - OpenAI Codex models
+- **Copilot CLI** - GitHub Copilot integration
 - **Gemini** - Google Gemini models
 - **Claude** - Anthropic Claude models
 - **Workstation** - Local model inference
@@ -35,8 +35,8 @@ Configure via JSON configuration file (e.g., `config.llm_router.json`):
     {
       "id": "llm-router",
       "type": "llm_router",
-      "provider": "copilot_cli",
-      "model": "gpt-5-mini",
+      "provider": "codex",
+      "model": "gpt-5.3-codex",
       "max_tokens": 128,
       "temperature": 0.7
     }
@@ -64,8 +64,8 @@ from backends import LLMRouterBackend
 
 backend = LLMRouterBackend(
     id='llm-router',
-    provider='copilot_cli',
-    model='gpt-5-mini',
+    provider='codex',
+    model='gpt-5.3-codex',
     max_tokens=256,
     temperature=0.7
 )
@@ -85,8 +85,8 @@ The LLM Router includes built-in retry logic with exponential backoff:
 ```python
 backend = LLMRouterBackend(
     id='llm-router',
-    provider='copilot_cli',
-    model='gpt-5-mini',
+    provider='codex',
+    model='gpt-5.3-codex',
     retry_max_attempts=3,  # Max retry attempts
     retry_backoff_base_s=1.0,  # Base backoff time
     retry_backoff_max_s=60.0,  # Max backoff time

@@ -3,8 +3,8 @@
         {
             "id": "llm-router",
             "type": "llm_router",
-            "provider": "accelerate",
-            "model": "gpt2",
+            "provider": "codex",
+            "model": "gpt-5.3-codex",
             "max_tokens": 128
         },
         {
