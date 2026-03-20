@@ -443,11 +443,16 @@ class DependencyGraph:
                     "issue_type": "missing_hearing_timing",
                     "severity": "blocking",
                     "question_type": "timeline",
+                    "recommended_resolution_lane": "request_document",
+                    "workflow_phase": "graph_analysis",
+                    "workflow_phase_rank": 0,
                     "node_id": node_id,
                     "node_name": node.name if node else node_id,
                     "summary": "Hearing or appeal activity lacks dated sequencing in dependency graph.",
+                    "extraction_targets": ["exact_dates", "event_order", "actor_name", "document_owner"],
+                    "patchability_markers": ["chronology_patch_anchor", "notice_chain_patch_anchor"],
                     "suggested_question": (
-                        "When was the hearing or appeal requested, who handled it, and on what date did each response occur?"
+                        "Please walk me through the hearing or appeal timeline with exact dates, who handled each step, and any notice, email, or letter tied to each response."
                     ),
                 }
             )
@@ -469,8 +474,13 @@ class DependencyGraph:
                     "issue_type": "missing_staff_identity",
                     "severity": "blocking",
                     "question_type": "responsible_party",
+                    "recommended_resolution_lane": "clarify_with_complainant",
+                    "workflow_phase": "graph_analysis",
+                    "workflow_phase_rank": 0,
                     "summary": "Staff-role references exist but no named actor is linked in the dependency graph.",
-                    "suggested_question": "Who specifically took each action (full name and title), and what team or office were they in?",
+                    "extraction_targets": ["actor_name", "actor_role", "organization_unit"],
+                    "patchability_markers": ["actor_link_patch_anchor"],
+                    "suggested_question": "Who specifically took each action (full name and title), what team or office they were in, and how they were connected to your case?",
                 }
             )
 
@@ -504,9 +514,14 @@ class DependencyGraph:
                         "issue_type": "retaliation_missing_sequence",
                         "severity": "blocking",
                         "question_type": "timeline",
+                        "recommended_resolution_lane": "request_document",
+                        "workflow_phase": "graph_analysis",
+                        "workflow_phase_rank": 0,
                         "summary": "Retaliation theory has protected activity and adverse action nodes but lacks temporal ordering.",
+                        "extraction_targets": ["protected_activity", "adverse_action", "exact_dates", "actor_name", "causation_link"],
+                        "patchability_markers": ["chronology_patch_anchor", "causation_patch_anchor"],
                         "suggested_question": (
-                            "What was your protected activity, on what date did it occur, and what adverse actions followed afterward with dates and actor names?"
+                            "What was your protected activity, on what exact date did it occur, who knew about it, and what adverse actions followed afterward with dates, actor names, and any supporting notice or message?"
                         ),
                     }
                 )

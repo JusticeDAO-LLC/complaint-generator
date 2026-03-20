@@ -537,6 +537,91 @@ class AdversarialSession:
         return any(term in text for term in contradiction_terms)
 
     @staticmethod
+    def _extract_phase1_section(question: Any) -> str:
+        if not isinstance(question, dict):
+            return ''
+        phase1_section = question.get('phase1_section')
+        if isinstance(phase1_section, str) and phase1_section.strip():
+            return phase1_section.strip().lower()
+        explanation = question.get('ranking_explanation')
+        if isinstance(explanation, dict):
+            nested = explanation.get('phase1_section')
+            if isinstance(nested, str) and nested.strip():
+                return nested.strip().lower()
+        return ''
+
+    @staticmethod
+    def _phase_focus_rank_for_candidate(question: Any) -> int:
+        phase1_section = AdversarialSession._extract_phase1_section(question)
+        return {
+            'graph_analysis': 0,
+            'intake_questioning': 1,
+            'document_generation': 2,
+            # Compatibility with denoiser section labels.
+            'contradictions': 0,
+            'chronology': 0,
+            'actors': 0,
+            'claim_elements': 0,
+            'proof_leads': 0,
+            'harm_remedy': 1,
+            'general': 1,
+        }.get(phase1_section, 3)
+
+    @staticmethod
+    def _is_exact_dates_question(question: Any) -> bool:
+        text = AdversarialSession._extract_question_text(question).lower()
+        if AdversarialSession._is_timeline_question(question):
+            return True
+        date_tokens = (
+            'exact date',
+            'specific date',
+            'what date',
+            'on what date',
+            'date did',
+            'date was',
+            'month and year',
+            'mm/dd',
+            'date anchor',
+        )
+        return any(token in text for token in date_tokens)
+
+    @staticmethod
+    def _is_staff_names_titles_question(question: Any) -> bool:
+        text = AdversarialSession._extract_question_text(question).lower()
+        if not any(token in text for token in ('who', 'name', 'staff', 'person', 'manager', 'supervisor', 'decision')):
+            return False
+        title_tokens = ('title', 'job title', 'role', 'position')
+        return any(token in text for token in title_tokens) or AdversarialSession._is_actor_or_decisionmaker_question(question)
+
+    @staticmethod
+    def _is_hearing_request_timing_question(question: Any) -> bool:
+        text = AdversarialSession._extract_question_text(question).lower()
+        hearing_tokens = ('hearing', 'grievance', 'appeal', 'review')
+        timing_tokens = ('when', 'date', 'timing', 'timeline', 'after', 'before', 'deadline', 'requested')
+        return any(token in text for token in hearing_tokens) and any(token in text for token in timing_tokens)
+
+    @staticmethod
+    def _is_response_dates_question(question: Any) -> bool:
+        text = AdversarialSession._extract_question_text(question).lower()
+        response_tokens = ('respond', 'response', 'notice', 'decision', 'outcome', 'reply', 'letter')
+        date_tokens = ('when', 'date', 'dated', 'timeline', 'how long', 'days later')
+        return any(token in text for token in response_tokens) and any(token in text for token in date_tokens)
+
+    @staticmethod
+    def _is_causation_sequence_question(question: Any) -> bool:
+        text = AdversarialSession._extract_question_text(question).lower()
+        if AdversarialSession._is_protected_activity_causation_question(question):
+            return True
+        protected_activity_tokens = ('protected activity', 'complaint', 'reported', 'accommodation', 'grievance', 'appeal')
+        adverse_tokens = ('adverse', 'retaliat', 'denial', 'termination', 'disciplin')
+        sequencing_tokens = ('before', 'after', 'sequence', 'timeline', 'what happened first', 'step by step')
+        return (
+            any(token in text for token in protected_activity_tokens)
+            and any(token in text for token in adverse_tokens)
+            and any(token in text for token in sequencing_tokens)
+        )
+
+    @staticmethod
     def _coverage_gap_rank(
         question: Any,
         need_timeline: bool,
@@ -545,6 +630,11 @@ class AdversarialSession:
         need_causation: bool,
         need_documentary_evidence: bool,
         need_witness: bool,
+        need_exact_dates: bool = False,
+        need_staff_names_titles: bool = False,
+        need_hearing_request_timing: bool = False,
+        need_response_dates: bool = False,
+        need_causation_sequence: bool = False,
         missing_anchor_sections: Set[str] | None = None,
     ) -> int:
         question_text = AdversarialSession._extract_question_text(question)
@@ -555,19 +645,29 @@ class AdversarialSession:
             missing_anchor_sections,
         ):
             return -1
-        if need_harm_remedy and AdversarialSession._is_harm_or_remedy_question(question):
+        if need_exact_dates and AdversarialSession._is_exact_dates_question(question):
             return 0
-        if need_timeline and AdversarialSession._is_timeline_question(question):
+        if need_staff_names_titles and AdversarialSession._is_staff_names_titles_question(question):
             return 1
-        if need_actor_decisionmaker and AdversarialSession._is_actor_or_decisionmaker_question(question):
+        if need_hearing_request_timing and AdversarialSession._is_hearing_request_timing_question(question):
             return 2
-        if need_causation and AdversarialSession._is_protected_activity_causation_question(question):
+        if need_response_dates and AdversarialSession._is_response_dates_question(question):
             return 3
-        if need_documentary_evidence and AdversarialSession._is_documentary_evidence_question(question):
+        if need_causation_sequence and AdversarialSession._is_causation_sequence_question(question):
             return 4
-        if need_witness and AdversarialSession._is_witness_question(question):
+        if need_harm_remedy and AdversarialSession._is_harm_or_remedy_question(question):
             return 5
-        return 6
+        if need_timeline and AdversarialSession._is_timeline_question(question):
+            return 6
+        if need_actor_decisionmaker and AdversarialSession._is_actor_or_decisionmaker_question(question):
+            return 7
+        if need_causation and AdversarialSession._is_protected_activity_causation_question(question):
+            return 8
+        if need_documentary_evidence and AdversarialSession._is_documentary_evidence_question(question):
+            return 9
+        if need_witness and AdversarialSession._is_witness_question(question):
+            return 10
+        return 11
 
     @staticmethod
     def _extract_actor_critic_score(question: Any) -> float:
@@ -582,6 +682,101 @@ class AdversarialSession:
             if isinstance(nested, (int, float)):
                 return float(nested)
         return 0.0
+
+    @staticmethod
+    def _extract_selector_score(question: Any) -> float:
+        if not isinstance(question, dict):
+            return 0.0
+        direct = question.get('selector_score')
+        if isinstance(direct, (int, float)):
+            return float(direct)
+        explanation = question.get('ranking_explanation')
+        if isinstance(explanation, dict):
+            nested = explanation.get('selector_score')
+            if isinstance(nested, (int, float)):
+                return float(nested)
+        return 0.0
+
+    @staticmethod
+    def _extract_selector_signals(question: Any) -> Dict[str, Any]:
+        if not isinstance(question, dict):
+            return {}
+        direct = question.get('selector_signals')
+        if isinstance(direct, dict):
+            return dict(direct)
+        explanation = question.get('ranking_explanation')
+        if isinstance(explanation, dict):
+            nested = explanation.get('selector_signals')
+            if isinstance(nested, dict):
+                return dict(nested)
+        return {}
+
+    @classmethod
+    def _extract_blocker_closure_match_count(cls, question: Any) -> int:
+        signals = cls._extract_selector_signals(question)
+        direct = signals.get('blocker_closure_match_count')
+        if isinstance(direct, (int, float)):
+            return int(direct)
+        fallback = signals.get('blocker_match_count')
+        if isinstance(fallback, (int, float)):
+            return int(fallback)
+        return 0
+
+    @staticmethod
+    def _question_specificity_score(question_text: str) -> float:
+        normalized = AdversarialSession._question_dedupe_key(question_text)
+        if not normalized:
+            return 0.0
+        tokens = normalized.split()
+        token_count = len(tokens)
+        has_interrogative = bool(
+            tokens
+            and tokens[0]
+            in {
+                'who',
+                'what',
+                'when',
+                'where',
+                'why',
+                'how',
+                'which',
+                'did',
+                'does',
+                'do',
+                'is',
+                'are',
+                'can',
+                'could',
+                'would',
+            }
+        )
+        legal_context_tokens = {
+            'date',
+            'timeline',
+            'notice',
+            'decision',
+            'hearing',
+            'appeal',
+            'grievance',
+            'adverse',
+            'accommodation',
+            'protected',
+            'document',
+            'email',
+            'message',
+            'witness',
+            'harm',
+            'remedy',
+            'staff',
+            'title',
+        }
+        legal_context_hits = sum(1 for token in tokens if token in legal_context_tokens)
+        score = 0.0
+        if has_interrogative:
+            score += 0.35
+        score += min(0.45, token_count / 20.0)
+        score += min(0.20, legal_context_hits * 0.05)
+        return max(0.0, min(1.0, score))
 
     @staticmethod
     def _question_targets_anchor_section(question_text: str, section: str) -> bool:
@@ -632,6 +827,23 @@ class AdversarialSession:
     def _question_objectives_from_prompt(cls, question_text: str) -> List[str]:
         lowered = question_text.lower()
         objectives: List[str] = []
+        if any(token in lowered for token in ('exact date', 'specific date', 'what date', 'date anchor', 'month and year')):
+            objectives.append('exact_dates')
+        if (
+            any(token in lowered for token in ('staff', 'name', 'who', 'person', 'manager', 'supervisor', 'decision-maker', 'decision maker'))
+            and any(token in lowered for token in ('title', 'role', 'position', 'job title'))
+        ):
+            objectives.append('staff_names_titles')
+        if (
+            any(token in lowered for token in ('hearing', 'grievance', 'appeal', 'review'))
+            and any(token in lowered for token in ('when', 'date', 'timing', 'requested', 'deadline'))
+        ):
+            objectives.append('hearing_request_timing')
+        if (
+            any(token in lowered for token in ('response', 'respond', 'notice', 'decision', 'outcome'))
+            and any(token in lowered for token in ('when', 'date', 'dated', 'days later', 'timeline'))
+        ):
+            objectives.append('response_dates')
         if any(token in lowered for token in ('when', 'date', 'timeline', 'chronology', 'sequence', 'decision timeline')):
             objectives.append('timeline')
         if any(token in lowered for token in ('harm', 'remedy', 'loss', 'relief')):
@@ -644,6 +856,12 @@ class AdversarialSession:
             and any(token in lowered for token in ('because', 'after', 'caus', 'reason', 'link'))
         ):
             objectives.append('causation')
+        if (
+            any(token in lowered for token in ('protected activity', 'complaint', 'reported', 'accommodation', 'grievance', 'appeal'))
+            and any(token in lowered for token in ('adverse', 'retaliat', 'denial', 'termination'))
+            and any(token in lowered for token in ('before', 'after', 'sequence', 'timeline', 'what happened first'))
+        ):
+            objectives.append('causation_sequence')
         if any(token in lowered for token in ('email', 'emails', 'document', 'documents', 'notice', 'records', 'messages', 'written')):
             objectives.append('documents')
         if any(token in lowered for token in ('witness', 'witnesses', 'saw or heard')):
@@ -713,18 +931,23 @@ class AdversarialSession:
             return []
 
         priority = {
+            'exact_dates': 0,
+            'staff_names_titles': 1,
+            'hearing_request_timing': 2,
+            'response_dates': 3,
             'anchor_adverse_action': 0,
             'anchor_grievance_hearing': 1,
             'anchor_appeal_rights': 2,
             'anchor_reasonable_accommodation': 3,
             'anchor_selection_criteria': 4,
-            'timeline': 5,
-            'actors': 6,
-            'causation': 7,
-            'documents': 8,
-            'witnesses': 9,
-            'harm_remedy': 10,
-            'intake_follow_up': 11,
+            'timeline': 6,
+            'actors': 7,
+            'causation': 8,
+            'causation_sequence': 9,
+            'documents': 10,
+            'witnesses': 11,
+            'harm_remedy': 12,
+            'intake_follow_up': 13,
         }
         candidates.sort(key=lambda item: (priority.get(item[1], 99), item[0].lower(), item[1]))
         deduped: List[tuple[str, str]] = []
@@ -833,12 +1056,22 @@ class AdversarialSession:
         question_text = cls._extract_question_text(candidate)
         if not question_text:
             return False
+        if objective == 'exact_dates':
+            return cls._is_exact_dates_question(candidate)
+        if objective == 'staff_names_titles':
+            return cls._is_staff_names_titles_question(candidate)
+        if objective == 'hearing_request_timing':
+            return cls._is_hearing_request_timing_question(candidate)
+        if objective == 'response_dates':
+            return cls._is_response_dates_question(candidate)
         if objective == 'timeline':
             return cls._is_timeline_question(candidate)
         if objective == 'actors':
             return cls._is_actor_or_decisionmaker_question(candidate)
         if objective == 'causation':
             return cls._is_protected_activity_causation_question(candidate)
+        if objective == 'causation_sequence':
+            return cls._is_causation_sequence_question(candidate)
         if objective == 'harm_remedy':
             return cls._is_harm_or_remedy_question(candidate)
         if objective == 'documents':
@@ -880,6 +1113,18 @@ class AdversarialSession:
             proof_priority = 99
             if isinstance(candidate, dict):
                 proof_priority = int(candidate.get('proof_priority', 99) or 99)
+            phase_focus_rank = cls._phase_focus_rank_for_candidate(candidate)
+            actor_critic_score = cls._extract_actor_critic_score(candidate)
+            blocker_match_count = 0
+            for objective in matched_objectives:
+                if objective in {
+                    'exact_dates',
+                    'staff_names_titles',
+                    'hearing_request_timing',
+                    'response_dates',
+                    'causation_sequence',
+                }:
+                    blocker_match_count += 1
 
             annotated_candidate = candidate
             if isinstance(candidate, dict):
@@ -896,16 +1141,25 @@ class AdversarialSession:
                 )
                 selector_signals['intake_priority_match'] = matched_objectives
                 selector_signals['intake_priority_rank'] = None if not matched_objectives else best_priority
+                selector_signals['phase_focus_rank'] = phase_focus_rank
+                selector_signals['actor_critic_score'] = actor_critic_score
+                selector_signals['blocker_match_count'] = blocker_match_count
                 annotated_candidate['selector_signals'] = selector_signals
                 explanation['intake_priority_match'] = matched_objectives
                 explanation['intake_priority_rank'] = None if not matched_objectives else best_priority
+                explanation['phase_focus_rank'] = phase_focus_rank
+                explanation['actor_critic_score'] = actor_critic_score
+                explanation['blocker_match_count'] = blocker_match_count
                 annotated_candidate['ranking_explanation'] = explanation
 
             ranked.append(
                 (
                     (
                         best_priority,
+                        phase_focus_rank,
+                        -blocker_match_count,
                         -selector_score,
+                        -actor_critic_score,
                         proof_priority,
                         index,
                     ),
@@ -1008,6 +1262,11 @@ class AdversarialSession:
         need_causation: bool,
         need_documentary_evidence: bool,
         need_witness: bool,
+        need_exact_dates: bool,
+        need_staff_names_titles: bool,
+        need_hearing_request_timing: bool,
+        need_response_dates: bool,
+        need_causation_sequence: bool,
         last_question_key: str | None,
         last_question_intent_key: str | None,
         recent_intent_keys: Set[str],
@@ -1043,6 +1302,26 @@ class AdversarialSession:
             probe = self._anchor_probe_map().get(section)
             if probe:
                 probe_candidates.append(probe)
+        if need_exact_dates:
+            probe_candidates.append((
+                "What exact dates or best month/year anchors do you have for each key event, including notices and decisions?",
+                "exact_dates",
+            ))
+        if need_staff_names_titles:
+            probe_candidates.append((
+                "Which HACC staff members were involved at each step, and what were their names and titles or roles?",
+                "staff_names_titles",
+            ))
+        if need_hearing_request_timing:
+            probe_candidates.append((
+                "When did you request a grievance hearing or appeal, how did you request it, and what was the timing relative to the adverse action?",
+                "hearing_request_timing",
+            ))
+        if need_response_dates:
+            probe_candidates.append((
+                "What response dates did you receive for notices, hearing or appeal requests, and the final decision?",
+                "response_dates",
+            ))
         if need_harm_remedy:
             probe_candidates.append((
                 "What concrete harms did this cause you, and what specific remedy are you requesting?",
@@ -1062,6 +1341,11 @@ class AdversarialSession:
             probe_candidates.append((
                 "What protected activity happened first, what adverse action followed, who made each decision, and what facts show the adverse action happened because of that protected activity?",
                 "causation",
+            ))
+        if need_causation_sequence:
+            probe_candidates.append((
+                "Please walk through the sequence step by step: protected activity, who learned about it, adverse action, and how timing or statements link them.",
+                "causation_sequence",
             ))
         if need_documentary_evidence:
             probe_candidates.append((
@@ -1135,6 +1419,16 @@ class AdversarialSession:
             + text
         )
 
+    @classmethod
+    def _should_apply_empathy_prefix(cls, turn_index: int, question: Any) -> bool:
+        if turn_index <= 1:
+            return True
+        return (
+            cls._is_harm_or_remedy_question(question)
+            or cls._is_protected_activity_causation_question(question)
+            or cls._is_contradiction_resolution_question(question)
+        )
+
     def _select_next_question(
         self,
         questions: List[Any],
@@ -1146,6 +1440,11 @@ class AdversarialSession:
         need_causation: bool,
         need_documentary_evidence: bool,
         need_witness: bool,
+        need_exact_dates: bool,
+        need_staff_names_titles: bool,
+        need_hearing_request_timing: bool,
+        need_response_dates: bool,
+        need_causation_sequence: bool,
         last_question_key: str | None,
         last_question_intent_key: str | None,
         recent_intent_keys: Set[str],
@@ -1223,6 +1522,17 @@ class AdversarialSession:
             if not has_document_candidate:
                 return None
         # Prefer filling high-value information gaps before exploring lower-value variants.
+        high_quality_candidates = [
+            c
+            for c in non_redundant_candidates
+            if (
+                self._question_specificity_score(c[1]) >= 0.4
+                or self._extract_actor_critic_score(c[0]) >= 0.2
+                or self._extract_selector_score(c[0]) > 0.0
+            )
+        ]
+        if high_quality_candidates:
+            non_redundant_candidates = high_quality_candidates
         non_redundant_candidates.sort(
             key=lambda c: (
                 self._coverage_gap_rank(
@@ -1233,14 +1543,67 @@ class AdversarialSession:
                     need_causation=need_causation,
                     need_documentary_evidence=need_documentary_evidence,
                     need_witness=need_witness,
+                    need_exact_dates=need_exact_dates,
+                    need_staff_names_titles=need_staff_names_titles,
+                    need_hearing_request_timing=need_hearing_request_timing,
+                    need_response_dates=need_response_dates,
+                    need_causation_sequence=need_causation_sequence,
                     missing_anchor_sections=missing_anchor_sections,
                 ),
+                self._phase_focus_rank_for_candidate(c[0]),
+                -self._extract_blocker_closure_match_count(c[0]),
+                -self._extract_selector_score(c[0]),
                 -self._extract_actor_critic_score(c[0]),
                 c[5],
                 c[4],
                 c[6],
             )
         )
+        if need_exact_dates:
+            for q, _, _, _, asked_count, intent_count, similarity_to_seen in non_redundant_candidates:
+                if (
+                    asked_count == 0
+                    and intent_count == 0
+                    and similarity_to_seen < novel_similarity_threshold
+                    and self._is_exact_dates_question(q)
+                ):
+                    return q
+        if need_staff_names_titles:
+            for q, _, _, _, asked_count, intent_count, similarity_to_seen in non_redundant_candidates:
+                if (
+                    asked_count == 0
+                    and intent_count == 0
+                    and similarity_to_seen < novel_similarity_threshold
+                    and self._is_staff_names_titles_question(q)
+                ):
+                    return q
+        if need_hearing_request_timing:
+            for q, _, _, _, asked_count, intent_count, similarity_to_seen in non_redundant_candidates:
+                if (
+                    asked_count == 0
+                    and intent_count == 0
+                    and similarity_to_seen < novel_similarity_threshold
+                    and self._is_hearing_request_timing_question(q)
+                ):
+                    return q
+        if need_response_dates:
+            for q, _, _, _, asked_count, intent_count, similarity_to_seen in non_redundant_candidates:
+                if (
+                    asked_count == 0
+                    and intent_count == 0
+                    and similarity_to_seen < novel_similarity_threshold
+                    and self._is_response_dates_question(q)
+                ):
+                    return q
+        if need_causation_sequence:
+            for q, _, _, _, asked_count, intent_count, similarity_to_seen in non_redundant_candidates:
+                if (
+                    asked_count == 0
+                    and intent_count == 0
+                    and similarity_to_seen < novel_similarity_threshold
+                    and self._is_causation_sequence_question(q)
+                ):
+                    return q
 
         if need_harm_remedy:
             for q, text, _, _, asked_count, intent_count, similarity_to_seen in non_redundant_candidates:
@@ -1388,8 +1751,15 @@ class AdversarialSession:
             has_causation_question = False
             has_documentary_evidence_question = False
             has_witness_question = False
+            has_exact_dates_question = False
+            has_staff_names_titles_question = False
+            has_hearing_request_timing_question = False
+            has_response_dates_question = False
+            has_causation_sequence_question = False
             expected_anchor_sections = self._extract_anchor_sections(seed_complaint)
             require_causation_probe = self._seed_requires_causation_probe(seed_complaint)
+            require_hearing_timing_probe = bool(expected_anchor_sections & {'grievance_hearing', 'appeal_rights'})
+            require_response_dates_probe = bool(expected_anchor_sections & {'grievance_hearing', 'appeal_rights', 'adverse_action'})
             
             while turns < self.max_turns:
                 # Get questions from mediator
@@ -1407,6 +1777,11 @@ class AdversarialSession:
                 need_causation = require_causation_probe and not has_causation_question
                 need_documentary_evidence = not has_documentary_evidence_question
                 need_witness = not has_witness_question
+                need_exact_dates = not has_exact_dates_question
+                need_staff_names_titles = not has_staff_names_titles_question
+                need_hearing_request_timing = require_hearing_timing_probe and not has_hearing_request_timing_question
+                need_response_dates = require_response_dates_probe and not has_response_dates_question
+                need_causation_sequence = require_causation_probe and not has_causation_sequence_question
 
                 question = None
                 if questions:
@@ -1421,6 +1796,11 @@ class AdversarialSession:
                         need_causation=need_causation,
                         need_documentary_evidence=need_documentary_evidence,
                         need_witness=need_witness,
+                        need_exact_dates=need_exact_dates,
+                        need_staff_names_titles=need_staff_names_titles,
+                        need_hearing_request_timing=need_hearing_request_timing,
+                        need_response_dates=need_response_dates,
+                        need_causation_sequence=need_causation_sequence,
                         last_question_key=last_question_key,
                         last_question_intent_key=last_question_intent_key,
                         recent_intent_keys=set(recent_intent_keys),
@@ -1438,6 +1818,11 @@ class AdversarialSession:
                         need_causation=need_causation,
                         need_documentary_evidence=need_documentary_evidence,
                         need_witness=need_witness,
+                        need_exact_dates=need_exact_dates,
+                        need_staff_names_titles=need_staff_names_titles,
+                        need_hearing_request_timing=need_hearing_request_timing,
+                        need_response_dates=need_response_dates,
+                        need_causation_sequence=need_causation_sequence,
                         last_question_key=last_question_key,
                         last_question_intent_key=last_question_intent_key,
                         recent_intent_keys=set(recent_intent_keys),
@@ -1523,6 +1908,16 @@ class AdversarialSession:
                     has_documentary_evidence_question = True
                 if self._is_witness_question(question):
                     has_witness_question = True
+                if self._is_exact_dates_question(question):
+                    has_exact_dates_question = True
+                if self._is_staff_names_titles_question(question):
+                    has_staff_names_titles_question = True
+                if self._is_hearing_request_timing_question(question):
+                    has_hearing_request_timing_question = True
+                if self._is_response_dates_question(question):
+                    has_response_dates_question = True
+                if self._is_causation_sequence_question(question):
+                    has_causation_sequence_question = True
                 
                 questions_asked += 1
                 turns += 1
@@ -1537,7 +1932,14 @@ class AdversarialSession:
                     or has_witness_question
                 )
                 has_causation_coverage = (not require_causation_probe) or has_causation_question
-                if converged and has_core_coverage and has_evidence_coverage and has_causation_coverage:
+                has_blocker_coverage = (
+                    has_exact_dates_question
+                    and has_staff_names_titles_question
+                    and ((not require_hearing_timing_probe) or has_hearing_request_timing_question)
+                    and ((not require_response_dates_probe) or has_response_dates_question)
+                    and ((not require_causation_probe) or has_causation_sequence_question)
+                )
+                if converged and has_core_coverage and has_evidence_coverage and has_causation_coverage and has_blocker_coverage:
                     logger.info(f"Session converged after {turns} turns")
                     break
             

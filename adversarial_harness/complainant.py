@@ -315,6 +315,29 @@ Complaint:"""
             focus_guidance.append(
                 "If multiple people acted, describe the timeline actor-by-actor (who acted, what they did, and when)."
             )
+        if any(token in question_lower for token in ("exact date", "specific date", "date anchor", "month/year")):
+            focus_guidance.append(
+                "Prefer exact dates. If you do not know an exact date, give your best month/year estimate and explain why it is approximate."
+            )
+        if (
+            any(token in question_lower for token in ("staff", "name", "who", "decision-maker", "decision maker", "manager", "supervisor"))
+            and any(token in question_lower for token in ("title", "role", "position", "job title"))
+        ):
+            focus_guidance.append(
+                "Name each person involved and include their title or role; if a name is unknown, give the best-known title."
+            )
+        if any(token in question_lower for token in ("hearing", "grievance", "appeal", "review")) and any(
+            token in question_lower for token in ("when", "date", "timing", "requested", "deadline")
+        ):
+            focus_guidance.append(
+                "State when you requested a hearing or appeal, how you requested it, and what happened next."
+            )
+        if any(token in question_lower for token in ("response", "respond", "notice", "decision", "outcome")) and any(
+            token in question_lower for token in ("when", "date", "dated", "days later")
+        ):
+            focus_guidance.append(
+                "Include response dates for notices, hearing/review requests, and final decision communications when known."
+            )
         if (
             any(token in question_lower for token in ("protected activity", "complaint", "reported", "accommodation", "grievance", "appeal"))
             and any(token in question_lower for token in ("adverse", "retaliat", "termination", "denial", "disciplin"))
@@ -324,6 +347,14 @@ Complaint:"""
             )
             focus_guidance.append(
                 "Include names/roles of decision-makers and any notice/message dates if known."
+            )
+        if (
+            any(token in question_lower for token in ("protected activity", "complaint", "reported", "accommodation", "grievance", "appeal"))
+            and any(token in question_lower for token in ("adverse", "retaliat", "termination", "denial", "disciplin"))
+            and any(token in question_lower for token in ("before", "after", "sequence", "timeline", "step by step"))
+        ):
+            focus_guidance.append(
+                "Answer in sequence: protected activity, who learned about it, adverse action, and what timing or statements link them."
             )
         focus_guidance_text = "\n".join([f"- {item}" for item in focus_guidance]) if focus_guidance else "- Answer naturally in your own words."
         grounded_facts_text = self._format_grounded_case_digest(
@@ -360,6 +391,7 @@ Respond naturally as this person would. Your response should:
 5. Use the evidence when it supports the answer, and say when something is only an inference
 6. Prefer grounded complainant facts, anchor passages, and repository evidence when answering
 7. If the grounded digest includes missing-facts intake questions and the mediator has not yet covered them, be clear about which important facts still need confirmation
+8. If asked for key blockers, prioritize exact dates, staff names/titles, hearing-request timing, response dates, and protected-activity/adverse-action sequencing
 
 Behavioral constraints:
 {instructions}

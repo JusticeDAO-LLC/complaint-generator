@@ -49,6 +49,10 @@ class ComplaintDenoiser:
         self.actor_critic_enabled = self._env_bool("CG_DENOISER_ACTOR_CRITIC_ENABLED", True)
         self.actor_weight = self._env_float("CG_DENOISER_ACTOR_WEIGHT", 1.0)
         self.critic_weight = self._env_float("CG_DENOISER_CRITIC_WEIGHT", 1.0)
+        self.phase_focus_order = self._env_csv(
+            "CG_DENOISER_PHASE_FOCUS_ORDER",
+            ["graph_analysis", "intake_questioning", "document_generation"],
+        )
 
         seed = os.getenv("CG_DENOISER_SEED")
         self._rng = random.Random(int(seed)) if seed and seed.isdigit() else random.Random()
@@ -78,6 +82,102 @@ class ComplaintDenoiser:
             return float(raw.strip())
         except Exception:
             return default
+
+
+    def _env_csv(self, key: str, default: List[str]) -> List[str]:
+        raw = os.getenv(key)
+        if raw is None:
+            return list(default)
+        values = [str(item).strip().lower() for item in raw.split(",")]
+        cleaned = [item for item in values if item]
+        return cleaned or list(default)
+
+
+    def _workflow_phase_for_question(
+        self,
+        question_type: str,
+        context: Optional[Dict[str, Any]] = None,
+        source: str = "",
+    ) -> str:
+        qtype = (question_type or "").strip().lower()
+        source_name = (source or "").strip().lower()
+        context = context if isinstance(context, dict) else {}
+        gap_type = str(context.get("gap_type") or "").strip().lower()
+        follow_up_focus = {
+            "missing_exact_action_dates",
+            "missing_hearing_request_date",
+            "missing_response_dates",
+            "missing_hearing_timing",
+            "retaliation_missing_causation",
+            "retaliation_missing_causation_link",
+            "retaliation_missing_sequencing_dates",
+            "retaliation_missing_sequence",
+        }
+        if (
+            qtype in {"timeline", "contradiction", "responsible_party"}
+            or gap_type in follow_up_focus
+            or source_name in {"dependency_graph_contradiction", "dependency_graph_requirement"}
+        ):
+            return "graph_analysis"
+        if qtype in {"evidence", "remedy"} or gap_type in {"missing_written_notice"}:
+            return "document_generation"
+        return "intake_questioning"
+
+
+    def _phase_focus_rank(self, workflow_phase: str) -> int:
+        phase = (workflow_phase or "").strip().lower()
+        if phase in self.phase_focus_order:
+            return self.phase_focus_order.index(phase)
+        return len(self.phase_focus_order)
+
+
+    def _derive_extraction_targets(
+        self,
+        question_type: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> List[str]:
+        qtype = (question_type or "").strip().lower()
+        context = context if isinstance(context, dict) else {}
+        targets: List[str] = []
+        if qtype in {"timeline", "contradiction"}:
+            targets.extend(["exact_dates", "event_order"])
+        if qtype in {"responsible_party", "relationship", "requirement"}:
+            targets.extend(["actor_name", "actor_role"])
+        if qtype in {"evidence", "requirement"}:
+            targets.extend(["document_type", "document_date", "document_owner"])
+        if qtype in {"impact", "remedy"}:
+            targets.extend(["harm_type", "requested_outcome"])
+        gap_type = str(context.get("gap_type") or "").strip().lower()
+        if gap_type in {"missing_written_notice", "missing_response_dates"}:
+            targets.extend(["notice_chain", "notice_date"])
+        if gap_type in {"retaliation_missing_causation", "retaliation_missing_sequence", "retaliation_missing_sequencing_dates"}:
+            targets.extend(["protected_activity", "adverse_action", "causation_link"])
+        deduped: List[str] = []
+        for target in targets:
+            if target and target not in deduped:
+                deduped.append(target)
+        return deduped
+
+
+    def _derive_patchability_markers(
+        self,
+        question_type: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> List[str]:
+        qtype = (question_type or "").strip().lower()
+        context = context if isinstance(context, dict) else {}
+        markers: List[str] = []
+        if qtype in {"timeline", "contradiction"}:
+            markers.append("chronology_patch_anchor")
+        if qtype in {"responsible_party", "relationship"}:
+            markers.append("actor_link_patch_anchor")
+        if qtype in {"evidence", "requirement"}:
+            markers.append("support_patch_anchor")
+        if qtype in {"impact", "remedy"}:
+            markers.append("relief_patch_anchor")
+        if str(context.get("gap_type") or "").strip().lower() in {"missing_written_notice", "missing_response_dates"}:
+            markers.append("notice_chain_patch_anchor")
+        return markers
 
 
     def _short_description(self, text_value: str, limit: int = 160) -> str:
@@ -620,8 +720,10 @@ class ComplaintDenoiser:
         prefix = ""
         if question_type in {'clarification', 'relationship', 'requirement'}:
             prefix = "To make sure I understand, "
+        elif question_type in {'timeline', 'contradiction', 'responsible_party'}:
+            prefix = "I know this may be stressful, and this helps keep your record accurate: "
         elif question_type in {'evidence'}:
-            prefix = "So we can support your claim, "
+            prefix = "So we can support your claim clearly, "
         if prefix and not text.lower().startswith(prefix.strip().lower()):
             return prefix + text[0].lower() + text[1:] if len(text) > 1 else prefix + text.lower()
         return text
@@ -721,6 +823,7 @@ class ComplaintDenoiser:
         self,
         question_type: str,
         context: Optional[Dict[str, Any]] = None,
+        source: str = '',
     ) -> Dict[str, Any]:
         """Attach section-aware routing metadata to phase-1 intake questions."""
         context = context or {}
@@ -794,6 +897,15 @@ class ComplaintDenoiser:
 
         if not defaults['target_claim_type']:
             defaults['target_claim_type'] = str(context.get('claim_name') or '')
+        workflow_phase = str(context.get('workflow_phase') or '').strip().lower() or self._workflow_phase_for_question(qtype, context=context, source=source)
+        defaults['workflow_phase'] = workflow_phase
+        defaults['workflow_phase_rank'] = int(context.get('workflow_phase_rank', self._phase_focus_rank(workflow_phase)) or self._phase_focus_rank(workflow_phase))
+        context_targets = [str(target).strip() for target in (context.get('extraction_targets') or []) if str(target).strip()]
+        context_markers = [str(marker).strip() for marker in (context.get('patchability_markers') or []) if str(marker).strip()]
+        defaults['extraction_targets'] = context_targets or self._derive_extraction_targets(qtype, context=context)
+        defaults['patchability_markers'] = context_markers or self._derive_patchability_markers(qtype, context=context)
+        if context.get('recommended_resolution_lane'):
+            defaults['recommended_resolution_lane'] = str(context.get('recommended_resolution_lane') or '')
 
         return defaults
 
@@ -805,6 +917,7 @@ class ComplaintDenoiser:
         context: Optional[Dict[str, Any]] = None,
         priority: str = 'medium',
         question_intent: Optional[Dict[str, Any]] = None,
+        source: str = '',
     ) -> Dict[str, Any]:
         normalized_intent = question_intent if isinstance(question_intent, dict) else None
         payload = {
@@ -818,7 +931,7 @@ class ComplaintDenoiser:
             payload['question_goal'] = str(normalized_intent.get('question_goal') or '')
             payload['question_strategy'] = str(normalized_intent.get('question_strategy') or '')
         payload.update(self._phase1_question_metadata(question_type, payload['context']))
-        payload.update(self._phase1_question_targeting(question_type, payload['context']))
+        payload.update(self._phase1_question_targeting(question_type, payload['context'], source=source))
         return payload
 
     def _question_candidate(
@@ -837,6 +950,7 @@ class ComplaintDenoiser:
             context=context,
             priority=priority,
             question_intent=question_intent,
+            source=source,
         )
         question_payload['candidate_source'] = source
         follow_up_tags = self._question_follow_up_tags(
@@ -857,6 +971,11 @@ class ComplaintDenoiser:
             'target_element_id': str(question_payload.get('target_element_id') or ''),
             'target_fact_type': str(question_payload.get('target_fact_type') or ''),
             'expected_update_kind': str(question_payload.get('expected_update_kind') or ''),
+            'recommended_resolution_lane': str(question_payload.get('recommended_resolution_lane') or ''),
+            'workflow_phase': str(question_payload.get('workflow_phase') or ''),
+            'workflow_phase_rank': int(question_payload.get('workflow_phase_rank', 99) or 99),
+            'extraction_targets': list(question_payload.get('extraction_targets') or []),
+            'patchability_markers': list(question_payload.get('patchability_markers') or []),
             'follow_up_tags': list(follow_up_tags),
         }
         return question_payload
@@ -873,13 +992,13 @@ class ComplaintDenoiser:
         context = context if isinstance(context, dict) else {}
         gap_type = str(context.get('gap_type') or '').strip().lower()
 
-        if gap_type in {'missing_exact_action_dates', 'missing_hearing_request_date', 'missing_response_dates'}:
+        if gap_type in {'missing_exact_action_dates', 'missing_hearing_request_date', 'missing_response_dates', 'missing_hearing_timing'}:
             tags.append('exact_dates')
         if gap_type in {'missing_staff_identity', 'missing_staff_title'}:
             tags.append('staff_identity')
         if gap_type in {'missing_written_notice'}:
             tags.append('notice_chain')
-        if gap_type in {'retaliation_missing_causation', 'retaliation_missing_causation_link', 'retaliation_missing_sequencing_dates'}:
+        if gap_type in {'retaliation_missing_causation', 'retaliation_missing_causation_link', 'retaliation_missing_sequencing_dates', 'retaliation_missing_sequence'}:
             tags.append('retaliation_sequence')
 
         if any(token in normalized_text for token in ('exact date', 'on what date', 'when did')):
@@ -1221,6 +1340,11 @@ class ComplaintDenoiser:
                     'node_id': issue.get('node_id'),
                     'node_name': issue.get('node_name'),
                     'gap_type': issue.get('issue_type'),
+                    'recommended_resolution_lane': issue.get('recommended_resolution_lane'),
+                    'workflow_phase': issue.get('workflow_phase'),
+                    'workflow_phase_rank': issue.get('workflow_phase_rank'),
+                    'extraction_targets': list(issue.get('extraction_targets') or []),
+                    'patchability_markers': list(issue.get('patchability_markers') or []),
                 },
                 priority='high' if str(issue.get('severity') or '').lower() == 'blocking' else 'medium',
             ))
@@ -1236,13 +1360,14 @@ class ComplaintDenoiser:
         )
         return questions[:max_questions]
 
-    def _default_candidate_sort_key(self, candidate: Dict[str, Any]) -> Tuple[int, int]:
+    def _default_candidate_sort_key(self, candidate: Dict[str, Any]) -> Tuple[int, int, int]:
         priority_order = {'high': 0, 'medium': 1, 'low': 2}
         if not isinstance(candidate, dict):
-            return (99, 99)
+            return (99, 99, 99)
         return (
             int(candidate.get('proof_priority', self._phase1_proof_priority(candidate.get('type', '')))),
             priority_order.get(candidate.get('priority', 'low'), 3),
+            int(candidate.get('workflow_phase_rank', 99) or 99),
         )
 
     def _actor_score_candidate(self, candidate: Dict[str, Any]) -> float:
@@ -1253,6 +1378,9 @@ class ComplaintDenoiser:
         qtype = str(candidate.get('type') or '').strip().lower()
         question_text = str(candidate.get('question') or '').strip().lower()
         follow_up_tags = [str(tag).strip().lower() for tag in (candidate.get('follow_up_tags') or []) if str(tag).strip()]
+        extraction_targets = [str(target).strip().lower() for target in (candidate.get('extraction_targets') or []) if str(target).strip()]
+        workflow_phase = str(candidate.get('workflow_phase') or '').strip().lower()
+        patchability_markers = [str(marker).strip().lower() for marker in (candidate.get('patchability_markers') or []) if str(marker).strip()]
         proof_priority = int(candidate.get('proof_priority', self._phase1_proof_priority(qtype)) or 0)
         blocking_level = str(candidate.get('blocking_level') or '').strip().lower()
         score = 0.0
@@ -1263,7 +1391,7 @@ class ComplaintDenoiser:
             score += 1.5
         if qtype == 'contradiction':
             # Preserve contradiction-first behavior for clearly conflicting records.
-            score += 3.0
+            score += 6.5
         if any(token in question_text for token in ('when', 'date', 'timeline', 'chronology', 'anchor')):
             score += 1.25
         if any(token in question_text for token in ('who', 'actor', 'manager', 'supervisor', 'organization')):
@@ -1278,6 +1406,28 @@ class ComplaintDenoiser:
             score += 1.0
         if 'retaliation_sequence' in follow_up_tags:
             score += 2.0
+        if extraction_targets:
+            score += min(2.0, 0.4 * float(len(extraction_targets)))
+        if patchability_markers:
+            score += min(1.5, 0.5 * float(len(patchability_markers)))
+        score += max(0.0, 2.0 - float(self._phase_focus_rank(workflow_phase)) * 0.5)
+
+        normalized_text = question_text
+        has_empathy_frame = normalized_text.startswith('to make sure i understand') or normalized_text.startswith('i know this may be stressful') or normalized_text.startswith('so we can support your claim')
+        if has_empathy_frame:
+            score += 0.75
+
+        asked_count_for_type = sum(
+            1
+            for asked in self.questions_asked
+            if isinstance(asked, dict)
+            and isinstance(asked.get('question'), dict)
+            and str(asked.get('question', {}).get('type') or '').strip().lower() == qtype
+        )
+        if asked_count_for_type == 0:
+            score += 0.75
+        elif asked_count_for_type >= 3:
+            score -= 0.5
         return score
 
     def _critic_penalty_candidate(self, candidate: Dict[str, Any]) -> float:
@@ -1286,6 +1436,8 @@ class ComplaintDenoiser:
         question_text = str(candidate.get('question') or '').strip().lower()
         context = candidate.get('context') if isinstance(candidate.get('context'), dict) else {}
         follow_up_tags = [str(tag).strip().lower() for tag in (candidate.get('follow_up_tags') or []) if str(tag).strip()]
+        extraction_targets = [str(target).strip().lower() for target in (candidate.get('extraction_targets') or []) if str(target).strip()]
+        workflow_phase = str(candidate.get('workflow_phase') or '').strip().lower()
         penalty = 0.0
         if not question_text:
             return 5.0
@@ -1314,9 +1466,53 @@ class ComplaintDenoiser:
             penalty += 1.0
         if 'retaliation_sequence' in follow_up_tags and not any(token in question_text for token in ('protected activity', 'adverse', 'because', 'after')):
             penalty += 1.0
+        if question_text.count('?') > 1:
+            penalty += 0.4
+        if workflow_phase == 'graph_analysis' and not any(token in question_text for token in ('when', 'date', 'who', 'what happened')):
+            penalty += 0.6
+        if workflow_phase == 'document_generation' and not any(token in question_text for token in ('document', 'notice', 'letter', 'email', 'record', 'message')):
+            penalty += 0.6
+        if extraction_targets and not any(token in question_text for token in ('who', 'when', 'date', 'name', 'title', 'document', 'notice', 'record', 'because', 'after')):
+            penalty += 0.5
         return penalty
 
+    def _coverage_adjustment(
+        self,
+        candidate: Dict[str, Any],
+        *,
+        type_counts: Dict[str, int],
+        phase_counts: Dict[str, int],
+    ) -> float:
+        if not isinstance(candidate, dict):
+            return 0.0
+        qtype = str(candidate.get('type') or '').strip().lower()
+        workflow_phase = str(candidate.get('workflow_phase') or '').strip().lower()
+        type_count = int(type_counts.get(qtype, 0))
+        phase_count = int(phase_counts.get(workflow_phase, 0))
+        bonus = 0.0
+        if type_count <= 1:
+            bonus += 0.5
+        elif type_count >= 4:
+            bonus -= 0.5
+        if phase_count <= 1:
+            bonus += 0.35
+        elif phase_count >= 4:
+            bonus -= 0.35
+        return bonus
+
     def _annotate_actor_critic_scores(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        type_counts: Dict[str, int] = {}
+        phase_counts: Dict[str, int] = {}
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            qtype = str(candidate.get('type') or '').strip().lower()
+            phase = str(candidate.get('workflow_phase') or '').strip().lower()
+            if qtype:
+                type_counts[qtype] = type_counts.get(qtype, 0) + 1
+            if phase:
+                phase_counts[phase] = phase_counts.get(phase, 0) + 1
+
         annotated: List[Dict[str, Any]] = []
         for candidate in candidates:
             if not isinstance(candidate, dict):
@@ -1324,12 +1520,19 @@ class ComplaintDenoiser:
             enriched = dict(candidate)
             actor_score = self._actor_score_candidate(enriched)
             critic_penalty = self._critic_penalty_candidate(enriched)
+            coverage_adjustment = self._coverage_adjustment(
+                enriched,
+                type_counts=type_counts,
+                phase_counts=phase_counts,
+            )
             actor_critic_score = (
                 float(self.actor_weight) * actor_score
                 - float(self.critic_weight) * critic_penalty
+                + float(coverage_adjustment)
             )
             enriched['actor_score'] = float(actor_score)
             enriched['critic_penalty'] = float(critic_penalty)
+            enriched['coverage_adjustment'] = float(coverage_adjustment)
             enriched['actor_critic_score'] = float(actor_critic_score)
             explanation = (
                 dict(enriched.get('ranking_explanation', {}))
@@ -1338,6 +1541,7 @@ class ComplaintDenoiser:
             )
             explanation['actor_score'] = float(actor_score)
             explanation['critic_penalty'] = float(critic_penalty)
+            explanation['coverage_adjustment'] = float(coverage_adjustment)
             explanation['actor_critic_score'] = float(actor_critic_score)
             enriched['ranking_explanation'] = explanation
             annotated.append(enriched)
@@ -1435,7 +1639,8 @@ class ComplaintDenoiser:
         if len(questions) + len(added) < max_questions:
             if not any(q.get('type') == 'timeline' for q in questions) and not any(k in existing_text for k in ['timeline', 'when did', 'what date', 'dates', 'notice', 'who made']):
                 if not self._already_asked(timeline_text):
-                    added.append(self._build_phase1_question(
+                    added.append(self._question_candidate(
+                        source='standard_intake_backstop',
                         question_type='timeline',
                         question_text=timeline_text,
                         context={},
@@ -1448,7 +1653,8 @@ class ComplaintDenoiser:
         if len(questions) + len(added) < max_questions:
             if not any(q.get('type') in {'impact', 'remedy'} for q in questions) and not any(k in existing_text for k in ['harm', 'damages', 'remedy', 'seeking', 'notice', 'letter', 'message']):
                 if not self._already_asked(impact_text):
-                    added.append(self._build_phase1_question(
+                    added.append(self._question_candidate(
+                        source='standard_intake_backstop',
                         question_type='impact',
                         question_text=impact_text,
                         context={},
@@ -1461,7 +1667,8 @@ class ComplaintDenoiser:
             if len(questions) + len(added) < max_questions:
                 if not any(q.get('type') == 'evidence' for q in questions) and not any(k in existing_text for k in ['notice', 'letter', 'email', 'message', 'sent it']):
                     if not self._already_asked(notice_text):
-                        added.append(self._build_phase1_question(
+                        added.append(self._question_candidate(
+                            source='standard_intake_backstop',
                             question_type='evidence',
                             question_text=notice_text,
                             context={},

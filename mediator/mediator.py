@@ -167,11 +167,84 @@ class Mediator:
 		scored_candidates.sort(
 			key=lambda candidate: (
 				-float(candidate.get('selector_score', 0.0) or 0.0),
+				int(
+					(
+						candidate.get('selector_signals', {})
+						if isinstance(candidate.get('selector_signals'), dict)
+						else {}
+					).get('phase_focus_rank', 99)
+					or 99
+				),
+				-int(
+					(
+						candidate.get('selector_signals', {})
+						if isinstance(candidate.get('selector_signals'), dict)
+						else {}
+					).get('blocker_closure_match_count', 0)
+					or 0
+				),
+				-int(
+					bool(
+						(
+							candidate.get('selector_signals', {})
+							if isinstance(candidate.get('selector_signals'), dict)
+							else {}
+						).get('causation_sequence_match', False)
+					)
+				),
 				-float(candidate.get('actor_critic_score', 0.0) or 0.0),
 				int(candidate.get('proof_priority', 99) or 99),
 			)
 		)
 		return scored_candidates[:max_questions]
+
+	def _phase_focus_rank(self, phase1_section: str) -> int:
+		return {
+			'graph_analysis': 0,
+			'document_generation': 1,
+			'intake_questioning': 2,
+		}.get(str(phase1_section or '').strip().lower(), 3)
+
+	def _phase_focus_bonus(self, phase1_section: str) -> float:
+		return {
+			'graph_analysis': 10.0,
+			'document_generation': 7.0,
+			'intake_questioning': 4.0,
+		}.get(str(phase1_section or '').strip().lower(), 0.0)
+
+	def _is_exact_dates_closure_match(self, question_text: str, question_objective: str, question_type: str) -> bool:
+		if question_objective in {'establish_chronology', 'timeline'} or question_type == 'timeline':
+			return True
+		return any(token in question_text for token in ('exact date', 'specific date', 'month/year', 'date anchor', 'on what date'))
+
+	def _is_staff_names_titles_closure_match(self, question_text: str) -> bool:
+		has_actor_reference = any(token in question_text for token in ('who', 'name', 'staff', 'manager', 'supervisor', 'decisionmaker', 'decision maker'))
+		has_title_reference = any(token in question_text for token in ('title', 'role', 'position', 'job title'))
+		return has_actor_reference and has_title_reference
+
+	def _is_hearing_request_timing_closure_match(self, question_text: str) -> bool:
+		hearing_tokens = ('hearing', 'grievance', 'appeal', 'review')
+		timing_tokens = ('when', 'date', 'timing', 'timeline', 'requested', 'deadline')
+		return any(token in question_text for token in hearing_tokens) and any(token in question_text for token in timing_tokens)
+
+	def _is_response_dates_closure_match(self, question_text: str) -> bool:
+		response_tokens = ('response', 'respond', 'notice', 'decision', 'outcome', 'reply')
+		date_tokens = ('when', 'date', 'dated', 'days later', 'timeline')
+		return any(token in question_text for token in response_tokens) and any(token in question_text for token in date_tokens)
+
+	def _is_causation_sequence_match(self, question_text: str, question_objective: str, question_type: str) -> bool:
+		if question_objective in {'establish_causation', 'link_protected_activity_to_adverse_action'}:
+			return True
+		if question_type in {'retaliation', 'causation'}:
+			return True
+		protected_tokens = ('protected activity', 'complaint', 'reported', 'accommodation', 'grievance', 'appeal')
+		adverse_tokens = ('adverse', 'retaliat', 'denial', 'termination', 'disciplin')
+		sequence_tokens = ('before', 'after', 'sequence', 'timeline', 'step by step', 'what happened first')
+		return (
+			any(token in question_text for token in protected_tokens)
+			and any(token in question_text for token in adverse_tokens)
+			and any(token in question_text for token in sequence_tokens)
+		)
 
 	def _build_intake_claim_pressure_map(self, dependency_graph) -> Dict[str, Dict[str, Any]]:
 		pressure_map: Dict[str, Dict[str, Any]] = {}
@@ -343,10 +416,35 @@ class Mediator:
 				or question_type in {'retaliation', 'causation'}
 				or 'caus' in question_goal
 			)
-		phase1_section = str(explanation.get('phase1_section') or candidate.get('phase1_section') or '').strip().lower()
+			phase1_section = str(explanation.get('phase1_section') or candidate.get('phase1_section') or '').strip().lower()
+			phase_focus_rank = self._phase_focus_rank(phase1_section)
+			phase_focus_bonus = self._phase_focus_bonus(phase1_section)
+			exact_dates_closure_match = self._is_exact_dates_closure_match(
+				question_text,
+				question_objective,
+				question_type,
+			)
+			staff_names_titles_closure_match = self._is_staff_names_titles_closure_match(question_text)
+			hearing_request_timing_closure_match = self._is_hearing_request_timing_closure_match(question_text)
+			response_dates_closure_match = self._is_response_dates_closure_match(question_text)
+			causation_sequence_match = self._is_causation_sequence_match(
+				question_text,
+				question_objective,
+				question_type,
+			)
+			blocker_closure_match_count = sum(
+				1
+				for matched in (
+					exact_dates_closure_match,
+					staff_names_titles_closure_match,
+					hearing_request_timing_closure_match,
+					response_dates_closure_match,
+				)
+				if matched
+			)
 
-		score = 0.0
-		score += max(0, 10 - proof_priority) * 2.0
+			score = 0.0
+			score += max(0, 10 - proof_priority) * 2.0
 		score += {
 			'blocking': 20.0,
 			'important': 10.0,
@@ -373,43 +471,63 @@ class Mediator:
 		score += max(-3.0, min(6.0, actor_critic_score)) * 3.0
 		if date_anchor_timeline_match:
 			score += 11.0
-		if causation_match:
-			score += 12.0
-		if any(token in expected_proof_gain for token in ('date', 'timeline', 'chronolog', 'caus', 'because', 'adverse', 'protected activity')):
-			score += 4.0
-		score += {
-			'graph_analysis': 8.0,
-			'document_generation': 5.0,
-			'intake_questioning': 2.0,
-		}.get(phase1_section, 0.0)
+			if causation_match:
+				score += 12.0
+			if exact_dates_closure_match:
+				score += 14.0
+			if staff_names_titles_closure_match:
+				score += 13.0
+			if hearing_request_timing_closure_match:
+				score += 12.0
+			if response_dates_closure_match:
+				score += 12.0
+			if causation_sequence_match:
+				score += 14.0
+			score += blocker_closure_match_count * 4.0
+			if any(token in expected_proof_gain for token in ('date', 'timeline', 'chronolog', 'caus', 'because', 'adverse', 'protected activity')):
+				score += 4.0
+			score += phase_focus_bonus
 
-		selector_signals = {
-			'candidate_source': candidate_source,
-			'blocking_level': blocking_level,
-			'question_goal': question_goal,
+			selector_signals = {
+				'candidate_source': candidate_source,
+				'blocking_level': blocking_level,
+				'question_goal': question_goal,
 			'proof_priority': proof_priority,
 			'claim_missing_dependency_count': missing_count,
 			'claim_satisfaction_ratio': satisfaction_ratio,
 			'matcher_missing_requirement_count': matcher_missing_requirement_count,
 			'matcher_confidence': matcher_confidence,
 			'matcher_missing_requirement_element_ids': missing_requirement_element_ids,
-			'direct_legal_target_match': direct_legal_target_match,
-			'actor_critic_score': actor_critic_score,
-			'date_anchor_timeline_match': date_anchor_timeline_match,
-			'protected_activity_causation_match': causation_match,
-			'question_objective': question_objective,
-			'question_type': question_type,
-			'phase1_section': phase1_section,
-		}
-		annotated['selector_score'] = score
-		annotated['selector_signals'] = selector_signals
-		explanation['selector_score'] = score
-		explanation['selector_signals'] = selector_signals
-		explanation['actor_critic_score'] = actor_critic_score
-		explanation['date_anchor_timeline_match'] = date_anchor_timeline_match
-		explanation['protected_activity_causation_match'] = causation_match
-		annotated['ranking_explanation'] = explanation
-		return annotated
+				'direct_legal_target_match': direct_legal_target_match,
+				'actor_critic_score': actor_critic_score,
+				'date_anchor_timeline_match': date_anchor_timeline_match,
+				'protected_activity_causation_match': causation_match,
+				'question_objective': question_objective,
+				'question_type': question_type,
+				'phase1_section': phase1_section,
+				'phase_focus_rank': phase_focus_rank,
+				'exact_dates_closure_match': exact_dates_closure_match,
+				'staff_names_titles_closure_match': staff_names_titles_closure_match,
+				'hearing_request_timing_closure_match': hearing_request_timing_closure_match,
+				'response_dates_closure_match': response_dates_closure_match,
+				'causation_sequence_match': causation_sequence_match,
+				'blocker_closure_match_count': blocker_closure_match_count,
+			}
+			annotated['selector_score'] = score
+			annotated['selector_signals'] = selector_signals
+			explanation['selector_score'] = score
+			explanation['selector_signals'] = selector_signals
+			explanation['actor_critic_score'] = actor_critic_score
+			explanation['date_anchor_timeline_match'] = date_anchor_timeline_match
+			explanation['protected_activity_causation_match'] = causation_match
+			explanation['exact_dates_closure_match'] = exact_dates_closure_match
+			explanation['staff_names_titles_closure_match'] = staff_names_titles_closure_match
+			explanation['hearing_request_timing_closure_match'] = hearing_request_timing_closure_match
+			explanation['response_dates_closure_match'] = response_dates_closure_match
+			explanation['causation_sequence_match'] = causation_sequence_match
+			explanation['blocker_closure_match_count'] = blocker_closure_match_count
+			annotated['ranking_explanation'] = explanation
+			return annotated
 
 	def io(self, text):
 		self.log('user_input', text=text)
