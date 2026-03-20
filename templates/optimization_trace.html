@@ -304,6 +304,19 @@
             margin-top: 6px;
         }
 
+        .proof-detail-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .button-secondary {
+            background: #f7ede2;
+            color: var(--accent);
+            border: 1px solid var(--border);
+        }
+
         ul {
             margin: 0;
             padding-left: 18px;
@@ -859,6 +872,25 @@
             node.textContent = message;
         }
 
+        async function copyPlainText(value, emptyMessage) {
+            if (!value) {
+                throw new Error(emptyMessage || 'Nothing available to copy.');
+            }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(value);
+                return;
+            }
+            const input = document.createElement('textarea');
+            input.value = value;
+            input.setAttribute('readonly', 'readonly');
+            input.style.position = 'absolute';
+            input.style.left = '-9999px';
+            document.body.appendChild(input);
+            input.select();
+            document.execCommand('copy');
+            document.body.removeChild(input);
+        }
+
         function buildTraceClaimReviewUrl(claimType, userId) {
             const normalizedClaimType = String(claimType || '').trim();
             if (!normalizedClaimType) {
@@ -1185,10 +1217,19 @@
                             element.proof_artifact_sentence ? `Sentence: ${String(element.proof_artifact_sentence).trim()}` : '',
                             element.proof_artifact_explanation_text ? `Explanation: ${String(element.proof_artifact_explanation_text).trim()}` : '',
                         ].filter(Boolean);
+                        const actionButtons = [
+                            element.proof_artifact_proof_id
+                                ? `<button type="button" class="button-secondary trace-proof-copy-id-button" data-proof-id="${escapeHtml(String(element.proof_artifact_proof_id).trim())}" data-proof-element="${escapeHtml(elementLabel)}">Copy Proof ID</button>`
+                                : '',
+                            element.proof_artifact_explanation_text
+                                ? `<button type="button" class="button-secondary trace-proof-copy-explanation-button" data-proof-explanation="${escapeHtml(String(element.proof_artifact_explanation_text).trim())}" data-proof-element="${escapeHtml(elementLabel)}">Copy Explanation</button>`
+                                : '',
+                        ].filter(Boolean).join('');
                         return `
                             <div class="proof-detail-card">
                                 <h4>${escapeHtml(elementLabel)}</h4>
                                 <div class="proof-detail-lines muted">${detailLines.map((line) => `<div>${escapeHtml(line)}</div>`).join('')}</div>
+                                ${actionButtons ? `<div class="proof-detail-actions">${actionButtons}</div>` : ''}
                             </div>
                         `;
                     }).join('');
@@ -2096,6 +2137,27 @@
             node.addEventListener('click', () => {
                 setIterationFilter(node.getAttribute('data-iteration-filter') || 'all');
             });
+        });
+        document.addEventListener('click', (event) => {
+            const proofIdButton = event.target.closest('.trace-proof-copy-id-button');
+            if (proofIdButton) {
+                copyPlainText(
+                    proofIdButton.dataset.proofId || '',
+                    'No proof ID available to copy.',
+                )
+                    .then(() => setStatus(`Proof ID copied for ${proofIdButton.dataset.proofElement || 'the selected element'}.`, 'status-ok'))
+                    .catch((error) => setStatus(`Proof ID copy failed: ${error.message}`, 'status-danger'));
+                return;
+            }
+            const proofExplanationButton = event.target.closest('.trace-proof-copy-explanation-button');
+            if (proofExplanationButton) {
+                copyPlainText(
+                    proofExplanationButton.dataset.proofExplanation || '',
+                    'No proof explanation available to copy.',
+                )
+                    .then(() => setStatus(`Proof explanation copied for ${proofExplanationButton.dataset.proofElement || 'the selected element'}.`, 'status-ok'))
+                    .catch((error) => setStatus(`Proof explanation copy failed: ${error.message}`, 'status-danger'));
+            }
         });
 
         const initialCid = new URLSearchParams(window.location.search).get('cid') || '';

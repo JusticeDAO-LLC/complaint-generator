@@ -801,6 +801,10 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "Intake Evidence Snapshot" in content
     assert "Claim Support Chronology Handoff" in content
     assert "Proof Artifact Drilldown" in content
+    assert "trace-proof-copy-id-button" in content
+    assert "trace-proof-copy-explanation-button" in content
+    assert "Copy Proof ID" in content
+    assert "Copy Explanation" in content
     assert "Claim reasoning reviews:" in content
     assert "proof artifacts:" in content
     assert "proof preview:" in content

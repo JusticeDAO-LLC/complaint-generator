@@ -14,6 +14,11 @@ from intake_status import (
     build_intake_status_summary,
     build_intake_warning_entries,
 )
+from workflow_phase_guidance import (
+    humanize_workflow_priority_label,
+    normalize_workflow_phase_recommended_actions,
+    resolve_prioritized_workflow_phase,
+)
 
 
 FORMAL_COMPLAINT_DOCUMENT_REQUEST_EXAMPLE = {
@@ -202,13 +207,6 @@ def _append_review_query_params(review_url: str, **params: Optional[str]) -> str
     return urlunsplit((split.scheme, split.netloc, split.path, urlencode(query), split.fragment))
 
 
-def _humanize_workflow_priority_label(value: Any) -> str:
-    text = str(value or "").strip()
-    if not text:
-        return "Unknown"
-    return text.replace("_", " ").replace("-", " ").title()
-
-
 def _resolve_document_review_url(
     *,
     user_id: Optional[str],
@@ -267,41 +265,14 @@ def _build_document_review_workflow_phase_priority(
     dashboard_url: str,
     section_review_map: Dict[str, Dict[str, Any]],
 ) -> Dict[str, Any]:
-    if not isinstance(workflow_phase_plan, dict):
+    prioritized_phase_context = resolve_prioritized_workflow_phase(workflow_phase_plan)
+    prioritized_phase_name = str(prioritized_phase_context.get("phase_name") or "").strip()
+    prioritized_phase = dict(prioritized_phase_context.get("phase") or {})
+    if not prioritized_phase_name or not prioritized_phase:
         return {}
 
-    phases = workflow_phase_plan.get("phases") if isinstance(workflow_phase_plan.get("phases"), dict) else {}
-    ordered_phase_names = [
-        phase_name
-        for phase_name in (workflow_phase_plan.get("recommended_order") or [])
-        if isinstance(phase_name, str) and isinstance(phases.get(phase_name), dict)
-    ]
-    if not ordered_phase_names:
-        return {}
-
-    prioritized_phase_name = next(
-        (
-            phase_name
-            for phase_name in ordered_phase_names
-            if str((phases.get(phase_name) or {}).get("status") or "ready").strip().lower() != "ready"
-        ),
-        ordered_phase_names[0],
-    )
-    prioritized_phase = dict(phases.get(prioritized_phase_name) or {})
-    if not prioritized_phase:
-        return {}
-
-    prioritized_status = str(prioritized_phase.get("status") or "ready").strip().lower() or "ready"
-    recommended_actions = []
-    for item in prioritized_phase.get("recommended_actions") or []:
-        if isinstance(item, str):
-            text = item.strip()
-        elif isinstance(item, dict):
-            text = str(item.get("recommended_action") or item.get("action") or "").strip()
-        else:
-            text = str(item or "").strip()
-        if text:
-            recommended_actions.append(text)
+    prioritized_status = str(prioritized_phase_context.get("status") or "ready").strip().lower() or "ready"
+    recommended_actions = list(prioritized_phase_context.get("recommended_actions") or [])
     primary_recommended_action = recommended_actions[0] if recommended_actions else ""
 
     if prioritized_phase_name == "graph_analysis":
@@ -361,8 +332,8 @@ def _build_document_review_workflow_phase_priority(
         "dashboard_url": dashboard_url,
         "recommended_actions": recommended_actions,
         "chip_labels": [
-            f"workflow phase: {_humanize_workflow_priority_label(prioritized_phase_name)}",
-            f"phase status: {_humanize_workflow_priority_label(prioritized_status)}",
+            f"workflow phase: {humanize_workflow_priority_label(prioritized_phase_name)}",
+            f"phase status: {humanize_workflow_priority_label(prioritized_status)}",
             *([f"recommended action: {primary_recommended_action}"] if primary_recommended_action else []),
         ],
     }
@@ -565,7 +536,7 @@ def _build_document_review_workflow_priority(
 
     chip_labels = [f"recommended action: {action}"]
     if claim_type:
-        chip_labels.append(f"focus claim: {_humanize_workflow_priority_label(claim_type)}")
+        chip_labels.append(f"focus claim: {humanize_workflow_priority_label(claim_type)}")
     if claim_element_id:
         chip_labels.append(f"focus element: {claim_element_id}")
     if blockers:

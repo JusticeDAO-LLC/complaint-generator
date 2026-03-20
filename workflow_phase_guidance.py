@@ -63,6 +63,70 @@ def build_workflow_phase_plan(
     }
 
 
+def humanize_workflow_priority_label(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "Unknown"
+    return text.replace("_", " ").replace("-", " ").title()
+
+
+def normalize_workflow_phase_recommended_actions(phase_payload: Dict[str, Any]) -> List[str]:
+    if not isinstance(phase_payload, dict):
+        return []
+
+    recommended_actions: List[str] = []
+    for item in phase_payload.get("recommended_actions") or []:
+        if isinstance(item, str):
+            text = item.strip()
+        elif isinstance(item, dict):
+            text = str(item.get("recommended_action") or item.get("action") or "").strip()
+        else:
+            text = str(item or "").strip()
+        if text:
+            recommended_actions.append(text)
+    return recommended_actions
+
+
+def resolve_prioritized_workflow_phase(workflow_phase_plan: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(workflow_phase_plan, dict):
+        return {}
+
+    phases = workflow_phase_plan.get("phases") if isinstance(workflow_phase_plan.get("phases"), dict) else {}
+    ordered_phase_names = [
+        phase_name
+        for phase_name in (workflow_phase_plan.get("recommended_order") or [])
+        if isinstance(phase_name, str) and isinstance(phases.get(phase_name), dict)
+    ]
+    if not ordered_phase_names:
+        return {}
+
+    prioritized_phase_name = next(
+        (
+            phase_name
+            for phase_name in ordered_phase_names
+            if str((phases.get(phase_name) or {}).get("status") or "ready").strip().lower() != "ready"
+        ),
+        ordered_phase_names[0],
+    )
+    prioritized_phase = dict(phases.get(prioritized_phase_name) or {})
+    if not prioritized_phase:
+        return {}
+
+    prioritized_status = str(prioritized_phase.get("status") or "ready").strip().lower() or "ready"
+    prioritized_signals = (
+        dict(prioritized_phase.get("signals") or {})
+        if isinstance(prioritized_phase.get("signals"), dict)
+        else {}
+    )
+    return {
+        "phase_name": prioritized_phase_name,
+        "phase": prioritized_phase,
+        "status": prioritized_status,
+        "signals": prioritized_signals,
+        "recommended_actions": normalize_workflow_phase_recommended_actions(prioritized_phase),
+    }
+
+
 def build_workflow_phase_warning_entries(workflow_phase_plan: Dict[str, Any]) -> List[Dict[str, Any]]:
     if not isinstance(workflow_phase_plan, dict):
         return []

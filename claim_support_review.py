@@ -49,6 +49,8 @@ from workflow_phase_guidance import (
     build_graph_analysis_phase_guidance,
     build_review_document_generation_phase_guidance,
     build_workflow_phase_plan,
+    humanize_workflow_priority_label,
+    resolve_prioritized_workflow_phase,
 )
 
 
@@ -379,53 +381,17 @@ def _build_review_workflow_phase_plan(
     return build_workflow_phase_plan(phases)
 
 
-def _humanize_workflow_phase_priority_label(value: Any) -> str:
-    text = str(value or "").strip()
-    if not text:
-        return "Unknown"
-    return text.replace("_", " ").replace("-", " ").title()
-
-
 def _build_review_workflow_phase_priority(
     workflow_phase_plan: Dict[str, Any],
 ) -> Dict[str, Any]:
-    if not isinstance(workflow_phase_plan, dict):
-        return {}
-
-    phases = workflow_phase_plan.get("phases") if isinstance(workflow_phase_plan.get("phases"), dict) else {}
-    ordered_phase_names = [
-        phase_name
-        for phase_name in (workflow_phase_plan.get("recommended_order") or [])
-        if isinstance(phase_name, str) and isinstance(phases.get(phase_name), dict)
-    ]
-    prioritized_phase_name = next(
-        (
-            phase_name
-            for phase_name in ordered_phase_names
-            if str((phases.get(phase_name) or {}).get("status") or "ready").strip().lower() != "ready"
-        ),
-        None,
-    )
+    prioritized_phase_context = resolve_prioritized_workflow_phase(workflow_phase_plan)
+    prioritized_phase_name = str(prioritized_phase_context.get("phase_name") or "").strip()
     if not prioritized_phase_name:
         return {}
-
-    prioritized_phase = dict(phases.get(prioritized_phase_name) or {})
-    prioritized_status = str(prioritized_phase.get("status") or "warning").strip().lower() or "warning"
-    prioritized_signals = (
-        dict(prioritized_phase.get("signals") or {})
-        if isinstance(prioritized_phase.get("signals"), dict)
-        else {}
-    )
-    recommended_actions = []
-    for item in prioritized_phase.get("recommended_actions") or []:
-        if isinstance(item, str):
-            text = item.strip()
-        elif isinstance(item, dict):
-            text = str(item.get("recommended_action") or item.get("action") or "").strip()
-        else:
-            text = str(item or "").strip()
-        if text:
-            recommended_actions.append(text)
+    prioritized_phase = dict(prioritized_phase_context.get("phase") or {})
+    prioritized_status = str(prioritized_phase_context.get("status") or "warning").strip().lower() or "warning"
+    prioritized_signals = dict(prioritized_phase_context.get("signals") or {})
+    recommended_actions = list(prioritized_phase_context.get("recommended_actions") or [])
 
     if prioritized_phase_name == "graph_analysis":
         knowledge_graph_available = bool(prioritized_signals.get("knowledge_graph_available"))
@@ -433,8 +399,8 @@ def _build_review_workflow_phase_priority(
         remaining_gap_count = int(prioritized_signals.get("remaining_gap_count") or 0)
         current_gap_count = int(prioritized_signals.get("current_gap_count") or 0)
         chip_labels = [
-            f"workflow phase: {_humanize_workflow_phase_priority_label(prioritized_phase_name)}",
-            f"phase status: {_humanize_workflow_phase_priority_label(prioritized_status)}",
+            f"workflow phase: {humanize_workflow_priority_label(prioritized_phase_name)}",
+            f"phase status: {humanize_workflow_priority_label(prioritized_status)}",
         ]
         if not knowledge_graph_available:
             chip_labels.extend(
@@ -496,8 +462,8 @@ def _build_review_workflow_phase_priority(
         )
         recommended_next_action = str(prioritized_signals.get("recommended_next_action") or "").strip()
         chip_labels = [
-            f"workflow phase: {_humanize_workflow_phase_priority_label(prioritized_phase_name)}",
-            f"phase status: {_humanize_workflow_phase_priority_label(prioritized_status)}",
+            f"workflow phase: {humanize_workflow_priority_label(prioritized_phase_name)}",
+            f"phase status: {humanize_workflow_priority_label(prioritized_status)}",
             f"proof readiness: {proof_readiness_score:.2f}",
             f"unresolved temporal issues: {unresolved_temporal_issue_count}",
             f"unresolved without review path: {unresolved_without_review_path_count}",

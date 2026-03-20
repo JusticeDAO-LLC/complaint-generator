@@ -4971,6 +4971,21 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
             page = browser.new_page()
             page.goto(f"{base_url}/document/optimization-trace")
             page.evaluate("payload => window.renderTrace(payload)", payload)
+            page.evaluate(
+                """
+                () => {
+                    window.__copiedTexts = [];
+                    Object.defineProperty(navigator, 'clipboard', {
+                        configurable: true,
+                        value: {
+                            writeText: async (value) => {
+                                window.__copiedTexts.push(String(value));
+                            },
+                        },
+                    });
+                }
+                """
+            )
             page.wait_for_function(
                 "() => document.getElementById('traceTemporalHandoff').innerText.includes('Claim Support Chronology Handoff')"
             )
@@ -5005,11 +5020,36 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
             assert "explanations 1" in proof_drilldown_text
             assert "statuses available=1" in proof_drilldown_text
             assert "causal connection" in proof_drilldown_text
+            assert "copy proof id" in proof_drilldown_text
+            assert "copy explanation" in proof_drilldown_text
             assert "proof id: proof-retaliation-001" in proof_drilldown_text
             assert "artifact status: available" in proof_drilldown_text
             assert "proof status: success" in proof_drilldown_text
             assert "explanation steps: 1" in proof_drilldown_text
             assert "explanation: protected activity preceded termination." in proof_drilldown_text
+
+            page.locator("#traceProofDrilldown .trace-proof-copy-id-button").click()
+            page.wait_for_function(
+                "() => document.getElementById('traceStatusMessage').innerText.includes('Proof ID copied for Causal connection.')"
+            )
+            assert page.evaluate("() => window.__copiedTexts") == ["proof-retaliation-001"]
+            assert (
+                page.locator("#traceStatusMessage").inner_text().strip()
+                == "Proof ID copied for Causal connection."
+            )
+
+            page.locator("#traceProofDrilldown .trace-proof-copy-explanation-button").click()
+            page.wait_for_function(
+                "() => document.getElementById('traceStatusMessage').innerText.includes('Proof explanation copied for Causal connection.')"
+            )
+            assert page.evaluate("() => window.__copiedTexts") == [
+                "proof-retaliation-001",
+                "Protected activity preceded termination.",
+            ]
+            assert (
+                page.locator("#traceStatusMessage").inner_text().strip()
+                == "Proof explanation copied for Causal connection."
+            )
 
             browser.close()
 

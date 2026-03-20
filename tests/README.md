@@ -241,6 +241,8 @@ The same HACC slice is also available through editor and shell tooling:
 - Make targets:
   - `make hacc-grounding`
   - `make hacc-grounding-no-smoke`
+- GitHub Actions:
+  - `.github/workflows/hacc-grounding-regression.yml` as a manual workflow, defaulting to `--skip-smoke`
 
 For a faster HACC-only unit slice, use:
 
@@ -260,6 +262,8 @@ The same unit slice is also available through:
   - `HACC Unit Regression`
 - Make target:
   - `make hacc-unit`
+- GitHub Actions:
+  - `.github/workflows/hacc-unit-regression.yml`
 
 ### Test Naming Convention
 
