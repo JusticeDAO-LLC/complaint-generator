@@ -27,6 +27,33 @@ DEFAULT_PARTIES = {
 }
 
 FILING_FORUM_CHOICES = ("court", "hud", "state_agency")
+ACTOR_CRITIC_PHASE_FOCUS_ORDER = ("graph_analysis", "document_generation", "intake_questioning")
+DEFAULT_ACTOR_CRITIC_BATCH_METRICS = {
+    "empathy": 0.25,
+    "question_quality": 0.40,
+    "information_extraction": 0.40,
+    "coverage": 0.40,
+    "efficiency": 0.62,
+}
+INTAKE_OBJECTIVE_PRIORITY = {
+    "timeline": 1.0,
+    "staff_names_titles": 1.0,
+    "actors": 0.95,
+    "causation_link": 1.0,
+    "anchor_adverse_action": 1.0,
+    "anchor_appeal_rights": 0.9,
+    "hearing_request_timing": 0.9,
+    "response_dates": 0.9,
+    "harm_remedy": 0.75,
+    "intake_follow_up": 0.6,
+}
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return float(default)
 
 
 def _load_json(path: Path) -> Dict[str, Any]:
@@ -47,6 +74,65 @@ def _pick_best_session(results_payload: Dict[str, Any], preset: str | None = Non
     if not successful:
         raise ValueError("No successful session with critic_score found in results payload")
     return max(successful, key=lambda session: float((session.get("critic_score") or {}).get("overall_score", 0.0) or 0.0))
+
+
+def _extract_actor_critic_metrics(session: Dict[str, Any]) -> Dict[str, float]:
+    critic_score = dict(session.get("critic_score") or {})
+    final_state = dict(session.get("final_state") or {})
+    priority_summary = dict(final_state.get("adversarial_intake_priority_summary") or {})
+    normalized: Dict[str, float] = {}
+    aliases = {
+        "empathy": "empathy",
+        "question_quality": "question_quality",
+        "information_extraction": "information_extraction",
+        "coverage": "coverage",
+        "efficiency": "efficiency",
+    }
+    candidates = [
+        critic_score,
+        dict(critic_score.get("dimension_scores") or {}),
+        dict(critic_score.get("scores") or {}),
+        dict(final_state.get("actor_critic_metrics") or {}),
+        dict(priority_summary.get("actor_critic_metrics") or {}),
+    ]
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        for key, value in candidate.items():
+            metric = aliases.get(str(key).strip().lower())
+            if not metric:
+                continue
+            normalized[metric] = max(0.0, min(1.0, _safe_float(value, DEFAULT_ACTOR_CRITIC_BATCH_METRICS.get(metric, 0.0))))
+    for metric, default_value in DEFAULT_ACTOR_CRITIC_BATCH_METRICS.items():
+        normalized.setdefault(metric, float(default_value))
+    return normalized
+
+
+def _actor_critic_phase_focus_order(session: Dict[str, Any]) -> List[str]:
+    final_state = dict(session.get("final_state") or {})
+    candidates = list(final_state.get("phase_focus_order") or []) + list(final_state.get("adversarial_phase_focus_order") or [])
+    ordered = []
+    for name in list(ACTOR_CRITIC_PHASE_FOCUS_ORDER) + [str(item).strip() for item in candidates if str(item).strip()]:
+        if name and name not in ordered:
+            ordered.append(name)
+    return ordered
+
+
+def _actor_critic_router_backed_question_quality(session: Dict[str, Any]) -> bool:
+    final_state = dict(session.get("final_state") or {})
+    router_status = dict(final_state.get("router_status") or {})
+    if str(router_status.get("llm_router") or "").strip().lower() == "available":
+        return True
+    critic_score = dict(session.get("critic_score") or {})
+    metadata_candidates = [
+        dict(critic_score.get("llm_metadata") or {}),
+        dict((session.get("final_review") or {}).get("llm_metadata") or {}) if isinstance(session.get("final_review"), dict) else {},
+    ]
+    for metadata in metadata_candidates:
+        provider = str(metadata.get("effective_provider_name") or metadata.get("provider_name") or "").strip().lower()
+        if provider:
+            return True
+    return False
 
 
 def _best_preset_from_matrix(matrix_payload: Dict[str, Any]) -> tuple[str | None, str]:
@@ -2255,13 +2341,46 @@ def _session_intake_priority_summary(session: Dict[str, Any]) -> Dict[str, Any]:
     return summary if isinstance(summary, dict) else {}
 
 
+def _session_blocker_follow_up_summary(session: Dict[str, Any]) -> Dict[str, Any]:
+    final_state = session.get("final_state") if isinstance(session.get("final_state"), dict) else {}
+    direct_summary = final_state.get("blocker_follow_up_summary")
+    if isinstance(direct_summary, dict) and direct_summary:
+        return direct_summary
+    intake_case_file = final_state.get("intake_case_file") if isinstance(final_state.get("intake_case_file"), dict) else {}
+    summary = intake_case_file.get("blocker_follow_up_summary") if isinstance(intake_case_file.get("blocker_follow_up_summary"), dict) else {}
+    return summary if isinstance(summary, dict) else {}
+
+
+def _session_blocker_follow_up_items(session: Dict[str, Any]) -> List[Dict[str, Any]]:
+    summary = _session_blocker_follow_up_summary(session)
+    return [dict(item) for item in list(summary.get("blocking_items") or []) if isinstance(item, dict)]
+
+
+def _synthesized_blocker_summary(session: Dict[str, Any]) -> Dict[str, Any]:
+    summary = dict(_session_blocker_follow_up_summary(session) or {})
+    items = _session_blocker_follow_up_items(session)
+    return {
+        "blocking_item_count": int(summary.get("blocking_item_count") or len(items) or 0),
+        "blocking_objectives": [
+            _normalize_intake_objective(item)
+            for item in list(summary.get("blocking_objectives") or [])
+            if _normalize_intake_objective(item)
+        ],
+        "extraction_targets": [str(item) for item in list(summary.get("extraction_targets") or []) if str(item)],
+        "workflow_phases": [str(item) for item in list(summary.get("workflow_phases") or []) if str(item)],
+        "blocking_items": items,
+    }
+
+
 def _normalize_intake_objective(value: Any) -> str:
     objective_aliases = {
+        "exact_dates": "exact_dates",
         "staff_names": "staff_names_titles",
         "staff_titles": "staff_names_titles",
         "hearing_timing": "hearing_request_timing",
         "response_timing": "response_dates",
         "causation": "causation_link",
+        "causation_sequence": "causation_link",
         "adverse_action": "anchor_adverse_action",
         "appeal_rights": "anchor_appeal_rights",
     }
@@ -2272,16 +2391,23 @@ def _normalize_intake_objective(value: Any) -> str:
 
 
 def _missing_case_facts_from_intake_priorities(session: Dict[str, Any]) -> List[str]:
+    blocker_items = _session_blocker_follow_up_items(session)
+    blocker_prompts = [
+        " ".join(str(item.get("reason") or "").split()).strip()
+        for item in blocker_items
+        if " ".join(str(item.get("reason") or "").split()).strip()
+    ]
     summary = _session_intake_priority_summary(session)
     uncovered = [
         _normalize_intake_objective(item)
         for item in list(summary.get("uncovered_objectives") or [])
         if _normalize_intake_objective(item)
     ]
-    if not uncovered:
+    if not uncovered and not blocker_prompts:
         return []
 
     mapping = {
+        "exact_dates": "exact dates or closest day-level anchors for notices, requests, decisions, and responses",
         "anchor_adverse_action": "the exact denial, termination, threatened loss of assistance, or other adverse action HACC took or threatened",
         "timeline": "when the key events happened, including the complaint, notice, review or hearing request, and any denial or termination decision",
         "actors": "who at HACC made, communicated, or carried out each decision",
@@ -2294,6 +2420,9 @@ def _missing_case_facts_from_intake_priorities(session: Dict[str, Any]) -> List[
         "intake_follow_up": "the additional case-specific details needed to complete the intake record",
     }
     prompts: List[str] = []
+    for prompt in blocker_prompts:
+        if prompt and prompt not in prompts:
+            prompts.append(prompt)
     for objective in uncovered:
         prompt = mapping.get(objective)
         if prompt and prompt not in prompts:
@@ -2347,6 +2476,7 @@ def _classify_intake_question_objective(question_text: Any) -> str:
 
 def _fallback_intake_follow_up_questions(uncovered: List[str], *, limit: int) -> List[str]:
     templates: Dict[str, str] = {
+        "exact_dates": "What are the exact dates, or closest day-level anchors, for each notice, review request, response, and final decision?",
         "timeline": "Please list the key events with dates (or closest date anchors): protected activity, notices, hearing/review requests, and adverse action outcomes.",
         "actors": "Who at HACC handled each step (intake, notice, review/hearing, final decision), and what did each person decide or communicate?",
         "staff_names_titles": "For each key step, what are the HACC staff names and titles (or best-known titles) of the person who acted or communicated?",
@@ -2369,15 +2499,206 @@ def _fallback_intake_follow_up_questions(uncovered: List[str], *, limit: int) ->
     return questions
 
 
-def _outstanding_intake_follow_up_questions(seed: Dict[str, Any], session: Dict[str, Any], limit: int = 5) -> List[str]:
+def _optimize_follow_up_question_text(question: str, objective: str, metrics: Dict[str, float]) -> str:
+    cleaned = " ".join(str(question or "").split()).strip()
+    if not cleaned:
+        return ""
+    empathy = _safe_float(metrics.get("empathy"), DEFAULT_ACTOR_CRITIC_BATCH_METRICS["empathy"])
+    quality = _safe_float(metrics.get("question_quality"), DEFAULT_ACTOR_CRITIC_BATCH_METRICS["question_quality"])
+    efficiency = _safe_float(metrics.get("efficiency"), DEFAULT_ACTOR_CRITIC_BATCH_METRICS["efficiency"])
+
+    if efficiency < 0.72:
+        cleaned = cleaned.replace(" (or best-known title)", "")
+        cleaned = cleaned.replace(" made, communicated, or carried out ", " made or communicated ")
+        cleaned = cleaned.replace(" and what did each person decide or communicate", "")
+        cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
+
+    if quality < 0.72:
+        quality_addenda = {
+            "timeline": "Include exact or closest date anchors for each event.",
+            "actors": "Include each person name/title and their specific decision or communication.",
+            "staff_names_titles": "List one staff name/title per key event.",
+            "causation_link": "Describe sequence details showing protected activity followed by adverse treatment.",
+            "hearing_request_timing": "Include request date, request channel, and response date.",
+            "response_dates": "List exact response dates and decision communication dates.",
+        }
+        suffix = quality_addenda.get(objective)
+        if suffix and suffix.lower() not in cleaned.lower():
+            cleaned = f"{cleaned} {suffix}"
+
+    if empathy < 0.5:
+        empathy_prefix = "I know this can be stressful, and this helps protect your housing rights: "
+        if not cleaned.lower().startswith("i know this can be stressful"):
+            cleaned = f"{empathy_prefix}{cleaned[0].lower() + cleaned[1:] if cleaned else cleaned}"
+
+    if not cleaned.endswith("?") and "please list" not in cleaned.lower():
+        cleaned = f"{cleaned}?"
+    return cleaned
+
+
+def _rank_actor_critic_follow_up_questions(
+    questions: List[str],
+    uncovered: List[str],
+    metrics: Dict[str, float],
+    phase_focus_order: Sequence[str],
+    *,
+    limit: int,
+) -> List[str]:
+    if not questions:
+        return []
+    uncovered_rank = {objective: index for index, objective in enumerate(uncovered)}
+    phase_rank = {name: index for index, name in enumerate(list(phase_focus_order) or list(ACTOR_CRITIC_PHASE_FOCUS_ORDER))}
+    objective_phase = {
+        "exact_dates": "document_generation",
+        "timeline": "graph_analysis",
+        "actors": "document_generation",
+        "staff_names_titles": "document_generation",
+        "causation_link": "graph_analysis",
+        "anchor_adverse_action": "graph_analysis",
+        "anchor_appeal_rights": "document_generation",
+        "hearing_request_timing": "document_generation",
+        "response_dates": "document_generation",
+        "harm_remedy": "document_generation",
+        "intake_follow_up": "intake_questioning",
+    }
+    efficiency = _safe_float(metrics.get("efficiency"), DEFAULT_ACTOR_CRITIC_BATCH_METRICS["efficiency"])
+    quality = _safe_float(metrics.get("question_quality"), DEFAULT_ACTOR_CRITIC_BATCH_METRICS["question_quality"])
+    extraction = _safe_float(metrics.get("information_extraction"), DEFAULT_ACTOR_CRITIC_BATCH_METRICS["information_extraction"])
+    coverage = _safe_float(metrics.get("coverage"), DEFAULT_ACTOR_CRITIC_BATCH_METRICS["coverage"])
+
+    scored: List[tuple[float, int, str]] = []
+    for index, question in enumerate(questions):
+        objective = _normalize_intake_objective(_classify_intake_question_objective(question))
+        tuned = _optimize_follow_up_question_text(question, objective, metrics)
+        priority = float(INTAKE_OBJECTIVE_PRIORITY.get(objective, 0.5))
+        uncovered_position_bonus = 0.0
+        if objective in uncovered_rank:
+            uncovered_position_bonus = max(0.0, 0.2 - (0.03 * float(uncovered_rank[objective])))
+        phase_name = objective_phase.get(objective, "intake_questioning")
+        phase_bonus = max(0.0, 0.15 - (0.05 * float(phase_rank.get(phase_name, 2))))
+        quality_bonus = 0.0
+        lowered = tuned.lower()
+        if quality < 0.72 and any(token in lowered for token in ("date", "when", "name", "title", "response", "request", "because", "after")):
+            quality_bonus += 0.08
+        if efficiency < 0.72 and len(tuned) <= 220:
+            quality_bonus += 0.05
+        if extraction < 0.72 and any(
+            token in lowered for token in ("document", "notice", "email", "letter", "portal", "name", "title", "date")
+        ):
+            quality_bonus += 0.08
+        if coverage < 0.72 and any(token in lowered for token in ("for each", "each", "sequence", "who", "what date")):
+            quality_bonus += 0.06
+        score = priority + uncovered_position_bonus + phase_bonus + quality_bonus
+        scored.append((score, index, tuned))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    deduped: List[str] = []
+    seen = set()
+    for _, _, question in scored:
+        key = question.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(question)
+        if len(deduped) >= limit:
+            break
+    return deduped
+
+
+def _actor_critic_confirmation_conversion_questions(
+    uncovered: List[str],
+    blocker_items: List[Dict[str, Any]],
+    objective_counts: Dict[str, int],
+    *,
+    router_backed_question_quality: bool,
+) -> List[str]:
+    uncovered_set = {_normalize_intake_objective(item) for item in uncovered if _normalize_intake_objective(item)}
+    blocker_objectives = {
+        _normalize_intake_objective(item.get("primary_objective") or "")
+        for item in blocker_items
+        if _normalize_intake_objective(item.get("primary_objective") or "")
+    }
+    targets = {item for item in uncovered_set | blocker_objectives if item}
+    prompts: List[str] = []
+
+    if {"exact_dates", "timeline", "response_dates", "anchor_adverse_action", "anchor_appeal_rights"} & targets:
+        prompts.append(
+            "For each key event, provide the exact date (or closest day-level anchor), the document or communication "
+            "(notice/email/letter/portal message), who sent it, and the specific decision or instruction stated."
+        )
+
+    if {"actors", "staff_names_titles"} & targets:
+        follow_up = objective_counts.get("actors", 0) + objective_counts.get("staff_names_titles", 0)
+        if follow_up > 0:
+            prompts.append(
+                "To finalize decision-maker identity: who made the initial recommendation, who approved the final action, "
+                "who communicated it, and each person's name/title (or best-known role if name is unknown)?"
+            )
+        else:
+            prompts.append(
+                "Who were the decision-makers at each stage (intake, notice, review/hearing, final action), and what was "
+                "each person's name/title and specific decision?"
+            )
+
+    if "causation_link" in targets:
+        if objective_counts.get("causation_link", 0) > 0:
+            prompts.append(
+                "What concrete facts tie the adverse action to protected activity: activity date, who knew, what changed "
+                "next, what reason was given, and when that reason was communicated?"
+            )
+        else:
+            prompts.append(
+                "What happened after the protected activity, who was aware of it, what adverse decision followed, and what "
+                "facts link that sequence to the decision-maker's stated reason?"
+            )
+
+    if router_backed_question_quality and prompts:
+        prompts.append(
+            "If easier, answer in one line per event using: date | actor/title | document type | decision/action | reason given."
+        )
+
+    deduped: List[str] = []
+    seen = set()
+    for question in prompts:
+        key = question.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(question)
+    return deduped
+
+
+def _outstanding_intake_follow_up_questions(
+    seed: Dict[str, Any],
+    session: Dict[str, Any],
+    limit: int = 5,
+    *,
+    actor_critic_metrics: Dict[str, float] | None = None,
+    phase_focus_order: Sequence[str] | None = None,
+    router_backed_question_quality: bool = False,
+) -> List[str]:
     summary = _session_intake_priority_summary(session)
+    blocker_items = _session_blocker_follow_up_items(session)
     uncovered = [
         _normalize_intake_objective(item)
         for item in list(summary.get("uncovered_objectives") or [])
         if _normalize_intake_objective(item)
     ]
-    if not uncovered:
+    blocker_objectives = [
+        _normalize_intake_objective(item.get("primary_objective") or "")
+        for item in blocker_items
+        if _normalize_intake_objective(item.get("primary_objective") or "")
+    ]
+    combined_uncovered: List[str] = []
+    for objective in uncovered + blocker_objectives:
+        if objective and objective not in combined_uncovered:
+            combined_uncovered.append(objective)
+    if not combined_uncovered and not blocker_items:
         return []
+    objective_counts = {
+        _normalize_intake_objective(key): int(value or 0)
+        for key, value in dict(summary.get("objective_question_counts") or {}).items()
+        if _normalize_intake_objective(key)
+    }
 
     key_facts = dict(seed.get("key_facts") or {})
     synthetic_prompts = dict(key_facts.get("synthetic_prompts") or {})
@@ -2387,7 +2708,27 @@ def _outstanding_intake_follow_up_questions(seed: Dict[str, Any], session: Dict[
         if " ".join(str(item or "").split()).strip()
     ]
     matched: List[str] = []
-    for objective in uncovered:
+    for blocker in blocker_items:
+        strategy = " ".join(str(blocker.get("next_question_strategy") or "").split()).strip().lower()
+        reason = " ".join(str(blocker.get("reason") or "").split()).strip()
+        objective = _normalize_intake_objective(blocker.get("primary_objective") or "")
+        blocker_question = ""
+        if strategy == "capture_notice_chain":
+            blocker_question = "What written notice, letter, email, or message did you receive, who sent it, and what date is on it?"
+        elif strategy == "capture_hearing_timeline":
+            blocker_question = "When did you request a hearing or review, how did you request it, and when did HACC respond?"
+        elif strategy == "capture_response_timeline":
+            blocker_question = "What exact response dates did HACC provide for notices, hearing or review requests, and final decision communications?"
+        elif strategy == "capture_staff_identity":
+            blocker_question = "Who at HACC made or communicated each decision, and what were their names and titles?"
+        elif strategy == "capture_retaliation_sequence":
+            blocker_question = "What happened after your protected activity, who knew about it, and what facts link that sequence to the adverse action?"
+        elif objective:
+            blocker_question = _fallback_intake_follow_up_questions([objective], limit=1)[0]
+        if reason and blocker_question and blocker_question not in matched:
+            matched.append(blocker_question)
+
+    for objective in combined_uncovered:
         for question in intake_questions:
             if _classify_intake_question_objective(question) != objective:
                 continue
@@ -2399,7 +2740,29 @@ def _outstanding_intake_follow_up_questions(seed: Dict[str, Any], session: Dict[
             matched.append(fallback_question)
         if len(matched) >= limit:
             break
-    return matched[:limit]
+    if not actor_critic_metrics:
+        fallback_questions = _fallback_intake_follow_up_questions(combined_uncovered, limit=limit)
+        ordered = []
+        for question in matched + fallback_questions:
+            if question and question not in ordered:
+                ordered.append(question)
+        return ordered[:limit]
+    enhanced_questions = _actor_critic_confirmation_conversion_questions(
+        combined_uncovered,
+        blocker_items,
+        objective_counts,
+        router_backed_question_quality=bool(router_backed_question_quality),
+    )
+    candidate_questions = (matched + enhanced_questions + _fallback_intake_follow_up_questions(combined_uncovered, limit=limit))[
+        : max(limit * 3, limit)
+    ]
+    return _rank_actor_critic_follow_up_questions(
+        candidate_questions,
+        combined_uncovered,
+        actor_critic_metrics,
+        list(phase_focus_order or ACTOR_CRITIC_PHASE_FOCUS_ORDER),
+        limit=limit,
+    )
 
 
 def _answered_intake_follow_up_items(worksheet: Dict[str, Any]) -> List[Dict[str, str]]:
@@ -2770,6 +3133,26 @@ def _render_markdown(package: Dict[str, Any]) -> str:
         package["summary"],
         "",
     ]
+    actor_critic_optimizer = dict(package.get("actor_critic_optimizer") or {})
+    if actor_critic_optimizer:
+        metrics = dict(actor_critic_optimizer.get("metrics") or {})
+        lines.extend(
+            [
+                "## Actor-Critic Optimization",
+                "",
+                f"- Method: {actor_critic_optimizer.get('optimization_method', 'actor_critic')}",
+                f"- Focus order: {', '.join(list(actor_critic_optimizer.get('phase_focus_order') or []))}",
+                f"- Priority: {actor_critic_optimizer.get('priority', '')}",
+                f"- Router-backed question quality: {bool(actor_critic_optimizer.get('router_backed_question_quality'))}",
+            ]
+        )
+        if metrics:
+            metric_summary = ", ".join(
+                f"{name}={_safe_float(value):.2f}"
+                for name, value in metrics.items()
+            )
+            lines.append(f"- Metrics: {metric_summary}")
+        lines.extend(["",])
     selection_rationale = dict(package.get("selection_rationale") or {})
     if selection_rationale:
         lines.extend([
@@ -2959,6 +3342,22 @@ def _render_markdown(package: Dict[str, Any]) -> str:
             "",
         ])
         lines.extend(f"- {item}" for item in outstanding_intake_gaps)
+    blocker_summary = dict(package.get("intake_blocker_summary") or {})
+    blocker_items = [dict(item) for item in list(blocker_summary.get("blocking_items") or []) if isinstance(item, dict)]
+    if blocker_items:
+        lines.extend([
+            "",
+            "## Intake Blockers",
+            "",
+        ])
+        for item in blocker_items:
+            reason = str(item.get("reason") or "").strip()
+            blocker_id = str(item.get("blocker_id") or "blocker").strip()
+            primary_objective = _normalize_intake_objective(item.get("primary_objective") or "")
+            line = f"- {blocker_id}: {reason}" if reason else f"- {blocker_id}"
+            if primary_objective:
+                line += f" (objective: {primary_objective})"
+            lines.append(line)
     follow_up_questions = [str(item) for item in list(package.get("outstanding_intake_follow_up_questions") or []) if str(item)]
     if follow_up_questions:
         lines.extend([
@@ -3161,6 +3560,9 @@ def main(argv: List[str] | None = None) -> int:
     completed_intake_worksheet = _load_optional_json(completed_intake_worksheet_path)
     best_session = _pick_best_session(results_payload, preset=args.preset)
     best_session = _merge_completed_intake_worksheet(best_session, completed_intake_worksheet)
+    actor_critic_metrics = _extract_actor_critic_metrics(best_session)
+    phase_focus_order = _actor_critic_phase_focus_order(best_session)
+    router_backed_question_quality = _actor_critic_router_backed_question_quality(best_session)
     seed = _merge_seed_with_grounding(dict(best_session.get("seed_complaint") or {}), grounding_bundle)
     search_summary = _extract_search_summary(seed, grounding_bundle, evidence_upload_report)
     key_facts = dict(seed.get("key_facts") or {})
@@ -3193,12 +3595,26 @@ def main(argv: List[str] | None = None) -> int:
             limit=8,
         ),
         "proposed_allegations": _proposed_allegations(seed, best_session, args.filing_forum),
+        "intake_blocker_summary": _synthesized_blocker_summary(best_session),
         "outstanding_intake_gaps": _outstanding_intake_gaps(best_session),
-        "outstanding_intake_follow_up_questions": _outstanding_intake_follow_up_questions(seed, best_session),
+        "outstanding_intake_follow_up_questions": _outstanding_intake_follow_up_questions(
+            seed,
+            best_session,
+            actor_critic_metrics=actor_critic_metrics,
+            phase_focus_order=phase_focus_order,
+            router_backed_question_quality=router_backed_question_quality,
+        ),
         "requested_relief": _requested_relief_for_forum(args.filing_forum),
         "grounded_evidence_summary": _grounded_summary_lines(grounding_bundle, evidence_upload_report),
         "grounding_overview": grounding_overview,
         "search_summary": search_summary,
+        "actor_critic_optimizer": {
+            "optimization_method": "actor_critic",
+            "phase_focus_order": list(phase_focus_order),
+            "priority": 70,
+            "router_backed_question_quality": router_backed_question_quality,
+            "metrics": actor_critic_metrics,
+        },
         "selection_rationale": selection_rationale,
         "source_artifacts": {
             "results_json": str(results_path),

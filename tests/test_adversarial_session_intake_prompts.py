@@ -89,6 +89,48 @@ class _SelectorMediator:
         self.phase_updates.append((phase, key, value))
 
 
+class _ConvergingMediator:
+    def __init__(self):
+        self._question_batches = [
+            [
+                {
+                    "question": "When did the first incident happen, and what happened next?",
+                    "type": "timeline",
+                    "question_objective": "timeline",
+                }
+            ],
+            [
+                {
+                    "question": "What concrete harms did this cause you, and what specific remedy are you requesting?",
+                    "type": "harm_remedy",
+                    "question_objective": "harm_remedy",
+                }
+            ],
+            [
+                {
+                    "question": "Do you have any supporting records such as emails, messages, notices, or other written documents?",
+                    "type": "documents",
+                    "question_objective": "documents",
+                }
+            ],
+        ]
+        self._index = 0
+
+    def start_three_phase_process(self, complaint_text):
+        self._index = 0
+        return {"initial_questions": list(self._question_batches[0])}
+
+    def process_denoising_answer(self, question, answer):
+        self._index += 1
+        next_questions = []
+        if self._index < len(self._question_batches):
+            next_questions = list(self._question_batches[self._index])
+        return {"next_questions": next_questions, "converged": True}
+
+    def get_three_phase_status(self):
+        return {}
+
+
 def _make_session() -> AdversarialSession:
     return AdversarialSession(
         session_id="test_session",
@@ -106,6 +148,16 @@ def _make_selector_session(mediator: _SelectorMediator) -> AdversarialSession:
         complainant=_DummyComplainant(),
         critic=_DummyCritic(),
         max_turns=0,
+    )
+
+
+def _make_converging_session(mediator: _ConvergingMediator) -> AdversarialSession:
+    return AdversarialSession(
+        session_id="converging_session",
+        mediator=mediator,
+        complainant=_DummyComplainant(),
+        critic=_DummyCritic(),
+        max_turns=5,
     )
 
 
@@ -140,7 +192,7 @@ def test_extract_intake_prompt_candidates_classifies_missing_fact_questions():
         objective_by_question[
             "What written notice, grievance, informal review, hearing, or appeal rights were provided, requested, denied, or ignored?"
         ]
-    ) == {"documents", "anchor_grievance_hearing", "anchor_appeal_rights"}
+    ) == {"documents", "anchor_grievance_hearing", "anchor_appeal_rights", "hearing_request_timing"}
 
 
 def test_extract_intake_prompt_candidates_supplements_seed_anchor_sections():
@@ -197,7 +249,7 @@ def test_build_fallback_probe_prefers_intake_questionnaire_prompt():
 
     assert probe is not None
     assert probe["question"].startswith("When did the key events happen")
-    assert probe["question_objective"] == "timeline"
+    assert probe["question_objective"] == "hearing_request_timing"
     assert probe["source"] == "harness_fallback"
 
 
@@ -371,3 +423,37 @@ def test_run_temporarily_prioritizes_mediator_selector_for_intake_objectives():
     assert result.num_questions == 0
     assert result.initial_complaint_text == "Initial complaint"
     assert result.conversation_history == []
+
+
+def test_staff_names_titles_question_requires_title_signal():
+    generic_actor_question = {
+        "question": "Who specifically made each decision or statement, and what exactly was said or done?",
+        "question_objective": "actors",
+    }
+    explicit_staff_title_question = {
+        "question": "Who specifically made each decision, and what were their names and titles or roles?",
+        "question_objective": "staff_names_titles",
+    }
+
+    assert not AdversarialSession._is_staff_names_titles_question(generic_actor_question)
+    assert AdversarialSession._is_staff_names_titles_question(explicit_staff_title_question)
+
+
+def test_run_does_not_require_blocker_questions_when_seed_has_no_blocker_objectives():
+    mediator = _ConvergingMediator()
+    session = _make_converging_session(mediator)
+    seed = {
+        "summary": "HACC denied housing assistance after repeated paperwork issues.",
+        "key_facts": {
+            "synthetic_prompts": {
+                "intake_questions": []
+            }
+        },
+    }
+
+    result = session.run(seed)
+
+    assert result.success is True
+    assert result.num_turns == 3
+    assert result.num_questions == 3
+    assert mediator._index == 3

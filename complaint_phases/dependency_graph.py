@@ -15,6 +15,12 @@ from enum import Enum
 
 logger = logging.getLogger(__name__)
 
+_NAME_PATTERN = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b")
+_CONFIRMATION_PLACEHOLDER_PATTERN = re.compile(
+    r"\b(?:needs?\s+confirmation|to\s+be\s+confirmed|confirm(?:ed|ation)?\s+pending|tbd|unknown|not\s+sure|unclear|pending)\b",
+    flags=re.IGNORECASE,
+)
+
 
 def _utc_now_isoformat() -> str:
     return datetime.now(UTC).isoformat()
@@ -422,6 +428,10 @@ class DependencyGraph:
             node_id: f"{node.name} {node.description}".strip().lower()
             for node_id, node in self.nodes.items()
         }
+        node_rich_text_by_id = {
+            node_id: self._node_rich_text(node)
+            for node_id, node in self.nodes.items()
+        }
 
         # Hearing/appeal timing blockers: hearing references without explicit temporal edges.
         hearing_node_ids = [
@@ -464,7 +474,7 @@ class DependencyGraph:
         ]
         has_named_actor = any(
             node.node_type in {NodeType.FACT, NodeType.EVIDENCE, NodeType.REQUIREMENT, NodeType.CLAIM}
-            and bool(re.search(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b", node.name))
+            and bool(_NAME_PATTERN.search(node.name))
             for node in self.nodes.values()
         )
         if staff_like_nodes and not has_named_actor:
@@ -526,7 +536,153 @@ class DependencyGraph:
                     }
                 )
 
+            # Retaliation issues also need explicit decision-maker identity and rationale.
+            decision_terms = ("decid", "approved", "denied", "terminated", "disciplined", "recommended", "ordered")
+            role_terms = ("manager", "supervisor", "director", "hr", "officer", "landlord", "administrator", "staff")
+            has_decision_maker_signal = any(
+                any(term in text_value for term in decision_terms)
+                and (bool(_NAME_PATTERN.search(node_rich_text_by_id.get(node_id, ""))) or any(role in text_value for role in role_terms))
+                for node_id, text_value in node_text_by_id.items()
+            )
+            if adverse_ids and not has_decision_maker_signal:
+                issues.append(
+                    {
+                        "issue_id": "blocker_retaliation_decision_maker_missing",
+                        "issue_type": "retaliation_missing_decision_maker",
+                        "severity": "blocking",
+                        "question_type": "responsible_party",
+                        "recommended_resolution_lane": "clarify_with_complainant",
+                        "workflow_phase": "graph_analysis",
+                        "workflow_phase_rank": 0,
+                        "summary": "Retaliation adverse-action path lacks a named decision-maker identity and role.",
+                        "extraction_targets": ["decision_maker", "actor_name", "actor_role", "organization_unit", "exact_dates"],
+                        "patchability_markers": ["actor_link_patch_anchor", "decision_actor_patch_anchor", "chronology_patch_anchor"],
+                        "suggested_question": (
+                            "Who made or approved each adverse decision (full name, title, and office), on what exact date each decision was made, and who communicated it to you?"
+                        ),
+                    }
+                )
+
+            # Improve document-generation coverage for causation corroboration.
+            has_causation_documents = any(
+                any(token in text_value for token in ("notice", "letter", "email", "message", "record", "memo"))
+                and any(token in text_value for token in ("protected activity", "complained", "reported", "adverse action", "terminated", "disciplined"))
+                for text_value in node_text_by_id.values()
+            )
+            if (adverse_ids or protected_ids) and not has_causation_documents:
+                issues.append(
+                    {
+                        "issue_id": "blocker_retaliation_causation_documents_missing",
+                        "issue_type": "retaliation_missing_causation_documents",
+                        "severity": "blocking",
+                        "question_type": "evidence",
+                        "recommended_resolution_lane": "request_document",
+                        "workflow_phase": "document_generation",
+                        "workflow_phase_rank": 1,
+                        "summary": "Causation path lacks anchored records linking protected activity knowledge to adverse action.",
+                        "extraction_targets": ["document_type", "document_date", "document_owner", "decision_maker", "causation_link"],
+                        "patchability_markers": ["support_patch_anchor", "notice_chain_patch_anchor", "causation_patch_anchor"],
+                        "suggested_question": (
+                            "Which notice, email, text, meeting record, or memo shows decision-makers knew about your protected activity before the adverse action, and what date and sender/recipient details are on each record?"
+                        ),
+                    }
+                )
+
+        # Convert placeholder facts into concrete, draft-ready anchors with phase-ordered follow-up.
+        placeholder_nodes = self._nodes_with_confirmation_placeholders(node_rich_text_by_id)
+        if placeholder_nodes:
+            placeholder_labels = ", ".join(node.name for node in placeholder_nodes[:3])
+            issues.append(
+                {
+                    "issue_id": "blocker_confirmation_placeholders_specificity",
+                    "issue_type": "confirmation_placeholders_needing_specific_facts",
+                    "severity": "blocking",
+                    "question_type": "timeline",
+                    "recommended_resolution_lane": "clarify_with_complainant",
+                    "workflow_phase": "graph_analysis",
+                    "workflow_phase_rank": 0,
+                    "summary": "One or more graph facts still contain confirmation placeholders instead of concrete anchors.",
+                    "placeholder_node_ids": [node.id for node in placeholder_nodes],
+                    "placeholder_node_names": [node.name for node in placeholder_nodes],
+                    "extraction_targets": ["exact_dates", "actor_name", "actor_role", "decision_maker", "event_order"],
+                    "patchability_markers": ["chronology_patch_anchor", "actor_link_patch_anchor", "decision_actor_patch_anchor"],
+                    "suggested_question": (
+                        f"For each placeholder item ({placeholder_labels}), what are the exact dates, who took each action (full name and title), and what happened immediately before and after?"
+                    ),
+                }
+            )
+            issues.append(
+                {
+                    "issue_id": "blocker_confirmation_placeholders_document_anchor",
+                    "issue_type": "confirmation_placeholders_missing_document_anchor",
+                    "severity": "blocking",
+                    "question_type": "evidence",
+                    "recommended_resolution_lane": "request_document",
+                    "workflow_phase": "document_generation",
+                    "workflow_phase_rank": 1,
+                    "summary": "Placeholder facts are not anchored to specific records for patch-ready drafting.",
+                    "placeholder_node_ids": [node.id for node in placeholder_nodes],
+                    "placeholder_node_names": [node.name for node in placeholder_nodes],
+                    "extraction_targets": ["document_type", "document_date", "document_owner", "actor_name"],
+                    "patchability_markers": ["support_patch_anchor", "notice_chain_patch_anchor"],
+                    "suggested_question": (
+                        "What specific documents, notices, emails, or messages confirm each placeholder fact, and what date, sender, recipient, and subject line should we cite for each one?"
+                    ),
+                }
+            )
+            issues.append(
+                {
+                    "issue_id": "blocker_confirmation_placeholders_intake_closure",
+                    "issue_type": "confirmation_placeholders_intake_closure",
+                    "severity": "important",
+                    "question_type": "clarification",
+                    "recommended_resolution_lane": "clarify_with_complainant",
+                    "workflow_phase": "intake_questioning",
+                    "workflow_phase_rank": 2,
+                    "summary": "Intake record still has unresolved placeholders requiring a best-estimate fallback for closure.",
+                    "placeholder_node_ids": [node.id for node in placeholder_nodes],
+                    "placeholder_node_names": [node.name for node in placeholder_nodes],
+                    "extraction_targets": ["date_estimate", "confidence_level", "verification_source", "actor_name"],
+                    "patchability_markers": ["intake_follow_up_patch_anchor"],
+                    "suggested_question": (
+                        "If any exact detail is still uncertain, give your best date range, who can verify it, and where that verification can be found so we can close the intake gap."
+                    ),
+                }
+            )
+
         return issues
+
+    def _node_rich_text(self, node: DependencyNode) -> str:
+        """Build searchable text including node attributes for blocker diagnostics."""
+        values = [str(node.name or ""), str(node.description or "")]
+        attrs = node.attributes if isinstance(node.attributes, dict) else {}
+        for value in attrs.values():
+            if isinstance(value, (str, int, float, bool)):
+                values.append(str(value))
+            elif isinstance(value, list):
+                values.extend(str(item) for item in value if isinstance(item, (str, int, float, bool)))
+            elif isinstance(value, dict):
+                values.extend(
+                    str(item)
+                    for item in value.values()
+                    if isinstance(item, (str, int, float, bool))
+                )
+        return " ".join(item for item in values if item).strip()
+
+    def _nodes_with_confirmation_placeholders(
+        self,
+        node_rich_text_by_id: Dict[str, str],
+    ) -> List[DependencyNode]:
+        """Identify nodes that still contain 'needs confirmation'-style placeholders."""
+        placeholder_nodes: List[DependencyNode] = []
+        for node_id, text_value in node_rich_text_by_id.items():
+            if not text_value:
+                continue
+            if _CONFIRMATION_PLACEHOLDER_PATTERN.search(text_value):
+                node = self.get_node(node_id)
+                if node is not None:
+                    placeholder_nodes.append(node)
+        return placeholder_nodes
 
 
     # ------------------------------------------------------------------ #

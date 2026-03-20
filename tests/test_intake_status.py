@@ -128,6 +128,25 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
             "target_element_id_counts": {"protected_activity": 1},
         },
         "proof_lead_summary": {"count": 1, "proof_leads": [{"lead_id": "lead_1"}]},
+        "blocker_follow_up_summary": {
+            "blocking_item_count": 1,
+            "blocking_objectives": ["exact_dates", "response_dates"],
+            "blocking_items": [
+                {
+                    "blocker_id": "missing_response_timing",
+                    "primary_objective": "response_dates",
+                    "reason": "Response or non-response events are described without date anchors.",
+                }
+            ],
+        },
+        "open_items": [
+            {
+                "open_item_id": "blocker:missing_response_timing",
+                "kind": "blocker_follow_up",
+                "primary_objective": "response_dates",
+                "reason": "Response or non-response events are described without date anchors.",
+            }
+        ],
         "proof_lead_intent_summary": {
             "count": 1,
             "question_objective_counts": {"identify_supporting_evidence": 1},
@@ -414,6 +433,8 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["canonical_fact_summary"]["count"] == 2
     assert summary["canonical_fact_intent_summary"]["question_objective_counts"]["satisfy_claim_requirement"] == 1
     assert summary["proof_lead_summary"]["count"] == 1
+    assert summary["blocker_follow_up_summary"]["blocking_objectives"] == ["exact_dates", "response_dates"]
+    assert summary["open_items"][0]["primary_objective"] == "response_dates"
     assert summary["proof_lead_intent_summary"]["question_objective_counts"]["identify_supporting_evidence"] == 1
     assert summary["event_ledger_summary"] == {
         "count": 1,

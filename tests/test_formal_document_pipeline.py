@@ -81,6 +81,35 @@ def _build_seeded_mediator():
             'candidate_claims': [{'claim_type': 'retaliation'}],
             'canonical_facts': [{'fact_id': 'fact:1'}],
             'proof_leads': [{'lead_id': 'lead:1'}],
+            'blocker_follow_up_summary': {
+                'blocking_item_count': 1,
+                'blocking_objectives': ['exact_dates', 'response_dates'],
+                'extraction_targets': ['timeline_anchors', 'response_timeline'],
+                'workflow_phases': ['graph_analysis', 'intake_questioning', 'document_generation'],
+                'blocking_items': [
+                    {
+                        'blocker_id': 'missing_response_timing',
+                        'reason': 'Response or non-response events are described without date anchors.',
+                        'primary_objective': 'response_dates',
+                        'blocker_objectives': ['response_dates', 'exact_dates'],
+                        'extraction_targets': ['response_timeline', 'timeline_anchors'],
+                        'workflow_phases': ['graph_analysis', 'intake_questioning', 'document_generation'],
+                        'issue_family': 'response_timeline',
+                    }
+                ],
+            },
+            'open_items': [
+                {
+                    'open_item_id': 'blocker:missing_response_timing',
+                    'kind': 'blocker_follow_up',
+                    'reason': 'Response or non-response events are described without date anchors.',
+                    'primary_objective': 'response_dates',
+                    'blocker_objectives': ['response_dates', 'exact_dates'],
+                    'extraction_targets': ['response_timeline', 'timeline_anchors'],
+                    'workflow_phases': ['graph_analysis', 'intake_questioning', 'document_generation'],
+                    'issue_family': 'response_timeline',
+                }
+            ],
             'complainant_summary_confirmation': {
                 'status': 'confirmed',
                 'confirmed': True,
@@ -391,6 +420,8 @@ def test_document_api_annotation_promotes_confirmed_intake_handoff():
     assert payload['document_optimization']['intake_summary_handoff'] == payload['intake_summary_handoff']
     assert payload['review_links']['intake_status']['intake_summary_handoff'] == payload['intake_summary_handoff']
     assert payload['review_links']['intake_case_summary']['intake_summary_handoff'] == payload['intake_summary_handoff']
+    assert payload['review_links']['intake_case_summary']['blocker_follow_up_summary']['blocking_objectives'] == ['exact_dates', 'response_dates']
+    assert payload['review_links']['intake_case_summary']['open_items'][0]['primary_objective'] == 'response_dates'
     assert payload['review_links']['workflow_priority'] == {
         'status': 'warning',
         'title': 'Review matching inputs before drafting',
@@ -522,12 +553,41 @@ def test_document_optimizer_prioritizes_graph_phase_for_unresolved_blockers():
             'factual_allegations': ['Defendant denied assistance.'],
             'claims_for_relief': [{'claim_type': 'retaliation', 'supporting_facts': []}],
             'requested_relief': ['Compensatory damages.'],
+            'affidavit': {
+                'intro': 'I make this affidavit from personal knowledge.',
+                'facts': ['Defendant denied assistance.'],
+                'jurat': 'Subscribed and sworn.',
+                'supporting_exhibits': [{'label': 'Exhibit A'}],
+            },
+            'certificate_of_service': {
+                'text': 'I certify service on Defendant.',
+                'recipients': ['Defense Counsel'],
+                'recipient_details': [{'recipient': 'Defense Counsel', 'method': 'Email'}],
+                'dated': '2026-03-20',
+            },
         },
         drafting_readiness={'status': 'warning', 'sections': {}},
         support_context={
             'claims': [],
             'evidence': [],
-            'packet_projection': {'section_presence': {'factual_allegations': True}},
+            'packet_projection': {
+                'section_presence': {
+                    'nature_of_action': True,
+                    'summary_of_facts': True,
+                    'factual_allegations': True,
+                    'claims_for_relief': True,
+                    'requested_relief': True,
+                },
+                'section_counts': {
+                    'nature_of_action': 1,
+                    'summary_of_facts': 1,
+                    'factual_allegations': 1,
+                    'claims_for_relief': 1,
+                    'requested_relief': 1,
+                },
+                'has_affidavit': True,
+                'has_certificate_of_service': True,
+            },
             'intake_priorities': {
                 'uncovered_objectives': ['exact_dates', 'staff_names_titles', 'response_dates'],
                 'critical_unresolved_objectives': ['exact_dates', 'staff_names_titles', 'response_dates'],
@@ -541,6 +601,27 @@ def test_document_optimizer_prioritizes_graph_phase_for_unresolved_blockers():
     assert review['workflow_phase_order'][0] == 'graph_analysis'
     assert review['workflow_phase_target_sections']['graph_analysis'] == 'factual_allegations'
     assert review['recommended_focus'] == 'factual_allegations'
+
+
+def test_build_support_context_carries_blocker_metadata_from_intake_case_file():
+    mediator = _build_seeded_mediator()
+    optimizer = document_optimization.AgenticDocumentOptimizer(mediator=mediator)
+
+    support_context = optimizer._build_support_context(
+        user_id='Jane Doe',
+        draft={
+            'claims_for_relief': [{'claim_type': 'retaliation', 'support_summary': {}}],
+        },
+        drafting_readiness={'status': 'warning', 'claims': [], 'sections': {}},
+    )
+
+    priorities = support_context['intake_priorities']
+    assert priorities['blocker_count'] == 1
+    assert priorities['blocking_objectives'] == ['exact_dates', 'response_dates']
+    assert priorities['blocker_extraction_targets'] == ['timeline_anchors', 'response_timeline']
+    assert priorities['blocker_workflow_phases'] == ['graph_analysis', 'intake_questioning', 'document_generation']
+    assert priorities['blocker_issue_families'] == ['response_timeline']
+    assert any('Response or non-response events are described without date anchors.' in prompt for prompt in priorities['recommended_follow_up_prompts'])
 
 
 def test_document_package_promotes_confirmed_intake_handoff(tmp_path):

@@ -484,6 +484,8 @@ class Mediator:
 		if causation_sequence_match:
 			score += 14.0
 		score += blocker_closure_match_count * 4.0
+		if question_type == 'contradiction' or candidate_source == 'dependency_graph_contradiction':
+			score += 20.0
 		if any(token in expected_proof_gain for token in ('date', 'timeline', 'chronolog', 'caus', 'because', 'adverse', 'protected activity')):
 			score += 4.0
 		score += phase_focus_bonus
@@ -8039,6 +8041,8 @@ class Mediator:
 		candidate_claims = intake_case_file.get('candidate_claims', []) if isinstance(intake_case_file, dict) else []
 		canonical_facts = intake_case_file.get('canonical_facts', []) if isinstance(intake_case_file, dict) else []
 		proof_leads = intake_case_file.get('proof_leads', []) if isinstance(intake_case_file, dict) else []
+		blocker_follow_up_summary = intake_case_file.get('blocker_follow_up_summary', {}) if isinstance(intake_case_file, dict) else {}
+		open_items = intake_case_file.get('open_items', []) if isinstance(intake_case_file, dict) else []
 		event_ledger = intake_case_file.get('event_ledger', []) if isinstance(intake_case_file, dict) else []
 		temporal_fact_registry = intake_case_file.get('temporal_fact_registry', []) if isinstance(intake_case_file, dict) else []
 		temporal_relation_registry = intake_case_file.get('temporal_relation_registry', []) if isinstance(intake_case_file, dict) else []
@@ -8098,6 +8102,8 @@ class Mediator:
 				'count': len(proof_leads),
 				'proof_leads': proof_leads,
 			},
+			'blocker_follow_up_summary': blocker_follow_up_summary if isinstance(blocker_follow_up_summary, dict) else {},
+			'open_items': open_items if isinstance(open_items, list) else [],
 			'event_ledger_summary': {
 				'count': len(event_ledger) if isinstance(event_ledger, list) else 0,
 				'events': event_ledger if isinstance(event_ledger, list) else [],

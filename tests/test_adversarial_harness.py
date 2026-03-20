@@ -202,6 +202,47 @@ class TestComplainant:
         assert context.evidence_summary == 'The policy text suggests discriminatory treatment.'
         assert len(context.evidence_items) == 1
 
+    def test_default_context_derives_blocker_objectives_and_workflow_priorities(self):
+        seed = {
+            'type': 'retaliation',
+            'summary': 'After I complained, the agency denied my appeal and I still need the exact notice date.',
+            'key_facts': {
+                'synthetic_prompts': {
+                    'intake_questionnaire_prompt': 'Ask who made the decision, when the hearing was requested, and when the response came back.',
+                    'intake_questions': [
+                        'Who at the agency made or communicated the decision?',
+                        'When did you request a hearing or appeal?',
+                        'What happened after you complained, and when?',
+                    ],
+                },
+            },
+            'hacc_evidence': [
+                {'title': 'Denial Notice', 'snippet': 'Appeal denied by letter.'},
+            ],
+        }
+
+        context = Complainant.build_default_context(seed, 'detailed')
+
+        assert context.blocker_objectives == [
+            'exact_dates',
+            'staff_names_titles',
+            'hearing_request_timing',
+            'response_dates',
+            'causation_sequence',
+        ]
+        assert context.extraction_targets == [
+            'timeline_anchors',
+            'actor_role_mapping',
+            'hearing_process',
+            'response_timeline',
+            'retaliation_sequence',
+        ]
+        assert context.workflow_phase_priorities == [
+            'graph_analysis',
+            'intake_questioning',
+            'document_generation',
+        ]
+
     def test_prompt_includes_hacc_evidence(self):
         prompts = []
 

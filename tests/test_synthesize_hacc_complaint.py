@@ -138,6 +138,35 @@ def test_proposed_allegations_use_uncovered_intake_priority_summary_when_availab
     assert not any("who at HACC made or communicated the decision" in item for item in allegations)
 
 
+def test_proposed_allegations_use_blocker_follow_up_summary_when_available():
+    seed = {
+        "description": "Retaliation complaint anchored to HACC core housing policies.",
+        "key_facts": {
+            "anchor_sections": ["grievance_hearing", "appeal_rights", "adverse_action"],
+            "evidence_summary": "HACC policy defines a grievance as a tenant dispute concerning HACC action or inaction.",
+        },
+    }
+    session = {
+        "conversation_history": [],
+        "final_state": {
+            "blocker_follow_up_summary": {
+                "blocking_items": [
+                    {
+                        "blocker_id": "missing_response_timing",
+                        "reason": "Response or non-response events are described without date anchors.",
+                        "primary_objective": "response_dates",
+                        "next_question_strategy": "capture_response_timeline",
+                    }
+                ]
+            }
+        },
+    }
+
+    allegations = MODULE._proposed_allegations(seed, session, "hud")
+
+    assert any("Response or non-response events are described without date anchors." in item for item in allegations)
+
+
 def test_outstanding_intake_gaps_reflect_uncovered_intake_priority_summary():
     session = {
         "final_state": {
@@ -159,6 +188,41 @@ def test_outstanding_intake_gaps_reflect_uncovered_intake_priority_summary():
     assert gaps == [
         "when the key events happened, including the complaint, notice, review or hearing request, and any denial or termination decision",
         "who at HACC made, communicated, or carried out each decision",
+    ]
+
+
+def test_outstanding_intake_gaps_prefer_blocker_follow_up_summary_when_available():
+    session = {
+        "final_state": {
+            "adversarial_intake_priority_summary": {
+                "expected_objectives": ["timeline"],
+                "covered_objectives": [],
+                "uncovered_objectives": ["timeline"],
+                "objective_question_counts": {"timeline": 0},
+            },
+            "blocker_follow_up_summary": {
+                "blocking_items": [
+                    {
+                        "blocker_id": "missing_response_timing",
+                        "reason": "Response or non-response events are described without date anchors.",
+                        "primary_objective": "response_dates",
+                    },
+                    {
+                        "blocker_id": "missing_staff_name_title_mapping",
+                        "reason": "Named staff are present but title/role mapping is incomplete.",
+                        "primary_objective": "staff_names_titles",
+                    },
+                ]
+            },
+        }
+    }
+
+    gaps = MODULE._outstanding_intake_gaps(session)
+
+    assert gaps == [
+        "Response or non-response events are described without date anchors.",
+        "Named staff are present but title/role mapping is incomplete.",
+        "when the key events happened, including the complaint, notice, review or hearing request, and any denial or termination decision",
     ]
 
 
@@ -199,6 +263,55 @@ def test_outstanding_intake_follow_up_questions_reuse_seed_questionnaire():
     ]
 
 
+def test_outstanding_intake_follow_up_questions_use_blocker_strategies_when_available():
+    seed = {
+        "key_facts": {
+            "synthetic_prompts": {
+                "intake_questions": [
+                    "When did the key events happen?",
+                    "Who at HACC made the decision?",
+                ]
+            }
+        }
+    }
+    session = {
+        "final_state": {
+            "adversarial_intake_priority_summary": {
+                "expected_objectives": ["response_dates", "staff_names_titles"],
+                "covered_objectives": [],
+                "uncovered_objectives": ["response_dates", "staff_names_titles"],
+                "objective_question_counts": {
+                    "response_dates": 0,
+                    "staff_names_titles": 0,
+                },
+            },
+            "blocker_follow_up_summary": {
+                "blocking_items": [
+                    {
+                        "blocker_id": "missing_response_timing",
+                        "reason": "Response or non-response events are described without date anchors.",
+                        "primary_objective": "response_dates",
+                        "next_question_strategy": "capture_response_timeline",
+                    },
+                    {
+                        "blocker_id": "missing_staff_name_title_mapping",
+                        "reason": "Named staff are present but title/role mapping is incomplete.",
+                        "primary_objective": "staff_names_titles",
+                        "next_question_strategy": "capture_staff_identity",
+                    },
+                ]
+            },
+        }
+    }
+
+    questions = MODULE._outstanding_intake_follow_up_questions(seed, session)
+
+    assert questions[:2] == [
+        "What exact response dates did HACC provide for notices, hearing or review requests, and final decision communications?",
+        "Who at HACC made or communicated each decision, and what were their names and titles?",
+    ]
+
+
 def test_render_markdown_includes_outstanding_intake_gaps_section():
     package = {
         "generated_at": "2026-03-17T00:00:00+00:00",
@@ -216,6 +329,15 @@ def test_render_markdown_includes_outstanding_intake_gaps_section():
         "policy_basis": [],
         "causes_of_action": [],
         "proposed_allegations": ["Narrative line."],
+        "intake_blocker_summary": {
+            "blocking_items": [
+                {
+                    "blocker_id": "missing_response_timing",
+                    "reason": "Response or non-response events are described without date anchors.",
+                    "primary_objective": "response_dates",
+                }
+            ]
+        },
         "outstanding_intake_gaps": [
             "when the key events happened, including the complaint, notice, review or hearing request, and any denial or termination decision"
         ],
@@ -247,6 +369,8 @@ def test_render_markdown_includes_outstanding_intake_gaps_section():
     markdown = MODULE._render_markdown(package)
 
     assert "## Outstanding Intake Gaps" in markdown
+    assert "## Intake Blockers" in markdown
+    assert "missing_response_timing: Response or non-response events are described without date anchors. (objective: response_dates)" in markdown
     assert "- when the key events happened, including the complaint, notice, review or hearing request, and any denial or termination decision" in markdown
     assert "## Follow-Up Questions" in markdown
     assert "- When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?" in markdown
@@ -439,6 +563,42 @@ def test_render_intake_follow_up_worksheet_markdown_includes_fillable_items():
     assert "## Follow-Up Items" in markdown
     assert "- follow_up_01: When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?" in markdown
     assert "  - Answer: " in markdown
+
+
+def test_synthesized_blocker_summary_reads_session_blockers():
+    session = {
+        "final_state": {
+            "blocker_follow_up_summary": {
+                "blocking_item_count": 1,
+                "blocking_objectives": ["exact_dates", "response_dates"],
+                "extraction_targets": ["timeline_anchors", "response_timeline"],
+                "workflow_phases": ["graph_analysis", "intake_questioning"],
+                "blocking_items": [
+                    {
+                        "blocker_id": "missing_response_timing",
+                        "reason": "Response or non-response events are described without date anchors.",
+                        "primary_objective": "response_dates",
+                    }
+                ],
+            }
+        }
+    }
+
+    summary = MODULE._synthesized_blocker_summary(session)
+
+    assert summary == {
+        "blocking_item_count": 1,
+        "blocking_objectives": ["exact_dates", "response_dates"],
+        "extraction_targets": ["timeline_anchors", "response_timeline"],
+        "workflow_phases": ["graph_analysis", "intake_questioning"],
+        "blocking_items": [
+            {
+                "blocker_id": "missing_response_timing",
+                "reason": "Response or non-response events are described without date anchors.",
+                "primary_objective": "response_dates",
+            }
+        ],
+    }
 
 
 def test_summarize_policy_excerpt_normalizes_hacc_grievance_fragments():

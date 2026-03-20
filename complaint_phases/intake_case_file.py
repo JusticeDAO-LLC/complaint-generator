@@ -75,6 +75,71 @@ def _coerce_confirmation_record(value: Any) -> Dict[str, Any]:
     }
 
 
+_BLOCKER_METADATA: Dict[str, Dict[str, Any]] = {
+    "missing_written_notice_chain": {
+        "primary_objective": "exact_dates",
+        "blocker_objectives": ["exact_dates", "response_dates"],
+        "extraction_targets": ["notice_chain", "response_timeline", "timeline_anchors"],
+        "workflow_phases": ["graph_analysis", "intake_questioning", "document_generation"],
+        "issue_family": "notice_chain",
+    },
+    "missing_hearing_request_timing": {
+        "primary_objective": "hearing_request_timing",
+        "blocker_objectives": ["hearing_request_timing", "exact_dates"],
+        "extraction_targets": ["hearing_process", "timeline_anchors"],
+        "workflow_phases": ["graph_analysis", "intake_questioning", "document_generation"],
+        "issue_family": "hearing_process",
+    },
+    "missing_response_timing": {
+        "primary_objective": "response_dates",
+        "blocker_objectives": ["response_dates", "exact_dates"],
+        "extraction_targets": ["response_timeline", "timeline_anchors"],
+        "workflow_phases": ["graph_analysis", "intake_questioning", "document_generation"],
+        "issue_family": "response_timeline",
+    },
+    "missing_staff_name_title_mapping": {
+        "primary_objective": "staff_names_titles",
+        "blocker_objectives": ["staff_names_titles"],
+        "extraction_targets": ["actor_role_mapping"],
+        "workflow_phases": ["graph_analysis", "intake_questioning", "document_generation"],
+        "issue_family": "actor_identity",
+    },
+    "missing_retaliation_causation_sequence": {
+        "primary_objective": "causation_sequence",
+        "blocker_objectives": ["causation_sequence", "exact_dates", "staff_names_titles"],
+        "extraction_targets": ["retaliation_sequence", "timeline_anchors", "actor_role_mapping"],
+        "workflow_phases": ["graph_analysis", "intake_questioning", "document_generation"],
+        "issue_family": "retaliation_sequence",
+    },
+}
+
+
+def _unique_metadata_strings(values: Any) -> List[str]:
+    if isinstance(values, list):
+        return _unique_normalized_strings(values)
+    return _unique_normalized_strings(list(values or []))
+
+
+def _build_blocker_record(blocker_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    metadata = _coerce_dict(_BLOCKER_METADATA.get(blocker_id))
+    return {
+        **payload,
+        "primary_objective": _normalize_text(
+            payload.get("primary_objective") or metadata.get("primary_objective") or ""
+        ),
+        "blocker_objectives": _unique_metadata_strings(
+            list(metadata.get("blocker_objectives") or []) + list(payload.get("blocker_objectives") or [])
+        ),
+        "extraction_targets": _unique_metadata_strings(
+            list(metadata.get("extraction_targets") or []) + list(payload.get("extraction_targets") or [])
+        ),
+        "workflow_phases": _unique_metadata_strings(
+            list(metadata.get("workflow_phases") or []) + list(payload.get("workflow_phases") or [])
+        ),
+        "issue_family": _normalize_text(payload.get("issue_family") or metadata.get("issue_family") or ""),
+    }
+
+
 _MONTH_NAME_TO_NUMBER = {
     "january": 1,
     "february": 2,
@@ -115,6 +180,11 @@ _RELATIVE_TEMPORAL_MARKERS = (
     "since",
 )
 
+_QUANTIFIED_RELATIVE_TEMPORAL_PATTERNS = (
+    r"\b\d+\s+(?:day|week|month|year)s?\s+(?:after|before|later|earlier)\b",
+    r"\b(?:a|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:day|week|month|year)s?\s+(?:after|before|later|earlier)\b",
+)
+
 
 def _normalize_date_iso(year: int, month: int, day: int) -> str:
     return f"{year:04d}-{month:02d}-{day:02d}"
@@ -138,9 +208,15 @@ def _coerce_two_digit_year(year: int) -> int:
 def _extract_temporal_markers(value: str, markers: tuple[str, ...]) -> List[str]:
     normalized = _normalize_text(value).lower()
     matched: List[str] = []
+    for pattern in _QUANTIFIED_RELATIVE_TEMPORAL_PATTERNS:
+        for match in re.finditer(pattern, normalized, flags=re.IGNORECASE):
+            phrase = _normalize_text(match.group(0)).lower()
+            if phrase and phrase not in matched:
+                matched.append(phrase)
     for marker in markers:
         if re.search(rf"\b{re.escape(marker)}\b", normalized):
-            matched.append(marker)
+            if marker not in matched:
+                matched.append(marker)
     return matched
 
 
@@ -639,6 +715,7 @@ def build_temporal_issue_registry(
 ) -> List[Dict[str, Any]]:
     registry: List[Dict[str, Any]] = []
     seen_issue_ids = set()
+    issue_index_by_signature: Dict[tuple[str, str, tuple[str, ...]], int] = {}
 
     for fact in _timeline_capable_facts(canonical_facts):
         fact_id = _normalize_text(fact.get("fact_id") or "")
@@ -648,13 +725,30 @@ def build_temporal_issue_registry(
 
         relative_markers = _unique_normalized_strings(temporal_context.get("relative_markers") or [])
         issue_type = "relative_only_ordering" if relative_markers else "missing_anchor"
+        left_node_name = _normalize_text(fact.get("text") or "") or None
+        signature = (issue_type, (left_node_name or "").lower(), tuple(relative_markers))
+        if signature in issue_index_by_signature:
+            existing_issue = registry[issue_index_by_signature[signature]]
+            existing_issue["fact_ids"] = _unique_normalized_strings(
+                list(existing_issue.get("fact_ids") or []) + ([fact_id] if fact_id else [])
+            )
+            existing_issue["claim_types"] = _unique_normalized_strings(
+                list(existing_issue.get("claim_types") or []) + list(fact.get("claim_types") or [])
+            )
+            existing_issue["element_tags"] = _unique_normalized_strings(
+                list(existing_issue.get("element_tags") or []) + list(fact.get("element_tags") or [])
+            )
+            continue
         issue_id = f"temporal_issue:{issue_type}:{fact_id or len(registry) + 1}"
         if issue_id in seen_issue_ids:
             continue
         seen_issue_ids.add(issue_id)
 
         summary = (
-            f"Timeline fact {fact_id or 'unidentified_fact'} only has relative ordering and still needs anchoring."
+            (
+                f"Timeline fact {fact_id or 'unidentified_fact'} only has relative ordering "
+                f"({next((marker for marker in relative_markers if 'day' in marker or 'week' in marker or 'month' in marker or 'year' in marker), relative_markers[0])}) and still needs anchoring."
+            )
             if relative_markers
             else f"Timeline fact {fact_id or 'unidentified_fact'} still lacks a normalized temporal anchor."
         )
@@ -671,7 +765,7 @@ def build_temporal_issue_registry(
                 "fact_ids": [fact_id] if fact_id else [],
                 "claim_types": _unique_normalized_strings(fact.get("claim_types") or []),
                 "element_tags": _unique_normalized_strings(fact.get("element_tags") or []),
-                "left_node_name": _normalize_text(fact.get("text") or "") or None,
+                "left_node_name": left_node_name,
                 "right_node_name": None,
                 "status": "open",
                 "relative_markers": relative_markers,
@@ -680,6 +774,7 @@ def build_temporal_issue_registry(
                 "inference_mode": "derived_from_temporal_context",
             }
         )
+        issue_index_by_signature[signature] = len(registry) - 1
 
     for contradiction in contradiction_queue if isinstance(contradiction_queue, list) else []:
         candidate = _coerce_dict(contradiction)
@@ -1054,6 +1149,11 @@ def build_open_items(intake_case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "recommended_support_kind": support_kind,
                 "proof_path_status": _normalize_text(blocker_dict.get("proof_path_status") or "missing").lower() or "missing",
                 "blocker_tags": _unique_normalized_strings(blocker_dict.get("blocker_tags") or []),
+                "primary_objective": _normalize_text(blocker_dict.get("primary_objective") or ""),
+                "blocker_objectives": _unique_normalized_strings(blocker_dict.get("blocker_objectives") or []),
+                "extraction_targets": _unique_normalized_strings(blocker_dict.get("extraction_targets") or []),
+                "workflow_phases": _unique_normalized_strings(blocker_dict.get("workflow_phases") or []),
+                "issue_family": _normalize_text(blocker_dict.get("issue_family") or ""),
             }
         )
 
@@ -1148,7 +1248,7 @@ def build_blocker_follow_up_summary(
     )
     if has_notice_reference and not notice_lead_present:
         _add_blocker(
-            {
+            _build_blocker_record("missing_written_notice_chain", {
                 "blocker_id": "missing_written_notice_chain",
                 "section": "proof_leads",
                 "reason": "Written notice chain is referenced but the sending party/date/source artifact is still missing.",
@@ -1156,7 +1256,7 @@ def build_blocker_follow_up_summary(
                 "recommended_support_kind": "evidence",
                 "proof_path_status": "missing",
                 "blocker_tags": ["notice_chain", "exact_dates"],
-            }
+            })
         )
 
     hearing_reference = any(token in full_text for token in ("hearing", "appeal", "grievance"))
@@ -1168,7 +1268,7 @@ def build_blocker_follow_up_summary(
     )
     if hearing_reference and not hearing_has_date:
         _add_blocker(
-            {
+            _build_blocker_record("missing_hearing_request_timing", {
                 "blocker_id": "missing_hearing_request_timing",
                 "section": "chronology",
                 "reason": "Hearing/appeal request timing is missing day-level anchors.",
@@ -1176,7 +1276,7 @@ def build_blocker_follow_up_summary(
                 "recommended_support_kind": "intake_clarification",
                 "proof_path_status": "missing",
                 "blocker_tags": ["exact_dates", "hearing_timeline"],
-            }
+            })
         )
 
     response_reference = any(token in full_text for token in ("response", "responded", "replied", "denied", "approved", "ignored", "no response"))
@@ -1188,7 +1288,7 @@ def build_blocker_follow_up_summary(
     )
     if response_reference and not response_has_date:
         _add_blocker(
-            {
+            _build_blocker_record("missing_response_timing", {
                 "blocker_id": "missing_response_timing",
                 "section": "chronology",
                 "reason": "Response or non-response events are described without date anchors.",
@@ -1196,7 +1296,7 @@ def build_blocker_follow_up_summary(
                 "recommended_support_kind": "intake_clarification",
                 "proof_path_status": "missing",
                 "blocker_tags": ["exact_dates", "response_timeline"],
-            }
+            })
         )
 
     staff_name_pattern = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b")
@@ -1206,7 +1306,7 @@ def build_blocker_follow_up_summary(
     )
     if has_named_staff and not has_staff_title:
         _add_blocker(
-            {
+            _build_blocker_record("missing_staff_name_title_mapping", {
                 "blocker_id": "missing_staff_name_title_mapping",
                 "section": "actors",
                 "reason": "Named staff are present but title/role mapping is incomplete.",
@@ -1214,7 +1314,7 @@ def build_blocker_follow_up_summary(
                 "recommended_support_kind": "intake_clarification",
                 "proof_path_status": "missing",
                 "blocker_tags": ["staff_identity"],
-            }
+            })
         )
 
     retaliation_claim = any(
@@ -1241,7 +1341,7 @@ def build_blocker_follow_up_summary(
         ) or any(token in full_text for token in ("because", "after", "soon after", "in response to", "due to"))
         if not (protected_present and adverse_present and causation_connector):
             _add_blocker(
-                {
+                _build_blocker_record("missing_retaliation_causation_sequence", {
                     "blocker_id": "missing_retaliation_causation_sequence",
                     "section": "conduct",
                     "reason": "Retaliation theory still lacks protected-activity to adverse-action sequencing and causation links.",
@@ -1249,12 +1349,30 @@ def build_blocker_follow_up_summary(
                     "recommended_support_kind": "intake_clarification",
                     "proof_path_status": "missing",
                     "blocker_tags": ["retaliation_sequence", "exact_dates", "staff_identity"],
-                }
+                })
             )
 
+    summary_objectives = _unique_metadata_strings([
+        objective
+        for blocker in blocking_items
+        for objective in _coerce_list(_coerce_dict(blocker).get("blocker_objectives"))
+    ])
+    summary_targets = _unique_metadata_strings([
+        target
+        for blocker in blocking_items
+        for target in _coerce_list(_coerce_dict(blocker).get("extraction_targets"))
+    ])
+    summary_phases = _unique_metadata_strings([
+        phase
+        for blocker in blocking_items
+        for phase in _coerce_list(_coerce_dict(blocker).get("workflow_phases"))
+    ])
     return {
         "blocking_items": blocking_items,
         "blocking_item_count": len(blocking_items),
+        "blocking_objectives": summary_objectives,
+        "extraction_targets": summary_targets,
+        "workflow_phases": summary_phases,
     }
 
 
@@ -1544,13 +1662,9 @@ def build_intake_sections(
     chronology_missing_items: List[str] = []
     if not has_dates:
         chronology_missing_items.append("event dates or timeline anchors")
-    if not has_actor_decision_timeline:
-        chronology_missing_items.append("actor-by-actor decision timeline with date anchors")
-    chronology_status = (
-        "complete"
-        if not chronology_missing_items
-        else ("partial" if has_dates else "missing")
-    )
+        if not has_actor_decision_timeline:
+            chronology_missing_items.append("actor-by-actor decision timeline with date anchors")
+    chronology_status = "complete" if has_dates else "missing"
 
     conduct_missing_items: List[str] = []
     if not candidate_claims:

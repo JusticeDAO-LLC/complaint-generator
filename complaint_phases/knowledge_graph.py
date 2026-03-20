@@ -845,42 +845,6 @@ class KnowledgeGraphBuilder:
                 },
                 'confidence': 0.85
             })
-            if any(term in lower_text for term in retaliation_context_terms):
-                add_entity({
-                    'type': 'fact',
-                    'name': 'Protected activity event',
-                    'attributes': {
-                        'fact_type': 'timeline',
-                        'predicate_family': 'protected_activity',
-                        'event_label': 'Protected activity',
-                        'description': short_description(text),
-                    },
-                    'confidence': 0.6,
-                })
-            if any(term in lower_text for term in adverse_action_terms):
-                add_entity({
-                    'type': 'fact',
-                    'name': 'Adverse action event',
-                    'attributes': {
-                        'fact_type': 'timeline',
-                        'predicate_family': 'adverse_action',
-                        'event_label': 'Adverse action',
-                        'description': short_description(text),
-                    },
-                    'confidence': 0.6,
-                })
-            if any(token in lower_text for token in ('after', 'because', 'due to', 'soon after', 'in response to')):
-                add_entity({
-                    'type': 'fact',
-                    'name': 'Retaliation causation link',
-                    'attributes': {
-                        'fact_type': 'timeline',
-                        'predicate_family': 'causation',
-                        'event_label': 'Causation sequence',
-                        'description': short_description(text),
-                    },
-                    'confidence': 0.6,
-                })
         
         if 'employer' in lower_text:
             add_entity({
@@ -928,6 +892,8 @@ class KnowledgeGraphBuilder:
             r'\b(?:last|this|next)\s+(?:week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b',
             r'\b\d+\s+(?:day|week|month|year)s?\s+ago\b',
             r'\b(?:a|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:day|week|month|year)s?\s+ago\b',
+            r'\b\d+\s+(?:day|week|month|year)s?\s+(?:after|before|later|earlier)\b',
+            r'\b(?:a|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:day|week|month|year)s?\s+(?:after|before|later|earlier)\b',
         ]
         found_dates: set[str] = set()
         for pattern in date_patterns:
@@ -944,6 +910,185 @@ class KnowledgeGraphBuilder:
                 'attributes': {},
                 'confidence': 0.8
             })
+
+        sentence_parts = [
+            sentence.strip(" \t\r\n,;:-")
+            for sentence in re.split(r'(?<=[.!?])\s+|[\r\n]+', text or '')
+            if sentence and sentence.strip()
+        ]
+
+        def _extract_event_date_reference(text_value: str) -> Optional[str]:
+            for pattern in date_patterns:
+                match = re.search(pattern, text_value or '')
+                if match:
+                    return match.group(0).strip()
+            for pattern in relative_patterns:
+                match = re.search(pattern, text_value or '', flags=re.IGNORECASE)
+                if match:
+                    return match.group(0).strip()
+            return None
+
+        def add_timeline_event_fact(
+            sentence: str,
+            *,
+            predicate_family: str,
+            event_label: str,
+            name_prefix: str,
+            confidence: float,
+        ) -> None:
+            description = short_description(sentence)
+            attributes: Dict[str, Any] = {
+                'fact_type': 'timeline',
+                'predicate_family': predicate_family,
+                'event_label': event_label,
+                'description': description,
+            }
+            event_date = _extract_event_date_reference(sentence)
+            if event_date:
+                attributes['event_date_or_range'] = event_date
+            add_entity({
+                'type': 'fact',
+                'name': f"{name_prefix}: {short_description(sentence, 60)}",
+                'attributes': attributes,
+                'confidence': confidence,
+            })
+
+        protected_activity_event_count = 0
+        adverse_action_event_count = 0
+        causation_event_count = 0
+        notice_event_count = 0
+        hearing_event_count = 0
+        response_event_count = 0
+        protected_activity_markers = (
+            'complained',
+            'complaint',
+            'reported',
+            'grievance',
+            'hr',
+            'human resources',
+            'requested accommodation',
+            'whistlebl',
+        )
+        notice_sentence_markers = (
+            'notice',
+            'letter',
+            'email',
+            'emailed',
+            'text',
+            'message',
+            'voicemail',
+            'mailed',
+            'sent',
+        )
+        hearing_sentence_markers = (
+            'hearing',
+            'appeal',
+            'grievance',
+            'review',
+        )
+        hearing_request_markers = (
+            'requested',
+            'request',
+            'asked for',
+            'filed',
+            'submitted',
+            'sought',
+        )
+        response_sentence_markers = (
+            'response',
+            'responded',
+            'reply',
+            'replied',
+            'denied',
+            'approved',
+            'ignored',
+            'decision',
+            'upheld',
+            'rejected',
+            'no response',
+        )
+        causation_markers = (
+            'after',
+            'because',
+            'due to',
+            'soon after',
+            'in response to',
+            'later',
+        )
+        for sentence in sentence_parts:
+            lowered_sentence = sentence.lower()
+            has_protected_marker = any(marker in lowered_sentence for marker in protected_activity_markers)
+            has_adverse_marker = any(marker in lowered_sentence for marker in adverse_action_terms)
+            has_causation_marker = any(marker in lowered_sentence for marker in causation_markers)
+            if has_protected_marker:
+                add_timeline_event_fact(
+                    sentence,
+                    predicate_family='protected_activity',
+                    event_label='Protected activity',
+                    name_prefix='Protected activity event',
+                    confidence=0.63,
+                )
+                protected_activity_event_count += 1
+            if has_adverse_marker:
+                add_timeline_event_fact(
+                    sentence,
+                    predicate_family='adverse_action',
+                    event_label='Adverse action',
+                    name_prefix='Adverse action event',
+                    confidence=0.63,
+                )
+                adverse_action_event_count += 1
+            if has_causation_marker and (
+                (has_protected_marker and has_adverse_marker)
+                or (has_adverse_marker and any(marker in lower_text for marker in protected_activity_markers))
+                or (has_protected_marker and any(marker in lower_text for marker in adverse_action_terms))
+            ):
+                add_timeline_event_fact(
+                    sentence,
+                    predicate_family='causation',
+                    event_label='Causation sequence',
+                    name_prefix='Retaliation causation event',
+                    confidence=0.64,
+                )
+                causation_event_count += 1
+            if any(marker in lowered_sentence for marker in notice_sentence_markers):
+                add_timeline_event_fact(
+                    sentence,
+                    predicate_family='notice_chain',
+                    event_label='Notice communication',
+                    name_prefix='Notice event',
+                    confidence=0.62,
+                )
+                notice_event_count += 1
+            if any(marker in lowered_sentence for marker in hearing_sentence_markers) and any(
+                marker in lowered_sentence for marker in hearing_request_markers
+            ):
+                add_timeline_event_fact(
+                    sentence,
+                    predicate_family='hearing_process',
+                    event_label='Hearing request event',
+                    name_prefix='Hearing request event',
+                    confidence=0.64,
+                )
+                hearing_event_count += 1
+            elif any(marker in lowered_sentence for marker in hearing_sentence_markers):
+                add_timeline_event_fact(
+                    sentence,
+                    predicate_family='hearing_process',
+                    event_label='Hearing/appeal event',
+                    name_prefix='Hearing event',
+                    confidence=0.61,
+                )
+                hearing_event_count += 1
+            if any(marker in lowered_sentence for marker in response_sentence_markers):
+                add_timeline_event_fact(
+                    sentence,
+                    predicate_family='response_timeline',
+                    event_label='Response event',
+                    name_prefix='Response event',
+                    confidence=0.63,
+                )
+                response_event_count += 1
 
         # Add a termination-related claim if relevant keywords appear
         if 'terminated' in lower_text or 'fired' in lower_text:
@@ -1094,7 +1239,7 @@ class KnowledgeGraphBuilder:
                 'confidence': 0.55
             })
 
-        if any(token in lower_text for token in ('hearing', 'appeal', 'grievance')):
+        if hearing_event_count == 0 and any(token in lower_text for token in ('hearing', 'appeal', 'grievance')):
             add_entity({
                 'type': 'fact',
                 'name': 'Hearing or appeal process event',
@@ -1106,7 +1251,19 @@ class KnowledgeGraphBuilder:
                 },
                 'confidence': 0.58,
             })
-        if any(token in lower_text for token in ('response', 'responded', 'replied', 'denied', 'approved', 'ignored', 'no response')):
+        if notice_event_count == 0 and any(token in lower_text for token in ('notice', 'letter', 'email', 'message', 'text', 'voicemail')):
+            add_entity({
+                'type': 'fact',
+                'name': 'Written notice or communication event',
+                'attributes': {
+                    'fact_type': 'timeline',
+                    'predicate_family': 'notice_chain',
+                    'event_label': 'Notice communication',
+                    'description': short_description(text),
+                },
+                'confidence': 0.58,
+            })
+        if response_event_count == 0 and any(token in lower_text for token in ('response', 'responded', 'replied', 'denied', 'approved', 'ignored', 'no response')):
             add_entity({
                 'type': 'fact',
                 'name': 'Agency/employer response event',
@@ -1117,6 +1274,42 @@ class KnowledgeGraphBuilder:
                     'description': short_description(text),
                 },
                 'confidence': 0.58,
+            })
+        if protected_activity_event_count == 0 and any(term in lower_text for term in retaliation_context_terms):
+            add_entity({
+                'type': 'fact',
+                'name': 'Protected activity event',
+                'attributes': {
+                    'fact_type': 'timeline',
+                    'predicate_family': 'protected_activity',
+                    'event_label': 'Protected activity',
+                    'description': short_description(text),
+                },
+                'confidence': 0.6,
+            })
+        if adverse_action_event_count == 0 and any(term in lower_text for term in adverse_action_terms):
+            add_entity({
+                'type': 'fact',
+                'name': 'Adverse action event',
+                'attributes': {
+                    'fact_type': 'timeline',
+                    'predicate_family': 'adverse_action',
+                    'event_label': 'Adverse action',
+                    'description': short_description(text),
+                },
+                'confidence': 0.6,
+            })
+        if causation_event_count == 0 and any(token in lower_text for token in ('after', 'because', 'due to', 'soon after', 'in response to', 'later')):
+            add_entity({
+                'type': 'fact',
+                'name': 'Retaliation causation link',
+                'attributes': {
+                    'fact_type': 'timeline',
+                    'predicate_family': 'causation',
+                    'event_label': 'Causation sequence',
+                    'description': short_description(text),
+                },
+                'confidence': 0.6,
             })
 
         # If we still don't have any organization, add a generic employer when text implies one.
@@ -1136,19 +1329,56 @@ class KnowledgeGraphBuilder:
             r"officer|landlord|neighbor|representative"
         )
         for match in re.finditer(
-            rf"\b(?:my|the|a|an)\s+(?P<role>{role_keywords})\s+(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){{0,2}})\b",
+            rf"\b(?:my|the|a|an)\s+(?P<role>{role_keywords})\s+(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){{0,2}})(?=\s+(?:denied|approved|replied|responded|emailed|called|told|said|was|is|did)\b|[.,;]|$)",
             text or "",
             re.IGNORECASE
         ):
             role = (match.group("role") or "").strip().lower()
             name = (match.group("name") or "").strip()
-            if name:
+            if name and all(part[:1].isupper() for part in name.split() if part):
                 add_entity({
                     'type': 'person',
                     'name': name,
                     'attributes': {'role': role},
                     'confidence': 0.7
                 })
+
+        expanded_title_keywords = (
+            r"regional manager|property manager|case manager|program manager|leasing manager|"
+            r"hearing officer|appeals officer|hr manager|human resources manager|director|"
+            r"assistant director|supervisor|coordinator|specialist|officer|landlord|owner"
+        )
+        for match in re.finditer(
+            rf"\b(?P<title>{expanded_title_keywords})\s+(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){{1,2}})(?=\s+(?:denied|approved|replied|responded|emailed|called|told|said|was|is|did)\b|[.,;]|$)",
+            text or "",
+            re.IGNORECASE,
+        ):
+            title = (match.group("title") or "").strip().lower()
+            name = (match.group("name") or "").strip()
+            if not name or not title or not all(part[:1].isupper() for part in name.split() if part):
+                continue
+            add_entity({
+                'type': 'person',
+                'name': name,
+                'attributes': {'role': title},
+                'confidence': 0.74,
+            })
+
+        for match in re.finditer(
+            rf"\b(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){{1,2}})\s+(?:was|is|served as|acted as|worked as)\s+(?:the\s+)?(?P<title>{expanded_title_keywords})\b",
+            text or "",
+            re.IGNORECASE,
+        ):
+            name = (match.group("name") or "").strip()
+            title = (match.group("title") or "").strip().lower()
+            if not name or not title or not all(part[:1].isupper() for part in name.split() if part):
+                continue
+            add_entity({
+                'type': 'person',
+                'name': name,
+                'attributes': {'role': title},
+                'confidence': 0.72,
+            })
 
         for match in re.finditer(
             r"\b(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\s*,\s*(?P<title>[A-Za-z][A-Za-z\s/&-]{2,60})\b",

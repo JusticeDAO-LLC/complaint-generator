@@ -51,7 +51,7 @@ class ComplaintDenoiser:
         self.critic_weight = self._env_float("CG_DENOISER_CRITIC_WEIGHT", 1.0)
         self.phase_focus_order = self._env_csv(
             "CG_DENOISER_PHASE_FOCUS_ORDER",
-            ["graph_analysis", "intake_questioning", "document_generation"],
+            ["graph_analysis", "document_generation", "intake_questioning"],
         )
 
         seed = os.getenv("CG_DENOISER_SEED")
@@ -385,6 +385,98 @@ class ComplaintDenoiser:
             "policy change",
         ]
         return any(cue in lowered for cue in cues)
+
+
+    def _contains_confirmation_placeholder(self, text: str) -> bool:
+        if not text:
+            return False
+        lowered = text.lower()
+        placeholder_cues = [
+            "needs confirmation",
+            "need confirmation",
+            "to be confirmed",
+            "tbd",
+            "unknown",
+            "not sure",
+            "unsure",
+            "can't remember",
+            "cannot remember",
+            "i think",
+            "maybe",
+            "possibly",
+        ]
+        return any(cue in lowered for cue in placeholder_cues)
+
+
+    def _contains_causation_signal(self, text: str) -> bool:
+        if not text:
+            return False
+        lowered = text.lower()
+        sequencing_terms = [
+            "because",
+            "after",
+            "soon after",
+            "due to",
+            "in retaliation",
+            "as a result",
+            "right after",
+        ]
+        return any(term in lowered for term in sequencing_terms)
+
+
+    def _contains_retaliation_context(self, text: str) -> bool:
+        if not text:
+            return False
+        lowered = text.lower()
+        retaliation_terms = [
+            "retaliation",
+            "protected activity",
+            "complained",
+            "reported",
+            "adverse action",
+            "discipline",
+            "fired",
+            "terminated",
+            "demoted",
+        ]
+        return any(term in lowered for term in retaliation_terms)
+
+
+    def _extract_document_mentions(self, text: str) -> List[str]:
+        if not text:
+            return []
+        lowered = text.lower()
+        documents = []
+        doc_tokens = [
+            ("termination letter", "Termination letter"),
+            ("notice", "Notice"),
+            ("letter", "Letter"),
+            ("email", "Email"),
+            ("text message", "Text message"),
+            ("message", "Message"),
+            ("voicemail", "Voicemail"),
+            ("record", "Record"),
+            ("policy", "Policy"),
+            ("handbook", "Handbook"),
+            ("write-up", "Write-up"),
+            ("write up", "Write-up"),
+            ("memo", "Memo"),
+        ]
+        for token, label in doc_tokens:
+            if token in lowered and label not in documents:
+                documents.append(label)
+        return documents
+
+
+    def _append_unique_text_item(self, values: Any, text_value: str) -> List[str]:
+        normalized_value = str(text_value or "").strip()
+        if not normalized_value:
+            return list(values) if isinstance(values, list) else []
+        normalized_lower = normalized_value.lower()
+        existing = [str(item).strip() for item in values] if isinstance(values, list) else []
+        if normalized_lower not in {item.lower() for item in existing if item}:
+            existing.append(normalized_value)
+        return existing
 
 
     def _extract_named_people_with_titles(self, text: str) -> List[Tuple[str, str]]:
@@ -1177,6 +1269,160 @@ class ComplaintDenoiser:
                 return questions[:max_questions]
 
         return questions
+
+    def _build_history_follow_up_questions(
+        self,
+        max_questions: int,
+    ) -> List[Dict[str, Any]]:
+        """Generate follow-up questions from prior low-specificity answers."""
+        if max_questions <= 0 or not self.questions_asked:
+            return []
+
+        questions: List[Dict[str, Any]] = []
+        seen_keys: Set[str] = set()
+        recent_history = list(reversed(self.questions_asked[-12:]))
+
+        for entry in recent_history:
+            if len(questions) >= max_questions:
+                break
+            if not isinstance(entry, dict):
+                continue
+            question = entry.get('question')
+            question = question if isinstance(question, dict) else {}
+            answer_text = str(entry.get('answer') or '').strip()
+            if not answer_text:
+                continue
+
+            qtype = str(question.get('type') or '').strip().lower()
+            needs_confirmation = self._contains_confirmation_placeholder(answer_text)
+            retaliation_context = self._contains_retaliation_context(answer_text)
+            causation_signal = self._contains_causation_signal(answer_text)
+            has_dates = bool(self._extract_date_strings(answer_text))
+            has_named_actors = bool(self._extract_named_role_people(answer_text) or self._extract_named_people_with_titles(answer_text))
+            has_documents = bool(self._extract_document_mentions(answer_text))
+
+            if needs_confirmation:
+                follow_ups = [
+                    (
+                        'timeline',
+                        "You noted details that still need confirmation. What is the most specific date (month/day/year) for the event, and who took the action on that date?",
+                        {
+                            'gap_type': 'missing_exact_action_dates',
+                            'follow_up_reason': 'needs_confirmation_placeholder',
+                            'workflow_phase': 'graph_analysis',
+                            'extraction_targets': ['exact_dates', 'actor_name', 'actor_role', 'event_order'],
+                            'patchability_markers': ['chronology_patch_anchor', 'actor_link_patch_anchor'],
+                        },
+                    ),
+                    (
+                        'evidence',
+                        "Which exact document, message, email, or notice can confirm that event, and what date appears on it?",
+                        {
+                            'gap_type': 'missing_written_notice',
+                            'follow_up_reason': 'needs_confirmation_placeholder',
+                            'workflow_phase': 'document_generation',
+                            'extraction_targets': ['document_type', 'document_date', 'document_owner'],
+                            'patchability_markers': ['support_patch_anchor', 'notice_chain_patch_anchor'],
+                        },
+                    ),
+                ]
+                for follow_type, follow_text, follow_context in follow_ups:
+                    key = f"{follow_type}:{self._normalize_question_text(follow_text)}"
+                    if key in seen_keys or self._already_asked(follow_text):
+                        continue
+                    seen_keys.add(key)
+                    questions.append(self._question_candidate(
+                        source='history_follow_up',
+                        question_type=follow_type,
+                        question_text=follow_text,
+                        context=follow_context,
+                        priority='high',
+                    ))
+                    if len(questions) >= max_questions:
+                        break
+
+            if len(questions) >= max_questions:
+                break
+
+            should_probe_causation = (
+                retaliation_context
+                and (qtype in {'timeline', 'responsible_party', 'clarification', 'requirement', 'relationship'} or needs_confirmation)
+                and (not causation_signal or not has_dates or not has_named_actors)
+            )
+            if should_probe_causation:
+                causation_text = (
+                    "Please identify the protected activity, the adverse action, the exact dates for each, "
+                    "and why you believe the adverse action happened because of the protected activity."
+                )
+                decision_actor_text = (
+                    "Who specifically made or approved the adverse decision (full name, title, and organization), "
+                    "and who communicated it to you?"
+                )
+                causation_items = [
+                    (
+                        'timeline',
+                        causation_text,
+                        {
+                            'gap_type': 'retaliation_missing_causation_link',
+                            'follow_up_reason': 'retaliation_causation_probe',
+                            'workflow_phase': 'graph_analysis',
+                            'extraction_targets': ['protected_activity', 'adverse_action', 'exact_dates', 'causation_link'],
+                            'patchability_markers': ['chronology_patch_anchor', 'causation_patch_anchor'],
+                        },
+                    ),
+                    (
+                        'responsible_party',
+                        decision_actor_text,
+                        {
+                            'gap_type': 'missing_staff_identity',
+                            'follow_up_reason': 'retaliation_decision_maker_probe',
+                            'workflow_phase': 'graph_analysis',
+                            'extraction_targets': ['actor_name', 'actor_role', 'decision_maker'],
+                            'patchability_markers': ['actor_link_patch_anchor', 'decision_actor_patch_anchor'],
+                        },
+                    ),
+                ]
+                for follow_type, follow_text, follow_context in causation_items:
+                    key = f"{follow_type}:{self._normalize_question_text(follow_text)}"
+                    if key in seen_keys or self._already_asked(follow_text):
+                        continue
+                    seen_keys.add(key)
+                    questions.append(self._question_candidate(
+                        source='history_follow_up',
+                        question_type=follow_type,
+                        question_text=follow_text,
+                        context=follow_context,
+                        priority='high',
+                    ))
+                    if len(questions) >= max_questions:
+                        break
+
+            if len(questions) >= max_questions:
+                break
+
+            # Ask for concrete documentary anchors if narrative detail exists but sources are absent.
+            if (retaliation_context or needs_confirmation) and not has_documents and len(questions) < max_questions:
+                doc_text = (
+                    "What specific document or message shows who made the decision and when it was communicated?"
+                )
+                key = f"evidence:{self._normalize_question_text(doc_text)}"
+                if key not in seen_keys and not self._already_asked(doc_text):
+                    seen_keys.add(key)
+                    questions.append(self._question_candidate(
+                        source='history_follow_up',
+                        question_type='evidence',
+                        question_text=doc_text,
+                        context={
+                            'gap_type': 'missing_written_notice',
+                            'follow_up_reason': 'document_anchor_probe',
+                            'workflow_phase': 'document_generation',
+                            'extraction_targets': ['document_type', 'document_date', 'document_owner', 'actor_name'],
+                            'patchability_markers': ['support_patch_anchor', 'notice_chain_patch_anchor', 'decision_actor_patch_anchor'],
+                        },
+                        priority='high',
+                    ))
+
+        return questions[:max_questions]
 
     def collect_question_candidates(
         self,

@@ -11,6 +11,7 @@ from intake_status import (
     build_intake_status_summary,
     build_intake_warning_entries,
 )
+from complaint_phases import ComplaintPhase
 from claim_support_review import summarize_claim_reasoning_review
 
 try:
@@ -182,6 +183,7 @@ def _contains_causation_link(text: Any) -> bool:
 
 
 _INTAKE_OBJECTIVE_ALIASES = {
+    "exact_dates": "exact_dates",
     "timeline": "timeline",
     "timeline_dates": "timeline",
     "actors": "actors",
@@ -190,6 +192,7 @@ _INTAKE_OBJECTIVE_ALIASES = {
     "staff_titles": "staff_names_titles",
     "causation_link": "causation_link",
     "causation": "causation_link",
+    "causation_sequence": "causation_sequence",
     "anchor_adverse_action": "anchor_adverse_action",
     "adverse_action": "anchor_adverse_action",
     "anchor_appeal_rights": "anchor_appeal_rights",
@@ -201,10 +204,12 @@ _INTAKE_OBJECTIVE_ALIASES = {
 }
 
 _INTAKE_OBJECTIVE_PRIORITY = {
+    "exact_dates": 1.0,
     "timeline": 1.0,
     "staff_names_titles": 1.0,
     "actors": 0.9,
     "causation_link": 1.0,
+    "causation_sequence": 1.0,
     "anchor_adverse_action": 1.0,
     "anchor_appeal_rights": 0.9,
     "hearing_request_timing": 0.9,
@@ -212,10 +217,12 @@ _INTAKE_OBJECTIVE_PRIORITY = {
 }
 
 _OBJECTIVE_PROMPTS = {
+    "exact_dates": "Capture exact dates or best available day-level anchors for each notice, decision, request, and response event.",
     "timeline": "Capture exact event dates or anchored date ranges for each key intake, complaint, and adverse-action event.",
     "actors": "Identify the HACC actor-by-actor sequence for who made, communicated, and carried out each decision.",
     "staff_names_titles": "Lock specific HACC staff names and titles (or best-known titles) tied to each step.",
     "causation_link": "Document facts that tie protected activity to the adverse treatment using timing, statements, and sequence changes.",
+    "causation_sequence": "Document the sequence from protected activity to adverse action, including timing, knowledge, and intervening steps.",
     "anchor_adverse_action": "Confirm the exact adverse action (denial, termination, threatened loss) and its communication date.",
     "anchor_appeal_rights": "Confirm written notice, hearing/review request timing, and whether those requests were accepted, denied, or ignored.",
     "hearing_request_timing": "Capture when hearing or review was requested, when HACC responded, and any gaps between request and response.",
@@ -232,6 +239,26 @@ def _normalize_intake_objective(value: Any) -> str:
 
 def _normalize_intake_objectives(values: Any) -> List[str]:
     return _dedupe_text_values(_normalize_intake_objective(item) for item in list(values or []))
+
+
+def _normalize_blocker_records(value: Any) -> List[Dict[str, Any]]:
+    return [dict(item) for item in (value if isinstance(value, list) else []) if isinstance(item, dict)]
+
+
+def _build_blocker_prompt(blocker: Dict[str, Any]) -> str:
+    blocker_dict = blocker if isinstance(blocker, dict) else {}
+    primary_objective = _normalize_intake_objective(blocker_dict.get("primary_objective"))
+    extraction_targets = _dedupe_text_values(blocker_dict.get("extraction_targets") or [])
+    reason = str(blocker_dict.get("reason") or "").strip()
+    objective_prompt = _OBJECTIVE_PROMPTS.get(primary_objective, "") if primary_objective else ""
+    target_text = f" Extraction targets: {', '.join(extraction_targets)}." if extraction_targets else ""
+    if reason and objective_prompt:
+        return f"Blocker follow-up: {reason} {objective_prompt}{target_text}".strip()
+    if reason:
+        return f"Blocker follow-up: {reason}{target_text}".strip()
+    if objective_prompt:
+        return f"Blocker follow-up: {objective_prompt}{target_text}".strip()
+    return ""
 
 
 def _build_claim_support_temporal_handoff(intake_case_summary: Any) -> Dict[str, Any]:
@@ -791,6 +818,21 @@ class AgenticDocumentOptimizer:
         intake_status = build_intake_status_summary(self.mediator)
         intake_handoff = intake_status.get("intake_summary_handoff") if isinstance(intake_status, dict) else {}
         intake_handoff = intake_handoff if isinstance(intake_handoff, dict) else {}
+        phase_manager = getattr(self.mediator, "phase_manager", None)
+        intake_case_file = {}
+        if phase_manager is not None and hasattr(phase_manager, "get_phase_data"):
+            try:
+                intake_case_file = phase_manager.get_phase_data(ComplaintPhase.INTAKE, "intake_case_file") or {}
+            except Exception:
+                intake_case_file = {}
+        intake_case_file = intake_case_file if isinstance(intake_case_file, dict) else {}
+        blocker_follow_up_summary = intake_case_file.get("blocker_follow_up_summary") if isinstance(intake_case_file.get("blocker_follow_up_summary"), dict) else {}
+        blocker_items = _normalize_blocker_records(blocker_follow_up_summary.get("blocking_items"))
+        open_items = _normalize_blocker_records(intake_case_file.get("open_items"))
+        blocker_open_items = [
+            item for item in open_items
+            if str(item.get("kind") or "").strip().lower() == "blocker_follow_up"
+        ]
         confirmation = (
             intake_handoff.get("complainant_summary_confirmation")
             if isinstance(intake_handoff.get("complainant_summary_confirmation"), dict)
@@ -819,8 +861,28 @@ class AgenticDocumentOptimizer:
             for key, value in objective_question_counts.items()
             if key
         }
+        blocker_objectives = _normalize_intake_objectives(
+            list(blocker_follow_up_summary.get("blocking_objectives") or [])
+            + [objective for blocker in blocker_items for objective in list(blocker.get("blocker_objectives") or [])]
+            + [item.get("primary_objective") for item in blocker_open_items]
+        )
+        blocker_extraction_targets = _dedupe_text_values(
+            list(blocker_follow_up_summary.get("extraction_targets") or [])
+            + [target for blocker in blocker_items for target in list(blocker.get("extraction_targets") or [])]
+            + [target for item in blocker_open_items for target in list(item.get("extraction_targets") or [])]
+        )
+        blocker_workflow_phases = _dedupe_text_values(
+            list(blocker_follow_up_summary.get("workflow_phases") or [])
+            + [phase for blocker in blocker_items for phase in list(blocker.get("workflow_phases") or [])]
+            + [phase for item in blocker_open_items for phase in list(item.get("workflow_phases") or [])]
+        )
+        blocker_issue_families = _dedupe_text_values(
+            [blocker.get("issue_family") for blocker in blocker_items]
+            + [item.get("issue_family") for item in blocker_open_items]
+        )
         unresolved_objectives = _dedupe_text_values(
             list(uncovered_objectives)
+            + list(blocker_objectives)
             + [key for key, count in objective_question_counts.items() if count <= 0]
         )
         critical_unresolved = [
@@ -828,6 +890,10 @@ class AgenticDocumentOptimizer:
             for objective in _INTAKE_OBJECTIVE_PRIORITY
             if objective in unresolved_objectives
         ]
+        blocker_follow_up_prompts = _dedupe_text_values(
+            [_build_blocker_prompt(blocker) for blocker in blocker_items]
+            + [_build_blocker_prompt(item) for item in blocker_open_items]
+        )
 
         return {
             "claims": claim_contexts,
@@ -840,11 +906,18 @@ class AgenticDocumentOptimizer:
                 "objective_question_counts": objective_question_counts,
                 "unresolved_objectives": unresolved_objectives,
                 "critical_unresolved_objectives": critical_unresolved,
+                "blocker_count": int(blocker_follow_up_summary.get("blocking_item_count") or len(blocker_items) or 0),
+                "blocker_items": blocker_items,
+                "blocker_open_items": blocker_open_items,
+                "blocking_objectives": blocker_objectives,
+                "blocker_extraction_targets": blocker_extraction_targets,
+                "blocker_workflow_phases": blocker_workflow_phases,
+                "blocker_issue_families": blocker_issue_families,
                 "recommended_follow_up_prompts": [
                     _OBJECTIVE_PROMPTS[objective]
                     for objective in critical_unresolved
                     if objective in _OBJECTIVE_PROMPTS
-                ],
+                ] + blocker_follow_up_prompts,
             },
             "capabilities": self._router_status(),
         }
@@ -1706,12 +1779,30 @@ class AgenticDocumentOptimizer:
             for item in list(priorities.get("critical_unresolved_objectives") or [])
             if _normalize_intake_objective(item)
         }
+        blocker_extraction_targets = {
+            str(item).strip().lower()
+            for item in list(priorities.get("blocker_extraction_targets") or [])
+            if str(item).strip()
+        }
+        blocker_workflow_phases = {
+            str(item).strip().lower()
+            for item in list(priorities.get("blocker_workflow_phases") or [])
+            if str(item).strip()
+        }
+        blocker_issue_families = {
+            str(item).strip().lower()
+            for item in list(priorities.get("blocker_issue_families") or [])
+            if str(item).strip()
+        }
+        blocker_count = int(priorities.get("blocker_count") or 0)
         graph_blockers = unresolved_objectives.intersection(
             {
+                "exact_dates",
                 "timeline",
                 "actors",
                 "staff_names_titles",
                 "causation_link",
+                "causation_sequence",
                 "anchor_adverse_action",
                 "anchor_appeal_rights",
                 "hearing_request_timing",
@@ -1722,6 +1813,7 @@ class AgenticDocumentOptimizer:
             {
                 "documents",
                 "harm_remedy",
+                "exact_dates",
                 "anchor_adverse_action",
                 "anchor_appeal_rights",
                 "staff_names_titles",
@@ -1744,6 +1836,8 @@ class AgenticDocumentOptimizer:
                 + claims_pressure * 0.15
                 + min(len(graph_blockers) * 0.08, 0.28)
                 + min(len(critical_unresolved.intersection(graph_blockers)) * 0.05, 0.15)
+                + (0.08 if blocker_workflow_phases.intersection({"graph_analysis"}) else 0.0)
+                + min(len(blocker_extraction_targets.intersection({"timeline_anchors", "actor_role_mapping", "retaliation_sequence", "hearing_process", "response_timeline"})) * 0.03, 0.15)
             ),
             "document_generation": _clamp(
                 claims_pressure * 0.2
@@ -1752,13 +1846,25 @@ class AgenticDocumentOptimizer:
                 + certificate_pressure * 0.15
                 + packet_pressure * 0.15
                 + min(len(document_blockers) * 0.06, 0.18)
+                + (0.05 if blocker_workflow_phases.intersection({"document_generation"}) else 0.0)
             ),
             "intake_questioning": _clamp(
-                intake_pressure
+                (intake_pressure * 0.55)
                 + min(len(unresolved_objectives) * 0.05, 0.2)
                 + min(len(critical_unresolved) * 0.04, 0.12)
+                + min(blocker_count * 0.03, 0.12)
+                + (0.04 if blocker_workflow_phases.intersection({"intake_questioning"}) else 0.0)
             ),
         }
+        if blocker_issue_families.intersection({"notice_chain", "response_timeline", "hearing_process"}):
+            phase_scores["document_generation"] = _clamp(float(phase_scores.get("document_generation") or 0.0) + 0.04)
+        if graph_blockers and factual_pressure >= 0.35:
+            phase_scores["graph_analysis"] = _clamp(
+                max(
+                    float(phase_scores.get("graph_analysis") or 0.0),
+                    float(phase_scores.get("intake_questioning") or 0.0) + 0.05,
+                )
+            )
 
         phase_focus_order = [
             name
@@ -1936,6 +2042,18 @@ class AgenticDocumentOptimizer:
                     "kind": "intake_objective_prompt",
                 }
             )
+        for blocker in intake_priorities.get("blocker_items") or []:
+            if not isinstance(blocker, dict):
+                continue
+            blocker_reason = str(blocker.get("reason") or "").strip()
+            if blocker_reason:
+                candidate_rows.append(
+                    {
+                        "claim_type": "intake_blocker",
+                        "text": blocker_reason,
+                        "kind": "blocker_reason",
+                    }
+                )
 
         ranked_rows = self._rank_candidates(query=query, candidates=candidate_rows)
         return {

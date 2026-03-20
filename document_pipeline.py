@@ -33,6 +33,18 @@ STATE_DEFAULT_RELIEF = [
     "Costs of suit incurred herein.",
     "Such other and further relief as the Court deems just and proper.",
 ]
+ACTOR_CRITIC_PHASE_FOCUS_ORDER = ("graph_analysis", "document_generation", "intake_questioning")
+DEFAULT_ACTOR_CRITIC_PRIORITY_METRICS = {
+    "empathy": 0.25,
+    "question_quality": 0.40,
+    "information_extraction": 0.40,
+    "coverage": 0.40,
+    "efficiency": 0.62,
+}
+_CONFIRMATION_PLACEHOLDER_PATTERN = re.compile(
+    r"\b(?:needs?\s+confirmation|to\s+be\s+confirmed|confirm(?:ed|ation)?\s+pending|tbd|unknown|not\s+sure|unclear|pending)\b",
+    flags=re.IGNORECASE,
+)
 
 
 def _utcnow() -> datetime:
@@ -79,6 +91,13 @@ def _dedupe_text_values(values: Iterable[Any]) -> List[str]:
         seen.add(text)
         normalized_values.append(text)
     return normalized_values
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return float(default)
 
 
 def _extract_text_candidates(value: Any) -> List[str]:
@@ -192,6 +211,10 @@ def _contains_staff_identity_marker(value: Any) -> bool:
         "hacc" in lowered
         and any(marker in lowered for marker in ("name", "title", "staff", "caseworker", "manager", "officer", "specialist", "director"))
     )
+
+
+def _contains_confirmation_placeholder(value: Any) -> bool:
+    return bool(_CONFIRMATION_PLACEHOLDER_PATTERN.search(str(value or "")))
 
 
 def _roman(index: int) -> str:
@@ -3034,6 +3057,201 @@ class FormalComplaintDocumentBuilder:
             return {}
         return result if isinstance(result, dict) else {}
 
+    def _extract_blocker_follow_up_signals(self, optimization_report: Dict[str, Any]) -> Dict[str, Any]:
+        report = optimization_report if isinstance(optimization_report, dict) else {}
+        intake_case_summary = (
+            report.get("intake_case_summary")
+            if isinstance(report.get("intake_case_summary"), dict)
+            else build_intake_case_review_summary(self.mediator)
+        )
+        intake_case_summary = intake_case_summary if isinstance(intake_case_summary, dict) else {}
+        blocker_follow_up_summary = (
+            intake_case_summary.get("blocker_follow_up_summary")
+            if isinstance(intake_case_summary.get("blocker_follow_up_summary"), dict)
+            else {}
+        )
+        blocker_items = [
+            dict(item)
+            for item in list(blocker_follow_up_summary.get("blocking_items") or [])
+            if isinstance(item, dict)
+        ]
+        open_items = [
+            dict(item)
+            for item in list(intake_case_summary.get("open_items") or [])
+            if isinstance(item, dict) and str(item.get("kind") or "").strip().lower() == "blocker_follow_up"
+        ]
+        combined_items = blocker_items + open_items
+        issue_types = _dedupe_text_values(
+            str(item.get("issue_type") or item.get("type") or item.get("gap_type") or "").strip().lower()
+            for item in combined_items
+        )
+        extraction_targets = _dedupe_text_values(
+            list(blocker_follow_up_summary.get("extraction_targets") or [])
+            + [
+                target
+                for item in combined_items
+                for target in list(item.get("extraction_targets") or [])
+            ]
+        )
+        workflow_phases = _dedupe_text_values(
+            list(blocker_follow_up_summary.get("workflow_phases") or [])
+            + [str(item.get("workflow_phase") or "").strip() for item in combined_items]
+        )
+        follow_up_questions = _dedupe_text_values(
+            str(item.get("suggested_question") or item.get("next_question_template") or "").strip()
+            for item in combined_items
+        )
+
+        def _item_has_confirmation_placeholder(item: Dict[str, Any]) -> bool:
+            return any(
+                _contains_confirmation_placeholder(value)
+                for value in (
+                    item.get("summary"),
+                    item.get("reason"),
+                    item.get("suggested_question"),
+                    item.get("next_question_template"),
+                    item.get("description"),
+                )
+            )
+
+        placeholder_items = [
+            item
+            for item in combined_items
+            if "confirmation_placeholder" in str(item.get("issue_type") or "").strip().lower()
+            or _item_has_confirmation_placeholder(item)
+        ]
+        decision_maker_items = [
+            item
+            for item in combined_items
+            if "decision_maker" in str(item.get("issue_type") or "").strip().lower()
+            or any(
+                target in {"decision_maker", "actor_name", "actor_role"}
+                for target in list(item.get("extraction_targets") or [])
+            )
+        ]
+        causation_items = [
+            item
+            for item in combined_items
+            if (
+                "causation" in str(item.get("issue_type") or "").strip().lower()
+                or "retaliation_missing_sequence" in str(item.get("issue_type") or "").strip().lower()
+                or "retaliation_missing_decision_maker" in str(item.get("issue_type") or "").strip().lower()
+                or "causation_link" in list(item.get("extraction_targets") or [])
+            )
+        ]
+        document_anchor_items = [
+            item
+            for item in combined_items
+            if any(
+                target in {"document_type", "document_date", "document_owner", "evidence_record", "verification_source"}
+                for target in list(item.get("extraction_targets") or [])
+            )
+            or "document_anchor" in str(item.get("issue_type") or "").strip().lower()
+        ]
+
+        return {
+            "blocker_count": int(blocker_follow_up_summary.get("blocking_item_count") or len(blocker_items) or 0),
+            "issue_types": issue_types,
+            "extraction_targets": extraction_targets,
+            "workflow_phases": workflow_phases,
+            "follow_up_questions": follow_up_questions,
+            "confirmation_placeholder_count": len(placeholder_items),
+            "decision_maker_probe_count": len(decision_maker_items),
+            "causation_probe_count": len(causation_items),
+            "document_anchor_probe_count": len(document_anchor_items),
+            "needs_confirmation_follow_up": bool(placeholder_items),
+            "needs_decision_maker_follow_up": bool(decision_maker_items),
+            "needs_causation_follow_up": bool(causation_items),
+            "needs_document_anchor_follow_up": bool(document_anchor_items),
+        }
+
+    def _extract_actor_critic_priority_metrics(self, optimization_report: Dict[str, Any]) -> Dict[str, float]:
+        if not isinstance(optimization_report, dict):
+            return {}
+        final_review = optimization_report.get("final_review") if isinstance(optimization_report.get("final_review"), dict) else {}
+        dimension_scores = final_review.get("dimension_scores") if isinstance(final_review.get("dimension_scores"), dict) else {}
+        metric_candidates = [
+            optimization_report.get("actor_critic_metrics"),
+            optimization_report.get("adversarial_batch_metrics"),
+            optimization_report.get("metrics"),
+            (optimization_report.get("actor_critic_optimizer") or {}).get("metrics")
+            if isinstance(optimization_report.get("actor_critic_optimizer"), dict)
+            else {},
+        ]
+        normalized: Dict[str, float] = {}
+        aliases = {
+            "empathy": "empathy",
+            "question_quality": "question_quality",
+            "information_extraction": "information_extraction",
+            "coverage": "coverage",
+            "efficiency": "efficiency",
+        }
+        for candidate in metric_candidates:
+            if not isinstance(candidate, dict):
+                continue
+            for key, value in candidate.items():
+                metric_name = aliases.get(str(key).strip().lower())
+                if not metric_name:
+                    continue
+                normalized[metric_name] = max(0.0, min(1.0, _safe_float(value, DEFAULT_ACTOR_CRITIC_PRIORITY_METRICS.get(metric_name, 0.0))))
+        if "question_quality" not in normalized:
+            normalized["question_quality"] = max(
+                _safe_float(dimension_scores.get("coherence"), DEFAULT_ACTOR_CRITIC_PRIORITY_METRICS["question_quality"]),
+                DEFAULT_ACTOR_CRITIC_PRIORITY_METRICS["question_quality"],
+            )
+        if "coverage" not in normalized:
+            normalized["coverage"] = max(
+                _safe_float(dimension_scores.get("completeness"), DEFAULT_ACTOR_CRITIC_PRIORITY_METRICS["coverage"]),
+                DEFAULT_ACTOR_CRITIC_PRIORITY_METRICS["coverage"],
+            )
+        if "information_extraction" not in normalized:
+            normalized["information_extraction"] = max(
+                _safe_float(dimension_scores.get("grounding"), DEFAULT_ACTOR_CRITIC_PRIORITY_METRICS["information_extraction"]),
+                DEFAULT_ACTOR_CRITIC_PRIORITY_METRICS["information_extraction"],
+            )
+        if "efficiency" not in normalized:
+            normalized["efficiency"] = max(
+                _safe_float(dimension_scores.get("procedural"), DEFAULT_ACTOR_CRITIC_PRIORITY_METRICS["efficiency"]),
+                DEFAULT_ACTOR_CRITIC_PRIORITY_METRICS["efficiency"],
+            )
+        if "empathy" not in normalized:
+            normalized["empathy"] = DEFAULT_ACTOR_CRITIC_PRIORITY_METRICS["empathy"]
+        return normalized
+
+    def _extract_actor_critic_guidance(self, optimization_report: Dict[str, Any]) -> Dict[str, Any]:
+        report = optimization_report if isinstance(optimization_report, dict) else {}
+        optimization_method = str(report.get("optimization_method") or "").strip().lower()
+        method_name = str(report.get("method") or "").strip().lower()
+        if "actor_critic" not in optimization_method and "actor_critic" not in method_name:
+            return {}
+
+        provided_order = [
+            str(item).strip()
+            for item in list(report.get("phase_focus_order") or [])
+            if str(item).strip()
+        ]
+        phase_focus_order = [name for name in ACTOR_CRITIC_PHASE_FOCUS_ORDER if name in provided_order] or list(ACTOR_CRITIC_PHASE_FOCUS_ORDER)
+        phase_focus_order.extend(name for name in provided_order if name not in phase_focus_order)
+        router_status = dict(report.get("router_status") or {})
+        final_review = report.get("final_review") if isinstance(report.get("final_review"), dict) else {}
+        section_scores = final_review.get("section_scores") if isinstance(final_review.get("section_scores"), dict) else {}
+
+        metrics = self._extract_actor_critic_priority_metrics(report)
+        intake_score = _safe_float(section_scores.get("intake_questioning"), 0.0)
+        if intake_score < 0.85:
+            forced_order = [name for name in ACTOR_CRITIC_PHASE_FOCUS_ORDER if name in phase_focus_order]
+            forced_order.extend(name for name in phase_focus_order if name not in forced_order)
+            phase_focus_order = forced_order
+
+        return {
+            "optimization_method": optimization_method or "actor_critic",
+            "phase_focus_order": phase_focus_order,
+            "priority": 70,
+            "metrics": metrics,
+            "intake_questioning_score": intake_score,
+            "router_backed_question_quality": str(router_status.get("llm_router") or "").strip().lower() == "available",
+        }
+
     def _build_runtime_workflow_phase_plan(
         self,
         *,
@@ -3046,6 +3264,7 @@ class FormalComplaintDocumentBuilder:
             return {}
 
         phases: Dict[str, Dict[str, Any]] = {}
+        actor_critic_guidance = self._extract_actor_critic_guidance(optimization_report)
         graph_phase = self._build_graph_analysis_phase_guidance(
             phase_manager,
             document_optimization=optimization_report,
@@ -3069,13 +3288,20 @@ class FormalComplaintDocumentBuilder:
         plan = build_workflow_phase_plan(phases)
         if not plan:
             return {}
-        ordered = [name for name in ("graph_analysis", "document_generation", "intake_questioning") if name in phases]
+        preferred_order = (
+            list(actor_critic_guidance.get("phase_focus_order") or [])
+            if actor_critic_guidance
+            else ["graph_analysis", "document_generation", "intake_questioning"]
+        )
+        ordered = [name for name in preferred_order if name in phases]
         ordered.extend(
             name
             for name in list(plan.get("recommended_order") or [])
             if name in phases and name not in ordered
         )
         plan["recommended_order"] = ordered
+        if actor_critic_guidance:
+            plan["actor_critic_guidance"] = actor_critic_guidance
         return plan
 
     def _build_graph_analysis_phase_guidance(
@@ -3129,6 +3355,7 @@ class FormalComplaintDocumentBuilder:
             return {}
         updated = dict(phase)
         optimization_report = document_optimization if isinstance(document_optimization, dict) else {}
+        actor_critic_guidance = self._extract_actor_critic_guidance(optimization_report)
         final_review = optimization_report.get("final_review") if isinstance(optimization_report.get("final_review"), dict) else {}
         section_scores = final_review.get("section_scores") if isinstance(final_review.get("section_scores"), dict) else {}
         intake_score = float(section_scores.get("intake_questioning") or 0.0)
@@ -3142,9 +3369,21 @@ class FormalComplaintDocumentBuilder:
             actions.append(
                 "Strengthen factual paragraphs so each adverse action is paired with exact date anchors, named/titled staff actors, hearing-request timing, response dates, and causation sequencing."
             )
+            actions.append(
+                "Preserve patchability by keeping one material fact per sentence and explicitly anchoring each sentence to dates, actors, and response events extracted during intake questioning."
+            )
+            updated["recommended_actions"] = _dedupe_text_values(actions)
+        if actor_critic_guidance and bool(actor_critic_guidance.get("router_backed_question_quality")):
+            actions = [str(item) for item in list(updated.get("recommended_actions") or []) if str(item).strip()]
+            actions.append(
+                "Use router-backed drafting passes to convert unresolved intake objectives into concrete chronology-aligned allegations and claim-support paragraphs."
+            )
             updated["recommended_actions"] = _dedupe_text_values(actions)
         signals = dict(updated.get("signals") or {})
         signals["intake_questioning_score"] = intake_score
+        if actor_critic_guidance:
+            signals["actor_critic_priority"] = int(actor_critic_guidance.get("priority") or 70)
+            signals["router_backed_question_quality"] = bool(actor_critic_guidance.get("router_backed_question_quality"))
         updated["signals"] = signals
         return updated
 
@@ -3155,6 +3394,8 @@ class FormalComplaintDocumentBuilder:
         document_optimization: Dict[str, Any],
     ) -> Dict[str, Any]:
         optimization_report = document_optimization if isinstance(document_optimization, dict) else {}
+        actor_critic_guidance = self._extract_actor_critic_guidance(optimization_report)
+        actor_critic_metrics = dict(actor_critic_guidance.get("metrics") or {}) if actor_critic_guidance else {}
         intake_status = (
             optimization_report.get("intake_status")
             if isinstance(optimization_report.get("intake_status"), dict)
@@ -3249,6 +3490,45 @@ class FormalComplaintDocumentBuilder:
             )
             actions = []
 
+        empathy_score = _safe_float(actor_critic_metrics.get("empathy"), DEFAULT_ACTOR_CRITIC_PRIORITY_METRICS["empathy"])
+        question_quality_score = _safe_float(actor_critic_metrics.get("question_quality"), DEFAULT_ACTOR_CRITIC_PRIORITY_METRICS["question_quality"])
+        information_extraction_score = _safe_float(actor_critic_metrics.get("information_extraction"), DEFAULT_ACTOR_CRITIC_PRIORITY_METRICS["information_extraction"])
+        coverage_score = _safe_float(actor_critic_metrics.get("coverage"), DEFAULT_ACTOR_CRITIC_PRIORITY_METRICS["coverage"])
+        efficiency_score = _safe_float(actor_critic_metrics.get("efficiency"), DEFAULT_ACTOR_CRITIC_PRIORITY_METRICS["efficiency"])
+        router_backed_question_quality = bool(actor_critic_guidance.get("router_backed_question_quality")) if actor_critic_guidance else False
+
+        if empathy_score < 0.5:
+            actions.append(
+                "Lead each intake follow-up with a short empathy frame before asking for chronology or decision details."
+            )
+        if question_quality_score < 0.7:
+            actions.append(
+                "Upgrade question quality by asking one targeted objective per question with explicit date, actor/title, and decision-anchor prompts."
+            )
+        if information_extraction_score < 0.7:
+            actions.append(
+                "Improve information extraction by capturing exact event sequence, communication channel, and quoted decision language where available."
+            )
+        if coverage_score < 0.7:
+            actions.append(
+                "Increase coverage by ensuring every required objective has at least one answered question and no zero-count objective remains."
+            )
+        if efficiency_score < 0.75:
+            actions.append(
+                "Improve intake efficiency by removing multi-part questions and collapsing duplicates to the shortest sufficient prompt."
+            )
+        if router_backed_question_quality:
+            actions.append(
+                "Use router-backed question generation to refine prompts for specificity while preserving patchability and objective coverage."
+            )
+        actions = _dedupe_text_values(actions)
+        if actions and status == "ready":
+            status = "warning"
+        if actions and actor_critic_guidance:
+            summary = (
+                f"{summary} Actor-critic optimization highlights low empathy/question quality/extraction/coverage/efficiency signals that should be addressed before final drafting."
+            ).strip()
+
         return {
             "priority": 2,
             "status": status,
@@ -3258,6 +3538,9 @@ class FormalComplaintDocumentBuilder:
                 "objective_question_counts": objective_question_counts,
                 "missing_required_objectives": missing_required,
                 "drafting_status": str(drafting_readiness.get("status") or ""),
+                "actor_critic_priority": int(actor_critic_guidance.get("priority") or 70) if actor_critic_guidance else None,
+                "actor_critic_metrics": actor_critic_metrics if actor_critic_guidance else {},
+                "router_backed_question_quality": router_backed_question_quality,
             },
             "recommended_actions": actions,
         }

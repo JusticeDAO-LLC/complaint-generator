@@ -268,8 +268,8 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
     assert "knowledge_graph_population" in graph_task.metadata["workflow_capabilities"]
     assert "target_symbols" in document_task.constraints
     assert len(graph_task.target_files) == 2
-    assert any(path.name == "denoiser.py" for path in graph_task.target_files)
-    assert any(path.name == "dependency_graph.py" for path in graph_task.target_files)
+    assert graph_task.target_files[0].name == "dependency_graph.py"
+    assert graph_task.target_files[1].name == "denoiser.py"
     assert any(path.endswith("document_pipeline.py") for path in document_task.constraints["target_symbols"])
     assert len(document_task.target_files) == 2
     assert any(path.name == "synthesize_hacc_complaint.py" for path in document_task.target_files)

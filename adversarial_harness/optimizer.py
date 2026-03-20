@@ -824,16 +824,16 @@ class Optimizer:
             gaps_high = float(report.kg_avg_gaps or 0.0) >= 1.0 or int(report.kg_sessions_gaps_not_reducing or 0) > 0
 
             if blocker_objectives:
-                priorities.extend(["denoiser.py", "knowledge_graph.py", "dependency_graph.py"])
+                priorities.extend(["dependency_graph.py", "denoiser.py", "knowledge_graph.py"])
 
-            if gaps_high:
-                priorities.append("denoiser.py")
             if dg_weak:
                 priorities.append("dependency_graph.py")
+            if gaps_high:
+                priorities.append("denoiser.py")
             if kg_empty:
                 priorities.append("knowledge_graph.py")
             priorities.append("intake_case_file.py")
-            priorities.extend(["knowledge_graph.py", "dependency_graph.py", "denoiser.py", "intake_case_file.py"])
+            priorities.extend(["dependency_graph.py", "denoiser.py", "knowledge_graph.py", "intake_case_file.py"])
 
             selected: List[Path] = []
             seen = set()

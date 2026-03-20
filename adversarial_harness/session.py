@@ -587,11 +587,17 @@ class AdversarialSession:
 
     @staticmethod
     def _is_staff_names_titles_question(question: Any) -> bool:
+        if AdversarialSession._extract_question_objective(question) == 'staff_names_titles':
+            return True
+        signals = AdversarialSession._extract_selector_signals(question)
+        matches = signals.get('intake_priority_match')
+        if isinstance(matches, list) and 'staff_names_titles' in matches:
+            return True
         text = AdversarialSession._extract_question_text(question).lower()
         if not any(token in text for token in ('who', 'name', 'staff', 'person', 'manager', 'supervisor', 'decision')):
             return False
         title_tokens = ('title', 'job title', 'role', 'position')
-        return any(token in text for token in title_tokens) or AdversarialSession._is_actor_or_decisionmaker_question(question)
+        return any(token in text for token in title_tokens)
 
     @staticmethod
     def _is_hearing_request_timing_question(question: Any) -> bool:
@@ -888,6 +894,41 @@ class AdversarialSession:
         return {
             str(value) for value in list(key_facts.get('anchor_sections') or []) if str(value)
         }
+
+    @classmethod
+    def _extract_required_blocker_objectives(cls, seed_complaint: Dict[str, Any]) -> Set[str]:
+        key_facts = seed_complaint.get('key_facts') if isinstance(seed_complaint.get('key_facts'), dict) else {}
+        synthetic_prompts = key_facts.get('synthetic_prompts') if isinstance(key_facts, dict) else {}
+        blocker_objectives = {
+            'exact_dates',
+            'staff_names_titles',
+            'hearing_request_timing',
+            'response_dates',
+            'causation_sequence',
+        }
+        extraction_target_objectives = {
+            'timeline_anchors': 'exact_dates',
+            'actor_role_mapping': 'staff_names_titles',
+            'hearing_process': 'hearing_request_timing',
+            'response_timeline': 'response_dates',
+            'retaliation_sequence': 'causation_sequence',
+        }
+        required: Set[str] = set()
+        for payload in (key_facts, synthetic_prompts if isinstance(synthetic_prompts, dict) else {}):
+            if not isinstance(payload, dict):
+                continue
+            for value in list(payload.get('blocker_objectives') or []):
+                objective = str(value or '').strip().lower()
+                if objective in blocker_objectives:
+                    required.add(objective)
+            for value in list(payload.get('extraction_targets') or []):
+                mapped_objective = extraction_target_objectives.get(str(value or '').strip().lower())
+                if mapped_objective:
+                    required.add(mapped_objective)
+        for _, objective in cls._extract_intake_prompt_candidates(seed_complaint):
+            if objective in blocker_objectives:
+                required.add(objective)
+        return required
 
     @classmethod
     def _covered_anchor_sections_from_questions(
@@ -1757,9 +1798,21 @@ class AdversarialSession:
             has_response_dates_question = False
             has_causation_sequence_question = False
             expected_anchor_sections = self._extract_anchor_sections(seed_complaint)
+            required_blocker_objectives = self._extract_required_blocker_objectives(seed_complaint)
             require_causation_probe = self._seed_requires_causation_probe(seed_complaint)
-            require_hearing_timing_probe = bool(expected_anchor_sections & {'grievance_hearing', 'appeal_rights'})
-            require_response_dates_probe = bool(expected_anchor_sections & {'grievance_hearing', 'appeal_rights', 'adverse_action'})
+            require_exact_dates_probe = 'exact_dates' in required_blocker_objectives
+            require_staff_names_titles_probe = 'staff_names_titles' in required_blocker_objectives
+            require_hearing_timing_probe = (
+                'hearing_request_timing' in required_blocker_objectives
+                or bool(expected_anchor_sections & {'grievance_hearing', 'appeal_rights'})
+            )
+            require_response_dates_probe = (
+                'response_dates' in required_blocker_objectives
+                or bool(expected_anchor_sections & {'grievance_hearing', 'appeal_rights', 'adverse_action'})
+            )
+            require_causation_sequence_probe = (
+                'causation_sequence' in required_blocker_objectives or require_causation_probe
+            )
             
             while turns < self.max_turns:
                 # Get questions from mediator
@@ -1777,11 +1830,11 @@ class AdversarialSession:
                 need_causation = require_causation_probe and not has_causation_question
                 need_documentary_evidence = not has_documentary_evidence_question
                 need_witness = not has_witness_question
-                need_exact_dates = not has_exact_dates_question
-                need_staff_names_titles = not has_staff_names_titles_question
+                need_exact_dates = require_exact_dates_probe and not has_exact_dates_question
+                need_staff_names_titles = require_staff_names_titles_probe and not has_staff_names_titles_question
                 need_hearing_request_timing = require_hearing_timing_probe and not has_hearing_request_timing_question
                 need_response_dates = require_response_dates_probe and not has_response_dates_question
-                need_causation_sequence = require_causation_probe and not has_causation_sequence_question
+                need_causation_sequence = require_causation_sequence_probe and not has_causation_sequence_question
 
                 question = None
                 if questions:
@@ -1950,11 +2003,11 @@ class AdversarialSession:
                 )
                 has_causation_coverage = (not require_causation_probe) or has_causation_question
                 has_blocker_coverage = (
-                    has_exact_dates_question
-                    and has_staff_names_titles_question
+                    ((not require_exact_dates_probe) or has_exact_dates_question)
+                    and ((not require_staff_names_titles_probe) or has_staff_names_titles_question)
                     and ((not require_hearing_timing_probe) or has_hearing_request_timing_question)
                     and ((not require_response_dates_probe) or has_response_dates_question)
-                    and ((not require_causation_probe) or has_causation_sequence_question)
+                    and ((not require_causation_sequence_probe) or has_causation_sequence_question)
                 )
                 if converged and has_core_coverage and has_evidence_coverage and has_causation_coverage and has_blocker_coverage:
                     logger.info(f"Session converged after {turns} turns")

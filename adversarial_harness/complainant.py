@@ -8,8 +8,294 @@ import logging
 from typing import Dict, Any, List
 from dataclasses import dataclass, field
 import json
+import re
 
 logger = logging.getLogger(__name__)
+
+_ACTOR_CRITIC_PHASE_FOCUS_ORDER: List[str] = [
+    "graph_analysis",
+    "document_generation",
+    "intake_questioning",
+]
+
+_ACTOR_CRITIC_OBJECTIVE_PRIORITY: List[str] = [
+    "exact_dates",
+    "staff_names_titles",
+    "causation_sequence",
+    "response_dates",
+    "hearing_request_timing",
+    "evidence_identifiers",
+    "adverse_action_specificity",
+]
+
+_CONFIRMATION_PLACEHOLDER_TERMS = (
+    "needs confirmation",
+    "need confirmation",
+    "to be confirmed",
+    "tbd",
+    "unknown",
+    "not sure",
+    "unclear",
+    "pending confirmation",
+)
+
+
+def _unique_strings(values: List[Any]) -> List[str]:
+    items: List[str] = []
+    for value in values if isinstance(values, list) else []:
+        normalized = str(value or "").strip()
+        if normalized and normalized not in items:
+            items.append(normalized)
+    return items
+
+
+def _ordered_priority_subset(
+    values: List[str],
+    priority_order: List[str],
+) -> List[str]:
+    normalized_values = _unique_strings(values)
+    ordered = [item for item in priority_order if item in normalized_values]
+    ordered.extend(item for item in normalized_values if item not in ordered)
+    return ordered
+
+
+def _objective_to_phase(objective: str) -> str:
+    normalized = str(objective or "").strip().lower()
+    if normalized in {"evidence_identifiers"}:
+        return "document_generation"
+    if normalized in {
+        "exact_dates",
+        "staff_names_titles",
+        "causation_sequence",
+        "response_dates",
+        "hearing_request_timing",
+        "adverse_action_specificity",
+    }:
+        return "graph_analysis"
+    return "intake_questioning"
+
+
+def _contains_confirmation_placeholder(value: Any) -> bool:
+    text = str(value or "").strip().lower()
+    if not text:
+        return False
+    return any(term in text for term in _CONFIRMATION_PLACEHOLDER_TERMS)
+
+
+def _classify_confirmation_objective(path: str, value: Any) -> str:
+    signal_text = f"{path} {value}".lower()
+    if any(token in signal_text for token in ("date", "when", "timeline", "chronolog")):
+        return "exact_dates"
+    if any(token in signal_text for token in ("decision-maker", "decision maker", "staff", "manager", "supervisor", "director", "role", "title", "who")):
+        return "staff_names_titles"
+    if any(token in signal_text for token in ("hearing", "appeal request", "grievance request")):
+        return "hearing_request_timing"
+    if any(token in signal_text for token in ("response", "notice", "reply", "decision date", "decision timing")):
+        return "response_dates"
+    if any(token in signal_text for token in ("protected activity", "retaliat", "adverse action", "because", "after")):
+        return "causation_sequence"
+    if any(token in signal_text for token in ("document", "letter", "email", "record", "id", "tracking")):
+        return "evidence_identifiers"
+    return ""
+
+
+def _extract_confirmation_placeholders(payload: Any, *, base_path: str = "") -> List[Dict[str, str]]:
+    placeholders: List[Dict[str, str]] = []
+
+    def walk(value: Any, path: str) -> None:
+        if isinstance(value, dict):
+            for key, nested in value.items():
+                key_str = str(key).strip()
+                next_path = f"{path}.{key_str}" if path else key_str
+                walk(nested, next_path)
+            return
+        if isinstance(value, list):
+            for idx, nested in enumerate(value):
+                next_path = f"{path}[{idx}]" if path else f"[{idx}]"
+                walk(nested, next_path)
+            return
+        text = str(value or "").strip()
+        if not text or not _contains_confirmation_placeholder(text):
+            return
+        objective = _classify_confirmation_objective(path, text)
+        placeholders.append(
+            {
+                "path": path or "unscoped",
+                "value": text,
+                "objective": objective,
+                "phase": _objective_to_phase(objective),
+            }
+        )
+
+    walk(payload, base_path)
+
+    deduped: List[Dict[str, str]] = []
+    seen = set()
+    for item in placeholders:
+        key = (item.get("path", ""), item.get("value", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
+
+
+def _order_objectives_for_actor_critic(
+    objectives: List[str],
+    phase_focus_order: List[str] | None = None,
+) -> List[str]:
+    ordered_unique = _unique_strings(objectives)
+    focus_order = _ordered_workflow_phases(
+        phase_focus_order or _ACTOR_CRITIC_PHASE_FOCUS_ORDER,
+        explicit_phase_order=_ACTOR_CRITIC_PHASE_FOCUS_ORDER,
+    )
+    phase_rank = {phase: idx for idx, phase in enumerate(focus_order)}
+    objective_rank = {objective: idx for idx, objective in enumerate(_ACTOR_CRITIC_OBJECTIVE_PRIORITY)}
+    ordered_unique.sort(
+        key=lambda objective: (
+            phase_rank.get(_objective_to_phase(objective), len(phase_rank)),
+            objective_rank.get(objective, len(objective_rank)),
+            objective,
+        )
+    )
+    return ordered_unique
+
+
+def _ordered_workflow_phases(
+    phases: List[str],
+    explicit_phase_order: List[str] | None = None,
+) -> List[str]:
+    recognized = ["graph_analysis", "intake_questioning", "document_generation"]
+    normalized_phases = _unique_strings(phases)
+    explicit_order = [
+        item for item in _unique_strings(explicit_phase_order or [])
+        if item in recognized
+    ]
+    if explicit_order:
+        ordered = [item for item in explicit_order if item in normalized_phases]
+        ordered.extend(
+            item for item in recognized
+            if item in normalized_phases and item not in ordered
+        )
+    else:
+        ordered = [item for item in recognized if item in normalized_phases]
+    ordered.extend(item for item in normalized_phases if item not in ordered)
+    return ordered
+
+
+def _derive_context_signals(
+    seed: Dict[str, Any],
+    key_facts: Dict[str, Any],
+    evidence_items: List[Dict[str, Any]],
+    synthetic_prompts: Dict[str, Any],
+    story_facts: List[str],
+) -> Dict[str, List[str]]:
+    combined_text_parts: List[str] = [
+        seed.get("type") or "",
+        seed.get("summary") or "",
+        key_facts.get("incident_summary") or "",
+        key_facts.get("evidence_summary") or "",
+        synthetic_prompts.get("complaint_chatbot_prompt") or "",
+        synthetic_prompts.get("intake_questionnaire_prompt") or "",
+    ]
+    combined_text_parts.extend(str(item or "") for item in list(synthetic_prompts.get("intake_questions") or []))
+    combined_text_parts.extend(str(item or "") for item in list(story_facts or []))
+    for item in evidence_items if isinstance(evidence_items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        combined_text_parts.append(str(item.get("title") or ""))
+        combined_text_parts.append(str(item.get("snippet") or ""))
+    combined_text = " ".join(part.strip() for part in combined_text_parts if str(part or "").strip())
+    lower_text = combined_text.lower()
+
+    blocker_objectives = _unique_strings(
+        list(key_facts.get("blocker_objectives") or [])
+        + list(synthetic_prompts.get("blocker_objectives") or [])
+    )
+    extraction_targets = _unique_strings(
+        list(key_facts.get("extraction_targets") or [])
+        + list(synthetic_prompts.get("extraction_targets") or [])
+    )
+    explicit_phase_priorities = _unique_strings(
+        list(key_facts.get("workflow_phase_priorities") or [])
+        + list(synthetic_prompts.get("workflow_phase_priorities") or [])
+    )
+    workflow_phase_priorities = list(explicit_phase_priorities)
+
+    timeline_terms = ("when", "date", "timeline", "chronolog", "sequence", "notice", "decision", "termination")
+    hearing_terms = ("hearing", "appeal", "grievance", "review")
+    response_terms = ("response", "responded", "replied", "reply", "denied", "approved", "ignored", "no response")
+    actor_terms = ("who", "staff", "manager", "supervisor", "director", "officer", "specialist", "decision-maker", "decision maker")
+    title_terms = ("title", "role", "position", "job title", "department", "team")
+    retaliation_terms = ("protected activity", "complain", "reported", "grievance", "accommodation", "appeal")
+    adverse_terms = ("retaliat", "termination", "fired", "denial", "disciplin", "evict", "reduced hours", "cut hours")
+    adverse_specificity_terms = ("adverse action", "what happened", "exact action", "specific action", "discipline", "denied", "termination")
+    document_identifier_terms = ("document id", "notice id", "case number", "tracking number", "email subject", "exhibit")
+
+    if any(term in lower_text for term in timeline_terms) or re.search(r"\b(?:19|20)\d{2}\b", lower_text):
+        blocker_objectives.append("exact_dates")
+        extraction_targets.append("timeline_anchors")
+    if any(term in lower_text for term in hearing_terms):
+        blocker_objectives.append("hearing_request_timing")
+        extraction_targets.extend(["timeline_anchors", "hearing_process"])
+    if any(term in lower_text for term in response_terms):
+        blocker_objectives.append("response_dates")
+        extraction_targets.extend(["timeline_anchors", "response_timeline"])
+    has_named_staff = bool(re.search(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}\b", combined_text))
+    if has_named_staff or any(term in lower_text for term in actor_terms):
+        blocker_objectives.append("staff_names_titles")
+        extraction_targets.append("actor_role_mapping")
+    if any(term in lower_text for term in title_terms) and "staff_names_titles" not in blocker_objectives:
+        blocker_objectives.append("staff_names_titles")
+        extraction_targets.append("actor_role_mapping")
+    if any(term in lower_text for term in retaliation_terms) and any(term in lower_text for term in adverse_terms):
+        blocker_objectives.append("causation_sequence")
+        extraction_targets.extend(["retaliation_sequence", "timeline_anchors", "actor_role_mapping"])
+    if any(term in lower_text for term in adverse_specificity_terms):
+        blocker_objectives.append("adverse_action_specificity")
+        extraction_targets.extend(["adverse_action_definition", "timeline_anchors", "actor_role_mapping"])
+    if any(term in lower_text for term in document_identifier_terms):
+        blocker_objectives.append("evidence_identifiers")
+        extraction_targets.append("document_identifier_mapping")
+
+    if blocker_objectives:
+        workflow_phase_priorities.extend(["graph_analysis", "intake_questioning"])
+    if evidence_items or any(token in lower_text for token in ("document", "email", "text", "notice", "letter", "policy", "photo")):
+        workflow_phase_priorities.append("document_generation")
+
+    ordered_blocker_objectives = _ordered_priority_subset(
+        blocker_objectives,
+        [
+            "exact_dates",
+            "staff_names_titles",
+            "hearing_request_timing",
+            "response_dates",
+            "causation_sequence",
+            "adverse_action_specificity",
+            "evidence_identifiers",
+        ],
+    )
+    ordered_extraction_targets = _ordered_priority_subset(
+        extraction_targets,
+        [
+            "timeline_anchors",
+            "actor_role_mapping",
+            "hearing_process",
+            "response_timeline",
+            "retaliation_sequence",
+            "adverse_action_definition",
+            "document_identifier_mapping",
+        ],
+    )
+    ordered_workflow_phases = _ordered_workflow_phases(
+        workflow_phase_priorities,
+        explicit_phase_order=explicit_phase_priorities,
+    )
+    return {
+        "blocker_objectives": ordered_blocker_objectives,
+        "extraction_targets": ordered_extraction_targets,
+        "workflow_phase_priorities": ordered_workflow_phases,
+    }
 
 
 def _resolve_dynamic_hacc_evidence(question: str, context: "ComplaintContext") -> Dict[str, Any]:
@@ -139,6 +425,9 @@ class ComplaintContext:
     repository_evidence_candidates: List[Dict[str, Any]] = field(default_factory=list)
     synthetic_prompts: Dict[str, Any] = field(default_factory=dict)
     complainant_story_facts: List[str] = field(default_factory=list)
+    blocker_objectives: List[str] = field(default_factory=list)
+    extraction_targets: List[str] = field(default_factory=list)
+    workflow_phase_priorities: List[str] = field(default_factory=list)
 
 
 class Complainant:
@@ -171,6 +460,15 @@ class Complainant:
         profile = _PERSONALITY_PROFILES.get(p) or _PERSONALITY_PROFILES["cooperative"]
         key_facts = dict(seed.get("key_facts", {}))
         evidence_items = list(seed.get("hacc_evidence") or key_facts.get("hacc_evidence") or [])
+        synthetic_prompts = dict(key_facts.get("synthetic_prompts") or {})
+        story_facts = list(key_facts.get("complainant_story_facts") or [])
+        derived_signals = _derive_context_signals(
+            seed,
+            key_facts,
+            evidence_items,
+            synthetic_prompts,
+            story_facts,
+        )
         evidence_summary = str(
             key_facts.get("evidence_summary")
             or seed.get("summary")
@@ -185,8 +483,11 @@ class Complainant:
             evidence_items=evidence_items,
             evidence_summary=evidence_summary,
             repository_evidence_candidates=list(key_facts.get("repository_evidence_candidates") or []),
-            synthetic_prompts=dict(key_facts.get("synthetic_prompts") or {}),
-            complainant_story_facts=list(key_facts.get("complainant_story_facts") or []),
+            synthetic_prompts=synthetic_prompts,
+            complainant_story_facts=story_facts,
+            blocker_objectives=derived_signals.get("blocker_objectives") or [],
+            extraction_targets=derived_signals.get("extraction_targets") or [],
+            workflow_phase_priorities=derived_signals.get("workflow_phase_priorities") or [],
         )
     
     def set_context(self, context: ComplaintContext):
@@ -262,6 +563,9 @@ class Complainant:
             story_facts=((seed_data.get("key_facts") or {}).get("complainant_story_facts") if isinstance(seed_data.get("key_facts"), dict) else None),
             repository_candidates=((seed_data.get("key_facts") or {}).get("repository_evidence_candidates") if isinstance(seed_data.get("key_facts"), dict) else None),
             synthetic_prompts=((seed_data.get("key_facts") or {}).get("synthetic_prompts") if isinstance(seed_data.get("key_facts"), dict) else None),
+            blocker_objectives=((seed_data.get("key_facts") or {}).get("blocker_objectives") if isinstance(seed_data.get("key_facts"), dict) else None),
+            extraction_targets=((seed_data.get("key_facts") or {}).get("extraction_targets") if isinstance(seed_data.get("key_facts"), dict) else None),
+            workflow_phase_priorities=((seed_data.get("key_facts") or {}).get("workflow_phase_priorities") if isinstance(seed_data.get("key_facts"), dict) else None),
         )
         prompt = f"""You are a person filing a complaint. Based on the following situation, write a detailed but natural complaint as if you were experiencing this issue.
 
@@ -363,6 +667,9 @@ Complaint:"""
             story_facts=self.context.complainant_story_facts,
             repository_candidates=self.context.repository_evidence_candidates,
             synthetic_prompts=self.context.synthetic_prompts,
+            blocker_objectives=self.context.blocker_objectives,
+            extraction_targets=self.context.extraction_targets,
+            workflow_phase_priorities=self.context.workflow_phase_priorities,
         )
         
         prompt = f"""You are a complainant in a legal matter. You are {cooperation_desc} and your personality is {self.personality}.
@@ -504,11 +811,32 @@ Response:"""
         story_facts: List[str] | None,
         repository_candidates: List[Dict[str, Any]] | None,
         synthetic_prompts: Dict[str, Any] | None,
+        blocker_objectives: List[str] | None = None,
+        extraction_targets: List[str] | None = None,
+        workflow_phase_priorities: List[str] | None = None,
     ) -> str:
         lines: List[str] = []
         incident_summary = str((key_facts or {}).get("incident_summary") or "").strip()
         if incident_summary:
             lines.append(f"Incident summary: {incident_summary}")
+
+        priority_objectives = _unique_strings(
+            list(blocker_objectives or []) + list((key_facts or {}).get("blocker_objectives") or [])
+        )
+        if priority_objectives:
+            lines.append(f"Priority intake objectives: {', '.join(priority_objectives)}")
+
+        derived_extraction_targets = _unique_strings(
+            list(extraction_targets or []) + list((key_facts or {}).get("extraction_targets") or [])
+        )
+        if derived_extraction_targets:
+            lines.append(f"Graph extraction targets: {', '.join(derived_extraction_targets)}")
+
+        prioritized_workflow_phases = _unique_strings(
+            list(workflow_phase_priorities or []) + list((key_facts or {}).get("workflow_phase_priorities") or [])
+        )
+        if prioritized_workflow_phases:
+            lines.append(f"Priority workflow phases: {', '.join(prioritized_workflow_phases)}")
 
         for index, fact in enumerate(list(story_facts or [])[:5], start=1):
             cleaned = str(fact).strip()
