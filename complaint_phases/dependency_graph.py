@@ -1088,6 +1088,16 @@ class DependencyGraphBuilder:
                 return False
             lower = text_value.lower()
             return any(token in lower for token in ["hearing", "grievance", "appeal"])
+
+        def has_causation_signal(text_value: str) -> bool:
+            if not text_value:
+                return False
+            lower = text_value.lower()
+            has_connector = any(
+                token in lower
+                for token in ["because", "due to", "in response to", "soon after", "after", "as a result"]
+            )
+            return has_connector and has_protected_activity_signal(text_value) and has_adverse_action_signal(text_value)
         
         # Add lightweight fact dependencies to avoid empty graphs when legal requirements are absent.
         for claim_node in claim_nodes:
@@ -1110,6 +1120,26 @@ class DependencyGraphBuilder:
                     target_id=claim_node.id,
                     dependency_type=DependencyType.DEPENDS_ON,
                     required=True
+                ))
+            if not (has_date(claim_text) and has_actor_signal(claim_text)):
+                decision_timeline_node = DependencyNode(
+                    id=self._get_node_id(),
+                    node_type=NodeType.FACT,
+                    name="Actor-by-actor decision timeline",
+                    description=(
+                        "For each actor, identify the decision/action taken and the date anchor "
+                        "(or best estimate) for that step"
+                    ),
+                    satisfied=False,
+                    confidence=0.0,
+                )
+                graph.add_node(decision_timeline_node)
+                graph.add_dependency(Dependency(
+                    id=self._get_dependency_id(),
+                    source_id=decision_timeline_node.id,
+                    target_id=claim_node.id,
+                    dependency_type=DependencyType.DEPENDS_ON,
+                    required=True,
                 ))
 
             if not has_actor_signal(claim_text):
@@ -1182,6 +1212,26 @@ class DependencyGraphBuilder:
                     graph.add_dependency(Dependency(
                         id=self._get_dependency_id(),
                         source_id=causation_node.id,
+                        target_id=claim_node.id,
+                        dependency_type=DependencyType.DEPENDS_ON,
+                        required=True,
+                    ))
+                if not has_causation_signal(claim_text):
+                    causation_link_node = DependencyNode(
+                        id=self._get_node_id(),
+                        node_type=NodeType.FACT,
+                        name="Retaliation causation link facts",
+                        description=(
+                            "Facts that directly connect protected activity to the adverse treatment, "
+                            "including actors and date anchors for each step"
+                        ),
+                        satisfied=False,
+                        confidence=0.0,
+                    )
+                    graph.add_node(causation_link_node)
+                    graph.add_dependency(Dependency(
+                        id=self._get_dependency_id(),
+                        source_id=causation_link_node.id,
                         target_id=claim_node.id,
                         dependency_type=DependencyType.DEPENDS_ON,
                         required=True,

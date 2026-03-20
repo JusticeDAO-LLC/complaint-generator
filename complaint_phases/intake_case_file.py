@@ -1235,6 +1235,81 @@ def build_remedy_profile(canonical_facts: List[Dict[str, Any]]) -> Dict[str, Any
     }
 
 
+def _has_actor_by_actor_timeline(canonical_facts: List[Dict[str, Any]]) -> bool:
+    for fact_record in canonical_facts if isinstance(canonical_facts, list) else []:
+        fact = _normalize_canonical_fact_record(fact_record)
+        if _normalize_text(fact.get("fact_type") or "").lower() != "timeline":
+            continue
+        text_value = _normalize_text(fact.get("text") or "")
+        predicate_family = _normalize_text(fact.get("predicate_family") or "").lower()
+        has_actor = bool(_unique_normalized_strings(fact.get("actor_ids") or []))
+        if not has_actor:
+            has_actor = any(
+                token in text_value.lower()
+                for token in ("who", "manager", "supervisor", "hr", "landlord", "owner", "agency")
+            )
+        has_decision_signal = any(
+            token in text_value.lower()
+            for token in ("decision", "decided", "approved", "denied", "terminated", "disciplined", "evicted")
+        ) or predicate_family in {"decision_timeline", "causation", "adverse_action", "protected_activity"}
+        has_anchor = bool(_coerce_dict(fact.get("temporal_context")).get("start_date"))
+        if has_actor and has_decision_signal and has_anchor:
+            return True
+    return False
+
+
+def _has_retaliation_causation_link(
+    candidate_claims: List[Dict[str, Any]],
+    canonical_facts: List[Dict[str, Any]],
+    source_text: str,
+) -> bool:
+    has_retaliation_claim = any(
+        _normalize_text(_coerce_dict(claim).get("claim_type") or "").lower() == "retaliation"
+        for claim in candidate_claims if isinstance(candidate_claims, list)
+    )
+    if not has_retaliation_claim:
+        return True
+
+    full_text = _normalize_text(source_text).lower()
+    has_text_link = (
+        any(token in full_text for token in ("protected activity", "complained", "reported", "grievance"))
+        and any(token in full_text for token in ("fired", "terminated", "demoted", "disciplined", "evicted", "reduced hours", "cut hours"))
+        and any(token in full_text for token in ("because", "after", "soon after", "in response to", "due to"))
+    )
+    if has_text_link:
+        return True
+
+    for fact_record in canonical_facts if isinstance(canonical_facts, list) else []:
+        fact = _normalize_canonical_fact_record(fact_record)
+        text_value = _normalize_text(fact.get("text") or "").lower()
+        predicate_family = _normalize_text(fact.get("predicate_family") or "").lower()
+        has_protected = (
+            "protected activity" in text_value
+            or "complained" in text_value
+            or "reported" in text_value
+            or predicate_family == "protected_activity"
+        )
+        has_adverse = (
+            "fired" in text_value
+            or "terminated" in text_value
+            or "demoted" in text_value
+            or "disciplined" in text_value
+            or "evicted" in text_value
+            or predicate_family == "adverse_action"
+        )
+        has_causal_connector = (
+            "because" in text_value
+            or "after" in text_value
+            or "soon after" in text_value
+            or "in response to" in text_value
+            or "due to" in text_value
+            or predicate_family == "causation"
+        )
+        if has_protected and has_adverse and has_causal_connector:
+            return True
+    return False
+
+
 def build_intake_sections(
     knowledge_graph,
     *,
@@ -1254,6 +1329,12 @@ def build_intake_sections(
 
     has_impact = any(fact.get("fact_type") == "impact" for fact in canonical_facts)
     has_remedy = any(fact.get("fact_type") == "remedy" for fact in canonical_facts)
+    has_actor_decision_timeline = _has_actor_by_actor_timeline(canonical_facts)
+    has_retaliation_causation_link = _has_retaliation_causation_link(
+        candidate_claims,
+        canonical_facts,
+        source_text,
+    )
     missing_claim_elements: List[str] = []
     claim_elements_present = False
     for claim in candidate_claims:
@@ -1270,18 +1351,42 @@ def build_intake_sections(
                     if label and label not in missing_claim_elements:
                         missing_claim_elements.append(label)
 
+    chronology_missing_items: List[str] = []
+    if not has_dates:
+        chronology_missing_items.append("event dates or timeline anchors")
+    if not has_actor_decision_timeline:
+        chronology_missing_items.append("actor-by-actor decision timeline with date anchors")
+    chronology_status = (
+        "complete"
+        if not chronology_missing_items
+        else ("partial" if has_dates else "missing")
+    )
+
+    conduct_missing_items: List[str] = []
+    if not candidate_claims:
+        conduct_missing_items.append("core alleged conduct")
+    if not has_retaliation_causation_link:
+        conduct_missing_items.append(
+            "causation facts linking protected activity to adverse treatment"
+        )
+    conduct_status = (
+        "complete"
+        if not conduct_missing_items
+        else ("partial" if candidate_claims else "missing")
+    )
+
     return {
         "chronology": {
-            "status": _status(has_dates),
-            "missing_items": [] if has_dates else ["event dates or timeline anchors"],
+            "status": chronology_status,
+            "missing_items": chronology_missing_items,
         },
         "actors": {
             "status": _status(has_people or has_organizations),
             "missing_items": [] if (has_people or has_organizations) else ["people or organizations involved"],
         },
         "conduct": {
-            "status": _status(bool(candidate_claims)),
-            "missing_items": [] if candidate_claims else ["core alleged conduct"],
+            "status": conduct_status,
+            "missing_items": conduct_missing_items,
         },
         "harm": {
             "status": _status(has_impact),

@@ -46,6 +46,9 @@ class ComplaintDenoiser:
         self.exploration_top_k = int(self._env_float("CG_DENOISER_EXPLORATION_TOP_K", 3) or 3)
         self.stagnation_window = int(self._env_float("CG_DENOISER_STAGNATION_WINDOW", 4) or 4)
         self.stagnation_gain_threshold = float(self._env_float("CG_DENOISER_STAGNATION_GAIN_THRESHOLD", 0.5) or 0.5)
+        self.actor_critic_enabled = self._env_bool("CG_DENOISER_ACTOR_CRITIC_ENABLED", True)
+        self.actor_weight = self._env_float("CG_DENOISER_ACTOR_WEIGHT", 1.0)
+        self.critic_weight = self._env_float("CG_DENOISER_CRITIC_WEIGHT", 1.0)
 
         seed = os.getenv("CG_DENOISER_SEED")
         self._rng = random.Random(int(seed)) if seed and seed.isdigit() else random.Random()
@@ -458,6 +461,9 @@ class ComplaintDenoiser:
             "stagnation_gain_threshold": float(self.stagnation_gain_threshold),
             "type_gain_ema": dict(self._type_gain_ema),
             "recent_gains": list(self._recent_gains[-10:]),
+            "actor_critic_enabled": bool(self.actor_critic_enabled),
+            "actor_weight": float(self.actor_weight),
+            "critic_weight": float(self.critic_weight),
         }
 
 

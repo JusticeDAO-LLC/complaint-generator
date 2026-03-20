@@ -109,6 +109,16 @@ class KnowledgeGraph:
                 str(attributes.get("event_date_or_range") or ""),
             ]
             return " ".join(part.strip() for part in parts if str(part).strip()).lower()
+
+        def _has_date_signal(text_value: str) -> bool:
+            if not text_value:
+                return False
+            return bool(
+                re.search(
+                    r"\b(?:19|20)\d{2}\b|\b\d{1,2}/\d{1,2}/\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b",
+                    text_value,
+                )
+            )
         
         # Check for entities with low confidence
         for entity in self.entities.values():
@@ -163,6 +173,37 @@ class KnowledgeGraph:
             gaps.append({
                 'type': 'missing_timeline',
                 'suggested_question': "When did the key events happen? Please share dates or a brief timeline."
+            })
+
+        timeline_fact_texts = [
+            _entity_text(entity)
+            for entity in self.entities.values()
+            if entity.type == "fact" and (entity.attributes or {}).get("fact_type") == "timeline"
+        ]
+        decision_timeline_terms = (
+            "decision",
+            "decided",
+            "approved",
+            "denied",
+            "terminated",
+            "disciplined",
+            "evicted",
+            "notice",
+            "email",
+            "letter",
+            "message",
+        )
+        has_decision_timeline_detail = any(
+            any(term in text_value for term in decision_timeline_terms) and _has_date_signal(text_value)
+            for text_value in timeline_fact_texts
+        )
+        if not has_decision_timeline_detail:
+            gaps.append({
+                'type': 'missing_decision_timeline',
+                'suggested_question': (
+                    "Please walk through an actor-by-actor decision timeline: who took each action, "
+                    "what they did, and the exact date (or best estimate) for each step."
+                ),
             })
 
         # Check for missing responsible party (no orgs or respondent roles captured)
@@ -266,13 +307,36 @@ class KnowledgeGraph:
                 rel.relation_type in {"occurred_on", "has_timeline_detail"}
                 for rel in self.relationships.values()
             ) or any(entity.type == "date" for entity in self.entities.values())
-            if not (has_protected_activity_fact and has_adverse_action_fact and has_retaliation_timeline):
+            has_causation_link_signal = any(
+                rel.relation_type in {"caused_by", "causal_link", "follows_protected_activity", "occurred_after"}
+                for rel in self.relationships.values()
+            ) or any(
+                "because" in _entity_text(entity)
+                or "after" in _entity_text(entity)
+                or "soon after" in _entity_text(entity)
+                for entity in self.entities.values()
+                if entity.type == "fact"
+            )
+            if not (
+                has_protected_activity_fact
+                and has_adverse_action_fact
+                and has_retaliation_timeline
+                and has_causation_link_signal
+            ):
                 gaps.append({
                     'type': 'retaliation_missing_causation',
                     'suggested_question': (
                         "What happened immediately after your protected activity, who did it, and on what date "
                         "did each step occur?"
                     )
+                })
+            if not has_causation_link_signal:
+                gaps.append({
+                    'type': 'retaliation_missing_causation_link',
+                    'suggested_question': (
+                        "What protected activity did you engage in, who received it, and what adverse treatment "
+                        "followed because of that activity, with dates for each event?"
+                    ),
                 })
         
         return gaps
@@ -696,6 +760,42 @@ class KnowledgeGraphBuilder:
                 },
                 'confidence': 0.85
             })
+            if any(term in lower_text for term in retaliation_context_terms):
+                add_entity({
+                    'type': 'fact',
+                    'name': 'Protected activity event',
+                    'attributes': {
+                        'fact_type': 'timeline',
+                        'predicate_family': 'protected_activity',
+                        'event_label': 'Protected activity',
+                        'description': short_description(text),
+                    },
+                    'confidence': 0.6,
+                })
+            if any(term in lower_text for term in adverse_action_terms):
+                add_entity({
+                    'type': 'fact',
+                    'name': 'Adverse action event',
+                    'attributes': {
+                        'fact_type': 'timeline',
+                        'predicate_family': 'adverse_action',
+                        'event_label': 'Adverse action',
+                        'description': short_description(text),
+                    },
+                    'confidence': 0.6,
+                })
+            if any(token in lower_text for token in ('after', 'because', 'due to', 'soon after', 'in response to')):
+                add_entity({
+                    'type': 'fact',
+                    'name': 'Retaliation causation link',
+                    'attributes': {
+                        'fact_type': 'timeline',
+                        'predicate_family': 'causation',
+                        'event_label': 'Causation sequence',
+                        'description': short_description(text),
+                    },
+                    'confidence': 0.6,
+                })
         
         if 'employer' in lower_text:
             add_entity({
@@ -1063,6 +1163,39 @@ class KnowledgeGraphBuilder:
                     'type': 'occurred_on',
                     'confidence': 0.6
                 })
+
+        # Add explicit causation/sequencing links for retaliation contexts.
+        retaliation_claims = [
+            claim for claim in claims
+            if str((claim.attributes or {}).get('claim_type') or '').strip().lower() == 'retaliation'
+        ]
+        if retaliation_claims:
+            fact_entities = graph.get_entities_by_type('fact')
+            protected_activity_facts = [
+                fact for fact in fact_entities
+                if str((fact.attributes or {}).get('predicate_family') or '').strip().lower() == 'protected_activity'
+            ]
+            adverse_action_facts = [
+                fact for fact in fact_entities
+                if str((fact.attributes or {}).get('predicate_family') or '').strip().lower() == 'adverse_action'
+            ]
+            for protected_fact in protected_activity_facts:
+                for adverse_fact in adverse_action_facts:
+                    relationships.append({
+                        'source_id': adverse_fact.id,
+                        'target_id': protected_fact.id,
+                        'type': 'follows_protected_activity',
+                        'confidence': 0.55,
+                    })
+            if any(token in (text or '').lower() for token in ('because', 'due to', 'in response to', 'soon after', 'after')):
+                for claim in retaliation_claims:
+                    for fact in protected_activity_facts + adverse_action_facts:
+                        relationships.append({
+                            'source_id': claim.id,
+                            'target_id': fact.id,
+                            'type': 'causal_link',
+                            'confidence': 0.5,
+                        })
 
         # Link claims to evidence entities when unambiguous
         evidence_entities = graph.get_entities_by_type('evidence')
