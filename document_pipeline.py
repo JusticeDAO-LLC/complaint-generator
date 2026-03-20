@@ -138,6 +138,8 @@ def _contains_actor_marker(value: Any) -> bool:
             "supervisor",
             "director",
             "coordinator",
+            "name",
+            "title",
         )
     )
 
@@ -147,7 +149,7 @@ def _contains_causation_marker(value: Any) -> bool:
     if not lowered:
         return False
     return (
-        any(marker in lowered for marker in ("because", "as a result", "after", "following", "in retaliation", "retaliat"))
+        any(marker in lowered for marker in ("because", "as a result", "after", "following", "in retaliation", "retaliat", "days after", "weeks after", "shortly after"))
         and any(marker in lowered for marker in ("complained", "reported", "grievance", "appeal", "protected activity", "requested accommodation"))
         and any(marker in lowered for marker in ("adverse action", "termination", "denial", "loss of assistance", "retaliat"))
     )

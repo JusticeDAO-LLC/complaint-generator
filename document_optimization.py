@@ -130,6 +130,8 @@ def _contains_actor_marker(text: Any) -> bool:
         "coordinator",
         "agent",
         "decision maker",
+        "name",
+        "title",
     )
     return any(marker in lowered for marker in actor_markers)
 
@@ -144,6 +146,9 @@ def _contains_causation_link(text: Any) -> bool:
         "as a direct result",
         "after",
         "following",
+        "days after",
+        "weeks after",
+        "shortly after",
         "in retaliation",
         "retaliat",
         "led to",
@@ -1362,7 +1367,21 @@ class AgenticDocumentOptimizer:
         date_anchor_bonus = 0.08 if any(_contains_date_anchor(text) for text in allegations) else 0.0
         actor_bonus = 0.07 if any(_contains_actor_marker(text) for text in allegations) else 0.0
         causation_bonus = 0.1 if any(_contains_causation_link(text) for text in allegations) else 0.0
-        return _clamp(base * 0.55 + support_bonus + variety_bonus + date_anchor_bonus + actor_bonus + causation_bonus)
+        lowered_allegations = " ".join(text.lower() for text in allegations)
+        hearing_timing_bonus = 0.04 if any(token in lowered_allegations for token in ("hearing request", "review request", "requested a hearing")) else 0.0
+        response_date_bonus = 0.04 if any(token in lowered_allegations for token in ("response date", "responded on", "decision date", "hearing outcome date")) else 0.0
+        sequencing_bonus = 0.04 if any(token in lowered_allegations for token in ("days after", "weeks after", "shortly after", "within")) else 0.0
+        return _clamp(
+            base * 0.5
+            + support_bonus
+            + variety_bonus
+            + date_anchor_bonus
+            + actor_bonus
+            + causation_bonus
+            + hearing_timing_bonus
+            + response_date_bonus
+            + sequencing_bonus
+        )
 
     def _score_claims_section(self, claims: List[Dict[str, Any]], support_context: Dict[str, Any]) -> float:
         if not claims:
@@ -1477,6 +1496,13 @@ class AgenticDocumentOptimizer:
             score += 0.2
         if any(_contains_causation_link(text) for text in factual_allegations):
             score += 0.25
+        lowered_allegations = " ".join(str(item).lower() for item in factual_allegations)
+        if any(token in lowered_allegations for token in ("hearing request", "review request", "requested a hearing")):
+            score += 0.06
+        if any(token in lowered_allegations for token in ("response date", "responded on", "decision date", "hearing outcome date")):
+            score += 0.06
+        if any(token in lowered_allegations for token in ("name and title", "names and titles", "name or title", "staff names", "staff titles")):
+            score += 0.05
         if covered:
             score += min(len(covered), 4) * 0.03
         weighted_gap_penalty = 0.0
