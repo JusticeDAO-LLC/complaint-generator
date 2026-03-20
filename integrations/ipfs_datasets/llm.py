@@ -95,6 +95,24 @@ def _provider_preflight_error(
 				"Set OPENROUTER_API_KEY or IPFS_DATASETS_PY_OPENROUTER_API_KEY."
 			)
 
+	if provider_key == "openai":
+		openai_key = _env_value("OPENAI_API_KEY", env_overrides)
+		if not openai_key:
+			return "OpenAI unavailable: missing API key. Set OPENAI_API_KEY."
+
+	if provider_key == "anthropic":
+		anthropic_key = _env_value("ANTHROPIC_API_KEY", env_overrides)
+		if not anthropic_key:
+			return "Anthropic unavailable: missing API key. Set ANTHROPIC_API_KEY."
+
+	if provider_key in {"gemini", "gemini_cli", "gemini_py"}:
+		gemini_key = (
+			_env_value("GEMINI_API_KEY", env_overrides)
+			or _env_value("GOOGLE_API_KEY", env_overrides)
+		)
+		if provider_key == "gemini" and not gemini_key:
+			return "Gemini unavailable: missing API key. Set GEMINI_API_KEY or GOOGLE_API_KEY."
+
 	if provider_key in {"codex", "codex_cli"} and shutil.which("codex") is None:
 		return "Codex CLI unavailable: codex binary not found on PATH."
 

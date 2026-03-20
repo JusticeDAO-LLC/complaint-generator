@@ -118,6 +118,31 @@ class TestLLMRouterBackend:
                 assert call_args.kwargs.get('temperature') == 0.7
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_llm_router_backend_leaves_provider_unpinned_when_not_supplied(self):
+        """Test that an omitted provider defers to router/env defaults instead of forcing Copilot."""
+        try:
+            mock_generate = Mock(return_value="Generated text response")
+
+            with patch('backends.llm_router_backend.generate_text', mock_generate):
+                from backends.llm_router_backend import LLMRouterBackend
+
+                backend = LLMRouterBackend(
+                    id='test-router',
+                    provider=None,
+                    model=None,
+                )
+
+                response = backend("Test prompt")
+
+                assert response == "Generated text response"
+                assert backend.provider is None
+                assert backend.model is None
+                call_args = mock_generate.call_args
+                assert call_args.kwargs['provider'] is None
+                assert call_args.kwargs['model_name'] is None
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
     
     def test_llm_router_backend_error_handling(self):
         """Test that LLMRouterBackend handles errors properly"""

@@ -17,6 +17,12 @@ _PROVIDER_ALIASES = {
     'hf': 'hf',
 }
 
+_PROVIDER_ENV_KEYS = (
+    'IPFS_DATASETS_PY_LLM_PROVIDER',
+    'COMPLAINT_GENERATOR_LLM_PROVIDER',
+    'LLM_ROUTER_PROVIDER',
+)
+
 class LLMRouterBackend:
     """Backend that uses ipfs_datasets_py's llm_router for LLM routing."""
     
@@ -31,8 +37,8 @@ class LLMRouterBackend:
             **config: Additional configuration passed to generate_text
         """
         self.id = id
-        raw_provider = str(provider or 'copilot_cli').strip()
-        self.provider = _PROVIDER_ALIASES.get(raw_provider.lower(), raw_provider)
+        raw_provider = self._resolve_provider_name(provider)
+        self.provider = _PROVIDER_ALIASES.get(raw_provider.lower(), raw_provider) if raw_provider else None
         if model is None:
             if self.provider == 'codex_cli':
                 self.model = 'gpt-5.3-codex'
@@ -43,8 +49,10 @@ class LLMRouterBackend:
                     or os.getenv('IPFS_DATASETS_PY_LLM_MODEL', '').strip()
                     or None
                 )
-            else:
+            elif self.provider:
                 self.model = 'gpt-5-mini'
+            else:
+                self.model = None
         else:
             self.model = model
 
@@ -88,6 +96,17 @@ class LLMRouterBackend:
                 "llm_router not available. Please ensure ipfs_datasets_py submodule "
                 "is initialized with: git submodule update --init --recursive"
             )
+
+    @staticmethod
+    def _resolve_provider_name(provider):
+        explicit_provider = str(provider or '').strip()
+        if explicit_provider:
+            return explicit_provider
+        for key in _PROVIDER_ENV_KEYS:
+            value = str(os.getenv(key, '')).strip()
+            if value:
+                return value
+        return ''
     
     def __call__(self, text):
         """

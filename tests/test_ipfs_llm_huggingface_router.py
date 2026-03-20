@@ -421,6 +421,34 @@ def test_generate_text_with_metadata_reports_missing_codex_binary(monkeypatch):
     assert payload["availability_hint"] == payload["error"]
 
 
+def test_generate_text_with_metadata_reports_missing_openai_key(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    payload = llm.generate_text_with_metadata(
+        "Draft a patch summary.",
+        provider="openai",
+        model_name="gpt-4o-mini",
+    )
+
+    assert payload["status"] == "error"
+    assert payload["error"] == "OpenAI unavailable: missing API key. Set OPENAI_API_KEY."
+    assert payload["availability_hint"] == payload["error"]
+
+
+def test_generate_text_with_metadata_reports_missing_anthropic_key(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    payload = llm.generate_text_with_metadata(
+        "Draft a patch summary.",
+        provider="anthropic",
+        model_name="claude-3-5-sonnet",
+    )
+
+    assert payload["status"] == "error"
+    assert payload["error"] == "Anthropic unavailable: missing API key. Set ANTHROPIC_API_KEY."
+    assert payload["availability_hint"] == payload["error"]
+
+
 @pytest.mark.llm
 @pytest.mark.network
 def test_generate_text_with_metadata_live_huggingface_router_smoke():

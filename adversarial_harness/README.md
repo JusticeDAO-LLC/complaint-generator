@@ -83,7 +83,7 @@ The system uses stochastic gradient descent (SGD) cycles with parallel batch pro
 from adversarial_harness import AdversarialHarness
 from backends import LLMRouterBackend
 
-backend = LLMRouterBackend(id='llm', provider='copilot_cli', model='gpt-5-mini')
+backend = LLMRouterBackend(id='llm', provider='codex', model='gpt-5.3-codex')
 harness = AdversarialHarness(
     backend=backend,
     parallelism=4,
@@ -424,7 +424,7 @@ from mediator import Mediator
 from backends import LLMRouterBackend
 
 # Setup
-backend = LLMRouterBackend(id='llm', provider='copilot_cli', model='gpt-5-mini')
+backend = LLMRouterBackend(id='llm', provider='codex', model='gpt-5.3-codex')
 mediator = Mediator(backends=[backend])
 complainant = Complainant(backend, personality='cooperative')
 critic = Critic(backend)

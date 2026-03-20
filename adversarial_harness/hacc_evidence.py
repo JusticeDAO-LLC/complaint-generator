@@ -64,20 +64,19 @@ def _repo_root() -> Path:
 
 
 def _load_hacc_engine() -> Any:
-    engine_path = _repo_root() / "hacc_research" / "engine.py"
+    repo_root = _repo_root()
+    engine_path = repo_root / "hacc_research" / "engine.py"
     if not engine_path.exists():
-        raise ModuleNotFoundError(f"HACCResearchEngine not found at {engine_path}")
+        raise ModuleNotFoundError(f"HACCResearchEngine module not found at {engine_path}")
 
-    module_name = "hacc_research.engine"
-    spec = importlib.util.spec_from_file_location(module_name, engine_path)
+    spec = importlib.util.spec_from_file_location("hacc_research.engine", engine_path)
     if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load module spec for {engine_path}")
+        raise ImportError(f"Unable to create import spec for {engine_path}")
 
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-
-    engine_cls = getattr(module, "HACCResearchEngine", None)
+    engine_module = importlib.util.module_from_spec(spec)
+    sys.modules.setdefault("hacc_research.engine", engine_module)
+    spec.loader.exec_module(engine_module)
+    engine_cls = getattr(engine_module, "HACCResearchEngine", None)
     if engine_cls is None:
         raise ImportError("hacc_research.engine does not export HACCResearchEngine")
     return engine_cls

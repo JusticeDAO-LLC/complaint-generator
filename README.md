@@ -299,8 +299,8 @@ See [Canary configuration details →](docs/CONFIGURATION.md).
 from mediator import Mediator
 from backends import LLMRouterBackend
 
-# Initialize
-backend = LLMRouterBackend(id='llm-router', provider='copilot_cli', model='gpt-4')
+# Initialize with the router-backed Codex route
+backend = LLMRouterBackend(id='llm-router', provider='codex', model='gpt-5.3-codex')
 mediator = Mediator(backends=[backend])
 
 # Process complaint
