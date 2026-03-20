@@ -2390,6 +2390,28 @@ SUGGESTIONS:
         assert summary['runtime']['degraded'] is False
         assert summary['autopatch']['patch_cid'].startswith('demo-')
 
+    def test_run_adversarial_autopatch_batch_workflow_mode_emits_phase_tasks(self, tmp_path):
+        payload = run_adversarial_autopatch_batch(
+            project_root=Path(__file__).resolve().parents[1],
+            output_dir=tmp_path,
+            target_file='adversarial_harness/session.py',
+            num_sessions=1,
+            max_turns=2,
+            max_parallel=1,
+            demo_backend=False,
+            phase_mode='workflow',
+            backends=[DemoBatchLLMBackend()],
+            mediator_factory=DemoBatchMediator,
+        )
+
+        assert payload['phase_mode'] == 'workflow'
+        assert payload['phase_tasks']
+        assert payload['phase_tasks'][0]['phase'] in {'intake_questioning', 'graph_analysis', 'document_generation'}
+        assert Path(payload['phase_tasks'][0]['patch_path']).is_file()
+        summary = json.loads((tmp_path / 'summary.json').read_text(encoding='utf-8'))
+        assert summary['phase_mode'] == 'workflow'
+        assert summary['phase_tasks']
+
     def test_run_adversarial_autopatch_batch_live_mode_probes_multiple_backends(self, tmp_path):
         class FailingBackend:
             id = 'failing-backend'

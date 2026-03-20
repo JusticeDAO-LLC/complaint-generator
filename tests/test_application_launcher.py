@@ -103,21 +103,27 @@ def test_launch_application_runs_adversarial_autopatch(monkeypatch):
 
 
 def test_run_adversarial_autopatch_app_prints_payload(monkeypatch, capsys):
+    captured_kwargs = {}
+
     monkeypatch.setattr(
         "applications.launcher.run_adversarial_autopatch_batch",
-        lambda **kwargs: {
+        lambda **kwargs: captured_kwargs.update(kwargs) or {
             "num_results": 1,
             "report": {"average_score": 0.7},
             "runtime": {"preflight_warnings": []},
             "autopatch": {"success": True, "patch_path": "/tmp/demo.patch", "patch_cid": "cid"},
+            "phase_mode": kwargs.get("phase_mode", "single"),
+            "phase_tasks": [],
         },
     )
 
-    _run_adversarial_autopatch_app(object(), {"output_dir": "/tmp/autopatch", "demo_backend": True})
+    _run_adversarial_autopatch_app(object(), {"output_dir": "/tmp/autopatch", "demo_backend": True, "phase_mode": "workflow"})
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["num_results"] == 1
     assert payload["autopatch"]["success"] is True
+    assert payload["phase_mode"] == "workflow"
+    assert captured_kwargs["phase_mode"] == "workflow"
 
 
 def test_run_adversarial_autopatch_app_prints_preflight_warnings_to_stderr(monkeypatch, capsys):

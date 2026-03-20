@@ -161,6 +161,9 @@ class CLI:
 
 	def _format_claim_review_output(self, payload):
 		sections = []
+		intake_status = payload.get('intake_status', {}) if isinstance(payload, dict) else {}
+		if isinstance(intake_status, dict) and intake_status:
+			sections.append(self._format_intake_status_summary(intake_status))
 		claim_coverage_summary = payload.get('claim_coverage_summary', {}) if isinstance(payload, dict) else {}
 		if isinstance(claim_coverage_summary, dict) and claim_coverage_summary:
 			sections.append(self._format_claim_review_quality_summary(claim_coverage_summary))
@@ -223,6 +226,46 @@ class CLI:
 			)
 		sections.append(json.dumps(payload, indent=2, default=str))
 		return '\n\n'.join(section for section in sections if section)
+
+	def _format_intake_status_summary(self, intake_status):
+		lines = ['intake status summary:']
+		current_phase = str(intake_status.get('current_phase') or 'unknown')
+		ready_to_advance = bool(intake_status.get('ready_to_advance', False))
+		score = float(intake_status.get('score') or 0.0)
+		remaining_gap_count = int(intake_status.get('remaining_gap_count', 0) or 0)
+		contradiction_count = int(intake_status.get('contradiction_count', 0) or 0)
+		lines.append(
+			f'- phase={current_phase} ready={str(ready_to_advance).lower()} score={score:.2f} '
+			f'gaps={remaining_gap_count} contradictions={contradiction_count}'
+		)
+		next_action = intake_status.get('next_action') if isinstance(intake_status.get('next_action'), dict) else {}
+		if next_action:
+			action = str(next_action.get('action') or '')
+			validation_target_count = int(next_action.get('validation_target_count', 0) or 0)
+			if action:
+				line = f'  next_action: {action}'
+				if validation_target_count:
+					line += f' targets={validation_target_count}'
+				lines.append(line)
+		primary_validation_target = (
+			intake_status.get('primary_validation_target')
+			if isinstance(intake_status.get('primary_validation_target'), dict)
+			else {}
+		)
+		if primary_validation_target:
+			target_claim_type = str(primary_validation_target.get('claim_type') or '')
+			target_element_id = str(primary_validation_target.get('claim_element_id') or '')
+			promotion_kind = str(primary_validation_target.get('promotion_kind') or '')
+			promotion_ref = str(primary_validation_target.get('promotion_ref') or '')
+			target_parts = [part for part in (target_claim_type, target_element_id) if part]
+			target_label = ' / '.join(target_parts) if target_parts else 'unspecified'
+			target_line = f'  primary_validation_target: {target_label}'
+			if promotion_kind:
+				target_line += f' [{promotion_kind}]'
+			if promotion_ref:
+				target_line += f' ref={promotion_ref}'
+			lines.append(target_line)
+		return '\n'.join(lines)
 
 	def _format_claim_review_quality_summary(self, claim_coverage_summary):
 		lines = ['claim review quality summary:']

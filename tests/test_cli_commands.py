@@ -93,6 +93,23 @@ def test_claim_review_command_calls_mediator_builder():
 def test_claim_review_command_prints_parse_quality_summary_before_json():
     mediator = Mock()
     mediator.build_claim_support_review_payload.return_value = {
+        'intake_status': {
+            'current_phase': 'evidence',
+            'ready_to_advance': False,
+            'score': 0.67,
+            'remaining_gap_count': 1,
+            'contradiction_count': 0,
+            'next_action': {
+                'action': 'validate_promoted_support',
+                'validation_target_count': 2,
+            },
+            'primary_validation_target': {
+                'claim_type': 'retaliation',
+                'claim_element_id': 'adverse_action',
+                'promotion_kind': 'document',
+                'promotion_ref': 'doc:retaliation:1',
+            },
+        },
         'claim_coverage_summary': {
             'retaliation': {
                 'low_quality_parsed_record_count': 2,
@@ -232,6 +249,10 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
     cli.claim_review(['claim_type=retaliation'])
 
     rendered = cli.print_response.call_args[0][0]
+    assert 'intake status summary:' in rendered
+    assert '- phase=evidence ready=false score=0.67 gaps=1 contradictions=0' in rendered
+    assert 'next_action: validate_promoted_support targets=2' in rendered
+    assert 'primary_validation_target: retaliation / adverse_action [document] ref=doc:retaliation:1' in rendered
     assert 'claim review quality summary:' in rendered
     assert '- retaliation: low_quality=2 issue_elements=1 avg_quality=62.50 authority_supportive=1 authority_adverse=1 authority_uncertain=1' in rendered
     assert 'refresh: Causal connection' in rendered
@@ -689,6 +710,14 @@ def test_adversarial_autopatch_command_runs_demo_batch(monkeypatch, tmp_path):
                 'patch_cid': 'demo-cli-cid',
                 'metadata': {'demo': True},
             },
+            'phase_mode': 'workflow',
+            'phase_tasks': [
+                {
+                    'phase': 'intake_questioning',
+                    'success': True,
+                    'patch_path': str(tmp_path / 'intake.patch'),
+                }
+            ],
         }
         summary_path.write_text(json.dumps(payload), encoding='utf-8')
         return payload
@@ -701,6 +730,7 @@ def test_adversarial_autopatch_command_runs_demo_batch(monkeypatch, tmp_path):
         'num_sessions=2',
         'max_turns=4',
         'max_parallel=1',
+        'phase_mode=workflow',
     ])
 
     assert captured['output_dir'] == str(tmp_path)
@@ -708,11 +738,15 @@ def test_adversarial_autopatch_command_runs_demo_batch(monkeypatch, tmp_path):
     assert captured['num_sessions'] == 2
     assert captured['max_turns'] == 4
     assert captured['max_parallel'] == 1
+    assert captured['phase_mode'] == 'workflow'
     assert captured['demo_backend'] is True
     rendered = cli.print_response.call_args[0][0]
     assert 'adversarial autopatch:' in rendered
     assert 'average_score: 0.8000' in rendered
     assert 'runtime_mode: live' in rendered
+    assert 'phase_mode: workflow' in rendered
+    assert 'phase_tasks: 1' in rendered
+    assert '- intake_questioning: success=True' in rendered
     assert 'preflight_warnings:' in rendered
     assert 'HF_TOKEN or HUGGINGFACE_HUB_TOKEN' in rendered
     assert 'patch_cid: demo-cli-cid' in rendered
