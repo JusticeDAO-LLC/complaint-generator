@@ -175,6 +175,59 @@ def _contains_causation_link(text: Any) -> bool:
     )
 
 
+_INTAKE_OBJECTIVE_ALIASES = {
+    "timeline": "timeline",
+    "timeline_dates": "timeline",
+    "actors": "actors",
+    "staff_names_titles": "staff_names_titles",
+    "staff_names": "staff_names_titles",
+    "staff_titles": "staff_names_titles",
+    "causation_link": "causation_link",
+    "causation": "causation_link",
+    "anchor_adverse_action": "anchor_adverse_action",
+    "adverse_action": "anchor_adverse_action",
+    "anchor_appeal_rights": "anchor_appeal_rights",
+    "appeal_rights": "anchor_appeal_rights",
+    "hearing_request_timing": "hearing_request_timing",
+    "hearing_timing": "hearing_request_timing",
+    "response_dates": "response_dates",
+    "response_timing": "response_dates",
+}
+
+_INTAKE_OBJECTIVE_PRIORITY = {
+    "timeline": 1.0,
+    "staff_names_titles": 1.0,
+    "actors": 0.9,
+    "causation_link": 1.0,
+    "anchor_adverse_action": 1.0,
+    "anchor_appeal_rights": 0.9,
+    "hearing_request_timing": 0.9,
+    "response_dates": 0.9,
+}
+
+_OBJECTIVE_PROMPTS = {
+    "timeline": "Capture exact event dates or anchored date ranges for each key intake, complaint, and adverse-action event.",
+    "actors": "Identify the HACC actor-by-actor sequence for who made, communicated, and carried out each decision.",
+    "staff_names_titles": "Lock specific HACC staff names and titles (or best-known titles) tied to each step.",
+    "causation_link": "Document facts that tie protected activity to the adverse treatment using timing, statements, and sequence changes.",
+    "anchor_adverse_action": "Confirm the exact adverse action (denial, termination, threatened loss) and its communication date.",
+    "anchor_appeal_rights": "Confirm written notice, hearing/review request timing, and whether those requests were accepted, denied, or ignored.",
+    "hearing_request_timing": "Capture when hearing or review was requested, when HACC responded, and any gaps between request and response.",
+    "response_dates": "Capture exact response dates for notices, review decisions, hearing outcomes, and communications.",
+}
+
+
+def _normalize_intake_objective(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    return _INTAKE_OBJECTIVE_ALIASES.get(text, text)
+
+
+def _normalize_intake_objectives(values: Any) -> List[str]:
+    return _dedupe_text_values(_normalize_intake_objective(item) for item in list(values or []))
+
+
 def _build_claim_support_temporal_handoff(intake_case_summary: Any) -> Dict[str, Any]:
     summary = intake_case_summary if isinstance(intake_case_summary, dict) else {}
     packet_summary = summary.get("claim_support_packet_summary")
@@ -588,19 +641,44 @@ class AgenticDocumentOptimizer:
             else {}
         )
 
+        covered_objectives = _normalize_intake_objectives(intake_priority_summary.get("covered_objectives") or [])
+        uncovered_objectives = _normalize_intake_objectives(intake_priority_summary.get("uncovered_objectives") or [])
+        objective_question_counts = {
+            _normalize_intake_objective(key): int(value or 0)
+            for key, value in dict(intake_priority_summary.get("objective_question_counts") or {}).items()
+            if _normalize_intake_objective(key)
+        }
+        objective_question_counts = {
+            key: value
+            for key, value in objective_question_counts.items()
+            if key
+        }
+        unresolved_objectives = _dedupe_text_values(
+            list(uncovered_objectives)
+            + [key for key, count in objective_question_counts.items() if count <= 0]
+        )
+        critical_unresolved = [
+            objective
+            for objective in _INTAKE_OBJECTIVE_PRIORITY
+            if objective in unresolved_objectives
+        ]
+
         return {
             "claims": claim_contexts,
             "evidence": evidence_summaries[:10],
             "sections": dict(drafting_readiness.get("sections") or {}) if isinstance(drafting_readiness, dict) else {},
             "packet_projection": self._build_packet_projection(draft),
             "intake_priorities": {
-                "covered_objectives": _dedupe_text_values(intake_priority_summary.get("covered_objectives") or []),
-                "uncovered_objectives": _dedupe_text_values(intake_priority_summary.get("uncovered_objectives") or []),
-                "objective_question_counts": {
-                    str(key): int(value or 0)
-                    for key, value in dict(intake_priority_summary.get("objective_question_counts") or {}).items()
-                    if str(key)
-                },
+                "covered_objectives": covered_objectives,
+                "uncovered_objectives": uncovered_objectives,
+                "objective_question_counts": objective_question_counts,
+                "unresolved_objectives": unresolved_objectives,
+                "critical_unresolved_objectives": critical_unresolved,
+                "recommended_follow_up_prompts": [
+                    _OBJECTIVE_PROMPTS[objective]
+                    for objective in critical_unresolved
+                    if objective in _OBJECTIVE_PROMPTS
+                ],
             },
             "capabilities": self._router_status(),
         }
@@ -1208,9 +1286,24 @@ class AgenticDocumentOptimizer:
                 suggestions.append("Add structured recipient details and method-specific service language before export.")
 
         intake_questioning_score = float(section_scores.get("intake_questioning") or 0.0)
+        intake_priorities = support_context.get("intake_priorities") if isinstance(support_context.get("intake_priorities"), dict) else {}
+        unresolved_objectives = [
+            str(item).strip()
+            for item in list(intake_priorities.get("critical_unresolved_objectives") or [])
+            if str(item).strip()
+        ]
         if intake_questioning_score < 0.75:
-            weaknesses.append("Intake follow-up detail is missing date anchors, actor-by-actor decisions, or protected-activity-to-adverse-action causation facts.")
-            suggestions.append("Ask targeted follow-up questions to lock dates, each HACC actor decision, and direct causation facts linking protected activity to adverse treatment.")
+            weaknesses.append(
+                "Intake follow-up detail is missing closure on key blockers (exact dates, staff names/titles, hearing-request timing, response dates, and protected-activity-to-adverse-action causation)."
+            )
+            if unresolved_objectives:
+                objective_labels = ", ".join(unresolved_objectives[:5])
+                suggestions.append(
+                    f"Ask targeted follow-up questions to close unresolved intake objectives: {objective_labels}."
+                )
+            suggestions.append(
+                "Ask targeted follow-up questions to lock dates, each HACC actor decision, hearing and response timing, and direct causation facts linking protected activity to adverse treatment."
+            )
 
         readiness_status = str(drafting_readiness.get("status") or "ready").strip().lower()
         procedural_score = 0.95 if readiness_status == "ready" else 0.75 if readiness_status == "warning" else 0.45
@@ -1358,14 +1451,24 @@ class AgenticDocumentOptimizer:
     ) -> float:
         priorities = support_context.get("intake_priorities") if isinstance(support_context.get("intake_priorities"), dict) else {}
         uncovered = {
-            str(item).strip().lower()
+            _normalize_intake_objective(item)
             for item in list(priorities.get("uncovered_objectives") or [])
-            if str(item).strip()
+            if _normalize_intake_objective(item)
         }
         covered = {
-            str(item).strip().lower()
+            _normalize_intake_objective(item)
             for item in list(priorities.get("covered_objectives") or [])
-            if str(item).strip()
+            if _normalize_intake_objective(item)
+        }
+        unresolved = {
+            _normalize_intake_objective(item)
+            for item in list(priorities.get("unresolved_objectives") or [])
+            if _normalize_intake_objective(item)
+        }
+        objective_counts = {
+            _normalize_intake_objective(key): int(value or 0)
+            for key, value in dict(priorities.get("objective_question_counts") or {}).items()
+            if _normalize_intake_objective(key)
         }
         score = 0.35
         if any(_contains_date_anchor(text) for text in factual_allegations):
@@ -1376,8 +1479,13 @@ class AgenticDocumentOptimizer:
             score += 0.25
         if covered:
             score += min(len(covered), 4) * 0.03
-        if {"timeline", "actors", "causation_link"}.intersection(uncovered):
-            score -= 0.2
+        weighted_gap_penalty = 0.0
+        for objective, weight in _INTAKE_OBJECTIVE_PRIORITY.items():
+            if objective in uncovered or objective in unresolved or int(objective_counts.get(objective, 0)) <= 0:
+                weighted_gap_penalty += 0.03 * float(weight)
+        score -= min(weighted_gap_penalty, 0.3)
+        if {"timeline", "actors", "causation_link", "staff_names_titles", "hearing_request_timing", "response_dates"}.intersection(uncovered):
+            score -= 0.08
         return _clamp(score)
 
     def _merge_review_payload(self, parsed: Optional[Dict[str, Any]], heuristic_review: Dict[str, Any]) -> Dict[str, Any]:
