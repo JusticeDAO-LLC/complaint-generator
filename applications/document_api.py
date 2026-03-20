@@ -209,6 +209,56 @@ def _humanize_workflow_priority_label(value: Any) -> str:
     return text.replace("_", " ").replace("-", " ").title()
 
 
+def _resolve_document_review_url(
+    *,
+    user_id: Optional[str],
+    dashboard_url: str,
+    claim_review_map: Dict[str, Dict[str, Any]],
+    section_review_map: Dict[str, Dict[str, Any]],
+    claim_type: Optional[str] = None,
+    section_key: Optional[str] = None,
+) -> str:
+    normalized_claim_type = str(claim_type or "").strip()
+    normalized_section_key = str(section_key or "").strip()
+
+    if normalized_section_key:
+        section_target = section_review_map.get(normalized_section_key) or {}
+        section_context = section_target.get("review_context") if isinstance(section_target.get("review_context"), dict) else {}
+        return str(
+            section_target.get("review_url")
+            or _build_review_url(
+                user_id=user_id,
+                claim_type=normalized_claim_type or section_context.get("claim_type"),
+                section=normalized_section_key,
+            )
+        )
+
+    if normalized_claim_type:
+        claim_target = claim_review_map.get(normalized_claim_type) or {}
+        return str(
+            claim_target.get("review_url")
+            or _build_review_url(user_id=user_id, claim_type=normalized_claim_type)
+        )
+
+    return dashboard_url
+
+
+def _claim_type_in_case_summary_queue(
+    intake_case_summary: Dict[str, Any],
+    *,
+    claim_type: Optional[str],
+    summary_key: str,
+) -> bool:
+    normalized_claim_type = str(claim_type or "").strip()
+    if not normalized_claim_type:
+        return False
+    summary = intake_case_summary.get(summary_key) if isinstance(intake_case_summary.get(summary_key), dict) else {}
+    for item in summary.get("claims") or []:
+        if str((item or {}).get("claim_type") or "").strip() == normalized_claim_type:
+            return True
+    return False
+
+
 def _build_document_review_workflow_phase_priority(
     workflow_phase_plan: Dict[str, Any],
     *,
@@ -315,6 +365,228 @@ def _build_document_review_workflow_phase_priority(
             f"phase status: {_humanize_workflow_priority_label(prioritized_status)}",
             *([f"recommended action: {primary_recommended_action}"] if primary_recommended_action else []),
         ],
+    }
+
+
+def _build_document_review_workflow_priority(
+    *,
+    intake_status: Dict[str, Any],
+    intake_case_summary: Dict[str, Any],
+    workflow_phase_plan: Dict[str, Any],
+    user_id: Optional[str],
+    default_claim_type: Optional[str],
+    dashboard_url: str,
+    claim_review_map: Dict[str, Dict[str, Any]],
+    section_review_map: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    next_action = intake_status.get("next_action") if isinstance(intake_status.get("next_action"), dict) else {}
+    if not next_action and isinstance(intake_case_summary.get("next_action"), dict):
+        next_action = intake_case_summary.get("next_action") or {}
+
+    action = str(next_action.get("action") or "").strip().lower()
+    if not action:
+        return _build_document_review_workflow_phase_priority(
+            workflow_phase_plan,
+            user_id=user_id,
+            default_claim_type=default_claim_type,
+            dashboard_url=dashboard_url,
+            section_review_map=section_review_map,
+        )
+
+    claim_type = str(next_action.get("claim_type") or default_claim_type or "").strip()
+    claim_element_id = str(next_action.get("claim_element_id") or "").strip()
+    blockers = next_action.get("intake_blockers") if isinstance(next_action.get("intake_blockers"), list) else []
+    contradictions = int((intake_case_summary.get("contradiction_summary") or {}).get("count") or 0)
+    question_candidates = int((intake_case_summary.get("question_candidate_summary") or {}).get("count") or 0)
+    packet_summary = (
+        intake_case_summary.get("claim_support_packet_summary")
+        if isinstance(intake_case_summary.get("claim_support_packet_summary"), dict)
+        else {}
+    )
+    base_claim_url = _resolve_document_review_url(
+        user_id=user_id,
+        dashboard_url=dashboard_url,
+        claim_review_map=claim_review_map,
+        section_review_map=section_review_map,
+        claim_type=claim_type,
+    )
+
+    status = "warning"
+    title = "Review workflow priority before drafting"
+    description = "The review dashboard still has a higher-priority step than drafting for this matter."
+    action_label = "Open Review Dashboard"
+    action_url = dashboard_url
+    action_kind = "link"
+
+    if action == "confirm_intake_summary":
+        title = "Confirm intake summary before drafting"
+        description = "The current intake summary snapshot still needs complainant confirmation before drafting should continue."
+        action_label = "Confirm intake summary"
+        action_kind = "button"
+    elif action == "validate_promoted_support":
+        title = "Validate promoted support before drafting"
+        description = "Promoted testimony or document support still needs validation before the draft can rely on it."
+        action_label = "Review promoted updates"
+        action_url = _append_review_query_params(
+            base_claim_url,
+            alignment_task_update_filter="pending_review",
+            alignment_task_update_sort="pending_review_first",
+        )
+    elif action == "resolve_support_conflicts":
+        title = "Resolve support conflicts before drafting"
+        description = "Manual-review conflicts are still blocking evidence confidence for a draft-ready complaint."
+        action_label = "Review manual conflicts"
+        claim_queue_url = base_claim_url
+        if _claim_type_in_case_summary_queue(
+            intake_case_summary,
+            claim_type=claim_type,
+            summary_key="manual_review_claim_summary",
+        ):
+            claim_queue_url = _append_review_query_params(
+                claim_queue_url,
+                alignment_task_update_filter="manual_review",
+                alignment_task_update_sort="manual_review_first",
+            )
+        elif _claim_type_in_case_summary_queue(
+            intake_case_summary,
+            claim_type=claim_type,
+            summary_key="pending_review_claim_summary",
+        ):
+            claim_queue_url = _append_review_query_params(
+                claim_queue_url,
+                alignment_task_update_filter="pending_review",
+                alignment_task_update_sort="pending_review_first",
+            )
+        action_url = _append_review_query_params(
+            claim_queue_url,
+            alignment_task_update_filter="manual_review",
+            alignment_task_update_sort="manual_review_first",
+        )
+    elif action == "fill_evidence_gaps":
+        title = "Fill evidence gaps before drafting"
+        description = "The current backend priority still points to missing support for a claim element in this complaint."
+        action_label = "Review evidence task"
+        action_url = _append_review_query_params(
+            base_claim_url,
+            follow_up_support_kind="evidence",
+            alignment_task_update_filter="active",
+            alignment_task_update_sort="newest_first",
+        )
+    elif action in {"address_gaps", "continue_denoising", "build_knowledge_graph"}:
+        if action == "address_gaps":
+            title = "Resolve intake gaps before drafting"
+            description = "Intake still has unresolved factual gaps that can weaken the document if drafting continues too early."
+            action_label = "Review intake gaps"
+        elif action == "continue_denoising":
+            title = "Continue intake denoising before drafting"
+            description = "Contradictions or unanswered intake questions still need another denoising pass before the document stabilizes."
+            action_label = "Review denoising queue"
+        else:
+            title = "Review intake graph inputs before drafting"
+            description = "The intake graph inputs are not complete enough to support a stable draft handoff yet."
+            action_label = "Review intake graph inputs"
+        action_url = _append_review_query_params(
+            _resolve_document_review_url(
+                user_id=user_id,
+                dashboard_url=dashboard_url,
+                claim_review_map=claim_review_map,
+                section_review_map=section_review_map,
+                claim_type=claim_type,
+                section_key="summary_of_facts",
+            ),
+            follow_up_support_kind=_default_support_kind_for_section("summary_of_facts"),
+        )
+    elif action == "build_dependency_graph":
+        title = "Review dependency inputs before drafting"
+        description = "Cross-section dependency mapping is still incomplete, so the case theory may not be stable enough for drafting."
+        action_label = "Review dependency inputs"
+        action_url = _resolve_document_review_url(
+            user_id=user_id,
+            dashboard_url=dashboard_url,
+            claim_review_map=claim_review_map,
+            section_review_map=section_review_map,
+            claim_type=claim_type,
+            section_key="chronology",
+        )
+    elif action in {"build_legal_graph", "perform_neurosymbolic_matching"}:
+        title = (
+            "Review legal graph inputs before drafting"
+            if action == "build_legal_graph"
+            else "Review matching inputs before drafting"
+        )
+        description = (
+            "Formalization still needs the legal graph that organizes statutes and requirements for this complaint."
+            if action == "build_legal_graph"
+            else "Formal claim-to-law matching is still pending, so the draft may outrun the current legal targeting."
+        )
+        action_label = (
+            "Review legal graph inputs"
+            if action == "build_legal_graph"
+            else "Review matching inputs"
+        )
+        action_url = _append_review_query_params(
+            _resolve_document_review_url(
+                user_id=user_id,
+                dashboard_url=dashboard_url,
+                claim_review_map=claim_review_map,
+                section_review_map=section_review_map,
+                claim_type=claim_type,
+                section_key="claims_for_relief",
+            ),
+            follow_up_support_kind=_default_support_kind_for_section("claims_for_relief"),
+        )
+    elif action == "build_claim_support_packets":
+        title = "Build support packets before drafting"
+        description = "Evidence has been collected, but the packet-building step still needs to run before the draft can rely on those signals."
+        action_label = "Build support packets"
+        action_url = _append_review_query_params(
+            base_claim_url,
+            follow_up_support_kind="evidence",
+            alignment_task_update_filter="active",
+            alignment_task_update_sort="newest_first",
+        )
+    elif action == "complete_evidence":
+        status = "ready"
+        title = "Evidence is ready for formal drafting"
+        description = "The backend priority has advanced to document drafting, so continuing here is consistent with the current workflow."
+    elif action == "generate_formal_complaint":
+        status = "ready"
+        title = "Drafting is the current workflow priority"
+        description = "The backend priority already points to formal complaint generation, so you can continue drafting here."
+    elif action == "complete_formalization":
+        status = "ready"
+        title = "Formalization is complete"
+        description = "Current workflow signals do not show a higher-priority review step blocking this draft."
+
+    chip_labels = [f"recommended action: {action}"]
+    if claim_type:
+        chip_labels.append(f"focus claim: {_humanize_workflow_priority_label(claim_type)}")
+    if claim_element_id:
+        chip_labels.append(f"focus element: {claim_element_id}")
+    if blockers:
+        chip_labels.append(f"blockers: {len([item for item in blockers if str(item).strip()])}")
+    if contradictions > 0:
+        chip_labels.append(f"contradictions: {contradictions}")
+    if question_candidates > 0:
+        chip_labels.append(f"question candidates: {question_candidates}")
+    if action == "resolve_support_conflicts":
+        chip_labels.append(
+            f"packet escalations: {int(packet_summary.get('claim_support_reviewable_escalation_count') or 0)}"
+        )
+    if action in {"generate_formal_complaint", "complete_evidence"}:
+        chip_labels.append(
+            f"proof readiness: {float(packet_summary.get('proof_readiness_score') or 0):.2f}"
+        )
+
+    return {
+        "status": status,
+        "title": title,
+        "description": description,
+        "action_label": action_label,
+        "action_url": action_url,
+        "action_kind": action_kind,
+        "dashboard_url": dashboard_url,
+        "chip_labels": chip_labels,
     }
 
 
@@ -622,6 +894,16 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
         dashboard_url=dashboard_url,
         section_review_map=section_review_map,
     )
+    workflow_priority = _build_document_review_workflow_priority(
+        intake_status=intake_status,
+        intake_case_summary=intake_case_summary,
+        workflow_phase_plan=workflow_phase_plan,
+        user_id=resolved_user_id,
+        default_claim_type=preferred_claim_type,
+        dashboard_url=dashboard_url,
+        claim_review_map=claim_review_map,
+        section_review_map=section_review_map,
+    )
 
     payload["review_links"] = {
         "dashboard_url": dashboard_url,
@@ -634,6 +916,7 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
             if isinstance(intake_status.get("next_action"), dict)
             else ""
         ),
+        "workflow_priority": workflow_priority,
         "workflow_phase_priority": workflow_phase_priority,
         "primary_validation_target": (
             dict(intake_status.get("primary_validation_target"))

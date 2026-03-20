@@ -384,6 +384,46 @@ def _build_mediator() -> Mock:
             }
         }
     }
+    mediator.get_claim_support_validation.side_effect = lambda claim_type=None, user_id=None: {
+        "claims": {
+            claim_type: {
+                "claim_type": claim_type,
+                "elements": [
+                    {
+                        "element_id": f"{claim_type or 'claim'}_element_001",
+                        "element_text": "Causal connection" if claim_type == "retaliation" else "Adverse employment action",
+                        "validation_status": "supported",
+                        "reasoning_diagnostics": (
+                            {
+                                "backend_available_count": 1,
+                                "predicate_count": 2,
+                                "hybrid_reasoning": {
+                                    "result": {
+                                        "compiler_bridge_available": True,
+                                        "formalism": "tdfol_dcec_bridge_v1",
+                                        "reasoning_mode": "temporal_bridge",
+                                        "proof_artifact": {
+                                            "available": True,
+                                            "status": "available",
+                                            "proof_id": "proof-retaliation-001",
+                                            "proof_status": "success",
+                                            "sentence": "show protected activity preceded termination",
+                                            "explanation": {
+                                                "format": "plain_text",
+                                                "text": "Protected activity preceded termination.",
+                                            },
+                                        },
+                                    }
+                                },
+                            }
+                            if claim_type == "retaliation"
+                            else {"backend_available_count": 0, "predicate_count": 0}
+                        ),
+                    }
+                ],
+            }
+        }
+    }
     mediator.get_user_evidence.return_value = [
         {
             "id": 1,

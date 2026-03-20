@@ -520,6 +520,7 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "document-workflow-action-link" in content
     assert "renderWorkflowPriority(reviewLinks, intakeCaseSummary, workflowPhasePlan, manualReviewClaims, pendingReviewClaims)" in content
     assert "resolveDocumentWorkflowAction(reviewLinks, intakeCaseSummary)" in content
+    assert "reviewLinks.workflow_priority" in content
     assert "reviewLinks.workflow_phase_priority" in content
     assert "workflowPriorityFromLinks" in content
     assert "workflowPriorityFromLinks.action_label" in content or "workflowPhasePriority.action_label" in content

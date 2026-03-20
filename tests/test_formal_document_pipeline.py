@@ -391,6 +391,19 @@ def test_document_api_annotation_promotes_confirmed_intake_handoff():
     assert payload['document_optimization']['intake_summary_handoff'] == payload['intake_summary_handoff']
     assert payload['review_links']['intake_status']['intake_summary_handoff'] == payload['intake_summary_handoff']
     assert payload['review_links']['intake_case_summary']['intake_summary_handoff'] == payload['intake_summary_handoff']
+    assert payload['review_links']['workflow_priority'] == {
+        'status': 'warning',
+        'title': 'Review matching inputs before drafting',
+        'description': 'Formal claim-to-law matching is still pending, so the draft may outrun the current legal targeting.',
+        'action_label': 'Review matching inputs',
+        'action_url': '/claim-support-review?user_id=Jane+Doe&claim_type=retaliation&section=claims_for_relief&follow_up_support_kind=authority',
+        'action_kind': 'link',
+        'dashboard_url': '/claim-support-review?user_id=Jane+Doe',
+        'chip_labels': [
+            'recommended action: perform_neurosymbolic_matching',
+            'focus claim: Retaliation',
+        ],
+    }
     assert payload['review_links']['workflow_phase_priority'] == {
         'phase_name': 'graph_analysis',
         'status': 'warning',

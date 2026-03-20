@@ -10,6 +10,7 @@ from intake_status import (
     build_intake_status_summary,
     build_intake_warning_entries,
 )
+from claim_support_review import summarize_claim_reasoning_review
 
 try:
     from integrations.ipfs_datasets.llm import generate_text_with_metadata
@@ -301,9 +302,11 @@ class AgenticDocumentOptimizer:
         intake_constraints = build_intake_warning_entries(intake_status)
         intake_case_summary = build_intake_case_review_summary(self.mediator)
         claim_support_temporal_handoff = _build_claim_support_temporal_handoff(intake_case_summary)
-        claim_reasoning_review = {}
-        if isinstance(intake_case_summary.get("claim_reasoning_review"), dict) and intake_case_summary.get("claim_reasoning_review"):
-            claim_reasoning_review = dict(intake_case_summary["claim_reasoning_review"])
+        claim_reasoning_review = self._build_claim_reasoning_review(
+            intake_case_summary=intake_case_summary,
+            support_context=support_context,
+            user_id=user_id,
+        )
         intake_summary_handoff = {}
         if isinstance(intake_status.get("intake_summary_handoff"), dict) and intake_status.get("intake_summary_handoff"):
             intake_summary_handoff = dict(intake_status["intake_summary_handoff"])
@@ -493,6 +496,48 @@ class AgenticDocumentOptimizer:
             "packet_projection": self._build_packet_projection(draft),
             "capabilities": self._router_status(),
         }
+
+    def _build_claim_reasoning_review(
+        self,
+        *,
+        intake_case_summary: Dict[str, Any],
+        support_context: Dict[str, Any],
+        user_id: Optional[str],
+    ) -> Dict[str, Any]:
+        existing_review = intake_case_summary.get("claim_reasoning_review")
+        if isinstance(existing_review, dict) and existing_review:
+            return dict(existing_review)
+
+        claim_types = _unique_preserving_order(
+            [
+                *[
+                    str((claim or {}).get("claim_type") or "")
+                    for claim in (intake_case_summary.get("candidate_claims") or [])
+                    if isinstance(claim, dict)
+                ],
+                *[
+                    str((claim or {}).get("claim_type") or "")
+                    for claim in (support_context.get("claims") or [])
+                    if isinstance(claim, dict)
+                ],
+            ]
+        )
+        review_by_claim: Dict[str, Any] = {}
+        for claim_type in claim_types:
+            validation_payload = self._call_mediator(
+                "get_claim_support_validation",
+                claim_type=claim_type,
+                user_id=user_id,
+            )
+            if not isinstance(validation_payload, dict):
+                continue
+            validation_claims = validation_payload.get("claims")
+            validation_claims = validation_claims if isinstance(validation_claims, dict) else {}
+            validation_claim = validation_claims.get(claim_type)
+            if not isinstance(validation_claim, dict) or not validation_claim:
+                continue
+            review_by_claim[claim_type] = summarize_claim_reasoning_review(validation_claim)
+        return review_by_claim
 
     def _run_critic(
         self,

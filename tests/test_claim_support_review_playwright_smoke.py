@@ -1546,6 +1546,23 @@ def test_document_builder_smoke_routes_workflow_priority_back_to_manual_review()
         "filing_checklist": [],
         "review_links": {
             "dashboard_url": "/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+            "workflow_priority": {
+                "status": "warning",
+                "title": "Resolve support conflicts before drafting",
+                "description": "Manual-review conflicts are still blocking evidence confidence for a draft-ready complaint.",
+                "action_label": "Review manual conflicts",
+                "action_url": "/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link&alignment_task_update_filter=manual_review&alignment_task_update_sort=manual_review_first",
+                "action_kind": "link",
+                "dashboard_url": "/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+                "chip_labels": [
+                    "recommended action: resolve_support_conflicts",
+                    "focus claim: Retaliation",
+                    "focus element: retaliation:3",
+                    "contradictions: 1",
+                    "question candidates: 2",
+                    "packet escalations: 1",
+                ],
+            },
             "intake_case_summary": next_action_summary,
             "intake_status": {
                 "current_phase": "evidence",
