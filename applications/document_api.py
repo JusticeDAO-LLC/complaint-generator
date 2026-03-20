@@ -470,7 +470,6 @@ def _build_document_review_workflow_priority(
             base_claim_url,
             follow_up_support_kind="evidence",
             alignment_task_update_filter="active",
-            alignment_task_update_sort="newest_first",
         )
     elif action in {"address_gaps", "continue_denoising", "build_knowledge_graph"}:
         if action == "address_gaps":
@@ -495,18 +494,23 @@ def _build_document_review_workflow_priority(
                 section_key="summary_of_facts",
             ),
             follow_up_support_kind=_default_support_kind_for_section("summary_of_facts"),
+            alignment_task_update_filter="active",
         )
     elif action == "build_dependency_graph":
         title = "Review dependency inputs before drafting"
         description = "Cross-section dependency mapping is still incomplete, so the case theory may not be stable enough for drafting."
         action_label = "Review dependency inputs"
-        action_url = _resolve_document_review_url(
-            user_id=user_id,
-            dashboard_url=dashboard_url,
-            claim_review_map=claim_review_map,
-            section_review_map=section_review_map,
-            claim_type=claim_type,
-            section_key="chronology",
+        action_url = _append_review_query_params(
+            _resolve_document_review_url(
+                user_id=user_id,
+                dashboard_url=dashboard_url,
+                claim_review_map=claim_review_map,
+                section_review_map=section_review_map,
+                claim_type=claim_type,
+                section_key="chronology",
+            ),
+            follow_up_support_kind="evidence",
+            alignment_task_update_filter="active",
         )
     elif action in {"build_legal_graph", "perform_neurosymbolic_matching"}:
         title = (
@@ -534,6 +538,8 @@ def _build_document_review_workflow_priority(
                 section_key="claims_for_relief",
             ),
             follow_up_support_kind=_default_support_kind_for_section("claims_for_relief"),
+            alignment_task_update_filter="manual_review",
+            alignment_task_update_sort="manual_review_first",
         )
     elif action == "build_claim_support_packets":
         title = "Build support packets before drafting"
@@ -543,7 +549,6 @@ def _build_document_review_workflow_priority(
             base_claim_url,
             follow_up_support_kind="evidence",
             alignment_task_update_filter="active",
-            alignment_task_update_sort="newest_first",
         )
     elif action == "complete_evidence":
         status = "ready"

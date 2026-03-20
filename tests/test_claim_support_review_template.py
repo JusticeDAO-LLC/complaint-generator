@@ -518,28 +518,20 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Workflow Priority" in content
     assert "document-workflow-priority" in content
     assert "document-workflow-action-link" in content
-    assert "renderWorkflowPriority(reviewLinks, intakeCaseSummary, workflowPhasePlan, manualReviewClaims, pendingReviewClaims)" in content
-    assert "resolveDocumentWorkflowAction(reviewLinks, intakeCaseSummary)" in content
+    assert "renderWorkflowPriority(reviewLinks, workflowPhasePlan)" in content
+    assert "normalizeDocumentWorkflowPriorityPayload(workflowPriorityPayload, dashboardUrl, defaultDescription)" in content
     assert "reviewLinks.workflow_priority" in content
     assert "reviewLinks.workflow_phase_priority" in content
     assert "workflowPriorityFromLinks" in content
-    assert "workflowPriorityFromLinks.action_label" in content or "workflowPhasePriority.action_label" in content
-    assert "workflowPriorityFromLinks.action_url" in content or "workflowPhasePriority.action_url" in content
-    assert "workflowPriorityFromLinks.chip_labels" in content or "workflowPhasePriority.chip_labels" in content
+    assert "actionLabel: String(normalizedPayload.action_label || 'Open Review Dashboard').trim()" in content
+    assert "actionUrl: String(normalizedPayload.action_url || dashboardUrl).trim() || dashboardUrl" in content
+    assert "const chipLabels = Array.isArray(normalizedPayload.chip_labels)" in content
     assert "resolveDocumentWorkflowPhasePriority(workflowPhasePlan)" in content
-    assert "Confirm intake summary before drafting" in content
-    assert "Resolve intake gaps before drafting" in content
-    assert "Continue intake denoising before drafting" in content
-    assert "actionKind = 'button'" in content
+    assert "actionKind: String(normalizedPayload.action_kind || 'link').trim() || 'link'" in content
+    assert "workflowPriority.actionKind === 'button'" in content
     assert 'onclick="confirmIntakeSummaryFromDocument()"' in content
-    assert "Review intake graph inputs before drafting" in content
     assert "Resolve graph analysis before drafting" in content
-    assert "Review dependency inputs before drafting" in content
-    assert "Review legal graph inputs before drafting" in content
-    assert "Review matching inputs before drafting" in content
-    assert "Build support packets before drafting" in content
     assert "Resolve drafting readiness before filing" in content
-    assert "Evidence is ready for formal drafting" in content
     assert "Intake Review Signals" in content
     assert "Intake blockers:" in content
     assert "Tracked intake contradictions:" in content
@@ -573,8 +565,6 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Source Drilldown" in content
     assert "Open Claim Support Review" in content
     assert "Open Review Dashboard" in content
-    assert "Review manual conflicts" in content
-    assert "Drafting is the current workflow priority" in content
     assert "buildClaimReviewUrl" in content
     assert "resolveClaimReviewUrl" in content
     assert "resolveSectionReviewUrl" in content
@@ -782,6 +772,7 @@ def test_review_surface_optimization_trace_route_serves_trace_template():
     assert "Export Trace Bundle" in response.text
     assert "Iteration Changes" in response.text
     assert "Review Snapshot" in response.text
+    assert "Proof Artifact Drilldown" in response.text
     assert "Workflow Phase Guidance" in response.text
     assert "Accepted Only" in response.text
     assert "Rejected Only" in response.text
@@ -806,13 +797,15 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "Recommended order:" in content
     assert "traceEvidenceList" in content
     assert "traceTemporalHandoff" in content
+    assert "traceProofDrilldown" in content
     assert "Intake Evidence Snapshot" in content
     assert "Claim Support Chronology Handoff" in content
+    assert "Proof Artifact Drilldown" in content
     assert "Claim reasoning reviews:" in content
     assert "proof artifacts:" in content
     assert "proof preview:" in content
-    assert "proof detail:" in content
-    assert "explanation " in content
+    assert "Proof ID:" in content
+    assert "Explanation:" in content
     assert "Candidate claims:" in content
     assert "Candidate claim count:" in content
     assert "Candidate claim average confidence:" in content

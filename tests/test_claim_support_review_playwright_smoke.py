@@ -54,6 +54,49 @@ def _build_document_review_browser_smoke_app(mediator: Mock) -> FastAPI:
     attach_claim_support_review_ui_routes(app)
     attach_review_health_routes(app, "document-review-flow-smoke")
     return app
+    
+def _build_document_workflow_priority_fixture(
+    *,
+    title: str,
+    action: str,
+    dashboard_url: str,
+    action_url: str,
+    action_label: str = "Open Review Dashboard",
+    action_kind: str = "link",
+    status: str = "warning",
+    claim_type: str | None = None,
+    claim_element_id: str | None = None,
+    contradictions: int = 0,
+    question_candidates: int = 0,
+    packet_escalations: int | None = None,
+    proof_readiness: float | None = None,
+    alignment_filter: str | None = None,
+    alignment_sort: str | None = None,
+    description: str = "Backend workflow guidance identifies a higher-priority step before drafting.",
+) -> dict:
+    chip_labels = [f"recommended action: {action}"]
+    if claim_type:
+        chip_labels.append(f"focus claim: {claim_type.replace('_', ' ').title()}")
+    if claim_element_id:
+        chip_labels.append(f"focus element: {claim_element_id}")
+    if contradictions > 0:
+        chip_labels.append(f"contradictions: {contradictions}")
+    if question_candidates > 0:
+        chip_labels.append(f"question candidates: {question_candidates}")
+    if packet_escalations is not None:
+        chip_labels.append(f"packet escalations: {packet_escalations}")
+    if proof_readiness is not None:
+        chip_labels.append(f"proof readiness: {proof_readiness:.2f}")
+    return {
+        "status": status,
+        "title": title,
+        "description": description,
+        "action_label": action_label,
+        "action_url": action_url,
+        "action_kind": action_kind,
+        "dashboard_url": dashboard_url,
+        "chip_labels": chip_labels,
+    }
 
 
 def _build_hook_backed_browser_mediator(db_path: str):
@@ -1909,6 +1952,21 @@ def test_document_builder_smoke_routes_workflow_priority_to_focused_review_surfa
         "filing_checklist": [],
         "review_links": {
             "dashboard_url": "/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+            "workflow_priority": _build_document_workflow_priority_fixture(
+                title=title_text,
+                action=action,
+                dashboard_url="/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+                action_url=(
+                    f"/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
+                    f"&section={expected_section}&follow_up_support_kind={expected_support_kind}"
+                    f"&alignment_task_update_filter={expected_filter}"
+                    + ("" if expected_sort == "newest_first" else f"&alignment_task_update_sort={expected_sort}")
+                ),
+                action_label="Open Review Dashboard",
+                claim_type="retaliation",
+                contradictions=1,
+                question_candidates=2,
+            ),
             "intake_case_summary": next_action_summary,
             "intake_status": {
                 "current_phase": "formalization",
@@ -2038,6 +2096,16 @@ def test_document_builder_smoke_routes_workflow_priority_to_support_packet_revie
         "filing_checklist": [],
         "review_links": {
             "dashboard_url": "/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+            "workflow_priority": _build_document_workflow_priority_fixture(
+                title="Build support packets before drafting",
+                action="build_claim_support_packets",
+                dashboard_url="/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+                action_url="/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link&follow_up_support_kind=evidence&alignment_task_update_filter=active",
+                action_label="Build support packets",
+                claim_type="retaliation",
+                contradictions=1,
+                question_candidates=1,
+            ),
             "intake_case_summary": next_action_summary,
             "intake_status": {
                 "current_phase": "evidence",
@@ -2158,6 +2226,16 @@ def test_document_builder_smoke_marks_complete_evidence_as_ready_for_drafting():
         "filing_checklist": [],
         "review_links": {
             "dashboard_url": "/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+            "workflow_priority": _build_document_workflow_priority_fixture(
+                title="Evidence is ready for formal drafting",
+                action="complete_evidence",
+                dashboard_url="/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+                action_url="/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+                status="ready",
+                claim_type="retaliation",
+                proof_readiness=0.94,
+                description="The backend priority has advanced to document drafting, so continuing here is consistent with the current workflow.",
+            ),
             "intake_case_summary": next_action_summary,
             "intake_status": {
                 "current_phase": "evidence",
@@ -2251,6 +2329,16 @@ def test_document_builder_smoke_marks_generate_formal_complaint_as_current_prior
         "filing_checklist": [],
         "review_links": {
             "dashboard_url": "/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+            "workflow_priority": _build_document_workflow_priority_fixture(
+                title="Drafting is the current workflow priority",
+                action="generate_formal_complaint",
+                dashboard_url="/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+                action_url="/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+                status="ready",
+                claim_type="retaliation",
+                proof_readiness=0.98,
+                description="The backend priority already points to formal complaint generation, so you can continue drafting here.",
+            ),
             "intake_case_summary": next_action_summary,
             "intake_status": {
                 "current_phase": "formalization",
@@ -4511,6 +4599,16 @@ def test_document_builder_smoke_confirms_intake_summary_handoff():
         "filing_checklist": [],
         "review_links": {
             "dashboard_url": "/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+            "workflow_priority": _build_document_workflow_priority_fixture(
+                title="Confirm intake summary before drafting",
+                action="confirm_intake_summary",
+                dashboard_url="/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+                action_url="/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link",
+                action_label="Confirm intake summary",
+                action_kind="button",
+                claim_type="retaliation",
+                description="The current intake summary snapshot still needs complainant confirmation before drafting should continue.",
+            ),
             "intake_case_summary": next_action_summary,
         },
         "review_intent": {
@@ -4602,7 +4700,7 @@ def test_document_builder_smoke_confirms_intake_summary_handoff():
                     "() => document.getElementById('previewRoot').innerText.includes('Confirmed at')"
                 )
                 preview_text = page.locator("#previewRoot").inner_text()
-                handoff_text = page.locator("#previewRoot .intake-handoff-card").inner_text()
+                handoff_text = page.locator("#previewRoot .intake-handoff-card[data-status='confirmed']").inner_text()
                 normalized_preview_text = preview_text.lower()
                 normalized_handoff_text = handoff_text.lower()
 
@@ -4879,6 +4977,7 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
 
             temporal_handoff_text = page.locator("#traceTemporalHandoff").inner_text().lower()
             review_snapshot_text = page.locator("#traceReviewList").inner_text().lower()
+            proof_drilldown_text = page.locator("#traceProofDrilldown").inner_text().lower()
 
             assert "claim support chronology handoff" in temporal_handoff_text
             assert temporal_handoff_text.count("claim support chronology handoff") == 1
@@ -4900,7 +4999,17 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
             assert "retaliation proof statuses: available=1" in review_snapshot_text
             assert "retaliation proof preview: proof-retaliation-001 | show protected activity preceded termination" in review_snapshot_text
             assert "retaliation hybrid bridge elements: 1" in review_snapshot_text
-            assert "retaliation proof detail: causal connection | artifact available | proof success | id proof-retaliation-001 | steps 1 | explanation protected activity preceded termination." in review_snapshot_text
+            assert "retaliation" in proof_drilldown_text
+            assert "proof artifacts 1" in proof_drilldown_text
+            assert "available 1" in proof_drilldown_text
+            assert "explanations 1" in proof_drilldown_text
+            assert "statuses available=1" in proof_drilldown_text
+            assert "causal connection" in proof_drilldown_text
+            assert "proof id: proof-retaliation-001" in proof_drilldown_text
+            assert "artifact status: available" in proof_drilldown_text
+            assert "proof status: success" in proof_drilldown_text
+            assert "explanation steps: 1" in proof_drilldown_text
+            assert "explanation: protected activity preceded termination." in proof_drilldown_text
 
             browser.close()
 

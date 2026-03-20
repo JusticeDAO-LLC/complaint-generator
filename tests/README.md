@@ -234,6 +234,33 @@ That helper now covers both:
 - the HACC seed-generation regression
 - the HACC evidence loader regression in `tests/test_hacc_evidence_loader.py`
 
+The same HACC slice is also available through editor and shell tooling:
+
+- VS Code task:
+  - `HACC Grounding Regression`
+- Make targets:
+  - `make hacc-grounding`
+  - `make hacc-grounding-no-smoke`
+
+For a faster HACC-only unit slice, use:
+
+```bash
+python scripts/run_hacc_unit_regression.py
+```
+
+That lightweight slice covers:
+
+- `tests/test_hacc_evidence_loader.py`
+- `tests/test_synthesize_hacc_complaint.py`
+- `tests/test_run_hacc_adversarial_report.py`
+
+The same unit slice is also available through:
+
+- VS Code task:
+  - `HACC Unit Regression`
+- Make target:
+  - `make hacc-unit`
+
 ### Test Naming Convention
 
 - Test files: `test_*.py` or `*_test.py`

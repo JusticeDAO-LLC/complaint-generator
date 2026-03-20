@@ -271,6 +271,39 @@
             font-size: 0.9rem;
         }
 
+        .proof-detail-grid {
+            display: grid;
+            gap: 12px;
+        }
+
+        .proof-detail-card {
+            padding: 14px;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.88);
+        }
+
+        .proof-detail-card h3 {
+            margin: 0 0 10px;
+            font-size: 1rem;
+        }
+
+        .proof-detail-card h4 {
+            margin: 12px 0 8px;
+            font-size: 0.92rem;
+        }
+
+        .proof-detail-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .proof-detail-lines div + div {
+            margin-top: 6px;
+        }
+
         ul {
             margin: 0;
             padding-left: 18px;
@@ -342,6 +375,10 @@
             <section class="panel">
                 <h2>Review Snapshot</h2>
                 <ul id="traceReviewList"><li class="muted">No trace loaded.</li></ul>
+            </section>
+            <section class="panel">
+                <h2>Proof Artifact Drilldown</h2>
+                <div id="traceProofDrilldown" class="muted">No trace loaded.</div>
             </section>
             <section class="panel">
                 <h2>Workflow Phase Guidance</h2>
@@ -1108,6 +1145,71 @@
             return lines;
         }
 
+        function renderClaimReasoningProofDrilldown(reviewByClaim) {
+            const normalized = normalizeClaimReasoningReview(reviewByClaim);
+            const entries = Object.entries(normalized).filter(([, review]) => (
+                Array.isArray(review.flagged_elements)
+                && review.flagged_elements.some((element) => element && typeof element === 'object'
+                    && (
+                        String(element.proof_artifact_proof_id || '').trim()
+                        || String(element.proof_artifact_sentence || '').trim()
+                        || String(element.proof_artifact_explanation_text || '').trim()
+                    ))
+            ));
+            if (!entries.length) {
+                return '<div class="muted">No proof artifact drilldown recorded for this trace.</div>';
+            }
+
+            const cards = entries.map(([claimType, review]) => {
+                const claimLabel = humanizeKey(claimType);
+                const statusCounts = formatSummaryCountLine(review.proof_artifact_status_counts);
+                const flaggedElements = Array.isArray(review.flagged_elements)
+                    ? review.flagged_elements.filter((element) => element && typeof element === 'object')
+                    : [];
+                const elementCards = flaggedElements
+                    .filter((element) => (
+                        String(element.proof_artifact_proof_id || '').trim()
+                        || String(element.proof_artifact_sentence || '').trim()
+                        || String(element.proof_artifact_explanation_text || '').trim()
+                    ))
+                    .slice(0, 4)
+                    .map((element) => {
+                        const elementLabel = String(element.element_text || element.element_id || 'Flagged element').trim();
+                        const detailLines = [
+                            element.proof_artifact_proof_id ? `Proof ID: ${String(element.proof_artifact_proof_id).trim()}` : '',
+                            element.proof_artifact_status ? `Artifact status: ${humanizeKey(element.proof_artifact_status)}` : '',
+                            element.proof_artifact_proof_status ? `Proof status: ${humanizeKey(element.proof_artifact_proof_status)}` : '',
+                            Number(element.proof_artifact_explanation_step_count || 0) > 0
+                                ? `Explanation steps: ${Number(element.proof_artifact_explanation_step_count || 0)}`
+                                : '',
+                            element.proof_artifact_sentence ? `Sentence: ${String(element.proof_artifact_sentence).trim()}` : '',
+                            element.proof_artifact_explanation_text ? `Explanation: ${String(element.proof_artifact_explanation_text).trim()}` : '',
+                        ].filter(Boolean);
+                        return `
+                            <div class="proof-detail-card">
+                                <h4>${escapeHtml(elementLabel)}</h4>
+                                <div class="proof-detail-lines muted">${detailLines.map((line) => `<div>${escapeHtml(line)}</div>`).join('')}</div>
+                            </div>
+                        `;
+                    }).join('');
+
+                return `
+                    <div class="proof-detail-card">
+                        <h3>${escapeHtml(claimLabel)}</h3>
+                        <div class="proof-detail-meta chip-row">
+                            <span class="chip">Proof artifacts ${escapeHtml(String(Number(review.proof_artifact_element_count || 0)))}</span>
+                            <span class="chip">Available ${escapeHtml(String(Number(review.proof_artifact_available_element_count || 0)))}</span>
+                            <span class="chip">Explanations ${escapeHtml(String(Number(review.proof_artifact_explanation_element_count || 0)))}</span>
+                            ${statusCounts ? `<span class="chip">Statuses ${escapeHtml(statusCounts)}</span>` : ''}
+                        </div>
+                        <div class="proof-detail-grid">${elementCards || '<div class="muted">No flagged proof elements recorded.</div>'}</div>
+                    </div>
+                `;
+            }).join('');
+
+            return `<div class="proof-detail-grid">${cards}</div>`;
+        }
+
         function appendSupportKindToReviewUrl(reviewUrl, supportKind) {
             const normalizedUrl = String(reviewUrl || '').trim();
             const normalizedSupportKind = String(supportKind || '').trim();
@@ -1614,9 +1716,9 @@
                     finalReview.recommended_focus ? `Final recommended focus: ${humanizeKey(finalReview.recommended_focus)}` : '',
                     `Relief-targeted optimization: ${reliefTargeted ? 'yes' : 'no'}`,
                     ...buildClaimReasoningReviewLines(claimReasoningReview),
-                    ...buildClaimReasoningFlaggedElementLines(claimReasoningReview),
                 ].filter(Boolean),
             );
+            document.getElementById('traceProofDrilldown').innerHTML = renderClaimReasoningProofDrilldown(claimReasoningReview);
 
             document.getElementById('traceWorkflowPhaseGuidance').innerHTML = renderWorkflowPhaseGuidance(workflowPhasePlan);
 

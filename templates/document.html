@@ -2354,6 +2354,20 @@
             const phase = phases[phaseName] && typeof phases[phaseName] === 'object' ? phases[phaseName] : {};
             if (!Object.keys(phase).length) {
                 return null;
+            }
+            const recommendedActions = Array.isArray(phase.recommended_actions)
+                ? phase.recommended_actions
+                    .map((entry) => entry && typeof entry === 'object' ? String(entry.recommended_action || '').trim() : String(entry || '').trim())
+                    .filter(Boolean)
+                : [];
+            return {
+                phaseName,
+                phase,
+                status: String(phase.status || 'ready').trim().toLowerCase() || 'ready',
+                primaryRecommendedAction: recommendedActions[0] || '',
+            };
+        }
+
         function normalizeDocumentWorkflowPriorityPayload(workflowPriorityPayload, dashboardUrl, defaultDescription) {
             const normalizedPayload = workflowPriorityPayload && typeof workflowPriorityPayload === 'object'
                 ? workflowPriorityPayload
@@ -2380,10 +2394,9 @@
 
         function buildDocumentWorkflowPriority(reviewLinks, workflowPhasePlan) {
             const dashboardUrl = String((reviewLinks && reviewLinks.dashboard_url) || '').trim() || '/claim-support-review';
-            const nextAction = resolveDocumentWorkflowAction(reviewLinks, intakeCaseSummary);
-            const action = String(nextAction.action || '').trim().toLowerCase();
-            const dashboardUrl = String((reviewLinks && reviewLinks.dashboard_url) || '').trim()
-                || buildClaimReviewUrl(nextAction.claim_type || '')
+            const workflowPriorityFromLinks = reviewLinks && typeof reviewLinks.workflow_priority === 'object'
+                ? reviewLinks.workflow_priority
+                : {};
             const normalizedWorkflowPriority = normalizeDocumentWorkflowPriorityPayload(
                 workflowPriorityFromLinks,
                 dashboardUrl,
@@ -2391,8 +2404,8 @@
             );
             if (normalizedWorkflowPriority) {
                 return normalizedWorkflowPriority;
-                const chipLabels = Array.isArray(workflowPriorityFromLinks.chip_labels)
-                    ? workflowPriorityFromLinks.chip_labels.filter(Boolean)
+            }
+
             const workflowPhasePriorityFromLinks = reviewLinks && typeof reviewLinks.workflow_phase_priority === 'object'
                 ? reviewLinks.workflow_phase_priority
                 : {};
@@ -2403,7 +2416,7 @@
             );
             if (normalizedWorkflowPhasePriority) {
                 return normalizedWorkflowPhasePriority;
-                if (primaryRecommendedAction) {
+            }
 
             const workflowPhasePriority = resolveDocumentWorkflowPhasePriority(workflowPhasePlan);
             if (!workflowPhasePriority) {
@@ -2441,149 +2454,21 @@
             if (primaryRecommendedAction) {
                 chips.push(`<span class="triage-chip">recommended action: ${escapeHtml(primaryRecommendedAction)}</span>`);
             }
-                    chips.push(`<span class="triage-chip">recommended action: ${escapeHtml(primaryRecommendedAction)}</span>`);
-                }
-                status: phaseStatus,
-                return {
-                    status: phaseStatus,
-                    title,
-                    description,
-                actionKind: 'link',
-                    actionUrl,
-                    actionKind: 'link',
-                    dashboardUrl,
-                    chips,
-                };
-        function renderWorkflowPriority(reviewLinks, workflowPhasePlan) {
-
-            let status = 'warning';
-            let description = 'The review dashboard still has a higher-priority step than drafting for this matter.';
-            let actionKind = 'link';
-
-            if (action === 'confirm_intake_summary') {
-                title = 'Confirm intake summary before drafting';
-                description = 'The current intake summary snapshot still needs complainant confirmation before drafting should continue.';
-                actionLabel = 'Confirm intake summary';
-                actionKind = 'button';
-            } else if (action === 'validate_promoted_support') {
-                title = 'Validate promoted support before drafting';
-                description = 'Promoted testimony or document support still needs validation before the draft can rely on it.';
-                actionLabel = 'Review promoted updates';
-                actionUrl = appendAlignmentTaskViewToReviewUrl(baseClaimUrl, 'pending_review', 'pending_review_first');
-            } else if (action === 'resolve_support_conflicts') {
-                title = 'Resolve support conflicts before drafting';
-                description = 'Manual-review conflicts are still blocking evidence confidence for a draft-ready complaint.';
-                actionLabel = 'Review manual conflicts';
-                actionUrl = appendAlignmentTaskViewToReviewUrl(
-                    appendClaimQueueIntentToReviewUrl(baseClaimUrl, claimType, manualReviewClaims, pendingReviewClaims),
-                    'manual_review',
-                    'manual_review_first',
-                );
-            } else if (action === 'fill_evidence_gaps') {
-                title = 'Fill evidence gaps before drafting';
-                description = 'The current backend priority still points to missing support for a claim element in this complaint.';
-                actionLabel = 'Review evidence task';
-                actionUrl = appendAlignmentTaskViewToReviewUrl(
-                    appendSupportKindToReviewUrl(baseClaimUrl, 'evidence'),
-                    'active',
-                    'newest_first',
-                );
-            } else if (action === 'address_gaps') {
-                title = 'Resolve intake gaps before drafting';
-                description = 'Intake still has unresolved factual gaps that can weaken the document if drafting continues too early.';
-                actionLabel = 'Review intake gaps';
-                actionUrl = appendSectionReviewIntentToReviewUrl(resolveSectionReviewUrl('summary_of_facts', {}, reviewLinks), 'summary_of_facts');
-            } else if (action === 'continue_denoising') {
-                title = 'Continue intake denoising before drafting';
-                description = 'Contradictions or unanswered intake questions still need another denoising pass before the document stabilizes.';
-                actionLabel = 'Review denoising queue';
-                actionUrl = appendSectionReviewIntentToReviewUrl(resolveSectionReviewUrl('summary_of_facts', {}, reviewLinks), 'summary_of_facts');
-            } else if (action === 'build_knowledge_graph') {
-                title = 'Review intake graph inputs before drafting';
-                description = 'The intake graph inputs are not complete enough to support a stable draft handoff yet.';
-                actionLabel = 'Review intake graph inputs';
-                actionUrl = appendSectionReviewIntentToReviewUrl(resolveSectionReviewUrl('summary_of_facts', {}, reviewLinks), 'summary_of_facts');
-            } else if (action === 'build_dependency_graph') {
-                title = 'Review dependency inputs before drafting';
-                description = 'Cross-section dependency mapping is still incomplete, so the case theory may not be stable enough for drafting.';
-                actionLabel = 'Review dependency inputs';
-                actionUrl = appendSectionReviewIntentToReviewUrl(resolveSectionReviewUrl('chronology', {}, reviewLinks), 'chronology');
-            } else if (action === 'build_legal_graph') {
-                title = 'Review legal graph inputs before drafting';
-                description = 'Formalization still needs the legal graph that organizes statutes and requirements for this complaint.';
-                actionLabel = 'Review legal graph inputs';
-                actionUrl = appendSectionReviewIntentToReviewUrl(resolveSectionReviewUrl('claims_for_relief', {}, reviewLinks), 'claims_for_relief');
-            } else if (action === 'perform_neurosymbolic_matching') {
-                title = 'Review matching inputs before drafting';
-                description = 'Formal claim-to-law matching is still pending, so the draft may outrun the current legal targeting.';
-                actionLabel = 'Review matching inputs';
-                actionUrl = appendSectionReviewIntentToReviewUrl(resolveSectionReviewUrl('claims_for_relief', {}, reviewLinks), 'claims_for_relief');
-            } else if (action === 'build_claim_support_packets') {
-                title = 'Build support packets before drafting';
-                description = 'Evidence has been collected, but the packet-building step still needs to run before the draft can rely on those signals.';
-                actionLabel = 'Build support packets';
-                actionUrl = appendAlignmentTaskViewToReviewUrl(
-                    appendSupportKindToReviewUrl(baseClaimUrl, 'evidence'),
-                    'active',
-                    'newest_first',
-                );
-            } else if (action === 'complete_evidence') {
-                status = 'ready';
-                title = 'Evidence is ready for formal drafting';
-                description = 'The backend priority has advanced to document drafting, so continuing here is consistent with the current workflow.';
-            } else if (action === 'generate_formal_complaint') {
-                status = 'ready';
-                title = 'Drafting is the current workflow priority';
-                description = 'The backend priority already points to formal complaint generation, so you can continue drafting here.';
-            } else if (action === 'complete_formalization') {
-                status = 'ready';
-                title = 'Formalization is complete';
-                description = 'Current workflow signals do not show a higher-priority review step blocking this draft.';
-            }
-
-            const chips = [`<span class="triage-chip" data-tone="${status === 'ready' ? 'low' : 'important'}">recommended action: ${escapeHtml(action)}</span>`];
-            if (claimType) {
-                chips.push(`<span class="triage-chip">focus claim: ${escapeHtml(humanizeKey(claimType))}</span>`);
-            }
-            if (claimElementId) {
-                chips.push(`<span class="triage-chip">focus element: ${escapeHtml(claimElementId)}</span>`);
-            }
-            if (blockers.length) {
-                chips.push(`<span class="triage-chip">blockers: ${escapeHtml(String(blockers.length))}</span>`);
-            }
-            if (contradictions > 0) {
-                chips.push(`<span class="triage-chip">contradictions: ${escapeHtml(String(contradictions))}</span>`);
-            }
-            if (questionCandidates > 0) {
-                chips.push(`<span class="triage-chip">question candidates: ${escapeHtml(String(questionCandidates))}</span>`);
-            }
-            if (action === 'resolve_support_conflicts') {
-                chips.push(`<span class="triage-chip">packet escalations: ${escapeHtml(String(Number(packetSummary.claim_support_reviewable_escalation_count || 0)))}</span>`);
-            }
-            if (action === 'generate_formal_complaint' || action === 'complete_evidence') {
-                chips.push(`<span class="triage-chip">proof readiness: ${escapeHtml(Number(packetSummary.proof_readiness_score || 0).toFixed(2))}</span>`);
-            }
 
             return {
-                status,
+                status: phaseStatus,
                 title,
                 description,
                 actionLabel,
                 actionUrl,
-                actionKind,
+                actionKind: 'link',
                 dashboardUrl,
                 chips,
             };
         }
 
-        function renderWorkflowPriority(reviewLinks, intakeCaseSummary, workflowPhasePlan, manualReviewClaims, pendingReviewClaims) {
-            const workflowPriority = buildDocumentWorkflowPriority(
-                reviewLinks,
-                intakeCaseSummary,
-                workflowPhasePlan,
-                manualReviewClaims,
-                pendingReviewClaims,
-            );
+        function renderWorkflowPriority(reviewLinks, workflowPhasePlan) {
+            const workflowPriority = buildDocumentWorkflowPriority(reviewLinks, workflowPhasePlan);
             if (!workflowPriority) {
                 return '';
             }

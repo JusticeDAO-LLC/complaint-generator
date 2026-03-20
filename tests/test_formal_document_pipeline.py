@@ -396,7 +396,7 @@ def test_document_api_annotation_promotes_confirmed_intake_handoff():
         'title': 'Review matching inputs before drafting',
         'description': 'Formal claim-to-law matching is still pending, so the draft may outrun the current legal targeting.',
         'action_label': 'Review matching inputs',
-        'action_url': '/claim-support-review?user_id=Jane+Doe&claim_type=retaliation&section=claims_for_relief&follow_up_support_kind=authority',
+        'action_url': '/claim-support-review?user_id=Jane+Doe&claim_type=retaliation&section=claims_for_relief&follow_up_support_kind=authority&alignment_task_update_filter=manual_review&alignment_task_update_sort=manual_review_first',
         'action_kind': 'link',
         'dashboard_url': '/claim-support-review?user_id=Jane+Doe',
         'chip_labels': [
