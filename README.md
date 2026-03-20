@@ -164,6 +164,18 @@ python run.py --config config.review_surface.json
 
 ### Regression Shortcuts
 
+**Standard Regression:**
+
+```bash
+.venv/bin/python scripts/run_standard_regression.py --slice lean
+```
+
+Also available via:
+
+- VS Code tasks `Standard Regression (Lean)`, `Standard Regression (Review)`, and `Standard Regression (Full)`
+- Run and Debug entries with the same three labels
+- Make targets `regression-lean`, `regression-review`, and `regression-full`
+
 **Claim Support Regression:**
 
 ```bash

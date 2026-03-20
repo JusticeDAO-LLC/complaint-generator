@@ -24,12 +24,18 @@ REGRESSION_SLICES = {
         "tests/test_claim_support_review_dashboard_flow.py",
         "tests/test_claim_support_hooks.py",
         "tests/test_backfill_claim_testimony_links_cli.py",
+        "tests/test_claim_support_review_template.py",
+        "tests/test_document_pipeline.py",
+        "tests/test_formal_document_pipeline.py",
     ],
     "full": [
         "tests/test_review_api.py",
         "tests/test_claim_support_review_dashboard_flow.py",
         "tests/test_claim_support_hooks.py",
         "tests/test_backfill_claim_testimony_links_cli.py",
+        "tests/test_claim_support_review_template.py",
+        "tests/test_document_pipeline.py",
+        "tests/test_formal_document_pipeline.py",
         "tests/test_claim_support_review_playwright_smoke.py",
     ],
 }

@@ -357,6 +357,68 @@ def test_build_workflow_optimization_bundle_exposes_all_phases():
     assert "coverage_remediation" in payload["shared_context"]
     assert "complaint_type_performance" in payload["shared_context"]
     assert "evidence_modality_performance" in payload["shared_context"]
+    assert "phase_scorecards" in payload["shared_context"]
+    assert "document_handoff_summary" in payload["shared_context"]
+    assert payload["phase_scorecards"]["document_generation"]["status"] in {"critical", "warning", "ready"}
+    assert payload["cross_phase_findings"]
+
+
+def test_analyze_builds_cross_phase_scorecards_and_document_handoff_summary():
+    optimizer = Optimizer()
+    low_result = _session_result(
+        "session_cross_phase",
+        0.44,
+        {
+            "adversarial_intake_priority_summary": {
+                "expected_objectives": ["documents", "harm_remedy", "timeline", "witnesses"],
+                "covered_objectives": ["timeline"],
+                "uncovered_objectives": ["documents", "harm_remedy", "witnesses"],
+            }
+        },
+    )
+    low_result.critic_score.question_quality = 0.41
+    low_result.critic_score.information_extraction = 0.39
+    low_result.critic_score.efficiency = 0.43
+    low_result.critic_score.coverage = 0.37
+    low_result.seed_complaint = {
+        "type": "narrative_intake",
+        "_meta": {"complaint_type": "retaliation"},
+        "key_facts": {
+            "repository_evidence_candidates": [
+                {"title": "Photo evidence", "source_path": "/tmp/photo.jpg", "snippet": "Apartment condition photo."}
+            ],
+        },
+    }
+    low_result.knowledge_graph_summary = {"total_entities": 1, "total_relationships": 0, "gaps": 5}
+    low_result.dependency_graph_summary = {"total_nodes": 1, "total_dependencies": 0, "satisfaction_rate": 0.0}
+
+    strong_result = _session_result(
+        "session_cross_phase_strong",
+        0.78,
+        {"adversarial_intake_priority_summary": {"expected_objectives": ["timeline"], "covered_objectives": ["timeline"], "uncovered_objectives": []}},
+    )
+    strong_result.seed_complaint = {
+        "type": "policy_grievance",
+        "_meta": {"complaint_type": "housing_discrimination"},
+        "key_facts": {
+            "repository_evidence_candidates": [
+                {"title": "Administrative Plan", "source_path": "/tmp/admin_plan.pdf", "snippet": "Notice language."}
+            ],
+        },
+    }
+    strong_result.knowledge_graph_summary = {"total_entities": 4, "total_relationships": 3, "gaps": 1}
+    strong_result.dependency_graph_summary = {"total_nodes": 4, "total_dependencies": 2, "satisfaction_rate": 0.6}
+
+    report = optimizer.analyze([low_result, strong_result])
+
+    assert report.phase_scorecards["intake_questioning"]["focus_areas"]
+    assert "retaliation" in report.phase_scorecards["graph_analysis"]["generalization_targets"]
+    assert "image_evidence" in report.phase_scorecards["document_generation"]["evidence_targets"]
+    assert report.document_handoff_summary["blockers"]
+    assert report.document_handoff_summary["ready_for_document_optimization"] is False
+    assert report.complaint_type_generalization_summary["weakest"][0]["name"] in {"retaliation", "narrative_intake"}
+    assert report.evidence_modality_generalization_summary["weakest"][0]["name"] == "image_evidence"
+    assert report.cross_phase_findings
 
 
 def test_analyze_tracks_complaint_type_and_evidence_modality_performance():

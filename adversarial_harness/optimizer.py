@@ -71,6 +71,11 @@ class OptimizationReport:
     coverage_remediation: Dict[str, Any] | None = None
     recommended_hacc_preset: str | None = None
     workflow_phase_plan: Dict[str, Any] | None = None
+    phase_scorecards: Dict[str, Dict[str, Any]] | None = None
+    complaint_type_generalization_summary: Dict[str, Any] | None = None
+    evidence_modality_generalization_summary: Dict[str, Any] | None = None
+    document_handoff_summary: Dict[str, Any] | None = None
+    cross_phase_findings: List[str] | None = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -114,6 +119,11 @@ class OptimizationReport:
             'coverage_remediation': self.coverage_remediation or {},
             'recommended_hacc_preset': self.recommended_hacc_preset,
             'workflow_phase_plan': self.workflow_phase_plan or {},
+            'phase_scorecards': self.phase_scorecards or {},
+            'complaint_type_generalization_summary': self.complaint_type_generalization_summary or {},
+            'evidence_modality_generalization_summary': self.evidence_modality_generalization_summary or {},
+            'document_handoff_summary': self.document_handoff_summary or {},
+            'cross_phase_findings': list(self.cross_phase_findings or []),
         }
 
 
@@ -128,6 +138,8 @@ class WorkflowOptimizationBundle:
     global_objectives: List[str]
     phase_tasks: List[Dict[str, Any]]
     shared_context: Dict[str, Any]
+    phase_scorecards: Dict[str, Dict[str, Any]] | None = None
+    cross_phase_findings: List[str] | None = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -138,6 +150,8 @@ class WorkflowOptimizationBundle:
             "global_objectives": list(self.global_objectives or []),
             "phase_tasks": list(self.phase_tasks or []),
             "shared_context": dict(self.shared_context or {}),
+            "phase_scorecards": dict(self.phase_scorecards or {}),
+            "cross_phase_findings": list(self.cross_phase_findings or []),
         }
 
 
@@ -879,6 +893,195 @@ class Optimizer:
             return selected or target_paths[:2]
 
         return target_paths
+    def _build_generalization_summary(
+        performance: Dict[str, Dict[str, Any]],
+        baseline_score: float,
+    ) -> Dict[str, Any]:
+        normalized = {
+            str(name): dict(payload or {})
+            for name, payload in (performance or {}).items()
+            if str(name)
+        }
+        if not normalized:
+            return {
+                "count": 0,
+                "weakest": [],
+                "strongest": [],
+                "score_spread": 0.0,
+                "below_baseline_count": 0,
+            }
+
+        ranked = sorted(
+            normalized.items(),
+            key=lambda item: (
+                float(item[1].get("average_score") or 0.0),
+                int(item[1].get("count") or 0),
+                item[0],
+            ),
+        )
+        weakest = [
+            {
+                "name": name,
+                "average_score": float(payload.get("average_score") or 0.0),
+                "count": int(payload.get("count") or 0),
+            }
+            for name, payload in ranked[:3]
+        ]
+        strongest = [
+            {
+                "name": name,
+                "average_score": float(payload.get("average_score") or 0.0),
+                "count": int(payload.get("count") or 0),
+            }
+            for name, payload in sorted(
+                normalized.items(),
+                key=lambda item: (
+                    float(item[1].get("average_score") or 0.0),
+                    int(item[1].get("count") or 0),
+                    item[0],
+                ),
+                reverse=True,
+            )[:3]
+        ]
+        scores = [float(payload.get("average_score") or 0.0) for payload in normalized.values()]
+        below_baseline_count = sum(1 for score in scores if score < float(baseline_score or 0.0))
+        return {
+            "count": len(normalized),
+            "weakest": weakest,
+            "strongest": strongest,
+            "score_spread": (max(scores) - min(scores)) if scores else 0.0,
+            "below_baseline_count": below_baseline_count,
+        }
+
+    @staticmethod
+    def _build_document_handoff_summary(
+        *,
+        coverage_remediation: Dict[str, Any],
+        workflow_phase_plan: Dict[str, Any],
+        complaint_type_summary: Dict[str, Any],
+        evidence_modality_summary: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        intake_priorities = dict((coverage_remediation or {}).get("intake_priorities") or {})
+        uncovered_objectives = [
+            str(value)
+            for value in list(intake_priorities.get("uncovered_objectives") or [])
+            if str(value)
+        ]
+        workflow_phases = dict((workflow_phase_plan or {}).get("phases") or {})
+        graph_phase = dict(workflow_phases.get("graph_analysis") or {})
+        document_phase = dict(workflow_phases.get("document_generation") or {})
+        blockers = []
+        if uncovered_objectives:
+            blockers.append("uncovered_intake_objectives")
+        if str(graph_phase.get("status") or "ready") != "ready":
+            blockers.append("graph_analysis_not_ready")
+        if str(document_phase.get("status") or "ready") != "ready":
+            blockers.append("document_generation_not_ready")
+        if int((complaint_type_summary or {}).get("below_baseline_count") or 0) > 0:
+            blockers.append("complaint_type_generalization_gaps")
+        if int((evidence_modality_summary or {}).get("below_baseline_count") or 0) > 0:
+            blockers.append("evidence_modality_generalization_gaps")
+        return {
+            "unresolved_intake_objectives": uncovered_objectives,
+            "graph_dependency_status": str(graph_phase.get("status") or "ready"),
+            "document_generation_status": str(document_phase.get("status") or "ready"),
+            "complaint_type_gap_count": int((complaint_type_summary or {}).get("below_baseline_count") or 0),
+            "evidence_modality_gap_count": int((evidence_modality_summary or {}).get("below_baseline_count") or 0),
+            "blockers": blockers,
+            "ready_for_document_optimization": not blockers,
+        }
+
+    def _build_phase_scorecards(
+        self,
+        *,
+        report: OptimizationReport,
+        graph_summary: Dict[str, Any],
+        complaint_type_summary: Dict[str, Any],
+        evidence_modality_summary: Dict[str, Any],
+        document_handoff_summary: Dict[str, Any],
+    ) -> Dict[str, Dict[str, Any]]:
+        workflow_phases = dict((report.workflow_phase_plan or {}).get("phases") or {})
+        weakest_objectives = self._top_uncovered_intake_objectives(report, limit=5)
+        weakest_complaint_types = [
+            str(item.get("name") or "")
+            for item in list((complaint_type_summary or {}).get("weakest") or [])
+            if str(item.get("name") or "")
+        ]
+        weakest_modalities = [
+            str(item.get("name") or "")
+            for item in list((evidence_modality_summary or {}).get("weakest") or [])
+            if str(item.get("name") or "")
+        ]
+        kg_avg_gaps = self._safe_float((graph_summary or {}).get("kg_avg_gaps")) or 0.0
+        dg_satisfaction_rate = self._safe_float((graph_summary or {}).get("dg_avg_satisfaction_rate")) or 0.0
+        return {
+            "intake_questioning": {
+                "status": str((workflow_phases.get("intake_questioning") or {}).get("status") or "ready"),
+                "score": round(
+                    (float(report.question_quality_avg or 0.0) + float(report.efficiency_avg or 0.0) + float(report.coverage_avg or 0.0)) / 3.0,
+                    4,
+                ),
+                "focus_areas": weakest_objectives[:3],
+                "generalization_targets": weakest_complaint_types[:3],
+                "evidence_targets": weakest_modalities[:3],
+            },
+            "graph_analysis": {
+                "status": str((workflow_phases.get("graph_analysis") or {}).get("status") or "ready"),
+                "score": round(
+                    (float(report.information_extraction_avg or 0.0) + max(0.0, 1.0 - min(1.0, kg_avg_gaps / 5.0)) + float(dg_satisfaction_rate or 0.0)) / 3.0,
+                    4,
+                ),
+                "focus_areas": [
+                    "gap_reduction" if kg_avg_gaps >= 1.0 else "graph_stability",
+                    "dependency_satisfaction" if dg_satisfaction_rate < 0.7 else "dependency_coverage",
+                ],
+                "generalization_targets": weakest_complaint_types[:3],
+                "evidence_targets": weakest_modalities[:3],
+            },
+            "document_generation": {
+                "status": str((workflow_phases.get("document_generation") or {}).get("status") or "ready"),
+                "score": round(
+                    (
+                        float(report.coverage_avg or 0.0)
+                        + float(report.information_extraction_avg or 0.0)
+                        + (1.0 if bool((document_handoff_summary or {}).get("ready_for_document_optimization")) else 0.0)
+                    ) / 3.0,
+                    4,
+                ),
+                "focus_areas": list((document_handoff_summary or {}).get("unresolved_intake_objectives") or [])[:3],
+                "generalization_targets": weakest_complaint_types[:3],
+                "evidence_targets": weakest_modalities[:3],
+            },
+        }
+
+    @staticmethod
+    def _build_cross_phase_findings(
+        *,
+        phase_scorecards: Dict[str, Dict[str, Any]],
+        document_handoff_summary: Dict[str, Any],
+    ) -> List[str]:
+        findings: List[str] = []
+        intake = dict((phase_scorecards or {}).get("intake_questioning") or {})
+        graph = dict((phase_scorecards or {}).get("graph_analysis") or {})
+        document = dict((phase_scorecards or {}).get("document_generation") or {})
+        if str(intake.get("status") or "ready") != "ready" and str(graph.get("status") or "ready") != "ready":
+            findings.append(
+                "Intake questioning gaps are likely suppressing graph extraction quality; optimize question targeting before expanding graph heuristics further."
+            )
+        if str(graph.get("status") or "ready") != "ready" and str(document.get("status") or "ready") != "ready":
+            findings.append(
+                "Document generation is currently bottlenecked by graph-analysis readiness; improve structured fact and requirement propagation into drafting."
+            )
+        blockers = list((document_handoff_summary or {}).get("blockers") or [])
+        if "complaint_type_generalization_gaps" in blockers or "evidence_modality_generalization_gaps" in blockers:
+            findings.append(
+                "Generalization gaps across complaint types or evidence modalities should be addressed across intake, graph analysis, and drafting together rather than in a single phase."
+            )
+        if not findings:
+            findings.append(
+                "Phase scorecards do not show a dominant cross-phase bottleneck; preserve the current handoff order and focus on consistency."
+            )
+        return findings
 
     def build_agentic_patch_task(
         self,
@@ -1034,6 +1237,8 @@ class Optimizer:
                         "workflow_capabilities": self._workflow_phase_capabilities(phase_name),
                         "weak_complaint_types": weak_complaint_types,
                         "weak_evidence_modalities": weak_evidence_modalities,
+                        "phase_scorecard": dict((report.phase_scorecards or {}).get(phase_name) or {}),
+                        "cross_phase_findings": list(report.cross_phase_findings or []),
                         "report_summary": {
                             "average_score": report.average_score,
                             "score_trend": report.score_trend,
@@ -1041,6 +1246,9 @@ class Optimizer:
                             "workflow_phase_plan": workflow_phase_plan,
                             "complaint_type_performance": complaint_type_performance,
                             "evidence_modality_performance": evidence_modality_performance,
+                            "phase_scorecards": dict(report.phase_scorecards or {}),
+                            "document_handoff_summary": dict(report.document_handoff_summary or {}),
+                            "cross_phase_findings": list(report.cross_phase_findings or []),
                         },
                         **dict(metadata or {}),
                     },
@@ -1096,6 +1304,11 @@ class Optimizer:
             "evidence_modality_performance": dict(report.evidence_modality_performance or {}),
             "intake_priority_performance": dict(report.intake_priority_performance or {}),
             "coverage_remediation": dict(report.coverage_remediation or {}),
+            "phase_scorecards": dict(report.phase_scorecards or {}),
+            "complaint_type_generalization_summary": dict(report.complaint_type_generalization_summary or {}),
+            "evidence_modality_generalization_summary": dict(report.evidence_modality_generalization_summary or {}),
+            "document_handoff_summary": dict(report.document_handoff_summary or {}),
+            "cross_phase_findings": list(report.cross_phase_findings or []),
         }
         bundle = WorkflowOptimizationBundle(
             timestamp=datetime.now(UTC).isoformat(),
@@ -1106,9 +1319,12 @@ class Optimizer:
                 "Improve complainant and mediator questioning across diverse complaint types.",
                 "Improve knowledge-graph and dependency-graph extraction, gap closure, and legal-issue analysis.",
                 "Improve drafting and synthesis so complaint outputs reflect the collected facts, evidence, and unresolved gaps.",
+                "Improve cross-phase handoffs so intake, graph analysis, and drafting reinforce one another across diverse evidence submissions.",
             ],
             phase_tasks=phase_tasks,
             shared_context=shared_context,
+            phase_scorecards=dict(report.phase_scorecards or {}),
+            cross_phase_findings=list(report.cross_phase_findings or []),
         )
         return bundle, report
 
@@ -1757,6 +1973,37 @@ class Optimizer:
             if anchor_focus:
                 priority_improvements.insert(0, f"Close anchor-section coverage gaps: {anchor_focus}")
         
+        complaint_type_generalization_summary = self._build_generalization_summary(
+            complaint_type_performance,
+            avg_score,
+        )
+        evidence_modality_generalization_summary = self._build_generalization_summary(
+            evidence_modality_performance,
+            avg_score,
+        )
+        graph_summary_payload = {
+            "kg_sessions_with_data": kg_with,
+            "dg_sessions_with_data": dg_with,
+            "kg_sessions_empty": kg_empty,
+            "dg_sessions_empty": dg_empty,
+            "kg_avg_total_entities": _avg_int(kg_entities_vals),
+            "kg_avg_total_relationships": _avg_int(kg_rels_vals),
+            "kg_avg_gaps": _avg_int(kg_gaps_vals),
+            "dg_avg_total_nodes": _avg_int(dg_nodes_vals),
+            "dg_avg_total_dependencies": _avg_int(dg_deps_vals),
+            "dg_avg_satisfaction_rate": _avg_float(dg_rate_vals),
+            "kg_avg_entities_delta_per_iter": _avg_float(kg_entities_delta_vals),
+            "kg_avg_relationships_delta_per_iter": _avg_float(kg_rels_delta_vals),
+            "kg_avg_gaps_delta_per_iter": _avg_float(kg_gaps_delta_vals),
+            "kg_sessions_gaps_not_reducing": kg_gaps_not_reducing,
+        }
+        document_handoff_summary = self._build_document_handoff_summary(
+            coverage_remediation=coverage_remediation,
+            workflow_phase_plan=workflow_phase_plan,
+            complaint_type_summary=complaint_type_generalization_summary,
+            evidence_modality_summary=evidence_modality_generalization_summary,
+        )
+        phase_scorecards_placeholder = {}
         report = OptimizationReport(
             timestamp=datetime.now(UTC).isoformat(),
             num_sessions_analyzed=len(successful),
@@ -1797,6 +2044,22 @@ class Optimizer:
             coverage_remediation=coverage_remediation,
             recommended_hacc_preset=recommended_hacc_preset,
             workflow_phase_plan=workflow_phase_plan,
+            phase_scorecards=phase_scorecards_placeholder,
+            complaint_type_generalization_summary=complaint_type_generalization_summary,
+            evidence_modality_generalization_summary=evidence_modality_generalization_summary,
+            document_handoff_summary=document_handoff_summary,
+            cross_phase_findings=[],
+        )
+        report.phase_scorecards = self._build_phase_scorecards(
+            report=report,
+            graph_summary=graph_summary_payload,
+            complaint_type_summary=complaint_type_generalization_summary,
+            evidence_modality_summary=evidence_modality_generalization_summary,
+            document_handoff_summary=document_handoff_summary,
+        )
+        report.cross_phase_findings = self._build_cross_phase_findings(
+            phase_scorecards=report.phase_scorecards,
+            document_handoff_summary=document_handoff_summary,
         )
         
         self.history.append(report)

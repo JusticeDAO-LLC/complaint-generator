@@ -758,11 +758,21 @@ def test_formal_complaint_document_builder_exposes_runtime_workflow_phase_plan_f
     )
 
     workflow_phase_plan = result["workflow_phase_plan"]
-    assert workflow_phase_plan["recommended_order"] == ["graph_analysis", "document_generation"]
+    assert workflow_phase_plan["recommended_order"] == [
+        "graph_analysis",
+        "document_generation",
+        "intake_questioning",
+    ]
     assert workflow_phase_plan["phases"]["graph_analysis"]["status"] == "warning"
     assert workflow_phase_plan["phases"]["graph_analysis"]["signals"]["remaining_gap_count"] == 1
     assert workflow_phase_plan["phases"]["graph_analysis"]["signals"]["knowledge_graph_enhanced"] is False
     assert workflow_phase_plan["phases"]["document_generation"]["status"] == "warning"
+    assert workflow_phase_plan["phases"]["intake_questioning"]["status"] == "warning"
+    assert workflow_phase_plan["phases"]["intake_questioning"]["signals"]["missing_required_objectives"] == [
+        "timeline",
+        "actors",
+        "causation_link",
+    ]
     assert result["draft"]["workflow_phase_plan"] == workflow_phase_plan
     assert result["draft"]["drafting_readiness"]["workflow_phase_plan"] == workflow_phase_plan
     assert any(
@@ -2160,6 +2170,7 @@ def test_agentic_optimizer_uses_upstream_router_provider_selection_when_provider
     mediator = _build_mediator()
     builder = FormalComplaintDocumentBuilder(mediator)
     llm_providers = []
+    llm_invocations = []
 
     class _FakeOptimizerLLMRouter:
         def __init__(self, *args, **kwargs):
@@ -2181,6 +2192,7 @@ def test_agentic_optimizer_uses_upstream_router_provider_selection_when_provider
 
     def _fake_generate_text(prompt: str, *, provider=None, model_name=None, **kwargs):
         llm_providers.append(provider)
+        llm_invocations.append(dict(kwargs))
         if document_optimization.AgenticDocumentOptimizer.CRITIC_PROMPT_TAG in prompt:
             calls["critic"] += 1
             payload = {
@@ -2227,6 +2239,11 @@ def test_agentic_optimizer_uses_upstream_router_provider_selection_when_provider
     assert calls["actor"] >= 1
     assert llm_providers
     assert all(provider == "anthropic" for provider in llm_providers)
+    assert llm_invocations
+    assert all(
+        invocation.get("timeout") == document_optimization.DEFAULT_OPTIMIZER_LLM_TIMEOUT_SECONDS
+        for invocation in llm_invocations
+    )
     assert report["router_usage"]["llm_providers_used"] == ["anthropic"]
     assert report["upstream_optimizer"]["stage_provider_selection"]["critic"]["resolved_provider"] == "anthropic"
     assert report["upstream_optimizer"]["stage_provider_selection"]["actor"]["resolved_provider"] == "anthropic"

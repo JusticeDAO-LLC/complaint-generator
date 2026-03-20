@@ -59,6 +59,7 @@ LLM_ROUTER_AVAILABLE = callable(generate_text_with_metadata)
 UPSTREAM_AGENTIC_AVAILABLE = any(
     value is not None for value in (OptimizerLLMRouter, ControlLoopConfig, OptimizationMethod)
 )
+DEFAULT_OPTIMIZER_LLM_TIMEOUT_SECONDS = 45
 
 
 def _clamp(value: float, minimum: float = 0.0, maximum: float = 1.0) -> float:
@@ -344,7 +345,7 @@ class AgenticDocumentOptimizer:
         self.max_iterations = max(1, int(max_iterations or 1))
         self.target_score = float(target_score or 0.9)
         self.persist_artifacts = bool(persist_artifacts)
-        self.llm_config: Dict[str, Any] = {}
+        self.llm_config: Dict[str, Any] = {"timeout": DEFAULT_OPTIMIZER_LLM_TIMEOUT_SECONDS}
         self._embeddings_router = None
         self._embedding_cache: Dict[str, List[float]] = {}
         self._upstream_llm_router = None
@@ -449,6 +450,14 @@ class AgenticDocumentOptimizer:
             support_context=support_context,
             user_id=user_id,
         )
+        workflow_optimization_guidance = self._build_workflow_optimization_guidance(
+            drafting_readiness=readiness,
+            support_context=support_context,
+            intake_status=intake_status,
+            intake_case_summary=intake_case_summary,
+            claim_reasoning_review=claim_reasoning_review,
+            claim_support_temporal_handoff=claim_support_temporal_handoff,
+        )
         intake_summary_handoff = {}
         if isinstance(intake_status.get("intake_summary_handoff"), dict) and intake_status.get("intake_summary_handoff"):
             intake_summary_handoff = dict(intake_status["intake_summary_handoff"])
@@ -473,6 +482,7 @@ class AgenticDocumentOptimizer:
                 "intake_summary_handoff": intake_summary_handoff,
                 "claim_support_temporal_handoff": claim_support_temporal_handoff,
                 "claim_reasoning_review": claim_reasoning_review,
+                "workflow_optimization_guidance": workflow_optimization_guidance,
                 "support_context": support_context,
                 "initial_review": initial_review,
                 "final_review": current_review,
@@ -501,6 +511,7 @@ class AgenticDocumentOptimizer:
             "intake_summary_handoff": intake_summary_handoff,
             "claim_support_temporal_handoff": claim_support_temporal_handoff,
             "claim_reasoning_review": claim_reasoning_review,
+            "workflow_optimization_guidance": workflow_optimization_guidance,
             "packet_projection": dict(support_context.get("packet_projection") or {}),
             "section_history": [
                 {
@@ -518,6 +529,148 @@ class AgenticDocumentOptimizer:
             "initial_review": self._serialize_review(initial_review),
             "final_review": self._serialize_review(current_review),
             "draft": working_draft,
+        }
+
+    def _build_workflow_optimization_guidance(
+        self,
+        *,
+        drafting_readiness: Dict[str, Any],
+        support_context: Dict[str, Any],
+        intake_status: Dict[str, Any],
+        intake_case_summary: Dict[str, Any],
+        claim_reasoning_review: Dict[str, Any],
+        claim_support_temporal_handoff: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        intake_sections = (
+            intake_case_summary.get("intake_sections")
+            if isinstance(intake_case_summary.get("intake_sections"), dict)
+            else {}
+        )
+        question_summary = (
+            intake_case_summary.get("question_candidate_summary")
+            if isinstance(intake_case_summary.get("question_candidate_summary"), dict)
+            else {}
+        )
+        evidence_summary = (
+            intake_case_summary.get("proof_lead_summary")
+            if isinstance(intake_case_summary.get("proof_lead_summary"), dict)
+            else {}
+        )
+        evidence_rows = support_context.get("evidence") if isinstance(support_context.get("evidence"), list) else []
+        evidence_modalities = _unique_preserving_order(
+            str((row or {}).get("type") or "").strip() for row in evidence_rows if isinstance(row, dict)
+        )
+        claim_types = _unique_preserving_order(
+            [
+                *[
+                    str((claim or {}).get("claim_type") or "").strip()
+                    for claim in (support_context.get("claims") or [])
+                    if isinstance(claim, dict)
+                ],
+                *[
+                    str((claim or {}).get("claim_type") or "").strip()
+                    for claim in (intake_case_summary.get("candidate_claims") or [])
+                    if isinstance(claim, dict)
+                ],
+            ]
+        )
+        uncovered_objectives = _dedupe_text_values(
+            (support_context.get("intake_priorities") or {}).get("uncovered_objectives") or []
+        )
+        intake_focus_areas = _unique_preserving_order(
+            [
+                *[
+                    str(section_name)
+                    for section_name, section_payload in intake_sections.items()
+                    if isinstance(section_payload, dict) and str(section_payload.get("status") or "").strip().lower() != "complete"
+                ],
+                *uncovered_objectives,
+            ]
+        )
+        graph_focus_areas = _unique_preserving_order(
+            [
+                *[
+                    str((claim or {}).get("claim_type") or "").strip()
+                    for claim in (support_context.get("claims") or [])
+                    if isinstance(claim, dict) and (
+                        claim.get("missing_elements") or claim.get("partially_supported_elements")
+                    )
+                ],
+                *[
+                    str(item)
+                    for item in (claim_support_temporal_handoff.get("temporal_proof_objectives") or [])
+                    if str(item).strip()
+                ],
+            ]
+        )
+        draft_warnings = [
+            str((warning or {}).get("message") or "").strip()
+            for warning in (drafting_readiness.get("warnings") or [])
+            if isinstance(warning, dict) and str((warning or {}).get("message") or "").strip()
+        ]
+        document_focus_areas = _unique_preserving_order(
+            [
+                *[
+                    str(section_name)
+                    for section_name, section_payload in dict(drafting_readiness.get("sections") or {}).items()
+                    if isinstance(section_payload, dict) and str(section_payload.get("status") or "").strip().lower() != "ready"
+                ],
+                *draft_warnings,
+            ]
+        )
+        cross_phase_findings: List[str] = []
+        if intake_focus_areas and graph_focus_areas:
+            cross_phase_findings.append(
+                "Unresolved intake objectives are still suppressing graph-ready claim support and should be closed before final drafting."
+            )
+        if graph_focus_areas and document_focus_areas:
+            cross_phase_findings.append(
+                "Graph support gaps are flowing through into document readiness warnings, so claim support and chronology gaps should be resolved before final complaint export."
+            )
+        if claim_support_temporal_handoff.get("unresolved_temporal_issue_count"):
+            cross_phase_findings.append(
+                "Temporal support gaps remain unresolved and may weaken both causation analysis and chronology-driven complaint allegations."
+            )
+
+        return {
+            "phase_scorecards": {
+                "intake_questioning": {
+                    "status": "warning" if intake_focus_areas else "ready",
+                    "focus_areas": intake_focus_areas,
+                    "question_candidate_count": int(question_summary.get("count") or 0),
+                    "proof_lead_count": int(evidence_summary.get("count") or 0),
+                },
+                "graph_analysis": {
+                    "status": "warning" if graph_focus_areas else "ready",
+                    "focus_areas": graph_focus_areas,
+                    "claim_types": claim_types,
+                    "evidence_modalities": evidence_modalities,
+                },
+                "document_generation": {
+                    "status": str(drafting_readiness.get("status") or "ready").strip().lower() or "ready",
+                    "focus_areas": document_focus_areas,
+                    "warning_count": int(drafting_readiness.get("warning_count") or 0),
+                },
+            },
+            "cross_phase_findings": cross_phase_findings,
+            "complaint_type_generalization_summary": {
+                "complaint_types": claim_types,
+                "complaint_type_count": len(claim_types),
+            },
+            "evidence_modality_generalization_summary": {
+                "evidence_modalities": evidence_modalities,
+                "evidence_modality_count": len(evidence_modalities),
+            },
+            "document_handoff_summary": {
+                "ready_for_document_optimization": str(drafting_readiness.get("status") or "").strip().lower() == "ready",
+                "drafting_status": str(drafting_readiness.get("status") or "ready").strip().lower() or "ready",
+                "blocking_warning_count": int(drafting_readiness.get("warning_count") or 0),
+            },
+            "intake_status": {
+                "current_phase": str(intake_status.get("phase") or intake_status.get("current_phase") or "").strip(),
+                "ready_to_advance": bool(intake_status.get("ready_to_advance", intake_status.get("ready", False))),
+            },
+            "claim_reasoning_review": dict(claim_reasoning_review or {}),
         }
 
     def _reset_runtime_state(self) -> None:
@@ -559,7 +712,9 @@ class AgenticDocumentOptimizer:
         if persist_artifacts is not None:
             self.persist_artifacts = bool(persist_artifacts)
         if isinstance(llm_config, dict):
-            self.llm_config = {str(key): value for key, value in llm_config.items()}
+            merged_llm_config = {"timeout": DEFAULT_OPTIMIZER_LLM_TIMEOUT_SECONDS}
+            merged_llm_config.update({str(key): value for key, value in llm_config.items()})
+            self.llm_config = merged_llm_config
 
     def _build_support_context(
         self,

@@ -40,6 +40,9 @@ def test_resolve_test_targets_returns_full_slice():
     targets = cli.resolve_test_targets("full")
 
     assert targets == cli.REGRESSION_SLICES["full"]
+    assert "tests/test_claim_support_review_template.py" in targets
+    assert "tests/test_document_pipeline.py" in targets
+    assert "tests/test_formal_document_pipeline.py" in targets
     assert "tests/test_claim_support_review_playwright_smoke.py" in targets
 
 
@@ -61,3 +64,6 @@ def test_build_pytest_command_places_passthrough_args_before_targets():
         "claim_support",
     ]
     assert command[6:] == cli.REGRESSION_SLICES["review"]
+    assert "tests/test_claim_support_review_template.py" in command[6:]
+    assert "tests/test_document_pipeline.py" in command[6:]
+    assert "tests/test_formal_document_pipeline.py" in command[6:]

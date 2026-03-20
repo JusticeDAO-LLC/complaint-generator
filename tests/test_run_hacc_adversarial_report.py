@@ -49,6 +49,30 @@ def test_main_persists_workflow_phase_task_plan(tmp_path, monkeypatch):
         def analyze(self, results):
             return FakeReport()
 
+        def build_workflow_optimization_bundle(self, results, report=None, components=None):
+            return (
+                SimpleNamespace(
+                    to_dict=lambda: {
+                        "timestamp": "2026-03-20T00:00:00+00:00",
+                        "num_sessions_analyzed": 1,
+                        "average_score": 0.82,
+                        "workflow_phase_plan": {
+                            "recommended_order": ["intake_questioning", "graph_analysis"],
+                            "phases": {
+                                "intake_questioning": {"status": "critical"},
+                                "graph_analysis": {"status": "warning"},
+                            },
+                        },
+                        "global_objectives": ["Improve intake questioning"],
+                        "phase_tasks": [],
+                        "shared_context": {"coverage_remediation": {}},
+                        "phase_scorecards": {"intake_questioning": {"status": "critical"}},
+                        "cross_phase_findings": ["Intake gaps suppress graph quality."],
+                    }
+                ),
+                report,
+            )
+
         @staticmethod
         def _fallback_agentic_optimizer_components():
             return {}
@@ -106,18 +130,25 @@ def test_main_persists_workflow_phase_task_plan(tmp_path, monkeypatch):
 
     assert exit_code == 0
     workflow_tasks_path = tmp_path / "workflow_phase_tasks.json"
+    workflow_bundle_path = tmp_path / "workflow_optimization_bundle.json"
     summary_path = tmp_path / "run_summary.json"
     assert workflow_tasks_path.is_file()
+    assert workflow_bundle_path.is_file()
     assert summary_path.is_file()
 
     workflow_tasks = json.loads(workflow_tasks_path.read_text(encoding="utf-8"))
+    workflow_bundle = json.loads(workflow_bundle_path.read_text(encoding="utf-8"))
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
 
     assert workflow_tasks[0]["task_id"] == "phase_task_1"
     assert workflow_tasks[0]["target_files"] == ["adversarial_harness/session.py"]
+    assert workflow_bundle["phase_scorecards"]["intake_questioning"]["status"] == "critical"
+    assert workflow_bundle["cross_phase_findings"] == ["Intake gaps suppress graph quality."]
     assert summary["workflow_phase_task_count"] == 1
+    assert summary["artifacts"]["workflow_optimization_bundle_json"] == str(workflow_bundle_path)
     assert summary["artifacts"]["workflow_phase_tasks_json"] == str(workflow_tasks_path)
     assert summary["workflow_phase_plan"]["recommended_order"] == ["intake_questioning", "graph_analysis"]
+    assert summary["workflow_optimization_bundle"]["phase_scorecards"]["intake_questioning"]["status"] == "critical"
 
 
 def test_main_can_emit_phase_autopatch_artifacts(tmp_path, monkeypatch):

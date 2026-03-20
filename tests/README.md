@@ -192,7 +192,10 @@ pytest -q \
     tests/test_review_api.py \
     tests/test_claim_support_review_dashboard_flow.py \
     tests/test_claim_support_hooks.py \
-    tests/test_backfill_claim_testimony_links_cli.py
+  tests/test_backfill_claim_testimony_links_cli.py \
+  tests/test_claim_support_review_template.py \
+  tests/test_document_pipeline.py \
+  tests/test_formal_document_pipeline.py
 
 # Full review/browser regression: requires the optional browser/web stack
 pytest -q \
@@ -200,6 +203,9 @@ pytest -q \
     tests/test_claim_support_review_dashboard_flow.py \
     tests/test_claim_support_hooks.py \
     tests/test_backfill_claim_testimony_links_cli.py \
+  tests/test_claim_support_review_template.py \
+  tests/test_document_pipeline.py \
+  tests/test_formal_document_pipeline.py \
     tests/test_claim_support_review_playwright_smoke.py
 ```
 
@@ -214,6 +220,10 @@ python scripts/run_standard_regression.py --slice full
 The same slices are also available through editor and shell tooling:
 
 - VS Code tasks:
+  - `Standard Regression (Lean)`
+  - `Standard Regression (Review)`
+  - `Standard Regression (Full)`
+- Run and Debug:
   - `Standard Regression (Lean)`
   - `Standard Regression (Review)`
   - `Standard Regression (Full)`
@@ -238,6 +248,9 @@ The same HACC slice is also available through editor and shell tooling:
 
 - VS Code task:
   - `HACC Grounding Regression`
+- Run and Debug:
+  - `HACC Grounding Regression`
+  - `HACC Grounding Regression (No Smoke)`
 - Make targets:
   - `make hacc-grounding`
   - `make hacc-grounding-no-smoke`
@@ -259,6 +272,8 @@ That lightweight slice covers:
 The same unit slice is also available through:
 
 - VS Code task:
+  - `HACC Unit Regression`
+- Run and Debug:
   - `HACC Unit Regression`
 - Make target:
   - `make hacc-unit`

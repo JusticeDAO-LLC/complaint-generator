@@ -113,6 +113,36 @@ def _serialize_phase_patch_tasks(optimizer: Any, results: list[Any], report: Any
     return payloads
 
 
+def _serialize_workflow_optimization_bundle(
+    optimizer: Any,
+    results: list[Any],
+    report: Any,
+) -> Dict[str, Any]:
+    bundle_builder = getattr(optimizer, "build_workflow_optimization_bundle", None)
+    if callable(bundle_builder):
+        fallback_components_getter = getattr(optimizer, "_fallback_agentic_optimizer_components", None)
+        components = fallback_components_getter() if callable(fallback_components_getter) else None
+        bundle, _ = bundle_builder(
+            results,
+            report=report,
+            components=components,
+        )
+        to_dict = getattr(bundle, "to_dict", None)
+        if callable(to_dict):
+            return dict(to_dict() or {})
+    return {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "num_sessions_analyzed": 0,
+        "average_score": float((report.to_dict() or {}).get("average_score") or 0.0) if hasattr(report, "to_dict") else 0.0,
+        "workflow_phase_plan": dict((report.to_dict() or {}).get("workflow_phase_plan") or {}) if hasattr(report, "to_dict") else {},
+        "global_objectives": [],
+        "phase_tasks": [],
+        "shared_context": {},
+        "phase_scorecards": {},
+        "cross_phase_findings": [],
+    }
+
+
 def _materialize_phase_autopatch_artifacts(
     *,
     project_root: Path,
@@ -246,10 +276,12 @@ def main() -> int:
     optimizer = Optimizer()
     optimizer_report = optimizer.analyze(results)
     optimizer_payload = optimizer_report.to_dict()
+    workflow_bundle_payload = _serialize_workflow_optimization_bundle(optimizer, results, optimizer_report)
     workflow_phase_tasks = _serialize_phase_patch_tasks(optimizer, results, optimizer_report)
 
     results_path = output_dir / "adversarial_results.json"
     optimizer_path = output_dir / "optimizer_report.json"
+    workflow_bundle_path = output_dir / "workflow_optimization_bundle.json"
     workflow_tasks_path = output_dir / "workflow_phase_tasks.json"
     workflow_phase_autopatch_path = output_dir / "workflow_phase_autopatch_results.json"
     anchor_csv_path = output_dir / "anchor_section_coverage.csv"
@@ -282,11 +314,13 @@ def main() -> int:
         "router_report": router_report,
         "statistics": statistics,
         "workflow_phase_plan": optimizer_payload.get("workflow_phase_plan") or {},
+        "workflow_optimization_bundle": workflow_bundle_payload,
         "workflow_phase_task_count": len(workflow_phase_tasks),
         "workflow_phase_autopatch_count": len(workflow_phase_autopatch_results),
         "artifacts": {
             "results_json": str(results_path),
             "optimizer_report_json": str(optimizer_path),
+            "workflow_optimization_bundle_json": str(workflow_bundle_path),
             "workflow_phase_tasks_json": str(workflow_tasks_path),
             "workflow_phase_autopatch_results_json": str(workflow_phase_autopatch_path) if workflow_phase_autopatch_results else "",
             "anchor_section_coverage_csv": str(anchor_csv_path),
@@ -297,6 +331,8 @@ def main() -> int:
 
     with open(optimizer_path, "w", encoding="utf-8") as handle:
         json.dump(optimizer_payload, handle, indent=2)
+    with open(workflow_bundle_path, "w", encoding="utf-8") as handle:
+        json.dump(workflow_bundle_payload, handle, indent=2)
     with open(workflow_tasks_path, "w", encoding="utf-8") as handle:
         json.dump(workflow_phase_tasks, handle, indent=2)
     if workflow_phase_autopatch_results:
