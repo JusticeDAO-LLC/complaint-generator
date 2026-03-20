@@ -16,6 +16,65 @@ from adversarial_harness import AdversarialHarness, Optimizer
 from mediator import Mediator
 
 
+def _build_runtime_optimization_guidance(
+    workflow_bundle: Dict[str, Any] | None,
+    report_payload: Dict[str, Any] | None,
+) -> Dict[str, Any]:
+    bundle = workflow_bundle if isinstance(workflow_bundle, dict) else {}
+    report = report_payload if isinstance(report_payload, dict) else {}
+    shared_context = bundle.get("shared_context") if isinstance(bundle.get("shared_context"), dict) else {}
+    document_handoff_summary = (
+        report.get("document_handoff_summary")
+        if isinstance(report.get("document_handoff_summary"), dict)
+        else shared_context.get("document_handoff_summary")
+    )
+    complaint_targets = (
+        report.get("complaint_type_generalization_summary")
+        if isinstance(report.get("complaint_type_generalization_summary"), dict)
+        else shared_context.get("complaint_type_generalization_summary")
+    )
+    evidence_targets = (
+        report.get("evidence_modality_generalization_summary")
+        if isinstance(report.get("evidence_modality_generalization_summary"), dict)
+        else shared_context.get("evidence_modality_generalization_summary")
+    )
+    phase_scorecards = (
+        bundle.get("phase_scorecards")
+        if isinstance(bundle.get("phase_scorecards"), dict)
+        else report.get("phase_scorecards")
+    )
+    workflow_phase_plan = (
+        bundle.get("workflow_phase_plan")
+        if isinstance(bundle.get("workflow_phase_plan"), dict)
+        else report.get("workflow_phase_plan")
+    )
+    cross_phase_findings = bundle.get("cross_phase_findings")
+    if not isinstance(cross_phase_findings, list):
+        cross_phase_findings = report.get("cross_phase_findings")
+    cross_phase_findings = [str(item).strip() for item in list(cross_phase_findings or []) if str(item).strip()]
+
+    if not any(
+        (
+            workflow_phase_plan,
+            phase_scorecards,
+            document_handoff_summary,
+            complaint_targets,
+            evidence_targets,
+            cross_phase_findings,
+        )
+    ):
+        return {}
+
+    return {
+        "workflow_phase_plan": dict(workflow_phase_plan or {}),
+        "phase_scorecards": dict(phase_scorecards or {}),
+        "cross_phase_findings": cross_phase_findings,
+        "document_handoff_summary": dict(document_handoff_summary or {}),
+        "complaint_type_generalization_summary": dict(complaint_targets or {}),
+        "evidence_modality_generalization_summary": dict(evidence_targets or {}),
+    }
+
+
 class DemoBatchLLMBackend:
     def __init__(self, response_template: str = "Mock response"):
         self.response_template = response_template
@@ -318,6 +377,7 @@ def run_demo_autopatch_batch(
 
     optimizer = Optimizer()
     report = optimizer.analyze(results)
+    workflow_bundle = optimizer.build_workflow_optimization_bundle(results, report=report).to_dict()
     normalized_phase_mode = str(phase_mode or "single").strip().lower().replace("-", "_")
     if normalized_phase_mode not in {"single", "workflow"}:
         raise ValueError(f"Unsupported phase mode: {phase_mode}")
@@ -346,6 +406,8 @@ def run_demo_autopatch_batch(
     payload = {
         "num_results": len(results),
         "report": report.to_dict(),
+        "workflow_optimization_bundle": workflow_bundle,
+        "optimization_guidance": _build_runtime_optimization_guidance(workflow_bundle, report.to_dict()),
         "autopatch": _serialize_autopatch_result(autopatch_result),
         "phase_mode": normalized_phase_mode,
         "phase_tasks": phase_payloads,
@@ -423,6 +485,7 @@ def run_adversarial_autopatch_batch(
 
     optimizer = Optimizer()
     report = optimizer.analyze(results)
+    workflow_bundle = optimizer.build_workflow_optimization_bundle(results, report=report).to_dict()
     normalized_phase_mode = str(phase_mode or "single").strip().lower().replace("-", "_")
     if normalized_phase_mode not in {"single", "workflow"}:
         raise ValueError(f"Unsupported phase mode: {phase_mode}")
@@ -451,6 +514,8 @@ def run_adversarial_autopatch_batch(
     payload = {
         "num_results": len(results),
         "report": report.to_dict(),
+        "workflow_optimization_bundle": workflow_bundle,
+        "optimization_guidance": _build_runtime_optimization_guidance(workflow_bundle, report.to_dict()),
         "autopatch": _serialize_autopatch_result(autopatch_result),
         "phase_mode": normalized_phase_mode,
         "phase_tasks": phase_payloads,

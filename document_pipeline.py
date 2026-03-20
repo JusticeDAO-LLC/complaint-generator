@@ -240,6 +240,110 @@ def _merge_status(current: str, candidate: str) -> str:
     return candidate_status if order.get(candidate_status, 0) > order.get(current_status, 0) else current_status
 
 
+def _build_runtime_workflow_optimization_guidance(
+    *,
+    mediator: Any,
+    drafting_readiness: Dict[str, Any],
+    workflow_phase_plan: Dict[str, Any],
+    document_optimization: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    optimization_report = document_optimization if isinstance(document_optimization, dict) else {}
+    existing_guidance = (
+        optimization_report.get("workflow_optimization_guidance")
+        if isinstance(optimization_report.get("workflow_optimization_guidance"), dict)
+        else {}
+    )
+    if existing_guidance:
+        guidance = dict(existing_guidance)
+        if workflow_phase_plan and "workflow_phase_plan" not in guidance:
+            guidance["workflow_phase_plan"] = dict(workflow_phase_plan)
+        return guidance
+
+    intake_case_summary = build_intake_case_review_summary(mediator)
+    intake_sections = (
+        intake_case_summary.get("intake_sections")
+        if isinstance(intake_case_summary.get("intake_sections"), dict)
+        else {}
+    )
+    question_summary = (
+        intake_case_summary.get("question_candidate_summary")
+        if isinstance(intake_case_summary.get("question_candidate_summary"), dict)
+        else {}
+    )
+    claim_packet_summary = (
+        intake_case_summary.get("claim_support_packet_summary")
+        if isinstance(intake_case_summary.get("claim_support_packet_summary"), dict)
+        else {}
+    )
+    candidate_claims = _coerce_list(intake_case_summary.get("candidate_claims"))
+    claim_types = _unique_preserving_order(
+        str((claim or {}).get("claim_type") or "").strip()
+        for claim in candidate_claims
+        if isinstance(claim, dict)
+    )
+    intake_focus_areas = _unique_preserving_order(
+        str(section_name)
+        for section_name, payload in intake_sections.items()
+        if isinstance(payload, dict) and str(payload.get("status") or "").strip().lower() != "complete"
+    )
+    graph_focus_areas = _unique_preserving_order(
+        [
+            *claim_types,
+            *[
+                "claim_support_packets"
+                if int(claim_packet_summary.get("unsupported_element_count") or 0) > 0
+                else ""
+            ],
+        ]
+    )
+    document_focus_areas = _unique_preserving_order(
+        [
+            str(section_name)
+            for section_name, payload in dict(drafting_readiness.get("sections") or {}).items()
+            if isinstance(payload, dict) and str(payload.get("status") or "").strip().lower() != "ready"
+        ]
+    )
+    cross_phase_findings = []
+    if intake_focus_areas and graph_focus_areas:
+        cross_phase_findings.append(
+            "Intake follow-up gaps remain linked to graph support gaps, so unresolved intake sections should be closed before final drafting."
+        )
+    if graph_focus_areas and document_focus_areas:
+        cross_phase_findings.append(
+            "Graph support issues are still affecting drafting readiness, especially in claims-for-relief and chronology-dependent allegations."
+        )
+    return {
+        "workflow_phase_plan": dict(workflow_phase_plan or {}),
+        "phase_scorecards": {
+            "intake_questioning": {
+                "status": "warning" if intake_focus_areas else "ready",
+                "focus_areas": intake_focus_areas,
+                "question_candidate_count": int(question_summary.get("count") or 0),
+            },
+            "graph_analysis": {
+                "status": "warning" if graph_focus_areas else "ready",
+                "focus_areas": graph_focus_areas,
+                "unsupported_element_count": int(claim_packet_summary.get("unsupported_element_count") or 0),
+            },
+            "document_generation": {
+                "status": str(drafting_readiness.get("status") or "ready").strip().lower() or "ready",
+                "focus_areas": document_focus_areas,
+                "warning_count": int(drafting_readiness.get("warning_count") or 0),
+            },
+        },
+        "cross_phase_findings": cross_phase_findings,
+        "complaint_type_generalization_summary": {
+            "complaint_types": claim_types,
+            "complaint_type_count": len(claim_types),
+        },
+        "document_handoff_summary": {
+            "ready_for_document_optimization": str(drafting_readiness.get("status") or "").strip().lower() == "ready",
+            "drafting_status": str(drafting_readiness.get("status") or "ready").strip().lower() or "ready",
+            "blocking_warning_count": int(drafting_readiness.get("warning_count") or 0),
+        },
+    }
+
+
 class FormalComplaintDocumentBuilder:
     def __init__(self, mediator: Any):
         self.mediator = mediator
@@ -358,6 +462,12 @@ class FormalComplaintDocumentBuilder:
             if isinstance(drafting_readiness.get("workflow_phase_plan"), dict)
             else {}
         )
+        workflow_optimization_guidance = _build_runtime_workflow_optimization_guidance(
+            mediator=self.mediator,
+            drafting_readiness=drafting_readiness,
+            workflow_phase_plan=workflow_phase_plan,
+            document_optimization=document_optimization,
+        )
         filing_checklist = self._build_filing_checklist(drafting_readiness)
         self._annotate_filing_checklist_review_links(
             filing_checklist=filing_checklist,
@@ -367,6 +477,8 @@ class FormalComplaintDocumentBuilder:
         draft["drafting_readiness"] = drafting_readiness
         if workflow_phase_plan:
             draft["workflow_phase_plan"] = workflow_phase_plan
+        if workflow_optimization_guidance:
+            draft["workflow_optimization_guidance"] = workflow_optimization_guidance
         draft["filing_checklist"] = filing_checklist
         draft["affidavit"] = self._build_affidavit(draft)
         claim_support_temporal_handoff = self._build_claim_support_temporal_handoff(document_optimization)
@@ -388,6 +500,7 @@ class FormalComplaintDocumentBuilder:
             "filing_checklist": filing_checklist,
             "artifacts": artifacts,
             "document_optimization": document_optimization,
+            "workflow_optimization_guidance": workflow_optimization_guidance,
             "intake_summary_handoff": intake_summary_handoff,
             "output_formats": formats,
             "generated_at": _utcnow().isoformat(),

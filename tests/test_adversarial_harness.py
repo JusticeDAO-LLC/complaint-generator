@@ -2406,11 +2406,16 @@ SUGGESTIONS:
 
         assert payload['phase_mode'] == 'workflow'
         assert payload['phase_tasks']
+        assert payload['workflow_optimization_bundle']['workflow_phase_plan']['recommended_order']
+        assert payload['optimization_guidance']['phase_scorecards']['intake_questioning']['status'] in {'critical', 'warning', 'ready'}
+        assert 'cross_phase_findings' in payload['optimization_guidance']
         assert payload['phase_tasks'][0]['phase'] in {'intake_questioning', 'graph_analysis', 'document_generation'}
         assert Path(payload['phase_tasks'][0]['patch_path']).is_file()
         summary = json.loads((tmp_path / 'summary.json').read_text(encoding='utf-8'))
         assert summary['phase_mode'] == 'workflow'
         assert summary['phase_tasks']
+        assert summary['workflow_optimization_bundle']['workflow_phase_plan']['recommended_order']
+        assert summary['optimization_guidance']['phase_scorecards']['document_generation']['status'] in {'critical', 'warning', 'ready'}
 
     def test_run_adversarial_autopatch_batch_live_mode_probes_multiple_backends(self, tmp_path):
         class FailingBackend:

@@ -775,6 +775,8 @@ def test_formal_complaint_document_builder_exposes_runtime_workflow_phase_plan_f
     ]
     assert result["draft"]["workflow_phase_plan"] == workflow_phase_plan
     assert result["draft"]["drafting_readiness"]["workflow_phase_plan"] == workflow_phase_plan
+    assert result["workflow_optimization_guidance"]["workflow_phase_plan"] == workflow_phase_plan
+    assert result["workflow_optimization_guidance"]["phase_scorecards"]["graph_analysis"]["status"] == "warning"
     assert any(
         warning.get("code") == "workflow_graph_analysis_warning"
         for warning in result["drafting_readiness"]["warnings"]
@@ -2247,6 +2249,10 @@ def test_agentic_optimizer_uses_upstream_router_provider_selection_when_provider
     assert report["router_usage"]["llm_providers_used"] == ["anthropic"]
     assert report["upstream_optimizer"]["stage_provider_selection"]["critic"]["resolved_provider"] == "anthropic"
     assert report["upstream_optimizer"]["stage_provider_selection"]["actor"]["resolved_provider"] == "anthropic"
+    assert report["workflow_optimization_guidance"]["phase_scorecards"]["intake_questioning"]["status"] in {"warning", "ready"}
+    assert report["workflow_optimization_guidance"]["document_handoff_summary"]["drafting_status"] in {"warning", "ready"}
+    assert result["workflow_optimization_guidance"]["phase_scorecards"]["document_generation"]["status"] in {"warning", "ready"}
+    assert result["draft"]["workflow_optimization_guidance"] == result["workflow_optimization_guidance"]
 
 
 def test_review_api_generated_docx_preserves_grouped_factual_headings_end_to_end(tmp_path):
