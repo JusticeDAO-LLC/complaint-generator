@@ -194,6 +194,8 @@ def test_outstanding_intake_follow_up_questions_reuse_seed_questionnaire():
     assert questions == [
         "When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?",
         "Who at HACC made, communicated, or carried out each decision?",
+        "Please list the key events with dates (or closest date anchors): protected activity, notices, hearing/review requests, and adverse action outcomes.",
+        "Who at HACC handled each step (intake, notice, review/hearing, final decision), and what did each person decide or communicate?",
     ]
 
 

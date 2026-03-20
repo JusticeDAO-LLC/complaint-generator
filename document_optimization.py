@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 import math
+import re
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from intake_status import (
@@ -95,6 +96,83 @@ def _dedupe_text_values(values: Iterable[Any]) -> List[str]:
         seen.add(text)
         normalized_values.append(text)
     return normalized_values
+
+
+_DATE_ANCHOR_PATTERN = re.compile(
+    r"\b(?:"
+    r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:,\s+\d{2,4})?"
+    r"|\d{1,2}/\d{1,2}/\d{2,4}"
+    r"|\d{4}-\d{2}-\d{2}"
+    r"|(?:on|by|around|about|before|after)\s+(?:or\s+about\s+)?(?:\d{1,2}/\d{1,2}/\d{2,4}|\w+\s+\d{1,2}(?:,\s+\d{2,4})?)"
+    r"|(?:in|during)\s+(?:19|20)\d{2}"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _contains_date_anchor(text: Any) -> bool:
+    return bool(_DATE_ANCHOR_PATTERN.search(str(text or "")))
+
+
+def _contains_actor_marker(text: Any) -> bool:
+    lowered = str(text or "").lower()
+    if not lowered:
+        return False
+    actor_markers = (
+        "who at hacc",
+        "caseworker",
+        "housing specialist",
+        "program manager",
+        "hearing officer",
+        "staff",
+        "supervisor",
+        "director",
+        "coordinator",
+        "agent",
+        "decision maker",
+    )
+    return any(marker in lowered for marker in actor_markers)
+
+
+def _contains_causation_link(text: Any) -> bool:
+    lowered = str(text or "").lower()
+    if not lowered:
+        return False
+    causation_markers = (
+        "because",
+        "as a result",
+        "as a direct result",
+        "after",
+        "following",
+        "in retaliation",
+        "retaliat",
+        "led to",
+        "resulted in",
+        "triggered",
+    )
+    protected_markers = (
+        "reported",
+        "complained",
+        "grievance",
+        "appeal",
+        "requested accommodation",
+        "requested a hearing",
+        "protected activity",
+    )
+    adverse_markers = (
+        "adverse action",
+        "termination",
+        "denial",
+        "suspension",
+        "loss of assistance",
+        "retaliat",
+        "disciplined",
+    )
+    return (
+        any(marker in lowered for marker in causation_markers)
+        and any(marker in lowered for marker in protected_markers)
+        and any(marker in lowered for marker in adverse_markers)
+    )
 
 
 def _build_claim_support_temporal_handoff(intake_case_summary: Any) -> Dict[str, Any]:
@@ -340,6 +418,8 @@ class AgenticDocumentOptimizer:
         return {
             "status": "optimized" if accepted_iterations else "completed",
             "method": "actor_mediator_critic_optimizer",
+            "optimization_method": "actor_critic",
+            "phase_focus_order": ["graph_analysis", "document_generation", "intake_questioning"],
             "optimizer_backend": "upstream_agentic" if UPSTREAM_AGENTIC_AVAILABLE else "local_fallback",
             "initial_score": float(initial_review.get("overall_score") or 0.0),
             "final_score": float(current_review.get("overall_score") or 0.0),
@@ -489,11 +569,39 @@ class AgenticDocumentOptimizer:
                 }
             )
 
+        intake_status = build_intake_status_summary(self.mediator)
+        intake_handoff = intake_status.get("intake_summary_handoff") if isinstance(intake_status, dict) else {}
+        intake_handoff = intake_handoff if isinstance(intake_handoff, dict) else {}
+        confirmation = (
+            intake_handoff.get("complainant_summary_confirmation")
+            if isinstance(intake_handoff.get("complainant_summary_confirmation"), dict)
+            else {}
+        )
+        confirmation_snapshot = (
+            confirmation.get("confirmed_summary_snapshot")
+            if isinstance(confirmation.get("confirmed_summary_snapshot"), dict)
+            else {}
+        )
+        intake_priority_summary = (
+            confirmation_snapshot.get("adversarial_intake_priority_summary")
+            if isinstance(confirmation_snapshot.get("adversarial_intake_priority_summary"), dict)
+            else {}
+        )
+
         return {
             "claims": claim_contexts,
             "evidence": evidence_summaries[:10],
             "sections": dict(drafting_readiness.get("sections") or {}) if isinstance(drafting_readiness, dict) else {},
             "packet_projection": self._build_packet_projection(draft),
+            "intake_priorities": {
+                "covered_objectives": _dedupe_text_values(intake_priority_summary.get("covered_objectives") or []),
+                "uncovered_objectives": _dedupe_text_values(intake_priority_summary.get("uncovered_objectives") or []),
+                "objective_question_counts": {
+                    str(key): int(value or 0)
+                    for key, value in dict(intake_priority_summary.get("objective_question_counts") or {}).items()
+                    if str(key)
+                },
+            },
             "capabilities": self._router_status(),
         }
 
@@ -1067,6 +1175,10 @@ class AgenticDocumentOptimizer:
             "packet_projection": self._score_packet_projection(
                 support_context.get("packet_projection") if isinstance(support_context.get("packet_projection"), dict) else {}
             ),
+            "intake_questioning": self._score_intake_questioning(
+                factual_allegations=factual_allegations,
+                support_context=support_context,
+            ),
         }
         ordered_sections = sorted(
             ((name, score) for name, score in section_scores.items() if name in self.VALID_FOCUS_SECTIONS),
@@ -1095,6 +1207,11 @@ class AgenticDocumentOptimizer:
                 weaknesses.append("The certificate of service is thin on recipient detail or service metadata.")
                 suggestions.append("Add structured recipient details and method-specific service language before export.")
 
+        intake_questioning_score = float(section_scores.get("intake_questioning") or 0.0)
+        if intake_questioning_score < 0.75:
+            weaknesses.append("Intake follow-up detail is missing date anchors, actor-by-actor decisions, or protected-activity-to-adverse-action causation facts.")
+            suggestions.append("Ask targeted follow-up questions to lock dates, each HACC actor decision, and direct causation facts linking protected activity to adverse treatment.")
+
         readiness_status = str(drafting_readiness.get("status") or "ready").strip().lower()
         procedural_score = 0.95 if readiness_status == "ready" else 0.75 if readiness_status == "warning" else 0.45
         completeness_score = sum(section_scores.values()) / max(len(section_scores), 1)
@@ -1122,6 +1239,8 @@ class AgenticDocumentOptimizer:
             strengths.append("Service metadata is present for export.")
         if section_scores["packet_projection"] >= 0.85:
             strengths.append("Render-target packet projection is structurally complete.")
+        if section_scores["intake_questioning"] >= 0.85:
+            strengths.append("Intake questioning captures timeline, actor, and causation anchors.")
 
         return {
             "overall_score": overall_score,
@@ -1147,7 +1266,10 @@ class AgenticDocumentOptimizer:
                 claim_support_count += 1
         support_bonus = min(claim_support_count, 3) / 6.0
         variety_bonus = 0.15 if len({text.lower() for text in allegations}) == len(allegations) else 0.0
-        return _clamp(base * 0.55 + support_bonus + variety_bonus)
+        date_anchor_bonus = 0.08 if any(_contains_date_anchor(text) for text in allegations) else 0.0
+        actor_bonus = 0.07 if any(_contains_actor_marker(text) for text in allegations) else 0.0
+        causation_bonus = 0.1 if any(_contains_causation_link(text) for text in allegations) else 0.0
+        return _clamp(base * 0.55 + support_bonus + variety_bonus + date_anchor_bonus + actor_bonus + causation_bonus)
 
     def _score_claims_section(self, claims: List[Dict[str, Any]], support_context: Dict[str, Any]) -> float:
         if not claims:
@@ -1227,6 +1349,36 @@ class AgenticDocumentOptimizer:
         dedup_ratio = len({value.lower() for value in allegations}) / max(len(allegations), 1)
         punctuation_ratio = sum(1 for value in allegations if value.endswith((".", "!", "?"))) / max(len(allegations), 1)
         return _clamp((dedup_ratio * 0.6) + (punctuation_ratio * 0.4))
+
+    def _score_intake_questioning(
+        self,
+        *,
+        factual_allegations: List[str],
+        support_context: Dict[str, Any],
+    ) -> float:
+        priorities = support_context.get("intake_priorities") if isinstance(support_context.get("intake_priorities"), dict) else {}
+        uncovered = {
+            str(item).strip().lower()
+            for item in list(priorities.get("uncovered_objectives") or [])
+            if str(item).strip()
+        }
+        covered = {
+            str(item).strip().lower()
+            for item in list(priorities.get("covered_objectives") or [])
+            if str(item).strip()
+        }
+        score = 0.35
+        if any(_contains_date_anchor(text) for text in factual_allegations):
+            score += 0.2
+        if any(_contains_actor_marker(text) for text in factual_allegations):
+            score += 0.2
+        if any(_contains_causation_link(text) for text in factual_allegations):
+            score += 0.25
+        if covered:
+            score += min(len(covered), 4) * 0.03
+        if {"timeline", "actors", "causation_link"}.intersection(uncovered):
+            score -= 0.2
+        return _clamp(score)
 
     def _merge_review_payload(self, parsed: Optional[Dict[str, Any]], heuristic_review: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(parsed, dict):
@@ -1351,7 +1503,20 @@ class AgenticDocumentOptimizer:
             for claim in draft.get("claims_for_relief") if isinstance(draft.get("claims_for_relief"), list) else []:
                 if isinstance(claim, dict):
                     factual_candidates.extend(self._normalize_lines(claim.get("supporting_facts") or []))
-            payload["factual_allegations"] = self._normalize_lines(factual_candidates)[:8]
+            normalized_candidates = self._normalize_lines(factual_candidates)
+            if not any(_contains_date_anchor(item) for item in normalized_candidates):
+                normalized_candidates.append(
+                    "On or about [date], HACC communicated the adverse action identified in this complaint."
+                )
+            if not any(_contains_actor_marker(item) for item in normalized_candidates):
+                normalized_candidates.append(
+                    "HACC staff members involved in each intake, review, hearing, and denial decision should be identified by name or title."
+                )
+            if not any(_contains_causation_link(item) for item in normalized_candidates):
+                normalized_candidates.append(
+                    "After Plaintiff engaged in protected activity, HACC took adverse action, and the factual timeline supports a causal connection."
+                )
+            payload["factual_allegations"] = self._normalize_lines(normalized_candidates)[:10]
         elif focus_section == "claims_for_relief":
             updated_claims: List[Dict[str, Any]] = []
             claim_supporting_facts: Dict[str, List[str]] = {}
@@ -1424,13 +1589,19 @@ class AgenticDocumentOptimizer:
 
     def _focus_query_text(self, focus_section: str, draft: Dict[str, Any]) -> str:
         if focus_section == "factual_allegations":
-            return "factual allegations pleading-ready support record"
+            return (
+                "factual allegations pleading-ready support record date anchors "
+                "actor-by-actor decision timeline protected activity causation adverse action"
+            )
         if focus_section == "claims_for_relief":
             claim_titles = []
             for claim in draft.get("claims_for_relief") if isinstance(draft.get("claims_for_relief"), list) else []:
                 if isinstance(claim, dict):
                     claim_titles.append(str(claim.get("claim_type") or claim.get("count_title") or ""))
-            return "claims for relief " + " ".join(title for title in claim_titles if title)
+            return (
+                "claims for relief causal linkage protected activity adverse action "
+                "decision-makers timeline " + " ".join(title for title in claim_titles if title)
+            )
         if focus_section == "requested_relief":
             return "requested relief remedies damages injunction reinstatement back pay front pay"
         if focus_section == "affidavit":
@@ -1632,6 +1803,7 @@ class AgenticDocumentOptimizer:
             "available": bool(UPSTREAM_AGENTIC_AVAILABLE),
             "selected_provider": "",
             "selected_method": "",
+            "phase_focus_order": ["graph_analysis", "document_generation", "intake_questioning"],
             "control_loop": {},
         }
         if not UPSTREAM_AGENTIC_AVAILABLE:

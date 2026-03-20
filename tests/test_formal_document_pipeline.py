@@ -516,10 +516,13 @@ def test_factual_allegations_merge_overlapping_adverse_action_narratives():
         [],
     )
 
-    assert allegations == [
+    assert allegations[:2] == [
         'After Plaintiff complained to human resources and regional management about race discrimination and unequal pay, Defendant removed Plaintiff from key accounts, cut her overtime, and then terminated her employment.',
         "As a direct result of Defendant's conduct, Plaintiff lost wages, benefits, and future career opportunities.",
     ]
+    assert 'On or about [date], HACC communicated the adverse action described in this complaint.' in allegations
+    assert 'HACC decision-makers for intake, review, hearing, and adverse-action steps should be identified by name or title.' in allegations
+    assert 'After Plaintiff engaged in protected activity, HACC took adverse action, and the available timeline supports a causal connection.' in allegations
 
 
 def test_export_formal_complaint_pdf_writes_file(tmp_path):

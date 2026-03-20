@@ -113,6 +113,46 @@ def _extract_text_candidates(value: Any) -> List[str]:
     return []
 
 
+def _contains_date_anchor(value: Any) -> bool:
+    text = str(value or "")
+    return bool(
+        re.search(
+            r"\b(?:\d{1,2}/\d{1,2}/\d{2,4}|\d{4}-\d{2}-\d{2}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:,\s+\d{2,4})?)\b",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _contains_actor_marker(value: Any) -> bool:
+    lowered = str(value or "").lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "who at hacc",
+            "caseworker",
+            "housing specialist",
+            "program manager",
+            "hearing officer",
+            "staff",
+            "supervisor",
+            "director",
+            "coordinator",
+        )
+    )
+
+
+def _contains_causation_marker(value: Any) -> bool:
+    lowered = str(value or "").lower()
+    if not lowered:
+        return False
+    return (
+        any(marker in lowered for marker in ("because", "as a result", "after", "following", "in retaliation", "retaliat"))
+        and any(marker in lowered for marker in ("complained", "reported", "grievance", "appeal", "protected activity", "requested accommodation"))
+        and any(marker in lowered for marker in ("adverse action", "termination", "denial", "loss of assistance", "retaliat"))
+    )
+
+
 def _roman(index: int) -> str:
     numerals = [
         (1000, "M"),
@@ -2846,8 +2886,24 @@ class FormalComplaintDocumentBuilder:
         )
         if document_phase:
             phases["document_generation"] = document_phase
+        intake_phase = self._build_intake_questioning_phase_guidance(
+            drafting_readiness=drafting_readiness,
+            document_optimization=optimization_report,
+        )
+        if intake_phase:
+            phases["intake_questioning"] = intake_phase
 
-        return build_workflow_phase_plan(phases)
+        plan = build_workflow_phase_plan(phases)
+        if not plan:
+            return {}
+        ordered = [name for name in ("graph_analysis", "document_generation", "intake_questioning") if name in phases]
+        ordered.extend(
+            name
+            for name in list(plan.get("recommended_order") or [])
+            if name in phases and name not in ordered
+        )
+        plan["recommended_order"] = ordered
+        return plan
 
     def _build_graph_analysis_phase_guidance(self, phase_manager: Any) -> Dict[str, Any]:
         return build_graph_analysis_phase_guidance(phase_manager, audience="drafting")
@@ -2862,6 +2918,79 @@ class FormalComplaintDocumentBuilder:
             drafting_readiness=drafting_readiness,
             document_optimization=document_optimization,
         )
+
+    def _build_intake_questioning_phase_guidance(
+        self,
+        *,
+        drafting_readiness: Dict[str, Any],
+        document_optimization: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        optimization_report = document_optimization if isinstance(document_optimization, dict) else {}
+        intake_status = (
+            optimization_report.get("intake_status")
+            if isinstance(optimization_report.get("intake_status"), dict)
+            else build_intake_status_summary(self.mediator)
+        )
+        intake_handoff = (
+            intake_status.get("intake_summary_handoff")
+            if isinstance(intake_status.get("intake_summary_handoff"), dict)
+            else {}
+        )
+        confirmation = (
+            intake_handoff.get("complainant_summary_confirmation")
+            if isinstance(intake_handoff.get("complainant_summary_confirmation"), dict)
+            else {}
+        )
+        confirmation_snapshot = (
+            confirmation.get("confirmed_summary_snapshot")
+            if isinstance(confirmation.get("confirmed_summary_snapshot"), dict)
+            else {}
+        )
+        intake_priority_summary = (
+            confirmation_snapshot.get("adversarial_intake_priority_summary")
+            if isinstance(confirmation_snapshot.get("adversarial_intake_priority_summary"), dict)
+            else {}
+        )
+        uncovered_objectives = _dedupe_text_values(intake_priority_summary.get("uncovered_objectives") or [])
+        objective_question_counts = {
+            str(key): int(value or 0)
+            for key, value in dict(intake_priority_summary.get("objective_question_counts") or {}).items()
+            if str(key)
+        }
+        required_objectives = ("timeline", "actors", "causation_link")
+        missing_required = [
+            objective
+            for objective in required_objectives
+            if objective in uncovered_objectives or int(objective_question_counts.get(objective, 0)) <= 0
+        ]
+        if missing_required:
+            status = "warning"
+            summary = (
+                "Intake questioning still needs case-specific date anchors, actor-by-actor decisions, and/or "
+                "causation links between protected activity and adverse treatment."
+            )
+            actions = [
+                "Capture exact dates for complaint activity, notices, hearing/review requests, and adverse action outcomes.",
+                "Identify who at HACC made, communicated, and carried out each key decision.",
+                "Document direct causation facts linking protected activity to adverse action.",
+            ]
+        else:
+            status = "ready"
+            summary = "Intake questioning currently includes timeline anchors, decision-maker identification, and causation probes."
+            actions = []
+
+        return {
+            "priority": 2,
+            "status": status,
+            "summary": summary,
+            "signals": {
+                "uncovered_objectives": uncovered_objectives,
+                "objective_question_counts": objective_question_counts,
+                "missing_required_objectives": missing_required,
+                "drafting_status": str(drafting_readiness.get("status") or ""),
+            },
+            "recommended_actions": actions,
+        }
 
     def _build_workflow_phase_warning_entries(self, workflow_phase_plan: Dict[str, Any]) -> List[Dict[str, Any]]:
         return build_workflow_phase_warning_entries(workflow_phase_plan)

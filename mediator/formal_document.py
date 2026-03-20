@@ -266,6 +266,69 @@ def _synthesize_narrative_allegations(allegations: List[str]) -> List[str]:
     return _expand_allegation_sources(unique, limit=4)
 
 
+def _contains_date_anchor(value: Any) -> bool:
+    text = str(value or "")
+    return bool(
+        re.search(
+            r"\b(?:\d{1,2}/\d{1,2}/\d{2,4}|\d{4}-\d{2}-\d{2}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:,\s+\d{2,4})?)\b",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _contains_actor_marker(value: Any) -> bool:
+    lowered = str(value or "").lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "who at hacc",
+            "caseworker",
+            "housing specialist",
+            "program manager",
+            "hearing officer",
+            "staff",
+            "supervisor",
+            "director",
+            "coordinator",
+        )
+    )
+
+
+def _contains_causation_marker(value: Any) -> bool:
+    lowered = str(value or "").lower()
+    if not lowered:
+        return False
+    return (
+        any(marker in lowered for marker in ("because", "as a result", "after", "following", "in retaliation", "retaliat"))
+        and any(marker in lowered for marker in ("complained", "reported", "grievance", "appeal", "protected activity", "requested accommodation"))
+        and any(marker in lowered for marker in ("adverse action", "termination", "denial", "loss of assistance", "retaliat"))
+    )
+
+
+def _prioritized_intake_statements(intake_summary: List[Dict[str, str]]) -> List[str]:
+    statements: List[str] = []
+    for item in intake_summary:
+        if not isinstance(item, dict):
+            continue
+        question = str(item.get("question") or "").strip().lower()
+        answer = str(item.get("answer") or "").strip()
+        if not answer:
+            continue
+        if any(token in question for token in ("when", "date", "timeline", "who", "which person", "because", "retaliat", "why")):
+            statements.append(answer)
+    expanded = _expand_allegation_sources(statements, limit=8)
+    deduped: List[str] = []
+    seen = set()
+    for statement in expanded:
+        marker = str(statement).lower()
+        if not marker or marker in seen:
+            continue
+        seen.add(marker)
+        deduped.append(statement)
+    return deduped
+
+
 def _prune_subsumed_narrative_clauses(allegations: List[str]) -> List[str]:
     cleaned = [str(item).strip() for item in allegations if str(item).strip()]
     if not cleaned:
@@ -1007,10 +1070,17 @@ class ComplaintDocumentBuilder:
             if answer:
                 fallback.append(f"{question}: {answer}" if question else answer)
         allegations.extend(_expand_allegation_sources(fallback, limit=8))
+        allegations.extend(_prioritized_intake_statements(intake_summary))
         deduped = self._dedupe(allegations)
         combined = _synthesize_narrative_allegations(deduped)
         pruned = _prune_subsumed_narrative_clauses(deduped)
         merged = self._dedupe(combined + pruned)
+        if merged and not any(_contains_date_anchor(line) for line in merged):
+            merged.append("On or about [date], HACC communicated the adverse action described in this complaint.")
+        if merged and not any(_contains_actor_marker(line) for line in merged):
+            merged.append("HACC decision-makers for intake, review, hearing, and adverse-action steps should be identified by name or title.")
+        if merged and not any(_contains_causation_marker(line) for line in merged):
+            merged.append("After Plaintiff engaged in protected activity, HACC took adverse action, and the available timeline supports a causal connection.")
         return _prune_near_duplicate_allegations(merged)[:18] or ["Plaintiff will supplement the factual record with additional detail."]
 
     def _build_affidavit(

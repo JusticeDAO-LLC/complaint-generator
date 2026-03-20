@@ -360,6 +360,53 @@ def test_analyze_tracks_complaint_type_and_evidence_modality_performance():
     assert any("evidence modalities" in recommendation for recommendation in report.recommendations)
 
 
+def test_build_phase_patch_tasks_carries_generalization_targets():
+    optimizer = Optimizer()
+
+    policy_result = _session_result("session_generalize_policy", 0.72, {"adversarial_intake_priority_summary": {}})
+    policy_result.seed_complaint = {
+        "type": "policy_grievance",
+        "_meta": {"complaint_type": "housing_discrimination"},
+        "key_facts": {
+            "repository_evidence_candidates": [
+                {"title": "ADMINISTRATIVE PLAN", "source_path": "/tmp/admin_plan.pdf", "snippet": "Notice language."}
+            ],
+        },
+    }
+    policy_result.knowledge_graph_summary = {"total_entities": 2, "total_relationships": 1, "gaps": 2}
+    policy_result.dependency_graph_summary = {"total_nodes": 3, "total_dependencies": 1, "satisfaction_rate": 0.1}
+
+    image_result = _session_result("session_generalize_image", 0.38, {"adversarial_intake_priority_summary": {}})
+    image_result.seed_complaint = {
+        "type": "narrative_intake",
+        "_meta": {"complaint_type": "retaliation"},
+        "key_facts": {
+            "repository_evidence_candidates": [
+                {"title": "Photo evidence", "source_path": "/tmp/photo.jpg", "snippet": "Apartment condition photo."}
+            ],
+        },
+    }
+    image_result.knowledge_graph_summary = {"total_entities": 1, "total_relationships": 0, "gaps": 5}
+    image_result.dependency_graph_summary = {"total_nodes": 2, "total_dependencies": 0, "satisfaction_rate": 0.0}
+
+    tasks, _report = optimizer.build_phase_patch_tasks(
+        [policy_result, image_result],
+        method="actor_critic",
+        components={
+            "OptimizationTask": lambda **kwargs: SimpleNamespace(**kwargs),
+            "OptimizationMethod": SimpleNamespace(ACTOR_CRITIC="ACTOR_CRITIC"),
+            "OptimizerLLMRouter": None,
+            "optimizer_classes": {},
+        },
+    )
+
+    graph_task = next(task for task in tasks if task.metadata["workflow_phase"] == "graph_analysis")
+    assert "retaliation" in graph_task.metadata["weak_complaint_types"]
+    assert "image_evidence" in graph_task.metadata["weak_evidence_modalities"]
+    assert "Weak complaint types to generalize for" in graph_task.description
+    assert "Weak evidence modalities to improve" in graph_task.description
+
+
 def test_analyze_without_successful_sessions_returns_critical_workflow_phase_plan():
     optimizer = Optimizer()
     result = _session_result("session_failed", 0.18, {})

@@ -2269,6 +2269,7 @@ def _missing_case_facts_from_intake_priorities(session: Dict[str, Any]) -> List[
         "anchor_adverse_action": "the exact denial, termination, threatened loss of assistance, or other adverse action HACC took or threatened",
         "timeline": "when the key events happened, including the complaint, notice, review or hearing request, and any denial or termination decision",
         "actors": "who at HACC made, communicated, or carried out each decision",
+        "causation_link": "facts showing how protected activity led to adverse treatment, including timing, statements, and decision context",
         "anchor_appeal_rights": "whether written notice, an informal review, a grievance hearing, or an appeal was provided, requested, denied, or ignored",
         "harm_remedy": "the resulting housing harm and the remedy now being requested",
         "intake_follow_up": "the additional case-specific details needed to complete the intake record",
@@ -2292,6 +2293,20 @@ def _classify_intake_question_objective(question_text: Any) -> str:
     lowered = " ".join(str(question_text or "").split()).lower()
     if not lowered:
         return ""
+    if any(
+        token in lowered
+        for token in (
+            "why do you believe",
+            "because you",
+            "because after you",
+            "in retaliation",
+            "link",
+            "causation",
+            "what changed after",
+            "what happened after you complained",
+        )
+    ):
+        return "causation_link"
     if any(token in lowered for token in ("when", "date", "timeline")):
         return "timeline"
     if any(token in lowered for token in ("who", "which person", "made, communicated", "carried out", "decision")):
@@ -2303,6 +2318,27 @@ def _classify_intake_question_objective(question_text: Any) -> str:
     if any(token in lowered for token in ("adverse action", "denial", "termination", "loss of assistance")):
         return "anchor_adverse_action"
     return "intake_follow_up"
+
+
+def _fallback_intake_follow_up_questions(uncovered: List[str], *, limit: int) -> List[str]:
+    templates: Dict[str, str] = {
+        "timeline": "Please list the key events with dates (or closest date anchors): protected activity, notices, hearing/review requests, and adverse action outcomes.",
+        "actors": "Who at HACC handled each step (intake, notice, review/hearing, final decision), and what did each person decide or communicate?",
+        "causation_link": "What facts show the adverse treatment was because of your protected activity (timing, statements, pattern changes, or decision explanations)?",
+        "anchor_adverse_action": "What exact adverse action did HACC take or threaten, on what date, and through what communication?",
+        "anchor_appeal_rights": "What written notice, informal review, grievance hearing, or appeal rights were provided, requested, denied, or ignored?",
+        "harm_remedy": "What concrete housing harm followed, and what remedy are you now requesting?",
+    }
+    questions: List[str] = []
+    for objective in uncovered:
+        template = templates.get(str(objective).strip())
+        if not template:
+            continue
+        if template not in questions:
+            questions.append(template)
+        if len(questions) >= limit:
+            break
+    return questions
 
 
 def _outstanding_intake_follow_up_questions(seed: Dict[str, Any], session: Dict[str, Any], limit: int = 5) -> List[str]:
@@ -2329,6 +2365,11 @@ def _outstanding_intake_follow_up_questions(seed: Dict[str, Any], session: Dict[
                 continue
             if question not in matched:
                 matched.append(question)
+            break
+    for fallback_question in _fallback_intake_follow_up_questions(uncovered, limit=limit):
+        if fallback_question not in matched:
+            matched.append(fallback_question)
+        if len(matched) >= limit:
             break
     return matched[:limit]
 
@@ -2941,10 +2982,12 @@ def _build_intake_follow_up_worksheet(package: Dict[str, Any]) -> Dict[str, Any]
     follow_up_items: List[Dict[str, Any]] = []
     for index, question in enumerate(questions, start=1):
         gap = gaps[index - 1] if index - 1 < len(gaps) else ""
+        objective = _classify_intake_question_objective(question)
         follow_up_items.append(
             {
                 "id": f"follow_up_{index:02d}",
                 "gap": gap,
+                "objective": objective,
                 "question": question,
                 "answer": "",
                 "status": "open",
@@ -3000,6 +3043,9 @@ def _render_intake_follow_up_worksheet_markdown(worksheet: Dict[str, Any]) -> st
             gap = str(item.get("gap") or "").strip()
             if gap:
                 lines.append(f"  - Gap: {gap}")
+            objective = str(item.get("objective") or "").strip()
+            if objective:
+                lines.append(f"  - Objective: {objective}")
             lines.append(f"  - Status: {item.get('status', 'open')}")
             lines.append("  - Answer: ")
     return "\n".join(lines) + "\n"

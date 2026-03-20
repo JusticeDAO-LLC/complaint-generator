@@ -835,6 +835,26 @@ class Optimizer:
 
         tasks: List[Any] = []
         timestamp = datetime.now(UTC).strftime('%Y%m%d_%H%M%S')
+        complaint_type_performance = dict(report.complaint_type_performance or {})
+        evidence_modality_performance = dict(report.evidence_modality_performance or {})
+
+        weak_complaint_types = [
+            name
+            for name, payload in sorted(
+                complaint_type_performance.items(),
+                key=lambda item: (float(item[1].get("average_score") or 0.0), int(item[1].get("count") or 0)),
+            )[:3]
+            if float(payload.get("average_score") or 0.0) <= float(report.average_score or 0.0)
+        ]
+        weak_evidence_modalities = [
+            name
+            for name, payload in sorted(
+                evidence_modality_performance.items(),
+                key=lambda item: (float(item[1].get("average_score") or 0.0), int(item[1].get("count") or 0)),
+            )[:3]
+            if float(payload.get("average_score") or 0.0) <= float(report.average_score or 0.0)
+        ]
+
         for phase_name in ordered_names:
             phase_payload = dict(phases.get(phase_name) or {})
             if not include_ready_phases and str(phase_payload.get("status") or "ready") == "ready":
@@ -853,6 +873,10 @@ class Optimizer:
             )
             if phase_actions:
                 description += " Recommended actions: " + "; ".join(phase_actions[:3]) + "."
+            if weak_complaint_types:
+                description += " Weak complaint types to generalize for: " + ", ".join(weak_complaint_types[:3]) + "."
+            if weak_evidence_modalities:
+                description += " Weak evidence modalities to improve: " + ", ".join(weak_evidence_modalities[:3]) + "."
 
             tasks.append(
                 task_cls(
@@ -873,11 +897,15 @@ class Optimizer:
                         "workflow_phase_summary": str(phase_payload.get("summary") or ""),
                         "workflow_phase_actions": phase_actions,
                         "workflow_capabilities": self._workflow_phase_capabilities(phase_name),
+                        "weak_complaint_types": weak_complaint_types,
+                        "weak_evidence_modalities": weak_evidence_modalities,
                         "report_summary": {
                             "average_score": report.average_score,
                             "score_trend": report.score_trend,
                             "priority_improvements": list(report.priority_improvements or []),
                             "workflow_phase_plan": workflow_phase_plan,
+                            "complaint_type_performance": complaint_type_performance,
+                            "evidence_modality_performance": evidence_modality_performance,
                         },
                         **dict(metadata or {}),
                     },
