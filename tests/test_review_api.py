@@ -284,6 +284,15 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 "temporal_resolution_status_counts": {"still_open": 1},
             },
         }
+        mediator.phase_manager = SimpleNamespace(
+            get_phase_data=lambda phase, key: {
+                ("intake", "knowledge_graph"): {"entity_count": 4},
+                ("intake", "dependency_graph"): {"claim_count": 2},
+                ("intake", "current_gaps"): [{"gap_id": "gap_001"}],
+                ("intake", "remaining_gaps"): 1,
+                ("evidence", "knowledge_graph_enhanced"): False,
+            }.get((getattr(phase, "value", str(phase)), key))
+        )
         mediator.get_claim_coverage_matrix.return_value = {
             "claims": {
                 "retaliation": {
@@ -899,6 +908,9 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
 
         assert payload["user_id"] == "state-user"
         assert payload["recommended_next_action"] == ""
+        assert payload["workflow_phase_plan"]["recommended_order"] == ["graph_analysis", "document_generation"]
+        assert payload["workflow_phase_plan"]["phases"]["graph_analysis"]["status"] == "warning"
+        assert payload["workflow_phase_plan"]["phases"]["document_generation"]["status"] == "warning"
         assert payload["primary_validation_target"] == {}
         assert payload["intake_status"] == {
             "current_phase": "intake",
