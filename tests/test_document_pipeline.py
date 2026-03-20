@@ -2537,6 +2537,15 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
                         'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
                         'temporal_proof_objectives': ['establish_retaliation_sequence'],
                     },
+                    'claim_reasoning_review': {
+                        'retaliation': {
+                            'proof_artifact_element_count': 1,
+                            'proof_artifact_available_element_count': 1,
+                            'proof_artifact_explanation_element_count': 1,
+                            'proof_artifact_status_counts': {'available': 1},
+                            'proof_artifact_preview': ['proof-retaliation-001'],
+                        },
+                    },
                     'intake_case_summary': {
                         'alignment_evidence_tasks': [
                             {
@@ -2609,6 +2618,8 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
         'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
         'temporal_proof_objectives': ['establish_retaliation_sequence'],
     }
+    assert payload['trace']['claim_reasoning_review']['retaliation']['proof_artifact_element_count'] == 1
+    assert payload['trace']['claim_reasoning_review']['retaliation']['proof_artifact_preview'] == ['proof-retaliation-001']
     assert payload['trace']['intake_case_summary']['alignment_evidence_tasks'][0]['fallback_lanes'] == ['authority', 'testimony']
     assert payload['trace']['intake_case_summary']['claim_support_packet_summary']['proof_readiness_score'] == 0.47
     assert payload['trace']['intake_case_summary']['alignment_evidence_tasks'][0]['temporal_rule_status'] == 'partial'
@@ -3260,6 +3271,9 @@ def test_review_surface_returns_document_optimization_contract_end_to_end(monkey
     assert report['intake_case_summary']['claim_support_packet_summary']['claim_count'] == 2
     assert report['intake_case_summary']['claim_support_packet_summary']['proof_readiness_score'] == 0.47
     assert report['intake_case_summary']['claim_support_packet_summary']['evidence_completion_ready'] is False
+    assert report['claim_reasoning_review']['retaliation']['proof_artifact_element_count'] == 1
+    assert report['claim_reasoning_review']['retaliation']['proof_artifact_available_element_count'] == 1
+    assert report['claim_reasoning_review']['retaliation']['proof_artifact_status_counts'] == {'available': 1}
     assert payload['claim_support_temporal_handoff'] == {
         'unresolved_temporal_issue_count': 1,
         'unresolved_temporal_issue_ids': ['temporal_issue_001'],

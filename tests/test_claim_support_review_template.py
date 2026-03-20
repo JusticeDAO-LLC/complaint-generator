@@ -807,6 +807,9 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "traceTemporalHandoff" in content
     assert "Intake Evidence Snapshot" in content
     assert "Claim Support Chronology Handoff" in content
+    assert "Claim reasoning reviews:" in content
+    assert "proof artifacts:" in content
+    assert "proof preview:" in content
     assert "Candidate claims:" in content
     assert "Candidate claim count:" in content
     assert "Candidate claim average confidence:" in content

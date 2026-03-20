@@ -4766,6 +4766,19 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
                 },
                 "contradictions": [],
             },
+            "claim_reasoning_review": {
+                "retaliation": {
+                    "proof_artifact_element_count": 1,
+                    "proof_artifact_available_element_count": 1,
+                    "proof_artifact_explanation_element_count": 1,
+                    "proof_artifact_status_counts": {"available": 1},
+                    "proof_artifact_preview": [
+                        "proof-retaliation-001",
+                        "show protected activity preceded termination",
+                    ],
+                    "hybrid_bridge_element_count": 1,
+                }
+            },
             "intake_constraints": [],
             "intake_case_summary": {
                 "candidate_claims": [
@@ -4837,6 +4850,7 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
             )
 
             temporal_handoff_text = page.locator("#traceTemporalHandoff").inner_text().lower()
+            review_snapshot_text = page.locator("#traceReviewList").inner_text().lower()
 
             assert "claim support chronology handoff" in temporal_handoff_text
             assert temporal_handoff_text.count("claim support chronology handoff") == 1
@@ -4853,6 +4867,11 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
             assert "temporal proof bundles: retaliation:causation:bundle_001" in temporal_handoff_text
             assert "temporal proof objectives: show protected activity preceded termination" in temporal_handoff_text
             assert "review chronology blockers" in temporal_handoff_text
+            assert "claim reasoning reviews: 1" in review_snapshot_text
+            assert "retaliation proof artifacts: 1 total, 1 available, explanations 1" in review_snapshot_text
+            assert "retaliation proof statuses: available=1" in review_snapshot_text
+            assert "retaliation proof preview: proof-retaliation-001 | show protected activity preceded termination" in review_snapshot_text
+            assert "retaliation hybrid bridge elements: 1" in review_snapshot_text
 
             browser.close()
 

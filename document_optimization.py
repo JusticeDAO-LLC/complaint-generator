@@ -301,6 +301,9 @@ class AgenticDocumentOptimizer:
         intake_constraints = build_intake_warning_entries(intake_status)
         intake_case_summary = build_intake_case_review_summary(self.mediator)
         claim_support_temporal_handoff = _build_claim_support_temporal_handoff(intake_case_summary)
+        claim_reasoning_review = {}
+        if isinstance(intake_case_summary.get("claim_reasoning_review"), dict) and intake_case_summary.get("claim_reasoning_review"):
+            claim_reasoning_review = dict(intake_case_summary["claim_reasoning_review"])
         intake_summary_handoff = {}
         if isinstance(intake_status.get("intake_summary_handoff"), dict) and intake_status.get("intake_summary_handoff"):
             intake_summary_handoff = dict(intake_status["intake_summary_handoff"])
@@ -324,6 +327,7 @@ class AgenticDocumentOptimizer:
                 "intake_case_summary": intake_case_summary,
                 "intake_summary_handoff": intake_summary_handoff,
                 "claim_support_temporal_handoff": claim_support_temporal_handoff,
+                "claim_reasoning_review": claim_reasoning_review,
                 "support_context": support_context,
                 "initial_review": initial_review,
                 "final_review": current_review,
@@ -349,6 +353,7 @@ class AgenticDocumentOptimizer:
             "intake_case_summary": intake_case_summary,
             "intake_summary_handoff": intake_summary_handoff,
             "claim_support_temporal_handoff": claim_support_temporal_handoff,
+            "claim_reasoning_review": claim_reasoning_review,
             "packet_projection": dict(support_context.get("packet_projection") or {}),
             "section_history": [
                 {

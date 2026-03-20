@@ -1022,6 +1022,51 @@
             `;
         }
 
+        function normalizeClaimReasoningReview(value) {
+            if (!value || typeof value !== 'object') {
+                return {};
+            }
+            return Object.fromEntries(
+                Object.entries(value).filter(([, review]) => review && typeof review === 'object')
+            );
+        }
+
+        function buildClaimReasoningReviewLines(reviewByClaim) {
+            const normalized = normalizeClaimReasoningReview(reviewByClaim);
+            const entries = Object.entries(normalized);
+            if (!entries.length) {
+                return [];
+            }
+            const lines = [`Claim reasoning reviews: ${entries.length}`];
+            entries.forEach(([claimType, review]) => {
+                const claimLabel = humanizeKey(claimType);
+                const proofArtifactElementCount = Number(review.proof_artifact_element_count || 0);
+                const proofArtifactAvailableElementCount = Number(review.proof_artifact_available_element_count || 0);
+                const proofArtifactExplanationElementCount = Number(review.proof_artifact_explanation_element_count || 0);
+                const proofArtifactPreview = Array.isArray(review.proof_artifact_preview)
+                    ? review.proof_artifact_preview.filter((item) => String(item || '').trim()).slice(0, 3)
+                    : [];
+                const proofArtifactStatusCounts = formatSummaryCountLine(review.proof_artifact_status_counts);
+                const hybridBridgeElementCount = Number(review.hybrid_bridge_element_count || 0);
+
+                if (proofArtifactElementCount > 0) {
+                    lines.push(
+                        `${claimLabel} proof artifacts: ${proofArtifactElementCount} total, ${proofArtifactAvailableElementCount} available, explanations ${proofArtifactExplanationElementCount}`
+                    );
+                }
+                if (proofArtifactStatusCounts) {
+                    lines.push(`${claimLabel} proof statuses: ${proofArtifactStatusCounts}`);
+                }
+                if (proofArtifactPreview.length) {
+                    lines.push(`${claimLabel} proof preview: ${proofArtifactPreview.join(' | ')}`);
+                }
+                if (hybridBridgeElementCount > 0) {
+                    lines.push(`${claimLabel} hybrid bridge elements: ${hybridBridgeElementCount}`);
+                }
+            });
+            return lines;
+        }
+
         function appendSupportKindToReviewUrl(reviewUrl, supportKind) {
             const normalizedUrl = String(reviewUrl || '').trim();
             const normalizedSupportKind = String(supportKind || '').trim();
@@ -1358,6 +1403,11 @@
             const initialReview = trace.initial_review && typeof trace.initial_review === 'object' ? trace.initial_review : {};
             const finalReview = trace.final_review && typeof trace.final_review === 'object' ? trace.final_review : {};
             const workflowPhasePlan = resolveWorkflowPhasePlan(trace);
+            const claimReasoningReview = trace.claim_reasoning_review && typeof trace.claim_reasoning_review === 'object'
+                ? trace.claim_reasoning_review
+                : (intakeCaseSummary.claim_reasoning_review && typeof intakeCaseSummary.claim_reasoning_review === 'object'
+                    ? intakeCaseSummary.claim_reasoning_review
+                    : {});
             const candidateClaims = Array.isArray(intakeCaseSummary.candidate_claims) ? intakeCaseSummary.candidate_claims : [];
             const candidateClaimSummary = buildCandidateClaimSummary(
                 candidateClaims,
@@ -1522,6 +1572,7 @@
                     focusSections.length ? `Focus trajectory: ${focusSections.map(humanizeKey).join(' -> ')}` : '',
                     finalReview.recommended_focus ? `Final recommended focus: ${humanizeKey(finalReview.recommended_focus)}` : '',
                     `Relief-targeted optimization: ${reliefTargeted ? 'yes' : 'no'}`,
+                    ...buildClaimReasoningReviewLines(claimReasoningReview),
                 ].filter(Boolean),
             );
 
