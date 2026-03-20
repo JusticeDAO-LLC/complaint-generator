@@ -162,13 +162,18 @@ python run.py --config config.review_surface.json
 # Access the formal complaint builder at http://localhost:8000/document
 ```
 
+### Regression Shortcuts
+
 **Claim Support Regression:**
 
 ```bash
 .venv/bin/python scripts/run_claim_support_review_regression.py
 ```
 
-This regression is also available from the VS Code task list and Run and Debug panel under `Claim Support Regression`, with `No Browser` and `Require Browser` variants. GitHub Actions enforces the same slice through `claim-support-regression.yml` with separate non-browser and browser-required lanes.
+Also available via:
+
+- VS Code task `Claim Support Regression` with `No Browser` and `Require Browser` variants
+- GitHub Actions workflow `claim-support-regression.yml`
 
 If you need to proactively normalize older claim-support testimony rows after upgrading the review workflow, run:
 
@@ -193,7 +198,14 @@ The dry run reports legacy testimony rows that can be canonically linked to regi
 .venv/bin/python scripts/run_hacc_grounding_regression.py --skip-smoke
 ```
 
-The lightweight slice covers the HACC evidence loader, HACC complaint synthesis, and HACC adversarial-report runner. The grounding slice adds the HACC seed-generation checks and can optionally run the heavier live smoke path. VS Code exposes matching tasks under `HACC Unit Regression` and `HACC Grounding Regression`, Make exposes `hacc-unit`, `hacc-grounding`, and `hacc-grounding-no-smoke`, and GitHub Actions includes `hacc-unit-regression.yml` plus a manual `hacc-grounding-regression.yml` workflow.
+The lightweight slice covers the HACC evidence loader, HACC complaint synthesis, and HACC adversarial-report runner. The grounding slice adds the HACC seed-generation checks and can optionally run the heavier live smoke path.
+
+Also available via:
+
+- VS Code tasks `HACC Unit Regression` and `HACC Grounding Regression`
+- Make targets `hacc-unit`, `hacc-grounding`, and `hacc-grounding-no-smoke`
+- GitHub Actions workflow `hacc-unit-regression.yml`
+- Manual workflow `hacc-grounding-regression.yml`
 
 **Hugging Face Router Quick Start:**
 ```bash

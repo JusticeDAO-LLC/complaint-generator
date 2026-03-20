@@ -3046,6 +3046,122 @@ def test_claim_support_review_payload_builds_explicit_workflow_priority_for_comp
     }
 
 
+def test_claim_support_review_payload_builds_explicit_workflow_priority_for_temporal_chronology_gap():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    chronology_task = {
+        "task_id": "retaliation:retaliation:3:fill_temporal_chronology_gap",
+        "claim_type": "retaliation",
+        "claim_element_id": "retaliation:3",
+        "claim_element_label": "Causal connection",
+        "action": "fill_temporal_chronology_gap",
+        "preferred_support_kind": "evidence",
+        "fallback_lanes": ["authority", "testimony"],
+        "source_quality_target": "high_quality_document",
+        "temporal_proof_objective": "establish_retaliation_sequence",
+        "timeline_issue_ids": ["timeline-gap-001"],
+        "temporal_issue_ids": ["timeline-gap-002"],
+    }
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "evidence",
+        "iteration_count": 3,
+        "intake_readiness": {
+            "score": 0.88,
+            "ready_to_advance": True,
+            "remaining_gap_count": 0,
+            "contradiction_count": 0,
+            "criteria": {"complainant_summary_confirmed": True},
+            "blockers": [],
+            "contradictions": [],
+            "candidate_claim_count": 1,
+            "canonical_fact_count": 1,
+            "proof_lead_count": 1,
+        },
+        "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.9}],
+        "intake_sections": {},
+        "canonical_fact_summary": {"count": 1, "facts": []},
+        "proof_lead_summary": {"count": 1, "proof_leads": []},
+        "timeline_anchor_summary": {"count": 1, "anchors": []},
+        "harm_profile": {},
+        "remedy_profile": {},
+        "complainant_summary_confirmation": {
+            "status": "confirmed",
+            "confirmed": True,
+            "current_summary_snapshot": {},
+        },
+        "question_candidate_summary": {},
+        "next_action": {
+            "action": "fill_temporal_chronology_gap",
+            "claim_type": "retaliation",
+            "claim_element_id": "retaliation:3",
+            "claim_element_label": "Causal connection",
+            "support_status": "missing",
+            "alignment_tasks": [chronology_task],
+        },
+        "claim_support_packet_summary": {},
+        "intake_evidence_alignment_summary": {},
+        "alignment_evidence_tasks": [chronology_task],
+        "alignment_task_updates": [],
+        "alignment_task_update_history": [],
+        "alignment_task_summary": {"count": 1},
+    }
+    mediator.phase_manager = SimpleNamespace(get_phase_data=lambda phase, key: None)
+    mediator.get_claim_coverage_matrix.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_claim_overview.return_value = {"claims": {"retaliation": {}}}
+    mediator.get_claim_support_diagnostic_snapshots.return_value = {"claims": {}}
+    mediator.get_claim_support_gaps.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "unresolved_elements": []}}}
+    mediator.get_claim_contradiction_candidates.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "candidates": []}}}
+    mediator.get_claim_support_validation.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_recent_claim_follow_up_execution.return_value = {"claims": {"retaliation": []}}
+    mediator.get_claim_follow_up_plan.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "tasks": []}}}
+    mediator.get_user_evidence.return_value = []
+    mediator.summarize_claim_support.return_value = {"claims": {"retaliation": {}}}
+
+    payload = build_claim_support_review_payload(
+        mediator,
+        ClaimSupportReviewRequest(claim_type="retaliation"),
+    )
+
+    assert payload["recommended_next_action"] == "fill_temporal_chronology_gap"
+    assert payload["workflow_priority"] == {
+        "status": "blocked",
+        "title": "Resolve chronology blockers",
+        "status_id": "fill_temporal_chronology_gap",
+        "chip_labels": [
+            "recommended action: fill_temporal_chronology_gap",
+            "chronology issues: 2",
+            "focus claim: Retaliation",
+            "focus element: Retaliation:3",
+            "support status: Missing",
+            "chronology objective: Establish Retaliation Sequence",
+            "preferred lane: Evidence",
+            "quality target: High Quality Document",
+            "fallback lane: Authority",
+            "fallback lane: Testimony",
+        ],
+        "notes": [
+            "Temporal ordering is still unresolved for a shared intake-to-packet element.",
+            "Review the chronology task, inspect the unresolved issue IDs, and collect support that clears the temporal blocker before advancing evidence completion.",
+            "Unresolved chronology issue IDs: timeline-gap-002, timeline-gap-001",
+        ],
+        "buttons": [
+            {
+                "id": "intake-next-action-review-chronology-task",
+                "label": "Review chronology task",
+                "style": "secondary",
+                "data_attrs": {
+                    "claim_type": "retaliation",
+                    "claim_element_id": "retaliation:3",
+                    "claim_element_text": "Causal connection",
+                    "support_kind": "evidence",
+                },
+            }
+        ],
+        "action_id": "fill_temporal_chronology_gap",
+        "status_message": "Showing chronology blocker task and unresolved issue IDs.",
+    }
+
+
 def test_claim_support_follow_up_execution_payload_summarizes_escalation_outcomes():
     mediator = Mock()
     mediator.state = SimpleNamespace(username="state-user", hashed_username=None)

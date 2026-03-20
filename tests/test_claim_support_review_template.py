@@ -40,8 +40,6 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "alignment-validation-focus-list" in content
     assert "const orderedValidationFocusTargets = [...validationFocusTargets].sort((left, right) => {" in content
     assert "Promotion Drift Summary" in content
-    assert "Validate promoted support" in content
-    assert "validation targets: ${validationTargetCount}" in content
     assert "intake-next-action-open-promoted" in content
     assert "Review promoted updates" in content
     assert "intake-next-action-prefill-testimony" in content
@@ -49,25 +47,15 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "intake-next-action-prefill-document" in content
     assert "Prefill document validation" in content
     assert "intake-next-action-review-conflicts" in content
-    assert "Review manual conflicts" in content
     assert "intake-next-action-prefill-resolution" in content
-    assert "Load into resolution form" in content
     assert "intake-next-action-review-evidence-task" in content
-    assert "Review evidence task" in content
     assert "intake-next-action-build-packets" in content
-    assert "Build claim support packets" in content
     assert "intake-next-action-review-knowledge-graph" in content
-    assert "Review intake graph inputs" in content
     assert "intake-next-action-review-dependencies" in content
-    assert "Review dependency inputs" in content
     assert "intake-next-action-review-denoising" in content
-    assert "Review denoising queue" in content
     assert "intake-next-action-review-legal-graph" in content
-    assert "Review legal graph inputs" in content
     assert "intake-next-action-review-matching" in content
-    assert "Review matching inputs" in content
     assert "intake-next-action-open-document-builder" in content
-    assert "Open formal complaint builder" in content
     assert "workflow-phase-guidance-card" in content
     assert "Workflow Phase Guidance" in content
     assert "workflowPhasePlan.recommended_order" in content
@@ -81,7 +69,6 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "workflowPhasePriority.chip_labels" in content
     assert "intake-next-action-open-formal-generator" in content
     assert "intake-next-action-confirm-summary" in content
-    assert "Confirm intake summary" in content
     assert "intake-next-action-review-gaps" in content
     assert "Review intake gaps" in content
     assert "intake-next-action-review-packet-readiness" in content
@@ -96,19 +83,9 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "unresolved temporal issues: ${unresolvedTemporalIssueCount}" in content
     assert "unresolved without review path: ${unresolvedWithoutReviewPathCount}" in content
     assert "Showing packet readiness summary and evidence blockers before drafting." in content
-    assert "recommended action: ${nextAction.action}" in content
-    assert "focus claim: ${humanizeQueryValue(focusedPromotedClaimType)}" in content
-    assert "focus element: ${humanizeQueryValue(focusedPromotedElementId)}" in content
-    assert "primary target: ${humanizeQueryValue(primaryValidationTarget.claim_element_id)}" in content
-    assert "primary promotion kind: ${humanizeQueryValue(primaryValidationTarget.promotion_kind)}" in content
-    assert "primary promotion ref: ${primaryValidationTarget.promotion_ref}" in content
-    assert "Promoted testimony or document support is accumulating faster than packet validation is reaching resolved supported status." in content
-    assert "Primary validation target: ${humanizeQueryValue(primaryValidationTarget.claim_element_id)}." in content
-    assert "Primary promotion ref: ${primaryValidationTarget.promotion_ref}." in content
-    assert "const primaryValidationClaimType = String(" in content
-    assert "const primaryValidationElementId = String(" in content
-    assert "data-claim-type=\"${primaryValidationClaimType}\"" in content
-    assert "data-claim-element-id=\"${primaryValidationElementId}\"" in content
+    assert "const normalizedButtons = Array.isArray(normalizedPayload.buttons)" in content
+    assert "button.data_attrs && typeof button.data_attrs === 'object'" in content
+    assert "data-${String(key || '').trim().replace(/_/g, '-')}=\"${escapeHtml(String(value || '').trim())}\"" in content
     assert "intake-readiness-criteria-chips" in content
     assert "intake-claim-summary-chips" in content
     assert "intake-context-chips" in content
@@ -199,8 +176,6 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "prefillDocumentForm" in content
     assert "Testimony form prefilled from pending-review alignment update." in content
     assert "Document form prefilled from pending-review alignment update." in content
-    assert "data-claim-type=\"${nextAction.claim_type || ''}\"" in content
-    assert "data-claim-element-id=\"${nextAction.claim_element_id || ''}\"" in content
     assert "openAlignmentUpdateFilter(" in content
     assert "openPromotedUpdatesButton.dataset.claimType" in content
     assert "openPromotedUpdatesButton.dataset.claimElementId" in content
@@ -219,67 +194,24 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "validation ${validationOutcome.improved ? 'improved' : 'still needs review'}" in content
     assert "Testimony form prefilled from focused promoted-support validation." in content
     assert "Document form prefilled from focused promoted-support validation." in content
-    assert "recommended action: build_knowledge_graph" in content
-    assert "Intake facts and timeline anchors are present, but the knowledge graph has not been built into an operator-reviewable structure yet." in content
     assert "openKnowledgeGraphInputsReview()" in content
     assert "Showing timeline and canonical fact inputs for intake graph building." in content
-    assert "recommended action: build_dependency_graph" in content
-    assert "Intake sections are populated enough to map cross-section dependencies, but the dependency graph has not been built yet." in content
     assert "openDependencyGraphInputsReview()" in content
     assert "Showing alignment and contradiction inputs for dependency graph review." in content
-    assert "recommended action: continue_denoising" in content
-    assert "Intake contradictions or open clarification paths still need another denoising pass before the case theory can settle." in content
     assert "openDenoisingQueueReview()" in content
     assert "Showing contradictions and targeted questions for continued intake denoising." in content
-    assert "recommended action: build_legal_graph" in content
-    assert "Claim targeting is available, but the legal graph that organizes statutes and requirements has not been built yet." in content
     assert "openLegalGraphInputsReview()" in content
     assert "Showing unresolved legal elements and question targets for legal graph review." in content
-    assert "recommended action: perform_neurosymbolic_matching" in content
-    assert "The legal graph is available, but formal claim-to-law matching still needs operator review support." in content
     assert "openNeurosymbolicMatchingReview()" in content
     assert "Showing unresolved legal elements and question targets for neurosymbolic matching." in content
-    assert "recommended action: generate_formal_complaint" in content
-    assert "Formalization is ready to move from matching outputs into a draft complaint package." in content
-    assert "recommended action: build_claim_support_packets" in content
-    assert "Evidence records exist, but the claim support packet still needs an explicit packet build before evidence review can be trusted." in content
-    assert "recommended action: resolve_support_conflicts" in content
-    assert "manual review blockers: ${manualReviewBlockers.length}" in content
-    assert "packet escalations: ${reviewableEscalations}" in content
-    assert "support status: ${humanizeQueryValue(nextAction.support_status)}" in content
-    assert "recommended lane: ${humanizeQueryValue(item)}" in content
-    assert "Contradicted or escalated support is blocking evidence completion for a priority element." in content
     assert "openManualReviewFocus(" in content
     assert "Showing manual-review conflicts that are blocking evidence completion." in content
     assert "Resolution form prefilled from blocking evidence conflict." in content
-    assert "recommended action: fill_evidence_gaps" in content
-    assert "recommended action: fill_temporal_chronology_gap" in content
-    assert "chronology issues: ${unresolvedChronologyIssues.length}" in content
-    assert "chronology objective: ${humanizeQueryValue(focusedAlignmentTask.temporal_proof_objective)}" in content
-    assert "preferred lane: ${humanizeQueryValue(preferredSupportKind)}" in content
-    assert "quality target: ${humanizeQueryValue(focusedAlignmentTask.source_quality_target)}" in content
-    assert "fallback lane: ${humanizeQueryValue(lane)}" in content
-    assert "Temporal ordering is still unresolved for a shared intake-to-packet element." in content
-    assert "Unresolved chronology issue IDs: ${unresolvedChronologyIssues.length ? unresolvedChronologyIssues.join(', ') : 'none recorded'}" in content
     assert "intake-next-action-review-chronology-task" in content
-    assert "Review chronology task" in content
     assert "Showing chronology blocker task and unresolved issue IDs." in content
-    assert "Priority evidence is still missing for a shared intake-to-packet element." in content
     assert "openEvidenceTaskReview(" in content
     assert "Showing priority evidence task and preferred support lane." in content
-    assert "recommended action: complete_evidence" in content
-    assert "packet completion ready: ${evidenceCompletionReady ? 'yes' : 'no'}" in content
-    assert "proof readiness: ${proofReadinessScore.toFixed(2)}" in content
-    assert "Evidence support is sufficiently assembled to move from packet review into formal complaint drafting." in content
     assert "openDocumentDraftingHandoff()" in content
-    assert "recommended action: confirm_intake_summary" in content
-    assert "recommended action: address_gaps" in content
-    assert "gap count: ${actionGaps.length}" in content
-    assert "question candidates: ${questionCandidateCount}" in content
-    assert "readiness score: ${readinessScore.toFixed(2)}" in content
-    assert "gap: ${humanizeQueryValue(gap)}" in content
-    assert "Intake still has unresolved proof or chronology gaps that should be clarified before handoff quality degrades." in content
-    assert "The latest intake summary snapshot is still waiting for complainant confirmation before the intake phase can fully settle." in content
     assert "confirmSummaryBannerButton" in content
     assert "confirmIntakeSummary();" in content
     assert "openIntakeGapReview('summary_of_facts', 'question-list')" in content

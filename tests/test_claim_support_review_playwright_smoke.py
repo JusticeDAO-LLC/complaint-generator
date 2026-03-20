@@ -2919,6 +2919,152 @@ def test_claim_support_review_dashboard_smoke_reviews_manual_conflicts_from_next
             os.unlink(db_path)
 
 
+def test_claim_support_review_dashboard_smoke_reviews_promoted_support_from_next_action_banner():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for promoted-support next-action smoke coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+        status_payload = mediator.get_three_phase_status.return_value
+        status_payload["primary_validation_target"] = {
+            "claim_type": "retaliation",
+            "claim_element_id": "retaliation:2",
+            "promotion_kind": "document",
+            "promotion_ref": "doc:retaliation:1",
+        }
+        status_payload["alignment_promotion_drift_summary"] = {
+            "promoted_count": 2,
+            "resolved_supported_count": 0,
+            "pending_conversion_count": 2,
+            "proof_readiness_score": 0.5,
+            "drift_ratio": 1.0,
+            "drift_flag": True,
+        }
+        status_payload["alignment_validation_focus_summary"] = {
+            "count": 2,
+            "claim_type_counts": {"retaliation": 2},
+            "promotion_kind_counts": {"testimony": 1, "document": 1},
+            "primary_target": {
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:2",
+                "promotion_kind": "document",
+                "promotion_ref": "doc:retaliation:1",
+            },
+            "targets": [
+                {
+                    "claim_type": "retaliation",
+                    "claim_element_id": "retaliation:2",
+                    "promotion_kind": "document",
+                    "promotion_ref": "doc:retaliation:1",
+                },
+                {
+                    "claim_type": "retaliation",
+                    "claim_element_id": "retaliation:3",
+                    "promotion_kind": "testimony",
+                },
+            ],
+        }
+        status_payload["next_action"] = {
+            "action": "validate_promoted_support",
+            "claim_type": "retaliation",
+            "claim_element_id": "retaliation:2",
+        }
+        status_payload["alignment_task_update_history"] = list(status_payload.get("alignment_task_update_history") or []) + [
+            {
+                "task_id": "retaliation:retaliation:2:promoted_document_validation",
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:2",
+                "claim_element_label": "Adverse action",
+                "action": "fill_evidence_gaps",
+                "previous_support_status": "missing",
+                "current_support_status": "partially_supported",
+                "previous_missing_fact_bundle": ["Timeline evidence"],
+                "current_missing_fact_bundle": [],
+                "resolution_status": "promoted_to_document",
+                "status": "active",
+                "evidence_artifact_id": "artifact-promoted-document",
+                "evidence_sequence": 3,
+                "answer_preview": "Termination memo uploaded and promoted for validation.",
+            }
+        ]
+
+        app = _build_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(
+                    f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
+                )
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                next_action_banner = page.locator("#intake-next-action-banner").inner_text()
+
+                assert "Validate promoted support" in next_action_banner
+                assert "recommended action: validate_promoted_support" in next_action_banner
+                assert "pending conversion: 2" in next_action_banner
+                assert "promoted updates: 2" in next_action_banner
+                assert "validation targets: 2" in next_action_banner
+                assert "drift ratio: 1.00" in next_action_banner
+                assert "proof readiness: 0.50" in next_action_banner
+                assert "focus claim: Retaliation" in next_action_banner
+                assert "focus element: Retaliation:2" in next_action_banner
+                assert "primary target: Retaliation:2" in next_action_banner
+                assert "primary promotion kind: Document" in next_action_banner
+                assert "primary promotion ref: doc:retaliation:1" in next_action_banner
+
+                page.click("#intake-next-action-open-promoted")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Showing promoted alignment updates that still need validation.')"
+                )
+                page.wait_for_function(
+                    "() => document.getElementById('alignment-task-update-filter-summary').textContent.includes('filter: promoted') && document.getElementById('alignment-task-update-filter-summary').textContent.includes('sort: pending_review_first')"
+                )
+
+                promoted_updates = page.locator("#alignment-task-update-list").inner_text()
+                assert "alignment_task_update_filter=promoted" in page.url
+                assert "alignment_task_update_sort=pending_review_first" in page.url
+                assert "artifact: artifact-promoted-document" in promoted_updates
+
+                page.click("#intake-next-action-prefill-testimony")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Testimony form prefilled from focused promoted-support validation.')"
+                )
+
+                assert page.locator("#testimony-element-id").input_value() == "retaliation:2"
+                assert page.locator("#testimony-element-text").input_value() == "Retaliation:2"
+                assert page.locator("#testimony-narrative").input_value() == "Validation follow-up for promoted support tied to Retaliation:2."
+
+                page.click("#clear-testimony-button")
+                page.click("#intake-next-action-prefill-document")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Document form prefilled from focused promoted-support validation.')"
+                )
+
+                assert page.locator("#document-element-id").input_value() == "retaliation:2"
+                assert page.locator("#document-element-text").input_value() == "Retaliation:2"
+                assert page.locator("#document-label").input_value() == "Validation support for Retaliation:2"
+                assert page.locator("#document-text").input_value() == "Validation follow-up for promoted support tied to Retaliation:2."
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
 def test_claim_support_review_dashboard_smoke_filters_pending_review_alignment_updates():
     if not PLAYWRIGHT_AVAILABLE:
         pytest.skip("Playwright not available")
@@ -3759,6 +3905,91 @@ def test_claim_support_review_dashboard_smoke_reviews_evidence_gap_task_from_nex
                 page.click("#intake-next-action-review-evidence-task")
                 page.wait_for_function(
                     "() => document.getElementById('status-line').textContent.includes('Showing priority evidence task and preferred support lane.')"
+                )
+
+                assert "follow_up_support_kind=evidence" in page.url
+                assert page.locator("#support-kind").input_value() == "evidence"
+                assert "Alignment task for retaliation" in page.locator("#alignment-evidence-task-list").inner_text()
+                assert "element: retaliation:3" in page.locator("#alignment-evidence-task-list").inner_text()
+
+                browser.close()
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+def test_claim_support_review_dashboard_smoke_reviews_chronology_task_from_next_action_banner():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+
+    try:
+        mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+        mediator.save_claim_testimony_record(
+            user_id="browser-smoke-text-link",
+            claim_type="retaliation",
+            claim_element_text="Protected activity",
+            raw_narrative="Protected activity seed for chronology-gap next-action smoke coverage.",
+            firsthand_status="firsthand",
+            source_confidence=0.9,
+        )
+        chronology_task = {
+            **dict((mediator.get_three_phase_status.return_value.get("alignment_evidence_tasks") or [])[0] or {}),
+            "task_id": "retaliation:retaliation:3:fill_temporal_chronology_gap",
+            "action": "fill_temporal_chronology_gap",
+            "claim_type": "retaliation",
+            "claim_element_id": "retaliation:3",
+            "claim_element_label": "Causal connection",
+            "preferred_support_kind": "evidence",
+            "fallback_lanes": ["authority", "testimony"],
+            "source_quality_target": "high_quality_document",
+            "temporal_proof_objective": "establish_retaliation_sequence",
+            "timeline_issue_ids": ["timeline-gap-001"],
+            "temporal_issue_ids": ["timeline-gap-002"],
+        }
+        status_payload = mediator.get_three_phase_status.return_value
+        status_payload["next_action"] = {
+            "action": "fill_temporal_chronology_gap",
+            "claim_type": "retaliation",
+            "claim_element_id": "retaliation:3",
+            "claim_element_label": "Causal connection",
+            "support_status": "missing",
+            "alignment_tasks": [chronology_task],
+        }
+        status_payload["alignment_evidence_tasks"] = [chronology_task]
+
+        app = _build_browser_smoke_app(mediator)
+        with _serve_app(app) as base_url:
+            with sync_playwright() as playwright_context:
+                browser = playwright_context.chromium.launch()
+                page = browser.new_page()
+                page.goto(
+                    f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
+                )
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+                )
+
+                next_action_banner = page.locator("#intake-next-action-banner").inner_text()
+
+                assert "Resolve chronology blockers" in next_action_banner
+                assert "recommended action: fill_temporal_chronology_gap" in next_action_banner
+                assert "chronology issues: 2" in next_action_banner
+                assert "focus claim: Retaliation" in next_action_banner
+                assert "focus element: Retaliation:3" in next_action_banner
+                assert "support status: Missing" in next_action_banner
+                assert "chronology objective: Establish Retaliation Sequence" in next_action_banner
+                assert "preferred lane: Evidence" in next_action_banner
+                assert "quality target: High Quality Document" in next_action_banner
+                assert "fallback lane: Authority" in next_action_banner
+                assert "fallback lane: Testimony" in next_action_banner
+                assert "Unresolved chronology issue IDs: timeline-gap-002, timeline-gap-001" in next_action_banner
+
+                page.click("#intake-next-action-review-chronology-task")
+                page.wait_for_function(
+                    "() => document.getElementById('status-line').textContent.includes('Showing chronology blocker task and unresolved issue IDs.')"
                 )
 
                 assert "follow_up_support_kind=evidence" in page.url
