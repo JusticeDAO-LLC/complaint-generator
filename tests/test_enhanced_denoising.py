@@ -105,6 +105,24 @@ class TestPhase2Denoising:
         assert questions[0]['context']['preferred_evidence_classes'] == ['email', 'hr_complaint', 'text_message']
         assert questions[0]['context']['missing_fact_bundle'] == ['who received the complaint']
 
+    def test_question_candidate_carries_workflow_routing_metadata_for_graph_blockers(self):
+        denoiser = ComplaintDenoiser()
+
+        candidate = denoiser._question_candidate(
+            "When did you request the hearing, and when did HACC respond?",
+            "timeline",
+            source="dependency_graph_requirement",
+            context={"gap_type": "missing_hearing_timing"},
+            priority="high",
+        )
+
+        assert candidate["workflow_phase"] == "graph_analysis"
+        assert candidate["workflow_phase_rank"] == 0
+        assert "exact_dates" in candidate["follow_up_tags"]
+        assert "exact_dates" in candidate["extraction_targets"]
+        assert "event_order" in candidate["extraction_targets"]
+        assert "chronology_patch_anchor" in candidate["patchability_markers"]
+
 
 class TestPhase3Denoising:
     """Test denoising in formalization phase."""

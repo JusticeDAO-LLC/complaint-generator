@@ -508,6 +508,41 @@ def test_score_factual_allegations_rewards_timing_and_staff_detail():
     assert enhanced_score > baseline_score
 
 
+def test_document_optimizer_prioritizes_graph_phase_for_unresolved_blockers():
+    optimizer = document_optimization.AgenticDocumentOptimizer(
+        mediator=_build_seeded_mediator(),
+        max_iterations=1,
+        target_score=0.95,
+        persist_artifacts=False,
+    )
+
+    review = optimizer._heuristic_review(
+        draft={
+            'title': 'Jane Doe v. Acme Corporation',
+            'factual_allegations': ['Defendant denied assistance.'],
+            'claims_for_relief': [{'claim_type': 'retaliation', 'supporting_facts': []}],
+            'requested_relief': ['Compensatory damages.'],
+        },
+        drafting_readiness={'status': 'warning', 'sections': {}},
+        support_context={
+            'claims': [],
+            'evidence': [],
+            'packet_projection': {'section_presence': {'factual_allegations': True}},
+            'intake_priorities': {
+                'uncovered_objectives': ['exact_dates', 'staff_names_titles', 'response_dates'],
+                'critical_unresolved_objectives': ['exact_dates', 'staff_names_titles', 'response_dates'],
+                'unresolved_objectives': ['exact_dates', 'staff_names_titles', 'response_dates'],
+                'objective_question_counts': {'exact_dates': 0, 'staff_names_titles': 0, 'response_dates': 0},
+            },
+        },
+    )
+
+    assert review['prioritized_workflow_phase'] == 'graph_analysis'
+    assert review['workflow_phase_order'][0] == 'graph_analysis'
+    assert review['workflow_phase_target_sections']['graph_analysis'] == 'factual_allegations'
+    assert review['recommended_focus'] == 'factual_allegations'
+
+
 def test_document_package_promotes_confirmed_intake_handoff(tmp_path):
     mediator = _build_seeded_mediator()
     builder = FormalComplaintDocumentBuilder(mediator)

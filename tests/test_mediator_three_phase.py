@@ -2257,6 +2257,55 @@ class TestMediatorThreePhaseIntegration:
         employment_targeting = legal_targeting_summary['claims'].get('employment_discrimination', {})
         assert employment_targeting['mapped_candidates']
         assert employment_targeting['mapped_candidates'][0]['target_element_id'] in employment_summary['missing_requirement_element_ids']
+
+    def test_default_selector_prefers_graph_blocker_closure_question_when_scores_are_close(self):
+        """Graph-blocker closure questions should outrank generic intake prompts when other pressure signals are similar."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        candidates = [
+            {
+                'question': 'What remedy are you seeking now?',
+                'type': 'remedy',
+                'question_objective': 'identify_requested_relief',
+                'proof_priority': 2,
+                'candidate_source': 'intake_proof_gap',
+                'ranking_explanation': {
+                    'blocking_level': 'important',
+                    'question_goal': 'identify_supporting_proof',
+                    'phase1_section': 'intake_questioning',
+                    'candidate_source': 'intake_proof_gap',
+                },
+            },
+            {
+                'question': 'On what exact date did you request the hearing, and on what date did HACC respond?',
+                'type': 'timeline',
+                'question_objective': 'establish_chronology',
+                'proof_priority': 2,
+                'candidate_source': 'dependency_graph_requirement',
+                'ranking_explanation': {
+                    'blocking_level': 'important',
+                    'question_goal': 'establish_element',
+                    'phase1_section': 'graph_analysis',
+                    'candidate_source': 'dependency_graph_requirement',
+                },
+            },
+        ]
+
+        selected = mediator.select_intake_question_candidates(candidates, max_questions=2)
+
+        assert selected[0]['question'].startswith('On what exact date')
+        assert selected[0]['selector_signals']['phase_focus_rank'] == 0
+        assert selected[0]['selector_signals']['exact_dates_closure_match'] is True
+        assert selected[0]['selector_signals']['hearing_request_timing_closure_match'] is True
+        assert selected[0]['selector_signals']['response_dates_closure_match'] is True
+        assert selected[0]['selector_signals']['blocker_closure_match_count'] >= 2
     
     def test_graph_serialization(self):
         """Test that graphs can be serialized for storage."""

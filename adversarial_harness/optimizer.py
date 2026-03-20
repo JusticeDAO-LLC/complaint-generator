@@ -342,6 +342,13 @@ class Optimizer:
         if any(objective in {"harm_remedy", "actors"} for objective in objectives):
             add_target("adversarial_harness/complainant.py")
 
+        if any(
+            objective in {"exact_dates", "staff_names_titles", "hearing_request_timing", "response_dates", "causation_sequence"}
+            for objective in objectives
+        ):
+            add_target("complaint_phases/denoiser.py")
+            add_target("document_optimization.py")
+
         if not recommendations and isinstance(report.workflow_phase_plan, dict):
             phases = dict(report.workflow_phase_plan.get("phases") or {})
             for phase_name in list(report.workflow_phase_plan.get("recommended_order") or []):
@@ -542,6 +549,23 @@ class Optimizer:
             for value in list((coverage_remediation.get("intake_priorities") or {}).get("uncovered_objectives") or [])
             if str(value)
         ]
+        graph_blocker_objectives = [
+            objective
+            for objective in uncovered_objectives
+            if objective in {"exact_dates", "staff_names_titles", "hearing_request_timing", "response_dates", "causation_sequence", "timeline", "actors"}
+        ]
+        if graph_blocker_objectives:
+            graph_signals.append(
+                "graph-blocking intake objectives remain uncovered: " + ", ".join(graph_blocker_objectives[:4])
+            )
+            graph_severity += 2
+            graph_recommendations.append(
+                {
+                    "focus": "blocker_closure",
+                    "signal": "intake_graph_blockers",
+                    "recommended_action": "Promote exact dates, staff names/titles, hearing-request timing, response dates, and causation sequencing into graph updates before broadening the next question set.",
+                }
+            )
         if "documents" in uncovered_objectives:
             document_signals.append("document-focused intake objectives are still uncovered")
             document_severity += 2
@@ -560,6 +584,19 @@ class Optimizer:
                     "focus": "requested_relief",
                     "signal": "harm_remedy_objective",
                     "recommended_action": "Strengthen the handoff from intake to requested-relief generation so the draft captures both the injury and the remedy sought.",
+                }
+            )
+        if any(
+            objective in {"staff_names_titles", "hearing_request_timing", "response_dates", "causation_sequence"}
+            for objective in uncovered_objectives
+        ):
+            document_signals.append("drafting still lacks chronology, staff-identity, or causation-sequence details needed for pleading-ready allegations")
+            document_severity += 1
+            document_recommendations.append(
+                {
+                    "focus": "pleading_anchors",
+                    "signal": "intake_blocker_handoff",
+                    "recommended_action": "Carry blocker-closing intake answers directly into factual allegations, claim support, and exhibit descriptions so drafted complaints preserve timing, actor identity, and causation sequence.",
                 }
             )
         if information_extraction_avg < 0.7:
@@ -684,6 +721,7 @@ class Optimizer:
                     ]
                 elif path.name == "mediator.py":
                     target_map[key] = [
+                        "select_intake_question_candidates",
                         "build_inquiry_gap_context",
                     ]
                 elif path.name == "complainant.py":
@@ -755,11 +793,23 @@ class Optimizer:
         if not target_paths:
             return []
 
+        uncovered_objectives = {
+            str(value)
+            for value in list((report.coverage_remediation or {}).get("intake_priorities", {}).get("uncovered_objectives") or [])
+            if str(value)
+        }
+        blocker_objectives = uncovered_objectives.intersection(
+            {"exact_dates", "staff_names_titles", "hearing_request_timing", "response_dates", "causation_sequence"}
+        )
+
         if str(phase_name) == "graph_analysis":
             priorities: List[str] = []
             kg_empty = int(report.kg_sessions_empty or 0) > 0 or float(report.kg_avg_total_entities or 0.0) <= 2.0
             dg_weak = float(report.dg_avg_satisfaction_rate or 0.0) < 0.5
             gaps_high = float(report.kg_avg_gaps or 0.0) >= 1.0 or int(report.kg_sessions_gaps_not_reducing or 0) > 0
+
+            if blocker_objectives:
+                priorities.extend(["denoiser.py", "knowledge_graph.py", "dependency_graph.py"])
 
             if gaps_high:
                 priorities.append("denoiser.py")
@@ -783,12 +833,16 @@ class Optimizer:
             return selected or target_paths[:2]
 
         if str(phase_name) == "document_generation":
-            priorities = [
-                "synthesize_hacc_complaint.py",
-                "document_pipeline.py",
-                "document_optimization.py",
-                "formal_document.py",
-            ]
+            priorities = (
+                ["document_optimization.py", "synthesize_hacc_complaint.py", "formal_document.py", "document_pipeline.py"]
+                if blocker_objectives
+                else [
+                    "synthesize_hacc_complaint.py",
+                    "document_pipeline.py",
+                    "document_optimization.py",
+                    "formal_document.py",
+                ]
+            )
             selected: List[Path] = []
             seen = set()
             for name in priorities:
@@ -802,11 +856,15 @@ class Optimizer:
             return selected or target_paths[:2]
 
         if str(phase_name) == "intake_questioning":
-            priorities = [
-                "session.py",
-                "complainant.py",
-                "mediator.py",
-            ]
+            priorities = (
+                ["session.py", "mediator.py", "complainant.py"]
+                if blocker_objectives
+                else [
+                    "session.py",
+                    "complainant.py",
+                    "mediator.py",
+                ]
+            )
             selected: List[Path] = []
             seen = set()
             for name in priorities:
@@ -1853,6 +1911,16 @@ class Optimizer:
         normalized = str(objective or '').strip()
         if not normalized:
             return "Add a dedicated fallback question for this intake objective."
+        if normalized == 'exact_dates':
+            return "Ask for exact dates or anchored date ranges and keep chronology follow-ups ahead of generic narrative prompts."
+        if normalized == 'staff_names_titles':
+            return "Ask for the HACC staff names and titles tied to each decision, notice, hearing, and communication step."
+        if normalized == 'hearing_request_timing':
+            return "Ask when the hearing or review was requested, how it was requested, and when HACC responded."
+        if normalized == 'response_dates':
+            return "Ask for exact response dates on notices, review outcomes, hearing decisions, and other official communications."
+        if normalized == 'causation_sequence':
+            return "Ask the complainant to walk step-by-step through protected activity, response, and adverse action so causation can be modeled directly."
         if normalized == 'timeline':
             return "Ask for a clear chronology early and keep date/sequence follow-ups ahead of generic evidence questions."
         if normalized == 'actors':

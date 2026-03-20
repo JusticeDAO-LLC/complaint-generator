@@ -1856,7 +1856,7 @@ class AdversarialSession:
 
                 # Get response from complainant
                 complainant_prompt = question_text
-                if turns == 0:
+                if self._should_apply_empathy_prefix(turns, question):
                     complainant_prompt = self._with_empathy_prefix(question_text)
                 answer = self.complainant.respond_to_question(
                     complainant_prompt
@@ -1874,6 +1874,23 @@ class AdversarialSession:
                     mediator_turn['question_reason'] = question_reason
                 if expected_proof_gain:
                     mediator_turn['expected_proof_gain'] = expected_proof_gain
+                selector_score = self._extract_selector_score(question)
+                if selector_score:
+                    mediator_turn['selector_score'] = selector_score
+                actor_critic_score = self._extract_actor_critic_score(question)
+                if actor_critic_score:
+                    mediator_turn['actor_critic_score'] = actor_critic_score
+                phase1_section = self._extract_phase1_section(question)
+                if phase1_section:
+                    mediator_turn['phase1_section'] = phase1_section
+                selector_signals = self._extract_selector_signals(question)
+                if selector_signals:
+                    candidate_source = str(selector_signals.get('candidate_source') or '').strip()
+                    if candidate_source:
+                        mediator_turn['candidate_source'] = candidate_source
+                    intake_matches = selector_signals.get('intake_priority_match')
+                    if isinstance(intake_matches, list) and intake_matches:
+                        mediator_turn['intake_priority_match'] = list(intake_matches)
                 self.conversation_history.append(mediator_turn)
 
                 self.conversation_history.append(

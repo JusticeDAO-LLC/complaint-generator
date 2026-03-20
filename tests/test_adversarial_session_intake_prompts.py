@@ -230,6 +230,45 @@ def test_build_fallback_probe_can_emit_causation_question_when_needed():
     assert probe["source"] == "harness_fallback"
 
 
+def test_extract_intake_prompt_candidates_classifies_graph_blocker_prompts():
+    seed = {
+        "key_facts": {
+            "synthetic_prompts": {
+                "intake_questions": [
+                    "What exact date did you request the hearing or review, and on what date did HACC respond?",
+                    "What are the names and titles of the HACC staff members who handled the notice, hearing, and denial?",
+                    "Please walk me through what happened before and after your protected complaint so we can understand the sequence leading to the denial.",
+                ]
+            }
+        }
+    }
+
+    candidates = AdversarialSession._extract_intake_prompt_candidates(seed)
+
+    objective_pairs = {(question_text, objective) for question_text, objective in candidates}
+
+    assert (
+        "What exact date did you request the hearing or review, and on what date did HACC respond?",
+        "exact_dates",
+    ) in objective_pairs
+    assert (
+        "What exact date did you request the hearing or review, and on what date did HACC respond?",
+        "hearing_request_timing",
+    ) in objective_pairs
+    assert (
+        "What exact date did you request the hearing or review, and on what date did HACC respond?",
+        "response_dates",
+    ) in objective_pairs
+    assert (
+        "What are the names and titles of the HACC staff members who handled the notice, hearing, and denial?",
+        "staff_names_titles",
+    ) in objective_pairs
+    assert (
+        "Please walk me through what happened before and after your protected complaint so we can understand the sequence leading to the denial.",
+        "causation_sequence",
+    ) in objective_pairs
+
+
 def test_inject_intake_prompt_questions_prepends_prioritized_candidates():
     seed = {
         "key_facts": {

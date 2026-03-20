@@ -307,6 +307,12 @@ class AgenticDocumentOptimizer:
         "affidavit",
         "certificate_of_service",
     }
+    WORKFLOW_PHASE_FOCUS_ORDER = ("graph_analysis", "document_generation", "intake_questioning")
+    WORKFLOW_PHASE_SECTION_CANDIDATES = {
+        "graph_analysis": ("factual_allegations", "claims_for_relief"),
+        "document_generation": ("claims_for_relief", "requested_relief", "affidavit", "certificate_of_service"),
+        "intake_questioning": ("factual_allegations", "claims_for_relief", "requested_relief"),
+    }
     _ACTOR_FIELD_TO_DRAFT_FIELD = {
         "factual_allegations": "factual_allegations",
         "claim_supporting_facts": "claim_supporting_facts",
@@ -1267,7 +1273,17 @@ class AgenticDocumentOptimizer:
             ((name, score) for name, score in section_scores.items() if name in self.VALID_FOCUS_SECTIONS),
             key=lambda item: item[1],
         )
-        recommended_focus = ordered_sections[0][0] if ordered_sections else "factual_allegations"
+        workflow_phase_targeting = self._build_workflow_phase_targeting(
+            section_scores=section_scores,
+            support_context=support_context,
+        )
+        phase_focus_order = list(workflow_phase_targeting.get("phase_focus_order") or self.WORKFLOW_PHASE_FOCUS_ORDER)
+        phase_target_sections = dict(workflow_phase_targeting.get("phase_target_sections") or {})
+        prioritized_phase = str(phase_focus_order[0] if phase_focus_order else "graph_analysis")
+        recommended_focus = str(
+            phase_target_sections.get(prioritized_phase)
+            or (ordered_sections[0][0] if ordered_sections else "factual_allegations")
+        )
 
         weaknesses: List[str] = []
         suggestions: List[str] = []
@@ -1354,6 +1370,10 @@ class AgenticDocumentOptimizer:
             "weaknesses": weaknesses,
             "suggestions": suggestions,
             "recommended_focus": recommended_focus,
+            "workflow_phase_order": phase_focus_order,
+            "workflow_phase_scores": dict(workflow_phase_targeting.get("phase_scores") or {}),
+            "workflow_phase_target_sections": phase_target_sections,
+            "prioritized_workflow_phase": prioritized_phase,
         }
 
     def _score_factual_allegations(self, allegations: List[str], claims: List[Dict[str, Any]]) -> float:
@@ -1514,6 +1534,129 @@ class AgenticDocumentOptimizer:
             score -= 0.08
         return _clamp(score)
 
+    def _build_workflow_phase_targeting(
+        self,
+        *,
+        section_scores: Dict[str, float],
+        support_context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        priorities = support_context.get("intake_priorities") if isinstance(support_context.get("intake_priorities"), dict) else {}
+        unresolved_objectives = {
+            _normalize_intake_objective(item)
+            for item in list(priorities.get("unresolved_objectives") or [])
+            if _normalize_intake_objective(item)
+        }
+        critical_unresolved = {
+            _normalize_intake_objective(item)
+            for item in list(priorities.get("critical_unresolved_objectives") or [])
+            if _normalize_intake_objective(item)
+        }
+        graph_blockers = unresolved_objectives.intersection(
+            {
+                "timeline",
+                "actors",
+                "staff_names_titles",
+                "causation_link",
+                "anchor_adverse_action",
+                "anchor_appeal_rights",
+                "hearing_request_timing",
+                "response_dates",
+            }
+        )
+        document_blockers = unresolved_objectives.intersection(
+            {
+                "documents",
+                "harm_remedy",
+                "anchor_adverse_action",
+                "anchor_appeal_rights",
+                "staff_names_titles",
+                "hearing_request_timing",
+                "response_dates",
+            }
+        )
+
+        factual_pressure = max(0.0, 1.0 - float(section_scores.get("factual_allegations") or 0.0))
+        claims_pressure = max(0.0, 1.0 - float(section_scores.get("claims_for_relief") or 0.0))
+        requested_relief_pressure = max(0.0, 1.0 - float(section_scores.get("requested_relief") or 0.0))
+        affidavit_pressure = max(0.0, 1.0 - float(section_scores.get("affidavit") or 0.0))
+        certificate_pressure = max(0.0, 1.0 - float(section_scores.get("certificate_of_service") or 0.0))
+        packet_pressure = max(0.0, 1.0 - float(section_scores.get("packet_projection") or 0.0))
+        intake_pressure = max(0.0, 1.0 - float(section_scores.get("intake_questioning") or 0.0))
+
+        phase_scores = {
+            "graph_analysis": _clamp(
+                factual_pressure * 0.55
+                + claims_pressure * 0.15
+                + min(len(graph_blockers) * 0.08, 0.28)
+                + min(len(critical_unresolved.intersection(graph_blockers)) * 0.05, 0.15)
+            ),
+            "document_generation": _clamp(
+                claims_pressure * 0.2
+                + requested_relief_pressure * 0.2
+                + affidavit_pressure * 0.2
+                + certificate_pressure * 0.15
+                + packet_pressure * 0.15
+                + min(len(document_blockers) * 0.06, 0.18)
+            ),
+            "intake_questioning": _clamp(
+                intake_pressure
+                + min(len(unresolved_objectives) * 0.05, 0.2)
+                + min(len(critical_unresolved) * 0.04, 0.12)
+            ),
+        }
+
+        phase_focus_order = [
+            name
+            for name, _score in sorted(
+                phase_scores.items(),
+                key=lambda item: (-float(item[1]), self.WORKFLOW_PHASE_FOCUS_ORDER.index(item[0])),
+            )
+        ]
+        phase_target_sections = {
+            phase_name: self._select_phase_target_section(
+                phase_name=phase_name,
+                section_scores=section_scores,
+                unresolved_objectives=unresolved_objectives,
+            )
+            for phase_name in phase_focus_order
+        }
+        return {
+            "phase_scores": phase_scores,
+            "phase_focus_order": phase_focus_order,
+            "phase_target_sections": phase_target_sections,
+        }
+
+    def _select_phase_target_section(
+        self,
+        *,
+        phase_name: str,
+        section_scores: Dict[str, float],
+        unresolved_objectives: set[str],
+    ) -> str:
+        candidates = [
+            section_name
+            for section_name in self.WORKFLOW_PHASE_SECTION_CANDIDATES.get(phase_name, ())
+            if section_name in self.VALID_FOCUS_SECTIONS
+        ]
+        if not candidates:
+            return "factual_allegations"
+        if phase_name == "graph_analysis" and unresolved_objectives.intersection(
+            {
+                "timeline",
+                "actors",
+                "staff_names_titles",
+                "causation_link",
+                "anchor_adverse_action",
+                "anchor_appeal_rights",
+                "hearing_request_timing",
+                "response_dates",
+            }
+        ):
+            return "factual_allegations"
+        if phase_name == "intake_questioning" and unresolved_objectives:
+            return "factual_allegations"
+        return min(candidates, key=lambda section_name: float(section_scores.get(section_name) or 0.0))
+
     def _merge_review_payload(self, parsed: Optional[Dict[str, Any]], heuristic_review: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(parsed, dict):
             return heuristic_review
@@ -1542,6 +1685,10 @@ class AgenticDocumentOptimizer:
             "weaknesses": list(review.get("weaknesses") or []),
             "suggestions": list(review.get("suggestions") or []),
             "recommended_focus": str(review.get("recommended_focus") or ""),
+            "workflow_phase_order": list(review.get("workflow_phase_order") or []),
+            "workflow_phase_scores": dict(review.get("workflow_phase_scores") or {}),
+            "workflow_phase_target_sections": dict(review.get("workflow_phase_target_sections") or {}),
+            "prioritized_workflow_phase": str(review.get("prioritized_workflow_phase") or ""),
         }
         llm_metadata = dict(review.get("llm_metadata") or {})
         if llm_metadata:
@@ -1582,6 +1729,16 @@ class AgenticDocumentOptimizer:
         drafting_readiness: Dict[str, Any],
         support_context: Dict[str, Any],
     ) -> str:
+        workflow_phase_order = [
+            str(value)
+            for value in list(current_review.get("workflow_phase_order") or [])
+            if str(value)
+        ]
+        phase_target_sections = dict(current_review.get("workflow_phase_target_sections") or {})
+        for phase_name in workflow_phase_order:
+            target_section = str(phase_target_sections.get(phase_name) or "").strip()
+            if target_section in self.VALID_FOCUS_SECTIONS:
+                return target_section
         recommended_focus = str(current_review.get("recommended_focus") or "").strip()
         if recommended_focus in self.VALID_FOCUS_SECTIONS:
             return recommended_focus
@@ -1968,7 +2125,7 @@ class AgenticDocumentOptimizer:
             "available": bool(UPSTREAM_AGENTIC_AVAILABLE),
             "selected_provider": "",
             "selected_method": "",
-            "phase_focus_order": ["graph_analysis", "document_generation", "intake_questioning"],
+            "phase_focus_order": list(current_review.get("workflow_phase_order") or self.WORKFLOW_PHASE_FOCUS_ORDER),
             "control_loop": {},
         }
         if not UPSTREAM_AGENTIC_AVAILABLE:

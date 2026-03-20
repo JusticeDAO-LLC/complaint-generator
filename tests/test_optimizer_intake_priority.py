@@ -154,6 +154,43 @@ def test_build_agentic_patch_task_can_autoselect_targets_from_intake_gaps():
     assert "Target files: adversarial_harness/session.py, mediator/mediator.py, adversarial_harness/complainant.py." in task.description
 
 
+def test_build_agentic_patch_task_adds_graph_and_document_targets_for_blocker_objectives():
+    optimizer = Optimizer()
+    results = [
+        _session_result(
+            "session_blockers",
+            0.49,
+            {
+                "adversarial_intake_priority_summary": {
+                    "expected_objectives": ["exact_dates", "staff_names_titles", "response_dates", "causation_sequence"],
+                    "covered_objectives": [],
+                    "uncovered_objectives": ["exact_dates", "staff_names_titles", "response_dates", "causation_sequence"],
+                }
+            },
+        )
+    ]
+
+    task, report = optimizer.build_agentic_patch_task(
+        results,
+        target_files=[],
+        method="actor_critic",
+        components={
+            "OptimizationTask": lambda **kwargs: SimpleNamespace(**kwargs),
+            "OptimizationMethod": SimpleNamespace(ACTOR_CRITIC="ACTOR_CRITIC"),
+            "OptimizerLLMRouter": None,
+            "optimizer_classes": {},
+        },
+    )
+
+    assert report.workflow_phase_plan['phases']['graph_analysis']['status'] in {'critical', 'warning'}
+    assert task.target_files == [
+        Path('adversarial_harness/session.py'),
+        Path('mediator/mediator.py'),
+        Path('complaint_phases/denoiser.py'),
+        Path('document_optimization.py'),
+    ]
+
+
 def test_analyze_builds_workflow_phase_plan_for_intake_graph_and_document_steps():
     optimizer = Optimizer()
     result = _session_result(
