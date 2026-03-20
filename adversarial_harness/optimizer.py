@@ -745,6 +745,82 @@ class Optimizer:
             "preserve_interfaces": True,
         }
 
+    @staticmethod
+    def _select_workflow_phase_targets(
+        phase_name: str,
+        phase_payload: Dict[str, Any],
+        report: OptimizationReport,
+    ) -> List[Path]:
+        target_paths = [Path(path) for path in list(phase_payload.get("target_files") or [])]
+        if not target_paths:
+            return []
+
+        if str(phase_name) == "graph_analysis":
+            priorities: List[str] = []
+            kg_empty = int(report.kg_sessions_empty or 0) > 0 or float(report.kg_avg_total_entities or 0.0) <= 2.0
+            dg_weak = float(report.dg_avg_satisfaction_rate or 0.0) < 0.5
+            gaps_high = float(report.kg_avg_gaps or 0.0) >= 1.0 or int(report.kg_sessions_gaps_not_reducing or 0) > 0
+
+            if gaps_high:
+                priorities.append("denoiser.py")
+            if dg_weak:
+                priorities.append("dependency_graph.py")
+            if kg_empty:
+                priorities.append("knowledge_graph.py")
+            priorities.append("intake_case_file.py")
+            priorities.extend(["knowledge_graph.py", "dependency_graph.py", "denoiser.py", "intake_case_file.py"])
+
+            selected: List[Path] = []
+            seen = set()
+            for name in priorities:
+                for path in target_paths:
+                    if path.name == name and path.name not in seen:
+                        seen.add(path.name)
+                        selected.append(path)
+                        break
+                if len(selected) >= 2:
+                    break
+            return selected or target_paths[:2]
+
+        if str(phase_name) == "document_generation":
+            priorities = [
+                "synthesize_hacc_complaint.py",
+                "document_pipeline.py",
+                "document_optimization.py",
+                "formal_document.py",
+            ]
+            selected: List[Path] = []
+            seen = set()
+            for name in priorities:
+                for path in target_paths:
+                    if path.name == name and path.name not in seen:
+                        seen.add(path.name)
+                        selected.append(path)
+                        break
+                if len(selected) >= 2:
+                    break
+            return selected or target_paths[:2]
+
+        if str(phase_name) == "intake_questioning":
+            priorities = [
+                "session.py",
+                "complainant.py",
+                "mediator.py",
+            ]
+            selected: List[Path] = []
+            seen = set()
+            for name in priorities:
+                for path in target_paths:
+                    if path.name == name and path.name not in seen:
+                        seen.add(path.name)
+                        selected.append(path)
+                        break
+                if len(selected) >= 2:
+                    break
+            return selected or target_paths[:2]
+
+        return target_paths
+
     def build_agentic_patch_task(
         self,
         results: List[Any],
@@ -859,7 +935,7 @@ class Optimizer:
             phase_payload = dict(phases.get(phase_name) or {})
             if not include_ready_phases and str(phase_payload.get("status") or "ready") == "ready":
                 continue
-            target_paths = [Path(path) for path in list(phase_payload.get("target_files") or [])]
+            target_paths = self._select_workflow_phase_targets(phase_name, phase_payload, report)
             phase_constraints = self._workflow_phase_constraints(phase_name, target_paths)
             phase_actions = [
                 str(item.get("recommended_action") or "").strip()

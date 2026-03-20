@@ -225,11 +225,18 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
     assert "workflow_capabilities" in intake_task.metadata
     assert "complainant_prompting" in intake_task.metadata["workflow_capabilities"]
     assert "target_symbols" in graph_task.constraints
-    assert any(path.endswith("knowledge_graph.py") for path in graph_task.constraints["target_symbols"])
+    assert any(path.endswith("denoiser.py") for path in graph_task.constraints["target_symbols"])
+    assert any(path.endswith("dependency_graph.py") for path in graph_task.constraints["target_symbols"])
     assert "workflow_capabilities" in graph_task.metadata
     assert "knowledge_graph_population" in graph_task.metadata["workflow_capabilities"]
     assert "target_symbols" in document_task.constraints
+    assert len(graph_task.target_files) == 2
+    assert any(path.name == "denoiser.py" for path in graph_task.target_files)
+    assert any(path.name == "dependency_graph.py" for path in graph_task.target_files)
     assert any(path.endswith("document_pipeline.py") for path in document_task.constraints["target_symbols"])
+    assert len(document_task.target_files) == 2
+    assert any(path.name == "synthesize_hacc_complaint.py" for path in document_task.target_files)
+    assert any(path.name == "document_pipeline.py" for path in document_task.target_files)
     assert "document_optimization" in document_task.metadata["workflow_capabilities"]
 
 
