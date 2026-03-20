@@ -29,6 +29,7 @@ def test_parse_command_options_supports_key_value_and_bools():
 
     assert positionals == ['employment retaliation']
     assert options['include_follow_up_plan'] is False
+    assert options.get('include_json') is None
     assert options['follow_up_max_tasks_per_claim'] == 2
     assert options['follow_up_force'] is True
 
@@ -553,6 +554,66 @@ def test_execute_follow_up_command_prints_recommendation_when_parse_quality_stil
     rendered = cli.print_response.call_args[0][0]
     assert 'recommendation: improve_parse_quality still needed' in rendered
     assert 'validation target: Retaliation / Adverse Action [Document] ref=doc:retaliation:1' in rendered
+
+
+def test_claim_review_command_can_suppress_raw_json():
+    mediator = Mock()
+    mediator.build_claim_support_review_payload.return_value = {
+        'intake_status': {
+            'current_phase': 'evidence',
+            'ready_to_advance': False,
+            'score': 0.5,
+            'remaining_gap_count': 1,
+            'contradiction_count': 0,
+        },
+        'claim_coverage_summary': {
+            'retaliation': {
+                'low_quality_parsed_record_count': 0,
+                'parse_quality_issue_element_count': 0,
+                'avg_parse_quality_score': 100.0,
+                'authority_treatment_summary': {},
+            }
+        },
+    }
+    cli = _make_cli(mediator)
+
+    cli.claim_review(['claim_type=retaliation', 'include_json=false'])
+
+    rendered = cli.print_response.call_args[0][0]
+    assert 'intake status summary:' in rendered
+    assert 'claim review quality summary:' in rendered
+    assert '"claim_coverage_summary"' not in rendered
+
+
+def test_execute_follow_up_command_can_suppress_raw_json():
+    mediator = Mock()
+    mediator.build_claim_support_follow_up_execution_payload.return_value = {
+        'intake_status': {
+            'current_phase': 'evidence',
+            'ready_to_advance': False,
+            'score': 0.5,
+            'remaining_gap_count': 0,
+            'contradiction_count': 1,
+        },
+        'execution_quality_summary': {
+            'retaliation': {
+                'quality_improvement_status': 'unchanged',
+                'pre_low_quality_parsed_record_count': 1,
+                'post_low_quality_parsed_record_count': 1,
+                'parse_quality_task_count': 1,
+                'resolved_parse_quality_issue_elements': [],
+                'remaining_parse_quality_issue_elements': ['Causal connection'],
+            }
+        },
+    }
+    cli = _make_cli(mediator)
+
+    cli.execute_follow_up(['claim_type=retaliation', 'include_json=false'])
+
+    rendered = cli.print_response.call_args[0][0]
+    assert 'intake status summary:' in rendered
+    assert 'follow-up execution quality summary:' in rendered
+    assert '"execution_quality_summary"' not in rendered
 
 
 def test_export_complaint_command_calls_document_package_builder():

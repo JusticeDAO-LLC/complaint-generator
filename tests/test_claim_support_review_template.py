@@ -762,7 +762,9 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "Accepted Changes" in content
     assert "Rejected Changes" in content
     assert "traceEvidenceList" in content
+    assert "traceTemporalHandoff" in content
     assert "Intake Evidence Snapshot" in content
+    assert "Claim Support Chronology Handoff" in content
     assert "Candidate claims:" in content
     assert "Candidate claim count:" in content
     assert "Candidate claim average confidence:" in content
@@ -808,6 +810,12 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "Alignment chronology status:" in content
     assert "Alignment chronology blockers:" in content
     assert "Alignment chronology handoffs:" in content
+    assert "Unresolved chronology issues" in content
+    assert "Chronology tasks" in content
+    assert "Event refs" in content
+    assert "Temporal relations" in content
+    assert "Proof bundles" in content
+    assert "Review chronology blockers" in content
     assert "Packet chronology tasks:" in content
     assert "Packet chronology targeted:" in content
     assert "Packet chronology status:" in content

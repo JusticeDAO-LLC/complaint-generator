@@ -352,6 +352,7 @@
                 <div id="traceEvidenceTriage"></div>
                 <div id="traceEvidenceQuestionTargets"></div>
                 <div id="traceIntakeConfirmation"></div>
+                <div id="traceTemporalHandoff"></div>
                 <div id="traceEvidenceLinks" class="inline-link-row"></div>
             </section>
             <section class="panel">
@@ -887,6 +888,44 @@
             ].filter(Boolean).join(' | ');
         }
 
+        function normalizeClaimSupportTemporalHandoff(value) {
+            if (!value || typeof value !== 'object') {
+                return {};
+            }
+            const normalizeIdList = (items) => Array.from(new Set(
+                (Array.isArray(items) ? items : [])
+                    .map((item) => String(item || '').trim())
+                    .filter(Boolean)
+            ));
+            const unresolvedTemporalIssueCount = Number(value.unresolved_temporal_issue_count);
+            const chronologyTaskCount = Number(value.chronology_task_count);
+            const normalized = {
+                unresolved_temporal_issue_count: Number.isFinite(unresolvedTemporalIssueCount) ? unresolvedTemporalIssueCount : 0,
+                chronology_task_count: Number.isFinite(chronologyTaskCount) ? chronologyTaskCount : 0,
+                unresolved_temporal_issue_ids: normalizeIdList(value.unresolved_temporal_issue_ids),
+                event_ids: normalizeIdList(value.event_ids),
+                temporal_fact_ids: normalizeIdList(value.temporal_fact_ids),
+                temporal_relation_ids: normalizeIdList(value.temporal_relation_ids),
+                timeline_issue_ids: normalizeIdList(value.timeline_issue_ids),
+                temporal_issue_ids: normalizeIdList(value.temporal_issue_ids),
+                temporal_proof_bundle_ids: normalizeIdList(value.temporal_proof_bundle_ids),
+                temporal_proof_objectives: normalizeIdList(value.temporal_proof_objectives),
+            };
+            if (!normalized.unresolved_temporal_issue_count && !normalized.chronology_task_count && !(
+                normalized.unresolved_temporal_issue_ids.length
+                || normalized.event_ids.length
+                || normalized.temporal_fact_ids.length
+                || normalized.temporal_relation_ids.length
+                || normalized.timeline_issue_ids.length
+                || normalized.temporal_issue_ids.length
+                || normalized.temporal_proof_bundle_ids.length
+                || normalized.temporal_proof_objectives.length
+            )) {
+                return {};
+            }
+            return normalized;
+        }
+
         function renderIntakeSummaryConfirmation(intakeCaseSummary, dashboardUrl) {
             const summary = intakeCaseSummary && typeof intakeCaseSummary === 'object' ? intakeCaseSummary : {};
             const confirmation = normalizeIntakeSummaryConfirmation(summary.complainant_summary_confirmation);
@@ -923,6 +962,58 @@
                     <div class="inline-link-row">
                         <a class="inline-link" href="${escapeHtml(dashboardUrl)}">${escapeHtml(dashboardLabel)}</a>
                     </div>
+                </div>
+            `;
+        }
+
+        function renderClaimSupportTemporalHandoff(handoff, dashboardUrl) {
+            const normalized = normalizeClaimSupportTemporalHandoff(handoff);
+            if (!Object.keys(normalized).length) {
+                return '';
+            }
+            const blocked = normalized.unresolved_temporal_issue_count > 0;
+            const statusLabel = blocked ? 'blocked' : 'ready';
+            const detailLines = [
+                normalized.unresolved_temporal_issue_ids.length
+                    ? `Unresolved issue ids: ${normalized.unresolved_temporal_issue_ids.join(', ')}`
+                    : '',
+                normalized.temporal_issue_ids.length
+                    ? `Temporal issue refs: ${normalized.temporal_issue_ids.join(', ')}`
+                    : '',
+                normalized.timeline_issue_ids.length
+                    ? `Timeline issue refs: ${normalized.timeline_issue_ids.join(', ')}`
+                    : '',
+                normalized.event_ids.length
+                    ? `Event refs: ${normalized.event_ids.join(', ')}`
+                    : '',
+                normalized.temporal_fact_ids.length
+                    ? `Temporal fact refs: ${normalized.temporal_fact_ids.join(', ')}`
+                    : '',
+                normalized.temporal_relation_ids.length
+                    ? `Temporal relation refs: ${normalized.temporal_relation_ids.join(', ')}`
+                    : '',
+                normalized.temporal_proof_bundle_ids.length
+                    ? `Temporal proof bundles: ${normalized.temporal_proof_bundle_ids.join(', ')}`
+                    : '',
+                normalized.temporal_proof_objectives.length
+                    ? `Temporal proof objectives: ${normalized.temporal_proof_objectives.join(', ')}`
+                    : '',
+            ].filter(Boolean);
+            const dashboardLink = String(dashboardUrl || '').trim();
+            const dashboardLabel = blocked ? 'Review chronology blockers' : 'Open chronology review';
+            return `
+                <div class="intake-handoff-card" data-status="${escapeHtml(statusLabel)}">
+                    <div><strong>Claim Support Chronology Handoff</strong></div>
+                    <div class="chip-row" style="margin-top: 10px;">
+                        <span class="chip">Status ${escapeHtml(humanizeKey(statusLabel))}</span>
+                        <span class="chip">Unresolved chronology issues ${escapeHtml(String(normalized.unresolved_temporal_issue_count))}</span>
+                        <span class="chip">Chronology tasks ${escapeHtml(String(normalized.chronology_task_count))}</span>
+                        <span class="chip">Event refs ${escapeHtml(String(normalized.event_ids.length))}</span>
+                        <span class="chip">Temporal relations ${escapeHtml(String(normalized.temporal_relation_ids.length))}</span>
+                        <span class="chip">Proof bundles ${escapeHtml(String(normalized.temporal_proof_bundle_ids.length))}</span>
+                    </div>
+                    ${detailLines.length ? `<div class="intake-handoff-lines muted">${detailLines.map((line) => `<div>${escapeHtml(line)}</div>`).join('')}</div>` : ''}
+                    ${dashboardLink ? `<div class="inline-link-row"><a class="inline-link" href="${escapeHtml(dashboardLink)}">${escapeHtml(dashboardLabel)}</a></div>` : ''}
                 </div>
             `;
         }
@@ -1182,6 +1273,11 @@
             const proofLeadIntentSummary = intakeCaseSummary.proof_lead_intent_summary && typeof intakeCaseSummary.proof_lead_intent_summary === 'object' ? intakeCaseSummary.proof_lead_intent_summary : {};
             const eventLedgerSummary = intakeCaseSummary.event_ledger_summary && typeof intakeCaseSummary.event_ledger_summary === 'object' ? intakeCaseSummary.event_ledger_summary : {};
             const timelineAnchorSummary = intakeCaseSummary.timeline_anchor_summary && typeof intakeCaseSummary.timeline_anchor_summary === 'object' ? intakeCaseSummary.timeline_anchor_summary : {};
+            const claimSupportTemporalHandoff = trace.claim_support_temporal_handoff && typeof trace.claim_support_temporal_handoff === 'object'
+                ? trace.claim_support_temporal_handoff
+                : (intakeCaseSummary.claim_support_temporal_handoff && typeof intakeCaseSummary.claim_support_temporal_handoff === 'object'
+                    ? intakeCaseSummary.claim_support_temporal_handoff
+                    : {});
             const harmProfile = intakeCaseSummary.harm_profile && typeof intakeCaseSummary.harm_profile === 'object' ? intakeCaseSummary.harm_profile : {};
             const remedyProfile = intakeCaseSummary.remedy_profile && typeof intakeCaseSummary.remedy_profile === 'object' ? intakeCaseSummary.remedy_profile : {};
             const questionCandidateSummary = intakeCaseSummary.question_candidate_summary && typeof intakeCaseSummary.question_candidate_summary === 'object' ? intakeCaseSummary.question_candidate_summary : {};
@@ -1630,6 +1726,10 @@
                 : '';
             document.getElementById('traceIntakeConfirmation').innerHTML = renderIntakeSummaryConfirmation(
                 intakeCaseSummary,
+                traceDashboardUrl,
+            );
+            document.getElementById('traceTemporalHandoff').innerHTML = renderClaimSupportTemporalHandoff(
+                claimSupportTemporalHandoff,
                 traceDashboardUrl,
             );
 

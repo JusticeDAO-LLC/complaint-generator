@@ -3084,6 +3084,9 @@
             const { manualReviewClaims, pendingReviewClaims } = buildClaimQueueIntentSets(intakeCaseSummary);
             const sections = Object.entries(readiness.sections || {});
             const warningCount = Number(readiness.warning_count || 0);
+            const workflowPhasePlan = readiness.workflow_phase_plan && typeof readiness.workflow_phase_plan === 'object'
+                ? readiness.workflow_phase_plan
+                : {};
             const sectionCards = sections.map(([key, section]) => `
                 <div class="readiness-chip">
                     <strong>${escapeHtml(section.title || key)}</strong>
@@ -3097,12 +3100,57 @@
                     ${renderReviewLinks(reviewLinks)}
                     ${renderWorkflowPriority(reviewLinks, intakeCaseSummary, manualReviewClaims, pendingReviewClaims)}
                     ${renderIntakeSummaryConfirmation(reviewLinks, intakeCaseSummary)}
+                    ${renderWorkflowPhaseGuidance(workflowPhasePlan)}
                     <div class="readiness-grid">${sectionCards}</div>
                     <div class="readiness-subtitle">Section Readiness</div>
                     ${renderSectionReadiness(readiness.sections || {}, reviewLinks, manualReviewClaims, pendingReviewClaims)}
                     <div class="readiness-subtitle">Claim Readiness</div>
                     ${renderClaimReadiness(readiness.claims || [], exhibits || [], reviewLinks, manualReviewClaims, pendingReviewClaims)}
                 </section>
+            `;
+        }
+
+        function renderWorkflowPhaseGuidance(workflowPhasePlan) {
+            if (!workflowPhasePlan || typeof workflowPhasePlan !== 'object') {
+                return '';
+            }
+            const phases = workflowPhasePlan.phases && typeof workflowPhasePlan.phases === 'object'
+                ? workflowPhasePlan.phases
+                : {};
+            const recommendedOrder = Array.isArray(workflowPhasePlan.recommended_order)
+                ? workflowPhasePlan.recommended_order.filter((name) => phases[name] && typeof phases[name] === 'object')
+                : Object.keys(phases);
+            if (!recommendedOrder.length) {
+                return '';
+            }
+            const cards = recommendedOrder.map((phaseName) => {
+                const phase = phases[phaseName] && typeof phases[phaseName] === 'object' ? phases[phaseName] : {};
+                const signals = phase.signals && typeof phase.signals === 'object' ? phase.signals : {};
+                const signalLines = Object.entries(signals)
+                    .filter(([, value]) => value !== null && value !== '' && !(Array.isArray(value) && !value.length))
+                    .slice(0, 4)
+                    .map(([key, value]) => `${humanizeKey(key)}: ${Array.isArray(value) ? value.join(', ') : value}`);
+                const actionLines = Array.isArray(phase.recommended_actions)
+                    ? phase.recommended_actions.filter(Boolean)
+                    : [];
+                return `
+                    <article class="section-card">
+                        <div class="checklist-card-header">
+                            <div>
+                                <div class="checklist-scope">Workflow Phase</div>
+                                <h3>${escapeHtml(humanizeKey(phaseName))}</h3>
+                            </div>
+                            ${renderStatusPill(phase.status || 'ready')}
+                        </div>
+                        <div>${escapeHtml(phase.summary || '')}</div>
+                        ${signalLines.length ? `<div class="preview-meta"><strong>Signals</strong></div>${renderLines(signalLines)}` : ''}
+                        ${actionLines.length ? `<div class="preview-meta"><strong>Recommended actions</strong></div>${renderLines(actionLines)}` : ''}
+                    </article>
+                `;
+            }).join('');
+            return `
+                <div class="readiness-subtitle">Workflow Phase Guidance</div>
+                <div class="checklist-stack">${cards}</div>
             `;
         }
 

@@ -695,6 +695,42 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
     assert result["draft"]["source_context"]["claim_support_temporal_handoff"] == result["claim_support_temporal_handoff"]
 
 
+def test_formal_complaint_document_builder_exposes_runtime_workflow_phase_plan_from_phase_state():
+    mediator = _build_mediator()
+    phase_values = {
+        "knowledge_graph": {"entity_count": 4},
+        "dependency_graph": {"claim_count": 2},
+        "current_gaps": [{"gap_id": "gap_001", "summary": "Missing adverse-action date anchor"}],
+        "remaining_gaps": 1,
+        "knowledge_graph_enhanced": False,
+    }
+    mediator.phase_manager = SimpleNamespace(
+        get_phase_data=lambda _phase, key: phase_values.get(key)
+    )
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    result = builder.build_package(
+        district="Northern District of California",
+        county="San Francisco County",
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Acme Corporation"],
+        output_formats=["txt"],
+    )
+
+    workflow_phase_plan = result["workflow_phase_plan"]
+    assert workflow_phase_plan["recommended_order"] == ["graph_analysis", "document_generation"]
+    assert workflow_phase_plan["phases"]["graph_analysis"]["status"] == "warning"
+    assert workflow_phase_plan["phases"]["graph_analysis"]["signals"]["remaining_gap_count"] == 1
+    assert workflow_phase_plan["phases"]["graph_analysis"]["signals"]["knowledge_graph_enhanced"] is False
+    assert workflow_phase_plan["phases"]["document_generation"]["status"] == "warning"
+    assert result["draft"]["workflow_phase_plan"] == workflow_phase_plan
+    assert result["draft"]["drafting_readiness"]["workflow_phase_plan"] == workflow_phase_plan
+    assert any(
+        warning.get("code") == "workflow_graph_analysis_warning"
+        for warning in result["drafting_readiness"]["warnings"]
+    )
+
+
 def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     mediator = _build_mediator()
     mediator.get_three_phase_status.return_value = {
@@ -2704,6 +2740,7 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert 'value="checklist"' in page_html
         assert 'value="packet"' in page_html
         assert 'Drafting Readiness' in page_html
+        assert 'Workflow Phase Guidance' in page_html
         assert 'Pre-Filing Checklist' in page_html
         assert 'Open Checklist Review' in page_html
         assert 'Section Readiness' in page_html

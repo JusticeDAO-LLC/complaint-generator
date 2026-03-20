@@ -4155,6 +4155,131 @@ def test_optimization_trace_smoke_renders_confirmed_intake_summary_handoff():
             browser.close()
 
 
+def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    payload = {
+        "cid": "bafy-trace-chronology",
+        "size": 812,
+        "trace": {
+            "user_id": "trace-smoke-user",
+            "claim_support_temporal_handoff": {
+                "unresolved_temporal_issue_count": 2,
+                "unresolved_temporal_issue_ids": ["timeline-gap-001", "timeline-gap-002"],
+                "chronology_task_count": 3,
+                "event_ids": ["event-termination", "event-hr-report"],
+                "temporal_fact_ids": ["fact-001"],
+                "temporal_relation_ids": ["rel-before-001"],
+                "timeline_issue_ids": ["issue-ledger-001"],
+                "temporal_issue_ids": ["temporal-issue-001", "temporal-issue-002"],
+                "temporal_proof_bundle_ids": ["retaliation:causation:bundle_001"],
+                "temporal_proof_objectives": ["show protected activity preceded termination"],
+            },
+            "intake_status": {
+                "current_phase": "evidence",
+                "score": 0.94,
+                "contradiction_count": 0,
+                "blockers": [],
+                "criteria": {
+                    "case_theory_coherent": True,
+                    "minimum_proof_path_present": True,
+                    "claim_disambiguation_resolved": True,
+                    "complainant_summary_confirmed": True,
+                },
+                "contradictions": [],
+            },
+            "intake_constraints": [],
+            "intake_case_summary": {
+                "candidate_claims": [
+                    {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.91},
+                ],
+                "candidate_claim_summary": {
+                    "count": 1,
+                    "claim_types": ["retaliation"],
+                    "average_confidence": 0.91,
+                    "top_claim_type": "retaliation",
+                    "top_confidence": 0.91,
+                    "ambiguous_claim_count": 0,
+                    "ambiguity_flag_count": 0,
+                    "ambiguity_flag_counts": {},
+                    "close_leading_claims": False,
+                },
+                "intake_sections": {},
+                "canonical_fact_summary": {"count": 1, "facts": [{"fact_id": "fact_001"}]},
+                "canonical_fact_intent_summary": {},
+                "proof_lead_summary": {"count": 1, "proof_leads": [{"lead_id": "lead_001"}]},
+                "proof_lead_intent_summary": {},
+                "timeline_anchor_summary": {"count": 1, "anchors": [{"anchor_id": "anchor_001"}]},
+                "harm_profile": {},
+                "remedy_profile": {},
+                "question_candidate_summary": {},
+                "claim_support_packet_summary": {
+                    "claim_count": 1,
+                    "element_count": 1,
+                    "status_counts": {"needs_follow_up": 1},
+                    "recommended_actions": ["fill_temporal_chronology_gap"],
+                    "supported_blocking_element_ratio": 0.0,
+                    "credible_support_ratio": 0.5,
+                    "draft_ready_element_ratio": 0.0,
+                    "high_quality_parse_ratio": 1.0,
+                    "reviewable_escalation_ratio": 1.0,
+                    "claim_support_reviewable_escalation_count": 1,
+                    "proof_readiness_score": 0.43,
+                    "claim_support_unresolved_without_review_path_count": 0,
+                    "claim_support_unresolved_temporal_issue_count": 2,
+                    "claim_support_unresolved_temporal_issue_ids": ["timeline-gap-001", "timeline-gap-002"],
+                    "evidence_completion_ready": False,
+                    "temporal_gap_task_count": 3,
+                },
+                "alignment_evidence_tasks": [],
+                "alignment_task_update_history": [],
+            },
+            "iterations": [
+                {
+                    "iteration": 1,
+                    "focus_section": "chronology",
+                    "accepted": True,
+                    "critic": {"overall_score": 0.88},
+                }
+            ],
+            "initial_review": {"overall_score": 0.68},
+            "final_review": {"overall_score": 0.88, "recommended_focus": "chronology"},
+        },
+    }
+
+    app = _build_document_browser_smoke_app()
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page()
+            page.goto(f"{base_url}/document/optimization-trace")
+            page.evaluate("payload => window.renderTrace(payload)", payload)
+            page.wait_for_function(
+                "() => document.getElementById('traceTemporalHandoff').innerText.includes('Claim Support Chronology Handoff')"
+            )
+
+            temporal_handoff_text = page.locator("#traceTemporalHandoff").inner_text().lower()
+
+            assert "claim support chronology handoff" in temporal_handoff_text
+            assert temporal_handoff_text.count("claim support chronology handoff") == 1
+            assert "status blocked" in temporal_handoff_text
+            assert "unresolved chronology issues 2" in temporal_handoff_text
+            assert "chronology tasks 3" in temporal_handoff_text
+            assert "event refs 2" in temporal_handoff_text
+            assert "temporal relations 1" in temporal_handoff_text
+            assert "proof bundles 1" in temporal_handoff_text
+            assert "unresolved issue ids: timeline-gap-001, timeline-gap-002" in temporal_handoff_text
+            assert "temporal issue refs: temporal-issue-001, temporal-issue-002" in temporal_handoff_text
+            assert "event refs: event-termination, event-hr-report" in temporal_handoff_text
+            assert "temporal relation refs: rel-before-001" in temporal_handoff_text
+            assert "temporal proof bundles: retaliation:causation:bundle_001" in temporal_handoff_text
+            assert "temporal proof objectives: show protected activity preceded termination" in temporal_handoff_text
+            assert "review chronology blockers" in temporal_handoff_text
+
+            browser.close()
+
+
 def test_document_builder_question_review_link_click_preserves_focus_on_review_page():
     if not PLAYWRIGHT_AVAILABLE:
         pytest.skip("Playwright not available")

@@ -170,9 +170,9 @@ class CLI:
 			follow_up_support_kind=options.get('follow_up_support_kind'),
 			follow_up_max_tasks_per_claim=options.get('follow_up_max_tasks_per_claim', 3),
 		)
-		self.print_response(self._format_claim_review_output(payload))
+		self.print_response(self._format_claim_review_output(payload, include_json=options.get('include_json', True)))
 
-	def _format_claim_review_output(self, payload):
+	def _format_claim_review_output(self, payload, include_json=True):
 		sections = []
 		intake_status = payload.get('intake_status', {}) if isinstance(payload, dict) else {}
 		if isinstance(intake_status, dict) and intake_status:
@@ -237,7 +237,8 @@ class CLI:
 					follow_up_history,
 				)
 			)
-		sections.append(json.dumps(payload, indent=2, default=str))
+		if include_json:
+			sections.append(json.dumps(payload, indent=2, default=str))
 		return '\n\n'.join(section for section in sections if section)
 
 	def _format_intake_status_summary(self, intake_status):
@@ -539,9 +540,9 @@ class CLI:
 			include_overview=options.get('include_overview', True),
 			include_follow_up_plan=options.get('include_follow_up_plan', True),
 		)
-		self.print_response(self._format_execute_follow_up_output(payload))
+		self.print_response(self._format_execute_follow_up_output(payload, include_json=options.get('include_json', True)))
 
-	def _format_execute_follow_up_output(self, payload):
+	def _format_execute_follow_up_output(self, payload, include_json=True):
 		sections = []
 		intake_status = payload.get('intake_status', {}) if isinstance(payload, dict) else {}
 		if isinstance(intake_status, dict) and intake_status:
@@ -607,7 +608,8 @@ class CLI:
 					post_execution_history_summary,
 				)
 			)
-		sections.append(json.dumps(payload, indent=2, default=str))
+		if include_json:
+			sections.append(json.dumps(payload, indent=2, default=str))
 		return '\n\n'.join(section for section in sections if section)
 
 	def _format_execution_quality_summary(self, execution_quality_summary):
