@@ -338,6 +338,10 @@ class AdversarialSession:
             'first happened',
             'step by step',
             'walk me through',
+            'date anchor',
+            'decision timeline',
+            'actor by actor',
+            'actor-by-actor',
         )
         return any(term in text for term in timeline_terms)
 
@@ -407,6 +411,44 @@ class AdversarialSession:
             'contact person',
         )
         return any(term in text for term in actor_terms)
+
+    @staticmethod
+    def _is_protected_activity_causation_question(question: Any) -> bool:
+        objective = AdversarialSession._extract_question_objective(question)
+        question_type = AdversarialSession._extract_question_type(question)
+        if objective in {'establish_causation', 'link_protected_activity_to_adverse_action'}:
+            return True
+        if question_type in {'causation', 'retaliation'}:
+            return True
+        text = AdversarialSession._extract_question_text(question).lower()
+        protected_activity_terms = (
+            'protected activity',
+            'complaint',
+            'reported',
+            'accommodation request',
+            'grievance',
+            'appeal',
+        )
+        adverse_terms = (
+            'adverse action',
+            'retaliat',
+            'termination',
+            'denial',
+            'disciplin',
+        )
+        causation_terms = (
+            'because',
+            'after',
+            'linked',
+            'caus',
+            'reason',
+            'connection',
+        )
+        return (
+            any(term in text for term in protected_activity_terms)
+            and any(term in text for term in adverse_terms)
+            and any(term in text for term in causation_terms)
+        )
 
     @staticmethod
     def _is_documentary_evidence_question(question: Any) -> bool:
@@ -500,6 +542,7 @@ class AdversarialSession:
         need_timeline: bool,
         need_harm_remedy: bool,
         need_actor_decisionmaker: bool,
+        need_causation: bool,
         need_documentary_evidence: bool,
         need_witness: bool,
         missing_anchor_sections: Set[str] | None = None,
@@ -518,11 +561,27 @@ class AdversarialSession:
             return 1
         if need_actor_decisionmaker and AdversarialSession._is_actor_or_decisionmaker_question(question):
             return 2
-        if need_documentary_evidence and AdversarialSession._is_documentary_evidence_question(question):
+        if need_causation and AdversarialSession._is_protected_activity_causation_question(question):
             return 3
-        if need_witness and AdversarialSession._is_witness_question(question):
+        if need_documentary_evidence and AdversarialSession._is_documentary_evidence_question(question):
             return 4
-        return 5
+        if need_witness and AdversarialSession._is_witness_question(question):
+            return 5
+        return 6
+
+    @staticmethod
+    def _extract_actor_critic_score(question: Any) -> float:
+        if not isinstance(question, dict):
+            return 0.0
+        direct = question.get('actor_critic_score')
+        if isinstance(direct, (int, float)):
+            return float(direct)
+        explanation = question.get('ranking_explanation')
+        if isinstance(explanation, dict):
+            nested = explanation.get('actor_critic_score')
+            if isinstance(nested, (int, float)):
+                return float(nested)
+        return 0.0
 
     @staticmethod
     def _question_targets_anchor_section(question_text: str, section: str) -> bool:
@@ -573,12 +632,18 @@ class AdversarialSession:
     def _question_objectives_from_prompt(cls, question_text: str) -> List[str]:
         lowered = question_text.lower()
         objectives: List[str] = []
-        if any(token in lowered for token in ('when', 'date', 'timeline')):
+        if any(token in lowered for token in ('when', 'date', 'timeline', 'chronology', 'sequence', 'decision timeline')):
             objectives.append('timeline')
         if any(token in lowered for token in ('harm', 'remedy', 'loss', 'relief')):
             objectives.append('harm_remedy')
         if any(token in lowered for token in ('who', 'which person', 'made, communicated', 'carried out')):
             objectives.append('actors')
+        if (
+            any(token in lowered for token in ('protected activity', 'complaint', 'reported', 'accommodation', 'grievance', 'appeal'))
+            and any(token in lowered for token in ('adverse', 'retaliat', 'denial', 'termination'))
+            and any(token in lowered for token in ('because', 'after', 'caus', 'reason', 'link'))
+        ):
+            objectives.append('causation')
         if any(token in lowered for token in ('email', 'emails', 'document', 'documents', 'notice', 'records', 'messages', 'written')):
             objectives.append('documents')
         if any(token in lowered for token in ('witness', 'witnesses', 'saw or heard')):
@@ -655,10 +720,11 @@ class AdversarialSession:
             'anchor_selection_criteria': 4,
             'timeline': 5,
             'actors': 6,
-            'documents': 7,
-            'witnesses': 8,
-            'harm_remedy': 9,
-            'intake_follow_up': 10,
+            'causation': 7,
+            'documents': 8,
+            'witnesses': 9,
+            'harm_remedy': 10,
+            'intake_follow_up': 11,
         }
         candidates.sort(key=lambda item: (priority.get(item[1], 99), item[0].lower(), item[1]))
         deduped: List[tuple[str, str]] = []
@@ -669,6 +735,39 @@ class AdversarialSession:
                 seen.add(key)
                 deduped.append(item)
         return deduped
+
+    @staticmethod
+    def _seed_requires_causation_probe(seed_complaint: Dict[str, Any]) -> bool:
+        key_facts = seed_complaint.get('key_facts') if isinstance(seed_complaint.get('key_facts'), dict) else {}
+        seed_text = " ".join(
+            [
+                str(seed_complaint.get('summary') or ''),
+                str(key_facts.get('incident_summary') or ''),
+                " ".join(str(item or '') for item in list(key_facts.get('complainant_story_facts') or [])),
+                " ".join(str(item or '') for item in list(key_facts.get('anchor_sections') or [])),
+            ]
+        ).lower()
+        protected_activity_terms = (
+            'protected activity',
+            'complaint',
+            'reported',
+            'accommodation',
+            'grievance',
+            'appeal',
+            'retaliat',
+        )
+        adverse_terms = (
+            'adverse',
+            'termination',
+            'denial',
+            'disciplin',
+            'evict',
+            'nonrenew',
+            'suspension',
+        )
+        return any(term in seed_text for term in protected_activity_terms) and any(
+            term in seed_text for term in adverse_terms
+        )
 
     @classmethod
     def _questions_substantially_overlap(cls, question_a: Any, question_b: Any) -> bool:
@@ -738,6 +837,8 @@ class AdversarialSession:
             return cls._is_timeline_question(candidate)
         if objective == 'actors':
             return cls._is_actor_or_decisionmaker_question(candidate)
+        if objective == 'causation':
+            return cls._is_protected_activity_causation_question(candidate)
         if objective == 'harm_remedy':
             return cls._is_harm_or_remedy_question(candidate)
         if objective == 'documents':
@@ -904,6 +1005,7 @@ class AdversarialSession:
         need_timeline: bool,
         need_harm_remedy: bool,
         need_actor_decisionmaker: bool,
+        need_causation: bool,
         need_documentary_evidence: bool,
         need_witness: bool,
         last_question_key: str | None,
@@ -919,6 +1021,8 @@ class AdversarialSession:
             if probe_type == 'harm_remedy' and not need_harm_remedy:
                 continue
             if probe_type == 'actors' and not need_actor_decisionmaker:
+                continue
+            if probe_type == 'causation' and not need_causation:
                 continue
             if probe_type == 'documents' and not need_documentary_evidence:
                 continue
@@ -953,6 +1057,11 @@ class AdversarialSession:
             probe_candidates.append((
                 "Who specifically made each decision or statement, and what exactly was said or done?",
                 "actors",
+            ))
+        if need_causation:
+            probe_candidates.append((
+                "What protected activity happened first, what adverse action followed, who made each decision, and what facts show the adverse action happened because of that protected activity?",
+                "causation",
             ))
         if need_documentary_evidence:
             probe_candidates.append((
@@ -1034,6 +1143,7 @@ class AdversarialSession:
         need_timeline: bool,
         need_harm_remedy: bool,
         need_actor_decisionmaker: bool,
+        need_causation: bool,
         need_documentary_evidence: bool,
         need_witness: bool,
         last_question_key: str | None,
@@ -1120,10 +1230,12 @@ class AdversarialSession:
                     need_timeline=need_timeline,
                     need_harm_remedy=need_harm_remedy,
                     need_actor_decisionmaker=need_actor_decisionmaker,
+                    need_causation=need_causation,
                     need_documentary_evidence=need_documentary_evidence,
                     need_witness=need_witness,
                     missing_anchor_sections=missing_anchor_sections,
                 ),
+                -self._extract_actor_critic_score(c[0]),
                 c[5],
                 c[4],
                 c[6],
@@ -1157,6 +1269,16 @@ class AdversarialSession:
                     and intent_count == 0
                     and similarity_to_seen < novel_similarity_threshold
                     and self._is_actor_or_decisionmaker_question(q)
+                ):
+                    return q
+
+        if need_causation:
+            for q, text, _, _, asked_count, intent_count, similarity_to_seen in non_redundant_candidates:
+                if (
+                    asked_count == 0
+                    and intent_count == 0
+                    and similarity_to_seen < novel_similarity_threshold
+                    and self._is_protected_activity_causation_question(q)
                 ):
                     return q
 
@@ -1263,9 +1385,11 @@ class AdversarialSession:
             has_timeline_question = False
             has_harm_remedy_question = False
             has_actor_or_decisionmaker_question = False
+            has_causation_question = False
             has_documentary_evidence_question = False
             has_witness_question = False
             expected_anchor_sections = self._extract_anchor_sections(seed_complaint)
+            require_causation_probe = self._seed_requires_causation_probe(seed_complaint)
             
             while turns < self.max_turns:
                 # Get questions from mediator
@@ -1280,6 +1404,7 @@ class AdversarialSession:
                 need_timeline = not has_timeline_question
                 need_harm_remedy = not has_harm_remedy_question
                 need_actor_decisionmaker = not has_actor_or_decisionmaker_question
+                need_causation = require_causation_probe and not has_causation_question
                 need_documentary_evidence = not has_documentary_evidence_question
                 need_witness = not has_witness_question
 
@@ -1293,6 +1418,7 @@ class AdversarialSession:
                         need_timeline=need_timeline,
                         need_harm_remedy=need_harm_remedy,
                         need_actor_decisionmaker=need_actor_decisionmaker,
+                        need_causation=need_causation,
                         need_documentary_evidence=need_documentary_evidence,
                         need_witness=need_witness,
                         last_question_key=last_question_key,
@@ -1309,6 +1435,7 @@ class AdversarialSession:
                         need_timeline=need_timeline,
                         need_harm_remedy=need_harm_remedy,
                         need_actor_decisionmaker=need_actor_decisionmaker,
+                        need_causation=need_causation,
                         need_documentary_evidence=need_documentary_evidence,
                         need_witness=need_witness,
                         last_question_key=last_question_key,
@@ -1390,6 +1517,8 @@ class AdversarialSession:
                     has_harm_remedy_question = True
                 if self._is_actor_or_decisionmaker_question(question):
                     has_actor_or_decisionmaker_question = True
+                if self._is_protected_activity_causation_question(question):
+                    has_causation_question = True
                 if self._is_documentary_evidence_question(question):
                     has_documentary_evidence_question = True
                 if self._is_witness_question(question):
@@ -1403,10 +1532,12 @@ class AdversarialSession:
                 has_core_coverage = has_timeline_question and has_harm_remedy_question
                 has_evidence_coverage = (
                     has_actor_or_decisionmaker_question
+                    or has_causation_question
                     or has_documentary_evidence_question
                     or has_witness_question
                 )
-                if converged and has_core_coverage and has_evidence_coverage:
+                has_causation_coverage = (not require_causation_probe) or has_causation_question
+                if converged and has_core_coverage and has_evidence_coverage and has_causation_coverage:
                     logger.info(f"Session converged after {turns} turns")
                     break
             

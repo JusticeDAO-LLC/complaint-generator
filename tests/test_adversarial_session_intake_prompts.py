@@ -181,6 +181,7 @@ def test_build_fallback_probe_prefers_intake_questionnaire_prompt():
         need_timeline=True,
         need_harm_remedy=False,
         need_actor_decisionmaker=True,
+        need_causation=False,
         need_documentary_evidence=False,
         need_witness=False,
         last_question_key=None,
@@ -192,6 +193,40 @@ def test_build_fallback_probe_prefers_intake_questionnaire_prompt():
     assert probe is not None
     assert probe["question"].startswith("When did the key events happen")
     assert probe["question_objective"] == "timeline"
+    assert probe["source"] == "harness_fallback"
+
+
+def test_build_fallback_probe_can_emit_causation_question_when_needed():
+    session = _make_session()
+    seed = {
+        "summary": "Retaliation complaint after grievance activity and denial of assistance.",
+        "key_facts": {
+            "incident_summary": "Plaintiff complained through the grievance process and then HACC denied assistance.",
+            "synthetic_prompts": {
+                "intake_questions": []
+            },
+        },
+    }
+
+    probe = session._build_fallback_probe(
+        seed,
+        asked_question_counts={},
+        asked_intent_counts={},
+        need_timeline=False,
+        need_harm_remedy=False,
+        need_actor_decisionmaker=False,
+        need_causation=True,
+        need_documentary_evidence=False,
+        need_witness=False,
+        last_question_key=None,
+        last_question_intent_key=None,
+        recent_intent_keys=set(),
+        missing_anchor_sections=set(),
+    )
+
+    assert probe is not None
+    assert "protected activity" in probe["question"].lower()
+    assert probe["question_objective"] == "causation"
     assert probe["source"] == "harness_fallback"
 
 

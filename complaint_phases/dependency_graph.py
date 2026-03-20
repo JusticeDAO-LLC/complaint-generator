@@ -415,6 +415,104 @@ class DependencyGraph:
 
         return issues
 
+    def get_blocker_follow_up_issues(self) -> List[Dict[str, Any]]:
+        """Return follow-up blocker issues for intake questioning and patch routing."""
+        issues: List[Dict[str, Any]] = []
+        node_text_by_id = {
+            node_id: f"{node.name} {node.description}".strip().lower()
+            for node_id, node in self.nodes.items()
+        }
+
+        # Hearing/appeal timing blockers: hearing references without explicit temporal edges.
+        hearing_node_ids = [
+            node_id
+            for node_id, text_value in node_text_by_id.items()
+            if any(token in text_value for token in ("hearing", "appeal", "grievance"))
+        ]
+        for node_id in hearing_node_ids:
+            temporal_links = [
+                dep for dep in self.get_dependencies_for_node(node_id)
+                if dep.dependency_type in {DependencyType.BEFORE, DependencyType.SAME_TIME, DependencyType.OVERLAPS}
+            ]
+            if temporal_links:
+                continue
+            node = self.get_node(node_id)
+            issues.append(
+                {
+                    "issue_id": f"blocker_hearing_timing_{node_id}",
+                    "issue_type": "missing_hearing_timing",
+                    "severity": "blocking",
+                    "question_type": "timeline",
+                    "node_id": node_id,
+                    "node_name": node.name if node else node_id,
+                    "summary": "Hearing or appeal activity lacks dated sequencing in dependency graph.",
+                    "suggested_question": (
+                        "When was the hearing or appeal requested, who handled it, and on what date did each response occur?"
+                    ),
+                }
+            )
+
+        # Staff identity blockers: staff-role references without a concrete named actor node.
+        staff_like_nodes = [
+            node for node in self.nodes.values()
+            if any(token in f"{node.name} {node.description}".lower() for token in ("manager", "supervisor", "hr", "landlord", "officer", "staff"))
+        ]
+        has_named_actor = any(
+            node.node_type in {NodeType.FACT, NodeType.EVIDENCE, NodeType.REQUIREMENT, NodeType.CLAIM}
+            and bool(re.search(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b", node.name))
+            for node in self.nodes.values()
+        )
+        if staff_like_nodes and not has_named_actor:
+            issues.append(
+                {
+                    "issue_id": "blocker_staff_identity_missing",
+                    "issue_type": "missing_staff_identity",
+                    "severity": "blocking",
+                    "question_type": "responsible_party",
+                    "summary": "Staff-role references exist but no named actor is linked in the dependency graph.",
+                    "suggested_question": "Who specifically took each action (full name and title), and what team or office were they in?",
+                }
+            )
+
+        # Retaliation sequencing blockers: protected activity and adverse action nodes without BEFORE ordering.
+        retaliation_claim_nodes = [
+            node for node in self.get_nodes_by_type(NodeType.CLAIM)
+            if (
+                "retaliat" in node.name.lower()
+                or str((node.attributes or {}).get("claim_type") or "").strip().lower() == "retaliation"
+            )
+        ]
+        if retaliation_claim_nodes:
+            protected_ids = [
+                node_id for node_id, text_value in node_text_by_id.items()
+                if any(token in text_value for token in ("protected activity", "complained", "reported", "grievance", "accommodation"))
+            ]
+            adverse_ids = [
+                node_id for node_id, text_value in node_text_by_id.items()
+                if any(token in text_value for token in ("fired", "terminated", "demoted", "disciplined", "suspended", "adverse action", "evicted", "reduced hours", "cut hours"))
+            ]
+            has_ordering = any(
+                dep.dependency_type == DependencyType.BEFORE
+                and dep.source_id in protected_ids
+                and dep.target_id in adverse_ids
+                for dep in self.dependencies.values()
+            )
+            if protected_ids and adverse_ids and not has_ordering:
+                issues.append(
+                    {
+                        "issue_id": "blocker_retaliation_sequence_missing",
+                        "issue_type": "retaliation_missing_sequence",
+                        "severity": "blocking",
+                        "question_type": "timeline",
+                        "summary": "Retaliation theory has protected activity and adverse action nodes but lacks temporal ordering.",
+                        "suggested_question": (
+                            "What was your protected activity, on what date did it occur, and what adverse actions followed afterward with dates and actor names?"
+                        ),
+                    }
+                )
+
+        return issues
+
 
     # ------------------------------------------------------------------ #
     # Batch 209: Dependency graph analysis and statistics methods        #

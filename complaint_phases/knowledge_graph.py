@@ -119,6 +119,23 @@ class KnowledgeGraph:
                     text_value,
                 )
             )
+
+        def _has_exact_date_signal(text_value: str) -> bool:
+            if not text_value:
+                return False
+            return bool(
+                re.search(
+                    (
+                        r"\b(?:jan|january|feb|february|mar|march|apr|april|may|jun|june|"
+                        r"jul|july|aug|august|sep|sept|september|oct|october|nov|november|"
+                        r"dec|december)\s+\d{1,2},\s+\d{4}\b"
+                        r"|\b\d{1,2}/\d{1,2}/\d{2,4}\b"
+                        r"|\b\d{4}-\d{2}-\d{2}\b"
+                    ),
+                    text_value,
+                    flags=re.IGNORECASE,
+                )
+            )
         
         # Check for entities with low confidence
         for entity in self.entities.values():
@@ -268,6 +285,25 @@ class KnowledgeGraph:
                 'suggested_question': "When did you request a hearing, grievance, or appeal, and when (if ever) did they respond?"
             })
 
+        response_terms = ("respond", "response", "replied", "reply", "denied", "approved", "ignored", "no response")
+        has_response_reference = any(term in all_entity_text for term in response_terms)
+        has_response_date = False
+        for entity in self.entities.values():
+            text_value = _entity_text(entity)
+            if not any(term in text_value for term in response_terms):
+                continue
+            if _has_date_signal(text_value):
+                has_response_date = True
+                break
+            if entity.type == "date":
+                has_response_date = True
+                break
+        if has_response_reference and not has_response_date:
+            gaps.append({
+                'type': 'missing_response_dates',
+                'suggested_question': "When did each response occur (including any non-response), who gave it, and what exactly did they say?"
+            })
+
         named_staff_entities = [
             entity for entity in self.entities.values()
             if entity.type == "person" and len((entity.name or "").split()) >= 2
@@ -280,6 +316,35 @@ class KnowledgeGraph:
             gaps.append({
                 'type': 'missing_staff_identity',
                 'suggested_question': "Who specifically took the action (full name, role, and team/department if known)?"
+            })
+
+        staff_missing_title = [
+            entity for entity in named_staff_entities
+            if not str((entity.attributes or {}).get("role") or "").strip()
+        ]
+        if staff_missing_title:
+            gaps.append({
+                'type': 'missing_staff_title',
+                'suggested_question': (
+                    "For each staff member involved, what was their title/role at the time "
+                    "(for example manager, HR specialist, hearing officer)?"
+                ),
+            })
+
+        timeline_action_terms = ("decided", "decision", "denied", "approved", "terminated", "disciplined", "evicted", "notice", "letter", "email")
+        has_action_without_exact_date = any(
+            entity.type in {"fact", "claim", "evidence"}
+            and any(term in _entity_text(entity) for term in timeline_action_terms)
+            and not _has_exact_date_signal(_entity_text(entity))
+            for entity in self.entities.values()
+        )
+        if has_action_without_exact_date:
+            gaps.append({
+                'type': 'missing_exact_action_dates',
+                'suggested_question': (
+                    "What are the exact dates for each key action (or your best day-level estimate), "
+                    "including decisions, notices, and responses?"
+                ),
             })
 
         retaliation_claims = [
@@ -307,6 +372,18 @@ class KnowledgeGraph:
                 rel.relation_type in {"occurred_on", "has_timeline_detail"}
                 for rel in self.relationships.values()
             ) or any(entity.type == "date" for entity in self.entities.values())
+            has_protected_activity_date = any(
+                entity.type == "fact"
+                and "protected" in _entity_text(entity)
+                and _has_date_signal(_entity_text(entity))
+                for entity in self.entities.values()
+            )
+            has_adverse_action_date = any(
+                entity.type == "fact"
+                and any(token in _entity_text(entity) for token in ("fired", "terminated", "demoted", "disciplined", "suspended", "reduced", "adverse"))
+                and _has_date_signal(_entity_text(entity))
+                for entity in self.entities.values()
+            )
             has_causation_link_signal = any(
                 rel.relation_type in {"caused_by", "causal_link", "follows_protected_activity", "occurred_after"}
                 for rel in self.relationships.values()
@@ -336,6 +413,14 @@ class KnowledgeGraph:
                     'suggested_question': (
                         "What protected activity did you engage in, who received it, and what adverse treatment "
                         "followed because of that activity, with dates for each event?"
+                    ),
+                })
+            if not (has_protected_activity_date and has_adverse_action_date):
+                gaps.append({
+                    'type': 'retaliation_missing_sequencing_dates',
+                    'suggested_question': (
+                        "Please give the exact date of your protected activity and the exact date of each adverse action, "
+                        "plus who took each action."
                     ),
                 })
         
