@@ -3209,6 +3209,7 @@
             const canonicalFactIntentSummary = intakeCaseSummary.canonical_fact_intent_summary && typeof intakeCaseSummary.canonical_fact_intent_summary === 'object' ? intakeCaseSummary.canonical_fact_intent_summary : {};
             const proofLeadSummary = intakeCaseSummary.proof_lead_summary && typeof intakeCaseSummary.proof_lead_summary === 'object' ? intakeCaseSummary.proof_lead_summary : {};
             const proofLeadIntentSummary = intakeCaseSummary.proof_lead_intent_summary && typeof intakeCaseSummary.proof_lead_intent_summary === 'object' ? intakeCaseSummary.proof_lead_intent_summary : {};
+            const eventLedgerSummary = intakeCaseSummary.event_ledger_summary && typeof intakeCaseSummary.event_ledger_summary === 'object' ? intakeCaseSummary.event_ledger_summary : {};
             const timelineAnchorSummary = intakeCaseSummary.timeline_anchor_summary && typeof intakeCaseSummary.timeline_anchor_summary === 'object' ? intakeCaseSummary.timeline_anchor_summary : {};
             const harmProfile = intakeCaseSummary.harm_profile && typeof intakeCaseSummary.harm_profile === 'object' ? intakeCaseSummary.harm_profile : {};
             const remedyProfile = intakeCaseSummary.remedy_profile && typeof intakeCaseSummary.remedy_profile === 'object' ? intakeCaseSummary.remedy_profile : {};
@@ -3217,6 +3218,14 @@
             const alignmentTaskSummary = intakeCaseSummary.alignment_task_summary && typeof intakeCaseSummary.alignment_task_summary === 'object'
                 ? intakeCaseSummary.alignment_task_summary
                 : summarizeTemporalAlignmentTasks(alignmentEvidenceTasks);
+            const alignmentChronologyEventRefCount = alignmentEvidenceTasks.reduce((total, task) => total + (Array.isArray(task && task.event_ids) ? task.event_ids.filter((item) => String(item || '').trim()).length : 0), 0);
+            const alignmentChronologyRelationRefCount = alignmentEvidenceTasks.reduce((total, task) => total + (Array.isArray(task && task.temporal_relation_ids) ? task.temporal_relation_ids.filter((item) => String(item || '').trim()).length : 0), 0);
+            const alignmentChronologyIssueRefCount = alignmentEvidenceTasks.reduce((total, task) => {
+                const issueIds = Array.isArray(task && task.timeline_issue_ids)
+                    ? task.timeline_issue_ids
+                    : (Array.isArray(task && task.temporal_issue_ids) ? task.temporal_issue_ids : []);
+                return total + issueIds.filter((item) => String(item || '').trim()).length;
+            }, 0);
             const claimSupportPacketSummary = intakeCaseSummary.claim_support_packet_summary && typeof intakeCaseSummary.claim_support_packet_summary === 'object' ? intakeCaseSummary.claim_support_packet_summary : {};
             const questionSourceCounts = questionCandidateSummary.source_counts && typeof questionCandidateSummary.source_counts === 'object' ? questionCandidateSummary.source_counts : {};
             const questionGoalCounts = questionCandidateSummary.question_goal_counts && typeof questionCandidateSummary.question_goal_counts === 'object' ? questionCandidateSummary.question_goal_counts : {};
@@ -3443,6 +3452,9 @@
                 Object.keys(intakeSections).length
                     ? `Intake sections: ${Object.entries(intakeSections).map(([sectionName, section]) => `${humanizeKey(sectionName)} ${section && section.status ? section.status : 'missing'}`).join(', ')}`
                     : '',
+                eventLedgerSummary.count != null
+                    ? `Event ledger: ${Number(eventLedgerSummary.count || 0)}`
+                    : '',
                 timelineAnchorSummary.count != null
                     ? `Timeline anchors: ${Number(timelineAnchorSummary.count || 0)}`
                     : '',
@@ -3477,6 +3489,15 @@
                     : '',
                 alignmentTaskSummary.temporal_gap_task_count != null
                     ? `Alignment chronology tasks: ${Number(alignmentTaskSummary.temporal_gap_task_count || 0)}`
+                    : '',
+                alignmentChronologyEventRefCount
+                    ? `Alignment chronology events: ${alignmentChronologyEventRefCount}`
+                    : '',
+                alignmentChronologyRelationRefCount
+                    ? `Alignment chronology relations: ${alignmentChronologyRelationRefCount}`
+                    : '',
+                alignmentChronologyIssueRefCount
+                    ? `Alignment chronology issues: ${alignmentChronologyIssueRefCount}`
                     : '',
                 alignmentTaskSummary.temporal_gap_targeted_task_count != null
                     ? `Alignment chronology targeted: ${Number(alignmentTaskSummary.temporal_gap_targeted_task_count || 0)}`

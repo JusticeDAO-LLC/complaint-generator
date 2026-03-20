@@ -566,6 +566,7 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Claim disambiguation:" in content
     assert "Claim ambiguity flags:" in content
     assert "Claim ambiguity details:" in content
+    assert "Event ledger:" in content
     assert "Timeline anchors:" in content
     assert "Harm profile:" in content
     assert "Remedy profile:" in content
@@ -591,6 +592,9 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Packet temporal ready elements:" in content
     assert "Packet temporal warnings:" in content
     assert "Alignment chronology tasks:" in content
+    assert "Alignment chronology events:" in content
+    assert "Alignment chronology relations:" in content
+    assert "Alignment chronology issues:" in content
     assert "Alignment chronology targeted:" in content
     assert "Alignment chronology status:" in content
     assert "Alignment chronology blockers:" in content
@@ -756,6 +760,7 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "Claim disambiguation:" in content
     assert "Claim ambiguity flags:" in content
     assert "Claim ambiguity details:" in content
+    assert "Event ledger:" in content
     assert "Timeline anchors:" in content
     assert "Harm profile:" in content
     assert "Remedy profile:" in content
@@ -784,6 +789,9 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "Packet temporal ready elements:" in content
     assert "Packet temporal warnings:" in content
     assert "Alignment chronology tasks:" in content
+    assert "Alignment chronology events:" in content
+    assert "Alignment chronology relations:" in content
+    assert "Alignment chronology issues:" in content
     assert "Alignment chronology targeted:" in content
     assert "Alignment chronology status:" in content
     assert "Alignment chronology blockers:" in content
