@@ -3006,32 +3006,73 @@ class FormalComplaintDocumentBuilder:
             if isinstance(confirmation_snapshot.get("adversarial_intake_priority_summary"), dict)
             else {}
         )
-        uncovered_objectives = _dedupe_text_values(intake_priority_summary.get("uncovered_objectives") or [])
-        objective_question_counts = {
-            str(key): int(value or 0)
-            for key, value in dict(intake_priority_summary.get("objective_question_counts") or {}).items()
-            if str(key)
+        objective_aliases = {
+            "staff_names": "staff_names_titles",
+            "staff_titles": "staff_names_titles",
+            "hearing_timing": "hearing_request_timing",
+            "response_timing": "response_dates",
+            "causation": "causation_link",
+            "adverse_action": "anchor_adverse_action",
+            "appeal_rights": "anchor_appeal_rights",
         }
-        required_objectives = ("timeline", "actors", "causation_link")
+
+        def _normalize_objective(value: Any) -> str:
+            text = str(value or "").strip().lower()
+            if not text:
+                return ""
+            return objective_aliases.get(text, text)
+
+        uncovered_objectives = _dedupe_text_values(
+            _normalize_objective(item)
+            for item in (intake_priority_summary.get("uncovered_objectives") or [])
+            if _normalize_objective(item)
+        )
+        objective_question_counts = {
+            _normalize_objective(key): int(value or 0)
+            for key, value in dict(intake_priority_summary.get("objective_question_counts") or {}).items()
+            if _normalize_objective(key)
+        }
+        required_objectives = (
+            "timeline",
+            "actors",
+            "staff_names_titles",
+            "causation_link",
+            "anchor_adverse_action",
+            "anchor_appeal_rights",
+            "hearing_request_timing",
+            "response_dates",
+        )
         missing_required = [
             objective
             for objective in required_objectives
             if objective in uncovered_objectives or int(objective_question_counts.get(objective, 0)) <= 0
         ]
+        objective_actions = {
+            "timeline": "Capture exact dates for complaint activity, notices, hearing/review requests, and adverse action outcomes.",
+            "actors": "Identify who at HACC made, communicated, and carried out each key decision.",
+            "staff_names_titles": "Capture each HACC staff member name and title, or best-known title when name is unknown.",
+            "causation_link": "Document direct causation facts linking protected activity to adverse action.",
+            "anchor_adverse_action": "Confirm the exact denial, termination, or threatened loss of assistance and its communication date.",
+            "anchor_appeal_rights": "Confirm whether written notice, informal review, grievance hearing, and appeal rights were provided, requested, denied, or ignored.",
+            "hearing_request_timing": "Capture when hearing/review was requested and whether the request timing was acknowledged.",
+            "response_dates": "Capture exact response dates for HACC notices, hearing/review responses, and final decision outcomes.",
+        }
         if missing_required:
             status = "warning"
             summary = (
-                "Intake questioning still needs case-specific date anchors, actor-by-actor decisions, and/or "
-                "causation links between protected activity and adverse treatment."
+                "Intake questioning still needs closure on key blockers (exact dates, staff names/titles, hearing request timing, response dates, "
+                "and causation links between protected activity and adverse treatment)."
             )
-            actions = [
-                "Capture exact dates for complaint activity, notices, hearing/review requests, and adverse action outcomes.",
-                "Identify who at HACC made, communicated, and carried out each key decision.",
-                "Document direct causation facts linking protected activity to adverse action.",
-            ]
+            actions = _dedupe_text_values(
+                objective_actions.get(objective, "")
+                for objective in missing_required
+                if objective_actions.get(objective, "")
+            )
         else:
             status = "ready"
-            summary = "Intake questioning currently includes timeline anchors, decision-maker identification, and causation probes."
+            summary = (
+                "Intake questioning currently includes timeline anchors, staff identification, hearing/response timing, and causation probes."
+            )
             actions = []
 
         return {
