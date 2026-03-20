@@ -80,8 +80,6 @@ def _load_hacc_engine() -> Any:
     if engine_cls is None:
         raise ImportError("hacc_research.engine does not export HACCResearchEngine")
     return engine_cls
-
-
 def _get_hacc_engine_instance(repo_root: Optional[str | Path] = None) -> Any:
     cache_key = str(Path(repo_root).resolve()) if repo_root else "default"
     if cache_key not in _ENGINE_CACHE:
