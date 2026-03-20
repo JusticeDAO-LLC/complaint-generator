@@ -243,6 +243,8 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                     "contradicted": 0,
                 },
                 "recommended_actions": ["collect_missing_support_kind"],
+                "claim_support_unresolved_temporal_issue_count": 1,
+                "claim_support_unresolved_temporal_issue_ids": ["temporal_issue_001"],
             },
             "alignment_task_updates": [
                 {
@@ -896,6 +898,8 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         )
 
         assert payload["user_id"] == "state-user"
+        assert payload["recommended_next_action"] == ""
+        assert payload["primary_validation_target"] == {}
         assert payload["intake_status"] == {
             "current_phase": "intake",
             "iteration_count": 2,
@@ -1102,6 +1106,10 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             assert claim_support_packet_summary["claim_support_reviewable_escalation_count"] == 0
         if "claim_support_unresolved_without_review_path_count" in claim_support_packet_summary:
             assert claim_support_packet_summary["claim_support_unresolved_without_review_path_count"] == 2
+        if "claim_support_unresolved_temporal_issue_count" in claim_support_packet_summary:
+            assert claim_support_packet_summary["claim_support_unresolved_temporal_issue_count"] == 1
+        if "claim_support_unresolved_temporal_issue_ids" in claim_support_packet_summary:
+            assert claim_support_packet_summary["claim_support_unresolved_temporal_issue_ids"] == ["temporal_issue_001"]
         if "proof_readiness_score" in claim_support_packet_summary:
             assert claim_support_packet_summary["proof_readiness_score"] == 0.45
         if "evidence_completion_ready" in claim_support_packet_summary:
@@ -2511,6 +2519,8 @@ def test_claim_support_review_payload_includes_confirmed_handoff_metadata():
             },
         },
     }
+    assert payload["recommended_next_action"] == ""
+    assert payload["primary_validation_target"] == {}
     assert payload["intake_status"]["intake_summary_handoff"] == payload["intake_summary_handoff"]
     assert payload["intake_case_summary"]["intake_summary_handoff"] == payload["intake_summary_handoff"]
 

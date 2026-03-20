@@ -495,6 +495,12 @@ def test_execute_follow_up_command_prints_recommendation_when_parse_quality_stil
                 'resolved_parse_quality_issue_elements': [],
                 'remaining_parse_quality_issue_elements': ['Causal connection'],
                 'recommended_next_action': 'improve_parse_quality',
+                'primary_validation_target': {
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'adverse_action',
+                    'promotion_kind': 'document',
+                    'promotion_ref': 'doc:retaliation:1',
+                },
             }
         },
     }
@@ -504,6 +510,7 @@ def test_execute_follow_up_command_prints_recommendation_when_parse_quality_stil
 
     rendered = cli.print_response.call_args[0][0]
     assert 'recommendation: improve_parse_quality still needed' in rendered
+    assert 'validation target: retaliation / adverse_action [document] ref=doc:retaliation:1' in rendered
 
 
 def test_export_complaint_command_calls_document_package_builder():

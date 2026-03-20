@@ -489,6 +489,16 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
         "sections": section_links,
         "intake_status": intake_status,
         "intake_case_summary": intake_case_summary,
+        "recommended_next_action": (
+            str((intake_status.get("next_action") or {}).get("action") or "")
+            if isinstance(intake_status.get("next_action"), dict)
+            else ""
+        ),
+        "primary_validation_target": (
+            dict(intake_status.get("primary_validation_target"))
+            if isinstance(intake_status.get("primary_validation_target"), dict)
+            else {}
+        ),
     }
     payload["review_intent"] = _build_review_intent(
         user_id=resolved_user_id,

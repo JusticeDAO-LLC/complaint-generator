@@ -2692,6 +2692,16 @@ def build_claim_support_review_payload(
         "required_support_kinds": required_support_kinds,
         "intake_status": intake_status,
         "intake_case_summary": intake_case_summary,
+        "recommended_next_action": (
+            str((intake_status.get("next_action") or {}).get("action") or "")
+            if isinstance(intake_status.get("next_action"), dict)
+            else ""
+        ),
+        "primary_validation_target": (
+            dict(intake_status.get("primary_validation_target"))
+            if isinstance(intake_status.get("primary_validation_target"), dict)
+            else {}
+        ),
         "intake_contradiction_summary": intake_contradiction_summary,
         "claim_coverage_matrix": coverage_claims,
         "claim_coverage_summary": coverage_summary,

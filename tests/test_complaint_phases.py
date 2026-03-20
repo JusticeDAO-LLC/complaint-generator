@@ -1182,6 +1182,59 @@ class TestPhaseManager:
         assert pm.get_phase_data(ComplaintPhase.EVIDENCE, 'temporal_gap_targeted_task_count') == 0
         assert pm.get_phase_data(ComplaintPhase.EVIDENCE, 'temporal_resolution_status_counts') == {}
 
+    def test_evidence_phase_blocks_when_temporal_issue_ids_remain_on_chronology_task(self):
+        """Chronology issue IDs should keep the task actionable even when it already has a testimony escalation path."""
+        pm = PhaseManager()
+        pm.current_phase = ComplaintPhase.EVIDENCE
+
+        pm.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'claim_support_packets',
+            {
+                'retaliation': {
+                    'claim_type': 'retaliation',
+                    'elements': [
+                        {
+                            'element_id': 'causation',
+                            'support_status': 'unsupported',
+                            'recommended_next_step': 'collect_witness_support',
+                            'contradiction_count': 0,
+                            'reasoning_diagnostics': {
+                                'temporal_proof_bundle': {
+                                    'temporal_issue_ids': ['temporal_issue_001'],
+                                },
+                            },
+                        },
+                    ],
+                }
+            },
+        )
+        pm.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_evidence_tasks',
+            [
+                {
+                    'task_id': 'retaliation:causation:fill_temporal_chronology_gap',
+                    'action': 'fill_temporal_chronology_gap',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'causation',
+                    'claim_element_label': 'Causal connection',
+                    'support_status': 'unsupported',
+                    'resolution_status': 'awaiting_testimony',
+                    'temporal_issue_ids': ['temporal_issue_001'],
+                    'timeline_issue_ids': ['temporal_issue_001'],
+                }
+            ],
+        )
+
+        assert pm.is_phase_complete(ComplaintPhase.EVIDENCE) is False
+        action = pm.get_next_action()
+        assert action['action'] == 'fill_temporal_chronology_gap'
+        assert action['claim_element_id'] == 'causation'
+        assert pm.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_unresolved_temporal_issue_count') == 1
+        assert pm.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_unresolved_temporal_issue_ids') == ['temporal_issue_001']
+        assert pm.get_phase_data(ComplaintPhase.EVIDENCE, 'evidence_completion_ready') is False
+
     def test_evidence_phase_prioritizes_validation_when_promotion_drift_is_flagged(self):
         """Promotion drift should steer next_action toward validation before generic evidence completion."""
         pm = PhaseManager()

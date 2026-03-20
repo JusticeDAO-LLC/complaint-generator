@@ -37,6 +37,13 @@ _INTAKE_RESOLVED_CONTRADICTION_STATUSES = {
     'dismissed',
     'superseded',
 }
+_EVIDENCE_RESOLVED_STATUSES = {
+    'resolved',
+    'resolved_supported',
+    'closed',
+    'dismissed',
+    'superseded',
+}
 
 
 def _utc_now_isoformat() -> str:
@@ -515,6 +522,7 @@ class PhaseManager:
             supported_blocking_element_ratio = round((supported_elements + reviewable_escalation_count) / total_elements, 3)
             reviewable_escalation_ratio = round(reviewable_escalation_count / total_elements, 3)
         contradiction_penalty = 0.15 if blocking_contradictions > 0 else 0.0
+        unresolved_temporal_issue_ids = self._build_unresolved_temporal_issue_ids(data)
         proof_readiness_score = round(
             max(0.0, min(1.0, (credible_support_ratio * 0.45) + (draft_ready_element_ratio * 0.4) + (high_quality_parse_ratio * 0.15) - contradiction_penalty)),
             3,
@@ -524,6 +532,7 @@ class PhaseManager:
             and explicit_status_elements == total_elements
             and blocking_contradictions == 0
             and unresolved_without_review_path_count == 0
+            and not unresolved_temporal_issue_ids
         )
 
         return {
@@ -540,6 +549,8 @@ class PhaseManager:
             'reviewable_escalation_ratio': reviewable_escalation_ratio,
             'claim_support_reviewable_escalation_count': reviewable_escalation_count,
             'claim_support_unresolved_without_review_path_count': unresolved_without_review_path_count,
+            'claim_support_unresolved_temporal_issue_count': len(unresolved_temporal_issue_ids),
+            'claim_support_unresolved_temporal_issue_ids': unresolved_temporal_issue_ids,
             'temporal_gap_task_count': temporal_gap_task_count,
             'temporal_gap_targeted_task_count': temporal_gap_targeted_task_count,
             'temporal_rule_status_counts': temporal_rule_status_counts,
@@ -564,6 +575,65 @@ class PhaseManager:
                 return normalized
         return ''
 
+    def _extract_temporal_issue_ids(self, candidate: Any) -> List[str]:
+        if not isinstance(candidate, dict):
+            return []
+
+        issue_ids: List[str] = []
+
+        def _append_issue_ids(values: Any):
+            for value in values if isinstance(values, list) else []:
+                normalized = str(value or '').strip()
+                if normalized and normalized not in issue_ids:
+                    issue_ids.append(normalized)
+
+        _append_issue_ids(candidate.get('temporal_issue_ids'))
+        _append_issue_ids(candidate.get('timeline_issue_ids'))
+
+        temporal_proof_bundle = candidate.get('temporal_proof_bundle')
+        if isinstance(temporal_proof_bundle, dict):
+            _append_issue_ids(temporal_proof_bundle.get('temporal_issue_ids'))
+
+        reasoning_diagnostics = candidate.get('reasoning_diagnostics')
+        if isinstance(reasoning_diagnostics, dict):
+            diagnostic_bundle = reasoning_diagnostics.get('temporal_proof_bundle')
+            if isinstance(diagnostic_bundle, dict):
+                _append_issue_ids(diagnostic_bundle.get('temporal_issue_ids'))
+
+        return issue_ids
+
+    def _build_unresolved_temporal_issue_ids(self, data: Dict[str, Any]) -> List[str]:
+        issue_ids: List[str] = []
+
+        def _append_issue_ids(values: List[str]):
+            for value in values:
+                if value not in issue_ids:
+                    issue_ids.append(value)
+
+        alignment_tasks = data.get('alignment_evidence_tasks')
+        for task in alignment_tasks if isinstance(alignment_tasks, list) else []:
+            if not isinstance(task, dict):
+                continue
+            resolution_status = self._normalize_evidence_escalation_status(task.get('resolution_status'))
+            if resolution_status in _EVIDENCE_RESOLVED_STATUSES:
+                continue
+            _append_issue_ids(self._extract_temporal_issue_ids(task))
+
+        packets = data.get('claim_support_packets')
+        for claim_packet in packets.values() if isinstance(packets, dict) else []:
+            if not isinstance(claim_packet, dict):
+                continue
+            elements = claim_packet.get('elements')
+            for element in elements if isinstance(elements, list) else []:
+                if not isinstance(element, dict):
+                    continue
+                support_status = str(element.get('support_status') or '').strip().lower()
+                if support_status == 'supported':
+                    continue
+                _append_issue_ids(self._extract_temporal_issue_ids(element))
+
+        return issue_ids
+
     def _get_actionable_alignment_tasks(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
         alignment_tasks = data.get('alignment_evidence_tasks')
         actionable_tasks: List[Dict[str, Any]] = []
@@ -574,7 +644,8 @@ class PhaseManager:
             resolution_status = self._normalize_evidence_escalation_status(task.get('resolution_status'))
             if support_status not in {'unsupported', 'partially_supported', 'contradicted'}:
                 continue
-            if support_status != 'contradicted' and resolution_status in _EVIDENCE_REVIEWABLE_ESCALATION_STATUSES:
+            temporal_issue_ids = self._extract_temporal_issue_ids(task)
+            if support_status != 'contradicted' and resolution_status in _EVIDENCE_REVIEWABLE_ESCALATION_STATUSES and not temporal_issue_ids:
                 continue
             actionable_tasks.append(task)
         return actionable_tasks
@@ -821,11 +892,13 @@ class PhaseManager:
             blocking_contradictions = int(data.get('claim_support_blocking_contradictions', 0) or 0)
             unresolved_alignment_tasks = self._get_actionable_alignment_tasks(data)
             unresolved_without_review_path_count = int(data.get('claim_support_unresolved_without_review_path_count', 0) or 0)
+            unresolved_temporal_issue_count = int(data.get('claim_support_unresolved_temporal_issue_count', 0) or 0)
             return (
                 total_elements > 0
                 and explicit_status_count == total_elements
                 and blocking_contradictions == 0
                 and unresolved_without_review_path_count == 0
+                and unresolved_temporal_issue_count == 0
                 and not unresolved_alignment_tasks
             )
 

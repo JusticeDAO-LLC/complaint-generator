@@ -592,6 +592,7 @@ class CLI:
 			resolved_elements = summary.get('resolved_parse_quality_issue_elements', []) if isinstance(summary.get('resolved_parse_quality_issue_elements'), list) else []
 			remaining_elements = summary.get('remaining_parse_quality_issue_elements', []) if isinstance(summary.get('remaining_parse_quality_issue_elements'), list) else []
 			recommended_next_action = str(summary.get('recommended_next_action') or '')
+			primary_validation_target = summary.get('primary_validation_target') if isinstance(summary.get('primary_validation_target'), dict) else {}
 			lines.append(f'- {claim_type}: status={status} low_quality={pre_count}->{post_count} parse_tasks={parse_task_count}')
 			if resolved_elements:
 				lines.append(f"  resolved: {', '.join(str(element) for element in resolved_elements)}")
@@ -599,6 +600,23 @@ class CLI:
 				lines.append(f"  remaining: {', '.join(str(element) for element in remaining_elements)}")
 			if recommended_next_action:
 				lines.append(f'  recommendation: {recommended_next_action} still needed')
+			if primary_validation_target:
+				target_claim_type = str(primary_validation_target.get('claim_type') or claim_type)
+				target_element_id = str(primary_validation_target.get('claim_element_id') or '')
+				promotion_kind = str(primary_validation_target.get('promotion_kind') or '')
+				promotion_ref = str(primary_validation_target.get('promotion_ref') or '')
+				target_parts = []
+				if target_claim_type:
+					target_parts.append(target_claim_type)
+				if target_element_id:
+					target_parts.append(target_element_id)
+				target_label = ' / '.join(target_parts) if target_parts else claim_type
+				target_line = f'  validation target: {target_label}'
+				if promotion_kind:
+					target_line += f' [{promotion_kind}]'
+				if promotion_ref:
+					target_line += f' ref={promotion_ref}'
+				lines.append(target_line)
 		return '\n'.join(lines)
 
 	def export_complaint(self, args):
