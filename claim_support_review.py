@@ -487,6 +487,695 @@ def _build_review_workflow_phase_priority(
     return {}
 
 
+def _build_review_workflow_priority_button(
+    button_id: str,
+    label: str,
+    *,
+    style: str = "secondary",
+    data_attrs: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    return {
+        "id": button_id,
+        "label": label,
+        "style": style,
+        "data_attrs": {
+            key: value
+            for key, value in dict(data_attrs or {}).items()
+            if str(value or "").strip()
+        },
+    }
+
+
+def _build_review_workflow_priority_from_phase(
+    workflow_phase_priority: Dict[str, Any],
+) -> Dict[str, Any]:
+    if not isinstance(workflow_phase_priority, dict) or not workflow_phase_priority:
+        return {}
+
+    action_id = str(workflow_phase_priority.get("action_id") or "workflow_phase_priority").strip()
+    button_id = str(workflow_phase_priority.get("button_id") or "").strip()
+    action_label = str(workflow_phase_priority.get("action_label") or "Review workflow priority").strip()
+    notes = [str(workflow_phase_priority.get("summary") or "").strip()]
+    recommended_actions = [
+        str(item).strip()
+        for item in (workflow_phase_priority.get("recommended_actions") or [])
+        if str(item or "").strip()
+    ]
+    if recommended_actions:
+        notes.append(f"Recommended actions: {' | '.join(recommended_actions)}")
+
+    return {
+        "status": str(workflow_phase_priority.get("status") or "warning").strip().lower() or "warning",
+        "status_id": f"workflow_phase_{action_id}",
+        "title": str(workflow_phase_priority.get("title") or "Review workflow priority before drafting").strip(),
+        "chip_labels": list(workflow_phase_priority.get("chip_labels") or []),
+        "notes": [note for note in notes if note],
+        "buttons": [
+            _build_review_workflow_priority_button(button_id, action_label)
+            if button_id
+            else _build_review_workflow_priority_button(
+                f"intake-next-action-{action_id}",
+                action_label,
+            )
+        ],
+        "action_id": action_id,
+        "status_message": str(workflow_phase_priority.get("status_message") or "").strip(),
+    }
+
+
+def _build_review_workflow_priority(
+    *,
+    intake_status: Dict[str, Any],
+    intake_case_summary: Dict[str, Any],
+    workflow_phase_priority: Dict[str, Any],
+) -> Dict[str, Any]:
+    next_action = intake_case_summary.get("next_action") if isinstance(intake_case_summary.get("next_action"), dict) else {}
+    if not next_action and isinstance(intake_status.get("next_action"), dict):
+        next_action = dict(intake_status.get("next_action") or {})
+
+    action = str(next_action.get("action") or "").strip().lower()
+    if not action:
+        return _build_review_workflow_priority_from_phase(workflow_phase_priority)
+
+    contradiction_summary = (
+        intake_case_summary.get("contradiction_summary")
+        if isinstance(intake_case_summary.get("contradiction_summary"), dict)
+        else {}
+    )
+    question_candidate_summary = (
+        intake_case_summary.get("question_candidate_summary")
+        if isinstance(intake_case_summary.get("question_candidate_summary"), dict)
+        else {}
+    )
+    timeline_anchor_summary = (
+        intake_case_summary.get("timeline_anchor_summary")
+        if isinstance(intake_case_summary.get("timeline_anchor_summary"), dict)
+        else {}
+    )
+    canonical_fact_summary = (
+        intake_case_summary.get("canonical_fact_summary")
+        if isinstance(intake_case_summary.get("canonical_fact_summary"), dict)
+        else {}
+    )
+    candidate_claim_summary = (
+        intake_case_summary.get("candidate_claim_summary")
+        if isinstance(intake_case_summary.get("candidate_claim_summary"), dict)
+        else {}
+    )
+    intake_matching_summary = (
+        intake_case_summary.get("intake_matching_summary")
+        if isinstance(intake_case_summary.get("intake_matching_summary"), dict)
+        else {}
+    )
+    intake_legal_targeting_summary = (
+        intake_case_summary.get("intake_legal_targeting_summary")
+        if isinstance(intake_case_summary.get("intake_legal_targeting_summary"), dict)
+        else {}
+    )
+    intake_evidence_alignment_summary = (
+        intake_case_summary.get("intake_evidence_alignment_summary")
+        if isinstance(intake_case_summary.get("intake_evidence_alignment_summary"), dict)
+        else {}
+    )
+    claim_support_packet_summary = (
+        intake_case_summary.get("claim_support_packet_summary")
+        if isinstance(intake_case_summary.get("claim_support_packet_summary"), dict)
+        else {}
+    )
+    summary_confirmation = (
+        intake_case_summary.get("complainant_summary_confirmation")
+        if isinstance(intake_case_summary.get("complainant_summary_confirmation"), dict)
+        else {}
+    )
+    alignment_promotion_drift_summary = (
+        intake_case_summary.get("alignment_promotion_drift_summary")
+        if isinstance(intake_case_summary.get("alignment_promotion_drift_summary"), dict)
+        else {}
+    )
+    alignment_validation_focus_summary = (
+        intake_case_summary.get("alignment_validation_focus_summary")
+        if isinstance(intake_case_summary.get("alignment_validation_focus_summary"), dict)
+        else {}
+    )
+    alignment_evidence_tasks = [
+        item for item in (intake_case_summary.get("alignment_evidence_tasks") or []) if isinstance(item, dict)
+    ]
+    alignment_task_updates = [
+        item for item in (intake_case_summary.get("alignment_task_updates") or []) if isinstance(item, dict)
+    ]
+    alignment_task_update_history = [
+        item for item in (intake_case_summary.get("alignment_task_update_history") or []) if isinstance(item, dict)
+    ]
+    visible_alignment_task_updates = alignment_task_update_history or alignment_task_updates
+
+    focused_claim_type = str(next_action.get("claim_type") or "").strip().lower()
+    focused_element_id = str(next_action.get("claim_element_id") or "").strip().lower()
+    focused_element_label = str(next_action.get("claim_element_label") or "").strip()
+    recommended_actions = [
+        str(item).strip()
+        for item in (next_action.get("recommended_actions") or [])
+        if str(item or "").strip()
+    ]
+
+    def humanize(value: Any) -> str:
+        return humanize_workflow_priority_label(value)
+
+    def build_priority(
+        *,
+        status: str = "warning",
+        title: str,
+        status_id: str,
+        chip_labels: List[str],
+        notes: List[str],
+        buttons: List[Dict[str, Any]],
+        status_message: str,
+    ) -> Dict[str, Any]:
+        return {
+            "status": status,
+            "title": title,
+            "status_id": status_id,
+            "chip_labels": [item for item in chip_labels if item],
+            "notes": [item for item in notes if item],
+            "buttons": [item for item in buttons if isinstance(item, dict) and item.get("id")],
+            "action_id": action,
+            "status_message": status_message,
+        }
+
+    if action == "validate_promoted_support":
+        drift_summary = dict(next_action.get("drift_summary") or {}) if isinstance(next_action.get("drift_summary"), dict) else dict(alignment_promotion_drift_summary)
+        primary_validation_target = (
+            dict(intake_status.get("primary_validation_target") or {})
+            if isinstance(intake_status.get("primary_validation_target"), dict)
+            else {}
+        )
+        if not primary_validation_target and isinstance(next_action.get("primary_validation_target"), dict):
+            primary_validation_target = dict(next_action.get("primary_validation_target") or {})
+        if not primary_validation_target and isinstance(alignment_validation_focus_summary.get("primary_target"), dict):
+            primary_validation_target = dict(alignment_validation_focus_summary.get("primary_target") or {})
+        pending_conversion_count = int(next_action.get("pending_conversion_count") or drift_summary.get("pending_conversion_count") or 0)
+        promoted_count = int(next_action.get("promoted_count") or drift_summary.get("promoted_count") or 0)
+        validation_target_count = int(
+            next_action.get("validation_target_count")
+            or alignment_validation_focus_summary.get("count")
+            or len(alignment_validation_focus_summary.get("targets") or [])
+            or 0
+        )
+        drift_ratio = float(drift_summary.get("drift_ratio") or 0.0)
+        proof_readiness_score = float(drift_summary.get("proof_readiness_score") or 0.0)
+        chip_labels = [
+            f"recommended action: {action}",
+            f"pending conversion: {pending_conversion_count}",
+            f"promoted updates: {promoted_count}",
+            f"validation targets: {validation_target_count}",
+            f"drift ratio: {drift_ratio:.2f}",
+            f"proof readiness: {proof_readiness_score:.2f}",
+        ]
+        if focused_claim_type:
+            chip_labels.append(f"focus claim: {humanize(focused_claim_type)}")
+        if focused_element_id:
+            chip_labels.append(f"focus element: {humanize(focused_element_id)}")
+        primary_target_claim_type = str(primary_validation_target.get("claim_type") or focused_claim_type or "").strip()
+        primary_target_element_id = str(primary_validation_target.get("claim_element_id") or focused_element_id or "").strip()
+        if primary_target_element_id:
+            chip_labels.append(f"primary target: {humanize(primary_target_element_id)}")
+        primary_target_kind = str(primary_validation_target.get("promotion_kind") or "").strip()
+        if primary_target_kind:
+            chip_labels.append(f"primary promotion kind: {humanize(primary_target_kind)}")
+        primary_target_ref = str(primary_validation_target.get("promotion_ref") or "").strip()
+        if primary_target_ref:
+            chip_labels.append(f"primary promotion ref: {primary_target_ref}")
+        notes = [
+            "Promoted testimony or document support is accumulating faster than packet validation is reaching resolved supported status.",
+        ]
+        if primary_target_element_id:
+            notes.append(f"Primary validation target: {humanize(primary_target_element_id)}.")
+        if primary_target_ref:
+            notes.append(f"Primary promotion ref: {primary_target_ref}.")
+        notes.append("Review and validate saved support before treating the evidence phase as truly settled.")
+        buttons = [
+            _build_review_workflow_priority_button(
+                "intake-next-action-open-promoted",
+                "Review promoted updates",
+                data_attrs={
+                    "claim_type": primary_target_claim_type,
+                    "claim_element_id": primary_target_element_id,
+                },
+            ),
+        ]
+        if primary_target_element_id:
+            buttons.extend(
+                [
+                    _build_review_workflow_priority_button(
+                        "intake-next-action-prefill-testimony",
+                        "Prefill testimony validation",
+                        style="tertiary",
+                        data_attrs={
+                            "claim_type": primary_target_claim_type,
+                            "claim_element_id": primary_target_element_id,
+                        },
+                    ),
+                    _build_review_workflow_priority_button(
+                        "intake-next-action-prefill-document",
+                        "Prefill document validation",
+                        style="tertiary",
+                        data_attrs={
+                            "claim_type": primary_target_claim_type,
+                            "claim_element_id": primary_target_element_id,
+                        },
+                    ),
+                ]
+            )
+        return build_priority(
+            title="Validate promoted support",
+            status_id=action,
+            chip_labels=chip_labels,
+            notes=notes,
+            buttons=buttons,
+            status_message="Showing promoted alignment updates that still need validation.",
+        )
+
+    if action == "build_knowledge_graph":
+        timeline_anchor_count = int(timeline_anchor_summary.get("count") or 0)
+        canonical_fact_count = int(canonical_fact_summary.get("count") or 0)
+        question_candidate_count = int(question_candidate_summary.get("count") or 0)
+        readiness_score = float(next_action.get("intake_readiness_score") or 0.0)
+        chip_labels = [
+            "recommended action: build_knowledge_graph",
+            f"timeline anchors: {timeline_anchor_count}",
+            f"canonical facts: {canonical_fact_count}",
+            f"question candidates: {question_candidate_count}",
+        ]
+        if readiness_score > 0:
+            chip_labels.append(f"readiness score: {readiness_score:.2f}")
+        return build_priority(
+            title="Build intake knowledge graph",
+            status_id=action,
+            chip_labels=chip_labels,
+            notes=[
+                "Intake facts and timeline anchors are present, but the knowledge graph has not been built into an operator-reviewable structure yet.",
+                "Focus the timeline and canonical fact diagnostics before advancing graph-dependent intake work.",
+            ],
+            buttons=[_build_review_workflow_priority_button("intake-next-action-review-knowledge-graph", "Review intake graph inputs")],
+            status_message="Showing timeline and canonical fact inputs for intake graph building.",
+        )
+
+    if action == "build_dependency_graph":
+        aligned_element_count = int(intake_evidence_alignment_summary.get("aligned_element_count") or 0)
+        contradiction_count = int(contradiction_summary.get("count") or 0)
+        alignment_task_count = len(alignment_evidence_tasks)
+        readiness_score = float(next_action.get("intake_readiness_score") or 0.0)
+        chip_labels = [
+            "recommended action: build_dependency_graph",
+            f"aligned elements: {aligned_element_count}",
+            f"alignment tasks: {alignment_task_count}",
+            f"contradictions: {contradiction_count}",
+        ]
+        if readiness_score > 0:
+            chip_labels.append(f"readiness score: {readiness_score:.2f}")
+        return build_priority(
+            title="Build intake dependency graph",
+            status_id=action,
+            chip_labels=chip_labels,
+            notes=[
+                "Intake sections are populated enough to map cross-section dependencies, but the dependency graph has not been built yet.",
+                "Review contradictions and alignment summaries before dependency-driven intake routing continues.",
+            ],
+            buttons=[_build_review_workflow_priority_button("intake-next-action-review-dependencies", "Review dependency inputs")],
+            status_message="Showing alignment and contradiction inputs for dependency graph review.",
+        )
+
+    if action == "continue_denoising":
+        intake_blockers = [item for item in (next_action.get("intake_blockers") or []) if str(item or "").strip()]
+        contradiction_count = int(contradiction_summary.get("count") or 0)
+        question_candidate_count = int(question_candidate_summary.get("count") or 0)
+        readiness_score = float(next_action.get("intake_readiness_score") or 0.0)
+        chip_labels = [
+            "recommended action: continue_denoising",
+            f"blockers: {len(intake_blockers)}",
+            f"contradictions: {contradiction_count}",
+            f"question candidates: {question_candidate_count}",
+        ]
+        if readiness_score > 0:
+            chip_labels.append(f"readiness score: {readiness_score:.2f}")
+        return build_priority(
+            title="Continue intake denoising",
+            status_id=action,
+            chip_labels=chip_labels,
+            notes=[
+                "Intake contradictions or open clarification paths still need another denoising pass before the case theory can settle.",
+                "Review the contradiction queue and targeted questions that should drive the next intake refinement pass.",
+            ],
+            buttons=[_build_review_workflow_priority_button("intake-next-action-review-denoising", "Review denoising queue")],
+            status_message="Showing contradictions and targeted questions for continued intake denoising.",
+        )
+
+    if action == "build_legal_graph":
+        candidate_claim_count = int(candidate_claim_summary.get("count") or 0)
+        targeted_claims = intake_legal_targeting_summary.get("claims") if isinstance(intake_legal_targeting_summary.get("claims"), dict) else intake_matching_summary.get("claims") if isinstance(intake_matching_summary.get("claims"), dict) else {}
+        targeted_claim_entries = list(targeted_claims.items())
+        open_legal_element_count = sum(
+            int((claim or {}).get("missing_requirement_count") or 0)
+            for _, claim in targeted_claim_entries
+            if isinstance(claim, dict)
+        )
+        question_candidate_count = int(question_candidate_summary.get("count") or 0)
+        return build_priority(
+            title="Build legal graph",
+            status_id=action,
+            chip_labels=[
+                "recommended action: build_legal_graph",
+                f"candidate claims: {candidate_claim_count}",
+                f"targeted claims: {len(targeted_claim_entries)}",
+                f"open legal elements: {open_legal_element_count}",
+                f"question candidates: {question_candidate_count}",
+            ],
+            notes=[
+                "Claim targeting is available, but the legal graph that organizes statutes and requirements has not been built yet.",
+                "Review unresolved legal elements and mapped question targets before building the formalization graph.",
+            ],
+            buttons=[_build_review_workflow_priority_button("intake-next-action-review-legal-graph", "Review legal graph inputs")],
+            status_message="Showing unresolved legal elements and question targets for legal graph review.",
+        )
+
+    if action == "perform_neurosymbolic_matching":
+        targeted_claims = intake_legal_targeting_summary.get("claims") if isinstance(intake_legal_targeting_summary.get("claims"), dict) else intake_matching_summary.get("claims") if isinstance(intake_matching_summary.get("claims"), dict) else {}
+        targeted_claim_entries = list(targeted_claims.items())
+        open_legal_element_count = sum(
+            int((claim or {}).get("missing_requirement_count") or 0)
+            for _, claim in targeted_claim_entries
+            if isinstance(claim, dict)
+        )
+        question_candidate_count = int(question_candidate_summary.get("count") or 0)
+        return build_priority(
+            title="Perform neurosymbolic matching",
+            status_id=action,
+            chip_labels=[
+                "recommended action: perform_neurosymbolic_matching",
+                f"targeted claims: {len(targeted_claim_entries)}",
+                f"open legal elements: {open_legal_element_count}",
+                f"question candidates: {question_candidate_count}",
+            ],
+            notes=[
+                "The legal graph is available, but formal claim-to-law matching still needs operator review support.",
+                "Review unresolved legal elements and matching questions before running the neurosymbolic matcher.",
+            ],
+            buttons=[_build_review_workflow_priority_button("intake-next-action-review-matching", "Review matching inputs")],
+            status_message="Showing unresolved legal elements and question targets for neurosymbolic matching.",
+        )
+
+    if action == "generate_formal_complaint":
+        claim_count = int(claim_support_packet_summary.get("claim_count") or 0)
+        element_count = int(claim_support_packet_summary.get("element_count") or 0)
+        proof_readiness_score = float(claim_support_packet_summary.get("proof_readiness_score") or 0.0)
+        draft_ready_ratio = float(claim_support_packet_summary.get("draft_ready_element_ratio") or 0.0)
+        return build_priority(
+            title="Generate formal complaint",
+            status_id=action,
+            chip_labels=[
+                "recommended action: generate_formal_complaint",
+                f"claims: {claim_count}",
+                f"elements: {element_count}",
+                f"packet draft ready: {draft_ready_ratio:.2f}",
+                f"proof readiness: {proof_readiness_score:.2f}",
+            ],
+            notes=[
+                "Formalization is ready to move from matching outputs into a draft complaint package.",
+                "Open the formal complaint builder with the current claim and user context preserved.",
+            ],
+            buttons=[_build_review_workflow_priority_button("intake-next-action-open-formal-generator", "Open formal complaint builder")],
+            status_message="Opening the formal complaint builder.",
+        )
+
+    if action == "build_claim_support_packets":
+        packet_element_count = int(claim_support_packet_summary.get("element_count") or 0)
+        packet_claim_count = int(claim_support_packet_summary.get("claim_count") or 0)
+        chip_labels = [
+            "recommended action: build_claim_support_packets",
+            f"claims: {packet_claim_count}",
+            f"elements: {packet_element_count}",
+        ]
+        for item in recommended_actions[:2]:
+            chip_labels.append(f"recommended lane: {humanize(item)}")
+        return build_priority(
+            title="Build claim support packets",
+            status_id=action,
+            chip_labels=chip_labels,
+            notes=[
+                "Evidence records exist, but the claim support packet still needs an explicit packet build before evidence review can be trusted.",
+                "Execute the packet-building follow-up to refresh packet statuses and downstream review surfaces.",
+            ],
+            buttons=[_build_review_workflow_priority_button("intake-next-action-build-packets", "Build claim support packets")],
+            status_message="Executing claim support packet follow-up.",
+        )
+
+    if action == "resolve_support_conflicts":
+        manual_review_blocker_count = sum(
+            1
+            for update in visible_alignment_task_updates
+            if str((update or {}).get("resolution_status") or "").strip().lower() == "needs_manual_review"
+        )
+        reviewable_escalations = int(
+            claim_support_packet_summary.get("claim_support_reviewable_escalation_count")
+            or manual_review_blocker_count
+            or 0
+        )
+        unresolved_without_review_path = int(
+            claim_support_packet_summary.get("claim_support_unresolved_without_review_path_count") or 0
+        )
+        claim_type = str(next_action.get("claim_type") or "").strip()
+        claim_element_id = str(next_action.get("claim_element_id") or "").strip()
+        claim_element_text = focused_element_label or claim_element_id
+        chip_labels = [
+            "recommended action: resolve_support_conflicts",
+            f"manual review blockers: {manual_review_blocker_count}",
+            f"packet escalations: {reviewable_escalations}",
+        ]
+        if unresolved_without_review_path > 0:
+            chip_labels.append(f"without review path: {unresolved_without_review_path}")
+        if focused_claim_type:
+            chip_labels.append(f"focus claim: {humanize(focused_claim_type)}")
+        if focused_element_id:
+            chip_labels.append(f"focus element: {humanize(focused_element_id)}")
+        support_status = str(next_action.get("support_status") or "").strip()
+        if support_status:
+            chip_labels.append(f"support status: {humanize(support_status)}")
+        for item in recommended_actions[:2]:
+            chip_labels.append(f"recommended lane: {humanize(item)}")
+        return build_priority(
+            title="Resolve support conflicts",
+            status_id=action,
+            chip_labels=chip_labels,
+            notes=[
+                "Contradicted or escalated support is blocking evidence completion for a priority element.",
+                "Open the manual-review queue and resolve the focused conflict before evidence drift expands.",
+            ],
+            buttons=[
+                _build_review_workflow_priority_button(
+                    "intake-next-action-review-conflicts",
+                    "Review manual conflicts",
+                    data_attrs={
+                        "claim_type": claim_type,
+                        "claim_element_id": claim_element_id,
+                        "claim_element_text": claim_element_text,
+                    },
+                ),
+                _build_review_workflow_priority_button(
+                    "intake-next-action-prefill-resolution",
+                    "Load into resolution form",
+                    style="tertiary",
+                    data_attrs={
+                        "claim_element_id": claim_element_id,
+                        "claim_element_text": claim_element_text,
+                    },
+                ),
+            ],
+            status_message="Showing manual-review conflicts that are blocking evidence completion.",
+        )
+
+    if action in {"fill_temporal_chronology_gap", "fill_evidence_gaps"}:
+        prioritized_alignment_tasks = [item for item in (next_action.get("alignment_tasks") or []) if isinstance(item, dict)]
+        focused_alignment_task = next(
+            (
+                task for task in prioritized_alignment_tasks
+                if (
+                    not focused_claim_type
+                    or str(task.get("claim_type") or "").strip().lower() == focused_claim_type
+                )
+                and (
+                    not focused_element_id
+                    or str(task.get("claim_element_id") or "").strip().lower() == focused_element_id
+                )
+            ),
+            {},
+        )
+        if not focused_alignment_task:
+            focused_alignment_task = next(
+                (
+                    task for task in alignment_evidence_tasks
+                    if (
+                        not focused_claim_type
+                        or str(task.get("claim_type") or "").strip().lower() == focused_claim_type
+                    )
+                    and (
+                        not focused_element_id
+                        or str(task.get("claim_element_id") or "").strip().lower() == focused_element_id
+                    )
+                ),
+                {},
+            )
+        preferred_support_kind = str(focused_alignment_task.get("preferred_support_kind") or "").strip().lower()
+        fallback_lanes = [str(item).strip() for item in (focused_alignment_task.get("fallback_lanes") or []) if str(item or "").strip()]
+        claim_type = str(next_action.get("claim_type") or "").strip()
+        claim_element_id = str(next_action.get("claim_element_id") or "").strip()
+        claim_element_text = focused_element_label or claim_element_id
+        chip_labels = [f"recommended action: {action}"]
+        if action == "fill_temporal_chronology_gap":
+            unresolved_issue_ids = []
+            for field_name in ("temporal_issue_ids", "timeline_issue_ids"):
+                unresolved_issue_ids.extend(
+                    [str(item).strip() for item in (focused_alignment_task.get(field_name) or []) if str(item or "").strip()]
+                )
+            unresolved_issue_ids = list(dict.fromkeys(unresolved_issue_ids))
+            chip_labels.append(f"chronology issues: {len(unresolved_issue_ids)}")
+            title = "Resolve chronology blockers"
+            notes = [
+                "Temporal ordering is still unresolved for a shared intake-to-packet element.",
+                "Review the chronology task, inspect the unresolved issue IDs, and collect support that clears the temporal blocker before advancing evidence completion.",
+                f"Unresolved chronology issue IDs: {', '.join(unresolved_issue_ids) if unresolved_issue_ids else 'none recorded'}",
+            ]
+            button_id = "intake-next-action-review-chronology-task"
+            button_label = "Review chronology task"
+            status = "blocked"
+            status_message = "Showing chronology blocker task and unresolved issue IDs."
+        else:
+            title = "Fill evidence gaps"
+            notes = [
+                "Priority evidence is still missing for a shared intake-to-packet element.",
+                "Review the focused evidence task and preferred support lane before advancing the packet.",
+            ]
+            button_id = "intake-next-action-review-evidence-task"
+            button_label = "Review evidence task"
+            status = "warning"
+            status_message = "Showing priority evidence task and preferred support lane."
+        if focused_claim_type:
+            chip_labels.append(f"focus claim: {humanize(focused_claim_type)}")
+        if focused_element_id:
+            chip_labels.append(f"focus element: {humanize(focused_element_id)}")
+        support_status = str(next_action.get("support_status") or "").strip()
+        if support_status:
+            chip_labels.append(f"support status: {humanize(support_status)}")
+        temporal_objective = str(focused_alignment_task.get("temporal_proof_objective") or "").strip()
+        if temporal_objective:
+            chip_labels.append(f"chronology objective: {humanize(temporal_objective)}")
+        if preferred_support_kind:
+            chip_labels.append(f"preferred lane: {humanize(preferred_support_kind)}")
+        quality_target = str(focused_alignment_task.get("source_quality_target") or "").strip()
+        if quality_target:
+            chip_labels.append(f"quality target: {humanize(quality_target)}")
+        for lane in fallback_lanes[:2]:
+            chip_labels.append(f"fallback lane: {humanize(lane)}")
+        return build_priority(
+            status=status,
+            title=title,
+            status_id=action,
+            chip_labels=chip_labels,
+            notes=notes,
+            buttons=[
+                _build_review_workflow_priority_button(
+                    button_id,
+                    button_label,
+                    data_attrs={
+                        "claim_type": claim_type,
+                        "claim_element_id": claim_element_id,
+                        "claim_element_text": claim_element_text,
+                        "support_kind": preferred_support_kind,
+                    },
+                )
+            ],
+            status_message=status_message,
+        )
+
+    if action == "complete_evidence":
+        proof_readiness_score = float(claim_support_packet_summary.get("proof_readiness_score") or 0.0)
+        evidence_completion_ready = bool(claim_support_packet_summary.get("evidence_completion_ready"))
+        chip_labels = [
+            "recommended action: complete_evidence",
+            f"packet completion ready: {'yes' if evidence_completion_ready else 'no'}",
+            f"proof readiness: {proof_readiness_score:.2f}",
+        ]
+        for item in recommended_actions[:2]:
+            chip_labels.append(f"recommended lane: {humanize(item)}")
+        return build_priority(
+            title="Begin formal complaint drafting",
+            status_id=action,
+            chip_labels=chip_labels,
+            notes=[
+                "Evidence support is sufficiently assembled to move from packet review into formal complaint drafting.",
+                "Open the formal complaint builder with the current claim and user context preserved.",
+            ],
+            buttons=[_build_review_workflow_priority_button("intake-next-action-open-document-builder", "Open formal complaint builder")],
+            status_message="Opening the formal complaint builder.",
+        )
+
+    if action == "address_gaps":
+        action_gaps = [str(item).strip() for item in (next_action.get("gaps") or []) if str(item or "").strip()]
+        intake_blockers = [str(item).strip() for item in (next_action.get("intake_blockers") or []) if str(item or "").strip()]
+        contradiction_count = int(contradiction_summary.get("count") or 0)
+        question_candidate_count = int(question_candidate_summary.get("count") or 0)
+        readiness_score = float(next_action.get("intake_readiness_score") or 0.0)
+        chip_labels = [
+            "recommended action: address_gaps",
+            f"gap count: {len(action_gaps)}",
+            f"blockers: {len(intake_blockers)}",
+            f"contradictions: {contradiction_count}",
+            f"question candidates: {question_candidate_count}",
+        ]
+        if readiness_score > 0:
+            chip_labels.append(f"readiness score: {readiness_score:.2f}")
+        for gap in action_gaps[:2]:
+            chip_labels.append(f"gap: {humanize(gap)}")
+        return build_priority(
+            title="Review intake gaps",
+            status_id=action,
+            chip_labels=chip_labels,
+            notes=[
+                "Intake still has unresolved proof or chronology gaps that should be clarified before handoff quality degrades.",
+                "Review the unresolved intake matching diagnostics and targeted questions.",
+            ],
+            buttons=[_build_review_workflow_priority_button("intake-next-action-review-gaps", "Review intake gaps")],
+            status_message="Showing unresolved intake gaps and targeted questions.",
+        )
+
+    if action == "confirm_intake_summary":
+        current_summary_snapshot = (
+            summary_confirmation.get("current_summary_snapshot")
+            if isinstance(summary_confirmation.get("current_summary_snapshot"), dict)
+            else {}
+        )
+        chip_labels = [
+            "recommended action: confirm_intake_summary",
+            f"candidate claims: {int(current_summary_snapshot.get('candidate_claim_count') or 0)}",
+            f"canonical facts: {int(current_summary_snapshot.get('canonical_fact_count') or 0)}",
+            f"proof leads: {int(current_summary_snapshot.get('proof_lead_count') or 0)}",
+        ]
+        open_item_count = int(current_summary_snapshot.get("open_item_count") or 0)
+        if open_item_count > 0:
+            chip_labels.append(f"open items: {open_item_count}")
+        return build_priority(
+            title="Confirm intake summary",
+            status_id=action,
+            chip_labels=chip_labels,
+            notes=[
+                "The latest intake summary snapshot is still waiting for complainant confirmation before the intake phase can fully settle.",
+                "Add an optional confirmation note above if needed, then confirm the intake summary.",
+            ],
+            buttons=[_build_review_workflow_priority_button("intake-next-action-confirm-summary", "Confirm intake summary")],
+            status_message="Confirming the current intake summary snapshot.",
+        )
+
+    return _build_review_workflow_priority_from_phase(workflow_phase_priority)
+
+
 def summarize_claim_support_snapshot_lifecycle(
     snapshots: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
@@ -3022,6 +3711,11 @@ def build_claim_support_review_payload(
         intake_case_summary=intake_case_summary,
     )
     workflow_phase_priority = _build_review_workflow_phase_priority(workflow_phase_plan)
+    workflow_priority = _build_review_workflow_priority(
+        intake_status=intake_status,
+        intake_case_summary=intake_case_summary,
+        workflow_phase_priority=workflow_phase_priority,
+    )
     handoff_metadata = _build_confirmed_intake_summary_handoff_metadata(mediator)
 
     payload: Dict[str, Any] = {
@@ -3037,6 +3731,7 @@ def build_claim_support_review_payload(
         ),
         "workflow_phase_plan": workflow_phase_plan,
         "workflow_phase_priority": workflow_phase_priority,
+        "workflow_priority": workflow_priority,
         "primary_validation_target": (
             dict(intake_status.get("primary_validation_target"))
             if isinstance(intake_status.get("primary_validation_target"), dict)

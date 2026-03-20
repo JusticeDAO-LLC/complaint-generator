@@ -71,6 +71,9 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "workflow-phase-guidance-card" in content
     assert "Workflow Phase Guidance" in content
     assert "workflowPhasePlan.recommended_order" in content
+    assert "workflowPriorityFromPayload" in content
+    assert "renderReviewWorkflowPriority(workflowPriorityFromPayload)" in content
+    assert "normalizeReviewWorkflowPriorityPayload(workflowPriorityPayload)" in content
     assert "workflowPhasePriorityFromPayload" in content
     assert "resolveReviewWorkflowPhasePriority(workflowPhasePlanPayload)" in content
     assert "workflowPhasePriority.action_id" in content

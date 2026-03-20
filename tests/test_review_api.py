@@ -940,6 +940,32 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 "knowledge_graph_enhanced": False,
             },
         }
+        assert payload["workflow_priority"] == {
+            "status": "warning",
+            "status_id": "workflow_phase_review_intake_gaps",
+            "title": "Resolve graph analysis before drafting",
+            "chip_labels": [
+                "workflow phase: Graph Analysis",
+                "phase status: Warning",
+                "remaining gap count: 1",
+                "current gap count: 1",
+                "knowledge graph enhanced: no",
+            ],
+            "notes": [
+                "Graph analysis still has 1 unresolved gap(s) or pending evidence-to-graph updates.",
+                "Recommended actions: Review intake graph inputs and refresh graph-backed evidence projections before final drafting.",
+            ],
+            "buttons": [
+                {
+                    "id": "intake-next-action-review-gaps",
+                    "label": "Review intake gaps",
+                    "style": "secondary",
+                    "data_attrs": {},
+                }
+            ],
+            "action_id": "review_intake_gaps",
+            "status_message": "Showing unresolved intake gaps and targeted questions.",
+        }
         assert payload["primary_validation_target"] == {}
         assert payload["intake_status"] == {
             "current_phase": "intake",
@@ -2615,9 +2641,409 @@ def test_claim_support_review_payload_includes_confirmed_handoff_metadata():
             "unresolved_without_review_path_count": 0,
         },
     }
+    assert payload["workflow_priority"] == {
+        "status": "warning",
+        "status_id": "workflow_phase_review_packet_readiness",
+        "title": "Resolve drafting readiness before filing",
+        "chip_labels": [
+            "workflow phase: Document Generation",
+            "phase status: Warning",
+            "proof readiness: 0.00",
+            "unresolved temporal issues: 0",
+            "unresolved without review path: 0",
+        ],
+        "notes": [
+            "Document generation should wait until evidence review and packet blockers are reduced further.",
+            "Recommended actions: Reduce unresolved packet blockers and confirm the evidence packet before generating a formal complaint.",
+        ],
+        "buttons": [
+            {
+                "id": "intake-next-action-review-packet-readiness",
+                "label": "Review packet readiness",
+                "style": "secondary",
+                "data_attrs": {},
+            }
+        ],
+        "action_id": "review_packet_readiness",
+        "status_message": "Showing packet readiness summary and evidence blockers before drafting.",
+    }
     assert payload["primary_validation_target"] == {}
     assert payload["intake_status"]["intake_summary_handoff"] == payload["intake_summary_handoff"]
     assert payload["intake_case_summary"]["intake_summary_handoff"] == payload["intake_summary_handoff"]
+
+
+def test_claim_support_review_payload_builds_explicit_workflow_priority_for_support_conflicts():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "evidence",
+        "iteration_count": 3,
+        "intake_readiness": {
+            "score": 0.88,
+            "ready_to_advance": True,
+            "remaining_gap_count": 0,
+            "contradiction_count": 0,
+            "criteria": {"complainant_summary_confirmed": True},
+            "blockers": [],
+            "contradictions": [],
+            "candidate_claim_count": 1,
+            "canonical_fact_count": 1,
+            "proof_lead_count": 1,
+        },
+        "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.9}],
+        "intake_sections": {},
+        "canonical_fact_summary": {"count": 1, "facts": []},
+        "proof_lead_summary": {"count": 1, "proof_leads": []},
+        "timeline_anchor_summary": {"count": 1, "anchors": []},
+        "harm_profile": {},
+        "remedy_profile": {},
+        "complainant_summary_confirmation": {
+            "status": "confirmed",
+            "confirmed": True,
+            "current_summary_snapshot": {},
+        },
+        "question_candidate_summary": {},
+        "next_action": {
+            "action": "resolve_support_conflicts",
+            "claim_type": "retaliation",
+            "claim_element_id": "retaliation:3",
+            "claim_element_label": "Causal connection",
+            "support_status": "contradicted",
+            "recommended_actions": ["request_document", "manual_review"],
+        },
+        "claim_support_packet_summary": {
+            "claim_count": 1,
+            "element_count": 3,
+            "claim_support_reviewable_escalation_count": 1,
+        },
+        "intake_evidence_alignment_summary": {},
+        "alignment_evidence_tasks": [],
+        "alignment_task_updates": [
+            {
+                "task_id": "retaliation:retaliation:3:resolve_support_conflicts",
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:3",
+                "resolution_status": "needs_manual_review",
+                "status": "active",
+            }
+        ],
+        "alignment_task_update_history": [
+            {
+                "task_id": "retaliation:retaliation:3:resolve_support_conflicts",
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:3",
+                "resolution_status": "needs_manual_review",
+                "status": "active",
+            }
+        ],
+        "alignment_task_summary": {"count": 1},
+    }
+    mediator.phase_manager = SimpleNamespace(get_phase_data=lambda phase, key: None)
+    mediator.get_claim_coverage_matrix.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_claim_overview.return_value = {"claims": {"retaliation": {}}}
+    mediator.get_claim_support_diagnostic_snapshots.return_value = {"claims": {}}
+    mediator.get_claim_support_gaps.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "unresolved_elements": []}}}
+    mediator.get_claim_contradiction_candidates.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "candidates": []}}}
+    mediator.get_claim_support_validation.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_recent_claim_follow_up_execution.return_value = {"claims": {"retaliation": []}}
+    mediator.get_claim_follow_up_plan.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "tasks": []}}}
+    mediator.get_user_evidence.return_value = []
+    mediator.summarize_claim_support.return_value = {"claims": {"retaliation": {}}}
+
+    payload = build_claim_support_review_payload(
+        mediator,
+        ClaimSupportReviewRequest(claim_type="retaliation"),
+    )
+
+    assert payload["recommended_next_action"] == "resolve_support_conflicts"
+    assert payload["workflow_priority"] == {
+        "status": "warning",
+        "title": "Resolve support conflicts",
+        "status_id": "resolve_support_conflicts",
+        "chip_labels": [
+            "recommended action: resolve_support_conflicts",
+            "manual review blockers: 1",
+            "packet escalations: 1",
+            "focus claim: Retaliation",
+            "focus element: Retaliation:3",
+            "support status: Contradicted",
+            "recommended lane: Request Document",
+            "recommended lane: Manual Review",
+        ],
+        "notes": [
+            "Contradicted or escalated support is blocking evidence completion for a priority element.",
+            "Open the manual-review queue and resolve the focused conflict before evidence drift expands.",
+        ],
+        "buttons": [
+            {
+                "id": "intake-next-action-review-conflicts",
+                "label": "Review manual conflicts",
+                "style": "secondary",
+                "data_attrs": {
+                    "claim_type": "retaliation",
+                    "claim_element_id": "retaliation:3",
+                    "claim_element_text": "Causal connection",
+                },
+            },
+            {
+                "id": "intake-next-action-prefill-resolution",
+                "label": "Load into resolution form",
+                "style": "tertiary",
+                "data_attrs": {
+                    "claim_element_id": "retaliation:3",
+                    "claim_element_text": "Causal connection",
+                },
+            },
+        ],
+        "action_id": "resolve_support_conflicts",
+        "status_message": "Showing manual-review conflicts that are blocking evidence completion.",
+    }
+
+
+def test_claim_support_review_payload_builds_explicit_workflow_priority_for_promoted_support_validation():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "evidence",
+        "iteration_count": 3,
+        "intake_readiness": {
+            "score": 0.88,
+            "ready_to_advance": True,
+            "remaining_gap_count": 0,
+            "contradiction_count": 0,
+            "criteria": {"complainant_summary_confirmed": True},
+            "blockers": [],
+            "contradictions": [],
+            "candidate_claim_count": 1,
+            "canonical_fact_count": 1,
+            "proof_lead_count": 1,
+        },
+        "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.9}],
+        "intake_sections": {},
+        "canonical_fact_summary": {"count": 1, "facts": []},
+        "proof_lead_summary": {"count": 1, "proof_leads": []},
+        "timeline_anchor_summary": {"count": 1, "anchors": []},
+        "harm_profile": {},
+        "remedy_profile": {},
+        "complainant_summary_confirmation": {
+            "status": "confirmed",
+            "confirmed": True,
+            "current_summary_snapshot": {},
+        },
+        "question_candidate_summary": {},
+        "primary_validation_target": {
+            "claim_type": "retaliation",
+            "claim_element_id": "retaliation:2",
+            "promotion_kind": "document",
+            "promotion_ref": "doc:retaliation:1",
+        },
+        "next_action": {
+            "action": "validate_promoted_support",
+            "claim_type": "retaliation",
+            "claim_element_id": "retaliation:2",
+        },
+        "claim_support_packet_summary": {},
+        "intake_evidence_alignment_summary": {},
+        "alignment_evidence_tasks": [],
+        "alignment_task_updates": [],
+        "alignment_task_update_history": [],
+        "alignment_task_summary": {"count": 0},
+        "alignment_promotion_drift_summary": {
+            "promoted_count": 2,
+            "resolved_supported_count": 0,
+            "pending_conversion_count": 2,
+            "proof_readiness_score": 0.5,
+            "drift_ratio": 1.0,
+            "drift_flag": True,
+        },
+        "alignment_validation_focus_summary": {
+            "count": 2,
+            "claim_type_counts": {"retaliation": 2},
+            "promotion_kind_counts": {"testimony": 1, "document": 1},
+            "primary_target": {
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:2",
+                "promotion_kind": "document",
+                "promotion_ref": "doc:retaliation:1",
+            },
+            "targets": [
+                {
+                    "claim_type": "retaliation",
+                    "claim_element_id": "retaliation:2",
+                    "promotion_kind": "document",
+                    "promotion_ref": "doc:retaliation:1",
+                },
+                {
+                    "claim_type": "retaliation",
+                    "claim_element_id": "retaliation:3",
+                    "promotion_kind": "testimony",
+                },
+            ],
+        },
+    }
+    mediator.phase_manager = SimpleNamespace(get_phase_data=lambda phase, key: None)
+    mediator.get_claim_coverage_matrix.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_claim_overview.return_value = {"claims": {"retaliation": {}}}
+    mediator.get_claim_support_diagnostic_snapshots.return_value = {"claims": {}}
+    mediator.get_claim_support_gaps.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "unresolved_elements": []}}}
+    mediator.get_claim_contradiction_candidates.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "candidates": []}}}
+    mediator.get_claim_support_validation.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_recent_claim_follow_up_execution.return_value = {"claims": {"retaliation": []}}
+    mediator.get_claim_follow_up_plan.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "tasks": []}}}
+    mediator.get_user_evidence.return_value = []
+    mediator.summarize_claim_support.return_value = {"claims": {"retaliation": {}}}
+
+    payload = build_claim_support_review_payload(
+        mediator,
+        ClaimSupportReviewRequest(claim_type="retaliation"),
+    )
+
+    assert payload["recommended_next_action"] == "validate_promoted_support"
+    assert payload["workflow_priority"] == {
+        "status": "warning",
+        "status_id": "validate_promoted_support",
+        "title": "Validate promoted support",
+        "chip_labels": [
+            "recommended action: validate_promoted_support",
+            "pending conversion: 2",
+            "promoted updates: 2",
+            "validation targets: 2",
+            "drift ratio: 1.00",
+            "proof readiness: 0.50",
+            "focus claim: Retaliation",
+            "focus element: Retaliation:2",
+            "primary target: Retaliation:2",
+            "primary promotion kind: Document",
+            "primary promotion ref: doc:retaliation:1",
+        ],
+        "notes": [
+            "Promoted testimony or document support is accumulating faster than packet validation is reaching resolved supported status.",
+            "Primary validation target: Retaliation:2.",
+            "Primary promotion ref: doc:retaliation:1.",
+            "Review and validate saved support before treating the evidence phase as truly settled.",
+        ],
+        "buttons": [
+            {
+                "id": "intake-next-action-open-promoted",
+                "label": "Review promoted updates",
+                "style": "secondary",
+                "data_attrs": {
+                    "claim_type": "retaliation",
+                    "claim_element_id": "retaliation:2",
+                },
+            },
+            {
+                "id": "intake-next-action-prefill-testimony",
+                "label": "Prefill testimony validation",
+                "style": "tertiary",
+                "data_attrs": {
+                    "claim_type": "retaliation",
+                    "claim_element_id": "retaliation:2",
+                },
+            },
+            {
+                "id": "intake-next-action-prefill-document",
+                "label": "Prefill document validation",
+                "style": "tertiary",
+                "data_attrs": {
+                    "claim_type": "retaliation",
+                    "claim_element_id": "retaliation:2",
+                },
+            },
+        ],
+        "action_id": "validate_promoted_support",
+        "status_message": "Showing promoted alignment updates that still need validation.",
+    }
+
+
+def test_claim_support_review_payload_builds_explicit_workflow_priority_for_complete_evidence():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "evidence",
+        "iteration_count": 3,
+        "intake_readiness": {
+            "score": 0.88,
+            "ready_to_advance": True,
+            "remaining_gap_count": 0,
+            "contradiction_count": 0,
+            "criteria": {"complainant_summary_confirmed": True},
+            "blockers": [],
+            "contradictions": [],
+            "candidate_claim_count": 1,
+            "canonical_fact_count": 1,
+            "proof_lead_count": 1,
+        },
+        "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.9}],
+        "intake_sections": {},
+        "canonical_fact_summary": {"count": 1, "facts": []},
+        "proof_lead_summary": {"count": 1, "proof_leads": []},
+        "timeline_anchor_summary": {"count": 1, "anchors": []},
+        "harm_profile": {},
+        "remedy_profile": {},
+        "complainant_summary_confirmation": {
+            "status": "confirmed",
+            "confirmed": True,
+            "current_summary_snapshot": {},
+        },
+        "question_candidate_summary": {},
+        "next_action": {
+            "action": "complete_evidence",
+            "recommended_actions": ["generate_formal_complaint"],
+        },
+        "claim_support_packet_summary": {
+            "evidence_completion_ready": True,
+            "proof_readiness_score": 0.94,
+        },
+        "intake_evidence_alignment_summary": {},
+        "alignment_evidence_tasks": [],
+        "alignment_task_updates": [],
+        "alignment_task_update_history": [],
+        "alignment_task_summary": {"count": 0},
+    }
+    mediator.phase_manager = SimpleNamespace(get_phase_data=lambda phase, key: None)
+    mediator.get_claim_coverage_matrix.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_claim_overview.return_value = {"claims": {"retaliation": {}}}
+    mediator.get_claim_support_diagnostic_snapshots.return_value = {"claims": {}}
+    mediator.get_claim_support_gaps.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "unresolved_elements": []}}}
+    mediator.get_claim_contradiction_candidates.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "candidates": []}}}
+    mediator.get_claim_support_validation.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_recent_claim_follow_up_execution.return_value = {"claims": {"retaliation": []}}
+    mediator.get_claim_follow_up_plan.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "tasks": []}}}
+    mediator.get_user_evidence.return_value = []
+    mediator.summarize_claim_support.return_value = {"claims": {"retaliation": {}}}
+
+    payload = build_claim_support_review_payload(
+        mediator,
+        ClaimSupportReviewRequest(claim_type="retaliation"),
+    )
+
+    assert payload["recommended_next_action"] == "complete_evidence"
+    assert payload["workflow_priority"] == {
+        "status": "warning",
+        "title": "Begin formal complaint drafting",
+        "status_id": "complete_evidence",
+        "chip_labels": [
+            "recommended action: complete_evidence",
+            "packet completion ready: yes",
+            "proof readiness: 0.94",
+            "recommended lane: Generate Formal Complaint",
+        ],
+        "notes": [
+            "Evidence support is sufficiently assembled to move from packet review into formal complaint drafting.",
+            "Open the formal complaint builder with the current claim and user context preserved.",
+        ],
+        "buttons": [
+            {
+                "id": "intake-next-action-open-document-builder",
+                "label": "Open formal complaint builder",
+                "style": "secondary",
+                "data_attrs": {},
+            }
+        ],
+        "action_id": "complete_evidence",
+        "status_message": "Opening the formal complaint builder.",
+    }
 
 
 def test_claim_support_follow_up_execution_payload_summarizes_escalation_outcomes():

@@ -2,6 +2,9 @@
 ### by JusticeDAO
 
 [![Claim Support Regression](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/claim-support-regression.yml/badge.svg)](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/claim-support-regression.yml)
+[![HACC Unit Regression](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/hacc-unit-regression.yml/badge.svg)](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/hacc-unit-regression.yml)
+
+Regression workflows: [Manual HACC Grounding Regression](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/hacc-grounding-regression.yml)
 
 An AI-powered legal automation system that assists in preparing legal complaints through intelligent question-driven intake, evidence gathering, and formal complaint generation.
 
@@ -179,6 +182,18 @@ If you need to proactively normalize older claim-support testimony rows after up
 ```
 
 The dry run reports legacy testimony rows that can be canonically linked to registered claim elements without updating the database. The non-dry-run invocation applies those repairs in place.
+
+**HACC Regression:**
+
+```bash
+# Lightweight HACC unit slice
+.venv/bin/python scripts/run_hacc_unit_regression.py
+
+# Grounding-focused HACC regression without the live smoke run
+.venv/bin/python scripts/run_hacc_grounding_regression.py --skip-smoke
+```
+
+The lightweight slice covers the HACC evidence loader, HACC complaint synthesis, and HACC adversarial-report runner. The grounding slice adds the HACC seed-generation checks and can optionally run the heavier live smoke path. VS Code exposes matching tasks under `HACC Unit Regression` and `HACC Grounding Regression`, Make exposes `hacc-unit`, `hacc-grounding`, and `hacc-grounding-no-smoke`, and GitHub Actions includes `hacc-unit-regression.yml` plus a manual `hacc-grounding-regression.yml` workflow.
 
 **Hugging Face Router Quick Start:**
 ```bash

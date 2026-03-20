@@ -2789,6 +2789,9 @@
             const workflowPhasePriorityFromPayload = reviewRenderState.payload && reviewRenderState.payload.workflow_phase_priority && typeof reviewRenderState.payload.workflow_phase_priority === 'object'
                 ? reviewRenderState.payload.workflow_phase_priority
                 : {};
+            const workflowPriorityFromPayload = reviewRenderState.payload && reviewRenderState.payload.workflow_priority && typeof reviewRenderState.payload.workflow_priority === 'object'
+                ? reviewRenderState.payload.workflow_priority
+                : {};
             const workflowPhases = workflowPhasePlan.phases && typeof workflowPhasePlan.phases === 'object'
                 ? workflowPhasePlan.phases
                 : {};
@@ -2915,6 +2918,65 @@
                     };
                 }
                 return null;
+            }
+
+            function normalizeReviewWorkflowPriorityPayload(workflowPriorityPayload) {
+                const normalizedPayload = workflowPriorityPayload && typeof workflowPriorityPayload === 'object'
+                    ? workflowPriorityPayload
+                    : {};
+                if (!Object.keys(normalizedPayload).length) {
+                    return null;
+                }
+                const normalizedStatus = String(normalizedPayload.status || 'warning').trim().toLowerCase() || 'warning';
+                const chipLabels = Array.isArray(normalizedPayload.chip_labels)
+                    ? normalizedPayload.chip_labels.filter(Boolean)
+                    : [];
+                const noteLines = Array.isArray(normalizedPayload.notes)
+                    ? normalizedPayload.notes.filter(Boolean).map((item) => String(item || '').trim()).filter(Boolean)
+                    : [];
+                const normalizedButtons = Array.isArray(normalizedPayload.buttons)
+                    ? normalizedPayload.buttons.filter((button) => button && typeof button === 'object' && String(button.id || '').trim())
+                    : [];
+                return {
+                    status: normalizedStatus,
+                    statusId: String(normalizedPayload.status_id || normalizedPayload.action_id || 'workflow_priority').trim() || 'workflow_priority',
+                    title: String(normalizedPayload.title || 'Review workflow priority').trim() || 'Review workflow priority',
+                    chips: chipLabels,
+                    notes: noteLines,
+                    buttons: normalizedButtons,
+                };
+            }
+
+            function renderReviewWorkflowPriority(workflowPriorityPayload) {
+                const normalizedPriority = normalizeReviewWorkflowPriorityPayload(workflowPriorityPayload);
+                if (!normalizedPriority) {
+                    return false;
+                }
+                intakeNextActionBanner.hidden = false;
+                intakeNextActionBanner.classList.toggle('is-error', normalizedPriority.status === 'blocked');
+                intakeNextActionTitle.textContent = normalizedPriority.title;
+                intakeNextActionStatus.textContent = normalizedPriority.statusId;
+                intakeNextActionChips.innerHTML = normalizedPriority.chips
+                    .map((label) => `<span class="chip">${escapeHtml(label)}</span>`)
+                    .join('');
+                const notesMarkup = normalizedPriority.notes
+                    .map((line) => `<div>${escapeHtml(line)}</div>`)
+                    .join('');
+                const buttonsMarkup = normalizedPriority.buttons.length
+                    ? `<div class="button-row" style="margin-top: 12px;">${normalizedPriority.buttons.map((button) => {
+                        const buttonStyle = String(button.style || 'secondary').trim().toLowerCase();
+                        const buttonClass = buttonStyle === 'tertiary' ? 'button-tertiary' : 'button-secondary';
+                        const dataAttrs = button.data_attrs && typeof button.data_attrs === 'object'
+                            ? Object.entries(button.data_attrs)
+                                .filter(([, value]) => String(value || '').trim())
+                                .map(([key, value]) => ` data-${String(key || '').trim().replace(/_/g, '-')}="${escapeHtml(String(value || '').trim())}"`)
+                                .join('')
+                            : '';
+                        return `<button class="${buttonClass}" id="${escapeHtml(String(button.id || '').trim())}" type="button"${dataAttrs}>${escapeHtml(String(button.label || 'Review workflow priority').trim())}</button>`;
+                    }).join('')}</div>`
+                    : '';
+                intakeNextActionNotes.innerHTML = `${notesMarkup}${buttonsMarkup}`;
+                return true;
             }
 
             if (workflowOrder.length) {
@@ -3105,7 +3167,9 @@
                 }).join('');
             }
 
-            if (nextAction.action === 'validate_promoted_support') {
+            if (renderReviewWorkflowPriority(workflowPriorityFromPayload)) {
+                // Backend-owned workflow priority takes precedence over local template routing.
+            } else if (nextAction.action === 'validate_promoted_support') {
                 const driftSummary = nextAction.drift_summary && typeof nextAction.drift_summary === 'object'
                     ? nextAction.drift_summary
                     : alignmentPromotionDriftSummary;
