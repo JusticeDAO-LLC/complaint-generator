@@ -213,3 +213,10 @@ def test_logic_entrypoints_preserve_claim_support_temporal_handoff():
         assert handoff['unresolved_temporal_issue_count'] == 1
         assert handoff['event_ids'] == ['fact_1']
         assert handoff['temporal_proof_bundle_ids'] == ['retaliation:1:bundle_001']
+        theorem_export_metadata = result['temporal_reasoning_payload']['theorem_export_metadata']
+        assert theorem_export_metadata['contract_version'] == 'claim_support_temporal_handoff_v1'
+        assert theorem_export_metadata['chronology_blocked'] is True
+        assert theorem_export_metadata['chronology_task_count'] == 1
+        assert theorem_export_metadata['temporal_issue_ids'] == ['timeline-gap-001']
+
+    assert hybrid_result['result']['theorem_export_metadata'] == hybrid_result['temporal_reasoning_payload']['theorem_export_metadata']

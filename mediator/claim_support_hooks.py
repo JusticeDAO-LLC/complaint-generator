@@ -1353,6 +1353,31 @@ class ClaimSupportHook:
             ]
             if part
         )
+        theorem_export_metadata = {
+            'contract_version': 'claim_support_temporal_handoff_v1',
+            'claim_type': str(claim_type or ''),
+            'claim_element_id': str(element.get('element_id') or ''),
+            'proof_bundle_id': proof_bundle_id,
+            'rule_frame_id': str(profile.get('rule_frame_id') or ''),
+            'chronology_blocked': bool(issue_ids or profile.get('blocking_reasons')),
+            'chronology_task_count': len([
+                follow_up
+                for follow_up in (profile.get('recommended_follow_ups', []) or [])
+                if isinstance(follow_up, dict)
+            ]) or len([
+                str(reason).strip()
+                for reason in (profile.get('blocking_reasons', []) or [])
+                if str(reason).strip()
+            ]) or len(issue_ids),
+            'unresolved_temporal_issue_ids': list(issue_ids),
+            'event_ids': list(fact_ids),
+            'temporal_fact_ids': list(fact_ids),
+            'temporal_relation_ids': list(relation_ids),
+            'timeline_issue_ids': list(issue_ids),
+            'temporal_issue_ids': list(issue_ids),
+            'temporal_proof_bundle_ids': [proof_bundle_id] if proof_bundle_id else [],
+            'temporal_proof_objectives': [str(profile.get('rule_frame_id') or '').strip()] if str(profile.get('rule_frame_id') or '').strip() else [],
+        }
 
         return {
             'proof_bundle_id': proof_bundle_id,
@@ -1389,6 +1414,7 @@ class ClaimSupportHook:
             'theorem_exports': {
                 'tdfol_formulas': tdfol_formulas[:10],
                 'dcec_formulas': dcec_formulas[:10],
+                'theorem_export_metadata': theorem_export_metadata,
             },
             'theorem_export_counts': {
                 'tdfol_formula_count': len(tdfol_formulas),

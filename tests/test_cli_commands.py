@@ -64,6 +64,17 @@ def test_parse_command_options_splits_export_lists():
     assert options['service_recipients'] == ['Registered Agent', 'Defense Counsel']
 
 
+def test_print_commands_mentions_include_json_override(capsys):
+    cli = _make_cli()
+
+    CLI.print_commands(cli)
+
+    captured = capsys.readouterr().out
+    assert '!claim-review [claim_type] [key=value]' in captured
+    assert '!execute-follow-up [claim_type] [key=value]' in captured
+    assert 'include_json=true for raw payload' in captured
+
+
 def test_claim_review_command_calls_mediator_builder():
     mediator = Mock()
     mediator.build_claim_support_review_payload.return_value = {'ok': True}
@@ -257,40 +268,40 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
     assert 'claim review quality summary:' in rendered
     assert '- retaliation: low_quality=2 issue_elements=1 avg_quality=62.50 authority_supportive=1 authority_adverse=1 authority_uncertain=1' in rendered
     assert 'refresh: Causal connection' in rendered
-    assert 'authority_treatments: limits=1, questioned=1' in rendered
+    assert 'authority_treatments: Limits=1, Questioned=1' in rendered
     assert 'recommendation: improve_parse_quality' in rendered
     assert 'follow-up plan fact targeting:' in rendered
     assert '- retaliation:' in rendered
-    assert 'Causal connection | primary_gap=Manager knowledge | missing=Manager knowledge, Event sequence | covered=Protected activity' in rendered
+    assert 'Causal Connection | primary_gap=Manager knowledge | missing=Manager knowledge, Event sequence | covered=Protected activity' in rendered
     assert 'follow-up plan authority search summary:' in rendered
     assert '- retaliation: authority_program_tasks=1 authority_programs=2' in rendered
-    assert 'program_types: fact_pattern_search=1, treatment_check_search=1' in rendered
-    assert 'search_intents: confirm_good_law=1, support=1' in rendered
-    assert 'primary_programs: fact_pattern_search=1' in rendered
-    assert 'primary_biases: uncertain=1' in rendered
-    assert 'primary_rule_biases: exception=1' in rendered
-    assert 'source_context: lane authority=1; family legal_authority=1; artifact legal_authority_reference=1' in rendered
+    assert 'program_types: Fact Pattern Search=1, Treatment Check Search=1' in rendered
+    assert 'search_intents: Confirm Good Law=1, Support=1' in rendered
+    assert 'primary_programs: Fact Pattern Search=1' in rendered
+    assert 'primary_biases: Uncertain=1' in rendered
+    assert 'primary_rule_biases: Exception=1' in rendered
+    assert 'source_context: lane Authority=1; family Legal Authority=1; artifact Legal Authority Reference=1' in rendered
     assert 'follow-up plan chronology summary:' in rendered
     assert '- retaliation: chronology_tasks=1 chronology_targeted=1' in rendered
-    assert 'rule_status: partial=1' in rendered
+    assert 'rule_status: Partial=1' in rendered
     assert 'blockers: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.=1' in rendered
-    assert 'handoffs: awaiting_testimony=1' in rendered
+    assert 'handoffs: Awaiting Testimony=1' in rendered
     assert 'follow-up plan fact-target summary:' in rendered
-    assert 'primary_gaps: Manager knowledge=1' in rendered
-    assert 'missing_bundle: Event sequence=1, Manager knowledge=1' in rendered
-    assert 'covered_bundle: Protected activity=1' in rendered
+    assert 'primary_gaps: Manager Knowledge=1' in rendered
+    assert 'missing_bundle: Event Sequence=1, Manager Knowledge=1' in rendered
+    assert 'covered_bundle: Protected Activity=1' in rendered
     assert 'follow-up history fact targeting:' in rendered
     assert 'follow-up history authority search summary:' in rendered
     assert '- retaliation: history_program_entries=1' in rendered
-    assert 'selected_programs: adverse_authority_search=1' in rendered
-    assert 'selected_biases: adverse=1' in rendered
-    assert 'selected_rule_biases: exception=1' in rendered
-    assert 'source_context: family legal_authority=1; artifact legal_authority_reference=1' in rendered
+    assert 'selected_programs: Adverse Authority Search=1' in rendered
+    assert 'selected_biases: Adverse=1' in rendered
+    assert 'selected_rule_biases: Exception=1' in rendered
+    assert 'source_context: family Legal Authority=1; artifact Legal Authority Reference=1' in rendered
     assert 'follow-up history chronology summary:' in rendered
     assert '- retaliation: chronology_tasks=1 chronology_targeted=1' in rendered
-    assert 'rule_status: partial=1' in rendered
+    assert 'rule_status: Partial=1' in rendered
     assert 'blockers: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.=1' in rendered
-    assert 'handoffs: awaiting_testimony=1' in rendered
+    assert 'handoffs: Awaiting Testimony=1' in rendered
     assert 'follow-up history fact-target summary:' in rendered
     assert '"claim_coverage_summary"' not in rendered
 
@@ -491,36 +502,36 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
     assert '- retaliation: status=improved low_quality=1->0 parse_tasks=1' in rendered
     assert 'resolved: Causal connection' in rendered
     assert 'follow-up execution fact targeting:' in rendered
-    assert 'Causal connection | primary_gap=Manager knowledge | missing=Manager knowledge, Event sequence | covered=Protected activity' in rendered
+    assert 'Causal Connection | primary_gap=Manager knowledge | missing=Manager knowledge, Event sequence | covered=Protected activity' in rendered
     assert 'follow-up execution authority search summary:' in rendered
     assert '- retaliation: authority_program_tasks=1 authority_programs=2' in rendered
-    assert 'program_types: adverse_authority_search=1, treatment_check_search=1' in rendered
-    assert 'search_intents: confirm_good_law=1, oppose=1' in rendered
-    assert 'primary_programs: adverse_authority_search=1' in rendered
-    assert 'primary_biases: adverse=1' in rendered
-    assert 'primary_rule_biases: procedural_prerequisite=1' in rendered
-    assert 'source_context: lane authority=1; family legal_authority=1; artifact legal_authority_reference=1' in rendered
+    assert 'program_types: Adverse Authority Search=1, Treatment Check Search=1' in rendered
+    assert 'search_intents: Confirm Good Law=1, Oppose=1' in rendered
+    assert 'primary_programs: Adverse Authority Search=1' in rendered
+    assert 'primary_biases: Adverse=1' in rendered
+    assert 'primary_rule_biases: Procedural Prerequisite=1' in rendered
+    assert 'source_context: lane Authority=1; family Legal Authority=1; artifact Legal Authority Reference=1' in rendered
     assert 'follow-up execution chronology summary:' in rendered
     assert '- retaliation: chronology_tasks=1 chronology_targeted=1' in rendered
-    assert 'rule_status: partial=1' in rendered
+    assert 'rule_status: Partial=1' in rendered
     assert 'blockers: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.=1' in rendered
-    assert 'handoffs: awaiting_testimony=1' in rendered
+    assert 'handoffs: Awaiting Testimony=1' in rendered
     assert 'follow-up execution fact-target summary:' in rendered
-    assert 'primary_gaps: Manager knowledge=1' in rendered
-    assert 'missing_bundle: Event sequence=1, Manager knowledge=1' in rendered
-    assert 'covered_bundle: Protected activity=1' in rendered
+    assert 'primary_gaps: Manager Knowledge=1' in rendered
+    assert 'missing_bundle: Event Sequence=1, Manager Knowledge=1' in rendered
+    assert 'covered_bundle: Protected Activity=1' in rendered
     assert 'follow-up history fact targeting:' in rendered
     assert 'follow-up history authority search summary:' in rendered
     assert '- retaliation: history_program_entries=1' in rendered
-    assert 'selected_programs: element_definition_search=1' in rendered
-    assert 'selected_biases: uncertain=1' in rendered
-    assert 'selected_rule_biases: procedural_prerequisite=1' in rendered
-    assert 'source_context: family legal_authority=1; artifact legal_authority_reference=1' in rendered
+    assert 'selected_programs: Element Definition Search=1' in rendered
+    assert 'selected_biases: Uncertain=1' in rendered
+    assert 'selected_rule_biases: Procedural Prerequisite=1' in rendered
+    assert 'source_context: family Legal Authority=1; artifact Legal Authority Reference=1' in rendered
     assert 'follow-up history chronology summary:' in rendered
     assert '- retaliation: chronology_tasks=1 chronology_targeted=1' in rendered
-    assert 'rule_status: partial=1' in rendered
+    assert 'rule_status: Partial=1' in rendered
     assert 'blockers: Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.=1' in rendered
-    assert 'handoffs: awaiting_testimony=1' in rendered
+    assert 'handoffs: Awaiting Testimony=1' in rendered
     assert 'follow-up history fact-target summary:' in rendered
     assert '"execution_quality_summary"' not in rendered
 

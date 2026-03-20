@@ -8,11 +8,12 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-import duckdb
 import pytest
-import requests
-import uvicorn
-from fastapi import FastAPI
+requests = pytest.importorskip("requests")
+uvicorn = pytest.importorskip("uvicorn")
+FastAPI = pytest.importorskip("fastapi").FastAPI
+
+duckdb = pytest.importorskip("duckdb")
 
 from applications.review_api import attach_claim_support_review_routes
 from applications.document_ui import attach_document_ui_routes
@@ -3855,6 +3856,243 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
             assert "complainant confirmed no" in normalized_intake_confirmation_text
             assert "confirm on review dashboard" in normalized_intake_confirmation_text
             assert normalized_intake_confirmation_text.count("confirm on review dashboard") == 1
+
+            browser.close()
+
+
+def test_optimization_trace_smoke_renders_workflow_phase_guidance():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    payload = {
+        "cid": "bafy-trace-workflow",
+        "size": 512,
+        "trace": {
+            "user_id": "trace-workflow-user",
+            "report_summary": {
+                "workflow_phase_plan": {
+                    "recommended_order": ["graph_analysis", "document_generation"],
+                    "phases": {
+                        "graph_analysis": {
+                            "status": "warning",
+                            "summary": "Knowledge graph gaps still need reduction before drafting.",
+                            "signals": {
+                                "remaining_gap_count": 2,
+                                "knowledge_graph_enhanced": False,
+                            },
+                            "target_files": ["complaint_phases/knowledge_graph.py", "document_pipeline.py"],
+                            "recommended_actions": [
+                                {"recommended_action": "Fill unresolved graph gaps from intake evidence."},
+                            ],
+                        },
+                        "document_generation": {
+                            "status": "warning",
+                            "summary": "Document drafting should wait for graph cleanup.",
+                            "signals": {
+                                "warning_count": 3,
+                                "draft_ready": False,
+                            },
+                            "target_files": ["templates/document.html"],
+                            "recommended_actions": [
+                                {"recommended_action": "Re-run document optimization after graph improvements."},
+                            ],
+                        },
+                    },
+                },
+            },
+            "intake_status": {
+                "current_phase": "intake",
+                "score": 0.61,
+                "contradiction_count": 0,
+                "blockers": ["reduce_graph_gaps"],
+                "contradictions": [],
+            },
+            "intake_constraints": [],
+            "intake_case_summary": {
+                "candidate_claims": [
+                    {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.88},
+                ],
+                "candidate_claim_summary": {
+                    "count": 1,
+                    "claim_types": ["retaliation"],
+                    "average_confidence": 0.88,
+                    "top_claim_type": "retaliation",
+                    "top_confidence": 0.88,
+                    "ambiguous_claim_count": 0,
+                    "ambiguity_flag_count": 0,
+                    "ambiguity_flag_counts": {},
+                    "close_leading_claims": False,
+                },
+                "intake_sections": {},
+                "canonical_fact_summary": {},
+                "canonical_fact_intent_summary": {},
+                "proof_lead_summary": {},
+                "proof_lead_intent_summary": {},
+                "timeline_anchor_summary": {},
+                "harm_profile": {},
+                "remedy_profile": {},
+                "question_candidate_summary": {},
+                "alignment_evidence_tasks": [],
+                "alignment_task_update_history": [],
+                "claim_support_packet_summary": {},
+            },
+            "iterations": [
+                {
+                    "iteration": 1,
+                    "focus_section": "claims_for_relief",
+                    "accepted": True,
+                    "critic": {"overall_score": 0.68},
+                }
+            ],
+            "initial_review": {"overall_score": 0.52},
+            "final_review": {"overall_score": 0.68, "recommended_focus": "claims_for_relief"},
+        },
+    }
+
+    app = _build_document_browser_smoke_app()
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page()
+            page.goto(f"{base_url}/document/optimization-trace")
+            page.evaluate("payload => window.renderTrace(payload)", payload)
+            page.wait_for_function(
+                "() => document.getElementById('traceWorkflowPhaseGuidance').innerText.includes('Recommended order')"
+            )
+
+            workflow_text = page.locator("#traceWorkflowPhaseGuidance").inner_text().lower()
+
+            assert "recommended order:" in workflow_text
+            assert "graph analysis -> document generation" in workflow_text
+            assert "1. graph analysis" in workflow_text
+            assert "knowledge graph gaps still need reduction before drafting." in workflow_text
+            assert "remaining gap count: 2" in workflow_text
+            assert "knowledge graph enhanced: no" in workflow_text
+            assert "targets: complaint_phases/knowledge_graph.py, document_pipeline.py" in workflow_text
+            assert "next actions: fill unresolved graph gaps from intake evidence." in workflow_text
+            assert "2. document generation" in workflow_text
+            assert "document drafting should wait for graph cleanup." in workflow_text
+            assert "warning count: 3" in workflow_text
+            assert "draft ready: no" in workflow_text
+            assert "targets: templates/document.html" in workflow_text
+            assert "next actions: re-run document optimization after graph improvements." in workflow_text
+
+            browser.close()
+
+
+def test_optimization_trace_smoke_renders_ready_workflow_phase_guidance():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    payload = {
+        "cid": "bafy-trace-workflow-ready",
+        "size": 544,
+        "trace": {
+            "user_id": "trace-workflow-ready-user",
+            "workflow_phase_plan": {
+                "recommended_order": ["graph_analysis", "document_generation"],
+                "phases": {
+                    "graph_analysis": {
+                        "status": "ready",
+                        "summary": "Graph analysis is available and does not show unresolved intake graph blockers.",
+                        "signals": {
+                            "remaining_gap_count": 0,
+                            "current_gap_count": 0,
+                            "knowledge_graph_enhanced": True,
+                        },
+                        "target_files": ["complaint_phases/knowledge_graph.py"],
+                        "recommended_actions": [],
+                    },
+                    "document_generation": {
+                        "status": "ready",
+                        "summary": "Document generation is aligned with the current filing-readiness checks.",
+                        "signals": {
+                            "drafting_readiness_status": "ready",
+                            "warning_count": 0,
+                            "optimization_final_score": 0.92,
+                        },
+                        "target_files": ["document_pipeline.py"],
+                        "recommended_actions": [],
+                    },
+                },
+            },
+            "intake_status": {
+                "current_phase": "formalization",
+                "score": 0.92,
+                "contradiction_count": 0,
+                "blockers": [],
+                "contradictions": [],
+            },
+            "intake_constraints": [],
+            "intake_case_summary": {
+                "candidate_claims": [
+                    {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.92},
+                ],
+                "candidate_claim_summary": {
+                    "count": 1,
+                    "claim_types": ["retaliation"],
+                    "average_confidence": 0.92,
+                    "top_claim_type": "retaliation",
+                    "top_confidence": 0.92,
+                    "ambiguous_claim_count": 0,
+                    "ambiguity_flag_count": 0,
+                    "ambiguity_flag_counts": {},
+                    "close_leading_claims": False,
+                },
+                "intake_sections": {},
+                "canonical_fact_summary": {},
+                "canonical_fact_intent_summary": {},
+                "proof_lead_summary": {},
+                "proof_lead_intent_summary": {},
+                "timeline_anchor_summary": {},
+                "harm_profile": {},
+                "remedy_profile": {},
+                "question_candidate_summary": {},
+                "alignment_evidence_tasks": [],
+                "alignment_task_update_history": [],
+                "claim_support_packet_summary": {},
+            },
+            "iterations": [
+                {
+                    "iteration": 1,
+                    "focus_section": "claims_for_relief",
+                    "accepted": True,
+                    "critic": {"overall_score": 0.92},
+                }
+            ],
+            "initial_review": {"overall_score": 0.84},
+            "final_review": {"overall_score": 0.92, "recommended_focus": "requested_relief"},
+        },
+    }
+
+    app = _build_document_browser_smoke_app()
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page()
+            page.goto(f"{base_url}/document/optimization-trace")
+            page.evaluate("payload => window.renderTrace(payload)", payload)
+            page.wait_for_function(
+                "() => document.getElementById('traceWorkflowPhaseGuidance').innerText.includes('Document Generation')"
+            )
+
+            workflow_text = page.locator("#traceWorkflowPhaseGuidance").inner_text().lower()
+
+            assert "recommended order:" in workflow_text
+            assert "graph analysis -> document generation" in workflow_text
+            assert "1. graph analysis" in workflow_text
+            assert "ready" in workflow_text
+            assert "remaining gap count: 0" in workflow_text
+            assert "current gap count: 0" in workflow_text
+            assert "knowledge graph enhanced: yes" in workflow_text
+            assert "targets: complaint_phases/knowledge_graph.py" in workflow_text
+            assert "2. document generation" in workflow_text
+            assert "document generation is aligned with the current filing-readiness checks." in workflow_text
+            assert "drafting readiness status: ready" in workflow_text
+            assert "warning count: 0" in workflow_text
+            assert "optimization final score: 0.92" in workflow_text
+            assert "targets: document_pipeline.py" in workflow_text
+            assert "no workflow phase guidance recorded" not in workflow_text
 
             browser.close()
 

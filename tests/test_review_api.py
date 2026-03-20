@@ -4,8 +4,10 @@ import tempfile
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-import duckdb
+import pytest
 from datetime import datetime, timezone
+
+duckdb = pytest.importorskip("duckdb")
 
 from fastapi import Response
 from fastapi.testclient import TestClient
@@ -1390,6 +1392,8 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert reasoning_review["temporal_rule_profile_failed_element_count"] == 0
         assert reasoning_review["temporal_proof_bundle_count"] == 0
         assert reasoning_review["temporal_proof_bundle_status_counts"] == {}
+        assert reasoning_review["theorem_export_blocked_element_count"] == 0
+        assert reasoning_review["theorem_export_chronology_task_count"] == 0
         assert any(
             item == {
                 "element_id": "retaliation:1",
@@ -1430,6 +1434,7 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 "temporal_proof_bundle_issue_ids": [],
                 "temporal_proof_bundle_tdfol_preview": [],
                 "temporal_proof_bundle_dcec_preview": [],
+                "theorem_export_metadata": {},
             }
             for item in reasoning_review["flagged_elements"]
         )
@@ -1874,6 +1879,8 @@ def test_claim_support_review_payload_reuses_persisted_diagnostic_snapshots():
         "temporal_rule_profile_failed_element_count": 0,
         "temporal_proof_bundle_count": 0,
         "temporal_proof_bundle_status_counts": {},
+        "theorem_export_blocked_element_count": 0,
+        "theorem_export_chronology_task_count": 0,
         "flagged_elements": [],
     }
     mediator.get_claim_support_diagnostic_snapshots.assert_called_once_with(
@@ -2002,6 +2009,8 @@ def test_claim_support_review_payload_recomputes_stale_diagnostic_snapshots():
         "temporal_rule_profile_failed_element_count": 0,
         "temporal_proof_bundle_count": 0,
         "temporal_proof_bundle_status_counts": {},
+        "theorem_export_blocked_element_count": 0,
+        "theorem_export_chronology_task_count": 0,
         "flagged_elements": [],
     }
     mediator.get_claim_support_gaps.assert_called_once_with(
@@ -4169,6 +4178,23 @@ def test_summarize_claim_reasoning_review_includes_temporal_handoff_summary():
                             "theorem_exports": {
                                 "tdfol_formulas": ["ProtectedActivity(fact_001)", "AdverseAction(fact_termination)"],
                                 "dcec_formulas": ["Happens(fact_001,t_2025_03_10)", "Happens(fact_termination,t_2025_03_24)"],
+                                "theorem_export_metadata": {
+                                    "contract_version": "claim_support_temporal_handoff_v1",
+                                    "claim_type": "retaliation",
+                                    "claim_element_id": "retaliation:1",
+                                    "proof_bundle_id": "retaliation:retaliation_1:retaliation_temporal_profile_v1",
+                                    "rule_frame_id": "retaliation_temporal_frame",
+                                    "chronology_blocked": True,
+                                    "chronology_task_count": 1,
+                                    "unresolved_temporal_issue_ids": ["temporal_issue_001"],
+                                    "event_ids": ["fact_001", "fact_termination"],
+                                    "temporal_fact_ids": ["fact_001", "fact_termination"],
+                                    "temporal_relation_ids": ["timeline_relation_001"],
+                                    "timeline_issue_ids": ["temporal_issue_001"],
+                                    "temporal_issue_ids": ["temporal_issue_001"],
+                                    "temporal_proof_bundle_ids": ["retaliation:retaliation_1:retaliation_temporal_profile_v1"],
+                                    "temporal_proof_objectives": ["retaliation_temporal_frame"],
+                                },
                             },
                         },
                     },
@@ -4194,6 +4220,8 @@ def test_summarize_claim_reasoning_review_includes_temporal_handoff_summary():
     assert review["temporal_rule_profile_failed_element_count"] == 0
     assert review["temporal_proof_bundle_count"] == 1
     assert review["temporal_proof_bundle_status_counts"] == {"partial": 1}
+    assert review["theorem_export_blocked_element_count"] == 1
+    assert review["theorem_export_chronology_task_count"] == 1
     assert review["flagged_elements"][0]["temporal_fact_count"] == 2
     assert review["flagged_elements"][0]["temporal_relation_count"] == 1
     assert review["flagged_elements"][0]["temporal_issue_count"] == 1
@@ -4234,6 +4262,23 @@ def test_summarize_claim_reasoning_review_includes_temporal_handoff_summary():
         "Happens(fact_001,t_2025_03_10)",
         "Happens(fact_termination,t_2025_03_24)",
     ]
+    assert review["flagged_elements"][0]["theorem_export_metadata"] == {
+        "contract_version": "claim_support_temporal_handoff_v1",
+        "claim_type": "retaliation",
+        "claim_element_id": "retaliation:1",
+        "proof_bundle_id": "retaliation:retaliation_1:retaliation_temporal_profile_v1",
+        "rule_frame_id": "retaliation_temporal_frame",
+        "chronology_blocked": True,
+        "chronology_task_count": 1,
+        "unresolved_temporal_issue_ids": ["temporal_issue_001"],
+        "event_ids": ["fact_001", "fact_termination"],
+        "temporal_fact_ids": ["fact_001", "fact_termination"],
+        "temporal_relation_ids": ["timeline_relation_001"],
+        "timeline_issue_ids": ["temporal_issue_001"],
+        "temporal_issue_ids": ["temporal_issue_001"],
+        "temporal_proof_bundle_ids": ["retaliation:retaliation_1:retaliation_temporal_profile_v1"],
+        "temporal_proof_objectives": ["retaliation_temporal_frame"],
+    }
 
 
 async def test_claim_support_review_route_marks_execute_follow_up_as_deprecated():

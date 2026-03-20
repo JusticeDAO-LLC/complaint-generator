@@ -1323,8 +1323,7 @@
                 const signalLines = summarizeWorkflowPhaseSignalLines(phase.signals);
                 const detailLines = [
                     summary,
-                    signalLines[0] || '',
-                    signalLines[1] || '',
+                    ...signalLines.slice(0, 3),
                     targetFiles.length ? `Targets: ${targetFiles.slice(0, 3).join(', ')}` : '',
                     recommendedActions.length ? `Next actions: ${recommendedActions.slice(0, 3).join(' | ')}` : '',
                 ].filter(Boolean);

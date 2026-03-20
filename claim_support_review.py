@@ -39,12 +39,16 @@ except ModuleNotFoundError:
                 for name in getattr(self.__class__, "__annotations__", {})
             }
 
-from complaint_phases import ComplaintPhase
 from complaint_phases.denoiser import ComplaintDenoiser
 from intake_status import (
     build_intake_case_review_summary,
     build_intake_status_summary,
     summarize_intake_contradictions,
+)
+from workflow_phase_guidance import (
+    build_graph_analysis_phase_guidance,
+    build_review_document_generation_phase_guidance,
+    build_workflow_phase_plan,
 )
 
 
@@ -69,24 +73,6 @@ def _parse_iso_timestamp(value: Any) -> Optional[datetime]:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
-
-
-def _coerce_int(value: Any, default: int = 0) -> int:
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, (int, float)):
-        return int(value)
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return default
-        try:
-            return int(text)
-        except ValueError:
-            return default
-    return default
 
 
 def _classify_adaptive_retry_recency(timestamp: Any) -> Dict[str, Any]:
@@ -379,120 +365,18 @@ def _build_review_workflow_phase_plan(
     phase_manager = getattr(mediator, "phase_manager", None)
     phases: Dict[str, Dict[str, Any]] = {}
 
-    if phase_manager is not None:
-        get_phase_data = getattr(phase_manager, "get_phase_data", None)
-        if callable(get_phase_data):
-            knowledge_graph = get_phase_data(ComplaintPhase.INTAKE, "knowledge_graph")
-            dependency_graph = get_phase_data(ComplaintPhase.INTAKE, "dependency_graph")
-            current_gaps = get_phase_data(ComplaintPhase.INTAKE, "current_gaps") or []
-            remaining_gaps = _coerce_int(get_phase_data(ComplaintPhase.INTAKE, "remaining_gaps"), 0)
-            knowledge_graph_enhanced = bool(
-                get_phase_data(ComplaintPhase.EVIDENCE, "knowledge_graph_enhanced")
-            )
-            current_gap_count = len(current_gaps) if isinstance(current_gaps, list) else 0
+    graph_phase = build_graph_analysis_phase_guidance(phase_manager, audience="review")
+    if graph_phase:
+        phases["graph_analysis"] = graph_phase
 
-            if not knowledge_graph or not dependency_graph:
-                phases["graph_analysis"] = {
-                    "priority": 0,
-                    "status": "blocked",
-                    "summary": "Graph analysis is blocked because the intake knowledge graph or dependency graph is missing.",
-                    "signals": {
-                        "knowledge_graph_available": bool(knowledge_graph),
-                        "dependency_graph_available": bool(dependency_graph),
-                        "remaining_gap_count": remaining_gaps,
-                        "current_gap_count": current_gap_count,
-                        "knowledge_graph_enhanced": knowledge_graph_enhanced,
-                    },
-                    "recommended_actions": [
-                        "Build the intake knowledge graph and dependency graph before relying on cross-phase review outputs.",
-                    ],
-                }
-            elif remaining_gaps > 0 or current_gap_count > 0 or not knowledge_graph_enhanced:
-                phases["graph_analysis"] = {
-                    "priority": 0,
-                    "status": "warning",
-                    "summary": f"Graph analysis still has {max(remaining_gaps, current_gap_count)} unresolved gap(s) or pending evidence-to-graph updates.",
-                    "signals": {
-                        "knowledge_graph_available": True,
-                        "dependency_graph_available": True,
-                        "remaining_gap_count": remaining_gaps,
-                        "current_gap_count": current_gap_count,
-                        "knowledge_graph_enhanced": knowledge_graph_enhanced,
-                    },
-                    "recommended_actions": [
-                        "Review intake graph inputs and refresh graph-backed evidence projections before final drafting.",
-                    ],
-                }
-            else:
-                phases["graph_analysis"] = {
-                    "priority": 0,
-                    "status": "ready",
-                    "summary": "Graph analysis is present and does not currently show unresolved intake graph blockers.",
-                    "signals": {
-                        "knowledge_graph_available": True,
-                        "dependency_graph_available": True,
-                        "remaining_gap_count": remaining_gaps,
-                        "current_gap_count": current_gap_count,
-                        "knowledge_graph_enhanced": knowledge_graph_enhanced,
-                    },
-                    "recommended_actions": [],
-                }
-
-    next_action = intake_status.get("next_action") if isinstance(intake_status.get("next_action"), dict) else {}
-    next_action_name = str(next_action.get("action") or "").strip().lower()
-    packet_summary = (
-        intake_case_summary.get("claim_support_packet_summary")
-        if isinstance(intake_case_summary.get("claim_support_packet_summary"), dict)
-        else {}
+    document_phase = build_review_document_generation_phase_guidance(
+        intake_status=intake_status,
+        intake_case_summary=intake_case_summary,
     )
-    unresolved_temporal_issue_count = int(packet_summary.get("claim_support_unresolved_temporal_issue_count", 0) or 0)
-    unresolved_review_path_count = int(packet_summary.get("claim_support_unresolved_without_review_path_count", 0) or 0)
-    proof_readiness_score = float(packet_summary.get("proof_readiness_score", 0.0) or 0.0)
-    if next_action_name in {"generate_formal_complaint", "complete_evidence"} and unresolved_temporal_issue_count <= 0:
-        phases["document_generation"] = {
-            "priority": 1,
-            "status": "ready",
-            "summary": "Review state indicates the complaint can move into formal complaint drafting.",
-            "signals": {
-                "recommended_next_action": next_action_name,
-                "proof_readiness_score": proof_readiness_score,
-                "unresolved_temporal_issue_count": unresolved_temporal_issue_count,
-                "unresolved_without_review_path_count": unresolved_review_path_count,
-            },
-            "recommended_actions": [],
-        }
-    else:
-        phases["document_generation"] = {
-            "priority": 1,
-            "status": "warning",
-            "summary": "Document generation should wait until evidence review and packet blockers are reduced further.",
-            "signals": {
-                "recommended_next_action": next_action_name,
-                "proof_readiness_score": proof_readiness_score,
-                "unresolved_temporal_issue_count": unresolved_temporal_issue_count,
-                "unresolved_without_review_path_count": unresolved_review_path_count,
-            },
-            "recommended_actions": [
-                "Use the review surface to resolve remaining evidence, chronology, or manual-review blockers before drafting.",
-            ],
-        }
+    if document_phase:
+        phases["document_generation"] = document_phase
 
-    if not phases:
-        return {}
-
-    status_rank = {"blocked": 0, "warning": 1, "ready": 2}
-    recommended_order = sorted(
-        phases.keys(),
-        key=lambda name: (
-            status_rank.get(str(phases[name].get("status") or "ready"), 3),
-            int(phases[name].get("priority") or 0),
-            name,
-        ),
-    )
-    return {
-        "recommended_order": recommended_order,
-        "phases": phases,
-    }
+    return build_workflow_phase_plan(phases)
 
 
 def summarize_claim_support_snapshot_lifecycle(
@@ -572,6 +456,8 @@ def summarize_claim_reasoning_review(
     temporal_rule_profile_failed_element_count = 0
     temporal_proof_bundle_count = 0
     temporal_proof_bundle_status_counts: Dict[str, int] = {}
+    theorem_export_blocked_element_count = 0
+    theorem_export_chronology_task_count = 0
 
     for element in elements:
         if not isinstance(element, dict):
@@ -701,6 +587,9 @@ def summarize_claim_reasoning_review(
         theorem_exports = temporal_proof_bundle.get("theorem_exports", {})
         if not isinstance(theorem_exports, dict):
             theorem_exports = {}
+        element_theorem_export_metadata = theorem_exports.get("theorem_export_metadata", {})
+        if not isinstance(element_theorem_export_metadata, dict):
+            element_theorem_export_metadata = {}
         element_temporal_proof_bundle_tdfol_preview = [
             str(formula)
             for formula in (theorem_exports.get("tdfol_formulas", []) or [])
@@ -759,6 +648,11 @@ def summarize_claim_reasoning_review(
                 )
                 + 1
             )
+        if bool(element_theorem_export_metadata.get("chronology_blocked", False)):
+            theorem_export_blocked_element_count += 1
+        theorem_export_chronology_task_count += int(
+            element_theorem_export_metadata.get("chronology_task_count", 0) or 0
+        )
         for warning in element_temporal_warnings:
             if warning not in temporal_warning_preview:
                 temporal_warning_preview.append(warning)
@@ -846,6 +740,7 @@ def summarize_claim_reasoning_review(
                 "temporal_proof_bundle_issue_ids": element_temporal_proof_bundle_issue_ids,
                 "temporal_proof_bundle_tdfol_preview": element_temporal_proof_bundle_tdfol_preview,
                 "temporal_proof_bundle_dcec_preview": element_temporal_proof_bundle_dcec_preview,
+                "theorem_export_metadata": element_theorem_export_metadata,
             }
         )
 
@@ -882,6 +777,8 @@ def summarize_claim_reasoning_review(
         "temporal_rule_profile_failed_element_count": temporal_rule_profile_failed_element_count,
         "temporal_proof_bundle_count": temporal_proof_bundle_count,
         "temporal_proof_bundle_status_counts": temporal_proof_bundle_status_counts,
+        "theorem_export_blocked_element_count": theorem_export_blocked_element_count,
+        "theorem_export_chronology_task_count": theorem_export_chronology_task_count,
         "flagged_elements": flagged_elements,
     }
 

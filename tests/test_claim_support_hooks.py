@@ -2424,6 +2424,23 @@ class TestClaimSupportHook:
                 'theorem_exports': {
                     'tdfol_formulas': ['ProtectedActivity(fact_1)', 'AdverseAction(fact_2)', 'Before(fact_1,fact_2)'],
                     'dcec_formulas': ['Happens(fact_1,t_2025_03_01)', 'Happens(fact_2,t_2025_04_15)'],
+                    'theorem_export_metadata': {
+                        'contract_version': 'claim_support_temporal_handoff_v1',
+                        'claim_type': 'retaliation',
+                        'claim_element_id': 'retaliation:1',
+                        'proof_bundle_id': 'retaliation:retaliation_1:retaliation_temporal_profile_v1',
+                        'rule_frame_id': 'retaliation_temporal_frame',
+                        'chronology_blocked': True,
+                        'chronology_task_count': 1,
+                        'unresolved_temporal_issue_ids': ['temporal_reverse_before_001'],
+                        'event_ids': ['fact_1', 'fact_2'],
+                        'temporal_fact_ids': ['fact_1', 'fact_2'],
+                        'temporal_relation_ids': ['timeline_relation_001'],
+                        'timeline_issue_ids': ['temporal_reverse_before_001'],
+                        'temporal_issue_ids': ['temporal_reverse_before_001'],
+                        'temporal_proof_bundle_ids': ['retaliation:retaliation_1:retaliation_temporal_profile_v1'],
+                        'temporal_proof_objectives': ['retaliation_temporal_frame'],
+                    },
                 },
                 'theorem_export_counts': {
                     'tdfol_formula_count': 3,

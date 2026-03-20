@@ -142,6 +142,33 @@ def _normalize_logic_payload(payload_or_predicates: Any) -> Dict[str, Any]:
     }
 
 
+def _build_theorem_export_metadata(claim_support_temporal_handoff: Any) -> Dict[str, Any]:
+    handoff = _normalize_claim_support_temporal_handoff(claim_support_temporal_handoff)
+    if not handoff:
+        return {}
+    unresolved_temporal_issue_ids = list(handoff.get("unresolved_temporal_issue_ids", []) or [])
+    temporal_issue_ids = list(handoff.get("temporal_issue_ids", []) or [])
+    return {
+        "contract_version": "claim_support_temporal_handoff_v1",
+        "claim_type": str(handoff.get("claim_type") or "").strip(),
+        "claim_element_id": str(handoff.get("claim_element_id") or "").strip(),
+        "chronology_blocked": bool(
+            int(handoff.get("unresolved_temporal_issue_count", 0) or 0)
+            or unresolved_temporal_issue_ids
+            or temporal_issue_ids
+        ),
+        "chronology_task_count": int(handoff.get("chronology_task_count", 0) or 0),
+        "unresolved_temporal_issue_ids": unresolved_temporal_issue_ids,
+        "event_ids": list(handoff.get("event_ids", []) or []),
+        "temporal_fact_ids": list(handoff.get("temporal_fact_ids", []) or []),
+        "temporal_relation_ids": list(handoff.get("temporal_relation_ids", []) or []),
+        "timeline_issue_ids": list(handoff.get("timeline_issue_ids", []) or []),
+        "temporal_issue_ids": temporal_issue_ids,
+        "temporal_proof_bundle_ids": list(handoff.get("temporal_proof_bundle_ids", []) or []),
+        "temporal_proof_objectives": list(handoff.get("temporal_proof_objectives", []) or []),
+    }
+
+
 def _build_temporal_reasoning_payload(
     predicates: Iterable[Dict[str, Any]],
     *,
@@ -292,6 +319,7 @@ def _build_temporal_reasoning_payload(
     normalized_handoff = _normalize_claim_support_temporal_handoff(claim_support_temporal_handoff)
     if normalized_handoff:
         temporal_reasoning_payload["claim_support_temporal_handoff"] = normalized_handoff
+        temporal_reasoning_payload["theorem_export_metadata"] = _build_theorem_export_metadata(normalized_handoff)
     return temporal_reasoning_payload
 
 
@@ -432,6 +460,7 @@ def run_hybrid_reasoning(payload: Dict[str, Any]) -> Dict[str, Any]:
             "claim_types": list(temporal_reasoning_payload.get("claim_types", []) or []),
             "tdfol_formulas": list(temporal_reasoning_payload.get("tdfol_formulas", []) or []),
             "dcec_formulas": list(temporal_reasoning_payload.get("dcec_formulas", []) or []),
+            "theorem_export_metadata": dict(temporal_reasoning_payload.get("theorem_export_metadata") or {}),
             "timeline_event_count": len(temporal_reasoning_payload.get("timeline_events", []) or []),
             "temporal_relation_count": len(temporal_reasoning_payload.get("temporal_relations", []) or []),
             "contradiction_signal_count": len(temporal_reasoning_payload.get("contradiction_signals", []) or []),

@@ -11,6 +11,12 @@ from urllib.parse import urlencode
 from complaint_phases import ComplaintPhase
 from document_optimization import AgenticDocumentOptimizer
 from intake_status import build_intake_case_review_summary, build_intake_status_summary
+from workflow_phase_guidance import (
+    build_drafting_document_generation_phase_guidance,
+    build_graph_analysis_phase_guidance,
+    build_workflow_phase_plan,
+    build_workflow_phase_warning_entries,
+)
 
 
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "tmp" / "generated_documents"
@@ -2841,74 +2847,10 @@ class FormalComplaintDocumentBuilder:
         if document_phase:
             phases["document_generation"] = document_phase
 
-        if not phases:
-            return {}
-
-        status_rank = {"blocked": 0, "warning": 1, "ready": 2}
-        recommended_order = sorted(
-            phases.keys(),
-            key=lambda name: (
-                status_rank.get(str(phases[name].get("status") or "ready"), 3),
-                int(phases[name].get("priority") or 0),
-                name,
-            ),
-        )
-        return {
-            "recommended_order": recommended_order,
-            "phases": phases,
-        }
+        return build_workflow_phase_plan(phases)
 
     def _build_graph_analysis_phase_guidance(self, phase_manager: Any) -> Dict[str, Any]:
-        if phase_manager is None:
-            return {}
-
-        knowledge_graph = _safe_call(phase_manager, "get_phase_data", ComplaintPhase.INTAKE, "knowledge_graph")
-        dependency_graph = _safe_call(phase_manager, "get_phase_data", ComplaintPhase.INTAKE, "dependency_graph")
-        current_gaps = _safe_call(phase_manager, "get_phase_data", ComplaintPhase.INTAKE, "current_gaps") or []
-        remaining_gaps = int(_safe_call(phase_manager, "get_phase_data", ComplaintPhase.INTAKE, "remaining_gaps") or 0)
-        graph_enhanced = bool(
-            _safe_call(phase_manager, "get_phase_data", ComplaintPhase.EVIDENCE, "knowledge_graph_enhanced")
-        )
-
-        knowledge_graph_available = bool(knowledge_graph)
-        dependency_graph_available = bool(dependency_graph)
-        current_gap_count = len(current_gaps) if isinstance(current_gaps, list) else 0
-        if not knowledge_graph_available or not dependency_graph_available:
-            status = "blocked"
-            summary = (
-                "Knowledge-graph analysis is incomplete because the intake knowledge graph or dependency graph is missing."
-            )
-            actions = [
-                "Rebuild the intake knowledge graph and dependency graph before relying on formal drafting output.",
-            ]
-        elif remaining_gaps > 0 or current_gap_count > 0 or not graph_enhanced:
-            status = "warning"
-            summary = (
-                f"Graph analysis still shows {max(remaining_gaps, current_gap_count)} unresolved gap(s) or unprojected evidence updates."
-            )
-            actions = [
-                "Resolve remaining intake graph gaps and refresh graph projections before filing.",
-            ]
-            if not graph_enhanced:
-                actions.append("Project newly collected evidence into the complaint knowledge graph.")
-        else:
-            status = "ready"
-            summary = "Graph analysis is available and does not show unresolved intake graph blockers."
-            actions = []
-
-        return {
-            "priority": 0,
-            "status": status,
-            "summary": summary,
-            "signals": {
-                "knowledge_graph_available": knowledge_graph_available,
-                "dependency_graph_available": dependency_graph_available,
-                "remaining_gap_count": remaining_gaps,
-                "current_gap_count": current_gap_count,
-                "knowledge_graph_enhanced": graph_enhanced,
-            },
-            "recommended_actions": actions,
-        }
+        return build_graph_analysis_phase_guidance(phase_manager, audience="drafting")
 
     def _build_document_generation_phase_guidance(
         self,
@@ -2916,77 +2858,13 @@ class FormalComplaintDocumentBuilder:
         drafting_readiness: Dict[str, Any],
         document_optimization: Dict[str, Any],
     ) -> Dict[str, Any]:
-        sections = drafting_readiness.get("sections") if isinstance(drafting_readiness.get("sections"), dict) else {}
-        claims = drafting_readiness.get("claims") if isinstance(drafting_readiness.get("claims"), list) else []
-        readiness_status = str(drafting_readiness.get("status") or "ready")
-        section_warning_count = sum(
-            1 for section in sections.values() if isinstance(section, dict) and str(section.get("status") or "ready") != "ready"
+        return build_drafting_document_generation_phase_guidance(
+            drafting_readiness=drafting_readiness,
+            document_optimization=document_optimization,
         )
-        claim_warning_count = sum(
-            1 for claim in claims if isinstance(claim, dict) and str(claim.get("status") or "ready") != "ready"
-        )
-        final_score = float(document_optimization.get("final_score") or 0.0) if document_optimization else 0.0
-        target_score = float(document_optimization.get("target_score") or 0.0) if document_optimization else 0.0
-
-        if readiness_status == "blocked":
-            status = "blocked"
-            summary = "Document generation is blocked because the formal complaint package still has blocking filing-readiness issues."
-            actions = [
-                "Resolve blocked claim or section readiness issues before using the generated complaint package.",
-            ]
-        elif readiness_status == "warning" or section_warning_count > 0 or claim_warning_count > 0:
-            status = "warning"
-            summary = (
-                f"Document generation still has {section_warning_count} section warning(s) and {claim_warning_count} claim warning(s) to review."
-            )
-            actions = [
-                "Review claims-for-relief, exhibits, and requested-relief warnings before filing.",
-            ]
-            if target_score > 0.0 and final_score < target_score:
-                actions.append("Run another document-optimization pass or accept the draft with recorded review warnings.")
-        else:
-            status = "ready"
-            summary = "Document generation is aligned with the current filing-readiness checks."
-            actions = []
-
-        return {
-            "priority": 1,
-            "status": status,
-            "summary": summary,
-            "signals": {
-                "drafting_readiness_status": readiness_status,
-                "warning_count": int(drafting_readiness.get("warning_count") or 0),
-                "section_warning_count": section_warning_count,
-                "claim_warning_count": claim_warning_count,
-                "optimization_final_score": final_score,
-                "optimization_target_score": target_score,
-            },
-            "recommended_actions": actions,
-        }
 
     def _build_workflow_phase_warning_entries(self, workflow_phase_plan: Dict[str, Any]) -> List[Dict[str, Any]]:
-        if not isinstance(workflow_phase_plan, dict):
-            return []
-
-        phases = workflow_phase_plan.get("phases") if isinstance(workflow_phase_plan.get("phases"), dict) else {}
-        warnings: List[Dict[str, Any]] = []
-        for phase_name in workflow_phase_plan.get("recommended_order") or []:
-            phase_payload = phases.get(phase_name)
-            if not isinstance(phase_payload, dict):
-                continue
-            status = str(phase_payload.get("status") or "ready")
-            if status == "ready":
-                continue
-            warnings.append(
-                {
-                    "code": f"workflow_{phase_name}_{status}",
-                    "severity": status,
-                    "message": str(phase_payload.get("summary") or "").strip(),
-                    "phase": phase_name,
-                    "recommended_actions": list(phase_payload.get("recommended_actions") or []),
-                }
-            )
-        return warnings
+        return build_workflow_phase_warning_entries(workflow_phase_plan)
 
     def _build_drafting_readiness(
         self,
