@@ -99,6 +99,16 @@ class KnowledgeGraph:
         Returns a list of gaps with suggested questions.
         """
         gaps = []
+
+        def _entity_text(entity: Entity) -> str:
+            attributes = entity.attributes if isinstance(entity.attributes, dict) else {}
+            parts = [
+                str(entity.name or ""),
+                str(attributes.get("description") or ""),
+                str(attributes.get("event_label") or ""),
+                str(attributes.get("event_date_or_range") or ""),
+            ]
+            return " ".join(part.strip() for part in parts if str(part).strip()).lower()
         
         # Check for entities with low confidence
         for entity in self.entities.values():
@@ -183,6 +193,87 @@ class KnowledgeGraph:
                 'missing_remedy': not has_remedy,
                 'suggested_question': "What harm did you experience, and what outcome or remedy are you seeking?"
             })
+
+        # Blocker checks: written notices, hearing request dates, and identifiable staff actors.
+        all_entity_text = " ".join(_entity_text(entity) for entity in self.entities.values())
+        notice_terms = ("notice", "letter", "email", "message", "termination letter", "denial notice")
+        has_notice_reference = any(term in all_entity_text for term in notice_terms)
+        has_notice_evidence = any(
+            entity.type == "evidence" and any(term in _entity_text(entity) for term in notice_terms)
+            for entity in self.entities.values()
+        )
+        if has_notice_reference and not has_notice_evidence:
+            gaps.append({
+                'type': 'missing_written_notice',
+                'suggested_question': "What written notice, letter, email, or message did you receive, who sent it, and what date is on it?"
+            })
+
+        hearing_terms = ("hearing", "grievance", "appeal")
+        has_hearing_reference = any(term in all_entity_text for term in hearing_terms)
+        hearing_has_date = False
+        for entity in self.entities.values():
+            text_value = _entity_text(entity)
+            if not any(term in text_value for term in hearing_terms):
+                continue
+            if entity.type == "date":
+                hearing_has_date = True
+                break
+            if re.search(r"\b(?:19|20)\d{2}\b", text_value):
+                hearing_has_date = True
+                break
+        if has_hearing_reference and not hearing_has_date:
+            gaps.append({
+                'type': 'missing_hearing_request_date',
+                'suggested_question': "When did you request a hearing, grievance, or appeal, and when (if ever) did they respond?"
+            })
+
+        named_staff_entities = [
+            entity for entity in self.entities.values()
+            if entity.type == "person" and len((entity.name or "").split()) >= 2
+        ]
+        has_staff_role = any(
+            entity.type == "person" and (entity.attributes or {}).get("role")
+            for entity in self.entities.values()
+        )
+        if has_staff_role and not named_staff_entities:
+            gaps.append({
+                'type': 'missing_staff_identity',
+                'suggested_question': "Who specifically took the action (full name, role, and team/department if known)?"
+            })
+
+        retaliation_claims = [
+            entity for entity in claims
+            if str((entity.attributes or {}).get("claim_type") or "").strip().lower() == "retaliation"
+        ]
+        if retaliation_claims:
+            has_protected_activity_fact = any(
+                entity.type == "fact"
+                and any(
+                    token in _entity_text(entity)
+                    for token in ("protected activity", "complained", "reported", "grievance", "requested accommodation")
+                )
+                for entity in self.entities.values()
+            )
+            has_adverse_action_fact = any(
+                entity.type in {"fact", "claim"}
+                and any(
+                    token in _entity_text(entity)
+                    for token in ("fired", "terminated", "demoted", "disciplined", "suspended", "reduced")
+                )
+                for entity in self.entities.values()
+            )
+            has_retaliation_timeline = any(
+                rel.relation_type in {"occurred_on", "has_timeline_detail"}
+                for rel in self.relationships.values()
+            ) or any(entity.type == "date" for entity in self.entities.values())
+            if not (has_protected_activity_fact and has_adverse_action_fact and has_retaliation_timeline):
+                gaps.append({
+                    'type': 'retaliation_missing_causation',
+                    'suggested_question': (
+                        "What happened immediately after your protected activity, who did it, and on what date "
+                        "did each step occur?"
+                    )
+                })
         
         return gaps
     

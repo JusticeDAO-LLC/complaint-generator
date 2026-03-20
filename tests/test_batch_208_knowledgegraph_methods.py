@@ -260,6 +260,42 @@ class TestAverageRelationshipsPerEntity:
         avg = kg.average_relationships_per_entity()
         # e0: 1 rel, e1: 2 rels, e2: 1 rel -> total 4 / 2 = 2, avg = 2/3
         assert abs(avg - (2/3)) < 0.01
+
+
+class TestFindGapsHeuristics:
+    def test_detects_notice_hearing_staff_and_retaliation_gaps(self, kg):
+        claim = create_entity(
+            'claim1',
+            entity_type='claim',
+            name='Retaliation claim',
+            confidence=0.95,
+            attributes={'claim_type': 'retaliation'},
+        )
+        person = create_entity(
+            'person1',
+            entity_type='person',
+            name='Supervisor',
+            confidence=0.9,
+            attributes={'role': 'manager', 'description': 'Supervisor sent denial notice and blocked grievance hearing'},
+        )
+        notice_fact = create_entity(
+            'fact1',
+            entity_type='fact',
+            name='Denial notice',
+            confidence=0.9,
+            attributes={'description': 'I received a denial notice by email after I complained'},
+        )
+
+        kg.add_entity(claim)
+        kg.add_entity(person)
+        kg.add_entity(notice_fact)
+
+        gap_types = {gap['type'] for gap in kg.find_gaps()}
+
+        assert 'missing_written_notice' in gap_types
+        assert 'missing_hearing_request_date' in gap_types
+        assert 'missing_staff_identity' in gap_types
+        assert 'retaliation_missing_causation' in gap_types
     
     def test_star_topology(self, kg):
         # e0 connected to e1, e2, e3

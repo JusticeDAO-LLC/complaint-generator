@@ -1041,10 +1041,58 @@ class DependencyGraphBuilder:
                 "colleague", "respondent",
             ]
             return any(k in lower for k in actor_keywords)
+
+        def has_protected_activity_signal(text_value: str) -> bool:
+            if not text_value:
+                return False
+            lower = text_value.lower()
+            return any(
+                token in lower
+                for token in [
+                    "protected activity",
+                    "complained",
+                    "reported",
+                    "grievance",
+                    "whistle",
+                    "requested accommodation",
+                    "requested help",
+                ]
+            )
+
+        def has_adverse_action_signal(text_value: str) -> bool:
+            if not text_value:
+                return False
+            lower = text_value.lower()
+            return any(
+                token in lower
+                for token in [
+                    "fired",
+                    "terminated",
+                    "demoted",
+                    "suspended",
+                    "disciplined",
+                    "reduced hours",
+                    "cut hours",
+                    "evicted",
+                ]
+            )
+
+        def has_notice_signal(text_value: str) -> bool:
+            if not text_value:
+                return False
+            lower = text_value.lower()
+            return any(token in lower for token in ["notice", "letter", "email", "message"])
+
+        def has_hearing_signal(text_value: str) -> bool:
+            if not text_value:
+                return False
+            lower = text_value.lower()
+            return any(token in lower for token in ["hearing", "grievance", "appeal"])
         
         # Add lightweight fact dependencies to avoid empty graphs when legal requirements are absent.
         for claim_node in claim_nodes:
             claim_text = f"{claim_node.name} {claim_node.description}".strip()
+            claim_type = str(claim_node.attributes.get("claim_type") or "").strip().lower()
 
             if not has_date(claim_text):
                 timeline_node = DependencyNode(
@@ -1080,6 +1128,99 @@ class DependencyGraphBuilder:
                     target_id=claim_node.id,
                     dependency_type=DependencyType.DEPENDS_ON,
                     required=True
+                ))
+
+            # Retaliation claims need explicit causation sequencing (protected activity -> adverse action).
+            retaliation_like = "retaliat" in claim_type or "retaliat" in claim_text.lower()
+            if retaliation_like:
+                if not has_protected_activity_signal(claim_text):
+                    protected_activity_node = DependencyNode(
+                        id=self._get_node_id(),
+                        node_type=NodeType.FACT,
+                        name="Protected activity facts",
+                        description="What protected activity occurred, to whom it was reported, and when",
+                        satisfied=False,
+                        confidence=0.0,
+                    )
+                    graph.add_node(protected_activity_node)
+                    graph.add_dependency(Dependency(
+                        id=self._get_dependency_id(),
+                        source_id=protected_activity_node.id,
+                        target_id=claim_node.id,
+                        dependency_type=DependencyType.DEPENDS_ON,
+                        required=True,
+                    ))
+
+                if not has_adverse_action_signal(claim_text):
+                    adverse_action_node = DependencyNode(
+                        id=self._get_node_id(),
+                        node_type=NodeType.FACT,
+                        name="Adverse action facts",
+                        description="What happened after protected activity, by whom, and on what date",
+                        satisfied=False,
+                        confidence=0.0,
+                    )
+                    graph.add_node(adverse_action_node)
+                    graph.add_dependency(Dependency(
+                        id=self._get_dependency_id(),
+                        source_id=adverse_action_node.id,
+                        target_id=claim_node.id,
+                        dependency_type=DependencyType.DEPENDS_ON,
+                        required=True,
+                    ))
+
+                if not (has_date(claim_text) and has_actor_signal(claim_text)):
+                    causation_node = DependencyNode(
+                        id=self._get_node_id(),
+                        node_type=NodeType.FACT,
+                        name="Retaliation causation chronology",
+                        description="Sequence from protected activity to adverse action with dates and actor identities",
+                        satisfied=False,
+                        confidence=0.0,
+                    )
+                    graph.add_node(causation_node)
+                    graph.add_dependency(Dependency(
+                        id=self._get_dependency_id(),
+                        source_id=causation_node.id,
+                        target_id=claim_node.id,
+                        dependency_type=DependencyType.DEPENDS_ON,
+                        required=True,
+                    ))
+
+            if has_notice_signal(claim_text) and not has_date(claim_text):
+                notice_node = DependencyNode(
+                    id=self._get_node_id(),
+                    node_type=NodeType.FACT,
+                    name="Written notice date",
+                    description="Date and sender of any written notice, letter, email, or message",
+                    satisfied=False,
+                    confidence=0.0,
+                )
+                graph.add_node(notice_node)
+                graph.add_dependency(Dependency(
+                    id=self._get_dependency_id(),
+                    source_id=notice_node.id,
+                    target_id=claim_node.id,
+                    dependency_type=DependencyType.DEPENDS_ON,
+                    required=True,
+                ))
+
+            if has_hearing_signal(claim_text) and not has_date(claim_text):
+                hearing_node = DependencyNode(
+                    id=self._get_node_id(),
+                    node_type=NodeType.FACT,
+                    name="Hearing request date",
+                    description="Date a hearing/grievance/appeal was requested and any response date",
+                    satisfied=False,
+                    confidence=0.0,
+                )
+                graph.add_node(hearing_node)
+                graph.add_dependency(Dependency(
+                    id=self._get_dependency_id(),
+                    source_id=hearing_node.id,
+                    target_id=claim_node.id,
+                    dependency_type=DependencyType.DEPENDS_ON,
+                    required=True,
                 ))
 
         # Add legal requirements for each claim

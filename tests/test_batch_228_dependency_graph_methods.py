@@ -6,6 +6,7 @@ import pytest
 
 from complaint_phases.dependency_graph import (
     DependencyGraph,
+    DependencyGraphBuilder,
     DependencyNode,
     Dependency,
     NodeType,
@@ -110,3 +111,29 @@ class TestNodeTypeDistributionForSatisfaction:
 
         assert satisfied == {"claim": 1, "evidence": 1}
         assert unsatisfied == {"requirement": 1}
+
+
+class TestBuildFromClaimsHeuristics:
+    def test_retaliation_notice_and_hearing_claim_adds_fact_dependencies(self):
+        builder = DependencyGraphBuilder()
+
+        graph = builder.build_from_claims(
+            [
+                {
+                    "name": "Retaliation",
+                    "type": "retaliation",
+                    "description": "They sent a denial notice and blocked my hearing request.",
+                }
+            ],
+            {},
+        )
+
+        fact_names = {node.name for node in graph.nodes.values() if node.node_type == NodeType.FACT}
+
+        assert "Timeline of events" in fact_names
+        assert "Responsible party" in fact_names
+        assert "Protected activity facts" in fact_names
+        assert "Adverse action facts" in fact_names
+        assert "Retaliation causation chronology" in fact_names
+        assert "Written notice date" in fact_names
+        assert "Hearing request date" in fact_names
