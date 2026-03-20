@@ -357,6 +357,7 @@ Complaint:"""
                 "Answer in sequence: protected activity, who learned about it, adverse action, and what timing or statements link them."
             )
         focus_guidance_text = "\n".join([f"- {item}" for item in focus_guidance]) if focus_guidance else "- Answer naturally in your own words."
+        response_schema_guidance_text = self._build_response_schema_guidance(question_lower)
         grounded_facts_text = self._format_grounded_case_digest(
             key_facts=self.context.key_facts if isinstance(self.context.key_facts, dict) else {},
             story_facts=self.context.complainant_story_facts,
@@ -383,6 +384,9 @@ The mediator asks: "{question}"
 Question focus guidance:
 {focus_guidance_text}
 
+Response packaging guidance:
+{response_schema_guidance_text}
+
 Respond naturally as this person would. Your response should:
 1. Answer the question based on your knowledge
 2. Match your personality ({self.personality}) and cooperation level ({cooperation_desc})
@@ -400,6 +404,27 @@ If you don't know something, say so. If your cooperation level is low, it's okay
 
 Response:"""
         return prompt
+
+    def _build_response_schema_guidance(self, question_lower: str) -> str:
+        guidance: List[str] = [
+            "Start with a direct answer sentence, then add short supporting facts.",
+            "Prefer concrete facts over general impressions (dates, names/roles, actions, notices, documents).",
+            "If a detail is uncertain, label it clearly as an estimate or memory gap.",
+            "Do not repeat unrelated background; focus on the unresolved factual gap in the question.",
+            "When multiple topics are requested, prioritize in this order: graph analysis facts first, then intake blockers, then document/drafting details.",
+        ]
+        if any(token in question_lower for token in ("when", "date", "timeline", "chronolog", "sequence")):
+            guidance.append("Use chronological order and include one date anchor per event when possible.")
+        if any(token in question_lower for token in ("who", "name", "staff", "manager", "supervisor", "decision-maker", "decision maker")):
+            guidance.append("List each person with their role/title and what they did.")
+        if any(token in question_lower for token in ("document", "email", "notice", "message", "record", "paperwork")):
+            guidance.append("Identify the strongest document first, then add one to two secondary records if relevant.")
+        if (
+            any(token in question_lower for token in ("protected activity", "complaint", "reported", "accommodation", "grievance", "appeal"))
+            and any(token in question_lower for token in ("adverse", "retaliat", "termination", "denial", "disciplin"))
+        ):
+            guidance.append("Explicitly connect protected activity to adverse action using timing, statements, or decision-maker behavior.")
+        return "\n".join([f"- {item}" for item in guidance])
     
     def _fallback_complaint(self, seed_data: Dict[str, Any]) -> str:
         """Fallback complaint if LLM fails."""

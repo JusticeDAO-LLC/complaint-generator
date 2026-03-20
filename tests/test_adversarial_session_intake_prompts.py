@@ -132,7 +132,7 @@ def test_extract_intake_prompt_candidates_classifies_missing_fact_questions():
         objective_by_question[
             "When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?"
         ]
-    ) == {"timeline", "documents", "anchor_grievance_hearing", "anchor_appeal_rights", "anchor_adverse_action"}
+    ) == {"timeline", "documents", "anchor_grievance_hearing", "anchor_appeal_rights", "anchor_adverse_action", "hearing_request_timing", "response_dates"}
     assert objective_by_question[
         "Who at HACC made, communicated, or carried out each decision?"
     ] == ["actors"]
@@ -184,6 +184,11 @@ def test_build_fallback_probe_prefers_intake_questionnaire_prompt():
         need_causation=False,
         need_documentary_evidence=False,
         need_witness=False,
+        need_exact_dates=False,
+        need_staff_names_titles=False,
+        need_hearing_request_timing=False,
+        need_response_dates=False,
+        need_causation_sequence=False,
         last_question_key=None,
         last_question_intent_key=None,
         recent_intent_keys=set(),
@@ -218,6 +223,11 @@ def test_build_fallback_probe_can_emit_causation_question_when_needed():
         need_causation=True,
         need_documentary_evidence=False,
         need_witness=False,
+        need_exact_dates=False,
+        need_staff_names_titles=False,
+        need_hearing_request_timing=False,
+        need_response_dates=False,
+        need_causation_sequence=False,
         last_question_key=None,
         last_question_intent_key=None,
         recent_intent_keys=set(),

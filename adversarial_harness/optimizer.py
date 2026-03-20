@@ -334,6 +334,7 @@ class Optimizer:
 
         if any(
             objective in {"timeline", "actors", "documents", "witnesses", "harm_remedy"}
+            or objective in {"exact_dates", "staff_names_titles", "hearing_request_timing", "response_dates", "causation_sequence"}
             or str(objective).startswith("anchor_")
             for objective in objectives
         ):

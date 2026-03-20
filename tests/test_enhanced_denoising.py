@@ -109,8 +109,8 @@ class TestPhase2Denoising:
         denoiser = ComplaintDenoiser()
 
         candidate = denoiser._question_candidate(
-            "When did you request the hearing, and when did HACC respond?",
-            "timeline",
+            question_text="When did you request the hearing, and when did HACC respond?",
+            question_type="timeline",
             source="dependency_graph_requirement",
             context={"gap_type": "missing_hearing_timing"},
             priority="high",
