@@ -543,7 +543,7 @@ stats = collector.get_operation_stats("entity_extraction")
 ```python
 # Good: Use configuration objects
 config = OptimizerConfig(
-    model="gpt-4",
+    model="gpt-5.3-codex",
     temperature=0.7,
     max_tokens=2000,
     timeout_seconds=30
@@ -688,4 +688,3 @@ config_interactive = OptimizerConfig(batch_size=5)
 # Large batches for efficiency
 config_bulk = OptimizerConfig(batch_size=100)
 ```
-

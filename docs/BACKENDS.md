@@ -296,7 +296,7 @@ from backends.exceptions import (
     ModelNotFoundError
 )
 
-backend = LLMRouterBackend(id='llm', provider='openai', model='gpt-4')
+backend = LLMRouterBackend(id='llm', provider='codex', model='gpt-5.3-codex')
 
 try:
     response = backend.generate(prompt)
@@ -325,8 +325,8 @@ logging.basicConfig(level=logging.DEBUG)
 
 backend = LLMRouterBackend(
     id='llm',
-    provider='openai',
-    model='gpt-4',
+    provider='codex',
+    model='gpt-5.3-codex',
     verbose=True  # Enable verbose logging
 )
 

@@ -40,7 +40,7 @@ class LLMRouterBackend:
         raw_provider = self._resolve_provider_name(provider)
         self.provider = _PROVIDER_ALIASES.get(raw_provider.lower(), raw_provider) if raw_provider else None
         if model is None:
-            if self.provider == 'codex_cli':
+            if self.provider in {'codex', 'codex_cli'}:
                 self.model = 'gpt-5.3-codex'
             elif str(self.provider).strip().lower() in {'hf', 'local_hf', 'hf_inference', 'hf_router', 'huggingface_inference', 'huggingface_router'}:
                 self.model = (

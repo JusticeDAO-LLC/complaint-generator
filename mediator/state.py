@@ -125,8 +125,8 @@ class State:
 		now = datetime.now()
 		time_str = now.strftime("%Y-%m-%d %H:%M:%S")
 
-		provider = os.environ.get("COMPLAINT_GENERATOR_LLM_PROVIDER", "copilot_cli")
-		model = os.environ.get("COMPLAINT_GENERATOR_LLM_MODEL", "gpt-5-mini")
+		provider = os.environ.get("COMPLAINT_GENERATOR_LLM_PROVIDER", "codex")
+		model = os.environ.get("COMPLAINT_GENERATOR_LLM_MODEL", "gpt-5.3-codex")
 		backend = LLMRouterBackend(id="llm-router", provider=provider, model=model)
 		response_message = backend("what does the word copyright mean?")
 		self.append_chat_history(response_message, timestamp=time_str)

@@ -38,8 +38,8 @@ from backends import LLMRouterBackend
 # Initialize mediator with LLM backend
 backend = LLMRouterBackend(
     id='llm-router',
-    provider='copilot_cli',
-    model='gpt-5-mini'
+    provider='codex',
+    model='gpt-5.3-codex'
 )
 mediator = Mediator(backends=[backend])
 

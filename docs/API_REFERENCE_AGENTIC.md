@@ -447,7 +447,7 @@ from ipfs_datasets_py.optimizers.agentic import AgenticOptimizer
 
 # Initialize optimizer
 optimizer = AgenticOptimizer(
-    model="gpt-4",
+    model="gpt-5.3-codex",
     temperature=0.7,
     max_iterations=5
 )
@@ -562,7 +562,7 @@ from ipfs_datasets_py.optimizers.agentic import FeedbackLoop, AgenticOptimizer
 
 # Create feedback loop
 feedback_loop = FeedbackLoop(
-    model="gpt-4",
+    model="gpt-5.3-codex",
     max_feedback_rounds=3
 )
 
@@ -715,4 +715,3 @@ for artifact in artifacts:
 3. **Model Selection**: Use `gpt-3.5-turbo` for fast feedback, `gpt-4` for complex reasoning
 4. **Convergence**: Set appropriate `convergence_threshold` to stop early when quality plateaus
 5. **Checkpointing**: Enable `auto_save` for long-running optimizations
-

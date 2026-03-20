@@ -48,8 +48,8 @@ Uses the `ipfs_datasets_py` LLM router for multi-provider support:
 {
   "id": "llm-router",
   "type": "llm_router",
-  "provider": "copilot_cli",
-  "model": "gpt-4",
+  "provider": "codex",
+  "model": "gpt-5.3-codex",
   "max_tokens": 2048,
   "temperature": 0.7,
   "continue_session": true
@@ -67,10 +67,11 @@ Uses the `ipfs_datasets_py` LLM router for multi-provider support:
 | `max_tokens` | integer | No | Maximum tokens to generate (default: 128) |
 | `temperature` | float | No | Sampling temperature 0.0-2.0 (default: 0.7) |
 | `top_p` | float | No | Nucleus sampling parameter (default: 1.0) |
-| `continue_session` | boolean | No | Reuse session for Copilot CLI (default: false) |
+| `continue_session` | boolean | No | Reuse a session-capable CLI provider session when supported (default: false) |
 
 #### Supported Providers
 
+- `codex` - OpenAI Codex via the router's Codex-backed path
 - `openrouter` - OpenRouter API (multiple models)
 - `huggingface` - Local Hugging Face Transformers fallback via `ipfs_datasets_py.llm_router`
 - `huggingface_router` - Hugging Face Inference via the OpenAI-compatible router endpoint used by Chat UI `llm-router`
@@ -457,8 +458,8 @@ Configure logging behavior:
     {
       "id": "dev-backend",
       "type": "llm_router",
-      "provider": "copilot_cli",
-      "model": "gpt-4",
+      "provider": "codex",
+      "model": "gpt-5.3-codex",
       "max_tokens": 2048
     }
   ],
@@ -483,9 +484,9 @@ Configure logging behavior:
   "BACKENDS": [
     {
       "id": "prod-primary",
-      "type": "openai",
-      "api_key": "${OPENAI_API_KEY}",
-      "engine": "gpt-4",
+      "type": "llm_router",
+      "provider": "codex",
+      "model": "gpt-5.3-codex",
       "max_tokens": 2048
     },
     {
@@ -521,17 +522,17 @@ Configure logging behavior:
 {
   "BACKENDS": [
     {
-      "id": "copilot",
+      "id": "codex",
       "type": "llm_router",
-      "provider": "copilot_cli",
-      "model": "gpt-4",
+      "provider": "codex",
+      "model": "gpt-5.3-codex",
       "max_tokens": 2048
     },
     {
       "id": "openai",
-      "type": "openai",
-      "api_key": "${OPENAI_API_KEY}",
-      "engine": "gpt-4",
+      "type": "llm_router",
+      "provider": "openai",
+      "model": "gpt-5.3-codex",
       "max_tokens": 2048
     },
     {

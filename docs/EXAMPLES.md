@@ -35,7 +35,7 @@ python examples/three_phase_example.py
 from mediator import Mediator
 from backends import LLMRouterBackend
 
-backend = LLMRouterBackend(id='llm', provider='copilot_cli', model='gpt-5-mini')
+backend = LLMRouterBackend(id='llm', provider='codex', model='gpt-5.3-codex')
 mediator = Mediator(backends=[backend])
 
 result = mediator.run_three_phase_processing(
@@ -757,8 +757,8 @@ from backends import LLMRouterBackend
 # 2. Initialize backend
 backend = LLMRouterBackend(
     id='llm',
-    provider='copilot_cli',
-    model='gpt-5-mini'
+    provider='codex',
+    model='gpt-5.3-codex'
 )
 
 # 3. Initialize mediator
@@ -790,11 +790,11 @@ except Exception as e:
 Change the backend in any example:
 
 ```python
-# Use OpenAI instead of Copilot
+# Use OpenAI instead of Codex
 backend = LLMRouterBackend(
     id='llm',
     provider='openai',
-    model='gpt-4'
+    model='gpt-5.3-codex'
 )
 ```
 
@@ -806,8 +806,8 @@ Modify parameters for different behavior:
 # Increase max tokens for longer responses
 backend = LLMRouterBackend(
     id='llm',
-    provider='copilot_cli',
-    model='gpt-5-mini',
+    provider='codex',
+    model='gpt-5.3-codex',
     max_tokens=1000  # Increased from default 128
 )
 ```

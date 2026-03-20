@@ -152,7 +152,7 @@ The mediator coordinates a sophisticated three-phase workflow (see `docs/THREE_P
 from mediator import Mediator
 from backends import LLMRouterBackend
 
-backend = LLMRouterBackend(id='llm-router', provider='copilot_cli', model='gpt-5-mini')
+backend = LLMRouterBackend(id='llm-router', provider='codex', model='gpt-5.3-codex')
 mediator = Mediator(backends=[backend])
 
 mediator.state.complaint = "I was terminated after reporting safety violations..."
