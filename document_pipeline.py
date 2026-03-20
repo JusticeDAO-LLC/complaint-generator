@@ -2351,6 +2351,8 @@ class FormalComplaintDocumentBuilder:
             "title": draft.get("title"),
             "court_header": draft.get("court_header"),
             "generated_at": source_context.get("generated_at") or _utcnow().isoformat(),
+            "claim_support_temporal_handoff": dict(source_context.get("claim_support_temporal_handoff") or {}) if isinstance(source_context.get("claim_support_temporal_handoff"), dict) else {},
+            "source_context": source_context,
             "case_caption": {
                 "plaintiffs": case_caption.get("plaintiffs", []),
                 "defendants": case_caption.get("defendants", []),

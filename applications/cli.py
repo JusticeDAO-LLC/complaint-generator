@@ -146,6 +146,13 @@ class CLI:
 			return ''
 		return text.replace('_', ' ').replace('-', ' ').title()
 
+	def _format_cli_count_labels(self, counts):
+		if not isinstance(counts, dict):
+			return ''
+		return ', '.join(
+			f"{self._humanize_cli_label(label)}={count}" for label, count in sorted(counts.items())
+		)
+
 	def claim_review(self, args):
 		positionals, options = self._parse_command_options(args)
 		claim_type = options.get('claim_type')
@@ -296,9 +303,7 @@ class CLI:
 			if issue_elements:
 				lines.append(f"  refresh: {', '.join(str(element) for element in issue_elements)}")
 			if authority_summary.get('treatment_type_counts'):
-				treatment_labels = ', '.join(
-					f"{kind}={count}" for kind, count in sorted(authority_summary.get('treatment_type_counts', {}).items())
-				)
+				treatment_labels = self._format_cli_count_labels(authority_summary.get('treatment_type_counts', {}))
 				lines.append(f'  authority_treatments: {treatment_labels}')
 			if recommendation:
 				lines.append(f'  recommendation: {recommendation}')
@@ -331,29 +336,19 @@ class CLI:
 				f'- {claim_type}: authority_program_tasks={program_task_count} authority_programs={program_count}'
 			)
 			if program_type_counts:
-				program_labels = ', '.join(
-					f"{program_type}={count}" for program_type, count in sorted(program_type_counts.items())
-				)
+				program_labels = self._format_cli_count_labels(program_type_counts)
 				lines.append(f'  program_types: {program_labels}')
 			if intent_counts:
-				intent_labels = ', '.join(
-					f"{intent}={count}" for intent, count in sorted(intent_counts.items())
-				)
+				intent_labels = self._format_cli_count_labels(intent_counts)
 				lines.append(f'  search_intents: {intent_labels}')
 			if primary_program_counts:
-				primary_labels = ', '.join(
-					f"{program_type}={count}" for program_type, count in sorted(primary_program_counts.items())
-				)
+				primary_labels = self._format_cli_count_labels(primary_program_counts)
 				lines.append(f'  primary_programs: {primary_labels}')
 			if primary_program_bias_counts:
-				bias_labels = ', '.join(
-					f"{bias}={count}" for bias, count in sorted(primary_program_bias_counts.items())
-				)
+				bias_labels = self._format_cli_count_labels(primary_program_bias_counts)
 				lines.append(f'  primary_biases: {bias_labels}')
 			if primary_program_rule_bias_counts:
-				rule_bias_labels = ', '.join(
-					f"{bias}={count}" for bias, count in sorted(primary_program_rule_bias_counts.items())
-				)
+				rule_bias_labels = self._format_cli_count_labels(primary_program_rule_bias_counts)
 				lines.append(f'  primary_rule_biases: {rule_bias_labels}')
 			source_context_summary = self._format_follow_up_source_context_summary(summary)
 			if source_context_summary:
@@ -380,19 +375,13 @@ class CLI:
 				f'- {claim_type}: history_program_entries={history_program_entry_count}'
 			)
 			if selected_program_type_counts:
-				program_labels = ', '.join(
-					f"{program_type}={count}" for program_type, count in sorted(selected_program_type_counts.items())
-				)
+				program_labels = self._format_cli_count_labels(selected_program_type_counts)
 				lines.append(f'  selected_programs: {program_labels}')
 			if selected_program_bias_counts:
-				bias_labels = ', '.join(
-					f"{bias}={count}" for bias, count in sorted(selected_program_bias_counts.items())
-				)
+				bias_labels = self._format_cli_count_labels(selected_program_bias_counts)
 				lines.append(f'  selected_biases: {bias_labels}')
 			if selected_program_rule_bias_counts:
-				rule_bias_labels = ', '.join(
-					f"{bias}={count}" for bias, count in sorted(selected_program_rule_bias_counts.items())
-				)
+				rule_bias_labels = self._format_cli_count_labels(selected_program_rule_bias_counts)
 				lines.append(f'  selected_rule_biases: {rule_bias_labels}')
 			source_context_summary = self._format_follow_up_source_context_summary(summary)
 			if source_context_summary:
@@ -422,9 +411,7 @@ class CLI:
 				f'- {claim_type}: chronology_tasks={temporal_gap_task_count} chronology_targeted={temporal_gap_targeted_task_count}'
 			)
 			if temporal_rule_status_counts:
-				status_labels = ', '.join(
-					f"{status}={count}" for status, count in sorted(temporal_rule_status_counts.items())
-				)
+				status_labels = self._format_cli_count_labels(temporal_rule_status_counts)
 				lines.append(f'  rule_status: {status_labels}')
 			if temporal_rule_blocking_reason_counts:
 				blocker_labels = ', '.join(
@@ -432,9 +419,7 @@ class CLI:
 				)
 				lines.append(f'  blockers: {blocker_labels}')
 			if temporal_resolution_status_counts:
-				handoff_labels = ', '.join(
-					f"{status}={count}" for status, count in sorted(temporal_resolution_status_counts.items())
-				)
+				handoff_labels = self._format_cli_count_labels(temporal_resolution_status_counts)
 				lines.append(f'  handoffs: {handoff_labels}')
 		return '' if len(lines) == 1 else '\n'.join(lines)
 
@@ -448,19 +433,19 @@ class CLI:
 		content_origin_counts = summary.get('content_origin_counts', {}) if isinstance(summary.get('content_origin_counts'), dict) else {}
 		if support_by_kind:
 			segments.append(
-				'lane ' + ', '.join(f"{label}={count}" for label, count in sorted(support_by_kind.items()))
+				'lane ' + self._format_cli_count_labels(support_by_kind)
 			)
 		if source_family_counts:
 			segments.append(
-				'family ' + ', '.join(f"{label}={count}" for label, count in sorted(source_family_counts.items()))
+				'family ' + self._format_cli_count_labels(source_family_counts)
 			)
 		if artifact_family_counts:
 			segments.append(
-				'artifact ' + ', '.join(f"{label}={count}" for label, count in sorted(artifact_family_counts.items()))
+				'artifact ' + self._format_cli_count_labels(artifact_family_counts)
 			)
 		elif content_origin_counts:
 			segments.append(
-				'origin ' + ', '.join(f"{label}={count}" for label, count in sorted(content_origin_counts.items()))
+				'origin ' + self._format_cli_count_labels(content_origin_counts)
 			)
 		return '; '.join(segments)
 
@@ -477,19 +462,13 @@ class CLI:
 				continue
 			lines.append(f'- {claim_type}:')
 			if primary_missing_fact_counts:
-				primary_labels = ', '.join(
-					f"{label}={count}" for label, count in sorted(primary_missing_fact_counts.items())
-				)
+				primary_labels = self._format_cli_count_labels(primary_missing_fact_counts)
 				lines.append(f'  primary_gaps: {primary_labels}')
 			if missing_fact_bundle_counts:
-				missing_labels = ', '.join(
-					f"{label}={count}" for label, count in sorted(missing_fact_bundle_counts.items())
-				)
+				missing_labels = self._format_cli_count_labels(missing_fact_bundle_counts)
 				lines.append(f'  missing_bundle: {missing_labels}')
 			if satisfied_fact_bundle_counts:
-				satisfied_labels = ', '.join(
-					f"{label}={count}" for label, count in sorted(satisfied_fact_bundle_counts.items())
-				)
+				satisfied_labels = self._format_cli_count_labels(satisfied_fact_bundle_counts)
 				lines.append(f'  covered_bundle: {satisfied_labels}')
 		return '' if len(lines) == 1 else '\n'.join(lines)
 
@@ -524,7 +503,7 @@ class CLI:
 					or entry.get('claim_element_id')
 					or 'unknown element'
 				)
-				segments = [entry_label]
+				segments = [self._humanize_cli_label(entry_label)]
 				if primary_gap:
 					segments.append(f'primary_gap={primary_gap}')
 				if missing_bundle:

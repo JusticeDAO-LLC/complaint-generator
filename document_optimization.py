@@ -82,6 +82,84 @@ def _stable_json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, ensure_ascii=True)
 
 
+def _dedupe_text_values(values: Iterable[Any]) -> List[str]:
+    seen = set()
+    normalized_values: List[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        if text in seen:
+            continue
+        seen.add(text)
+        normalized_values.append(text)
+    return normalized_values
+
+
+def _build_claim_support_temporal_handoff(intake_case_summary: Any) -> Dict[str, Any]:
+    summary = intake_case_summary if isinstance(intake_case_summary, dict) else {}
+    packet_summary = summary.get("claim_support_packet_summary")
+    packet_summary = packet_summary if isinstance(packet_summary, dict) else {}
+    alignment_tasks = summary.get("alignment_evidence_tasks")
+    alignment_tasks = alignment_tasks if isinstance(alignment_tasks, list) else []
+
+    unresolved_temporal_issue_ids = _dedupe_text_values(
+        packet_summary.get("claim_support_unresolved_temporal_issue_ids") or []
+    )
+    event_ids: List[str] = []
+    temporal_fact_ids: List[str] = []
+    temporal_relation_ids: List[str] = []
+    timeline_issue_ids: List[str] = []
+    temporal_issue_ids: List[str] = []
+    temporal_proof_bundle_ids: List[str] = []
+    temporal_proof_objectives: List[str] = []
+
+    for task in alignment_tasks:
+        if not isinstance(task, dict):
+            continue
+        event_ids.extend(_dedupe_text_values(task.get("event_ids") or []))
+        temporal_fact_ids.extend(_dedupe_text_values(task.get("temporal_fact_ids") or []))
+        temporal_relation_ids.extend(_dedupe_text_values(task.get("temporal_relation_ids") or []))
+        timeline_issue_ids.extend(_dedupe_text_values(task.get("timeline_issue_ids") or []))
+        temporal_issue_ids.extend(_dedupe_text_values(task.get("temporal_issue_ids") or []))
+        proof_bundle_id = str(task.get("temporal_proof_bundle_id") or "").strip()
+        if proof_bundle_id:
+            temporal_proof_bundle_ids.append(proof_bundle_id)
+        proof_objective = str(task.get("temporal_proof_objective") or "").strip()
+        if proof_objective:
+            temporal_proof_objectives.append(proof_objective)
+
+    temporal_handoff = {
+        "unresolved_temporal_issue_count": int(
+            packet_summary.get("claim_support_unresolved_temporal_issue_count", 0) or 0
+        ),
+        "unresolved_temporal_issue_ids": unresolved_temporal_issue_ids,
+        "chronology_task_count": int(packet_summary.get("temporal_gap_task_count", 0) or 0),
+        "event_ids": _dedupe_text_values(event_ids),
+        "temporal_fact_ids": _dedupe_text_values(temporal_fact_ids),
+        "temporal_relation_ids": _dedupe_text_values(temporal_relation_ids),
+        "timeline_issue_ids": _dedupe_text_values(timeline_issue_ids),
+        "temporal_issue_ids": _dedupe_text_values(temporal_issue_ids),
+        "temporal_proof_bundle_ids": _dedupe_text_values(temporal_proof_bundle_ids),
+        "temporal_proof_objectives": _dedupe_text_values(temporal_proof_objectives),
+    }
+    if not temporal_handoff["unresolved_temporal_issue_count"] and not any(
+        temporal_handoff[key]
+        for key in (
+            "unresolved_temporal_issue_ids",
+            "event_ids",
+            "temporal_fact_ids",
+            "temporal_relation_ids",
+            "timeline_issue_ids",
+            "temporal_issue_ids",
+            "temporal_proof_bundle_ids",
+            "temporal_proof_objectives",
+        )
+    ):
+        return {}
+    return temporal_handoff
+
+
 class AgenticDocumentOptimizer:
     CRITIC_PROMPT_TAG = "[DOC_OPT_CRITIC]"
     ACTOR_PROMPT_TAG = "[DOC_OPT_ACTOR]"
@@ -222,6 +300,7 @@ class AgenticDocumentOptimizer:
         intake_status = build_intake_status_summary(self.mediator)
         intake_constraints = build_intake_warning_entries(intake_status)
         intake_case_summary = build_intake_case_review_summary(self.mediator)
+        claim_support_temporal_handoff = _build_claim_support_temporal_handoff(intake_case_summary)
         intake_summary_handoff = {}
         if isinstance(intake_status.get("intake_summary_handoff"), dict) and intake_status.get("intake_summary_handoff"):
             intake_summary_handoff = dict(intake_status["intake_summary_handoff"])
@@ -244,6 +323,7 @@ class AgenticDocumentOptimizer:
                 "intake_constraints": intake_constraints,
                 "intake_case_summary": intake_case_summary,
                 "intake_summary_handoff": intake_summary_handoff,
+                "claim_support_temporal_handoff": claim_support_temporal_handoff,
                 "support_context": support_context,
                 "initial_review": initial_review,
                 "final_review": current_review,
@@ -268,6 +348,7 @@ class AgenticDocumentOptimizer:
             "intake_constraints": intake_constraints,
             "intake_case_summary": intake_case_summary,
             "intake_summary_handoff": intake_summary_handoff,
+            "claim_support_temporal_handoff": claim_support_temporal_handoff,
             "packet_projection": dict(support_context.get("packet_projection") or {}),
             "section_history": [
                 {

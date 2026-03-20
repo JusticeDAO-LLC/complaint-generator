@@ -1465,6 +1465,8 @@ def test_formal_complaint_document_builder_generates_filing_packet_json(tmp_path
     assert packet_path.exists()
     packet = json.loads(packet_path.read_text(encoding="utf-8"))
     assert packet["court_header"] == "IN THE UNITED STATES DISTRICT COURT FOR THE NORTHERN DISTRICT OF CALIFORNIA"
+    assert packet["claim_support_temporal_handoff"] == result["claim_support_temporal_handoff"]
+    assert packet["source_context"]["claim_support_temporal_handoff"] == result["claim_support_temporal_handoff"]
     assert packet["case_caption"]["plaintiffs"] == ["Jane Doe"]
     assert packet["sections"]["summary_of_facts"]
     assert packet["sections"]["claims_for_relief"]
@@ -2460,6 +2462,18 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
                             'message': 'Intake blocker: resolve_contradictions',
                         }
                     ],
+                    'claim_support_temporal_handoff': {
+                        'unresolved_temporal_issue_count': 1,
+                        'unresolved_temporal_issue_ids': ['temporal_issue_001'],
+                        'chronology_task_count': 1,
+                        'event_ids': ['event_001'],
+                        'temporal_fact_ids': ['fact_001'],
+                        'temporal_relation_ids': ['timeline_relation_001'],
+                        'timeline_issue_ids': ['temporal_issue_001'],
+                        'temporal_issue_ids': ['temporal_issue_001'],
+                        'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
+                        'temporal_proof_objectives': ['establish_retaliation_sequence'],
+                    },
                     'intake_case_summary': {
                         'alignment_evidence_tasks': [
                             {
@@ -2473,6 +2487,13 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
                                 'source_quality_target': 'high_quality_document',
                                 'resolution_status': 'still_open',
                                 'resolution_notes': '',
+                                'event_ids': ['event_001'],
+                                'temporal_fact_ids': ['fact_001'],
+                                'temporal_relation_ids': ['timeline_relation_001'],
+                                'timeline_issue_ids': ['temporal_issue_001'],
+                                'temporal_issue_ids': ['temporal_issue_001'],
+                                'temporal_proof_bundle_id': 'retaliation:causation:bundle_001',
+                                'temporal_proof_objective': 'establish_retaliation_sequence',
                                 'temporal_rule_profile_id': 'retaliation_temporal_profile_v1',
                                 'temporal_rule_status': 'partial',
                                 'temporal_rule_blocking_reasons': ['Need ordering between report and termination.'],
@@ -2482,6 +2503,8 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
                             'claim_count': 1,
                             'proof_readiness_score': 0.47,
                             'claim_support_unresolved_without_review_path_count': 1,
+                            'claim_support_unresolved_temporal_issue_count': 1,
+                            'claim_support_unresolved_temporal_issue_ids': ['temporal_issue_001'],
                             'evidence_completion_ready': False,
                             'temporal_gap_task_count': 1,
                             'temporal_gap_targeted_task_count': 1,
@@ -2505,6 +2528,18 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
     assert payload['size'] == 128
     assert payload['trace']['intake_status']['current_phase'] == 'intake'
     assert payload['trace']['intake_constraints'][0]['code'] == 'intake_blocker'
+    assert payload['trace']['claim_support_temporal_handoff'] == {
+        'unresolved_temporal_issue_count': 1,
+        'unresolved_temporal_issue_ids': ['temporal_issue_001'],
+        'chronology_task_count': 1,
+        'event_ids': ['event_001'],
+        'temporal_fact_ids': ['fact_001'],
+        'temporal_relation_ids': ['timeline_relation_001'],
+        'timeline_issue_ids': ['temporal_issue_001'],
+        'temporal_issue_ids': ['temporal_issue_001'],
+        'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
+        'temporal_proof_objectives': ['establish_retaliation_sequence'],
+    }
     assert payload['trace']['intake_case_summary']['alignment_evidence_tasks'][0]['fallback_lanes'] == ['authority', 'testimony']
     assert payload['trace']['intake_case_summary']['claim_support_packet_summary']['proof_readiness_score'] == 0.47
     assert payload['trace']['intake_case_summary']['alignment_evidence_tasks'][0]['temporal_rule_status'] == 'partial'
