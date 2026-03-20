@@ -1092,6 +1092,85 @@ class ComplaintDenoiser:
             priority_order.get(candidate.get('priority', 'low'), 3),
         )
 
+    def _actor_score_candidate(self, candidate: Dict[str, Any]) -> float:
+        if not isinstance(candidate, dict):
+            return 0.0
+        priority_map = {'high': 3.0, 'medium': 2.0, 'low': 1.0}
+        blocking_map = {'blocking': 3.0, 'important': 2.0, 'informational': 1.0}
+        qtype = str(candidate.get('type') or '').strip().lower()
+        question_text = str(candidate.get('question') or '').strip().lower()
+        proof_priority = int(candidate.get('proof_priority', self._phase1_proof_priority(qtype)) or 0)
+        blocking_level = str(candidate.get('blocking_level') or '').strip().lower()
+        score = 0.0
+        score += max(0.0, 8.0 - float(proof_priority))
+        score += priority_map.get(str(candidate.get('priority') or 'low').strip().lower(), 1.0)
+        score += blocking_map.get(blocking_level, 0.0)
+        if qtype in {'timeline', 'contradiction', 'responsible_party', 'requirement'}:
+            score += 1.5
+        if any(token in question_text for token in ('when', 'date', 'timeline', 'chronology', 'anchor')):
+            score += 1.25
+        if any(token in question_text for token in ('who', 'actor', 'manager', 'supervisor', 'organization')):
+            score += 1.25
+        if any(token in question_text for token in ('protected activity', 'adverse', 'retaliation', 'because', 'after')):
+            score += 1.25
+        return score
+
+    def _critic_penalty_candidate(self, candidate: Dict[str, Any]) -> float:
+        if not isinstance(candidate, dict):
+            return 0.0
+        question_text = str(candidate.get('question') or '').strip().lower()
+        context = candidate.get('context') if isinstance(candidate.get('context'), dict) else {}
+        penalty = 0.0
+        if not question_text:
+            return 5.0
+        generic_phrases = (
+            "can you provide more details",
+            "additional information",
+            "this claim",
+            "this evidence",
+        )
+        if any(phrase in question_text for phrase in generic_phrases):
+            penalty += 1.25
+        if len(question_text) < 35:
+            penalty += 0.5
+        if len(question_text) > 280:
+            penalty += 0.5
+        if not context:
+            penalty += 0.5
+        if (
+            ('retaliation' in question_text or 'protected activity' in question_text)
+            and not any(token in question_text for token in ('when', 'date', 'who'))
+        ):
+            penalty += 1.0
+        return penalty
+
+    def _annotate_actor_critic_scores(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        annotated: List[Dict[str, Any]] = []
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            enriched = dict(candidate)
+            actor_score = self._actor_score_candidate(enriched)
+            critic_penalty = self._critic_penalty_candidate(enriched)
+            actor_critic_score = (
+                float(self.actor_weight) * actor_score
+                - float(self.critic_weight) * critic_penalty
+            )
+            enriched['actor_score'] = float(actor_score)
+            enriched['critic_penalty'] = float(critic_penalty)
+            enriched['actor_critic_score'] = float(actor_critic_score)
+            explanation = (
+                dict(enriched.get('ranking_explanation', {}))
+                if isinstance(enriched.get('ranking_explanation'), dict)
+                else {}
+            )
+            explanation['actor_score'] = float(actor_score)
+            explanation['critic_penalty'] = float(critic_penalty)
+            explanation['actor_critic_score'] = float(actor_critic_score)
+            enriched['ranking_explanation'] = explanation
+            annotated.append(enriched)
+        return annotated
+
     def select_question_candidates(
         self,
         candidates: List[Dict[str, Any]],
@@ -1103,6 +1182,7 @@ class ComplaintDenoiser:
         normalized_candidates = [candidate for candidate in (candidates or []) if isinstance(candidate, dict)]
         if not normalized_candidates or max_questions <= 0:
             return []
+        normalized_candidates = self._annotate_actor_critic_scores(normalized_candidates)
 
         def _finalize(items: Any, *, dedupe: bool) -> List[Dict[str, Any]]:
             normalized_items = [candidate for candidate in (items or []) if isinstance(candidate, dict)]
@@ -1135,9 +1215,39 @@ class ComplaintDenoiser:
         if isinstance(selected, list):
             normalized_selected = _finalize(selected, dedupe=True)
             if normalized_selected:
-                return normalized_selected
+                if len(normalized_selected) >= max_questions:
+                    return normalized_selected[:max_questions]
+                selected_keys = {
+                    (
+                        self._normalize_question_text(str(candidate.get('question', ''))),
+                        str(candidate.get('type', '')).strip().lower(),
+                    )
+                    for candidate in normalized_selected
+                }
+                fallback_candidates = [
+                    candidate for candidate in normalized_candidates
+                    if (
+                        self._normalize_question_text(str(candidate.get('question', ''))),
+                        str(candidate.get('type', '')).strip().lower(),
+                    ) not in selected_keys
+                ]
+                fallback_candidates.sort(
+                    key=lambda candidate: (
+                        -float(candidate.get('actor_critic_score', 0.0) or 0.0),
+                        self._default_candidate_sort_key(candidate),
+                    )
+                )
+                return _finalize(normalized_selected + fallback_candidates, dedupe=True)
 
-        normalized_candidates.sort(key=self._default_candidate_sort_key)
+        if self.actor_critic_enabled:
+            normalized_candidates.sort(
+                key=lambda candidate: (
+                    -float(candidate.get('actor_critic_score', 0.0) or 0.0),
+                    self._default_candidate_sort_key(candidate),
+                )
+            )
+        else:
+            normalized_candidates.sort(key=self._default_candidate_sort_key)
         return _finalize(normalized_candidates, dedupe=True)
 
     def _ensure_standard_intake_questions(self, questions: List[Dict[str, Any]], max_questions: int) -> List[Dict[str, Any]]:
