@@ -816,9 +816,11 @@ class Mediator:
 				'claim_element_id': str(document_grounding_improvement_next_action.get('claim_element_id') or '').strip(),
 				'claim_element_label': str(document_grounding_improvement_next_action.get('claim_element_id') or '').strip(),
 				'preferred_support_kind': str(document_grounding_improvement_next_action.get('preferred_support_kind') or '').strip(),
+				'learned_support_kind': str(document_grounding_improvement_next_action.get('learned_support_kind') or '').strip(),
 				'suggested_support_kind': str(document_grounding_improvement_next_action.get('suggested_support_kind') or '').strip(),
 				'alternate_support_kinds': list(document_grounding_improvement_next_action.get('alternate_support_kinds') or [])[:3],
 				'fact_backed_ratio_delta': float(document_grounding_improvement_next_action.get('fact_backed_ratio_delta') or 0.0),
+				'learned_support_lane_priority': bool(document_grounding_improvement_next_action.get('learned_support_kind')),
 				'document_grounding_strategy_refinement': True,
 			}
 			if not any(
