@@ -1703,10 +1703,31 @@ class ComplaintDocumentBuilder:
             cid = str(record.get("cid") or "").strip()
             metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), dict) else {}
             parse_metadata = record.get("parse_metadata", {}) if isinstance(record.get("parse_metadata"), dict) else {}
+            graph_summary = metadata.get("document_graph_summary", {}) if isinstance(metadata.get("document_graph_summary"), dict) else {}
             filename = _clean_text(metadata.get("filename") or parse_metadata.get("filename") or "")
             source_url = _clean_text(record.get("source_url") or metadata.get("source_url") or "")
             reference = source_url or (f"ipfs://{cid}" if cid else "")
             support_link = support_by_ref.get(cid) or support_by_ref.get(source_url) or {}
+            summary = _clean_text(record.get("parsed_text_preview") or "")
+            if not summary and record.get("id") not in (None, ""):
+                get_evidence_facts = getattr(self.mediator, "get_evidence_facts", None)
+                if callable(get_evidence_facts):
+                    try:
+                        fact_rows = get_evidence_facts(record.get("id")) or []
+                    except Exception:
+                        fact_rows = []
+                    fact_lines = [
+                        _clean_text(item.get("text") or "")
+                        for item in _listify(fact_rows)
+                        if isinstance(item, dict) and _clean_text(item.get("text") or "")
+                    ]
+                    if fact_lines:
+                        summary = _clean_text("; ".join(fact_lines[:2]))
+            if graph_summary and (graph_summary.get("entity_count") or graph_summary.get("relationship_count")):
+                graph_text = _clean_text(
+                    f"Graph extraction: {int(graph_summary.get('entity_count') or 0)} entities, {int(graph_summary.get('relationship_count') or 0)} relationships."
+                )
+                summary = _clean_text(" ".join(part for part in [summary, graph_text] if part))
             exhibits.append(
                 {
                     "label": _exhibit_label(index),
@@ -1717,7 +1738,7 @@ class ComplaintDocumentBuilder:
                     "reference": reference,
                     "source_url": source_url,
                     "cid": cid,
-                    "summary": _clean_text(record.get("parsed_text_preview") or ""),
+                    "summary": summary,
                     "fact_count": int(record.get("fact_count") or 0),
                 }
             )

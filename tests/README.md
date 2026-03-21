@@ -212,7 +212,7 @@ pytest -q \
 The repo-local helper exposes the same slices without copy-pasting long commands:
 
 ```bash
-python scripts/run_standard_regression.py --slice lean
+python scripts/run_standard_regression.py
 python scripts/run_standard_regression.py --slice review
 python scripts/run_standard_regression.py --slice full
 ```
@@ -228,9 +228,14 @@ The same slices are also available through editor and shell tooling:
   - `Standard Regression (Review)`
   - `Standard Regression (Full)`
 - Make targets:
+  - `make regression`
   - `make regression-lean`
   - `make regression-review`
   - `make regression-full`
+- GitHub Actions workflow:
+  - `.github/workflows/standard-regression.yml`
+
+The default helper invocation now resolves to the `full` slice so browser smoke and document workflow coverage stay in the standard gate.
 
 For the HACC grounding workflow, use the focused helper:
 

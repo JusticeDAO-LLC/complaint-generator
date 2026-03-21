@@ -1146,6 +1146,9 @@ class AgenticDocumentOptimizer:
             "session_count": int(document_guardrail.get("session_count") or 0),
             "assessment_blocked": bool(document_guardrail.get("assessment_blocked")),
             "drafting_readiness": readiness_for_critic,
+            "workflow_targeting_summary": workflow_targeting_summary,
+            "document_workflow_execution_summary": document_workflow_execution_summary,
+            "document_execution_drift_summary": document_execution_drift_summary,
             "packet_projection": dict(support_context.get("packet_projection") or {}),
             "section_history": [
                 {
@@ -1536,10 +1539,9 @@ class AgenticDocumentOptimizer:
             self.target_score = float(target_score or self.target_score)
         if persist_artifacts is not None:
             self.persist_artifacts = bool(persist_artifacts)
+        self.llm_config = {"timeout": DEFAULT_OPTIMIZER_LLM_TIMEOUT_SECONDS}
         if isinstance(llm_config, dict):
-            merged_llm_config = {"timeout": DEFAULT_OPTIMIZER_LLM_TIMEOUT_SECONDS}
-            merged_llm_config.update({str(key): value for key, value in llm_config.items()})
-            self.llm_config = merged_llm_config
+            self.llm_config.update({str(key): value for key, value in llm_config.items()})
 
     def _build_support_context(
         self,
@@ -3896,11 +3898,6 @@ class AgenticDocumentOptimizer:
         }
 
     def _build_upstream_optimizer_metadata(self, *, phase_focus_order: Optional[List[str]] = None) -> Dict[str, Any]:
-        workflow_phase_order = [
-            str(value).strip()
-            for value in list((current_review or {}).get("workflow_phase_order") or [])
-            if str(value).strip()
-        ]
         metadata = {
             "available": bool(UPSTREAM_AGENTIC_AVAILABLE),
             "selected_provider": "",

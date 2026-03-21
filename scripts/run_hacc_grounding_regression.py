@@ -68,17 +68,16 @@ def build_harness_test_command(python_executable: str) -> list[str]:
 def build_smoke_command(python_executable: str, output_dir: str) -> list[str]:
     return [
         python_executable,
-        str(WORKSPACE_ROOT / "hacc_adversarial_runner.py"),
-        "--demo",
+        str(PROJECT_ROOT / "scripts" / "run_hacc_grounded_pipeline.py"),
+        "--hacc-preset",
+        "core_hacc_policies",
+        "--top-k",
+        "1",
         "--num-sessions",
         "1",
         "--max-turns",
         "2",
         "--max-parallel",
-        "1",
-        "--hacc-preset",
-        "core_hacc_policies",
-        "--hacc-count",
         "1",
         "--output-dir",
         output_dir,
@@ -100,16 +99,8 @@ def _run_command(
         raise SystemExit(int(completed.returncode))
 
 
-def _load_best_bundle(output_dir: Path) -> dict:
-    bundle_path = output_dir / "best_complaint_bundle.json"
-    if not bundle_path.is_file():
-        raise SystemExit(f"Smoke run did not produce {bundle_path}")
-    with bundle_path.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
-
-
 def _load_coverage_rows(output_dir: Path) -> list[dict[str, str]]:
-    coverage_path = output_dir / "anchor_section_coverage.csv"
+    coverage_path = output_dir / "adversarial" / "anchor_section_coverage.csv"
     if not coverage_path.is_file():
         raise SystemExit(f"Smoke run did not produce {coverage_path}")
     with coverage_path.open("r", encoding="utf-8", newline="") as handle:
@@ -117,10 +108,19 @@ def _load_coverage_rows(output_dir: Path) -> list[dict[str, str]]:
 
 
 def _validate_smoke_output(output_dir: Path) -> dict[str, object]:
-    bundle = _load_best_bundle(output_dir)
-    seed = dict(bundle.get("seed_complaint") or {})
-    key_facts = dict(seed.get("key_facts") or {})
-    anchor_sections = list(key_facts.get("anchor_sections") or [])
+    grounding_bundle_path = output_dir / "grounding_bundle.json"
+    if not grounding_bundle_path.is_file():
+        raise SystemExit(f"Smoke run did not produce {grounding_bundle_path}")
+    with grounding_bundle_path.open("r", encoding="utf-8") as handle:
+        grounding_bundle = json.load(handle)
+
+    upload_report_path = output_dir / "evidence_upload_report.json"
+    if not upload_report_path.is_file():
+        raise SystemExit(f"Smoke run did not produce {upload_report_path}")
+    with upload_report_path.open("r", encoding="utf-8") as handle:
+        upload_report = json.load(handle)
+
+    anchor_sections = list(grounding_bundle.get("anchor_sections") or [])
     if anchor_sections != ["grievance_hearing", "appeal_rights"]:
         raise SystemExit(
             "Unexpected core_hacc_policies anchor sections: "
@@ -141,8 +141,10 @@ def _validate_smoke_output(output_dir: Path) -> dict[str, object]:
     return {
         "anchor_sections": anchor_sections,
         "coverage_by_section": coverage_by_section,
-        "best_bundle": str(output_dir / "best_complaint_bundle.json"),
-        "coverage_report": str(output_dir / "anchor_section_coverage.csv"),
+        "grounding_bundle": str(grounding_bundle_path),
+        "evidence_upload_report": str(upload_report_path),
+        "coverage_report": str(output_dir / "adversarial" / "anchor_section_coverage.csv"),
+        "upload_count": int(upload_report.get("upload_count") or 0),
     }
 
 

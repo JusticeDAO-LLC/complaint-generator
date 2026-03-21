@@ -48,7 +48,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--slice",
         choices=tuple(REGRESSION_SLICES.keys()),
-        default="lean",
+        default="full",
         help="Regression slice to run.",
     )
     parser.add_argument(
@@ -59,8 +59,8 @@ def create_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def resolve_test_targets(slice_name: str = "lean") -> list[str]:
-    normalized = str(slice_name or "lean").strip().lower()
+def resolve_test_targets(slice_name: str = "full") -> list[str]:
+    normalized = str(slice_name or "full").strip().lower()
     if normalized not in REGRESSION_SLICES:
         raise ValueError(f"Unsupported regression slice: {slice_name}")
     return list(REGRESSION_SLICES[normalized])
@@ -68,7 +68,7 @@ def resolve_test_targets(slice_name: str = "lean") -> list[str]:
 
 def build_pytest_command(
     *,
-    slice_name: str = "lean",
+    slice_name: str = "full",
     pytest_args: Optional[Sequence[str]] = None,
     python_executable: Optional[str] = None,
 ) -> list[str]:

@@ -679,10 +679,88 @@ class AdversarialSession:
         if isinstance(matches, list) and 'staff_names_titles' in matches:
             return True
         text = AdversarialSession._extract_question_text(question).lower()
-        if not any(token in text for token in ('who', 'name', 'staff', 'person', 'manager', 'supervisor', 'decision')):
+        if not any(
+            token in text
+            for token in (
+                'who',
+                'name',
+                'names',
+                'staff',
+                'person',
+                'manager',
+                'supervisor',
+                'decision',
+                'decision-maker',
+                'decision maker',
+                'sender',
+                'signer',
+                'author',
+            )
+        ):
             return False
-        title_tokens = ('title', 'job title', 'role', 'position')
+        title_tokens = (
+            'title',
+            'titles',
+            'job title',
+            'job titles',
+            'role',
+            'roles',
+            'position',
+            'positions',
+            'decision-maker information',
+            'decision maker information',
+        )
         return any(token in text for token in title_tokens)
+
+    @staticmethod
+    def _seed_supports_reasonable_accommodation(seed_complaint: Dict[str, Any]) -> bool:
+        key_facts = seed_complaint.get('key_facts') if isinstance(seed_complaint.get('key_facts'), dict) else {}
+        anchor_sections = {
+            str(value or '').strip().lower()
+            for value in list(key_facts.get('anchor_sections') or [])
+            if str(value or '').strip()
+        }
+        theory_labels = {
+            str(value or '').strip().lower()
+            for value in list(key_facts.get('theory_labels') or [])
+            if str(value or '').strip()
+        }
+        protected_bases = {
+            str(value or '').strip().lower()
+            for value in list(key_facts.get('protected_bases') or [])
+            if str(value or '').strip()
+        }
+        if 'reasonable_accommodation' in anchor_sections or 'reasonable_accommodation' in theory_labels:
+            return True
+        if 'disability_discrimination' in theory_labels or 'disability' in protected_bases:
+            return True
+        return False
+
+    @staticmethod
+    def _seed_supports_selection_criteria(seed_complaint: Dict[str, Any]) -> bool:
+        key_facts = seed_complaint.get('key_facts') if isinstance(seed_complaint.get('key_facts'), dict) else {}
+        anchor_sections = {
+            str(value or '').strip().lower()
+            for value in list(key_facts.get('anchor_sections') or [])
+            if str(value or '').strip()
+        }
+        theory_labels = {
+            str(value or '').strip().lower()
+            for value in list(key_facts.get('theory_labels') or [])
+            if str(value or '').strip()
+        }
+        anchor_terms = {
+            str(value or '').strip().lower()
+            for value in list(key_facts.get('anchor_terms') or [])
+            if str(value or '').strip()
+        }
+        if 'selection_criteria' in anchor_sections or 'selection_criteria' in theory_labels:
+            return True
+        return any(
+            token in term
+            for term in anchor_terms
+            for token in ('selection', 'screening', 'criteria', 'evaluation', 'priority', 'threshold')
+        )
 
     @staticmethod
     def _is_hearing_request_timing_question(question: Any) -> bool:
@@ -1105,7 +1183,7 @@ class AdversarialSession:
             objectives.append('exact_dates')
         if (
             any(token in lowered for token in ('staff', 'name', 'who', 'person', 'manager', 'supervisor', 'decision-maker', 'decision maker'))
-            and any(token in lowered for token in ('title', 'role', 'position', 'job title'))
+            and any(token in lowered for token in ('title', 'titles', 'role', 'roles', 'position', 'positions', 'job title', 'job titles'))
         ):
             objectives.append('staff_names_titles')
         if (
@@ -1221,18 +1299,48 @@ class AdversarialSession:
         synthetic_prompts = key_facts.get('synthetic_prompts') if isinstance(key_facts, dict) else {}
         candidates: List[tuple[str, str]] = []
         if isinstance(synthetic_prompts, dict):
-            for raw_question in list(synthetic_prompts.get('intake_questions') or []):
+            explicit_question_lists = (
+                synthetic_prompts.get('intake_questions') or [],
+                synthetic_prompts.get('evidence_upload_questions') or [],
+                synthetic_prompts.get('mediator_questions') or [],
+                synthetic_prompts.get('document_generation_questions') or [],
+            )
+            for raw_question in [item for values in explicit_question_lists for item in list(values or [])]:
                 question_text = str(raw_question or '').strip()
                 if not question_text:
                     continue
                 for objective in AdversarialSession._question_objectives_from_prompt(question_text):
                     candidates.append((question_text, objective))
 
+            for raw_prompt in (
+                synthetic_prompts.get('intake_questionnaire_prompt'),
+                synthetic_prompts.get('complaint_chatbot_prompt'),
+                synthetic_prompts.get('evidence_upload_prompt'),
+                synthetic_prompts.get('mediator_evidence_review_prompt'),
+                synthetic_prompts.get('mediator_evaluation_prompt'),
+                synthetic_prompts.get('document_generation_prompt'),
+            ):
+                prompt_text = " ".join(str(raw_prompt or '').split()).strip()
+                if not prompt_text or "?" not in prompt_text:
+                    continue
+                for fragment in re.split(r"(?<=[?])\s+", prompt_text):
+                    question_text = fragment.strip()
+                    if not question_text.endswith("?"):
+                        continue
+                    for objective in AdversarialSession._question_objectives_from_prompt(question_text):
+                        candidates.append((question_text, objective))
+
         candidates.extend(AdversarialSession._claim_temporal_gap_prompts(seed_complaint))
 
         expected_anchor_sections = [
             str(value) for value in list(key_facts.get('anchor_sections') or []) if str(value)
         ]
+        supports_reasonable_accommodation = AdversarialSession._seed_supports_reasonable_accommodation(seed_complaint)
+        if not supports_reasonable_accommodation:
+            candidates = [
+                item for item in candidates
+                if item[1] != 'anchor_reasonable_accommodation'
+            ]
         covered_anchor_objectives = {objective for _, objective in candidates if objective.startswith('anchor_')}
         for section in expected_anchor_sections:
             probe = AdversarialSession._anchor_probe_map().get(section)
@@ -1825,8 +1933,12 @@ class AdversarialSession:
         strict_stability_mode = no_successful_sessions or explicit_recovery_hint
         signal_strength = max(signal_values) if signal_values else 0.0
         seed_boosted_probes: List[tuple[str, str]] = []
+        supports_selection_criteria = cls._seed_supports_selection_criteria(seed_complaint)
         should_frontload_anchor_selection = bool(
-            weak_evidence_modalities.intersection({'policy_document', 'file_evidence'})
+            (
+                supports_selection_criteria
+                and weak_evidence_modalities.intersection({'policy_document', 'file_evidence'})
+            )
             or 'anchor_selection_criteria' in unresolved_intake_objectives
         )
         should_frontload_anchor_appeal_rights = bool(
@@ -1841,6 +1953,11 @@ class AdversarialSession:
             weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
             or 'hearing_request_timing' in unresolved_intake_objectives
             or 'anchor_grievance_hearing' in unresolved_intake_objectives
+        )
+        should_frontload_staff_names_titles = bool(
+            weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
+            or 'staff_names_titles' in unresolved_intake_objectives
+            or bool(cls._extract_anchor_sections(seed_complaint).intersection({'grievance_hearing', 'appeal_rights', 'adverse_action'}))
         )
         should_frontload_causation_sequence = bool(
             weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
@@ -1889,6 +2006,13 @@ class AdversarialSession:
                     "hearing_request_timing",
                 )
             )
+        if should_frontload_staff_names_titles:
+            seed_boosted_probes.append(
+                (
+                    "Which HACC staff members handled each step, what were their full names and titles or roles, and how can you identify each person from the notices, emails, portal messages, or other records?",
+                    "staff_names_titles",
+                )
+            )
         if should_frontload_causation_sequence:
             seed_boosted_probes.append(
                 (
@@ -1932,6 +2056,8 @@ class AdversarialSession:
                 prompt_priority_tier[prompt_index] = 0
             elif probe_type in {'anchor_grievance_hearing', 'anchor_appeal_rights', 'hearing_request_timing'}:
                 prompt_priority_tier[prompt_index] = 1
+            elif probe_type == 'staff_names_titles' and should_frontload_staff_names_titles:
+                prompt_priority_tier[prompt_index] = 1
             elif probe_type == 'intake_follow_up':
                 prompt_priority_tier[prompt_index] = 9
             else:
@@ -1941,8 +2067,10 @@ class AdversarialSession:
             objective_priority.setdefault(objective, len(objective_priority))
 
         forced_objectives: Set[str] = set()
-        if weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
+        if supports_selection_criteria and weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
             forced_objectives.update({'documents', 'anchor_selection_criteria'})
+        elif weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
+            forced_objectives.add('documents')
         if weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'}):
             forced_objectives.update(
                 {
@@ -1953,9 +2081,10 @@ class AdversarialSession:
                     'anchor_adverse_action',
                     'anchor_appeal_rights',
                     'anchor_grievance_hearing',
-                    'anchor_selection_criteria',
                 }
             )
+            if supports_selection_criteria:
+                forced_objectives.add('anchor_selection_criteria')
         forced_objectives.update(
             {
                 objective
@@ -1964,6 +2093,7 @@ class AdversarialSession:
                     'anchor_grievance_hearing',
                     'anchor_selection_criteria',
                     'hearing_request_timing',
+                    'staff_names_titles',
                     'causation_sequence',
                 )
                 if objective in unresolved_intake_objectives
@@ -2044,11 +2174,20 @@ class AdversarialSession:
             merged.append(question)
 
         if stability_recovery_mode:
+            explicit_prompt_objectives = {
+                objective
+                for _, objective in cls._extract_intake_prompt_candidates(seed_complaint)
+            }
+            missing_explicit_prompt_objectives = [
+                objective
+                for objective in uncovered_critical_objectives
+                if objective in explicit_prompt_objectives
+            ]
             if existing_questions and (
                 strict_stability_mode
                 or len(existing_questions) >= 2
                 or not uncovered_critical_objectives
-            ):
+            ) and not missing_explicit_prompt_objectives:
                 return merged
             # Recovery mode should prioritize continuity over aggressive backfilling.
             # Only inject a minimal, high-value probe when intake coverage is clearly weak.
@@ -2090,6 +2229,8 @@ class AdversarialSession:
                 weight += 0.90
             if probe_type == 'hearing_request_timing' and should_frontload_hearing_request_timing:
                 weight += 0.88
+            if probe_type == 'staff_names_titles' and should_frontload_staff_names_titles:
+                weight += 0.92
             if probe_type == 'causation_sequence' and should_frontload_causation_sequence:
                 weight += 0.75
             if probe_type == 'intake_follow_up':
@@ -2337,8 +2478,12 @@ class AdversarialSession:
         forced_objectives: Set[str] = set()
         weak_evidence_modalities = set(optimizer_context.get('weak_evidence_modalities') or set())
         weak_complaint_types = set(optimizer_context.get('weak_complaint_types') or set())
+        supports_selection_criteria = cls._seed_supports_selection_criteria(seed_complaint)
         should_frontload_anchor_selection = bool(
-            weak_evidence_modalities.intersection({'policy_document', 'file_evidence'})
+            (
+                supports_selection_criteria
+                and weak_evidence_modalities.intersection({'policy_document', 'file_evidence'})
+            )
             or 'anchor_selection_criteria' in unresolved_intake_objectives
         )
         should_frontload_anchor_appeal_rights = bool(
@@ -2354,12 +2499,19 @@ class AdversarialSession:
             or 'hearing_request_timing' in unresolved_intake_objectives
             or 'anchor_grievance_hearing' in unresolved_intake_objectives
         )
+        should_frontload_staff_names_titles = bool(
+            weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
+            or 'staff_names_titles' in unresolved_intake_objectives
+            or bool(cls._extract_anchor_sections(seed_complaint).intersection({'grievance_hearing', 'appeal_rights', 'adverse_action'}))
+        )
         should_frontload_causation_sequence = bool(
             weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
             or 'causation_sequence' in unresolved_intake_objectives
         )
-        if weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
+        if supports_selection_criteria and weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
             forced_objectives.update({'documents', 'anchor_selection_criteria'})
+        elif weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
+            forced_objectives.add('documents')
         if weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'}):
             forced_objectives.update(
                 {
@@ -2370,9 +2522,10 @@ class AdversarialSession:
                     'anchor_adverse_action',
                     'anchor_appeal_rights',
                     'anchor_grievance_hearing',
-                    'anchor_selection_criteria',
                 }
             )
+            if supports_selection_criteria:
+                forced_objectives.add('anchor_selection_criteria')
         forced_objectives.update(
             {
                 objective
@@ -2381,11 +2534,14 @@ class AdversarialSession:
                     'anchor_grievance_hearing',
                     'anchor_selection_criteria',
                     'hearing_request_timing',
+                    'staff_names_titles',
                     'causation_sequence',
                 )
                 if objective in unresolved_intake_objectives
             }
         )
+        if should_frontload_staff_names_titles:
+            forced_objectives.add('staff_names_titles')
         for objective in sorted(forced_objectives):
             objective_priority.setdefault(objective, len(objective_priority))
         if should_frontload_anchor_appeal_rights and 'anchor_appeal_rights' in objective_priority:
@@ -2396,6 +2552,8 @@ class AdversarialSession:
             objective_priority['anchor_selection_criteria'] = min(-7, objective_priority['anchor_selection_criteria'])
         if should_frontload_hearing_request_timing and 'hearing_request_timing' in objective_priority:
             objective_priority['hearing_request_timing'] = min(-3, objective_priority['hearing_request_timing'])
+        if should_frontload_staff_names_titles and 'staff_names_titles' in objective_priority:
+            objective_priority['staff_names_titles'] = min(-4, objective_priority['staff_names_titles'])
         if should_frontload_causation_sequence and 'causation_sequence' in objective_priority:
             objective_priority['causation_sequence'] = min(-2, objective_priority['causation_sequence'])
 
@@ -2619,6 +2777,7 @@ class AdversarialSession:
                 'anchor_selection_criteria',
                 'anchor_grievance_hearing',
                 'hearing_request_timing',
+                'staff_names_titles',
                 'causation_sequence',
                 'adverse_action_details',
                 'exact_dates',
@@ -2815,8 +2974,12 @@ class AdversarialSession:
 
         weak_complaint_types = set(optimizer_context.get('weak_complaint_types') or set())
         weak_evidence_modalities = set(optimizer_context.get('weak_evidence_modalities') or set())
+        supports_selection_criteria = cls._seed_supports_selection_criteria(seed_complaint)
         should_frontload_anchor_selection = bool(
-            weak_evidence_modalities.intersection({'policy_document', 'file_evidence'})
+            (
+                supports_selection_criteria
+                and weak_evidence_modalities.intersection({'policy_document', 'file_evidence'})
+            )
             or 'anchor_selection_criteria' in unresolved_intake_objectives
         )
         should_frontload_anchor_appeal_rights = bool(
@@ -2832,13 +2995,20 @@ class AdversarialSession:
             or 'hearing_request_timing' in unresolved_intake_objectives
             or 'anchor_grievance_hearing' in unresolved_intake_objectives
         )
+        should_frontload_staff_names_titles = bool(
+            weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
+            or 'staff_names_titles' in unresolved_intake_objectives
+            or bool(cls._extract_anchor_sections(seed_complaint).intersection({'grievance_hearing', 'appeal_rights', 'adverse_action'}))
+        )
         should_frontload_causation_sequence = bool(
             weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
             or 'causation_sequence' in unresolved_intake_objectives
         )
         forced_objectives: Set[str] = set()
-        if weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
+        if supports_selection_criteria and weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
             forced_objectives.update({'documents', 'anchor_selection_criteria'})
+        elif weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
+            forced_objectives.add('documents')
         if weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'}):
             forced_objectives.update(
                 {
@@ -2849,9 +3019,10 @@ class AdversarialSession:
                     'anchor_adverse_action',
                     'anchor_appeal_rights',
                     'anchor_grievance_hearing',
-                    'anchor_selection_criteria',
                 }
             )
+            if supports_selection_criteria:
+                forced_objectives.add('anchor_selection_criteria')
         forced_objectives.update(
             {
                 objective
@@ -2860,11 +3031,14 @@ class AdversarialSession:
                     'anchor_grievance_hearing',
                     'anchor_selection_criteria',
                     'hearing_request_timing',
+                    'staff_names_titles',
                     'causation_sequence',
                 )
                 if objective in unresolved_intake_objectives
             }
         )
+        if should_frontload_staff_names_titles:
+            forced_objectives.add('staff_names_titles')
         for objective in sorted(forced_objectives):
             if objective not in expected_objectives:
                 expected_objectives.append(objective)
@@ -2969,6 +3143,8 @@ class AdversarialSession:
             priority_uncovered.append('anchor_selection_criteria')
         if should_frontload_hearing_request_timing and coverage_counts.get('hearing_request_timing', 0) <= 0:
             priority_uncovered.append('hearing_request_timing')
+        if should_frontload_staff_names_titles and coverage_counts.get('staff_names_titles', 0) <= 0:
+            priority_uncovered.append('staff_names_titles')
         if should_frontload_causation_sequence and coverage_counts.get('causation_sequence', 0) <= 0:
             priority_uncovered.append('causation_sequence')
         priority_uncovered_evidence_anchors = {
@@ -3558,6 +3734,281 @@ class AdversarialSession:
                 return q
 
         return None
+
+    @staticmethod
+    def _compact_document_generation_result(result: Any) -> Dict[str, Any]:
+        payload = result if isinstance(result, dict) else {}
+        draft = payload.get('draft') if isinstance(payload.get('draft'), dict) else {}
+        draft_readiness = payload.get('drafting_readiness') if isinstance(payload.get('drafting_readiness'), dict) else {}
+        document_optimization = payload.get('document_optimization') if isinstance(payload.get('document_optimization'), dict) else {}
+        workflow_guidance = payload.get('workflow_optimization_guidance') if isinstance(payload.get('workflow_optimization_guidance'), dict) else {}
+        return {
+            'status': 'completed' if payload else 'unavailable',
+            'ready_to_file': bool(payload.get('ready_to_file', False)),
+            'claim_count': len(list(draft.get('claims_for_relief') or [])),
+            'factual_allegation_count': len(list(draft.get('factual_allegations') or [])),
+            'exhibit_count': len(list(draft.get('exhibits') or [])),
+            'requested_relief_count': len(list(draft.get('requested_relief') or [])),
+            'draft_text_available': bool(str(draft.get('draft_text') or '').strip()),
+            'document_optimization_available': bool(document_optimization),
+            'document_optimization_method': str(document_optimization.get('optimization_method') or ''),
+            'workflow_recommended_order': list(workflow_guidance.get('recommended_order') or []),
+            'blocker_codes': [
+                str(item.get('code') or '')
+                for item in list(draft_readiness.get('blockers') or [])
+                if isinstance(item, dict) and str(item.get('code') or '').strip()
+            ],
+        }
+
+    @staticmethod
+    def _build_grounding_summary(seed_complaint: Dict[str, Any], final_state: Dict[str, Any]) -> Dict[str, Any]:
+        key_facts = seed_complaint.get('key_facts') if isinstance(seed_complaint.get('key_facts'), dict) else {}
+        synthetic_prompts = key_facts.get('synthetic_prompts') if isinstance(key_facts.get('synthetic_prompts'), dict) else {}
+        uploaded_evidence_summary = final_state.get('uploaded_evidence_summary') if isinstance(final_state, dict) and isinstance(final_state.get('uploaded_evidence_summary'), dict) else {}
+        return {
+            'grounding_note': str(key_facts.get('grounding_note') or ''),
+            'search_summary': dict(key_facts.get('search_summary') or {}),
+            'anchor_sections': list(key_facts.get('anchor_sections') or []),
+            'repository_evidence_candidate_count': len(list(key_facts.get('repository_evidence_candidates') or [])),
+            'preloaded_mediator_evidence_count': len(list(((seed_complaint.get('_meta') or {}).get('preloaded_mediator_evidence') or []))),
+            'uploaded_evidence_count': int(uploaded_evidence_summary.get('count') or 0),
+            'synthetic_intake_question_count': len(list(synthetic_prompts.get('intake_questions') or [])),
+            'has_evidence_upload_prompt': bool(
+                str(synthetic_prompts.get('evidence_upload_prompt') or '').strip()
+                or str(synthetic_prompts.get('production_upload_prompt') or '').strip()
+                or next(
+                    (
+                        str((prompt or {}).get('text') or '').strip()
+                        for prompt in list(synthetic_prompts.get('evidence_upload_prompts') or [])
+                        if isinstance(prompt, dict) and str((prompt or {}).get('text') or '').strip()
+                    ),
+                    '',
+                )
+            ),
+        }
+
+    @staticmethod
+    def _default_relief_for_seed(seed_complaint: Dict[str, Any]) -> List[str]:
+        complaint_type = str(seed_complaint.get('type') or '').strip().lower()
+        if complaint_type == 'housing_discrimination':
+            return [
+                'Declaratory relief that the challenged housing action was unlawful.',
+                'Injunctive relief requiring a fair hearing and restoration of housing benefits if warranted.',
+                'Compensatory damages for housing instability, delay, and emotional distress.',
+                'Costs and any other relief authorized by law.',
+            ]
+        return [
+            'Compensatory damages according to proof.',
+            'Costs and any other relief authorized by law.',
+        ]
+
+    def _build_document_generation_fallback(
+        self,
+        seed_complaint: Dict[str, Any],
+        *,
+        builder_error: str = '',
+    ) -> Dict[str, Any]:
+        key_facts = seed_complaint.get('key_facts') if isinstance(seed_complaint.get('key_facts'), dict) else {}
+        uploaded_evidence_summary: Dict[str, Any] = {}
+        claim_support_packet_summary: Dict[str, Any] = {}
+        intake_case_file: Dict[str, Any] = {}
+        try:
+            from complaint_phases import ComplaintPhase
+
+            phase_manager = getattr(self.mediator, 'phase_manager', None)
+            if phase_manager is not None:
+                uploaded_evidence_summary = phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'uploaded_evidence_summary') or {}
+                claim_support_packet_summary = phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packet_summary') or {}
+                intake_case_file = phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
+        except Exception:
+            pass
+
+        claim_type = str(seed_complaint.get('type') or 'civil_action').strip() or 'civil_action'
+        claim_title = claim_type.replace('_', ' ').title()
+        theory_labels = [
+            str(item).replace('_', ' ').strip().title()
+            for item in list(key_facts.get('theory_labels') or [])
+            if str(item).strip()
+        ]
+        if theory_labels:
+            claim_title = f"{claim_title} ({', '.join(theory_labels[:2])})"
+
+        factual_allegations: List[str] = []
+        initial_complaint = str(seed_complaint.get('summary') or '').strip()
+        if initial_complaint:
+            factual_allegations.append(initial_complaint)
+        for message in list(self.conversation_history or []):
+            if not isinstance(message, dict) or str(message.get('role') or '').strip().lower() != 'complainant':
+                continue
+            content = " ".join(str(message.get('content') or '').split()).strip()
+            if content and content not in factual_allegations:
+                factual_allegations.append(content)
+        for fact in list(intake_case_file.get('canonical_facts') or []):
+            if not isinstance(fact, dict):
+                continue
+            text = " ".join(
+                str(
+                    fact.get('fact_text')
+                    or fact.get('text')
+                    or fact.get('summary')
+                    or fact.get('description')
+                    or ''
+                ).split()
+            ).strip()
+            if text and text not in factual_allegations:
+                factual_allegations.append(text)
+        factual_allegations = factual_allegations[:8]
+
+        exhibits: List[Dict[str, Any]] = []
+        for index, item in enumerate(list(uploaded_evidence_summary.get('items') or []), start=1):
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get('filename') or item.get('description') or f'Uploaded Evidence {index}').strip()
+            summary_parts = [
+                str(item.get('description') or '').strip(),
+                str(item.get('claim_element_text') or '').strip(),
+            ]
+            summary = " ".join(part for part in summary_parts if part).strip()
+            exhibits.append(
+                {
+                    'label': f'Exhibit {chr(64 + min(index, 26))}',
+                    'title': title or f'Uploaded Evidence {index}',
+                    'summary': summary,
+                    'claim_type': str(item.get('claim_type') or claim_type).strip(),
+                    'link': str(item.get('source_url') or item.get('cid') or '').strip(),
+                }
+            )
+        requested_relief = self._default_relief_for_seed(seed_complaint)
+        claims_for_relief = [
+            {
+                'claim_type': claim_type,
+                'count_title': f'Count I - {claim_title}',
+                'supporting_facts': factual_allegations[:4],
+                'supporting_exhibits': [
+                    {
+                        'label': exhibit.get('label'),
+                        'title': exhibit.get('title'),
+                        'link': exhibit.get('link'),
+                    }
+                    for exhibit in exhibits[:4]
+                ],
+                'support_summary': {
+                    'uploaded_evidence_count': int(uploaded_evidence_summary.get('count') or 0),
+                    'claim_support_claim_count': int(claim_support_packet_summary.get('claim_count') or 0),
+                },
+            }
+        ]
+        draft_text_lines = [
+            'COMPLAINT',
+            '',
+            f'Claim: {claim_title}',
+            '',
+            'Factual Allegations:',
+        ]
+        draft_text_lines.extend(f'{idx}. {text}' for idx, text in enumerate(factual_allegations, start=1))
+        draft_text_lines.append('')
+        draft_text_lines.append('Requested Relief:')
+        draft_text_lines.extend(f'- {text}' for text in requested_relief)
+        if exhibits:
+            draft_text_lines.append('')
+            draft_text_lines.append('Exhibits:')
+            draft_text_lines.extend(
+                f"- {exhibit.get('label')}: {exhibit.get('title')}"
+                for exhibit in exhibits
+            )
+
+        blocker_codes = ['document_builder_dependencies_unavailable'] if builder_error else ['formalization_support_incomplete']
+        return {
+            'ready_to_file': False,
+            'draft': {
+                'claims_for_relief': claims_for_relief,
+                'factual_allegations': factual_allegations,
+                'requested_relief': requested_relief,
+                'exhibits': exhibits,
+                'draft_text': "\n".join(line for line in draft_text_lines if line is not None).strip(),
+            },
+            'drafting_readiness': {
+                'blockers': [{'code': code} for code in blocker_codes],
+            },
+            'workflow_optimization_guidance': {
+                'recommended_order': ['intake_questioning', 'evidence_upload', 'graph_analysis', 'document_generation'],
+            },
+            'fallback_document_generation': True,
+            'builder_error': builder_error,
+        }
+
+    def _run_document_generation(self, seed_complaint: Dict[str, Any]) -> Dict[str, Any]:
+        confirm = getattr(self.mediator, 'confirm_intake_summary', None)
+        if callable(confirm):
+            try:
+                confirm(
+                    confirmation_note='Adversarial optimizer handoff to evidence and document generation.',
+                    confirmation_source='adversarial_optimizer',
+                )
+            except Exception:
+                pass
+
+        advance_to_evidence = getattr(self.mediator, 'advance_to_evidence_phase', None)
+        if callable(advance_to_evidence):
+            try:
+                advance_to_evidence()
+            except Exception:
+                pass
+
+        advance_to_formalization = getattr(self.mediator, 'advance_to_formalization_phase', None)
+        if callable(advance_to_formalization):
+            try:
+                advance_to_formalization()
+            except Exception:
+                pass
+
+        try:
+            from complaint_phases import ComplaintPhase
+
+            phase_manager = getattr(self.mediator, 'phase_manager', None)
+            if phase_manager is not None:
+                kg = phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
+                dg = phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'dependency_graph')
+                intake_case_file = phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
+                legal_graph = phase_manager.get_phase_data(ComplaintPhase.FORMALIZATION, 'legal_graph')
+                if (
+                    kg is not None
+                    and dg is not None
+                    and (legal_graph is None or not getattr(legal_graph, 'elements', {}))
+                ):
+                    selector_builder = getattr(self.mediator, '_build_intake_selector_legal_graph', None)
+                    matcher = getattr(self.mediator, 'neurosymbolic_matcher', None)
+                    if callable(selector_builder) and matcher is not None:
+                        legal_graph = selector_builder(intake_case_file)
+                        phase_manager.current_phase = ComplaintPhase.FORMALIZATION
+                        phase_manager.update_phase_data(ComplaintPhase.FORMALIZATION, 'legal_graph', legal_graph)
+                        matching_results = matcher.match_claims_to_law(kg, dg, legal_graph)
+                        phase_manager.update_phase_data(ComplaintPhase.FORMALIZATION, 'matching_results', matching_results)
+                        phase_manager.update_phase_data(ComplaintPhase.FORMALIZATION, 'matching_complete', True)
+        except Exception:
+            pass
+
+        builder = getattr(self.mediator, 'build_formal_complaint_document_package', None)
+        if not callable(builder):
+            return self._build_document_generation_fallback(seed_complaint, builder_error='builder_unavailable')
+        try:
+            result = builder(
+                user_id=self.session_id,
+                enable_agentic_optimization=False,
+                output_formats=['packet'],
+            )
+            compact = self._compact_document_generation_result(result)
+            if (
+                not compact.get('draft_text_available')
+                and int(compact.get('claim_count') or 0) <= 0
+                and int(compact.get('factual_allegation_count') or 0) <= 0
+                and int(compact.get('exhibit_count') or 0) <= 0
+            ):
+                return self._build_document_generation_fallback(seed_complaint)
+            return result
+        except Exception as exc:
+            logger.warning("Document-generation handoff failed during adversarial session %s: %s", self.session_id, exc)
+            return self._build_document_generation_fallback(seed_complaint, builder_error=str(exc))
     
     def run(self, seed_complaint: Dict[str, Any]) -> SessionResult:
         """
@@ -3852,6 +4303,13 @@ class AdversarialSession:
                         **final_state,
                         'workflow_optimization_guidance': runtime_workflow_guidance,
                     }
+                document_generation_result = self._run_document_generation(seed_complaint)
+                if document_generation_result:
+                    final_state = {
+                        **final_state,
+                        'document_generation': self._compact_document_generation_result(document_generation_result),
+                    }
+                final_state['grounding_summary'] = self._build_grounding_summary(seed_complaint, final_state)
             
             # Get graph summaries if available
             kg_summary = None

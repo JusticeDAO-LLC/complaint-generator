@@ -2564,8 +2564,47 @@ class TestMediatorThreePhaseIntegration:
         class MockBackend:
             id = 'mock_backend'
 
-        assert selected[0]['selector_signals']['workflow_action_match_count'] >= 1
-        assert selected[0]['selector_signals']['workflow_action_phase'] == 'graph_analysis'
+        mediator = Mediator([MockBackend()])
+        chronology_candidate = mediator.denoiser._question_candidate(
+            source='intake_claim_temporal_gap',
+            question_type='timeline',
+            question_text=(
+                'For your retaliation claim, what protected activity happened first, what adverse action followed, '
+                'who was involved in each step, and on what exact dates did those events occur?'
+            ),
+            context={
+                'claim_type': 'retaliation',
+                'claim_name': 'Retaliation',
+                'target_element_id': 'causation',
+                'workflow_phase': 'graph_analysis',
+            },
+            priority='high',
+        )
+        chronology_candidate['question_objective'] = 'establish_causation'
+        chronology_candidate['question_goal'] = 'establish_element'
+        chronology_candidate['ranking_explanation']['question_objective'] = 'establish_causation'
+        chronology_candidate['ranking_explanation']['question_goal'] = 'establish_element'
+
+        generic_candidate = mediator.denoiser._question_candidate(
+            source='intake_proof_gap',
+            question_type='remedy',
+            question_text='What outcome are you hoping for?',
+            context={
+                'claim_type': 'retaliation',
+                'claim_name': 'Retaliation',
+                'workflow_phase': 'intake_questioning',
+            },
+            priority='high',
+        )
+
+        selected = mediator.select_intake_question_candidates(
+            [generic_candidate, chronology_candidate],
+            max_questions=2,
+        )
+
+        assert selected[0]['candidate_source'] == 'intake_claim_temporal_gap'
+        assert selected[0]['question_goal'] == 'establish_element'
+        assert selected[0]['selector_score'] > selected[1]['selector_score']
 
     def test_intake_selector_uses_workflow_action_queue_to_boost_graph_priority(self):
         from mediator.mediator import Mediator
@@ -2632,6 +2671,17 @@ class TestMediatorThreePhaseIntegration:
         assert selected[0]['selector_signals']['exact_dates_closure_match'] is True
         assert selected[0]['selector_signals']['intake_priority_match_count'] >= 1
         assert selected[0]['selector_score'] > selected[1]['selector_score']
+
+    def test_intake_selector_uses_partial_intake_case_file_to_boost_graph_priority(self):
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.INTAKE,
             'intake_case_file',
             {
                 'intake_sections': {

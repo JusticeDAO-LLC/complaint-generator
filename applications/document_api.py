@@ -355,12 +355,46 @@ def _build_document_review_workflow_priority(
     intake_status: Dict[str, Any],
     intake_case_summary: Dict[str, Any],
     workflow_phase_plan: Dict[str, Any],
+    document_provenance_summary: Dict[str, Any],
     user_id: Optional[str],
     default_claim_type: Optional[str],
     dashboard_url: str,
     claim_review_map: Dict[str, Dict[str, Any]],
     section_review_map: Dict[str, Dict[str, Any]],
 ) -> Dict[str, Any]:
+    if isinstance(document_provenance_summary, dict) and document_provenance_summary:
+        ratio_present = "fact_backed_ratio" in document_provenance_summary
+        fact_backed_ratio = float(document_provenance_summary.get("fact_backed_ratio") or 0.0)
+        low_grounding_flag = bool(document_provenance_summary.get("low_grounding_flag"))
+        if low_grounding_flag or (ratio_present and fact_backed_ratio < 0.6):
+            action_url = _append_review_query_params(
+                _resolve_document_review_url(
+                    user_id=user_id,
+                    dashboard_url=dashboard_url,
+                    claim_review_map=claim_review_map,
+                    section_review_map=section_review_map,
+                    claim_type=default_claim_type,
+                    section_key="factual_allegations",
+                ),
+                follow_up_support_kind=_default_support_kind_for_section("factual_allegations"),
+            )
+            return {
+                "status": "warning",
+                "title": "Strengthen document grounding before further revisions",
+                "description": (
+                    "Increase canonical-fact and artifact-backed support in the draft before broadening revisions."
+                ),
+                "action_label": "Review factual allegations grounding",
+                "action_url": action_url,
+                "action_kind": "link",
+                "dashboard_url": dashboard_url,
+                "chip_labels": [
+                    f"fact-backed ratio: {fact_backed_ratio:.2f}",
+                    f"summary facts grounded: {int(document_provenance_summary.get('summary_fact_backed_count') or 0)}/{int(document_provenance_summary.get('summary_fact_count') or 0)}",
+                    f"claim support grounded: {int(document_provenance_summary.get('claim_supporting_fact_backed_count') or 0)}/{int(document_provenance_summary.get('claim_supporting_fact_count') or 0)}",
+                ],
+            }
+
     document_drafting_next_action = (
         intake_case_summary.get("document_drafting_next_action")
         if isinstance(intake_case_summary.get("document_drafting_next_action"), dict)
@@ -984,6 +1018,11 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
         intake_status=intake_status,
         intake_case_summary=intake_case_summary,
         workflow_phase_plan=workflow_phase_plan,
+        document_provenance_summary=(
+            dict(payload.get("document_provenance_summary") or draft.get("document_provenance_summary") or {})
+            if isinstance(payload.get("document_provenance_summary") or draft.get("document_provenance_summary"), dict)
+            else {}
+        ),
         user_id=resolved_user_id,
         default_claim_type=preferred_claim_type,
         dashboard_url=dashboard_url,
@@ -1009,6 +1048,11 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
         "document_workflow_execution_summary": (
             dict(intake_case_summary.get("document_workflow_execution_summary") or {})
             if isinstance(intake_case_summary.get("document_workflow_execution_summary"), dict)
+            else {}
+        ),
+        "document_provenance_summary": (
+            dict(payload.get("document_provenance_summary") or draft.get("document_provenance_summary") or {})
+            if isinstance(payload.get("document_provenance_summary") or draft.get("document_provenance_summary"), dict)
             else {}
         ),
         "document_drafting_next_action": (

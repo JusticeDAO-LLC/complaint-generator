@@ -954,6 +954,7 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             ],
             "blocking_contradictions": [],
             "next_action": {},
+            "document_drafting_next_action": {},
             "primary_validation_target": {},
             "candidate_claim_count": 2,
             "canonical_fact_count": 2,

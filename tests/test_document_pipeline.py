@@ -674,6 +674,39 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
         for fact in claim.get("supporting_facts", [])
     )
     assert result["draft"]["verification"]["title"] == "Verification"
+
+
+def test_collect_exhibits_uses_evidence_facts_when_preview_missing():
+    mediator = Mock()
+    mediator.get_user_evidence.return_value = [
+        {
+            "id": 7,
+            "cid": "bafy-evidence",
+            "description": "Hearing request email",
+            "claim_type": "retaliation",
+            "metadata": {
+                "document_graph_summary": {
+                    "entity_count": 2,
+                    "relationship_count": 1,
+                }
+            },
+        }
+    ]
+    mediator.get_evidence_facts.return_value = [
+        {"text": "Email requested a grievance hearing on March 3, 2026."},
+        {"text": "Response denied the request on March 10, 2026."},
+    ]
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    exhibits = builder._collect_exhibits(
+        user_id="user-1",
+        claim_types=["retaliation"],
+        support_claims={},
+    )
+
+    assert len(exhibits) == 1
+    assert "Email requested a grievance hearing on March 3, 2026." in exhibits[0]["summary"]
+    assert "Graph extraction: 2 entities, 1 relationships." in exhibits[0]["summary"]
     assert result["draft"]["certificate_of_service"]["title"] == "Certificate of Service"
     assert result["draft"]["signature_block"]["signature_line"] == "/s/ Jane Doe, Esq."
     assert result["draft"]["signature_block"]["title"] == "Counsel for Plaintiff"
@@ -787,11 +820,11 @@ def test_formal_complaint_document_builder_exposes_runtime_workflow_phase_plan_f
     assert result["workflow_optimization_guidance"]["workflow_phase_plan"] == workflow_phase_plan
     assert result["workflow_optimization_guidance"]["phase_scorecards"]["graph_analysis"]["status"] == "warning"
     assert any(
-        warning.get("code") == "workflow_graph_analysis_optimization_warning"
+        warning.get("code") == "workflow_graph_analysis_warning"
         for warning in result["drafting_readiness"]["warnings"]
     )
     assert any(
-        warning.get("code") == "workflow_graph_analysis_warning"
+        warning.get("code") == "workflow_document_generation_blocked"
         for warning in result["drafting_readiness"]["warnings"]
     )
 
@@ -1021,21 +1054,14 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     assert report["packet_projection"]["section_presence"]["factual_allegations"] is True
     assert report["packet_projection"]["has_affidavit"] is True
     assert report["section_history"]
-    assert report["section_history"][0]["focus_section"] == "requested_relief"
+    assert report["section_history"][0]["focus_section"] == "factual_allegations"
     assert report["section_history"][0]["critic_llm_metadata"]["arch_router_selected_route"] == "legal_reasoning"
     assert report["section_history"][0]["actor_llm_metadata"]["arch_router_selected_route"] == "drafting"
     assert report["section_history"][0]["change_manifest"]
-<<<<<<< Updated upstream
     assert report["section_history"][0]["change_manifest"][0]["field"] == "factual_allegations"
-    assert report["section_history"][0]["change_manifest"][0]["before_count"] >= 2
+    assert report["section_history"][0]["change_manifest"][0]["before_count"] == 8
     assert report["section_history"][0]["change_manifest"][0]["after_count"] == 3
     assert report["section_history"][0]["selected_support_context"]["focus_section"] == "factual_allegations"
-=======
-    assert report["section_history"][0]["change_manifest"][0]["field"] == "requested_relief"
-    assert report["section_history"][0]["change_manifest"][0]["before_count"] == 8
-    assert report["section_history"][0]["change_manifest"][0]["after_count"] == 6
-    assert report["section_history"][0]["selected_support_context"]["focus_section"] == "requested_relief"
->>>>>>> Stashed changes
     assert report["section_history"][0]["selected_support_context"]["top_support"]
     assert report["section_history"][0]["selected_support_context"]["top_support"][0]["ranking_method"] == "embeddings_router_hybrid"
     assert report["initial_review"]["llm_metadata"]["effective_model_name"] == "meta-llama/Llama-3.3-70B-Instruct"
@@ -1090,21 +1116,16 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     }
     assert stored_traces[0]["intake_case_summary"]["claim_support_packet_summary"]["claim_count"] == 2
     assert stored_traces[0]["iterations"][0]["change_manifest"]
-<<<<<<< Updated upstream
     assert stored_traces[0]["iterations"][0]["change_manifest"][0]["field"] == "factual_allegations"
-    assert stored_traces[0]["iterations"][0]["change_manifest"][0]["before_count"] >= 2
-    assert stored_traces[0]["iterations"][0]["change_manifest"][0]["after_count"] == 3
-=======
-    assert stored_traces[0]["iterations"][0]["change_manifest"][0]["field"] == "requested_relief"
     assert stored_traces[0]["iterations"][0]["change_manifest"][0]["before_count"] == 8
-    assert stored_traces[0]["iterations"][0]["change_manifest"][0]["after_count"] == 6
->>>>>>> Stashed changes
+    assert stored_traces[0]["iterations"][0]["change_manifest"][0]["after_count"] == 3
     before_preview = " ".join(stored_traces[0]["iterations"][0]["change_manifest"][0]["before_preview"])
     after_preview = " ".join(stored_traces[0]["iterations"][0]["change_manifest"][0]["after_preview"])
-    assert "back pay" in before_preview.lower()
-    assert "injunctive relief" in before_preview.lower()
-    assert "reinstatement" in after_preview.lower()
-    assert stored_traces[0]["iterations"][0]["change_manifest"][1]["field"] == "factual_allegations"
+    assert "chronology and actor sequence" in before_preview.lower()
+    assert "human resources" in before_preview.lower()
+    assert "terminated plaintiff" in before_preview.lower()
+    assert "lost pay and benefits" in after_preview.lower()
+    assert stored_traces[0]["iterations"][0]["change_manifest"][1]["field"] == "claim_supporting_facts"
     assert any(
         "Plaintiff was fired two days later and lost pay and benefits" in allegation
         for allegation in result["draft"]["factual_allegations"]
@@ -2097,7 +2118,7 @@ def test_review_api_returns_document_optimization_contract_end_to_end(monkeypatc
     assert report["initial_score"] < report["final_score"]
     assert report["iteration_count"] >= 1
     assert report["accepted_iterations"] >= 1
-    assert report["optimized_sections"] == ["requested_relief"]
+    assert report["optimized_sections"] == ["factual_allegations"]
     assert report["artifact_cid"] == "bafy-doc-opt-report"
     assert report["trace_storage"] == {
         "status": "available",
@@ -2120,12 +2141,12 @@ def test_review_api_returns_document_optimization_contract_end_to_end(monkeypatc
     assert report["packet_projection"]["has_affidavit"] is True
     assert report["packet_projection"]["has_certificate_of_service"] is True
     assert len(report["section_history"]) >= 1
-    assert report["section_history"][0]["focus_section"] == "requested_relief"
+    assert report["section_history"][0]["focus_section"] == "factual_allegations"
     assert report["section_history"][0]["accepted"] is True
     assert report["section_history"][0]["overall_score"] >= 0.0
     assert report["section_history"][0]["critic_llm_metadata"]["arch_router_selected_route"] == "legal_reasoning"
     assert report["section_history"][0]["actor_llm_metadata"]["arch_router_selected_route"] == "drafting"
-    assert report["section_history"][0]["selected_support_context"]["focus_section"] == "requested_relief"
+    assert report["section_history"][0]["selected_support_context"]["focus_section"] == "factual_allegations"
     assert report["section_history"][0]["selected_support_context"]["top_support"][0]["ranking_method"] == "embeddings_router_hybrid"
     assert report["initial_review"]["llm_metadata"]["effective_provider_name"] == "openrouter"
     assert report["final_review"]["llm_metadata"]["arch_router_model_name"] == "katanemo/Arch-Router-1.5B"
@@ -3393,7 +3414,7 @@ def test_review_surface_returns_document_optimization_contract_end_to_end(monkey
     assert report['initial_score'] < report['final_score']
     assert report['iteration_count'] >= 1
     assert report['accepted_iterations'] >= 1
-    assert report['optimized_sections'] == ['requested_relief']
+    assert report['optimized_sections'] == ['factual_allegations']
     assert report['artifact_cid'] == 'bafy-doc-opt-report'
     assert report['trace_download_url'] == '/api/documents/optimization-trace?cid=bafy-doc-opt-report'
     assert report['trace_view_url'] == '/document/optimization-trace?cid=bafy-doc-opt-report'
@@ -3467,12 +3488,12 @@ def test_review_surface_returns_document_optimization_contract_end_to_end(monkey
     assert report['packet_projection']['has_affidavit'] is True
     assert report['packet_projection']['has_certificate_of_service'] is True
     assert len(report['section_history']) >= 1
-    assert report['section_history'][0]['focus_section'] == 'requested_relief'
+    assert report['section_history'][0]['focus_section'] == 'factual_allegations'
     assert report['section_history'][0]['accepted'] is True
     assert report['section_history'][0]['overall_score'] >= 0.0
     assert report['section_history'][0]['critic_llm_metadata']['arch_router_selected_route'] == 'legal_reasoning'
     assert report['section_history'][0]['actor_llm_metadata']['arch_router_selected_route'] == 'drafting'
-    assert report['section_history'][0]['selected_support_context']['focus_section'] == 'requested_relief'
+    assert report['section_history'][0]['selected_support_context']['focus_section'] == 'factual_allegations'
     assert report['initial_review']['llm_metadata']['effective_provider_name'] == 'openrouter'
     assert report['final_review']['llm_metadata']['arch_router_model_name'] == 'katanemo/Arch-Router-1.5B'
     assert report['draft']['draft_text']

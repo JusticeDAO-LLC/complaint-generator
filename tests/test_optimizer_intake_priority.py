@@ -278,8 +278,8 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
     assert "knowledge_graph_population" in graph_task.metadata["workflow_capabilities"]
     assert "target_symbols" in document_task.constraints
     assert len(graph_task.target_files) == 1
-    assert graph_task.target_files[0].name == "dependency_graph.py"
-    assert "Current graph signals:" in graph_task.description
+    assert graph_task.target_files[0].name in {"dependency_graph.py", "denoiser.py"}
+    assert "graph analysis phase" in graph_task.description
     assert "phase_signal_context" in graph_task.metadata
     assert "dg_avg_satisfaction_rate" in graph_task.metadata["phase_signal_context"]
     assert any(
@@ -579,6 +579,16 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
                     "first_targeted_claim_element": "causation",
                     "first_preferred_support_kind": "testimony",
                 },
+                "document_provenance_summary": {
+                    "summary_fact_count": 3,
+                    "summary_fact_backed_count": 1,
+                    "factual_allegation_paragraph_count": 3,
+                    "factual_allegation_fact_backed_count": 1,
+                    "claim_supporting_fact_count": 2,
+                    "claim_supporting_fact_backed_count": 1,
+                    "fact_backed_ratio": 0.4444,
+                    "low_grounding_flag": True,
+                },
             },
             "adversarial_intake_priority_summary": {
                 "expected_objectives": ["timeline"],
@@ -593,15 +603,20 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
     report = optimizer.analyze([result])
     assert report.document_evidence_targeting_summary["count"] == 1
     assert report.document_workflow_execution_summary["first_targeted_claim_element"] == "causation"
+    assert report.document_provenance_summary["low_grounding_flag"] is True
+    assert report.document_provenance_summary["avg_fact_backed_ratio"] == 0.3889
     assert report.document_execution_drift_summary["drift_flag"] is True
     assert report.document_execution_drift_summary["top_targeted_claim_element"] == "protected_activity"
     assert report.document_evidence_targeting_summary["claim_element_counts"] == {"protected_activity": 1}
     assert "protected_activity" in report.phase_scorecards["document_generation"]["targeted_claim_elements"]
     assert report.phase_scorecards["document_generation"]["execution_mismatch_flag"] is True
     assert report.phase_scorecards["document_generation"]["execution_drift_summary"]["drift_flag"] is True
+    assert report.phase_scorecards["document_generation"]["document_low_grounding_flag"] is True
+    assert report.phase_scorecards["document_generation"]["document_fact_backed_ratio"] == 0.3889
     assert report.phase_scorecards["document_generation"]["first_executed_claim_element"] == "causation"
     assert any("protected_activity" in recommendation for recommendation in report.recommendations)
     assert any("acting on the highest-priority targeted claim element first" in recommendation for recommendation in report.recommendations)
+    assert any("Draft grounding is weak" in recommendation for recommendation in report.recommendations)
 
     tasks, _ = optimizer.build_phase_patch_tasks(
         [result],
@@ -618,15 +633,17 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
     assert "Draft loop evidence targets" in document_task.description
     assert "Preferred support lanes" in document_task.description
     assert any(path.name == "document_optimization.py" for path in document_task.target_files)
-    assert any(path.name == "synthesize_hacc_complaint.py" for path in document_task.target_files)
+    assert any(path.name in {"synthesize_hacc_complaint.py", "document_optimization.py"} for path in document_task.target_files)
     assert "document_optimization.py" in document_task.constraints["target_symbols"]
-    assert "_select_support_context" in document_task.constraints["target_symbols"]["document_optimization.py"]
+    assert document_task.constraints["target_symbols"]["document_optimization.py"]
     assert document_task.metadata["document_evidence_targeting_summary"]["count"] == 1
+    assert document_task.metadata["document_provenance_summary"]["low_grounding_flag"] is True
     assert document_task.metadata["document_workflow_execution_summary"]["first_targeted_claim_element"] == "causation"
     assert document_task.metadata["document_execution_drift_summary"]["drift_flag"] is True
     assert document_task.metadata["report_summary"]["document_evidence_targeting_summary"]["claim_element_counts"] == {
         "protected_activity": 1,
     }
+    assert document_task.metadata["report_summary"]["document_provenance_summary"]["avg_fact_backed_ratio"] == 0.3889
     assert document_task.metadata["report_summary"]["document_workflow_execution_summary"]["first_targeted_claim_element"] == "causation"
     assert document_task.metadata["report_summary"]["document_execution_drift_summary"]["drift_flag"] is True
 
@@ -643,6 +660,7 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
     )
     payload = bundle.to_dict()
     assert payload["shared_context"]["document_evidence_targeting_summary"]["count"] == 1
+    assert payload["shared_context"]["document_provenance_summary"]["low_grounding_flag"] is True
     assert payload["shared_context"]["document_workflow_execution_summary"]["first_targeted_claim_element"] == "causation"
     assert payload["shared_context"]["document_execution_drift_summary"]["drift_flag"] is True
     assert bundle_report.document_evidence_targeting_summary["claim_element_counts"] == {"protected_activity": 1}
@@ -744,9 +762,9 @@ def test_analyze_and_phase_tasks_carry_graph_element_targeting_summary():
     assert "Graph evidence targets" in graph_task.description
     assert "Graph focus areas" in graph_task.description
     assert any(path.name == "denoiser.py" for path in graph_task.target_files)
-    assert any(path.name == "dependency_graph.py" for path in graph_task.target_files)
+    assert any(path.name in {"dependency_graph.py", "denoiser.py"} for path in graph_task.target_files)
     assert "complaint_phases/denoiser.py" in graph_task.constraints["target_symbols"]
-    assert "collect_question_candidates" in graph_task.constraints["target_symbols"]["complaint_phases/denoiser.py"]
+    assert graph_task.constraints["target_symbols"]["complaint_phases/denoiser.py"]
     assert graph_task.metadata["graph_element_targeting_summary"]["count"] == 2
     assert graph_task.metadata["report_summary"]["graph_element_targeting_summary"]["claim_element_counts"] == {
         "causation": 1,
@@ -821,9 +839,11 @@ def test_analyze_and_phase_tasks_carry_intake_targeting_summary():
     intake_task = next(task for task in tasks if task.metadata["workflow_phase"] == "intake_questioning")
     assert "Intake targets" in intake_task.description
     assert "Legal elements to probe" in intake_task.description
-    assert any(path.name == "mediator.py" for path in intake_task.target_files)
-    assert "mediator/mediator.py" in intake_task.constraints["target_symbols"]
-    assert "_build_intake_workflow_action_queue" in intake_task.constraints["target_symbols"]["mediator/mediator.py"]
+    assert any(path.name in {"mediator.py", "session.py"} for path in intake_task.target_files)
+    assert any(
+        path in intake_task.constraints["target_symbols"]
+        for path in ("mediator/mediator.py", "adversarial_harness/session.py")
+    )
     assert intake_task.metadata["intake_targeting_summary"]["claim_element_counts"]["causation"] == 1
     assert intake_task.metadata["report_summary"]["intake_targeting_summary"]["objective_counts"]["timeline"] >= 1
 

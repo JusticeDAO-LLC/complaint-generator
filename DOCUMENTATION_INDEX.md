@@ -9,6 +9,8 @@ Complete index of all documentation in the complaint-generator repository.
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - Production deployment guide
 - [TESTING.md](TESTING.md) - Testing guide and TDD workflow
 - [CONTRIBUTING.md](CONTRIBUTING.md) - How to contribute to the project
+- [.github/pull_request_template.md](.github/pull_request_template.md) - Pull request checklist covering standard regression, claim-support follow-up validation, and canary validation
+- [.github/workflows/standard-regression.yml](.github/workflows/standard-regression.yml) - Default CI gate for the browser-inclusive standard regression slice
 - [.github/workflows/claim-support-regression.yml](.github/workflows/claim-support-regression.yml) - Focused claim-support regression workflow with browser and non-browser lanes
 
 ## MCP++ Integration
@@ -36,6 +38,7 @@ Complete index of all documentation in the complaint-generator repository.
 
 ### Testing
 - [tests/README.md](tests/README.md) - Test suite documentation (19 files, 60+ test classes)
+- [.github/workflows/standard-regression.yml](.github/workflows/standard-regression.yml) - CI enforcement for the default review, template, document, and Playwright regression gate
 - [.github/workflows/claim-support-regression.yml](.github/workflows/claim-support-regression.yml) - CI enforcement for the focused `/claim-support-review` regression slice
 
 ## Feature Documentation
@@ -211,6 +214,8 @@ See [docs/EXAMPLES.md](docs/EXAMPLES.md) for detailed documentation of all 23 ex
 - tests/README.md - Test documentation
 - TESTING.md - Testing workflow
 - CONTRIBUTING.md - Development workflow
+- .github/pull_request_template.md - Pull request checklist and validation prompts
+- .github/workflows/standard-regression.yml - Standard regression CI workflow
 - .github/workflows/claim-support-regression.yml - Claim-support regression CI workflow
 - docs/SECURITY.md - Security practices
 
@@ -229,6 +234,7 @@ See [docs/EXAMPLES.md](docs/EXAMPLES.md) for detailed documentation of all 23 ex
 - **See optimizer examples** → docs/EXAMPLES.md
 - **Analyze complaints** → complaint_analysis/README.md
 - **Test the system** → adversarial_harness/README.md, TESTING.md
+- **Run the default regression gate** → TESTING.md, tests/README.md, .github/workflows/standard-regression.yml
 - **Validate claim-support dashboard changes** → TESTING.md, tests/README.md, .github/workflows/claim-support-regression.yml
 - **Configure backends** → docs/BACKENDS.md, docs/LLM_ROUTER.md
 - **Run examples** → docs/EXAMPLES.md
@@ -247,7 +253,7 @@ See [docs/EXAMPLES.md](docs/EXAMPLES.md) for detailed documentation of all 23 ex
 2. **Check module READMEs** for specific features
 3. **Review docs/** for detailed documentation
 4. **Look at examples/** for code samples
-5. **Read CONTRIBUTING.md** before submitting PRs
+5. **Read CONTRIBUTING.md** and `.github/pull_request_template.md` before submitting PRs
 
 ## Keeping Documentation Updated
 

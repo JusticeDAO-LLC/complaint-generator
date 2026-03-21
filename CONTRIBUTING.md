@@ -134,9 +134,19 @@ git push origin feature/your-feature-name
 pytest
 ```
 
+### Run Standard Regression
+
+Before opening a PR that touches the review surface, document pipeline, workflow guidance, or Playwright-backed operator flows, run the standard regression gate:
+
+```bash
+.venv/bin/python scripts/run_standard_regression.py
+```
+
+That helper now defaults to the browser-inclusive `full` slice. The same gate is also available through `make regression`, the VS Code `Standard Regression` tasks and launch entries, and GitHub Actions through `.github/workflows/standard-regression.yml`.
+
 ### Run Claim-Support Regression
 
-When you change the review surface, testimony-linking flow, or dashboard rendering, run the focused claim-support regression slice:
+When you need a narrower follow-up slice for the review surface, testimony-linking flow, or dashboard rendering, run the focused claim-support regression:
 
 ```bash
 .venv/bin/python scripts/run_claim_support_review_regression.py
@@ -268,7 +278,10 @@ def analyze_complaint(text: str, complaint_type: str = None) -> dict:
 
 ### Before Submitting
 
-- [ ] All tests pass (`pytest`)
+- [ ] Required regression gate ran for the change scope
+- [ ] `.venv/bin/python scripts/run_standard_regression.py` ran for review/document/workflow changes
+- [ ] `.venv/bin/python scripts/run_claim_support_review_regression.py` ran for narrower review/dashboard/testimony-link follow-up coverage when applicable
+- [ ] `make canary-validate` ran for canary/reranker/metrics changes when applicable
 - [ ] Code follows style guide (`black`, `flake8`)
 - [ ] Added/updated tests for changes
 - [ ] Updated documentation
@@ -281,39 +294,12 @@ def analyze_complaint(text: str, complaint_type: str = None) -> dict:
 2. Go to the original repository on GitHub
 3. Click "New Pull Request"
 4. Select your feature branch
-5. Fill out the PR template:
+5. Fill out the GitHub PR template in `.github/pull_request_template.md`:
    - **Title:** Brief, descriptive summary
    - **Description:** Detailed explanation of changes
    - **Related Issues:** Link to issues addressed
-   - **Testing:** How you tested the changes
+    - **Validation:** Which regression gates and focused tests you ran
    - **Screenshots:** For UI changes
-
-### PR Template
-
-```markdown
-## Description
-Brief description of changes
-
-## Type of Change
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Breaking change
-- [ ] Documentation update
-
-## Related Issues
-Closes #123
-
-## Testing
-- [ ] Added new tests
-- [ ] All tests pass
-- [ ] Manual testing completed
-
-## Checklist
-- [ ] Code follows style guide
-- [ ] Documentation updated
-- [ ] Tests added/updated
-- [ ] No breaking changes (or documented)
-```
 
 ### Review Process
 

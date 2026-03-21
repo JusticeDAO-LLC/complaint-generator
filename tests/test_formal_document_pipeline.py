@@ -642,6 +642,10 @@ def test_document_api_annotation_promotes_document_drafting_next_action_into_rev
             "draft": {
                 "title": "Jane Doe v. Acme Corporation",
                 "source_context": {"user_id": "Jane Doe"},
+                "document_provenance_summary": {
+                    "summary_fact_count": 2,
+                    "claim_supporting_fact_count": 3,
+                },
             },
             "drafting_readiness": {
                 "status": "warning",
@@ -699,6 +703,10 @@ def test_document_api_annotation_promotes_document_drafting_next_action_into_rev
             "focus section: Claims For Relief",
             "support lane: Testimony",
         ],
+    }
+    assert payload["review_links"]["document_provenance_summary"] == {
+        "summary_fact_count": 2,
+        "claim_supporting_fact_count": 3,
     }
 
 
@@ -790,6 +798,503 @@ def test_score_factual_allegations_rewards_timing_and_staff_detail():
     assert enhanced_score > baseline_score
 
 
+def test_build_package_applies_document_drafting_focus_to_claims_for_relief():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "document_drafting_next_action": {
+            "action": "realign_document_drafting",
+            "phase_name": "document_generation",
+            "claim_element_id": "protected_activity",
+            "executed_claim_element_id": "causation",
+            "focus_section": "claims_for_relief",
+            "preferred_support_kind": "testimony",
+        }
+    }
+    builder = FormalComplaintDocumentBuilder(mediator)
+    builder.build_draft = Mock(
+        return_value={
+            "summary_of_facts": ["Plaintiff suffered harm."],
+            "claims_for_relief": [
+                {
+                    "claim_type": "retaliation",
+                    "count_title": "Retaliation",
+                    "supporting_facts": [
+                        "Plaintiff was terminated shortly after the complaint.",
+                        "Plaintiff reported discrimination to HR and requested a hearing review.",
+                    ],
+                },
+                {
+                    "claim_type": "discrimination",
+                    "count_title": "Discrimination",
+                    "supporting_facts": [
+                        "Plaintiff suffered adverse action.",
+                    ],
+                },
+            ],
+        }
+    )
+    builder._build_drafting_readiness = Mock(
+        return_value={"status": "ready", "sections": {}, "claims": [], "warning_count": 0}
+    )
+    builder._build_runtime_workflow_phase_plan = Mock(return_value={})
+    builder._build_filing_checklist = Mock(return_value=[])
+    builder._annotate_filing_checklist_review_links = Mock()
+    builder._build_affidavit = Mock(return_value={})
+    builder._build_claim_support_temporal_handoff = Mock(return_value={})
+    builder._build_intake_summary_handoff = Mock(return_value={})
+    builder.render_artifacts = Mock(return_value={})
+
+    result = builder.build_package(
+        district="Northern District of California",
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Acme Corporation"],
+        output_formats=["txt"],
+    )
+
+    draft = result["draft"]
+    assert draft["document_drafting_next_action"]["action"] == "realign_document_drafting"
+    assert draft["document_drafting_focus_section"] == "claims_for_relief"
+    assert draft["document_drafting_focus_claim_element_id"] == "protected_activity"
+    assert draft["claims_for_relief"][0]["supporting_facts"][0] == (
+        "Plaintiff reported discrimination to HR and requested a hearing review."
+    )
+
+
+def test_build_package_applies_document_drafting_focus_to_factual_allegations():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "document_drafting_next_action": {
+            "action": "realign_document_drafting",
+            "phase_name": "document_generation",
+            "claim_element_id": "causation",
+            "executed_claim_element_id": "protected_activity",
+            "focus_section": "factual_allegations",
+            "preferred_support_kind": "testimony",
+        }
+    }
+    builder = FormalComplaintDocumentBuilder(mediator)
+    builder.build_draft = Mock(
+        return_value={
+            "summary_of_facts": [
+                "Plaintiff engaged in protected activity.",
+                "Days after the complaint, Defendant terminated Plaintiff in retaliation.",
+            ],
+            "factual_allegations": [
+                "Plaintiff engaged in protected activity.",
+                "Days after the complaint, Defendant terminated Plaintiff in retaliation.",
+            ],
+            "claims_for_relief": [],
+        }
+    )
+    builder._build_drafting_readiness = Mock(
+        return_value={"status": "ready", "sections": {}, "claims": [], "warning_count": 0}
+    )
+    builder._build_runtime_workflow_phase_plan = Mock(return_value={})
+    builder._build_filing_checklist = Mock(return_value=[])
+    builder._annotate_filing_checklist_review_links = Mock()
+    builder._build_affidavit = Mock(return_value={})
+    builder._build_claim_support_temporal_handoff = Mock(return_value={})
+    builder._build_intake_summary_handoff = Mock(return_value={})
+    builder.render_artifacts = Mock(return_value={})
+
+    result = builder.build_package(
+        district="Northern District of California",
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Acme Corporation"],
+        output_formats=["txt"],
+    )
+
+    draft = result["draft"]
+    assert draft["document_drafting_focus_section"] == "factual_allegations"
+    assert draft["factual_allegations"][0] == (
+        "Days after the complaint, Defendant terminated Plaintiff in retaliation."
+    )
+
+
+def test_build_package_uses_claim_registry_keywords_for_document_drafting_focus():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "document_drafting_next_action": {
+            "action": "realign_document_drafting",
+            "phase_name": "document_generation",
+            "claim_element_id": "protected_trait",
+            "executed_claim_element_id": "adverse_action",
+            "focus_section": "claims_for_relief",
+            "preferred_support_kind": "personnel_record",
+        }
+    }
+    builder = FormalComplaintDocumentBuilder(mediator)
+    builder.build_draft = Mock(
+        return_value={
+            "claims_for_relief": [
+                {
+                    "claim_type": "employment_discrimination",
+                    "count_title": "Employment Discrimination",
+                    "supporting_facts": [
+                        "Plaintiff was terminated after the investigation.",
+                        "Plaintiff is Black and disclosed that protected trait to HR.",
+                    ],
+                },
+                {
+                    "claim_type": "retaliation",
+                    "count_title": "Retaliation",
+                    "supporting_facts": [
+                        "Plaintiff complained to HR and was later terminated.",
+                    ],
+                },
+            ],
+        }
+    )
+    builder._build_drafting_readiness = Mock(
+        return_value={"status": "ready", "sections": {}, "claims": [], "warning_count": 0}
+    )
+    builder._build_runtime_workflow_phase_plan = Mock(return_value={})
+    builder._build_filing_checklist = Mock(return_value=[])
+    builder._annotate_filing_checklist_review_links = Mock()
+    builder._build_affidavit = Mock(return_value={})
+    builder._build_claim_support_temporal_handoff = Mock(return_value={})
+    builder._build_intake_summary_handoff = Mock(return_value={})
+    builder.render_artifacts = Mock(return_value={})
+
+    result = builder.build_package(
+        district="Northern District of California",
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Acme Corporation"],
+        output_formats=["txt"],
+    )
+
+    draft = result["draft"]
+    assert draft["claims_for_relief"][0]["claim_type"] == "employment_discrimination"
+    assert draft["claims_for_relief"][0]["supporting_facts"][0] == (
+        "Plaintiff is Black and disclosed that protected trait to HR."
+    )
+
+
+def test_build_package_uses_claim_support_packets_to_resolve_document_focus_claim():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "document_drafting_next_action": {
+            "action": "realign_document_drafting",
+            "phase_name": "document_generation",
+            "claim_element_id": "protected_activity",
+            "executed_claim_element_id": "causation",
+            "focus_section": "claims_for_relief",
+            "preferred_support_kind": "testimony",
+        }
+    }
+    mediator.phase_manager = Mock()
+    mediator.phase_manager.get_phase_data.side_effect = lambda phase, key: (
+        {
+            "retaliation": {
+                "claim_type": "retaliation",
+                "elements": [
+                    {
+                        "element_id": "protected_activity",
+                        "element_text": "Protected activity",
+                        "support_status": "partially_supported",
+                        "preferred_evidence_classes": ["complaint_record", "timeline_record"],
+                        "required_fact_bundle": ["protected_activity", "timeline"],
+                        "missing_fact_bundle": ["timeline"],
+                    }
+                ],
+            }
+        }
+        if key == "claim_support_packets"
+        else {}
+    )
+    builder = FormalComplaintDocumentBuilder(mediator)
+    builder.build_draft = Mock(
+        return_value={
+            "claims_for_relief": [
+                {
+                    "claim_type": "discrimination",
+                    "count_title": "Discrimination",
+                    "supporting_facts": [
+                        "Plaintiff was treated unfairly.",
+                    ],
+                },
+                {
+                    "claim_type": "retaliation",
+                    "count_title": "Retaliation",
+                    "supporting_facts": [
+                        "Plaintiff engaged in activity and later experienced consequences.",
+                    ],
+                },
+            ],
+        }
+    )
+    builder._build_drafting_readiness = Mock(
+        return_value={"status": "ready", "sections": {}, "claims": [], "warning_count": 0}
+    )
+    builder._build_runtime_workflow_phase_plan = Mock(return_value={})
+    builder._build_filing_checklist = Mock(return_value=[])
+    builder._annotate_filing_checklist_review_links = Mock()
+    builder._build_affidavit = Mock(return_value={})
+    builder._build_claim_support_temporal_handoff = Mock(return_value={})
+    builder._build_intake_summary_handoff = Mock(return_value={})
+    builder.render_artifacts = Mock(return_value={})
+
+    result = builder.build_package(
+        district="Northern District of California",
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Acme Corporation"],
+        output_formats=["txt"],
+    )
+
+    draft = result["draft"]
+    assert draft["claims_for_relief"][0]["claim_type"] == "retaliation"
+
+
+def test_build_summary_fact_entries_include_canonical_fact_provenance():
+    mediator = _build_seeded_mediator()
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    entries = builder._build_summary_fact_entries(
+        generated_complaint={},
+        classification={},
+        state=mediator.state,
+    )
+
+    protected_activity_entry = next(
+        entry for entry in entries if entry["text"].startswith("Plaintiff reported repeated sexual harassment")
+    )
+    assert protected_activity_entry["fact_ids"] == ["fact:1"]
+    assert protected_activity_entry["claim_element_ids"] == ["protected_activity"]
+    assert protected_activity_entry["source_kind"] == "canonical_fact"
+
+
+def test_build_package_prioritizes_supporting_fact_entries_with_matching_packet_fact_ids():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "document_drafting_next_action": {
+            "action": "realign_document_drafting",
+            "phase_name": "document_generation",
+            "claim_element_id": "protected_activity",
+            "executed_claim_element_id": "causation",
+            "focus_section": "claims_for_relief",
+            "preferred_support_kind": "testimony",
+        }
+    }
+    mediator.phase_manager = Mock()
+    mediator.phase_manager.get_phase_data.side_effect = lambda phase, key: (
+        {
+            "retaliation": {
+                "claim_type": "retaliation",
+                "elements": [
+                    {
+                        "element_id": "protected_activity",
+                        "element_text": "Protected activity",
+                        "support_status": "partially_supported",
+                        "canonical_fact_ids": ["fact:protected"],
+                    }
+                ],
+            }
+        }
+        if key == "claim_support_packets"
+        else {}
+    )
+    builder = FormalComplaintDocumentBuilder(mediator)
+    builder.build_draft = Mock(
+        return_value={
+            "claims_for_relief": [
+                {
+                    "claim_type": "retaliation",
+                    "count_title": "Retaliation",
+                    "supporting_facts": [
+                        "Plaintiff was terminated shortly after the complaint.",
+                        "Plaintiff engaged in protected conduct before the termination.",
+                    ],
+                    "supporting_fact_entries": [
+                        {
+                            "text": "Plaintiff was terminated shortly after the complaint.",
+                            "fact_ids": ["fact:adverse"],
+                        },
+                        {
+                            "text": "Plaintiff engaged in protected conduct before the termination.",
+                            "fact_ids": ["fact:protected"],
+                        },
+                    ],
+                }
+            ],
+        }
+    )
+    builder._build_drafting_readiness = Mock(
+        return_value={"status": "ready", "sections": {}, "claims": [], "warning_count": 0}
+    )
+    builder._build_runtime_workflow_phase_plan = Mock(return_value={})
+    builder._build_filing_checklist = Mock(return_value=[])
+    builder._annotate_filing_checklist_review_links = Mock()
+    builder._build_affidavit = Mock(return_value={})
+    builder._build_claim_support_temporal_handoff = Mock(return_value={})
+    builder._build_intake_summary_handoff = Mock(return_value={})
+    builder.render_artifacts = Mock(return_value={})
+
+    result = builder.build_package(
+        district="Northern District of California",
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Acme Corporation"],
+        output_formats=["txt"],
+    )
+
+    draft = result["draft"]
+    assert draft["claims_for_relief"][0]["supporting_facts"][0] == (
+        "Plaintiff engaged in protected conduct before the termination."
+    )
+    assert draft["claims_for_relief"][0]["supporting_fact_entries"][0]["fact_ids"] == ["fact:protected"]
+
+
+def test_build_package_adds_claim_support_provenance_and_document_provenance_summary():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {}
+    builder = FormalComplaintDocumentBuilder(mediator)
+    builder.build_draft = Mock(
+        return_value={
+            "summary_of_facts": [
+                "Plaintiff reported discrimination to HR.",
+            ],
+            "summary_of_fact_entries": [
+                {
+                    "text": "Plaintiff reported discrimination to HR.",
+                    "fact_ids": ["fact:summary:1"],
+                    "source_artifact_ids": ["artifact:hr-complaint"],
+                }
+            ],
+            "factual_allegations": [
+                "Plaintiff reported discrimination to HR.",
+            ],
+            "factual_allegation_entries": [
+                {
+                    "text": "Plaintiff reported discrimination to HR.",
+                    "fact_ids": ["fact:summary:1"],
+                    "source_artifact_ids": ["artifact:hr-complaint"],
+                    "claim_element_ids": ["protected_activity"],
+                }
+            ],
+            "claims_for_relief": [
+                {
+                    "claim_type": "retaliation",
+                    "count_title": "Retaliation",
+                    "supporting_facts": [
+                        "Plaintiff reported discrimination to HR.",
+                    ],
+                    "supporting_fact_entries": [
+                        {
+                            "text": "Plaintiff reported discrimination to HR.",
+                            "fact_ids": ["fact:summary:1"],
+                            "source_artifact_ids": ["artifact:hr-complaint"],
+                            "claim_element_ids": ["protected_activity"],
+                            "support_trace_ids": ["trace:1"],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    builder._build_drafting_readiness = Mock(
+        return_value={"status": "ready", "sections": {}, "claims": [], "warning_count": 0}
+    )
+    builder._build_runtime_workflow_phase_plan = Mock(return_value={})
+    builder._build_filing_checklist = Mock(return_value=[])
+    builder._annotate_filing_checklist_review_links = Mock()
+    builder._build_affidavit = Mock(return_value={})
+    builder._build_claim_support_temporal_handoff = Mock(return_value={})
+    builder._build_intake_summary_handoff = Mock(return_value={})
+    builder.render_artifacts = Mock(return_value={})
+
+    result = builder.build_package(
+        district="Northern District of California",
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Acme Corporation"],
+        output_formats=["txt"],
+    )
+
+    draft = result["draft"]
+    assert draft["claims_for_relief"][0]["supporting_fact_provenance"][0]["fact_ids"] == ["fact:summary:1"]
+    assert draft["claims_for_relief"][0]["supporting_fact_provenance"][0]["support_trace_ids"] == ["trace:1"]
+    assert draft["factual_allegation_paragraphs"][0]["fact_ids"] == ["fact:summary:1"]
+    assert draft["document_provenance_summary"] == {
+        "summary_fact_count": 1,
+        "summary_fact_backed_count": 1,
+        "factual_allegation_paragraph_count": 1,
+        "factual_allegation_fact_backed_count": 1,
+        "claim_count": 1,
+        "claim_supporting_fact_count": 1,
+        "claim_supporting_fact_backed_count": 1,
+        "fact_id_count": 1,
+        "source_artifact_id_count": 1,
+        "fact_backed_ratio": 1.0,
+        "low_grounding_flag": False,
+        "claims": [
+            {
+                "claim_type": "retaliation",
+                "supporting_fact_count": 1,
+                "fact_backed_supporting_fact_count": 1,
+                "artifact_backed_supporting_fact_count": 1,
+                "fact_ids": ["fact:summary:1"],
+                "source_artifact_ids": ["artifact:hr-complaint"],
+            }
+        ],
+    }
+    assert result["document_provenance_summary"] == draft["document_provenance_summary"]
+
+
+def test_document_api_annotation_prioritizes_document_provenance_grounding_warning():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "formalization",
+        "intake_readiness": {
+            "score": 0.9,
+            "ready_to_advance": True,
+            "remaining_gap_count": 0,
+            "contradiction_count": 0,
+            "criteria": {},
+            "blockers": [],
+            "contradictions": [],
+        },
+        "next_action": {"action": "complete_evidence"},
+    }
+    payload = _annotate_review_links(
+        {
+            "draft": {
+                "title": "Jane Doe v. Acme Corporation",
+                "source_context": {"user_id": "Jane Doe"},
+                "document_provenance_summary": {
+                    "summary_fact_count": 4,
+                    "summary_fact_backed_count": 1,
+                    "claim_supporting_fact_count": 3,
+                    "claim_supporting_fact_backed_count": 1,
+                    "fact_backed_ratio": 0.33,
+                    "low_grounding_flag": True,
+                },
+            },
+            "drafting_readiness": {
+                "status": "warning",
+                "workflow_phase_plan": {"recommended_order": ["document_generation"], "phases": {}},
+                "sections": {"factual_allegations": {"status": "warning", "title": "Factual Allegations"}},
+                "claims": [{"claim_type": "retaliation", "status": "warning"}],
+            },
+            "document_optimization": {},
+        },
+        mediator=mediator,
+        user_id="Jane Doe",
+    )
+
+    assert payload["review_links"]["workflow_priority"] == {
+        "status": "warning",
+        "title": "Strengthen document grounding before further revisions",
+        "description": "Increase canonical-fact and artifact-backed support in the draft before broadening revisions.",
+        "action_label": "Review factual allegations grounding",
+        "action_url": "/claim-support-review?user_id=Jane+Doe&section=factual_allegations",
+        "action_kind": "link",
+        "dashboard_url": "/claim-support-review?user_id=Jane+Doe",
+        "chip_labels": [
+            "fact-backed ratio: 0.33",
+            "summary facts grounded: 1/4",
+            "claim support grounded: 1/3",
+        ],
+    }
+
+
 def test_document_optimizer_prioritizes_graph_phase_for_unresolved_blockers():
     optimizer = document_optimization.AgenticDocumentOptimizer(
         mediator=_build_seeded_mediator(),
@@ -848,8 +1353,8 @@ def test_document_optimizer_prioritizes_graph_phase_for_unresolved_blockers():
         },
     )
 
-    assert review['prioritized_workflow_phase'] == 'intake_questioning'
-    assert review['workflow_phase_order'][0] == 'intake_questioning'
+    assert review['prioritized_workflow_phase'] == 'graph_analysis'
+    assert review['workflow_phase_order'][0] == 'graph_analysis'
     assert review['workflow_phase_target_sections']['graph_analysis'] == 'factual_allegations'
     assert review['recommended_focus'] == 'factual_allegations'
 

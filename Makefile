@@ -1,4 +1,6 @@
-.PHONY: canary-validate canary-smoke canary-sample regression-lean regression-review regression-full hacc-grounding hacc-grounding-no-smoke hacc-unit
+.PHONY: canary-validate canary-smoke canary-sample regression regression-lean regression-review regression-full hacc-grounding hacc-grounding-no-smoke hacc-unit
+
+regression: regression-full
 
 regression-lean:
 	.venv/bin/python scripts/run_standard_regression.py --slice lean

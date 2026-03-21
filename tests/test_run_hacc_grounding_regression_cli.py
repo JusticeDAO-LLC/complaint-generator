@@ -57,7 +57,8 @@ def test_build_smoke_command_uses_output_dir_and_core_preset():
     command = cli.build_smoke_command(".venv/bin/python", "/tmp/hacc-smoke")
 
     assert command[0] == ".venv/bin/python"
-    assert str(cli.WORKSPACE_ROOT / "hacc_adversarial_runner.py") in command
+    assert str(cli.PROJECT_ROOT / "scripts" / "run_hacc_grounded_pipeline.py") in command
     assert "--hacc-preset" in command
     assert "core_hacc_policies" in command
+    assert "--top-k" in command
     assert command[-1] == "/tmp/hacc-smoke"

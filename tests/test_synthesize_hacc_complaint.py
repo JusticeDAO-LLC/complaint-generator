@@ -138,6 +138,35 @@ def test_proposed_allegations_use_uncovered_intake_priority_summary_when_availab
     assert not any("who at HACC made or communicated the decision" in item for item in allegations)
 
 
+def test_grounding_prompt_summary_exposes_upload_and_document_generation_prompts():
+    seed = {
+        "key_facts": {
+            "synthetic_prompts": {
+                "complaint_chatbot_prompt": "Use uploaded evidence to ground the complaint chatbot.",
+                "intake_questionnaire_prompt": "Ask for dates, actors, and exhibits.",
+                "mediator_evidence_review_prompt": "Review uploaded evidence against claim elements.",
+                "document_generation_prompt": "Promote exhibits into the complaint draft.",
+                "intake_questions": ["When did the notice arrive?"],
+                "evidence_upload_questions": ["Please upload the notice if you have it."],
+                "workflow_phase_priorities": ["intake_questioning", "evidence_upload", "graph_analysis", "document_generation"],
+            }
+        }
+    }
+    grounding_bundle = {}
+    upload_report = {
+        "upload_count": 1,
+        "uploads": [{"title": "Denial Notice"}],
+    }
+
+    summary = MODULE._grounding_prompt_summary(seed, grounding_bundle, upload_report)
+
+    assert summary["complaint_chatbot_prompt"] == "Use uploaded evidence to ground the complaint chatbot."
+    assert summary["document_generation_prompt"] == "Promote exhibits into the complaint draft."
+    assert summary["upload_count"] == 1
+    assert summary["uploaded_titles"] == ["Denial Notice"]
+    assert summary["evidence_upload_questions"] == ["Please upload the notice if you have it."]
+
+
 def test_proposed_allegations_use_blocker_follow_up_summary_when_available():
     seed = {
         "description": "Retaliation complaint anchored to HACC core housing policies.",

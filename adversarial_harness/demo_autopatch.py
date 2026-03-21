@@ -110,6 +110,43 @@ class DemoBatchLLMBackend:
 
     def __call__(self, prompt: str) -> str:
         lower_prompt = prompt.lower()
+        if "hacc" in lower_prompt or "grievance" in lower_prompt or "housing authority" in lower_prompt:
+            if "generate" in lower_prompt and "complaint" in lower_prompt:
+                return (
+                    "I asked HACC for a grievance hearing after I complained about discriminatory treatment and the denial "
+                    "of housing assistance. HACC sent a notice of adverse action, did not clearly honor my appeal rights, "
+                    "and kept moving forward after my complaint."
+                )
+            if "appeal rights" in lower_prompt or "appeal" in lower_prompt or "deadline" in lower_prompt:
+                return (
+                    "I received a notice of adverse action on March 3, 2026. It mentioned an appeal, but it did not clearly "
+                    "explain the deadline or hearing steps. I kept the notice as a PDF."
+                )
+            if "hearing" in lower_prompt or "review" in lower_prompt:
+                return (
+                    "I requested a grievance hearing by email on March 5, 2026 and followed up by phone on March 8, 2026. "
+                    "HACC denied or ignored the request in a response email dated March 10, 2026."
+                )
+            if "who" in lower_prompt or "title" in lower_prompt or "role" in lower_prompt:
+                return (
+                    "Property Specialist Dana Morris sent the adverse-action notice, and Hearing Coordinator Alex Chen "
+                    "handled the review request."
+                )
+            if "document" in lower_prompt or "email" in lower_prompt or "notice" in lower_prompt or "upload" in lower_prompt:
+                return (
+                    "I have the March 3 adverse-action notice, the March 5 hearing-request email, the March 10 response "
+                    "email, and my earlier discrimination complaint."
+                )
+            if "harm" in lower_prompt or "remedy" in lower_prompt or "relief" in lower_prompt:
+                return (
+                    "This put my housing assistance at risk and caused serious stress. I want the denial reversed, a fair "
+                    "hearing, protection from retaliation, and compensation for the harm."
+                )
+            if "protected activity" in lower_prompt or "because" in lower_prompt or "sequence" in lower_prompt:
+                return (
+                    "I complained about discrimination first, then HACC sent the adverse-action notice, and after I asked "
+                    "for a hearing HACC rejected or ignored the request."
+                )
         if "generate" in lower_prompt and "complaint" in lower_prompt:
             return (
                 "I reported discrimination to human resources after my supervisor denied a promotion "

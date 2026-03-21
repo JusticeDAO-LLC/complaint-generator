@@ -2,6 +2,7 @@
 ### by JusticeDAO
 
 [![Claim Support Regression](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/claim-support-regression.yml/badge.svg)](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/claim-support-regression.yml)
+[![Standard Regression](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/standard-regression.yml/badge.svg)](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/standard-regression.yml)
 [![HACC Unit Regression](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/hacc-unit-regression.yml/badge.svg)](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/hacc-unit-regression.yml)
 
 Regression workflows: [Manual HACC Grounding Regression](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/hacc-grounding-regression.yml)
@@ -167,14 +168,17 @@ python run.py --config config.review_surface.json
 **Standard Regression:**
 
 ```bash
-.venv/bin/python scripts/run_standard_regression.py --slice lean
+.venv/bin/python scripts/run_standard_regression.py
 ```
 
 Also available via:
 
 - VS Code tasks `Standard Regression (Lean)`, `Standard Regression (Review)`, and `Standard Regression (Full)`
 - Run and Debug entries with the same three labels
-- Make targets `regression-lean`, `regression-review`, and `regression-full`
+- Make targets `regression`, `regression-lean`, `regression-review`, and `regression-full`
+- GitHub Actions workflow `standard-regression.yml`
+
+The helper now defaults to the browser-inclusive `full` slice so the review, template, document, and Playwright workflow contracts stay gated together.
 
 **Claim Support Regression:**
 

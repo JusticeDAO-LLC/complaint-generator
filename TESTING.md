@@ -95,8 +95,25 @@ The Run and Debug panel now mirrors those entry points with `Claim Support Regre
 
 GitHub Actions now enforces the same slice in `.github/workflows/claim-support-regression.yml` with separate non-browser and browser-required lanes.
 
+### Standard Regression Gate
+
+The default repo-level regression entrypoint is now:
+
+```bash
+.venv/bin/python scripts/run_standard_regression.py
+```
+
+That helper defaults to the browser-inclusive `full` slice and covers the review API, dashboard flow, hooks, template rendering, document pipeline, formal document pipeline, and Playwright smoke.
+
+Equivalent entry points:
+
+- `make regression`
+- VS Code tasks `Standard Regression (Lean)`, `Standard Regression (Review)`, and `Standard Regression (Full)`
+- GitHub Actions workflow `.github/workflows/standard-regression.yml`
+
 ### Current Validation Guidance
-- Use `scripts/run_claim_support_review_regression.py` for review-surface, testimony-linking, and dashboard rendering changes.
+- Use `scripts/run_standard_regression.py` as the default gate for review-surface, workflow-guidance, and document-pipeline changes.
+- Use `scripts/run_claim_support_review_regression.py` when you need the narrower claim-support-focused slice.
 - Use `pytest -m "not integration"` for faster local feedback when you do not need external integrations.
 - Treat the browser smoke as optional for local setup and required in the browser CI lane.
 
@@ -169,7 +186,7 @@ pytest tests/test_new_feature.py
 ## Next Steps
 
 1. **Add More Tests**: Expand test coverage for uncovered modules
-2. **CI Integration**: Add pytest to your CI/CD pipeline
+2. **Gate Selection**: Prefer the standard regression gate for review/document workflow changes before falling back to narrower slices
 3. **Backend Dependencies**: Install full backend dependencies to run all tests
 4. **Custom Fixtures**: Create reusable test fixtures in `conftest.py`
 5. **Test Data**: Add test data fixtures for complex scenarios

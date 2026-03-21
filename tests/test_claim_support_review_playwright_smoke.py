@@ -4006,7 +4006,8 @@ def test_claim_support_review_dashboard_smoke_reviews_chronology_task_from_next_
 
                 assert "Resolve chronology blockers" in next_action_banner
                 assert "recommended action: fill_temporal_chronology_gap" in next_action_banner
-                assert "chronology issues: 2" in next_action_banner
+                assert "chronology issues: 1" in next_action_banner
+                assert "resolved chronology issues: 1" in next_action_banner
                 assert "focus claim: Retaliation" in next_action_banner
                 assert "focus element: Retaliation:3" in next_action_banner
                 assert "support status: Missing" in next_action_banner

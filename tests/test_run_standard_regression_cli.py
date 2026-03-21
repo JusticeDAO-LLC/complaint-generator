@@ -26,12 +26,12 @@ def test_create_parser_supports_slice_and_list():
     assert args.list is True
 
 
-def test_resolve_test_targets_returns_lean_slice_by_default():
+def test_resolve_test_targets_returns_full_slice_by_default():
     cli = _load_cli_module()
 
     targets = cli.resolve_test_targets()
 
-    assert targets == cli.REGRESSION_SLICES["lean"]
+    assert targets == cli.REGRESSION_SLICES["full"]
 
 
 def test_resolve_test_targets_returns_full_slice():
@@ -67,3 +67,12 @@ def test_build_pytest_command_places_passthrough_args_before_targets():
     assert "tests/test_claim_support_review_template.py" in command[6:]
     assert "tests/test_document_pipeline.py" in command[6:]
     assert "tests/test_formal_document_pipeline.py" in command[6:]
+
+
+def test_create_parser_defaults_to_full_slice():
+    cli = _load_cli_module()
+    parser = cli.create_parser()
+
+    args = parser.parse_args([])
+
+    assert args.slice == "full"

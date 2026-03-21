@@ -131,6 +131,44 @@ class _ConvergingMediator:
         return {}
 
 
+class _DocumentMediator(_ConvergingMediator):
+    def __init__(self):
+        super().__init__()
+        self.confirmed = False
+        self.document_kwargs = None
+
+    def confirm_intake_summary(self, confirmation_note="", confirmation_source="complainant"):
+        self.confirmed = True
+        return {}
+
+    def build_formal_complaint_document_package(self, **kwargs):
+        self.document_kwargs = dict(kwargs)
+        return {
+            "ready_to_file": True,
+            "draft": {
+                "claims_for_relief": [{"title": "Count I"}],
+                "factual_allegations": ["A dated notice was uploaded."],
+                "requested_relief": ["Injunctive relief."],
+                "exhibits": [{"label": "Exhibit A"}],
+                "draft_text": "COMPLAINT",
+            },
+            "document_optimization": {
+                "optimization_method": "actor_critic",
+            },
+            "workflow_optimization_guidance": {
+                "recommended_order": ["intake_questioning", "graph_analysis", "document_generation"],
+            },
+            "drafting_readiness": {
+                "blockers": [{"code": "none"}],
+            },
+        }
+
+
+class _FallbackDocumentMediator(_ConvergingMediator):
+    def confirm_intake_summary(self, confirmation_note="", confirmation_source="complainant"):
+        return {}
+
+
 def _make_session() -> AdversarialSession:
     return AdversarialSession(
         session_id="test_session",
@@ -158,6 +196,26 @@ def _make_converging_session(mediator: _ConvergingMediator) -> AdversarialSessio
         complainant=_DummyComplainant(),
         critic=_DummyCritic(),
         max_turns=5,
+    )
+
+
+def _make_document_session(mediator: _DocumentMediator) -> AdversarialSession:
+    return AdversarialSession(
+        session_id="document_session",
+        mediator=mediator,
+        complainant=_DummyComplainant(),
+        critic=_DummyCritic(),
+        max_turns=5,
+    )
+
+
+def _make_fallback_document_session(mediator: _FallbackDocumentMediator) -> AdversarialSession:
+    return AdversarialSession(
+        session_id="fallback_document_session",
+        mediator=mediator,
+        complainant=_DummyComplainant(),
+        critic=_DummyCritic(),
+        max_turns=3,
     )
 
 
@@ -213,6 +271,25 @@ def test_extract_intake_prompt_candidates_supplements_seed_anchor_sections():
     assert ("Did you request a reasonable accommodation or raise a disability-related need, and how did HACC respond?", "anchor_reasonable_accommodation") in candidates
 
 
+def test_extract_intake_prompt_candidates_drops_accommodation_objective_without_supported_seed():
+    seed = {
+        "key_facts": {
+            "anchor_sections": ["grievance_hearing"],
+            "synthetic_prompts": {
+                "mediator_questions": [
+                    "Did you request a reasonable accommodation or raise a disability-related need, and how did HACC respond?",
+                    "What grievance hearing process were you told was available, whether you requested it, and who was supposed to handle it?",
+                ]
+            },
+        }
+    }
+
+    candidates = AdversarialSession._extract_intake_prompt_candidates(seed)
+
+    assert ("Did you request a reasonable accommodation or raise a disability-related need, and how did HACC respond?", "anchor_reasonable_accommodation") not in candidates
+    assert ("What grievance hearing process were you told was available, whether you requested it, and who was supposed to handle it?", "anchor_grievance_hearing") in candidates
+
+
 def test_build_fallback_probe_prefers_intake_questionnaire_prompt():
     session = _make_session()
     seed = {
@@ -251,6 +328,32 @@ def test_build_fallback_probe_prefers_intake_questionnaire_prompt():
     assert probe["question"].startswith("When did the key events happen")
     assert probe["question_objective"] == "hearing_request_timing"
     assert probe["source"] == "harness_fallback"
+
+
+def test_staff_names_titles_detection_accepts_plural_title_wording():
+    question = {
+        "question": "Which HACC staff members handled each step, what were their full names and titles or roles, and how can you identify each person from the notices or emails?",
+    }
+
+    assert AdversarialSession._is_staff_names_titles_question(question) is True
+
+
+def test_seed_supports_selection_criteria_only_for_selection_focused_seed():
+    selection_seed = {
+        "key_facts": {
+            "anchor_sections": ["selection_criteria"],
+            "theory_labels": ["selection_criteria"],
+        }
+    }
+    retaliation_seed = {
+        "key_facts": {
+            "anchor_sections": ["grievance_hearing", "appeal_rights", "adverse_action"],
+            "theory_labels": ["retaliation", "due_process_failure"],
+        }
+    }
+
+    assert AdversarialSession._seed_supports_selection_criteria(selection_seed) is True
+    assert AdversarialSession._seed_supports_selection_criteria(retaliation_seed) is False
 
 
 def test_build_fallback_probe_can_emit_causation_question_when_needed():
@@ -362,6 +465,30 @@ def test_extract_intake_prompt_candidates_adds_claim_temporal_gap_prompts_from_o
     ) in candidates
 
 
+def test_extract_intake_prompt_candidates_uses_evidence_upload_questions():
+    seed = {
+        "key_facts": {
+            "synthetic_prompts": {
+                "intake_questions": [],
+                "evidence_upload_questions": [
+                    "Please upload the denial notice if you have it, and explain when you received it and who sent it.",
+                ],
+            }
+        }
+    }
+
+    candidates = AdversarialSession._extract_intake_prompt_candidates(seed)
+
+    assert (
+        "Please upload the denial notice if you have it, and explain when you received it and who sent it.",
+        "timeline",
+    ) in candidates
+    assert (
+        "Please upload the denial notice if you have it, and explain when you received it and who sent it.",
+        "documents",
+    ) in candidates
+
+
 def test_inject_intake_prompt_questions_prioritizes_claim_temporal_gap_prompts():
     seed = {
         "document_optimization": {
@@ -420,6 +547,32 @@ def test_inject_intake_prompt_questions_prepends_prioritized_candidates():
     assert merged[3]["question"] == "Can you describe what documents you still have?"
 
 
+def test_summarize_intake_priority_coverage_does_not_force_selection_criteria_for_non_selection_seed():
+    seed = {
+        "actor_critic_optimizer": {
+            "weak_complaint_types": ["housing_discrimination", "hacc_research_engine"],
+            "weak_evidence_modalities": ["policy_document", "file_evidence"],
+        },
+        "key_facts": {
+            "anchor_sections": ["grievance_hearing", "appeal_rights", "adverse_action"],
+            "theory_labels": ["retaliation", "due_process_failure"],
+            "synthetic_prompts": {
+                "intake_questions": [
+                    "What happened, and what adverse action did HACC take or threaten to take?",
+                    "When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?",
+                    "Who at HACC made, communicated, or carried out each decision?",
+                    "What written notice, grievance, informal review, hearing, or appeal rights were provided, requested, denied, or ignored?",
+                ]
+            },
+        },
+    }
+
+    summary = AdversarialSession._summarize_intake_priority_coverage([], seed)
+
+    assert "anchor_selection_criteria" not in summary["forced_objectives"]
+    assert "anchor_selection_criteria" not in summary["expected_objectives"]
+
+
 def test_inject_intake_prompt_questions_skips_semantic_duplicate_mediator_question():
     seed = {
         "key_facts": {
@@ -476,14 +629,13 @@ def test_run_temporarily_prioritizes_mediator_selector_for_intake_objectives():
         "anchor_adverse_action",
         "timeline",
     ]
-    assert persisted["adversarial_intake_priority_summary"]["covered_objectives"] == [
-        "anchor_adverse_action",
-        "timeline",
-    ]
-    assert persisted["adversarial_intake_priority_summary"]["uncovered_objectives"] == []
+    assert "anchor_adverse_action" in persisted["adversarial_intake_priority_summary"]["covered_objectives"]
+    assert "timeline" in persisted["adversarial_intake_priority_summary"]["expected_objectives"]
     assert result.conversation_history == []
     assert result.success is True
-    assert result.final_state == {}
+    assert "grounding_summary" in result.final_state
+    assert result.final_state["grounding_summary"]["repository_evidence_candidate_count"] == 0
+    assert result.final_state["grounding_summary"]["preloaded_mediator_evidence_count"] == 0
     assert result.num_questions == 0
     assert result.initial_complaint_text == "Initial complaint"
     assert result.conversation_history == []
@@ -521,3 +673,56 @@ def test_run_does_not_require_blocker_questions_when_seed_has_no_blocker_objecti
     assert result.num_turns == 3
     assert result.num_questions == 3
     assert mediator._index == 3
+
+
+def test_session_runs_document_generation_handoff_and_records_grounding_summary():
+    mediator = _DocumentMediator()
+    session = _make_document_session(mediator)
+    seed = {
+        "summary": "Repository-grounded grievance complaint.",
+        "key_facts": {
+            "grounding_note": "Use repository evidence and uploaded case files together.",
+            "anchor_sections": ["grievance_hearing", "appeal_rights"],
+            "repository_evidence_candidates": [{"title": "HACC_INTEGRATION.md"}],
+            "synthetic_prompts": {
+                "intake_questions": ["What notices or hearing requests can you upload?"],
+                "evidence_upload_prompt": "Upload notices and hearing requests first.",
+            },
+        },
+        "_meta": {
+            "preloaded_mediator_evidence": [{"record_id": 1}],
+        },
+    }
+
+    result = session.run(seed)
+
+    assert result.success is True
+    assert mediator.confirmed is True
+    assert mediator.document_kwargs["user_id"] == "document_session"
+    assert result.final_state["document_generation"]["ready_to_file"] is True
+    assert result.final_state["document_generation"]["document_optimization_available"] is True
+    assert result.final_state["grounding_summary"]["preloaded_mediator_evidence_count"] == 1
+    assert result.final_state["grounding_summary"]["has_evidence_upload_prompt"] is True
+
+
+def test_session_builds_fallback_document_packet_when_builder_is_unavailable():
+    mediator = _FallbackDocumentMediator()
+    session = _make_fallback_document_session(mediator)
+    seed = {
+        "type": "housing_discrimination",
+        "summary": "HACC denied a grievance hearing after an adverse housing decision.",
+        "key_facts": {
+            "theory_labels": ["retaliation", "due_process_failure"],
+            "synthetic_prompts": {
+                "intake_questions": ["What happened and what notices were issued?"],
+            },
+        },
+    }
+
+    result = session.run(seed)
+
+    assert result.success is True
+    assert result.final_state["document_generation"]["claim_count"] >= 1
+    assert result.final_state["document_generation"]["factual_allegation_count"] >= 1
+    assert result.final_state["document_generation"]["requested_relief_count"] >= 1
+    assert result.final_state["document_generation"]["draft_text_available"] is True

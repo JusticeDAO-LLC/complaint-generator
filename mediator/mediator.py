@@ -1625,6 +1625,7 @@ class Mediator:
 			result['graph_projection'] = graph_result.get('graph_projection', {})
 		
 		self.log('evidence_submitted', cid=evidence_info['cid'], record_id=record_id)
+		result['uploaded_evidence_summary'] = self._record_uploaded_evidence_summary(result)
 		
 		return result
 	
@@ -8531,6 +8532,62 @@ class Mediator:
 		}
 		result.update(self._get_confirmed_intake_summary_handoff())
 		return result
+
+	def _record_uploaded_evidence_summary(self, evidence_data: Dict[str, Any]) -> Dict[str, Any]:
+		"""Track uploaded evidence so graph/document phases can explicitly consume it."""
+		summary = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'uploaded_evidence_summary') or {}
+		if not isinstance(summary, dict):
+			summary = {}
+		items = list(summary.get('items') or [])
+		metadata = evidence_data.get('metadata') if isinstance(evidence_data.get('metadata'), dict) else {}
+		graph_projection = evidence_data.get('graph_projection') if isinstance(evidence_data.get('graph_projection'), dict) else {}
+		document_graph_summary = metadata.get('document_graph_summary') if isinstance(metadata.get('document_graph_summary'), dict) else {}
+		record = {
+			'record_id': evidence_data.get('record_id'),
+			'cid': evidence_data.get('cid'),
+			'claim_type': str(evidence_data.get('claim_type') or ''),
+			'claim_element_id': str(evidence_data.get('claim_element_id') or ''),
+			'claim_element_text': str(evidence_data.get('claim_element_text') or ''),
+			'description': str(
+				evidence_data.get('description')
+				or metadata.get('filename')
+				or evidence_data.get('type')
+				or 'uploaded evidence'
+			),
+			'source_url': str(evidence_data.get('source_url') or metadata.get('source_url') or ''),
+			'filename': str(metadata.get('filename') or ''),
+			'fact_count': int(evidence_data.get('fact_count') or 0),
+			'document_graph_entity_count': int(document_graph_summary.get('entity_count') or 0),
+			'document_graph_relationship_count': int(document_graph_summary.get('relationship_count') or 0),
+			'graph_projection': graph_projection,
+		}
+		items = [
+			item for item in items
+			if str((item or {}).get('record_id') or '') != str(record.get('record_id') or '')
+		]
+		items.append(record)
+		items = items[-10:]
+		aggregate = {
+			'count': len(items),
+			'claim_types': sorted(
+				{
+					str(item.get('claim_type') or '').strip()
+					for item in items
+					if str(item.get('claim_type') or '').strip()
+				}
+			),
+			'total_fact_count': sum(int(item.get('fact_count') or 0) for item in items),
+			'total_document_graph_entities': sum(int(item.get('document_graph_entity_count') or 0) for item in items),
+			'total_document_graph_relationships': sum(int(item.get('document_graph_relationship_count') or 0) for item in items),
+			'items': items,
+		}
+		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'uploaded_evidence_summary', aggregate)
+
+		intake_case_file = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
+		if isinstance(intake_case_file, dict):
+			intake_case_file['uploaded_evidence_summary'] = aggregate
+			self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_case_file', intake_case_file)
+		return aggregate
 	
 	def process_evidence_denoising(self, question: Dict[str, Any], answer: str) -> Dict[str, Any]:
 		"""
@@ -8950,6 +9007,7 @@ class Mediator:
 		intake_matching_pressure = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_matching_pressure') or {}
 		intake_workflow_action_queue = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_workflow_action_queue') or []
 		claim_support_packets = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packets') or {}
+		uploaded_evidence_summary = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'uploaded_evidence_summary') or {}
 		alignment_evidence_tasks = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks') or []
 		evidence_workflow_action_queue = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'evidence_workflow_action_queue') or []
 		alignment_task_updates = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_updates') or []
@@ -9095,6 +9153,7 @@ class Mediator:
 				else {}
 			),
 			'claim_support_packet_summary': claim_support_packet_summary,
+			'uploaded_evidence_summary': uploaded_evidence_summary if isinstance(uploaded_evidence_summary, dict) else {},
 			'intake_evidence_alignment_summary': self._summarize_intake_evidence_alignment(
 				intake_case_file,
 				claim_support_packets,

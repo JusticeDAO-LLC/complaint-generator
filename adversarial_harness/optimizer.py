@@ -83,6 +83,7 @@ class OptimizationReport:
     document_execution_drift_summary: Dict[str, Any] | None = None
     cross_phase_findings: List[str] | None = None
     workflow_action_queue: List[Dict[str, Any]] | None = None
+    document_provenance_summary: Dict[str, Any] | None = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -134,6 +135,7 @@ class OptimizationReport:
             'document_handoff_summary': self.document_handoff_summary or {},
             'graph_element_targeting_summary': self.graph_element_targeting_summary or {},
             'document_evidence_targeting_summary': self.document_evidence_targeting_summary or {},
+            'document_provenance_summary': self.document_provenance_summary or {},
             'document_workflow_execution_summary': self.document_workflow_execution_summary or {},
             'document_execution_drift_summary': self.document_execution_drift_summary or {},
             'cross_phase_findings': list(self.cross_phase_findings or []),
@@ -423,9 +425,13 @@ class Optimizer:
         coverage_avg: float,
         graph_summary: Dict[str, Any],
         coverage_remediation: Dict[str, Any],
-        document_evidence_targeting_summary: Dict[str, Any],
-        document_workflow_execution_summary: Dict[str, Any],
+        document_evidence_targeting_summary: Optional[Dict[str, Any]] = None,
+        document_provenance_summary: Optional[Dict[str, Any]] = None,
+        document_workflow_execution_summary: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        document_evidence_targeting_summary = dict(document_evidence_targeting_summary or {})
+        document_provenance_summary = dict(document_provenance_summary or {})
+        document_workflow_execution_summary = dict(document_workflow_execution_summary or {})
         intake_actions = list((coverage_remediation.get("intake_priorities") or {}).get("recommended_actions") or [])
         intake_signals: List[str] = []
         intake_recommendations: List[Dict[str, Any]] = []
@@ -653,6 +659,22 @@ class Optimizer:
                     "focus": "graph_to_document_handoff",
                     "signal": "graph_dependency",
                     "recommended_action": "Gate document generation on graph completeness signals and surface unresolved factual or legal gaps in drafting readiness before formalization.",
+                }
+            )
+        fact_backed_ratio = self._safe_float((document_provenance_summary or {}).get("avg_fact_backed_ratio"))
+        low_grounding_flag = bool((document_provenance_summary or {}).get("low_grounding_flag"))
+        if low_grounding_flag or (fact_backed_ratio is not None and fact_backed_ratio < 0.6):
+            document_signals.append(
+                "draft output is not grounded enough in canonical facts or evidence-backed support rows"
+            )
+            document_severity += 2 if (fact_backed_ratio is not None and fact_backed_ratio < 0.4) else 1
+            document_recommendations.append(
+                {
+                    "focus": "document_provenance_grounding",
+                    "signal": "document_provenance",
+                    "recommended_action": (
+                        "Carry canonical fact ids, support traces, and artifact-backed support rows through drafting so the complaint text is grounded in traceable evidence."
+                    ),
                 }
             )
         targeted_document_elements = [
@@ -1227,6 +1249,69 @@ class Optimizer:
         }
 
     @staticmethod
+    def _build_document_provenance_summary(successful_results: List[Any]) -> Dict[str, Any]:
+        summaries: List[Dict[str, Any]] = []
+        for result in successful_results:
+            final_state = result.final_state if isinstance(getattr(result, "final_state", None), dict) else {}
+            workflow_guidance = (
+                final_state.get("workflow_optimization_guidance")
+                if isinstance(final_state.get("workflow_optimization_guidance"), dict)
+                else {}
+            )
+            provenance_summary = (
+                workflow_guidance.get("document_provenance_summary")
+                if isinstance(workflow_guidance.get("document_provenance_summary"), dict)
+                else final_state.get("document_provenance_summary")
+                if isinstance(final_state.get("document_provenance_summary"), dict)
+                else {}
+            )
+            if isinstance(provenance_summary, dict) and provenance_summary:
+                summaries.append(provenance_summary)
+
+        if not summaries:
+            return {
+                "count": 0,
+                "sessions_with_summary": 0,
+                "avg_fact_backed_ratio": 0.0,
+                "avg_summary_fact_backed_ratio": 0.0,
+                "avg_factual_allegation_fact_backed_ratio": 0.0,
+                "avg_claim_supporting_fact_backed_ratio": 0.0,
+                "low_grounding_session_count": 0,
+                "low_grounding_flag": False,
+            }
+
+        def _ratio(summary: Dict[str, Any], numerator_key: str, denominator_key: str) -> float:
+            denominator = int(summary.get(denominator_key) or 0)
+            if denominator <= 0:
+                return 0.0
+            return float(int(summary.get(numerator_key) or 0)) / float(denominator)
+
+        summary_ratios = [_ratio(summary, "summary_fact_backed_count", "summary_fact_count") for summary in summaries]
+        allegation_ratios = [
+            _ratio(summary, "factual_allegation_fact_backed_count", "factual_allegation_paragraph_count")
+            for summary in summaries
+        ]
+        claim_ratios = [
+            _ratio(summary, "claim_supporting_fact_backed_count", "claim_supporting_fact_count")
+            for summary in summaries
+        ]
+        combined_ratios = [
+            (summary_ratios[index] + allegation_ratios[index] + claim_ratios[index]) / 3.0
+            for index in range(len(summaries))
+        ]
+        low_grounding_session_count = sum(1 for ratio in combined_ratios if ratio < 0.6)
+        return {
+            "count": len(summaries),
+            "sessions_with_summary": len(summaries),
+            "avg_fact_backed_ratio": round(sum(combined_ratios) / len(combined_ratios), 4),
+            "avg_summary_fact_backed_ratio": round(sum(summary_ratios) / len(summary_ratios), 4),
+            "avg_factual_allegation_fact_backed_ratio": round(sum(allegation_ratios) / len(allegation_ratios), 4),
+            "avg_claim_supporting_fact_backed_ratio": round(sum(claim_ratios) / len(claim_ratios), 4),
+            "low_grounding_session_count": low_grounding_session_count,
+            "low_grounding_flag": bool(low_grounding_session_count),
+        }
+
+    @staticmethod
     def _build_document_workflow_execution_summary(successful_results: List[Any]) -> Dict[str, Any]:
         focus_section_counts: Dict[str, int] = {}
         top_support_kind_counts: Dict[str, int] = {}
@@ -1571,6 +1656,7 @@ class Optimizer:
         document_handoff_summary: Dict[str, Any],
         graph_element_targeting_summary: Dict[str, Any],
         document_evidence_targeting_summary: Dict[str, Any],
+        document_provenance_summary: Dict[str, Any],
         document_workflow_execution_summary: Dict[str, Any],
         document_execution_drift_summary: Dict[str, Any],
     ) -> Dict[str, Dict[str, Any]]:
@@ -1621,6 +1707,7 @@ class Optimizer:
         first_executed_claim_element = str(
             (document_workflow_execution_summary or {}).get("first_targeted_claim_element") or ""
         ).strip()
+        document_fact_backed_ratio = self._safe_float((document_provenance_summary or {}).get("avg_fact_backed_ratio")) or 0.0
         execution_mismatch_flag = bool(
             targeted_claim_elements
             and first_executed_claim_element
@@ -1678,6 +1765,9 @@ class Optimizer:
                 "first_executed_claim_element": first_executed_claim_element,
                 "first_focus_section": str((document_workflow_execution_summary or {}).get("first_focus_section") or ""),
                 "first_top_support_kind": str((document_workflow_execution_summary or {}).get("first_top_support_kind") or ""),
+                "document_fact_backed_ratio": round(document_fact_backed_ratio, 4),
+                "document_low_grounding_flag": bool((document_provenance_summary or {}).get("low_grounding_flag")),
+                "document_provenance_summary": dict(document_provenance_summary or {}),
                 "execution_mismatch_flag": execution_mismatch_flag,
                 "execution_drift_summary": dict(document_execution_drift_summary or {}),
             },
@@ -2029,6 +2119,7 @@ class Optimizer:
                         "workflow_targeting_summary": dict(report.workflow_targeting_summary or {}),
                         "graph_element_targeting_summary": dict(report.graph_element_targeting_summary or {}),
                         "document_evidence_targeting_summary": dict(report.document_evidence_targeting_summary or {}),
+                        "document_provenance_summary": dict(report.document_provenance_summary or {}),
                         "document_workflow_execution_summary": dict(report.document_workflow_execution_summary or {}),
                         "document_execution_drift_summary": dict(report.document_execution_drift_summary or {}),
                         "report_summary": {
@@ -2044,6 +2135,7 @@ class Optimizer:
                             "workflow_targeting_summary": dict(report.workflow_targeting_summary or {}),
                             "graph_element_targeting_summary": dict(report.graph_element_targeting_summary or {}),
                             "document_evidence_targeting_summary": dict(report.document_evidence_targeting_summary or {}),
+                            "document_provenance_summary": dict(report.document_provenance_summary or {}),
                             "document_workflow_execution_summary": dict(report.document_workflow_execution_summary or {}),
                             "document_execution_drift_summary": dict(report.document_execution_drift_summary or {}),
                             "cross_phase_findings": list(report.cross_phase_findings or []),
@@ -2110,6 +2202,7 @@ class Optimizer:
             "document_handoff_summary": dict(report.document_handoff_summary or {}),
             "graph_element_targeting_summary": dict(report.graph_element_targeting_summary or {}),
             "document_evidence_targeting_summary": dict(report.document_evidence_targeting_summary or {}),
+            "document_provenance_summary": dict(report.document_provenance_summary or {}),
             "document_workflow_execution_summary": dict(report.document_workflow_execution_summary or {}),
             "document_execution_drift_summary": dict(report.document_execution_drift_summary or {}),
             "cross_phase_findings": list(report.cross_phase_findings or []),
@@ -2643,6 +2736,7 @@ class Optimizer:
             intake_priority_performance=intake_priority_performance,
         )
         document_evidence_targeting_summary = self._build_document_evidence_targeting_summary(successful)
+        document_provenance_summary = self._build_document_provenance_summary(successful)
         document_workflow_execution_summary = self._build_document_workflow_execution_summary(successful)
         document_execution_drift_summary = self._build_document_execution_drift_summary(
             document_evidence_targeting_summary=document_evidence_targeting_summary,
@@ -2671,6 +2765,7 @@ class Optimizer:
             },
             coverage_remediation=coverage_remediation,
             document_evidence_targeting_summary=document_evidence_targeting_summary,
+            document_provenance_summary=document_provenance_summary,
             document_workflow_execution_summary=document_workflow_execution_summary,
         )
         recommended_hacc_preset = None
@@ -2799,6 +2894,19 @@ class Optimizer:
                     + " via "
                     + ", ".join(targeted_support_kinds),
                 )
+        if bool(document_provenance_summary.get("low_grounding_flag")):
+            recommendations.append(
+                "Draft grounding is weak across analyzed sessions. Increase canonical-fact and artifact-backed provenance in factual allegations and claim-specific support before relying on the complaint text."
+            )
+            priority_improvements.insert(
+                0,
+                "Improve document provenance grounding"
+                + (
+                    f": fact-backed ratio {float(document_provenance_summary.get('avg_fact_backed_ratio') or 0.0):.2f}"
+                    if document_provenance_summary.get("avg_fact_backed_ratio") is not None
+                    else ""
+                ),
+            )
         first_executed_claim_element = str(
             (document_workflow_execution_summary or {}).get("first_targeted_claim_element") or ""
         ).strip()
@@ -2966,6 +3074,7 @@ class Optimizer:
             document_handoff_summary=document_handoff_summary,
             graph_element_targeting_summary=graph_element_targeting_summary,
             document_evidence_targeting_summary=document_evidence_targeting_summary,
+            document_provenance_summary=document_provenance_summary,
             document_workflow_execution_summary=document_workflow_execution_summary,
             document_execution_drift_summary=document_execution_drift_summary,
             cross_phase_findings=[],
@@ -2980,6 +3089,7 @@ class Optimizer:
             document_handoff_summary=document_handoff_summary,
             graph_element_targeting_summary=graph_element_targeting_summary,
             document_evidence_targeting_summary=document_evidence_targeting_summary,
+            document_provenance_summary=document_provenance_summary,
             document_workflow_execution_summary=document_workflow_execution_summary,
             document_execution_drift_summary=document_execution_drift_summary,
         )

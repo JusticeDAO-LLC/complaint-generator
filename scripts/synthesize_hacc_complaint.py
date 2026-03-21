@@ -1896,6 +1896,47 @@ def _grounded_summary_lines(
     return lines
 
 
+def _grounding_prompt_summary(
+    seed: Dict[str, Any],
+    grounding_bundle: Dict[str, Any],
+    upload_report: Dict[str, Any],
+) -> Dict[str, Any]:
+    key_facts = dict(seed.get("key_facts") or {})
+    synthetic_prompts = {
+        **dict(key_facts.get("synthetic_prompts") or {}),
+        **dict(upload_report.get("synthetic_prompts") or {}),
+        **dict(grounding_bundle.get("synthetic_prompts") or {}),
+    }
+    upload_titles = []
+    for item in list(upload_report.get("uploads") or [])[:6]:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or item.get("relative_path") or item.get("source_path") or "").strip()
+        if title and title not in upload_titles:
+            upload_titles.append(title)
+    upload_prompt_texts = [
+        str(item.get("text") or "").strip()
+        for item in list(synthetic_prompts.get("evidence_upload_prompts") or [])
+        if isinstance(item, dict) and str(item.get("text") or "").strip()
+    ]
+    return {
+        "complaint_chatbot_prompt": str(synthetic_prompts.get("complaint_chatbot_prompt") or "").strip(),
+        "intake_questionnaire_prompt": str(synthetic_prompts.get("intake_questionnaire_prompt") or "").strip(),
+        "mediator_evidence_review_prompt": str(synthetic_prompts.get("mediator_evidence_review_prompt") or "").strip(),
+        "document_generation_prompt": str(synthetic_prompts.get("document_generation_prompt") or "").strip(),
+        "intake_questions": [str(item) for item in list(synthetic_prompts.get("intake_questions") or []) if str(item)],
+        "evidence_upload_questions": upload_prompt_texts or [
+            str(item) for item in list(synthetic_prompts.get("evidence_upload_questions") or []) if str(item)
+        ],
+        "mediator_questions": [str(item) for item in list(synthetic_prompts.get("mediator_questions") or []) if str(item)],
+        "workflow_phase_priorities": [str(item) for item in list(synthetic_prompts.get("workflow_phase_priorities") or []) if str(item)],
+        "blocker_objectives": [str(item) for item in list(synthetic_prompts.get("blocker_objectives") or []) if str(item)],
+        "extraction_targets": [str(item) for item in list(synthetic_prompts.get("extraction_targets") or []) if str(item)],
+        "uploaded_titles": upload_titles,
+        "upload_count": int(upload_report.get("upload_count") or 0),
+    }
+
+
 def _derive_grounding_overview(
     grounding_bundle: Dict[str, Any],
     upload_report: Dict[str, Any],
@@ -4990,6 +5031,7 @@ def main(argv: List[str] | None = None) -> int:
         "requested_relief": _requested_relief_for_forum(args.filing_forum),
         "grounded_evidence_summary": _grounded_summary_lines(grounding_bundle, evidence_upload_report),
         "grounding_overview": grounding_overview,
+        "grounding_prompt_summary": _grounding_prompt_summary(seed, grounding_bundle, evidence_upload_report),
         "search_summary": search_summary,
         "actor_critic_optimizer": {
             "optimization_method": "actor_critic",

@@ -58,9 +58,266 @@ ANCHOR_SECTION_HINT_TERMS: Dict[str, Sequence[str]] = {
     "selection_criteria": ("selection", "screening", "criteria", "evaluation", "prioritization"),
 }
 
+WORKFLOW_PHASE_PRIORITIES: Sequence[str] = (
+    "intake_questioning",
+    "evidence_upload",
+    "graph_analysis",
+    "document_generation",
+)
+
+ANCHOR_SECTION_OBJECTIVE_HINTS: Dict[str, Sequence[str]] = {
+    "grievance_hearing": ("hearing_request_timing", "response_dates"),
+    "appeal_rights": ("response_dates", "exact_dates"),
+    "reasonable_accommodation": ("staff_names_titles", "documents"),
+    "adverse_action": ("adverse_action_details", "exact_dates"),
+    "selection_criteria": ("documents", "staff_names_titles"),
+}
+
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    complaint_generator_root = Path(__file__).resolve().parents[1]
+    candidates = [
+        complaint_generator_root,
+        complaint_generator_root.parent / "HACC",
+        complaint_generator_root.parent,
+    ]
+    for candidate in candidates:
+        if (candidate / "hacc_research" / "engine.py").exists():
+            return candidate
+    return complaint_generator_root
+
+
+def _repository_grounding_paths() -> List[Path]:
+    repo_root = _repo_root()
+    preferred_paths = [
+        repo_root / "docs" / "HACC_INTEGRATION.md",
+        repo_root / "docs" / "HACC_INTEGRATION_ARCHITECTURE.md",
+        repo_root / "docs" / "HACC_ANALYSIS_README.md",
+        repo_root / "docs" / "HACC_QUICK_REFERENCE.md",
+        repo_root / "docs" / "HACC_FILES_SUMMARY.md",
+        repo_root / "docs" / "INTAKE_EVIDENCE_IMPROVEMENT_PLAN.md",
+        repo_root / "docs" / "DOCUMENT_GENERATION_AGENTIC_OPTIMIZATION_PLAN.md",
+        repo_root / "scripts" / "synthesize_hacc_complaint.py",
+        repo_root / "README.md",
+    ]
+    return [path for path in preferred_paths if path.exists()]
+
+
+def _tokenize_search_text(value: str) -> List[str]:
+    return [token for token in re.findall(r"[a-z0-9_]+", str(value or "").lower()) if len(token) > 2]
+
+
+def _score_repository_grounding_text(
+    text: str,
+    *,
+    query: str,
+    complaint_type: str,
+    anchor_terms: Optional[Sequence[str]] = None,
+    theory_labels: Optional[Sequence[str]] = None,
+    protected_bases: Optional[Sequence[str]] = None,
+) -> float:
+    lowered = str(text or "").lower()
+    if not lowered.strip():
+        return 0.0
+
+    score = 0.0
+    for token in _tokenize_search_text(query):
+        if token in lowered:
+            score += 1.0
+    for token in _tokenize_search_text(complaint_type):
+        if token in lowered:
+            score += 1.0
+    for value in list(anchor_terms or []):
+        normalized = str(value or "").strip().lower()
+        if normalized and normalized in lowered:
+            score += 2.5
+    for value in list(theory_labels or []):
+        normalized = str(value or "").strip().replace("_", " ").lower()
+        if normalized and normalized in lowered:
+            score += 1.5
+    for value in list(protected_bases or []):
+        normalized = str(value or "").strip().lower()
+        if normalized and normalized in lowered:
+            score += 1.25
+    return score
+
+
+def _build_repository_grounding_hits(
+    *,
+    query: str,
+    complaint_type: str,
+    description: str,
+    anchor_terms: Optional[Sequence[str]] = None,
+    theory_labels: Optional[Sequence[str]] = None,
+    protected_bases: Optional[Sequence[str]] = None,
+    top_k: int = 3,
+) -> List[Dict[str, Any]]:
+    hits: List[Dict[str, Any]] = []
+    for path in _repository_grounding_paths():
+        try:
+            raw_text = path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        score = _score_repository_grounding_text(
+            raw_text,
+            query=query,
+            complaint_type=complaint_type,
+            anchor_terms=anchor_terms,
+            theory_labels=theory_labels,
+            protected_bases=protected_bases,
+        )
+        if score <= 0:
+            continue
+        snippet = _extract_source_window(
+            source_path=str(path),
+            anchor_terms=list(anchor_terms or []) or [query, complaint_type, description],
+            fallback_snippet=raw_text[:520],
+        )
+        hits.append(
+            {
+                "document_id": path.stem,
+                "title": path.name,
+                "source_type": "repository_grounding",
+                "source_path": str(path),
+                "score": score,
+                "snippet": snippet,
+                "matched_rules": list(anchor_terms or []),
+                "matched_entities": list(theory_labels or []),
+                "metadata": {
+                    "relative_path": str(path.relative_to(_repo_root())),
+                    "grounding_mode": "repository_fallback",
+                },
+            }
+        )
+    hits.sort(key=lambda item: (-float(item.get("score") or 0.0), str(item.get("title") or "")))
+    return hits[: max(1, int(top_k))]
+
+
+def _build_repository_grounding_bundle(
+    *,
+    query: str,
+    complaint_type: str,
+    description: str,
+    category: str,
+    anchor_terms: Optional[Sequence[str]] = None,
+    theory_labels: Optional[Sequence[str]] = None,
+    protected_bases: Optional[Sequence[str]] = None,
+    authority_hints: Optional[Sequence[str]] = None,
+    top_k: int = 3,
+) -> Dict[str, Any]:
+    hits = _build_repository_grounding_hits(
+        query=query,
+        complaint_type=complaint_type,
+        description=description,
+        anchor_terms=anchor_terms,
+        theory_labels=theory_labels,
+        protected_bases=protected_bases,
+        top_k=top_k,
+    )
+    upload_candidates = [
+        {
+            "title": str(hit.get("title") or ""),
+            "relative_path": str((hit.get("metadata") or {}).get("relative_path") or ""),
+            "source_path": str(hit.get("source_path") or ""),
+            "snippet": str(hit.get("snippet") or ""),
+            "score": float(hit.get("score") or 0.0),
+            "source_type": str(hit.get("source_type") or "repository_grounding"),
+            "metadata": dict(hit.get("metadata") or {}),
+        }
+        for hit in hits
+    ]
+    anchor_sections = _summarize_section_labels(_extract_anchor_passages(hits, anchor_terms=anchor_terms))
+    lead_titles = [str(hit.get("title") or "") for hit in hits[:2] if str(hit.get("title") or "").strip()]
+    prompt_focus = ", ".join(anchor_sections[:3]) or ", ".join(list(theory_labels or [])[:3]) or complaint_type
+    upload_focus = ", ".join(lead_titles) or "the strongest repository evidence files"
+    synthetic_prompts = {
+        "complaint_chatbot_prompt": (
+            "Ground each answer in uploaded evidence when available, and distinguish repository-grounded policy/procedure "
+            "material from case-specific facts that still require confirmation."
+        ),
+        "intake_questionnaire_prompt": (
+            "Prioritize unresolved dates, actors, decision notices, hearing/review timing, response timing, and remedy. "
+            "For each answer, request the strongest upload-ready evidence anchor: filename or source title, date, sender/author, "
+            "and the fact the item proves."
+        ),
+        "intake_questions": [
+            f"What happened, in chronological order, and what are the strongest evidence anchors from {upload_focus} plus any case-specific notices, emails, texts, or grievance records?",
+            f"Who made or communicated each key decision, what were their titles or roles, and which uploaded or repository documents identify them?",
+            f"What grievance, hearing, appeal, accommodation, notice, or adverse-action procedures from {prompt_focus} were provided, requested, denied, ignored, or applied to you?",
+            "What files should be uploaded first to support this complaint, and for each file what date, sender/source, and factual proposition does it prove?",
+            "What harm did this cause and what remedy or court relief are you requesting?",
+        ],
+        "blocker_objectives": [
+            "exact_dates",
+            "staff_names_titles",
+            "hearing_request_timing",
+            "response_dates",
+            "causation_sequence",
+            "adverse_action_details",
+        ],
+        "extraction_targets": [
+            "timeline_anchors",
+            "actor_role_mapping",
+            "hearing_process",
+            "response_timeline",
+            "retaliation_sequence",
+            "document_identifier_mapping",
+            "adverse_action_details",
+        ],
+        "workflow_phase_priorities": [
+            "intake_questioning",
+            "graph_analysis",
+            "document_generation",
+        ],
+        "evidence_upload_prompt": (
+            "Upload the strongest case-specific files first: notice letters, grievance/hearing requests, review decisions, "
+            "emails, text messages, PDFs, images, and accommodation records. Preserve filename, source, date, sender, and a short "
+            "statement of what each item proves."
+        ),
+        "mediated_evidence_evaluation_prompt": (
+            "The mediator should evaluate uploaded evidence for chronology, actor identity, policy/procedure anchors, "
+            "causation sequence, and legal-element support before drafting."
+        ),
+        "document_generation_prompt": (
+            "Carry uploaded evidence and repository-grounded policy anchors into the knowledge graph, dependency analysis, "
+            "factual allegations, exhibits, and requested relief."
+        ),
+    }
+    mediator_evidence_packets: List[Dict[str, Any]] = []
+    for candidate in upload_candidates[: max(1, int(top_k))]:
+        path = Path(str(candidate.get("source_path") or ""))
+        try:
+            document_text = path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        mediator_evidence_packets.append(
+            {
+                "document_text": _build_seed_packet_text(candidate, document_text),
+                "document_label": str(candidate.get("title") or path.name),
+                "source_path": str(path),
+                "filename": path.name,
+                "mime_type": "text/plain",
+                "metadata": {
+                    "relative_path": str(candidate.get("relative_path") or ""),
+                    "source_type": "repository_grounding",
+                    "grounding_mode": "repository_fallback",
+                    "complaint_type": complaint_type,
+                    "category": category,
+                    "authority_hints": [str(item) for item in list(authority_hints or []) if str(item).strip()],
+                },
+            }
+        )
+
+    return {
+        "search_summary": {
+            "requested_search_mode": "repository_fallback",
+            "effective_search_mode": "repository_fallback",
+            "fallback_note": "HACC research engine unavailable; grounded the complaint flow using repository evidence files.",
+        },
+        "upload_candidates": upload_candidates,
+        "synthetic_prompts": synthetic_prompts,
+        "mediator_evidence_packets": mediator_evidence_packets,
+    }
 
 
 def _load_hacc_engine() -> Any:
@@ -745,6 +1002,42 @@ def _condense_evidence_snippet(text: str, max_chars: int = 220) -> str:
     return cleaned[: max_chars - 3].rstrip(" ,;:.") + "..."
 
 
+def _supports_reasonable_accommodation_path(
+    *,
+    theory_labels: Optional[Sequence[str]],
+    protected_bases: Optional[Sequence[str]],
+    anchor_sections: Optional[Sequence[str]],
+    anchor_terms: Optional[Sequence[str]],
+) -> bool:
+    label_set = {str(value or "").strip().lower() for value in list(theory_labels or []) if str(value or "").strip()}
+    protected_set = {str(value or "").strip().lower() for value in list(protected_bases or []) if str(value or "").strip()}
+    section_set = {str(value or "").strip().lower() for value in list(anchor_sections or []) if str(value or "").strip()}
+    term_set = {str(value or "").strip().lower() for value in list(anchor_terms or []) if str(value or "").strip()}
+    return bool(
+        'reasonable_accommodation' in label_set
+        or 'disability_discrimination' in label_set
+        or 'disability' in protected_set
+        or 'reasonable_accommodation' in section_set
+        or any('reasonable accommodation' in term or 'disability' in term for term in term_set)
+    )
+
+
+def _is_reasonable_accommodation_focused_text(text: str) -> bool:
+    lowered = _normalize_match_text(text).lower()
+    if not lowered:
+        return False
+    return any(
+        token in lowered
+        for token in (
+            'reasonable accommodation',
+            'accommodation request',
+            'disability-related need',
+            'person with a disability',
+            'disability',
+        )
+    )
+
+
 def _build_seed_packet_text(candidate: Dict[str, Any], resolved_text: str, *, max_chars: int = 6000) -> str:
     cleaned = _normalize_match_text(resolved_text)
     if not cleaned:
@@ -781,6 +1074,240 @@ def _build_repository_candidates(
             }
         )
     return simplified
+
+
+def _unique_strings(values: Sequence[Any]) -> List[str]:
+    deduped: List[str] = []
+    seen = set()
+    for value in values:
+        text = " ".join(str(value or "").split()).strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(text)
+    return deduped
+
+
+def _render_anchor_sections(anchor_sections: Sequence[str]) -> str:
+    labels = [str(item).replace("_", " ").strip() for item in anchor_sections if str(item).strip()]
+    if not labels:
+        return "notice, chronology, and decision-making"
+    if len(labels) == 1:
+        return labels[0]
+    if len(labels) == 2:
+        return f"{labels[0]} and {labels[1]}"
+    return f"{', '.join(labels[:-1])}, and {labels[-1]}"
+
+
+def _build_upload_question_for_candidate(
+    candidate: Dict[str, Any],
+    *,
+    claim_type: str,
+    query: str,
+) -> str:
+    title = str(candidate.get("title") or candidate.get("relative_path") or "this file").strip()
+    snippet = _condense_evidence_snippet(str(candidate.get("snippet") or ""), max_chars=200)
+    prompt = (
+        f"Please upload {title} if you have it, and explain when it was created, who sent or received it, "
+        f"and how it supports your {claim_type} complaint about '{query}'."
+    )
+    if snippet:
+        prompt += f" Focus on the most relevant language: {snippet}"
+    return prompt
+
+
+def _build_fallback_synthetic_prompts(
+    *,
+    complaint_type: str,
+    description: str,
+    query: str,
+    evidence_summary: str,
+    anchor_sections: Sequence[str],
+    anchor_passages: Sequence[Dict[str, Any]],
+    repository_candidates: Sequence[Dict[str, Any]],
+) -> Dict[str, Any]:
+    rendered_anchor_sections = _render_anchor_sections(anchor_sections)
+    supports_reasonable_accommodation = _supports_reasonable_accommodation_path(
+        theory_labels=None,
+        protected_bases=None,
+        anchor_sections=anchor_sections,
+        anchor_terms=None,
+    )
+    upload_questions = [
+        _build_upload_question_for_candidate(candidate, claim_type=complaint_type, query=query)
+        for candidate in list(repository_candidates or [])[:3]
+        if isinstance(candidate, dict)
+    ]
+    anchor_excerpt = ""
+    for passage in anchor_passages:
+        excerpt = _condense_evidence_snippet(str((passage or {}).get("snippet") or ""), max_chars=220)
+        if excerpt:
+            anchor_excerpt = excerpt
+            break
+
+    intake_questions = [
+        "What happened, and what adverse action did HACC take or threaten to take?",
+        "When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?",
+        "Who at HACC made, communicated, or carried out each decision, and what were their names or titles if known?",
+    ]
+    if "grievance_hearing" in anchor_sections:
+        intake_questions.append(
+            "Did you request a grievance hearing or informal review, when did you request it, and how did HACC respond?"
+        )
+    if "appeal_rights" in anchor_sections:
+        intake_questions.append(
+            "What written notice, appeal rights, or review decision did HACC provide, and when did you receive it?"
+        )
+    if "reasonable_accommodation" in anchor_sections:
+        intake_questions.append(
+            "What accommodation did you request, when did you request it, and who handled or denied it?"
+        )
+    if "selection_criteria" in anchor_sections:
+        intake_questions.append(
+            "What policy, scoring, screening, or eligibility documents describe the criteria HACC used in your case?"
+        )
+    if upload_questions:
+        intake_questions.append(
+            "Which of the supporting records can you upload now, and which ones still need to be requested from HACC or another source?"
+        )
+
+    blocker_objectives = ["exact_dates", "staff_names_titles", "documents"]
+    extraction_targets = ["timeline_anchors", "actor_role_mapping", "uploaded_document_inventory"]
+    for section in anchor_sections:
+        for objective in ANCHOR_SECTION_OBJECTIVE_HINTS.get(str(section), ()):
+            if objective not in blocker_objectives:
+                blocker_objectives.append(objective)
+    if "response_dates" in blocker_objectives and "response_timeline" not in extraction_targets:
+        extraction_targets.append("response_timeline")
+    if "hearing_request_timing" in blocker_objectives and "hearing_process" not in extraction_targets:
+        extraction_targets.append("hearing_process")
+    if "adverse_action_details" in blocker_objectives and "adverse_action_details" not in extraction_targets:
+        extraction_targets.append("adverse_action_details")
+
+    complaint_chatbot_prompt = (
+        f"Ground the complaint chatbot in uploaded evidence and repository evidence for a {complaint_type} complaint. "
+        f"Use the evidence to clarify {rendered_anchor_sections}, identify missing case-specific facts, and avoid drafting unsupported allegations."
+    )
+    if not supports_reasonable_accommodation:
+        complaint_chatbot_prompt += " Do not infer a reasonable-accommodation claim unless the complainant or uploaded evidence confirms an actual accommodation request."
+    if evidence_summary:
+        complaint_chatbot_prompt += f" Current evidence summary: {evidence_summary}"
+
+    mediator_prompt = (
+        "When evidence is uploaded, evaluate what it proves, which actors and dates it anchors, "
+        "which claim elements it supports, and what follow-up evidence is still missing before drafting."
+    )
+    if not supports_reasonable_accommodation:
+        mediator_prompt += " Do not treat accommodation language in policy excerpts as a live claim theory unless case-specific evidence confirms it."
+    if anchor_excerpt:
+        mediator_prompt += f" Representative grounding excerpt: {anchor_excerpt}"
+
+    document_generation_prompt = (
+        "Promote uploaded evidence, chronology anchors, actor identities, and exhibit references directly into the knowledge graph, "
+        "claim-support analysis, and formal complaint sections so the final draft is source-anchored."
+    )
+    if not supports_reasonable_accommodation:
+        document_generation_prompt += " Keep the draft tied to the supported theory and avoid adding accommodation allegations unless uploaded evidence supports them."
+
+    return {
+        "complaint_chatbot_prompt": complaint_chatbot_prompt,
+        "intake_questionnaire_prompt": (
+            f"Ask targeted intake questions that turn repository-grounded evidence about {rendered_anchor_sections} "
+            "into case-specific facts, dates, actors, and exhibits."
+        ),
+        "mediator_evidence_review_prompt": mediator_prompt,
+        "document_generation_prompt": document_generation_prompt,
+        "intake_questions": _unique_strings(intake_questions)[:8],
+        "evidence_upload_questions": _unique_strings(upload_questions)[:6],
+        "mediator_questions": _unique_strings(
+            [
+                "Which uploaded records directly support each claim element, and which elements remain weak or unsupported?",
+                "What dates, decision-makers, or response events can be extracted from the uploaded evidence into the chronology?",
+                "Which uploaded records should become exhibits in the complaint, and what fact does each exhibit support?",
+            ]
+        ),
+        "blocker_objectives": _unique_strings(blocker_objectives),
+        "extraction_targets": _unique_strings(extraction_targets + ["exhibit_mapping", "claim_support_mapping"]),
+        "workflow_phase_priorities": list(WORKFLOW_PHASE_PRIORITIES),
+    }
+
+
+def _merge_synthetic_prompts(
+    *,
+    complaint_type: str,
+    description: str,
+    query: str,
+    evidence_summary: str,
+    anchor_sections: Sequence[str],
+    anchor_passages: Sequence[Dict[str, Any]],
+    repository_candidates: Sequence[Dict[str, Any]],
+    existing_prompts: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    merged = dict(existing_prompts or {})
+    upload_prompt_aliases = (
+        "evidence_upload_prompt",
+        "production_upload_prompt",
+    )
+    mediator_review_aliases = (
+        "mediator_evidence_review_prompt",
+        "mediator_evaluation_prompt",
+    )
+    for canonical_key, aliases in (
+        ("evidence_upload_prompt", upload_prompt_aliases),
+        ("mediator_evidence_review_prompt", mediator_review_aliases),
+    ):
+        if str(merged.get(canonical_key) or "").strip():
+            continue
+        for alias in aliases:
+            value = str(merged.get(alias) or "").strip()
+            if value:
+                merged[canonical_key] = value
+                break
+    if not str(merged.get("evidence_upload_prompt") or "").strip():
+        evidence_upload_prompts = list(merged.get("evidence_upload_prompts") or [])
+        first_prompt = next(
+            (
+                str((prompt or {}).get("text") or "").strip()
+                for prompt in evidence_upload_prompts
+                if isinstance(prompt, dict) and str((prompt or {}).get("text") or "").strip()
+            ),
+            "",
+        )
+        if first_prompt:
+            merged["evidence_upload_prompt"] = first_prompt
+    fallback = _build_fallback_synthetic_prompts(
+        complaint_type=complaint_type,
+        description=description,
+        query=query,
+        evidence_summary=evidence_summary,
+        anchor_sections=anchor_sections,
+        anchor_passages=anchor_passages,
+        repository_candidates=repository_candidates,
+    )
+    for key in (
+        "complaint_chatbot_prompt",
+        "intake_questionnaire_prompt",
+        "evidence_upload_prompt",
+        "mediator_evidence_review_prompt",
+        "document_generation_prompt",
+    ):
+        if not str(merged.get(key) or "").strip():
+            merged[key] = fallback.get(key, "")
+    for key in (
+        "intake_questions",
+        "evidence_upload_questions",
+        "mediator_questions",
+        "blocker_objectives",
+        "extraction_targets",
+        "workflow_phase_priorities",
+    ):
+        merged[key] = _unique_strings(
+            list(merged.get(key) or []) + list(fallback.get(key) or [])
+        )
+    return merged
 
 
 def _build_seed_mediator_packets(
@@ -840,6 +1367,7 @@ def _build_complainant_story_facts(
     anchor_passages: Sequence[Dict[str, Any]],
     hits: Sequence[Dict[str, Any]],
     repository_candidates: Sequence[Dict[str, Any]],
+    allow_reasonable_accommodation_facts: bool = True,
     max_facts: int = 6,
 ) -> List[str]:
     facts: List[str] = []
@@ -855,6 +1383,8 @@ def _build_complainant_story_facts(
         labels = ", ".join(list(passage.get("section_labels") or []))
         if not snippet:
             continue
+        if not allow_reasonable_accommodation_facts and _is_reasonable_accommodation_focused_text(snippet):
+            continue
         if labels:
             facts.append(f"Anchor from {title} [{labels}]: {snippet}")
         else:
@@ -864,12 +1394,16 @@ def _build_complainant_story_facts(
         title = str(candidate.get("title") or candidate.get("relative_path") or "repository evidence").strip()
         snippet = _condense_evidence_snippet(str(candidate.get("snippet") or ""), max_chars=220)
         if snippet:
+            if not allow_reasonable_accommodation_facts and _is_reasonable_accommodation_focused_text(snippet):
+                continue
             facts.append(f"Repository evidence {title}: {snippet}")
 
     for hit in list(hits or [])[:2]:
         title = str(hit.get("title") or hit.get("document_id") or "supporting evidence").strip()
         snippet = _condense_evidence_snippet(str(hit.get("snippet") or ""), max_chars=220)
         if snippet:
+            if not allow_reasonable_accommodation_facts and _is_reasonable_accommodation_focused_text(snippet):
+                continue
             facts.append(f"Supporting document {title}: {snippet}")
 
     deduped: List[str] = []
@@ -911,6 +1445,24 @@ def build_hacc_evidence_seed(
         return None
 
     lead = hits[0]
+    anchor_passages = _extract_anchor_passages(hits, anchor_terms=anchor_terms)
+    anchor_sections = _summarize_section_labels(anchor_passages)
+    supports_reasonable_accommodation = _supports_reasonable_accommodation_path(
+        theory_labels=theory_labels,
+        protected_bases=protected_bases,
+        anchor_sections=anchor_sections,
+        anchor_terms=anchor_terms,
+    )
+    if not supports_reasonable_accommodation:
+        non_accommodation_hits = [
+            hit for hit in hits
+            if not _is_reasonable_accommodation_focused_text(str(hit.get("snippet") or ""))
+        ]
+        if non_accommodation_hits:
+            hits = non_accommodation_hits
+            lead = hits[0]
+            anchor_passages = _extract_anchor_passages(hits, anchor_terms=anchor_terms)
+            anchor_sections = _summarize_section_labels(anchor_passages)
     evidence_summary = " ".join(
         part
         for part in [
@@ -921,10 +1473,17 @@ def build_hacc_evidence_seed(
     ).strip()
     source_paths = [hit["source_path"] for hit in hits if hit.get("source_path")]
     evidence_titles = [hit["title"] for hit in hits if hit.get("title")]
-    anchor_passages = _extract_anchor_passages(hits, anchor_terms=anchor_terms)
-    anchor_sections = _summarize_section_labels(anchor_passages)
     repository_candidates = _build_repository_candidates(grounding_bundle)
-    synthetic_prompts = dict((grounding_bundle or {}).get("synthetic_prompts") or {})
+    synthetic_prompts = _merge_synthetic_prompts(
+        complaint_type=complaint_type,
+        description=description,
+        query=query,
+        evidence_summary=evidence_summary,
+        anchor_sections=anchor_sections,
+        anchor_passages=anchor_passages,
+        repository_candidates=repository_candidates,
+        existing_prompts=dict((grounding_bundle or {}).get("synthetic_prompts") or {}),
+    )
     mediator_evidence_packets = list((grounding_bundle or {}).get("mediator_evidence_packets") or [])
     complainant_story_facts = _build_complainant_story_facts(
         description=description,
@@ -932,7 +1491,9 @@ def build_hacc_evidence_seed(
         anchor_passages=anchor_passages,
         hits=hits,
         repository_candidates=repository_candidates,
+        allow_reasonable_accommodation_facts=supports_reasonable_accommodation,
     )
+    search_summary = dict((grounding_bundle or {}).get("search_summary") or search_payload.get("search_summary") or {})
 
     return {
         "template_id": f"hacc::{complaint_type}::{query[:40]}",
@@ -958,6 +1519,7 @@ def build_hacc_evidence_seed(
             "synthetic_prompts": synthetic_prompts,
             "mediator_evidence_packets": mediator_evidence_packets,
             "complainant_story_facts": complainant_story_facts,
+            "search_summary": search_summary,
             "grounding_note": "Use the evidence as factual grounding and identify missing case-specific facts during questioning.",
         },
         "keywords": [],
@@ -982,32 +1544,49 @@ def build_hacc_evidence_seeds(
         engine = engine_cls(repo_root=repo_root) if repo_root else engine_cls()
     except Exception as exc:
         logger.warning("Unable to initialize HACCResearchEngine for seed generation: %s", exc)
-        return []
+        engine = None
 
     specs = get_hacc_query_specs(preset=preset, query_specs=query_specs)
     seeds: List[Dict[str, Any]] = []
     for spec in specs:
         query = str(spec.get("query") or "")
         complaint_type = str(spec.get("type") or "civil_rights_violation")
-        payload = engine.search(
-            query,
-            top_k=search_top_k,
-            use_vector=use_vector,
-            search_mode=search_mode,
-        )
-        grounding_bundle = engine.build_grounding_bundle(
-            query,
-            top_k=max(1, search_top_k),
-            claim_type=complaint_type,
-            search_mode=search_mode,
-            use_vector=use_vector,
-        )
-        if isinstance(grounding_bundle, dict):
-            grounding_bundle["mediator_evidence_packets"] = _build_seed_mediator_packets(
-                engine,
-                grounding_bundle,
-                max_documents=max(1, search_top_k),
+        if engine is not None:
+            payload = engine.search(
+                query,
+                top_k=search_top_k,
+                use_vector=use_vector,
+                search_mode=search_mode,
             )
+            grounding_bundle = engine.build_grounding_bundle(
+                query,
+                top_k=max(1, search_top_k),
+                claim_type=complaint_type,
+                search_mode=search_mode,
+                use_vector=use_vector,
+            )
+            if isinstance(grounding_bundle, dict):
+                grounding_bundle["mediator_evidence_packets"] = _build_seed_mediator_packets(
+                    engine,
+                    grounding_bundle,
+                    max_documents=max(1, search_top_k),
+                )
+        else:
+            grounding_bundle = _build_repository_grounding_bundle(
+                query=query,
+                complaint_type=complaint_type,
+                description=str(spec.get("description") or "Evidence-backed complaint seed from repository grounding"),
+                category=str(spec.get("category") or "civil_rights"),
+                anchor_terms=spec.get("anchor_terms"),
+                theory_labels=spec.get("theory_labels"),
+                protected_bases=spec.get("protected_bases"),
+                authority_hints=spec.get("authority_hints"),
+                top_k=max(1, search_top_k),
+            )
+            payload = {
+                "results": list(grounding_bundle.get("upload_candidates") or []),
+                "search_summary": dict(grounding_bundle.get("search_summary") or {}),
+            }
         seed = build_hacc_evidence_seed(
             payload,
             query=query,
