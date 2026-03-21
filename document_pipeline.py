@@ -5556,17 +5556,22 @@ class FormalComplaintDocumentBuilder:
             if not isinstance(record, dict):
                 continue
             record_claim_type = str(record.get("claim_type") or "").strip().lower()
-            if normalized_claim_type and record_claim_type and record_claim_type != normalized_claim_type:
-                continue
-
             metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+            record_claim_types = _normalize_identifier_list(
+                ([record.get("claim_type")] if record.get("claim_type") else [])
+                + list(metadata.get("claim_types") or [])
+            )
+            if normalized_claim_type and record_claim_types:
+                normalized_record_claim_types = {str(value or "").strip().lower() for value in record_claim_types if str(value or "").strip()}
+                if normalized_claim_type not in normalized_record_claim_types:
+                    continue
             evidence_id = record.get("id")
             source_artifact_ids = _normalize_identifier_list(
                 [record.get("cid"), evidence_id]
                 + list(record.get("source_artifact_ids") or [])
                 + ([record.get("source_artifact_id")] if record.get("source_artifact_id") else [])
             )
-            claim_types = _normalize_identifier_list([record.get("claim_type")] if record.get("claim_type") else [])
+            claim_types = record_claim_types
             fact_rows = _safe_call(self.mediator, "get_evidence_facts", evidence_id=evidence_id) or []
 
             for row in _coerce_list(fact_rows):
@@ -5672,11 +5677,15 @@ class FormalComplaintDocumentBuilder:
                 required_support_kinds=["evidence", "authority"],
             ) or {}
             overview_claim = overview.get("claims", {}).get(claim_type, {}) if isinstance(overview, dict) else {}
-            related_exhibits = [
-                exhibit for exhibit in exhibits if not exhibit.get("claim_type") or exhibit.get("claim_type") == claim_type
-            ]
             claim_fact_entries = self._collect_claim_fact_entries(claim_type, user_id, support_claim)
+            related_exhibits = self._select_related_exhibits_for_claim(
+                claim_type=claim_type,
+                exhibits=exhibits,
+                claim_fact_entries=claim_fact_entries,
+            )
             claim_fact_entries = self._annotate_entries_with_exhibits(claim_fact_entries, related_exhibits)
+            claim_fact_entries = self._order_claim_fact_entries(claim_fact_entries)
+            claim_fact_entries = self._prune_redundant_claim_fact_entries(claim_fact_entries)
             claim_facts = [str(entry.get("text") or "").strip() for entry in claim_fact_entries if str(entry.get("text") or "").strip()]
             source_context = self._extract_support_source_context_counts(support_claim)
             claims.append(
@@ -5720,6 +5729,118 @@ class FormalComplaintDocumentBuilder:
             )
         claims.sort(key=self._claim_order_score)
         return claims
+
+    def _order_claim_fact_entries(self, entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        def _entry_score(entry: Dict[str, Any]) -> tuple[int, int, int, str]:
+            if not isinstance(entry, dict):
+                return (9, 9, 9, "")
+            text = str(entry.get("text") or "").strip()
+            lowered = text.lower()
+            source_kind = str(entry.get("source_kind") or "").strip().lower()
+            source_priority = {
+                "uploaded_evidence_fact": 0,
+                "claim_chronology_support": 1,
+                "claim_support_fact": 2,
+                "claim_support_link": 3,
+            }.get(source_kind, 8)
+            process_priority = 8
+            if "denial notice" in lowered or ("sent plaintiff" in lowered and "notice" in lowered):
+                process_priority = 0
+            elif "grievance request" in lowered or ("submitted" in lowered and "grievance" in lowered):
+                process_priority = 1
+            elif "review decision" in lowered or ("issued" in lowered and "review decision" in lowered):
+                process_priority = 2
+            elif "notice to the applicant requires" in lowered:
+                process_priority = 3
+            elif "informal review requires" in lowered:
+                process_priority = 4
+            elif "element supported:" in lowered:
+                process_priority = 5
+            elif "requires written notice and an opportunity for informal review" in lowered:
+                process_priority = 6
+            elif "informal review for denial of assistance" in lowered:
+                process_priority = 7
+            return (
+                source_priority,
+                process_priority,
+                0 if _contains_date_anchor(text) else 1,
+                text,
+            )
+
+        return sorted(
+            [dict(entry) for entry in entries if isinstance(entry, dict)],
+            key=_entry_score,
+        )
+
+    def _prune_redundant_claim_fact_entries(self, entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        ordered_entries = [dict(entry) for entry in entries if isinstance(entry, dict)]
+        if not ordered_entries:
+            return []
+
+        has_notice_requirement = any(
+            "notice to the applicant requires" in str(entry.get("text") or "").lower()
+            for entry in ordered_entries
+        )
+        has_review_requirement = any(
+            "scheduling an informal review requires" in str(entry.get("text") or "").lower()
+            for entry in ordered_entries
+        )
+        has_authority_notice_review = any(
+            "requires written notice and an opportunity for informal review" in str(entry.get("text") or "").lower()
+            for entry in ordered_entries
+        )
+
+        pruned: List[Dict[str, Any]] = []
+        for entry in ordered_entries:
+            text = str(entry.get("text") or "").strip()
+            lowered = text.lower()
+            if lowered.startswith("element supported: required notice and review process"):
+                if has_notice_requirement and has_review_requirement:
+                    continue
+            if "informal review for denial of assistance" in lowered:
+                if has_authority_notice_review:
+                    continue
+            pruned.append(entry)
+        return pruned
+
+    def _select_related_exhibits_for_claim(
+        self,
+        *,
+        claim_type: str,
+        exhibits: List[Dict[str, Any]],
+        claim_fact_entries: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        artifact_ids = {
+            str(artifact_id)
+            for entry in _coerce_list(claim_fact_entries)
+            if isinstance(entry, dict)
+            for artifact_id in _coerce_list(entry.get("source_artifact_ids"))
+            if str(artifact_id or "").strip()
+        }
+        related: List[Dict[str, Any]] = []
+        seen_keys = set()
+        for exhibit in exhibits:
+            if not isinstance(exhibit, dict):
+                continue
+            exhibit_claim_type = str(exhibit.get("claim_type") or "").strip()
+            exhibit_source_ref = str(exhibit.get("source_ref") or "").strip()
+            include = (
+                not exhibit_claim_type
+                or exhibit_claim_type == claim_type
+                or (exhibit_source_ref and exhibit_source_ref in artifact_ids)
+            )
+            if not include:
+                continue
+            key = (
+                str(exhibit.get("label") or ""),
+                str(exhibit.get("source_ref") or ""),
+                str(exhibit.get("kind") or ""),
+            )
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            related.append(exhibit)
+        return related
 
     def _claim_order_score(self, claim: Dict[str, Any]) -> tuple[int, int, int, str]:
         if not isinstance(claim, dict):
@@ -5973,7 +6094,135 @@ class FormalComplaintDocumentBuilder:
             if not entry.get("source_kind"):
                 entry["source_kind"] = "claim_chronology_support" if text in chronology_support else "claim_support_fact"
             result.append(entry)
-        return result
+        return self._enrich_claim_support_entries(result, entries)
+
+    def _enrich_claim_support_entries(
+        self,
+        entries: List[Dict[str, Any]],
+        source_entries: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        enriched: List[Dict[str, Any]] = []
+        evidence_pool = [
+            dict(entry)
+            for entry in source_entries
+            if isinstance(entry, dict) and _coerce_list(entry.get("fact_ids"))
+        ]
+        for entry in entries:
+            current = dict(entry) if isinstance(entry, dict) else {}
+            if current.get("fact_ids"):
+                enriched.append(current)
+                continue
+            text = str(current.get("text") or "").strip()
+            if not text:
+                enriched.append(current)
+                continue
+            matched_entries = self._match_document_source_entries(text, evidence_pool, limit=4)
+            if "informal review" in text.lower() or "required notice and review process" in text.lower():
+                matched_entries = self._enrich_review_process_fact_matches(
+                    matched_entries=matched_entries,
+                    source_entries=evidence_pool,
+                )
+                matched_entries = self._narrow_claim_process_fact_matches(
+                    text=text,
+                    matched_entries=matched_entries,
+                )
+            current["fact_ids"] = _normalize_identifier_list(
+                [
+                    fact_id
+                    for matched in matched_entries
+                    for fact_id in _coerce_list(matched.get("fact_ids"))
+                ]
+            )
+            current["source_artifact_ids"] = _normalize_identifier_list(
+                list(current.get("source_artifact_ids") or [])
+                + [
+                    artifact_id
+                    for matched in matched_entries
+                    for artifact_id in _coerce_list(matched.get("source_artifact_ids"))
+                ]
+            )
+            current["claim_types"] = _normalize_identifier_list(
+                list(current.get("claim_types") or [])
+                + [
+                    claim_type
+                    for matched in matched_entries
+                    for claim_type in _coerce_list(matched.get("claim_types"))
+                ]
+            )
+            current["claim_element_ids"] = _normalize_identifier_list(
+                list(current.get("claim_element_ids") or [])
+                + [
+                    claim_element_id
+                    for matched in matched_entries
+                    for claim_element_id in _coerce_list(matched.get("claim_element_ids"))
+                ]
+            )
+            current["support_trace_ids"] = _normalize_identifier_list(
+                list(current.get("support_trace_ids") or [])
+                + [
+                    trace_id
+                    for matched in matched_entries
+                    for trace_id in _coerce_list(matched.get("support_trace_ids"))
+                ]
+            )
+            enriched.append(current)
+        return enriched
+
+    def _narrow_claim_process_fact_matches(
+        self,
+        *,
+        text: str,
+        matched_entries: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        text_lower = str(text or "").lower()
+
+        def _entry_category(entry: Dict[str, Any]) -> str:
+            candidate = str(entry.get("text") or "").lower()
+            if not _coerce_list(entry.get("fact_ids")):
+                return ""
+            if "notice to the applicant requires" in candidate or (
+                "written notice" in candidate and "decision denying assistance" in candidate
+            ):
+                return "notice_requirement"
+            if "informal review requires" in candidate or (
+                "require" in candidate and "review" in candidate
+            ):
+                return "review_requirement"
+            if "grievance request" in candidate or ("submitted" in candidate and "grievance" in candidate):
+                return "review_request"
+            if "review decision" in candidate or ("issued" in candidate and "review decision" in candidate):
+                return "review_decision"
+            if "denial notice" in candidate or ("sent plaintiff" in candidate and "notice" in candidate):
+                return "notice_event"
+            return ""
+
+        desired_categories: List[str]
+        if "required notice and review process" in text_lower:
+            desired_categories = ["notice_requirement", "review_requirement", "review_request"]
+        elif "requires written notice and an opportunity for informal review" in text_lower:
+            desired_categories = ["notice_requirement", "review_requirement"]
+        elif "informal review for denial of assistance" in text_lower:
+            desired_categories = ["review_requirement", "review_request", "review_decision"]
+        else:
+            desired_categories = ["notice_requirement", "review_requirement", "review_request"]
+
+        selected: List[Dict[str, Any]] = []
+        seen = set()
+        for category in desired_categories:
+            for entry in matched_entries:
+                entry_category = _entry_category(entry)
+                if entry_category != category:
+                    continue
+                key = (
+                    tuple(_normalize_identifier_list(entry.get("fact_ids"))),
+                    str(entry.get("text") or ""),
+                )
+                if key in seen:
+                    continue
+                selected.append(dict(entry))
+                seen.add(key)
+                break
+        return selected or matched_entries
 
     def _build_claim_chronology_support(self, *, claim_type: str, claim_name: str, limit: int = 2) -> List[str]:
         phase_manager = getattr(self.mediator, "phase_manager", None)
@@ -8513,7 +8762,7 @@ class FormalComplaintDocumentBuilder:
                 continue
             updated_entry = dict(entry)
             text = str(updated_entry.get("text") or "").strip()
-            exhibit = self._select_exhibit_for_line(text, exhibits)
+            exhibit = self._select_exhibit_for_entry(updated_entry, exhibits)
             if exhibit is None and index == 0 and exhibits:
                 exhibit = exhibits[0]
             updated_entry["text"] = self._append_exhibit_citation(text, exhibit)
@@ -8521,6 +8770,38 @@ class FormalComplaintDocumentBuilder:
                 updated_entry["exhibit_label"] = str(exhibit.get("label") or "").strip() or None
             annotated.append(updated_entry)
         return annotated
+
+    def _select_exhibit_for_entry(
+        self,
+        entry: Dict[str, Any],
+        exhibits: List[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        if not isinstance(entry, dict):
+            return None
+        source_kind = str(entry.get("source_kind") or "").strip().lower()
+        if source_kind in {"uploaded_evidence_fact", "claim_support_fact", "claim_chronology_support"}:
+            preferred = self._select_exhibit_by_kind(exhibits, "evidence")
+            if preferred is not None:
+                return preferred
+        if source_kind == "claim_support_link":
+            preferred = self._select_exhibit_by_kind(exhibits, "authority")
+            if preferred is not None:
+                return preferred
+        return self._select_exhibit_for_line(str(entry.get("text") or ""), exhibits)
+
+    def _select_exhibit_by_kind(
+        self,
+        exhibits: List[Dict[str, Any]],
+        kind: str,
+    ) -> Optional[Dict[str, Any]]:
+        normalized_kind = str(kind or "").strip().lower()
+        for exhibit in exhibits:
+            if not isinstance(exhibit, dict):
+                continue
+            exhibit_kind = str(exhibit.get("kind") or "").strip().lower()
+            if exhibit_kind == normalized_kind:
+                return exhibit
+        return None
 
     def _align_entries_to_lines(self, entries: Any, lines: List[str]) -> List[Dict[str, Any]]:
         normalized_lines = self._normalize_text_lines(lines)
@@ -8549,7 +8830,7 @@ class FormalComplaintDocumentBuilder:
         *,
         limit: int = 3,
     ) -> List[Dict[str, Any]]:
-        line_text = str(line or "").strip()
+        line_text = self._strip_exhibit_citation_suffix(str(line or "").strip())
         if not line_text:
             return []
         line_lower = line_text.lower()
@@ -8570,7 +8851,7 @@ class FormalComplaintDocumentBuilder:
         for entry in source_entries:
             if not isinstance(entry, dict):
                 continue
-            entry_text = str(entry.get("text") or "").strip()
+            entry_text = self._strip_exhibit_citation_suffix(str(entry.get("text") or "").strip())
             if not entry_text:
                 continue
             entry_lower = entry_text.lower()
@@ -8607,6 +8888,13 @@ class FormalComplaintDocumentBuilder:
                 limit=limit,
             )
         return selected_entries
+
+    def _strip_exhibit_citation_suffix(self, text: str) -> str:
+        candidate = str(text or "").strip()
+        if not candidate:
+            return ""
+        candidate = re.sub(r"\s*\(See Exhibit [^)]+\)\.?\s*$", "", candidate, flags=re.IGNORECASE)
+        return candidate.strip()
 
     def _augment_review_process_matches(
         self,

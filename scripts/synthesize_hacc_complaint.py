@@ -4104,6 +4104,82 @@ def _session_blocker_follow_up_items(session: Dict[str, Any]) -> List[Dict[str, 
     return [dict(item) for item in list(summary.get("blocking_items") or []) if isinstance(item, dict)]
 
 
+def _session_claim_support_packet_summary(session: Dict[str, Any]) -> Dict[str, Any]:
+    final_state = session.get("final_state") if isinstance(session.get("final_state"), dict) else {}
+    summary = final_state.get("claim_support_packet_summary")
+    return summary if isinstance(summary, dict) else {}
+
+
+def _graph_readiness_summary(session: Dict[str, Any]) -> Dict[str, Any]:
+    intake_case_file = _session_intake_case_file(session)
+    canonical_facts = [dict(item) for item in list(intake_case_file.get("canonical_facts") or []) if isinstance(item, dict)]
+    timeline_relations = [dict(item) for item in list(intake_case_file.get("timeline_relations") or []) if isinstance(item, dict)]
+    timeline_anchors = [dict(item) for item in list(intake_case_file.get("timeline_anchors") or []) if isinstance(item, dict)]
+    temporal_issue_registry = [dict(item) for item in list(intake_case_file.get("temporal_issue_registry") or []) if isinstance(item, dict)]
+    open_temporal_issues = [
+        item for item in temporal_issue_registry
+        if str(item.get("status") or item.get("current_resolution_status") or "").strip().lower() not in {"resolved", "closed"}
+    ]
+    blocker_summary = _synthesized_blocker_summary(session)
+    chronology_complete = bool(canonical_facts) and bool(timeline_relations or timeline_anchors)
+    return {
+        "chronology_complete": chronology_complete,
+        "canonical_fact_count": len(canonical_facts),
+        "timeline_relation_count": len(timeline_relations),
+        "timeline_anchor_count": len(timeline_anchors),
+        "open_temporal_issue_count": len(open_temporal_issues),
+        "blocking_item_count": int(blocker_summary.get("blocking_item_count") or 0),
+        "extraction_targets": [str(item) for item in list(blocker_summary.get("extraction_targets") or []) if str(item)],
+    }
+
+
+def _claim_support_summary(session: Dict[str, Any]) -> Dict[str, Any]:
+    stored = dict(_session_claim_support_packet_summary(session) or {})
+    intake_case_file = _session_intake_case_file(session)
+    candidate_claims = [dict(item) for item in list(intake_case_file.get("candidate_claims") or []) if isinstance(item, dict)]
+    blocker_summary = _synthesized_blocker_summary(session)
+    graph_summary = _graph_readiness_summary(session)
+    claim_count = int(stored.get("claim_count") or 0)
+    if claim_count <= 0:
+        claim_count = len(candidate_claims)
+    element_count = int(stored.get("element_count") or 0)
+    if element_count <= 0:
+        element_count = sum(len(list(claim.get("required_elements") or [])) for claim in candidate_claims)
+    status_counts = dict(stored.get("status_counts") or {})
+    if not status_counts and candidate_claims:
+        present = 0
+        missing = 0
+        for claim in candidate_claims:
+            for element in list(claim.get("required_elements") or []):
+                status = str((element or {}).get("status") or "").strip().lower()
+                if status in {"present", "supported", "complete"}:
+                    present += 1
+                else:
+                    missing += 1
+        status_counts = {
+            "supported": present,
+            "unsupported": missing,
+        }
+    proof_readiness_score = _safe_float(stored.get("proof_readiness_score"), 0.0)
+    if proof_readiness_score <= 0.0 and element_count > 0:
+        supported = int(_safe_float(status_counts.get("supported"), 0.0))
+        chronology_factor = 1.0 if graph_summary.get("chronology_complete") else 0.5
+        proof_readiness_score = min(1.0, (supported / max(1, element_count)) * chronology_factor)
+    return {
+        "claim_count": claim_count,
+        "element_count": element_count,
+        "status_counts": status_counts,
+        "proof_readiness_score": proof_readiness_score,
+        "blocking_item_count": int(blocker_summary.get("blocking_item_count") or 0),
+        "open_temporal_issue_count": int(graph_summary.get("open_temporal_issue_count") or 0),
+        "evidence_completion_ready": bool(
+            proof_readiness_score >= 0.85
+            and int(blocker_summary.get("blocking_item_count") or 0) == 0
+            and int(graph_summary.get("open_temporal_issue_count") or 0) == 0
+        ),
+    }
+
+
 def _synthesized_blocker_summary(session: Dict[str, Any]) -> Dict[str, Any]:
     summary = dict(_session_blocker_follow_up_summary(session) or {})
     items = _session_blocker_follow_up_items(session)
@@ -5490,6 +5566,9 @@ def main(argv: List[str] | None = None) -> int:
         ),
         "proposed_allegations": _proposed_allegations(seed, best_session, args.filing_forum),
         "anchored_chronology_summary": _anchored_chronology_lines(best_session, limit=3),
+        "graph_readiness_summary": _graph_readiness_summary(best_session),
+        "claim_support_summary": _claim_support_summary(best_session),
+        "drafting_readiness": _drafting_readiness_for_formalization(seed, best_session),
         "intake_blocker_summary": _synthesized_blocker_summary(best_session),
         "outstanding_intake_gaps": _outstanding_intake_gaps(best_session),
         "outstanding_intake_follow_up_questions": _outstanding_intake_follow_up_questions(

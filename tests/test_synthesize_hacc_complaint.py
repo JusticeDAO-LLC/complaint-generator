@@ -359,6 +359,51 @@ def test_drafting_readiness_accepts_timeline_anchors_without_explicit_relations(
     assert "graph_analysis_not_ready" not in readiness["blockers"]
 
 
+def test_graph_and_claim_support_summaries_use_session_case_file_when_packet_is_sparse():
+    session = {
+        "final_state": {
+            "intake_case_file": {
+                "candidate_claims": [
+                    {
+                        "claim_type": "retaliation",
+                        "required_elements": [
+                            {"element_id": "protected_activity", "status": "present"},
+                            {"element_id": "adverse_action", "status": "present"},
+                            {"element_id": "causation", "status": "missing"},
+                        ],
+                    }
+                ],
+                "canonical_facts": [{"fact_id": "fact:1", "text": "Notice sent"}],
+                "timeline_anchors": [{"fact_id": "fact:1", "start_date": "2025-01-05"}],
+                "timeline_relations": [],
+                "temporal_issue_registry": [{"issue_id": "temp:1", "status": "open"}],
+                "blocker_follow_up_summary": {
+                    "blocking_item_count": 1,
+                    "blocking_items": [
+                        {"blocker_id": "missing_retaliation_causation_sequence", "primary_objective": "causation_sequence"}
+                    ],
+                    "extraction_targets": ["retaliation_sequence"],
+                },
+            },
+            "claim_support_packet_summary": {},
+        }
+    }
+
+    graph_summary = MODULE._graph_readiness_summary(session)
+    claim_support = MODULE._claim_support_summary(session)
+
+    assert graph_summary["chronology_complete"] is True
+    assert graph_summary["canonical_fact_count"] == 1
+    assert graph_summary["timeline_anchor_count"] == 1
+    assert graph_summary["open_temporal_issue_count"] == 1
+    assert claim_support["claim_count"] == 1
+    assert claim_support["element_count"] == 3
+    assert claim_support["status_counts"]["supported"] == 2
+    assert claim_support["status_counts"]["unsupported"] == 1
+    assert claim_support["blocking_item_count"] == 1
+    assert claim_support["evidence_completion_ready"] is False
+
+
 def test_outstanding_intake_gaps_reflect_uncovered_intake_priority_summary():
     session = {
         "final_state": {

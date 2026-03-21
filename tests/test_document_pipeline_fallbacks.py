@@ -652,3 +652,231 @@ def test_chronology_allegation_inherits_full_dated_fact_chain():
     assert "fact-303-1" in chronology_paragraph["fact_ids"]
     assert "fact-303-2" in chronology_paragraph["fact_ids"]
     assert "fact-303-3" in chronology_paragraph["fact_ids"]
+
+
+def test_due_process_claim_support_entries_inherit_process_fact_ids():
+    builder = FormalComplaintDocumentBuilder(_HousingProcessMediator())
+
+    draft = builder.build_draft(
+        user_id="housing-process-user",
+        court_name="United States District Court",
+        district="Northern District of California",
+        county=None,
+        division=None,
+        court_header_override=None,
+        case_number=None,
+        lead_case_number=None,
+        related_case_number=None,
+        assigned_judge=None,
+        courtroom=None,
+        title_override=None,
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Housing Authority of the County of Contra Costa"],
+        requested_relief=None,
+        jury_demand=None,
+        jury_demand_text=None,
+        signer_name=None,
+        signer_title=None,
+        signer_firm=None,
+        signer_bar_number=None,
+        signer_contact=None,
+        additional_signers=None,
+        declarant_name=None,
+        service_method=None,
+        service_recipients=None,
+        service_recipient_details=None,
+        signature_date=None,
+        verification_date=None,
+        service_date=None,
+        affidavit_title=None,
+        affidavit_intro=None,
+        affidavit_facts=None,
+        affidavit_supporting_exhibits=None,
+        affidavit_include_complaint_exhibits=None,
+        affidavit_venue_lines=None,
+        affidavit_jurat=None,
+        affidavit_notary_block=None,
+    )
+
+    due_process_claim = next(
+        claim for claim in draft["claims_for_relief"] if claim.get("claim_type") == "due_process_failure"
+    )
+    process_entry = next(
+        entry
+        for entry in due_process_claim["supporting_fact_entries"]
+        if "Scheduling an Informal Review requires a written request for review" in entry["text"]
+    )
+    assert process_entry["fact_ids"]
+    assert process_entry["fact_ids"] == ["fact-303-5"]
+
+
+def test_due_process_claim_support_entries_prefer_evidence_exhibit_for_uploaded_facts():
+    builder = FormalComplaintDocumentBuilder(_HousingProcessMediator())
+
+    draft = builder.build_draft(
+        user_id="housing-process-user",
+        court_name="United States District Court",
+        district="Northern District of California",
+        county=None,
+        division=None,
+        court_header_override=None,
+        case_number=None,
+        lead_case_number=None,
+        related_case_number=None,
+        assigned_judge=None,
+        courtroom=None,
+        title_override=None,
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Housing Authority of the County of Contra Costa"],
+        requested_relief=None,
+        jury_demand=None,
+        jury_demand_text=None,
+        signer_name=None,
+        signer_title=None,
+        signer_firm=None,
+        signer_bar_number=None,
+        signer_contact=None,
+        additional_signers=None,
+        declarant_name=None,
+        service_method=None,
+        service_recipients=None,
+        service_recipient_details=None,
+        signature_date=None,
+        verification_date=None,
+        service_date=None,
+        affidavit_title=None,
+        affidavit_intro=None,
+        affidavit_facts=None,
+        affidavit_supporting_exhibits=None,
+        affidavit_include_complaint_exhibits=None,
+        affidavit_venue_lines=None,
+        affidavit_jurat=None,
+        affidavit_notary_block=None,
+    )
+
+    due_process_claim = next(
+        claim for claim in draft["claims_for_relief"] if claim.get("claim_type") == "due_process_failure"
+    )
+    uploaded_entry = next(
+        entry
+        for entry in due_process_claim["supporting_fact_entries"]
+        if "On March 3, 2026, HACC sent Plaintiff a written denial notice" in entry["text"]
+    )
+    authority_entry = next(
+        entry
+        for entry in due_process_claim["supporting_fact_entries"]
+        if "Requires written notice and an opportunity for informal review" in entry["text"]
+    )
+
+    assert uploaded_entry["exhibit_label"] == "Exhibit A"
+    assert "(See Exhibit A)" in uploaded_entry["text"]
+    assert authority_entry["exhibit_label"] == "Exhibit B"
+    assert "(See Exhibit B)" in authority_entry["text"]
+
+
+def test_due_process_claim_support_entries_lead_with_dated_evidence_sequence():
+    builder = FormalComplaintDocumentBuilder(_HousingProcessMediator())
+
+    draft = builder.build_draft(
+        user_id="housing-process-user",
+        court_name="United States District Court",
+        district="Northern District of California",
+        county=None,
+        division=None,
+        court_header_override=None,
+        case_number=None,
+        lead_case_number=None,
+        related_case_number=None,
+        assigned_judge=None,
+        courtroom=None,
+        title_override=None,
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Housing Authority of the County of Contra Costa"],
+        requested_relief=None,
+        jury_demand=None,
+        jury_demand_text=None,
+        signer_name=None,
+        signer_title=None,
+        signer_firm=None,
+        signer_bar_number=None,
+        signer_contact=None,
+        additional_signers=None,
+        declarant_name=None,
+        service_method=None,
+        service_recipients=None,
+        service_recipient_details=None,
+        signature_date=None,
+        verification_date=None,
+        service_date=None,
+        affidavit_title=None,
+        affidavit_intro=None,
+        affidavit_facts=None,
+        affidavit_supporting_exhibits=None,
+        affidavit_include_complaint_exhibits=None,
+        affidavit_venue_lines=None,
+        affidavit_jurat=None,
+        affidavit_notary_block=None,
+    )
+
+    due_process_claim = next(
+        claim for claim in draft["claims_for_relief"] if claim.get("claim_type") == "due_process_failure"
+    )
+    opening_texts = [entry["text"] for entry in due_process_claim["supporting_fact_entries"][:3]]
+
+    assert "On March 3, 2026, HACC sent Plaintiff a written denial notice" in opening_texts[0]
+    assert "On March 4, 2026, Plaintiff submitted a grievance request" in opening_texts[1]
+    assert "On March 8, 2026, HACC hearing officer Maria Lopez issued the review decision" in opening_texts[2]
+
+
+def test_due_process_claim_support_entries_prune_redundant_abstract_rows():
+    builder = FormalComplaintDocumentBuilder(_HousingProcessMediator())
+
+    draft = builder.build_draft(
+        user_id="housing-process-user",
+        court_name="United States District Court",
+        district="Northern District of California",
+        county=None,
+        division=None,
+        court_header_override=None,
+        case_number=None,
+        lead_case_number=None,
+        related_case_number=None,
+        assigned_judge=None,
+        courtroom=None,
+        title_override=None,
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Housing Authority of the County of Contra Costa"],
+        requested_relief=None,
+        jury_demand=None,
+        jury_demand_text=None,
+        signer_name=None,
+        signer_title=None,
+        signer_firm=None,
+        signer_bar_number=None,
+        signer_contact=None,
+        additional_signers=None,
+        declarant_name=None,
+        service_method=None,
+        service_recipients=None,
+        service_recipient_details=None,
+        signature_date=None,
+        verification_date=None,
+        service_date=None,
+        affidavit_title=None,
+        affidavit_intro=None,
+        affidavit_facts=None,
+        affidavit_supporting_exhibits=None,
+        affidavit_include_complaint_exhibits=None,
+        affidavit_venue_lines=None,
+        affidavit_jurat=None,
+        affidavit_notary_block=None,
+    )
+
+    due_process_claim = next(
+        claim for claim in draft["claims_for_relief"] if claim.get("claim_type") == "due_process_failure"
+    )
+    texts = [entry["text"] for entry in due_process_claim["supporting_fact_entries"]]
+
+    assert not any(text.startswith("Element supported: Required notice and review process") for text in texts)
+    assert not any("Informal review for denial of assistance" in text for text in texts)
+    assert any("Requires written notice and an opportunity for informal review" in text for text in texts)
