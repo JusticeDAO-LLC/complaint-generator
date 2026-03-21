@@ -170,64 +170,319 @@ class Mediator:
 			)
 			for candidate in normalized_candidates
 		]
-		scored_candidates.sort(
-			key=lambda candidate: (
+		uncovered_objectives = {
+			str(value).strip().lower()
+			for value in (
+				gap_context.get('intake_uncovered_objectives')
+				or gap_context.get('intake_expected_objectives')
+				or []
+			)
+			if str(value).strip()
+		}
+		weak_claim_types = {
+			str(value).strip().lower()
+			for value in (gap_context.get('weak_claim_types') or [])
+			if str(value).strip()
+		}
+		weak_modalities = {
+			str(value).strip().lower()
+			for value in (gap_context.get('weak_evidence_modalities') or [])
+			if str(value).strip()
+		}
+
+		def _signals(candidate: Dict[str, Any]) -> Dict[str, Any]:
+			signals = candidate.get('selector_signals')
+			return signals if isinstance(signals, dict) else {}
+
+		def _text_blob(candidate: Dict[str, Any], signals: Dict[str, Any]) -> str:
+			parts = (
+				candidate.get('question'),
+				candidate.get('expected_proof_gain'),
+				candidate.get('question_objective'),
+				candidate.get('type'),
+				signals.get('question_objective'),
+				signals.get('question_type'),
+			)
+			return ' '.join(str(value or '').strip().lower() for value in parts if str(value or '').strip())
+
+		def _matches_any(text: str, token_sets: List[List[str]]) -> bool:
+			for tokens in token_sets:
+				if all(token in text for token in tokens):
+					return True
+			return False
+
+		def _anchor_appeal_rights_match(candidate: Dict[str, Any], signals: Dict[str, Any], text: str) -> bool:
+			question_objective = str(
+				candidate.get('question_objective')
+				or signals.get('question_objective')
+				or ''
+			).strip().lower()
+			question_type = str(candidate.get('type') or signals.get('question_type') or '').strip().lower()
+			return bool(
+				signals.get('anchor_appeal_rights_match', False)
+				or question_objective == 'anchor_appeal_rights'
+				or question_type == 'anchor_appeal_rights'
+				or _matches_any(
+					text,
+					[
+						['appeal', 'right'],
+						['right to appeal'],
+						['appeal rights'],
+						['appeal', 'deadline'],
+						['notice', 'appeal'],
+					],
+				)
+			)
+
+		def _anchor_grievance_hearing_match(candidate: Dict[str, Any], signals: Dict[str, Any], text: str) -> bool:
+			question_objective = str(
+				candidate.get('question_objective')
+				or signals.get('question_objective')
+				or ''
+			).strip().lower()
+			question_type = str(candidate.get('type') or signals.get('question_type') or '').strip().lower()
+			return bool(
+				signals.get('anchor_grievance_hearing_match', False)
+				or question_objective == 'anchor_grievance_hearing'
+				or question_type == 'anchor_grievance_hearing'
+				or _matches_any(
+					text,
+					[
+						['grievance', 'hearing'],
+						['hearing', 'request'],
+						['hearing officer'],
+						['grievance process'],
+						['informal hearing'],
+					],
+				)
+			)
+
+		def _anchor_selection_criteria_match(candidate: Dict[str, Any], signals: Dict[str, Any], text: str) -> bool:
+			question_objective = str(
+				candidate.get('question_objective')
+				or signals.get('question_objective')
+				or ''
+			).strip().lower()
+			question_type = str(candidate.get('type') or signals.get('question_type') or '').strip().lower()
+			return bool(
+				signals.get('anchor_selection_criteria_match', False)
+				or question_objective == 'anchor_selection_criteria'
+				or question_type == 'anchor_selection_criteria'
+				or _matches_any(
+					text,
+					[
+						['selection criteria'],
+						['selection process'],
+						['criteria', 'used'],
+						['not selected'],
+						['qualifications'],
+					],
+				)
+			)
+
+		def _generic_catch_all_prompt(signals: Dict[str, Any], text: str) -> bool:
+			return bool(
+				signals.get('generic_catch_all_prompt', False)
+				or _matches_any(
+					text,
+					[
+						['anything else'],
+						['any other details'],
+						['tell me more'],
+						['is there anything else'],
+						['any additional information'],
+					],
+				)
+			)
+
+		def _anchor_specific_fallback_probe(
+			signals: Dict[str, Any],
+			candidate_source: str,
+			anchor_match: bool,
+			generic_prompt: bool,
+		) -> bool:
+			return bool(
+				anchor_match
+				and (
+					generic_prompt
+					or 'fallback' in candidate_source
+					or candidate_source in {'intake_proof_gap', 'knowledge_graph_gap', 'dependency_graph_requirement'}
+				)
+			)
+
+		def _anchor_grievance_fallback_probe(candidate: Dict[str, Any], signals: Dict[str, Any], text: str) -> bool:
+			candidate_source = str(
+				signals.get('candidate_source')
+				or candidate.get('candidate_source')
+				or ''
+			).strip().lower()
+			anchor_match = _anchor_grievance_hearing_match(candidate, signals, text)
+			generic_prompt = _generic_catch_all_prompt(signals, text)
+			return _anchor_specific_fallback_probe(signals, candidate_source, anchor_match, generic_prompt)
+
+		def _anchor_selection_fallback_probe(candidate: Dict[str, Any], signals: Dict[str, Any], text: str) -> bool:
+			candidate_source = str(
+				signals.get('candidate_source')
+				or candidate.get('candidate_source')
+				or ''
+			).strip().lower()
+			anchor_match = _anchor_selection_criteria_match(candidate, signals, text)
+			generic_prompt = _generic_catch_all_prompt(signals, text)
+			return _anchor_specific_fallback_probe(signals, candidate_source, anchor_match, generic_prompt)
+
+		def _hearing_request_timing_triplet_match(candidate: Dict[str, Any], signals: Dict[str, Any], text: str) -> bool:
+			question_objective = str(
+				candidate.get('question_objective')
+				or signals.get('question_objective')
+				or ''
+			).strip().lower()
+			question_type = str(candidate.get('type') or signals.get('question_type') or '').strip().lower()
+			if question_objective == 'hearing_request_timing' or question_type == 'hearing_request_timing':
+				return True
+			requested_when = _matches_any(
+				text,
+				[
+					['when', 'requested', 'hearing'],
+					['when', 'requested', 'review'],
+					['request date', 'hearing'],
+					['requested', 'appeal', 'when'],
+				],
+			)
+			request_method = _matches_any(
+				text,
+				[
+					['how', 'requested'],
+					['request method'],
+					['requested', 'in writing'],
+					['requested', 'email'],
+					['requested', 'portal'],
+					['requested', 'phone'],
+				],
+			)
+			hacc_response_when = _matches_any(
+				text,
+				[
+					['when', 'hacc', 'responded'],
+					['hacc', 'response date'],
+					['when', 'management', 'responded'],
+					['response', 'to', 'request', 'when'],
+				],
+			)
+			return requested_when and request_method and hacc_response_when
+
+		def _actor_critic_priority_score(candidate: Dict[str, Any]) -> float:
+			signals = _signals(candidate)
+			text = _text_blob(candidate, signals)
+			candidate_source = str(
+				signals.get('candidate_source')
+				or candidate.get('candidate_source')
+				or ''
+			).strip().lower()
+			target_claim_type = str(
+				candidate.get('target_claim_type')
+				or (
+					candidate.get('ranking_explanation', {})
+					if isinstance(candidate.get('ranking_explanation'), dict)
+					else {}
+				).get('target_claim_type')
+				or ''
+			).strip().lower()
+			anchor_appeal_match = _anchor_appeal_rights_match(candidate, signals, text)
+			anchor_grievance_match = _anchor_grievance_hearing_match(candidate, signals, text)
+			anchor_selection_match = _anchor_selection_criteria_match(candidate, signals, text)
+			anchor_match = anchor_appeal_match or anchor_grievance_match or anchor_selection_match
+			generic_prompt = _generic_catch_all_prompt(signals, text)
+			anchor_fallback_probe = _anchor_specific_fallback_probe(signals, candidate_source, anchor_match, generic_prompt)
+			anchor_grievance_fallback = _anchor_grievance_fallback_probe(candidate, signals, text)
+			anchor_selection_fallback = _anchor_selection_fallback_probe(candidate, signals, text)
+			causation_sequence_match = bool(signals.get('causation_sequence_match', False))
+			hearing_request_timing_match = bool(
+				signals.get('hearing_request_timing_closure_match', False)
+				or _matches_any(
+					text,
+					[
+						['hearing', 'request', 'when'],
+						['grievance', 'request', 'date'],
+						['appeal', 'requested', 'when'],
+					],
+				)
+			)
+			hearing_request_timing_triplet_match = _hearing_request_timing_triplet_match(candidate, signals, text)
+			policy_or_file_evidence_match = bool(
+				signals.get('policy_or_file_evidence_match', False)
+				or any(token in text for token in ('policy document', 'written policy', 'file evidence', 'case file', 'notice attachment'))
+			)
+			weak_claim_generalization_match = bool(
+				signals.get('weak_claim_generalization_match', False)
+				or target_claim_type in {'housing_discrimination', 'hacc_research_engine'}
+			)
+
+			actor_critic_score = float(
+				candidate.get('actor_critic_score', signals.get('actor_critic_score', 0.0)) or 0.0
+			)
+			adjustment = 0.0
+			if anchor_fallback_probe and (
+				'anchor_appeal_rights' in uncovered_objectives
+				or 'anchor_grievance_hearing' in uncovered_objectives
+				or 'anchor_selection_criteria' in uncovered_objectives
+			):
+				adjustment += 1.5
+			if anchor_grievance_fallback and 'anchor_grievance_hearing' in uncovered_objectives:
+				adjustment += 1.25
+			if anchor_selection_fallback and 'anchor_selection_criteria' in uncovered_objectives:
+				adjustment += 1.25
+			if causation_sequence_match and 'causation_sequence' in uncovered_objectives:
+				adjustment += 0.75
+			if hearing_request_timing_match and 'hearing_request_timing' in uncovered_objectives:
+				adjustment += 0.75
+			if hearing_request_timing_triplet_match and 'hearing_request_timing' in uncovered_objectives:
+				adjustment += 1.25
+			if policy_or_file_evidence_match and weak_modalities.intersection({'policy_document', 'file_evidence'}):
+				adjustment += 1.0
+			if weak_claim_generalization_match and target_claim_type in weak_claim_types:
+				adjustment += 1.0
+			return actor_critic_score + adjustment
+
+		def _sort_key(candidate: Dict[str, Any]):
+			signals = _signals(candidate)
+			text = _text_blob(candidate, signals)
+			candidate_source = str(signals.get('candidate_source') or candidate.get('candidate_source') or '').strip().lower()
+			anchor_appeal_match = _anchor_appeal_rights_match(candidate, signals, text)
+			anchor_grievance_match = _anchor_grievance_hearing_match(candidate, signals, text)
+			anchor_selection_match = _anchor_selection_criteria_match(candidate, signals, text)
+			anchor_match = anchor_appeal_match or anchor_grievance_match or anchor_selection_match
+			generic_prompt = _generic_catch_all_prompt(signals, text)
+			anchor_fallback_probe = _anchor_specific_fallback_probe(
+				signals,
+				candidate_source,
+				anchor_match,
+				generic_prompt,
+			)
+			anchor_grievance_fallback = _anchor_grievance_fallback_probe(candidate, signals, text)
+			anchor_selection_fallback = _anchor_selection_fallback_probe(candidate, signals, text)
+			hearing_request_timing_triplet_match = _hearing_request_timing_triplet_match(candidate, signals, text)
+			return (
 				-float(candidate.get('selector_score', 0.0) or 0.0),
-				int(
-					(
-						candidate.get('selector_signals', {})
-						if isinstance(candidate.get('selector_signals'), dict)
-						else {}
-					).get('phase_focus_rank', 99)
-					or 99
-				),
-				-int(
-					(
-						candidate.get('selector_signals', {})
-						if isinstance(candidate.get('selector_signals'), dict)
-						else {}
-					).get('blocker_closure_match_count', 0)
-					or 0
-				),
-				-int(
-					(
-						candidate.get('selector_signals', {})
-						if isinstance(candidate.get('selector_signals'), dict)
-						else {}
-					).get('intake_priority_match_count', 0)
-					or 0
-				),
-				-int(
-					bool(
-						(
-							candidate.get('selector_signals', {})
-							if isinstance(candidate.get('selector_signals'), dict)
-							else {}
-						).get('anchor_selection_criteria_match', False)
-					)
-				),
-				int(
-					bool(
-						(
-							candidate.get('selector_signals', {})
-							if isinstance(candidate.get('selector_signals'), dict)
-							else {}
-						).get('generic_catch_all_prompt', False)
-					)
-				),
-				-int(
-					bool(
-						(
-							candidate.get('selector_signals', {})
-							if isinstance(candidate.get('selector_signals'), dict)
-							else {}
-						).get('causation_sequence_match', False)
-					)
-				),
-				-float(candidate.get('actor_critic_score', 0.0) or 0.0),
+				int(signals.get('phase_focus_rank', 99) or 99),
+				-int(signals.get('blocker_closure_match_count', 0) or 0),
+				-int(signals.get('intake_priority_match_count', 0) or 0),
+				-int(bool(anchor_appeal_match)),
+				-int(bool(anchor_grievance_match)),
+				-int(bool(anchor_selection_match)),
+				-int(bool(anchor_fallback_probe)),
+				-int(bool(anchor_grievance_fallback and 'anchor_grievance_hearing' in uncovered_objectives)),
+				-int(bool(anchor_selection_fallback and 'anchor_selection_criteria' in uncovered_objectives)),
+				-int(bool(hearing_request_timing_triplet_match and 'hearing_request_timing' in uncovered_objectives)),
+				int(bool(generic_prompt and not anchor_match)),
+				-int(bool(signals.get('causation_sequence_match', False))),
+				-int(bool(signals.get('hearing_request_timing_closure_match', False))),
+				-int(bool(signals.get('policy_or_file_evidence_match', False))),
+				-int(bool(signals.get('weak_claim_generalization_match', False))),
+				-_actor_critic_priority_score(candidate),
 				int(candidate.get('proof_priority', 99) or 99),
 			)
-		)
+
+		scored_candidates.sort(key=_sort_key)
 		return scored_candidates[:max_questions]
 
 	def _phase_focus_rank(self, phase1_section: str) -> int:
@@ -857,7 +1112,13 @@ class Mediator:
 			)
 			if str(value).strip()
 		]
-		for default_objective in ('anchor_selection_criteria', 'causation_sequence'):
+		for default_objective in (
+			'anchor_appeal_rights',
+			'anchor_grievance_hearing',
+			'anchor_selection_criteria',
+			'causation_sequence',
+			'hearing_request_timing',
+		):
 			if default_objective in expected_objectives or default_objective in uncovered_objectives:
 				continue
 			if default_objective not in covered_objectives:
@@ -885,12 +1146,30 @@ class Mediator:
 					continue
 				for value in (element.get('element_label'), element.get('element_id'), claim_packet.get('claim_type')):
 					_add_priority_term(value)
+		if 'anchor_appeal_rights' in uncovered_objectives:
+			for term in (
+				'appeal rights notice',
+				'right to appeal',
+				'appeal deadline',
+				'appeal request process',
+			):
+				_add_priority_term(term)
+		if 'anchor_grievance_hearing' in uncovered_objectives:
+			for term in (
+				'grievance hearing request',
+				'hearing process',
+				'informal hearing record',
+				'hearing officer or panel',
+				'fallback grievance hearing details',
+			):
+				_add_priority_term(term)
 		if 'anchor_selection_criteria' in uncovered_objectives:
 			for term in (
 				'selection criteria',
 				'selection process',
 				'qualifications used for selection',
 				'written policy or rubric',
+				'fallback selection criteria details',
 			):
 				_add_priority_term(term)
 		if 'causation_sequence' in uncovered_objectives:
@@ -901,6 +1180,33 @@ class Mediator:
 				'step-by-step chronology',
 			):
 				_add_priority_term(term)
+		if 'hearing_request_timing' in uncovered_objectives:
+			for term in (
+				'hearing request date',
+				'hearing request timing',
+				'how hearing or review request was submitted',
+				'when hacc responded to hearing or review request',
+				'request date request method response date',
+				'deadline to request hearing',
+				'date management received hearing request',
+			):
+				_add_priority_term(term)
+		intake_fallback_probes: List[Dict[str, str]] = []
+		if 'anchor_grievance_hearing' in uncovered_objectives:
+			intake_fallback_probes.append({
+				'objective': 'anchor_grievance_hearing',
+				'question': 'If grievance-hearing details are still missing, ask what grievance or hearing process was available, whether it was requested, and who handled it.',
+			})
+		if 'anchor_selection_criteria' in uncovered_objectives:
+			intake_fallback_probes.append({
+				'objective': 'anchor_selection_criteria',
+				'question': 'If selection-criteria details are still missing, ask what criteria were used, what qualifications were considered, and what policy or rubric governed the decision.',
+			})
+		if 'hearing_request_timing' in uncovered_objectives:
+			intake_fallback_probes.append({
+				'objective': 'hearing_request_timing',
+				'question': 'Ask when the hearing or review was requested, how the request was made, and when HACC responded.',
+			})
 		weak_claim_types = []
 		for claim in intake_case_file.get('candidate_claims', []) if isinstance(intake_case_file, dict) else []:
 			if not isinstance(claim, dict):
@@ -933,6 +1239,16 @@ class Mediator:
 			'intake_expected_objectives': expected_objectives,
 			'intake_covered_objectives': covered_objectives,
 			'intake_uncovered_objectives': uncovered_objectives,
+			'intake_anchor_objectives': [
+				objective
+				for objective in (
+					'anchor_appeal_rights',
+					'anchor_grievance_hearing',
+					'anchor_selection_criteria',
+				)
+				if objective in uncovered_objectives or objective in expected_objectives
+			],
+			'intake_fallback_probes': intake_fallback_probes,
 			'weak_claim_types': weak_claim_types,
 			'weak_evidence_modalities': sorted(weak_modalities),
 		}
@@ -5196,6 +5512,24 @@ class Mediator:
 				intake_question_intent=intake_question_intent,
 			)
 
+		temporal_issue_id = self._normalize_intake_text(context.get('temporal_issue_id'))
+		if temporal_issue_id:
+			temporal_issue_registry = intake_case_file.setdefault('temporal_issue_registry', [])
+			if isinstance(temporal_issue_registry, list):
+				for entry in temporal_issue_registry:
+					if not isinstance(entry, dict):
+						continue
+					entry_issue_id = self._normalize_intake_text(entry.get('issue_id') or entry.get('source_ref'))
+					if entry_issue_id != temporal_issue_id:
+						continue
+					entry['status'] = 'resolved'
+					entry['current_resolution_status'] = 'resolved'
+					entry['resolution'] = normalized_answer
+					entry['resolution_notes'] = normalized_answer
+					entry['answered_by_question_type'] = question_type
+					entry['answered_by_candidate_source'] = str(question.get('candidate_source') or '')
+					break
+
 		if created_fact and intake_case_file.get('candidate_claims'):
 			created_fact['claim_types'] = list(dict.fromkeys(list(created_fact.get('claim_types', []) or []) + resolved_claim_types))
 
@@ -6136,6 +6470,10 @@ class Mediator:
 			'count': 0,
 			'candidates': [],
 			'source_counts': {},
+			'temporal_gap_candidate_count': 0,
+			'temporal_gap_claim_counts': {},
+			'temporal_gap_issue_type_counts': {},
+			'temporal_gap_resolution_lane_counts': {},
 			'question_goal_counts': {},
 			'phase1_section_counts': {},
 			'blocking_level_counts': {},
@@ -6160,6 +6498,20 @@ class Mediator:
 			question_goal = str(explanation.get('question_goal') or candidate.get('question_goal') or '').strip()
 			phase1_section = str(explanation.get('phase1_section') or candidate.get('phase1_section') or '').strip()
 			blocking_level = str(explanation.get('blocking_level') or candidate.get('blocking_level') or '').strip()
+			target_claim_type = str(explanation.get('target_claim_type') or candidate.get('target_claim_type') or '').strip().lower()
+			context = candidate.get('context') if isinstance(candidate.get('context'), dict) else {}
+			gap_type = str(
+				context.get('gap_type')
+				or context.get('temporal_issue_category')
+				or context.get('temporal_issue_type')
+				or ''
+			).strip().lower()
+			resolution_lane = str(
+				context.get('recommended_resolution_lane')
+				or explanation.get('recommended_resolution_lane')
+				or candidate.get('recommended_resolution_lane')
+				or ''
+			).strip()
 			expected = selector_signals.get('intake_expected_objectives')
 			if not isinstance(expected, list):
 				expected = explanation.get('intake_expected_objectives')
@@ -6180,6 +6532,20 @@ class Mediator:
 				)
 			if source:
 				summary['source_counts'][source] = summary['source_counts'].get(source, 0) + 1
+			if source == 'intake_claim_temporal_gap':
+				summary['temporal_gap_candidate_count'] += 1
+				if target_claim_type:
+					summary['temporal_gap_claim_counts'][target_claim_type] = (
+						summary['temporal_gap_claim_counts'].get(target_claim_type, 0) + 1
+					)
+				if gap_type:
+					summary['temporal_gap_issue_type_counts'][gap_type] = (
+						summary['temporal_gap_issue_type_counts'].get(gap_type, 0) + 1
+					)
+				if resolution_lane:
+					summary['temporal_gap_resolution_lane_counts'][resolution_lane] = (
+						summary['temporal_gap_resolution_lane_counts'].get(resolution_lane, 0) + 1
+					)
 			if question_goal:
 				summary['question_goal_counts'][question_goal] = summary['question_goal_counts'].get(question_goal, 0) + 1
 			if phase1_section:
@@ -8322,6 +8688,46 @@ class Mediator:
 		complainant_summary_confirmation = intake_case_file.get('complainant_summary_confirmation', {}) if isinstance(intake_case_file, dict) else {}
 		claim_support_packet_summary = self._summarize_claim_support_packets(claim_support_packets)
 		alignment_task_summary = self._summarize_alignment_evidence_tasks(alignment_evidence_tasks)
+		temporal_issue_status_counts: Dict[str, int] = {}
+		temporal_issue_severity_counts: Dict[str, int] = {}
+		temporal_issue_lane_counts: Dict[str, int] = {}
+		temporal_issue_type_counts: Dict[str, int] = {}
+		temporal_issue_claim_type_counts: Dict[str, int] = {}
+		temporal_issue_element_tag_counts: Dict[str, int] = {}
+		for issue in temporal_issue_registry if isinstance(temporal_issue_registry, list) else []:
+			if not isinstance(issue, dict):
+				continue
+			status_value = str(issue.get('current_resolution_status') or issue.get('status') or '').strip().lower()
+			if status_value:
+				temporal_issue_status_counts[status_value] = temporal_issue_status_counts.get(status_value, 0) + 1
+			severity_value = str(issue.get('severity') or '').strip().lower()
+			if severity_value:
+				temporal_issue_severity_counts[severity_value] = temporal_issue_severity_counts.get(severity_value, 0) + 1
+			lane_value = str(issue.get('recommended_resolution_lane') or '').strip().lower()
+			if lane_value:
+				temporal_issue_lane_counts[lane_value] = temporal_issue_lane_counts.get(lane_value, 0) + 1
+			issue_type_value = str(issue.get('issue_type') or issue.get('category') or '').strip().lower()
+			if issue_type_value:
+				temporal_issue_type_counts[issue_type_value] = temporal_issue_type_counts.get(issue_type_value, 0) + 1
+			for claim_type_value in (issue.get('claim_types') or []):
+				normalized_claim_type = str(claim_type_value or '').strip()
+				if not normalized_claim_type:
+					continue
+				temporal_issue_claim_type_counts[normalized_claim_type] = (
+					temporal_issue_claim_type_counts.get(normalized_claim_type, 0) + 1
+				)
+			for element_tag_value in (issue.get('element_tags') or []):
+				normalized_element_tag = str(element_tag_value or '').strip()
+				if not normalized_element_tag:
+					continue
+				temporal_issue_element_tag_counts[normalized_element_tag] = (
+					temporal_issue_element_tag_counts.get(normalized_element_tag, 0) + 1
+				)
+		resolved_temporal_issue_count = int(temporal_issue_status_counts.get('resolved', 0) or 0)
+		unresolved_temporal_issue_count = max(
+			0,
+			(len(temporal_issue_registry) if isinstance(temporal_issue_registry, list) else 0) - resolved_temporal_issue_count,
+		)
 		claim_support_packet_summary = {
 			**claim_support_packet_summary,
 			'temporal_gap_task_count': int(alignment_task_summary.get('temporal_gap_task_count', 0) or 0),
@@ -8386,6 +8792,14 @@ class Mediator:
 			'temporal_issue_registry_summary': {
 				'count': len(temporal_issue_registry) if isinstance(temporal_issue_registry, list) else 0,
 				'issues': temporal_issue_registry if isinstance(temporal_issue_registry, list) else [],
+				'status_counts': temporal_issue_status_counts,
+				'severity_counts': temporal_issue_severity_counts,
+				'lane_counts': temporal_issue_lane_counts,
+				'issue_type_counts': temporal_issue_type_counts,
+				'claim_type_counts': temporal_issue_claim_type_counts,
+				'element_tag_counts': temporal_issue_element_tag_counts,
+				'resolved_count': resolved_temporal_issue_count,
+				'unresolved_count': unresolved_temporal_issue_count,
 			},
 			'timeline_consistency_summary': (
 				timeline_consistency_summary if isinstance(timeline_consistency_summary, dict) else {}

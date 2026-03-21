@@ -242,6 +242,21 @@ class DependencyGraph:
                 return False
             return bool(_DATE_TOKEN_PATTERN.search(text))
 
+        def _core_structured_gap(gap_type: str) -> bool:
+            return gap_type in {
+                "missing_exact_action_dates",
+                "missing_hearing_request_date",
+                "missing_response_dates",
+                "missing_hearing_timing",
+                "missing_staff_identity",
+                "missing_staff_title",
+                "retaliation_missing_causation_link",
+                "retaliation_missing_causation",
+                "retaliation_missing_sequencing_dates",
+                "retaliation_missing_sequence",
+                "missing_decision_timeline",
+            }
+
         def _infer_gap_type(
             claim_type: str,
             source_name: str,
@@ -271,7 +286,7 @@ class DependencyGraph:
                 return "missing_response_dates"
             if "written notice" in corpus or ("notice" in corpus and "written" in corpus):
                 return "missing_written_notice"
-            if any(token in corpus for token in {"staff name", "decision maker", "who denied", "who approved", "who decided", "responsible staff"}):
+            if any(token in corpus for token in {"staff name", "decision maker", "who denied", "who approved", "who decided", "responsible staff", "manager name", "director name"}):
                 return "missing_staff_identity"
             if any(token in corpus for token in {"staff title", "job title", "position title", "role of"}):
                 return "missing_staff_title"
@@ -336,6 +351,9 @@ class DependencyGraph:
                     return _as_text(attrs.get(key))
             return ""
 
+        def _field_value(attrs: Dict[str, Any], field_name: str) -> str:
+            return _first_value(attrs, _field_aliases(field_name))
+
         def _missing_required_fields(required_fields: List[str], source_attrs: Dict[str, Any]) -> List[str]:
             missing: List[str] = []
             for field_name in required_fields:
@@ -399,6 +417,42 @@ class DependencyGraph:
             }
             return list(mapping.get(gap_type, ["supporting_fact"]))
 
+        def _relation_updates_for_field(field_name: str) -> List[str]:
+            mapping = {
+                "event_date": ["link_event_sequence", "validate_temporal_order"],
+                "adverse_action_date": ["link_event_sequence", "validate_temporal_order"],
+                "hearing_request_date": ["link_response_to_hearing_or_action", "validate_temporal_order"],
+                "response_date": ["link_response_to_hearing_or_action", "validate_temporal_order"],
+                "protected_activity_date": ["link_causation_chain", "validate_temporal_order"],
+                "staff_name": ["link_staff_to_action"],
+                "staff_role": ["link_staff_to_action"],
+                "staff_title": ["link_staff_to_action"],
+                "decision_actor": ["link_staff_to_action"],
+                "causation_link": ["link_causation_chain"],
+                "document_name": ["link_document_to_claim"],
+                "document_date": ["link_document_to_claim", "link_event_sequence"],
+                "issuing_actor": ["link_document_to_claim", "link_staff_to_action"],
+            }
+            return list(mapping.get(field_name, []))
+
+        def _entity_updates_for_field(field_name: str) -> List[str]:
+            mapping = {
+                "event_date": ["timeline_fact"],
+                "adverse_action_date": ["timeline_fact"],
+                "hearing_request_date": ["timeline_fact"],
+                "response_date": ["timeline_fact"],
+                "protected_activity_date": ["timeline_fact"],
+                "staff_name": ["staff_actor"],
+                "staff_role": ["staff_actor"],
+                "staff_title": ["staff_actor"],
+                "decision_actor": ["staff_actor"],
+                "causation_link": ["causation_fact"],
+                "document_name": ["document_evidence"],
+                "document_date": ["document_evidence", "timeline_fact"],
+                "issuing_actor": ["document_evidence", "staff_actor"],
+            }
+            return list(mapping.get(field_name, ["claim_fact"]))
+
         def _gap_type_rank(gap_type: str) -> int:
             order = [
                 "missing_exact_action_dates",
@@ -456,6 +510,27 @@ class DependencyGraph:
             if required_fields:
                 closure_confidence = max(0.0, min(1.0, len(present_fields) / len(required_fields)))
 
+            field_resolution_contract = {}
+            for field_name in required_fields:
+                field_value = _field_value(source_attrs, field_name)
+                field_present = bool(field_value and not _is_unspecified_value(field_value))
+                requirement_updates = [requirement_key] if requirement_key else []
+                if field_present and field_name in {"event_date", "adverse_action_date", "hearing_request_date", "response_date", "protected_activity_date"}:
+                    requirement_updates = list(dict.fromkeys([*requirement_updates, "chronology_complete"]))
+                if field_present and field_name in {"staff_name", "staff_role", "staff_title", "decision_actor"}:
+                    requirement_updates = list(dict.fromkeys([*requirement_updates, "staff_identity_complete"]))
+                if field_present and field_name == "causation_link":
+                    requirement_updates = list(dict.fromkeys([*requirement_updates, "causation_link_complete"]))
+                field_resolution_contract[field_name] = {
+                    "field_present": field_present,
+                    "field_value": field_value if field_present else "",
+                    "entity_updates": _entity_updates_for_field(field_name),
+                    "relationship_updates": _relation_updates_for_field(field_name),
+                    "requirement_updates": requirement_updates,
+                    "satisfies_gap_when_present": field_name in missing_fields,
+                }
+
+            core_structured = _core_structured_gap(gap_type)
             return {
                 "required_fields": required_fields,
                 "missing_required_fields": missing_fields,
@@ -465,8 +540,16 @@ class DependencyGraph:
                 "requirement_updates": [requirement_key] if requirement_key else [],
                 "resolution_key": deterministic_update_key,
                 "satisfaction_rules": satisfaction_rules,
+                "field_resolution_contract": field_resolution_contract,
                 "closure_confidence": round(closure_confidence, 4),
                 "single_turn_closable": len(missing_fields) <= 2,
+                "single_field_closable": len(missing_fields) == 1,
+                "core_structured_gap": core_structured,
+                "question_strategy": (
+                    "single_gap_closure"
+                    if core_structured and missing_fields
+                    else "collect_supporting_context"
+                ),
             }
 
         def _build_deterministic_update_key(
@@ -515,7 +598,9 @@ class DependencyGraph:
         structured_satisfied_dependencies = 0
         deterministic_gap_targets = 0
         deterministic_gap_targets_satisfied = 0
-        
+        core_structured_gap_count = 0
+        core_structured_single_turn_closable = 0
+
         for claim in claims:
             required_deps = incoming_required_by_target.get(claim.id, [])
             satisfied_count = 0
@@ -689,6 +774,10 @@ class DependencyGraph:
                     weak_claim_gap_count += 1
                 if weak_modality_focus:
                     weak_modality_gap_count += 1
+                if answer_contract.get("core_structured_gap"):
+                    core_structured_gap_count += 1
+                    if answer_contract.get("single_turn_closable"):
+                        core_structured_single_turn_closable += 1
                 ranked_missing_dependencies.append(
                     {
                         **dep,
@@ -711,6 +800,7 @@ class DependencyGraph:
                         'field_completion_ratio': round(max(0.0, min(1.0, completion_ratio)), 4),
                         'answer_contract': answer_contract,
                         'concretely_answerable': concretely_answerable,
+                        'core_structured_gap': bool(answer_contract.get("core_structured_gap")),
                         'actor_score': round(actor_score, 4),
                         'critic_score': round(critic_score, 4),
                         'priority_score': round(combined_priority, 4),
@@ -723,8 +813,10 @@ class DependencyGraph:
                     0 if item.get('blocking') else 1,
                     0 if item.get('weak_claim_focus') else 1,
                     0 if item.get('weak_modality_focus') else 1,
+                    0 if item.get('core_structured_gap') else 1,
                     0 if item.get('structured_gap') else 1,
                     _gap_type_rank(str(item.get('gap_type') or '').strip().lower()),
+                    0 if item.get('answer_contract', {}).get('single_field_closable') else 1,
                     0 if item.get('answer_contract', {}).get('single_turn_closable') else 1,
                     -float(item.get('field_completion_ratio') or 0.0),
                     0 if item.get('concretely_answerable') else 1,
@@ -862,14 +954,20 @@ class DependencyGraph:
             recommended_actions.append(
                 "Map each follow-up question to a deterministic_update_key so each answer closes a concrete graph requirement."
             )
+        if core_structured_gap_count > 0:
+            recommended_actions.append(
+                "Close exact date, staff identity/title, hearing timing, response date, and causation sequencing gaps before broader narrative prompts."
+            )
 
         recommended_next_gaps.sort(
             key=lambda item: (
                 0 if item.get('blocking') else 1,
                 0 if item.get('weak_claim_focus') else 1,
                 0 if item.get('weak_modality_focus') else 1,
+                0 if item.get('core_structured_gap') else 1,
                 0 if item.get('structured_gap') else 1,
                 _gap_type_rank(str(item.get('gap_type') or '').strip().lower()),
+                0 if item.get('answer_contract', {}).get('single_field_closable') else 1,
                 0 if item.get('answer_contract', {}).get('single_turn_closable') else 1,
                 -float(item.get('field_completion_ratio') or 0.0),
                 -float(item.get('priority_score') or 0.0),
@@ -900,6 +998,8 @@ class DependencyGraph:
             'underspecified_claims': underspecified_claims,
             'weak_claim_gap_count': weak_claim_gap_count,
             'weak_modality_gap_count': weak_modality_gap_count,
+            'core_structured_gap_count': core_structured_gap_count,
+            'core_structured_single_turn_closable': core_structured_single_turn_closable,
             'recommended_actions': recommended_actions,
             'recommended_next_gaps': recommended_next_gaps,
             'actor_critic': {
@@ -920,6 +1020,8 @@ class DependencyGraph:
                     'weak_evidence_modalities': sorted(_ACTOR_CRITIC_WEAK_EVIDENCE_MODALITIES),
                     'weak_claim_gap_count': weak_claim_gap_count,
                     'weak_modality_gap_count': weak_modality_gap_count,
+                    'core_structured_gap_count': core_structured_gap_count,
+                    'core_structured_single_turn_closable': core_structured_single_turn_closable,
                     'recommended_actions': recommended_actions,
                 },
             },

@@ -456,6 +456,14 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["temporal_issue_registry_summary"] == {
         "count": 1,
         "issues": [{"issue_id": "temporal_issue:relative_only_ordering:fact_3", "issue_type": "relative_only_ordering"}],
+        "status_counts": {},
+        "severity_counts": {},
+        "lane_counts": {},
+        "issue_type_counts": {"relative_only_ordering": 1},
+        "claim_type_counts": {},
+        "element_tag_counts": {},
+        "resolved_count": 0,
+        "unresolved_count": 1,
     }
     assert summary["timeline_consistency_summary"] == {
         "event_count": 2,

@@ -640,7 +640,7 @@ class AgenticDocumentOptimizer:
         self._reset_runtime_state()
         self._apply_config(config or {})
         working_draft = self._refresh_dependent_sections(deepcopy(draft))
-        readiness = drafting_readiness or {}
+        readiness = dict(drafting_readiness) if isinstance(drafting_readiness, dict) else {}
         support_context = self._build_support_context(
             user_id=user_id,
             draft=working_draft,
@@ -652,10 +652,34 @@ class AgenticDocumentOptimizer:
             if isinstance(support_context.get("structured_handoff"), dict)
             else {}
         )
+        document_guardrail = (
+            support_context.get("document_generation_guardrail")
+            if isinstance(support_context.get("document_generation_guardrail"), dict)
+            else {}
+        )
         if structured_handoff:
+            blocker_closing_lines = self._normalize_lines(
+                list(structured_handoff.get("blocker_closing_answers") or [])
+            )
+            unresolved_factual_lines = self._normalize_lines(
+                list(structured_handoff.get("unresolved_factual_gaps") or [])
+            )
+            unresolved_legal_lines = self._normalize_lines(
+                list(structured_handoff.get("unresolved_legal_gaps") or [])
+            )
+            chronology_anchor_lines = self._normalize_lines(
+                [
+                    line
+                    for line in list(structured_handoff.get("factual_allegation_lines") or [])
+                    if _contains_date_anchor(line) or _contains_actor_marker(line) or _contains_causation_link(line)
+                ]
+            )
             promoted_factual_lines = self._normalize_lines(
                 list(structured_handoff.get("factual_allegation_lines") or [])
-                + list(structured_handoff.get("blocker_closing_answers") or [])
+                + chronology_anchor_lines
+                + blocker_closing_lines
+                + [f"Unresolved factual gap requiring formalization follow-up: {line}" for line in unresolved_factual_lines]
+                + [f"Unresolved legal gap requiring formalization follow-up: {line}" for line in unresolved_legal_lines]
                 + list(working_draft.get("factual_allegations") or [])
             )
             if promoted_factual_lines:
@@ -673,8 +697,16 @@ class AgenticDocumentOptimizer:
                 if isinstance(structured_handoff.get("claim_support_lines_by_type"), dict)
                 else {}
             )
+            normalized_claim_support_by_type = {
+                str(key).strip().lower(): self._normalize_lines(values or [])
+                for key, values in dict(claim_support_by_type).items()
+                if str(key).strip()
+            }
             shared_claim_support = self._normalize_lines(
                 list(structured_handoff.get("claim_support_lines_shared") or [])
+                + chronology_anchor_lines
+                + blocker_closing_lines
+                + [f"Open factual gap for claim support: {line}" for line in unresolved_factual_lines]
             )
             claims_for_relief = (
                 working_draft.get("claims_for_relief")
@@ -686,14 +718,23 @@ class AgenticDocumentOptimizer:
                     continue
                 claim_type = str(claim.get("claim_type") or "").strip()
                 claim_specific = self._normalize_lines(
-                    claim_support_by_type.get(claim_type) or claim_support_by_type.get(claim_type.lower()) or []
+                    normalized_claim_support_by_type.get(claim_type.lower()) or []
                 )
                 claim["supporting_facts"] = self._normalize_lines(
-                    list(claim.get("supporting_facts") or []) + shared_claim_support + claim_specific
-                )[:10]
+                    list(claim.get("supporting_facts") or [])
+                    + claim_specific
+                    + shared_claim_support
+                    + blocker_closing_lines
+                    + [f"Outstanding legal support issue for this claim: {line}" for line in unresolved_legal_lines]
+                )[:12]
 
             exhibits = working_draft.get("exhibits") if isinstance(working_draft.get("exhibits"), list) else []
-            exhibit_lines = self._normalize_lines(list(structured_handoff.get("exhibit_description_lines") or []))
+            exhibit_lines = self._normalize_lines(
+                list(structured_handoff.get("exhibit_description_lines") or [])
+                + chronology_anchor_lines
+                + blocker_closing_lines
+                + [f"Gap documented for follow-up evidence collection: {line}" for line in unresolved_factual_lines]
+            )
             if exhibits and exhibit_lines:
                 for index, exhibit in enumerate(exhibits):
                     if not isinstance(exhibit, dict):
@@ -715,21 +756,96 @@ class AgenticDocumentOptimizer:
                     for idx, line in enumerate(exhibit_lines[:4])
                 ]
             support_context["packet_projection"] = self._build_packet_projection(working_draft)
+        assessment_blocked = bool(document_guardrail.get("assessment_blocked"))
+        guardrail_blockers = _dedupe_text_values(document_guardrail.get("blockers") or [])
+        readiness_unresolved_factual = self._normalize_lines(
+            list(readiness.get("unresolved_factual_gaps") or [])
+            + list(document_guardrail.get("unresolved_factual_gaps") or [])
+            + list(structured_handoff.get("unresolved_factual_gaps") or [])
+        )
+        readiness_unresolved_legal = self._normalize_lines(
+            list(readiness.get("unresolved_legal_gaps") or [])
+            + list(document_guardrail.get("unresolved_legal_gaps") or [])
+            + list(structured_handoff.get("unresolved_legal_gaps") or [])
+        )
+        readiness_warning_messages = _dedupe_text_values(
+            [
+                str((warning or {}).get("message") or "").strip()
+                for warning in list(readiness.get("warnings") or [])
+                if isinstance(warning, dict) and str((warning or {}).get("message") or "").strip()
+            ]
+            + ([str(document_guardrail.get("summary") or "").strip()] if str(document_guardrail.get("summary") or "").strip() else [])
+            + (
+                [
+                    f"Formalization gate unresolved factual gap: {line}"
+                    for line in readiness_unresolved_factual
+                ]
+            )
+            + (
+                [
+                    f"Formalization gate unresolved legal gap: {line}"
+                    for line in readiness_unresolved_legal
+                ]
+            )
+        )
+        graph_signals = (
+            dict(readiness.get("graph_completeness_signals") or {})
+            if isinstance(readiness.get("graph_completeness_signals"), dict)
+            else {}
+        )
+        graph_status = str(document_guardrail.get("graph_phase_status") or graph_signals.get("status") or "ready").strip().lower()
+        graph_remaining_gap_count = max(
+            _safe_int(document_guardrail.get("graph_remaining_gap_count"), 0),
+            _safe_int(graph_signals.get("remaining_gap_count"), 0),
+            _safe_int(graph_signals.get("current_gap_count"), 0),
+        )
+        graph_gate_active = bool(document_guardrail.get("gate_on_graph_completeness")) or graph_status != "ready" or graph_remaining_gap_count > 0
+        if graph_gate_active:
+            readiness_warning_messages = _dedupe_text_values(
+                readiness_warning_messages + [
+                    f"Graph completeness gate remains active (status={graph_status}, remaining_gap_count={graph_remaining_gap_count})."
+                ]
+            )
+        readiness_blockers = _dedupe_text_values(
+            list(readiness.get("blockers") or [])
+            + guardrail_blockers
+            + (["graph_analysis_not_ready"] if graph_gate_active else [])
+            + (["document_generation_not_ready"] if assessment_blocked else [])
+            + (["unresolved_factual_gaps"] if readiness_unresolved_factual else [])
+            + (["unresolved_legal_gaps"] if readiness_unresolved_legal else [])
+        )
+        readiness_status = str(readiness.get("status") or "ready").strip().lower()
+        if assessment_blocked or graph_gate_active or readiness_unresolved_factual or readiness_unresolved_legal:
+            readiness_status = "blocked"
+        elif readiness_warning_messages or readiness_blockers:
+            readiness_status = "warning"
+        readiness_for_critic = dict(readiness)
+        readiness_for_critic["status"] = readiness_status
+        readiness_for_critic["phase_status"] = (
+            str(readiness.get("phase_status") or document_guardrail.get("phase_status") or readiness_status).strip().lower()
+            or readiness_status
+        )
+        readiness_for_critic["blockers"] = readiness_blockers
+        readiness_for_critic["unresolved_factual_gaps"] = readiness_unresolved_factual
+        readiness_for_critic["unresolved_legal_gaps"] = readiness_unresolved_legal
+        readiness_for_critic["warnings"] = [{"message": message} for message in readiness_warning_messages]
+        readiness_for_critic["warning_count"] = len(readiness_warning_messages)
+        readiness_for_critic["graph_completeness_signals"] = {
+            **graph_signals,
+            "status": graph_status,
+            "remaining_gap_count": graph_remaining_gap_count,
+            "current_gap_count": graph_remaining_gap_count,
+            "gate_on_graph_completeness": graph_gate_active,
+        }
         initial_review = self._run_critic(
             draft=working_draft,
-            drafting_readiness=readiness,
+            drafting_readiness=readiness_for_critic,
             support_context=support_context,
         )
         current_review = initial_review
         iterations: List[Dict[str, Any]] = []
         accepted_iterations = 0
         optimized_sections: List[str] = []
-        document_guardrail = (
-            support_context.get("document_generation_guardrail")
-            if isinstance(support_context.get("document_generation_guardrail"), dict)
-            else {}
-        )
-        assessment_blocked = bool(document_guardrail.get("assessment_blocked"))
 
         for iteration in range(1, self.max_iterations + 1):
             if assessment_blocked:
@@ -740,7 +856,7 @@ class AgenticDocumentOptimizer:
             focus_section = self._choose_focus_section(
                 current_review=current_review,
                 draft=working_draft,
-                drafting_readiness=readiness,
+                drafting_readiness=readiness_for_critic,
                 support_context=support_context,
             )
             actor_payload = self._run_actor(
@@ -762,7 +878,7 @@ class AgenticDocumentOptimizer:
             )
             candidate_review = self._run_critic(
                 draft=candidate_draft,
-                drafting_readiness=readiness,
+                drafting_readiness=readiness_for_critic,
                 support_context=support_context,
             )
             accepted = float(candidate_review.get("overall_score") or 0.0) > float(current_review.get("overall_score") or 0.0)
@@ -801,7 +917,7 @@ class AgenticDocumentOptimizer:
             user_id=user_id,
         )
         workflow_optimization_guidance = self._build_workflow_optimization_guidance(
-            drafting_readiness=readiness,
+            drafting_readiness=readiness_for_critic,
             support_context=support_context,
             intake_status=intake_status,
             intake_case_summary=intake_case_summary,
@@ -834,6 +950,7 @@ class AgenticDocumentOptimizer:
                 "claim_reasoning_review": claim_reasoning_review,
                 "workflow_optimization_guidance": workflow_optimization_guidance,
                 "support_context": support_context,
+                "drafting_readiness": readiness_for_critic,
                 "initial_review": initial_review,
                 "final_review": current_review,
                 "iterations": iterations,
@@ -881,6 +998,7 @@ class AgenticDocumentOptimizer:
             "successful_session_count": int(document_guardrail.get("successful_session_count") or 0),
             "session_count": int(document_guardrail.get("session_count") or 0),
             "assessment_blocked": bool(document_guardrail.get("assessment_blocked")),
+            "drafting_readiness": readiness_for_critic,
             "packet_projection": dict(support_context.get("packet_projection") or {}),
             "section_history": [
                 {

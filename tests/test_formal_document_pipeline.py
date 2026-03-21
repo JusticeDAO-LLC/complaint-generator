@@ -549,6 +549,18 @@ def test_document_api_annotation_promotes_confirmed_intake_handoff():
             ],
         }
     ]
+    assert payload['review_links']['intake_case_summary']['temporal_issue_registry_summary'] == {
+        'count': 0,
+        'issues': [],
+        'status_counts': {},
+        'severity_counts': {},
+        'lane_counts': {},
+        'issue_type_counts': {},
+        'claim_type_counts': {},
+        'element_tag_counts': {},
+        'resolved_count': 0,
+        'unresolved_count': 0,
+    }
     assert payload['review_links']['workflow_priority'] == {
         'status': 'warning',
         'title': 'Review matching inputs before drafting',

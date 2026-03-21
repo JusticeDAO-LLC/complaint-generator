@@ -312,6 +312,73 @@ def summarize_intake_contradictions(contradictions: Any) -> Dict[str, Any]:
     }
 
 
+def summarize_temporal_issue_registry(temporal_issue_registry_summary: Any) -> Dict[str, Any]:
+    summary = temporal_issue_registry_summary if isinstance(temporal_issue_registry_summary, dict) else {}
+    issues = summary.get("issues") if isinstance(summary.get("issues"), list) else []
+    normalized_issues = [item for item in issues if isinstance(item, dict)]
+
+    status_counts: Dict[str, int] = {}
+    severity_counts: Dict[str, int] = {}
+    lane_counts: Dict[str, int] = {}
+    issue_type_counts: Dict[str, int] = {}
+    claim_type_counts: Dict[str, int] = {}
+    element_tag_counts: Dict[str, int] = {}
+
+    for issue in normalized_issues:
+        status = str(
+            issue.get("current_resolution_status") or issue.get("status") or ""
+        ).strip().lower()
+        if status:
+            status_counts[status] = status_counts.get(status, 0) + 1
+
+        severity = str(issue.get("severity") or "").strip().lower()
+        if severity:
+            severity_counts[severity] = severity_counts.get(severity, 0) + 1
+
+        lane = str(issue.get("recommended_resolution_lane") or "").strip().lower()
+        if lane:
+            lane_counts[lane] = lane_counts.get(lane, 0) + 1
+
+        issue_type = str(issue.get("issue_type") or issue.get("category") or "").strip().lower()
+        if issue_type:
+            issue_type_counts[issue_type] = issue_type_counts.get(issue_type, 0) + 1
+
+        for claim_type in issue.get("claim_types") or []:
+            normalized_claim_type = str(claim_type or "").strip()
+            if not normalized_claim_type:
+                continue
+            claim_type_counts[normalized_claim_type] = claim_type_counts.get(normalized_claim_type, 0) + 1
+
+        for element_tag in issue.get("element_tags") or []:
+            normalized_element_tag = str(element_tag or "").strip()
+            if not normalized_element_tag:
+                continue
+            element_tag_counts[normalized_element_tag] = element_tag_counts.get(normalized_element_tag, 0) + 1
+
+    count = int(summary.get("count", len(normalized_issues)) or 0)
+    resolved_count = int(summary.get("resolved_count", status_counts.get("resolved", 0)) or 0)
+    unresolved_count = int(
+        summary.get(
+            "unresolved_count",
+            max(0, count - resolved_count),
+        )
+        or 0
+    )
+
+    return {
+        "count": count,
+        "issues": normalized_issues,
+        "status_counts": dict(summary.get("status_counts", status_counts) or {}),
+        "severity_counts": dict(summary.get("severity_counts", severity_counts) or {}),
+        "lane_counts": dict(summary.get("lane_counts", lane_counts) or {}),
+        "issue_type_counts": dict(summary.get("issue_type_counts", issue_type_counts) or {}),
+        "claim_type_counts": dict(summary.get("claim_type_counts", claim_type_counts) or {}),
+        "element_tag_counts": dict(summary.get("element_tag_counts", element_tag_counts) or {}),
+        "resolved_count": resolved_count,
+        "unresolved_count": unresolved_count,
+    }
+
+
 def build_intake_status_summary(
     mediator: Any,
     *,
@@ -522,8 +589,8 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
         "timeline_relation_summary": (
             timeline_relation_summary if isinstance(timeline_relation_summary, dict) else {}
         ),
-        "temporal_issue_registry_summary": (
-            temporal_issue_registry_summary if isinstance(temporal_issue_registry_summary, dict) else {}
+        "temporal_issue_registry_summary": summarize_temporal_issue_registry(
+            temporal_issue_registry_summary
         ),
         "timeline_consistency_summary": (
             timeline_consistency_summary if isinstance(timeline_consistency_summary, dict) else {}

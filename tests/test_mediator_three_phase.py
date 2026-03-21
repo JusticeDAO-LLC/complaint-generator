@@ -349,6 +349,72 @@ class TestMediatorThreePhaseIntegration:
         assert status['question_candidate_summary']['source_counts']
         assert status['question_candidate_summary']['phase1_section_counts']
 
+    def test_status_summary_counts_claim_temporal_gap_candidates(self):
+        """Mediator status should summarize native temporal-gap candidates separately."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process('My supervisor acted after I complained about discrimination.')
+
+        intake_case_file = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
+        intake_case_file['candidate_claims'] = [
+            {
+                'claim_type': 'retaliation',
+                'label': 'Retaliation',
+                'required_elements': [],
+            }
+        ]
+        intake_case_file['temporal_issue_registry'] = [
+            {
+                'issue_id': 'temporal_issue:relative_only_ordering:fact_3',
+                'issue_type': 'relative_only_ordering',
+                'category': 'relative_only_ordering',
+                'summary': 'Timeline fact fact_3 only has relative ordering (after) and still needs anchoring.',
+                'severity': 'blocking',
+                'blocking': True,
+                'recommended_resolution_lane': 'clarify_with_complainant',
+                'fact_ids': ['fact_3'],
+                'claim_types': ['retaliation'],
+                'element_tags': ['causation'],
+                'left_node_name': 'Supervisor acted after the complaint.',
+                'right_node_name': None,
+                'status': 'open',
+                'relative_markers': ['after'],
+            }
+        ]
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_case_file', intake_case_file)
+
+        kg = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
+        dg = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'dependency_graph')
+        question_candidates = mediator.denoiser.collect_question_candidates(
+            kg,
+            dg,
+            max_questions=10,
+            intake_case_file=intake_case_file,
+        )
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'question_candidates', question_candidates)
+
+        status = mediator.get_three_phase_status()
+        summary = status['question_candidate_summary']
+        temporal_issue_summary = status['temporal_issue_registry_summary']
+
+        assert summary['temporal_gap_candidate_count'] >= 1
+        assert summary['temporal_gap_claim_counts']['retaliation'] >= 1
+        assert summary['temporal_gap_issue_type_counts']['relative_only_ordering'] >= 1
+        assert summary['temporal_gap_resolution_lane_counts']['clarify_with_complainant'] >= 1
+        assert temporal_issue_summary['status_counts']['open'] >= 1
+        assert temporal_issue_summary['issue_type_counts']['relative_only_ordering'] >= 1
+        assert temporal_issue_summary['claim_type_counts']['retaliation'] >= 1
+        assert temporal_issue_summary['element_tag_counts']['causation'] >= 1
+        assert temporal_issue_summary['resolved_count'] == 0
+        assert temporal_issue_summary['unresolved_count'] >= 1
+
     def test_initialize_intake_case_file_extracts_claims_facts_and_proof_leads(self):
         """The intake case file helper should normalize graph state into structured sections."""
         from mediator.mediator import Mediator
@@ -453,6 +519,87 @@ class TestMediatorThreePhaseIntegration:
         assert result['intake_readiness']['canonical_fact_count'] >= 1
         assert result['question_candidates']
         assert mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'question_candidates')
+
+    def test_process_denoising_answer_marks_temporal_issue_resolved_for_temporal_gap_candidate(self):
+        """Answering a native temporal-gap question should resolve the matching temporal issue in the intake case file."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process('My supervisor acted after I complained about discrimination.')
+
+        intake_case_file = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
+        intake_case_file['candidate_claims'] = [
+            {
+                'claim_type': 'retaliation',
+                'label': 'Retaliation',
+                'required_elements': [],
+            }
+        ]
+        intake_case_file['temporal_issue_registry'] = [
+            {
+                'issue_id': 'temporal_issue:relative_only_ordering:fact_3',
+                'issue_type': 'relative_only_ordering',
+                'category': 'relative_only_ordering',
+                'summary': 'Timeline fact fact_3 only has relative ordering (after) and still needs anchoring.',
+                'severity': 'blocking',
+                'blocking': True,
+                'recommended_resolution_lane': 'clarify_with_complainant',
+                'fact_ids': ['fact_3'],
+                'claim_types': ['retaliation'],
+                'element_tags': ['causation'],
+                'left_node_name': 'Supervisor acted after the complaint.',
+                'right_node_name': None,
+                'status': 'open',
+                'relative_markers': ['after'],
+            }
+        ]
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_case_file', intake_case_file)
+
+        question = mediator.denoiser._question_candidate(
+            source='intake_claim_temporal_gap',
+            question_type='timeline',
+            question_text='For your retaliation claim, what is the most specific date or timeframe for the complaint and the action that followed?',
+            context={
+                'claim_type': 'retaliation',
+                'claim_name': 'Retaliation',
+                'gap_id': 'temporal_issue:relative_only_ordering:fact_3',
+                'gap_type': 'relative_only_ordering',
+                'temporal_issue_id': 'temporal_issue:relative_only_ordering:fact_3',
+                'requirement_id': 'causation',
+                'target_element_id': 'causation',
+                'workflow_phase': 'graph_analysis',
+                'recommended_resolution_lane': 'clarify_with_complainant',
+                'extraction_targets': ['exact_dates', 'event_order', 'protected_activity', 'adverse_action'],
+                'patchability_markers': ['chronology_patch_anchor', 'adverse_action_patch_anchor'],
+            },
+            priority='high',
+        )
+        question['question_objective'] = 'establish_causation'
+        question['ranking_explanation']['question_objective'] = 'establish_causation'
+
+        mediator.process_denoising_answer(
+            question,
+            'I complained on March 1, 2025, and my supervisor fired me on March 20, 2025 after that complaint.',
+        )
+
+        refreshed_intake_case_file = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file')
+        resolved_issue = next(
+            issue
+            for issue in refreshed_intake_case_file['temporal_issue_registry']
+            if issue['issue_id'] == 'temporal_issue:relative_only_ordering:fact_3'
+        )
+
+        assert resolved_issue['status'] == 'resolved'
+        assert resolved_issue['current_resolution_status'] == 'resolved'
+        assert resolved_issue['answered_by_question_type'] == 'timeline'
+        assert resolved_issue['answered_by_candidate_source'] == 'intake_claim_temporal_gap'
+        assert 'March 1, 2025' in resolved_issue['resolution']
 
     def test_process_denoising_answer_syncs_temporal_relations_into_dependency_graph(self):
         from mediator.mediator import Mediator

@@ -1640,16 +1640,64 @@ class AdversarialSession:
             weak_evidence_modalities.intersection({'policy_document', 'file_evidence'})
             or 'anchor_selection_criteria' in unresolved_intake_objectives
         )
+        should_frontload_anchor_appeal_rights = bool(
+            weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
+            or 'anchor_appeal_rights' in unresolved_intake_objectives
+        )
+        should_frontload_anchor_grievance_hearing = bool(
+            weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
+            or 'anchor_grievance_hearing' in unresolved_intake_objectives
+        )
+        should_frontload_hearing_request_timing = bool(
+            weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
+            or 'hearing_request_timing' in unresolved_intake_objectives
+            or 'anchor_grievance_hearing' in unresolved_intake_objectives
+        )
         should_frontload_causation_sequence = bool(
             weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
             or 'causation_sequence' in unresolved_intake_objectives
         )
 
+        if should_frontload_anchor_appeal_rights:
+            seed_boosted_probes.append(
+                (
+                    "What written appeal rights notice did you receive, when did you receive it, and what exact deadline and steps did it require?",
+                    "anchor_appeal_rights",
+                )
+            )
+        if should_frontload_anchor_grievance_hearing:
+            seed_boosted_probes.append(
+                (
+                    "What grievance hearing rights were explained to you, when did you request a hearing, and what response or scheduling result did you get?",
+                    "anchor_grievance_hearing",
+                )
+            )
+            # Dedicated fallback that stays specific to the grievance-hearing anchor.
+            seed_boosted_probes.append(
+                (
+                    "For the grievance hearing process, on what date did you request a hearing or review, how did you request it (portal/email/form/phone/in person), and when did HACC respond?",
+                    "anchor_grievance_hearing",
+                )
+            )
         if should_frontload_anchor_selection:
             seed_boosted_probes.append(
                 (
                     "What exact screening, selection, or evaluation criteria were used in your case, where are those criteria written, and how were they applied to you?",
                     "anchor_selection_criteria",
+                )
+            )
+            # Dedicated fallback that keeps this anchor ahead of generic intake follow-ups.
+            seed_boosted_probes.append(
+                (
+                    "For selection criteria specifically, what exact factor or threshold did HACC apply to you, where is it documented, and what evidence file can verify that application?",
+                    "anchor_selection_criteria",
+                )
+            )
+        if should_frontload_hearing_request_timing:
+            seed_boosted_probes.append(
+                (
+                    "When was the hearing or review requested, how was it requested, and when did HACC respond?",
+                    "hearing_request_timing",
                 )
             )
         if should_frontload_causation_sequence:
@@ -1700,15 +1748,24 @@ class AdversarialSession:
                 {
                     'exact_dates',
                     'adverse_action_details',
+                    'hearing_request_timing',
                     'causation_sequence',
                     'anchor_adverse_action',
+                    'anchor_appeal_rights',
+                    'anchor_grievance_hearing',
                     'anchor_selection_criteria',
                 }
             )
         forced_objectives.update(
             {
                 objective
-                for objective in ('anchor_selection_criteria', 'causation_sequence')
+                for objective in (
+                    'anchor_appeal_rights',
+                    'anchor_grievance_hearing',
+                    'anchor_selection_criteria',
+                    'hearing_request_timing',
+                    'causation_sequence',
+                )
                 if objective in unresolved_intake_objectives
             }
         )
@@ -1769,6 +1826,9 @@ class AdversarialSession:
             'actors',
             'causation_sequence',
             'documents',
+            'anchor_appeal_rights',
+            'anchor_grievance_hearing',
+            'anchor_selection_criteria',
             'harm_remedy',
         ]
         uncovered_critical_objectives = [
@@ -1824,8 +1884,17 @@ class AdversarialSession:
                 weight += 0.75
             if probe_type == 'anchor_selection_criteria' and should_frontload_anchor_selection:
                 weight += 0.95
+            if probe_type == 'anchor_appeal_rights' and should_frontload_anchor_appeal_rights:
+                weight += 0.90
+            if probe_type == 'anchor_grievance_hearing' and should_frontload_anchor_grievance_hearing:
+                weight += 0.90
+            if probe_type == 'hearing_request_timing' and should_frontload_hearing_request_timing:
+                weight += 0.88
             if probe_type == 'causation_sequence' and should_frontload_causation_sequence:
                 weight += 0.75
+            if probe_type == 'intake_follow_up':
+                # Keep generic catch-all prompts behind unresolved anchor/timing objectives.
+                weight -= 0.40
             group = cls._intake_objective_group(probe_type)
             if group in group_targets:
                 remaining = max(0, group_targets[group] - objective_group_coverage.get(group, 0))
@@ -1843,6 +1912,8 @@ class AdversarialSession:
             'actors',
             'adverse_action_details',
             'documents',
+            'anchor_appeal_rights',
+            'anchor_grievance_hearing',
             'anchor_selection_criteria',
             'causation_sequence',
             'harm_remedy',
@@ -2023,6 +2094,19 @@ class AdversarialSession:
             weak_evidence_modalities.intersection({'policy_document', 'file_evidence'})
             or 'anchor_selection_criteria' in unresolved_intake_objectives
         )
+        should_frontload_anchor_appeal_rights = bool(
+            weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
+            or 'anchor_appeal_rights' in unresolved_intake_objectives
+        )
+        should_frontload_anchor_grievance_hearing = bool(
+            weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
+            or 'anchor_grievance_hearing' in unresolved_intake_objectives
+        )
+        should_frontload_hearing_request_timing = bool(
+            weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
+            or 'hearing_request_timing' in unresolved_intake_objectives
+            or 'anchor_grievance_hearing' in unresolved_intake_objectives
+        )
         should_frontload_causation_sequence = bool(
             weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
             or 'causation_sequence' in unresolved_intake_objectives
@@ -2034,36 +2118,57 @@ class AdversarialSession:
                 {
                     'exact_dates',
                     'adverse_action_details',
+                    'hearing_request_timing',
                     'causation_sequence',
                     'anchor_adverse_action',
+                    'anchor_appeal_rights',
+                    'anchor_grievance_hearing',
                     'anchor_selection_criteria',
                 }
             )
         forced_objectives.update(
             {
                 objective
-                for objective in ('anchor_selection_criteria', 'causation_sequence')
+                for objective in (
+                    'anchor_appeal_rights',
+                    'anchor_grievance_hearing',
+                    'anchor_selection_criteria',
+                    'hearing_request_timing',
+                    'causation_sequence',
+                )
                 if objective in unresolved_intake_objectives
             }
         )
         for objective in sorted(forced_objectives):
             objective_priority.setdefault(objective, len(objective_priority))
+        if should_frontload_anchor_appeal_rights and 'anchor_appeal_rights' in objective_priority:
+            objective_priority['anchor_appeal_rights'] = min(-5, objective_priority['anchor_appeal_rights'])
+        if should_frontload_anchor_grievance_hearing and 'anchor_grievance_hearing' in objective_priority:
+            objective_priority['anchor_grievance_hearing'] = min(-4, objective_priority['anchor_grievance_hearing'])
         if should_frontload_anchor_selection and 'anchor_selection_criteria' in objective_priority:
             objective_priority['anchor_selection_criteria'] = min(-3, objective_priority['anchor_selection_criteria'])
+        if should_frontload_hearing_request_timing and 'hearing_request_timing' in objective_priority:
+            objective_priority['hearing_request_timing'] = min(-3, objective_priority['hearing_request_timing'])
         if should_frontload_causation_sequence and 'causation_sequence' in objective_priority:
             objective_priority['causation_sequence'] = min(-2, objective_priority['causation_sequence'])
 
         for objective in list(objective_priority):
             if objective == 'documents' and set(optimizer_context.get('weak_evidence_modalities') or set()).intersection({'policy_document', 'file_evidence'}):
-                objective_priority[objective] = max(0, objective_priority[objective] - 3)
+                objective_priority[objective] = max(-6, objective_priority[objective] - 3)
             if objective.startswith('anchor_') and (
                 optimizer_context.get('is_housing_discrimination') or optimizer_context.get('is_hacc_research_seed')
             ):
-                objective_priority[objective] = max(0, objective_priority[objective] - 1)
+                objective_priority[objective] = max(-6, objective_priority[objective] - 1)
             if objective in forced_objectives:
-                objective_priority[objective] = max(0, objective_priority[objective] - 2)
+                objective_priority[objective] = max(-6, objective_priority[objective] - 2)
             if objective in unresolved_intake_objectives:
-                objective_priority[objective] = max(0, objective_priority[objective] - 2)
+                objective_priority[objective] = max(-6, objective_priority[objective] - 2)
+            if objective == 'intake_follow_up' and (
+                should_frontload_anchor_grievance_hearing
+                or should_frontload_anchor_selection
+                or should_frontload_hearing_request_timing
+            ):
+                objective_priority[objective] = min(99, objective_priority[objective] + 8)
 
         ranked: List[tuple[tuple[Any, ...], Any, List[str]]] = []
         for index, candidate in enumerate(list(candidates or [])):
@@ -2101,6 +2206,8 @@ class AdversarialSession:
                     'hearing_request_timing',
                     'response_dates',
                     'causation_sequence',
+                    'anchor_appeal_rights',
+                    'anchor_grievance_hearing',
                     'anchor_selection_criteria',
                 }:
                     blocker_match_count += 1
@@ -2213,6 +2320,8 @@ class AdversarialSession:
         if weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'}):
             group_targets['anchor'] = 1
             group_targets['factual'] = 2
+        if should_frontload_anchor_appeal_rights or should_frontload_anchor_grievance_hearing:
+            group_targets['anchor'] = max(group_targets['anchor'], 2)
 
         for objective in sorted(forced_objectives, key=lambda item: objective_priority.get(item, 99)):
             for rank_index, candidate in enumerate(ranked_candidates):
@@ -2356,6 +2465,19 @@ class AdversarialSession:
             weak_evidence_modalities.intersection({'policy_document', 'file_evidence'})
             or 'anchor_selection_criteria' in unresolved_intake_objectives
         )
+        should_frontload_anchor_appeal_rights = bool(
+            weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
+            or 'anchor_appeal_rights' in unresolved_intake_objectives
+        )
+        should_frontload_anchor_grievance_hearing = bool(
+            weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
+            or 'anchor_grievance_hearing' in unresolved_intake_objectives
+        )
+        should_frontload_hearing_request_timing = bool(
+            weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
+            or 'hearing_request_timing' in unresolved_intake_objectives
+            or 'anchor_grievance_hearing' in unresolved_intake_objectives
+        )
         should_frontload_causation_sequence = bool(
             weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
             or 'causation_sequence' in unresolved_intake_objectives
@@ -2368,15 +2490,24 @@ class AdversarialSession:
                 {
                     'exact_dates',
                     'adverse_action_details',
+                    'hearing_request_timing',
                     'causation_sequence',
                     'anchor_adverse_action',
+                    'anchor_appeal_rights',
+                    'anchor_grievance_hearing',
                     'anchor_selection_criteria',
                 }
             )
         forced_objectives.update(
             {
                 objective
-                for objective in ('anchor_selection_criteria', 'causation_sequence')
+                for objective in (
+                    'anchor_appeal_rights',
+                    'anchor_grievance_hearing',
+                    'anchor_selection_criteria',
+                    'hearing_request_timing',
+                    'causation_sequence',
+                )
                 if objective in unresolved_intake_objectives
             }
         )
@@ -2440,6 +2571,8 @@ class AdversarialSession:
         if weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'}):
             group_targets['factual'] = 2
             group_targets['anchor'] = 1
+        if should_frontload_anchor_appeal_rights or should_frontload_anchor_grievance_hearing:
+            group_targets['anchor'] = max(group_targets['anchor'], 2)
         group_covered_counts = {
             group: len(grouped_covered.get(group, []))
             for group in ('factual', 'evidentiary', 'anchor')
@@ -2462,8 +2595,14 @@ class AdversarialSession:
             if coverage_counts.get(objective, 0) <= 0
         ]
         priority_uncovered: List[str] = []
+        if should_frontload_anchor_appeal_rights and coverage_counts.get('anchor_appeal_rights', 0) <= 0:
+            priority_uncovered.append('anchor_appeal_rights')
+        if should_frontload_anchor_grievance_hearing and coverage_counts.get('anchor_grievance_hearing', 0) <= 0:
+            priority_uncovered.append('anchor_grievance_hearing')
         if should_frontload_anchor_selection and coverage_counts.get('anchor_selection_criteria', 0) <= 0:
             priority_uncovered.append('anchor_selection_criteria')
+        if should_frontload_hearing_request_timing and coverage_counts.get('hearing_request_timing', 0) <= 0:
+            priority_uncovered.append('hearing_request_timing')
         if should_frontload_causation_sequence and coverage_counts.get('causation_sequence', 0) <= 0:
             priority_uncovered.append('causation_sequence')
         recovery_actions: List[str] = []

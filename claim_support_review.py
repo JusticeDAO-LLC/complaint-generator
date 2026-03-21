@@ -602,6 +602,11 @@ def _build_review_workflow_priority(
         if isinstance(intake_case_summary.get("claim_support_packet_summary"), dict)
         else {}
     )
+    temporal_issue_registry_summary = (
+        intake_case_summary.get("temporal_issue_registry_summary")
+        if isinstance(intake_case_summary.get("temporal_issue_registry_summary"), dict)
+        else {}
+    )
     summary_confirmation = (
         intake_case_summary.get("complainant_summary_confirmation")
         if isinstance(intake_case_summary.get("complainant_summary_confirmation"), dict)
@@ -1036,13 +1041,25 @@ def _build_review_workflow_priority(
                     [str(item).strip() for item in (focused_alignment_task.get(field_name) or []) if str(item or "").strip()]
                 )
             unresolved_issue_ids = list(dict.fromkeys(unresolved_issue_ids))
-            chip_labels.append(f"chronology issues: {len(unresolved_issue_ids)}")
+            unresolved_issue_count = int(
+                temporal_issue_registry_summary.get("unresolved_count")
+                or len(unresolved_issue_ids)
+                or 0
+            )
+            resolved_issue_count = int(temporal_issue_registry_summary.get("resolved_count") or 0)
+            chip_labels.append(f"chronology issues: {unresolved_issue_count}")
+            if resolved_issue_count > 0:
+                chip_labels.append(f"resolved chronology issues: {resolved_issue_count}")
             title = "Resolve chronology blockers"
             notes = [
                 "Temporal ordering is still unresolved for a shared intake-to-packet element.",
                 "Review the chronology task, inspect the unresolved issue IDs, and collect support that clears the temporal blocker before advancing evidence completion.",
                 f"Unresolved chronology issue IDs: {', '.join(unresolved_issue_ids) if unresolved_issue_ids else 'none recorded'}",
             ]
+            if resolved_issue_count > 0:
+                notes.append(
+                    f"Resolved chronology history retained: {resolved_issue_count} issue(s)."
+                )
             button_id = "intake-next-action-review-chronology-task"
             button_label = "Review chronology task"
             status = "blocked"

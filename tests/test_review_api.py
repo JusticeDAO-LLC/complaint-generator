@@ -2695,6 +2695,22 @@ def test_claim_support_review_payload_builds_explicit_workflow_priority_for_supp
         "canonical_fact_summary": {"count": 1, "facts": []},
         "proof_lead_summary": {"count": 1, "proof_leads": []},
         "timeline_anchor_summary": {"count": 1, "anchors": []},
+        "temporal_issue_registry_summary": {
+            "count": 3,
+            "issues": [
+                {"issue_id": "timeline-gap-002", "issue_type": "temporal_reverse_before", "status": "open"},
+                {"issue_id": "timeline-gap-001", "issue_type": "relative_only_ordering", "status": "open"},
+                {"issue_id": "timeline-gap-resolved-001", "issue_type": "missing_anchor", "status": "resolved"},
+            ],
+            "status_counts": {"open": 2, "resolved": 1},
+            "severity_counts": {},
+            "lane_counts": {},
+            "issue_type_counts": {"temporal_reverse_before": 1, "relative_only_ordering": 1, "missing_anchor": 1},
+            "claim_type_counts": {"retaliation": 3},
+            "element_tag_counts": {"causation": 3},
+            "resolved_count": 1,
+            "unresolved_count": 2,
+        },
         "harm_profile": {},
         "remedy_profile": {},
         "complainant_summary_confirmation": {
@@ -3130,6 +3146,7 @@ def test_claim_support_review_payload_builds_explicit_workflow_priority_for_temp
         "chip_labels": [
             "recommended action: fill_temporal_chronology_gap",
             "chronology issues: 2",
+            "resolved chronology issues: 1",
             "focus claim: Retaliation",
             "focus element: Retaliation:3",
             "support status: Missing",
@@ -3143,6 +3160,7 @@ def test_claim_support_review_payload_builds_explicit_workflow_priority_for_temp
             "Temporal ordering is still unresolved for a shared intake-to-packet element.",
             "Review the chronology task, inspect the unresolved issue IDs, and collect support that clears the temporal blocker before advancing evidence completion.",
             "Unresolved chronology issue IDs: timeline-gap-002, timeline-gap-001",
+            "Resolved chronology history retained: 1 issue(s).",
         ],
         "buttons": [
             {

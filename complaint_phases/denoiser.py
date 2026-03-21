@@ -2994,6 +2994,61 @@ class ComplaintDenoiser:
         has_document_precision_signal = self._contains_document_precision_signal(answer_text)
         deterministic_fields_updated: Set[str] = set()
 
+        def _extract_contextual_dates(text_value: str) -> Dict[str, List[str]]:
+            buckets: Dict[str, List[str]] = {
+                'hearing_request_dates': [],
+                'response_dates': [],
+                'adverse_action_dates': [],
+                'protected_activity_dates': [],
+                'decision_dates': [],
+                'document_dates': [],
+            }
+            if not text_value:
+                return buckets
+            segments = re.split(r'(?<=[.!?;])\s+|\n+', text_value)
+            for segment in segments:
+                snippet = str(segment or '').strip()
+                if not snippet:
+                    continue
+                dates_in_segment = self._extract_date_strings(snippet)
+                if not dates_in_segment:
+                    continue
+                lower_segment = snippet.lower()
+                for date_value in dates_in_segment:
+                    if any(token in lower_segment for token in ('hearing', 'appeal', 'requested hearing', 'request hearing', 'grievance hearing')):
+                        buckets['hearing_request_dates'] = self._append_unique_text_item(
+                            buckets.get('hearing_request_dates'),
+                            date_value,
+                        )
+                    if any(token in lower_segment for token in ('responded', 'response', 'replied', 'reply', 'ignored', 'no response', 'never responded')):
+                        buckets['response_dates'] = self._append_unique_text_item(
+                            buckets.get('response_dates'),
+                            date_value,
+                        )
+                    if any(token in lower_segment for token in ('denied', 'evicted', 'terminated', 'fired', 'adverse action', 'decision', 'notice', 'rejected')):
+                        buckets['adverse_action_dates'] = self._append_unique_text_item(
+                            buckets.get('adverse_action_dates'),
+                            date_value,
+                        )
+                    if any(token in lower_segment for token in ('complained', 'reported', 'protected activity', 'grievance', 'accommodation', 'discrimination complaint')):
+                        buckets['protected_activity_dates'] = self._append_unique_text_item(
+                            buckets.get('protected_activity_dates'),
+                            date_value,
+                        )
+                    if any(token in lower_segment for token in ('decision', 'determination', 'final decision', 'ruling')):
+                        buckets['decision_dates'] = self._append_unique_text_item(
+                            buckets.get('decision_dates'),
+                            date_value,
+                        )
+                    if any(token in lower_segment for token in ('notice', 'letter', 'email', 'message', 'memo', 'policy', 'document')):
+                        buckets['document_dates'] = self._append_unique_text_item(
+                            buckets.get('document_dates'),
+                            date_value,
+                        )
+            return buckets
+
+        contextual_dates = _extract_contextual_dates(answer_text)
+
         def _single_claim_id() -> Optional[str]:
             claims = knowledge_graph.get_entities_by_type('claim')
             return claims[0].id if len(claims) == 1 else None
@@ -3199,18 +3254,25 @@ class ComplaintDenoiser:
 
             if extracted_dates:
                 primary_date = extracted_dates[0]
+                hearing_date = (contextual_dates.get('hearing_request_dates') or [primary_date])[0]
+                response_date = (contextual_dates.get('response_dates') or [primary_date])[0]
+                adverse_date = (contextual_dates.get('adverse_action_dates') or [primary_date])[0]
+                decision_date = (contextual_dates.get('decision_dates') or [adverse_date])[0]
+                protected_activity_date = (
+                    (contextual_dates.get('protected_activity_dates') or [primary_date])[0]
+                )
                 if 'event_date' in required_fields:
                     _store_required_field_value(claim_entity, 'event_date', primary_date)
                 if 'hearing_request_date' in required_fields:
-                    _store_required_field_value(claim_entity, 'hearing_request_date', primary_date)
+                    _store_required_field_value(claim_entity, 'hearing_request_date', hearing_date)
                 if 'response_date' in required_fields:
-                    _store_required_field_value(claim_entity, 'response_date', primary_date)
+                    _store_required_field_value(claim_entity, 'response_date', response_date)
                 if 'adverse_action_date' in required_fields:
-                    _store_required_field_value(claim_entity, 'adverse_action_date', primary_date)
+                    _store_required_field_value(claim_entity, 'adverse_action_date', adverse_date)
                 if 'decision_date' in required_fields:
-                    _store_required_field_value(claim_entity, 'decision_date', primary_date)
+                    _store_required_field_value(claim_entity, 'decision_date', decision_date)
                 if 'protected_activity_date' in required_fields:
-                    _store_required_field_value(claim_entity, 'protected_activity_date', primary_date)
+                    _store_required_field_value(claim_entity, 'protected_activity_date', protected_activity_date)
 
             staff_pairs: List[Tuple[str, str]] = []
             staff_pairs.extend(named_role_people)
@@ -3226,11 +3288,43 @@ class ComplaintDenoiser:
                     _store_required_field_value(claim_entity, 'decision_actor', f"{staff_pairs[0][0]} ({staff_pairs[0][1]})")
                 if 'issuing_actor' in required_fields:
                     _store_required_field_value(claim_entity, 'issuing_actor', f"{staff_pairs[0][0]} ({staff_pairs[0][1]})")
+                for person_name, person_role in staff_pairs[:4]:
+                    person_entity, created = self._add_entity_if_missing(
+                        knowledge_graph,
+                        'person',
+                        person_name,
+                        {
+                            'role': person_role,
+                            'title': person_role,
+                            'source': 'deterministic_gap_update',
+                            'gap_type': gap_type,
+                        },
+                        0.78,
+                    )
+                    if created:
+                        updates['entities_updated'] += 1
+                    _link_claim_to_entity(claim_entity, person_entity, 'involves', 0.67)
+                    if any(token in person_role for token in ('manager', 'director', 'officer', 'landlord', 'owner', 'supervisor', 'agent')):
+                        _link_claim_to_entity(claim_entity, person_entity, 'has_decision_maker', 0.66)
             elif org_candidates and ('decision_actor' in required_fields or 'issuing_actor' in required_fields):
                 if 'decision_actor' in required_fields:
                     _store_required_field_value(claim_entity, 'decision_actor', org_candidates[0])
                 if 'issuing_actor' in required_fields:
                     _store_required_field_value(claim_entity, 'issuing_actor', org_candidates[0])
+                org_entity, created = self._add_entity_if_missing(
+                    knowledge_graph,
+                    'organization',
+                    org_candidates[0],
+                    {
+                        'role': 'respondent',
+                        'source': 'deterministic_gap_update',
+                        'gap_type': gap_type,
+                    },
+                    0.72,
+                )
+                if created:
+                    updates['entities_updated'] += 1
+                _link_claim_to_entity(claim_entity, org_entity, 'involves', 0.65)
 
             if ('document_name' in required_fields or 'supporting_fact' in required_fields) and (document_mentions or extracted_file_refs or extracted_policy_refs):
                 document_value = (
@@ -3246,7 +3340,10 @@ class ComplaintDenoiser:
                     _store_required_field_value(claim_entity, 'supporting_fact', self._short_description(answer_text, 160))
 
             if 'document_date' in required_fields and extracted_dates:
-                _store_required_field_value(claim_entity, 'document_date', extracted_dates[0])
+                document_date = (
+                    (contextual_dates.get('document_dates') or extracted_dates)[0]
+                )
+                _store_required_field_value(claim_entity, 'document_date', document_date)
 
             if 'response_actor' in required_fields and (staff_pairs or org_candidates):
                 if staff_pairs:
@@ -3272,19 +3369,31 @@ class ComplaintDenoiser:
 
             # Promote concrete hearing/response/causation sequencing fields even when not explicitly required.
             if gap_type in {'missing_hearing_request_date', 'missing_hearing_timing'} and extracted_dates:
-                _store_required_field_value(claim_entity, 'hearing_request_date', extracted_dates[0])
+                hearing_candidate = (
+                    (contextual_dates.get('hearing_request_dates') or extracted_dates)[0]
+                )
+                _store_required_field_value(claim_entity, 'hearing_request_date', hearing_candidate)
             if gap_type in {'missing_response_dates', 'missing_decision_timeline'} and (extracted_dates or response_timing_phrases):
                 if extracted_dates:
-                    _store_required_field_value(claim_entity, 'response_date', extracted_dates[0])
+                    response_candidate = (
+                        (contextual_dates.get('response_dates') or extracted_dates)[0]
+                    )
+                    _store_required_field_value(claim_entity, 'response_date', response_candidate)
                 elif response_timing_phrases:
                     _store_required_field_value(claim_entity, 'response_date', response_timing_phrases[0])
             if gap_type in {'retaliation_missing_causation', 'retaliation_missing_causation_link', 'retaliation_missing_sequence', 'retaliation_missing_sequencing_dates'}:
                 if has_causation_signal:
                     _store_required_field_value(claim_entity, 'causation_link', self._short_description(answer_text, 160))
                 if extracted_dates:
-                    _store_required_field_value(claim_entity, 'protected_activity_date', extracted_dates[0])
-                    if len(extracted_dates) > 1:
-                        _store_required_field_value(claim_entity, 'adverse_action_date', extracted_dates[1])
+                    protected_candidate = (
+                        (contextual_dates.get('protected_activity_dates') or extracted_dates)[0]
+                    )
+                    adverse_candidates = contextual_dates.get('adverse_action_dates') or extracted_dates
+                    _store_required_field_value(claim_entity, 'protected_activity_date', protected_candidate)
+                    if len(adverse_candidates) > 1 and adverse_candidates[0] == protected_candidate:
+                        _store_required_field_value(claim_entity, 'adverse_action_date', adverse_candidates[1])
+                    else:
+                        _store_required_field_value(claim_entity, 'adverse_action_date', adverse_candidates[0])
 
         def _deterministic_requirement_fact(claim_entity: Optional[Entity]) -> None:
             nonlocal updates
@@ -3515,7 +3624,17 @@ class ComplaintDenoiser:
                 for phrase in response_timing_phrases[:4]:
                     _append_claim_signal(claim_entity, 'response_timing_phrases', phrase)
 
-            for name, title in named_title_people[:6]:
+            people_with_roles: List[Tuple[str, str]] = []
+            seen_people_roles: Set[Tuple[str, str]] = set()
+            for pair in named_title_people + named_role_people:
+                key = (str(pair[0] or '').strip().lower(), str(pair[1] or '').strip().lower())
+                if not key[0] or not key[1]:
+                    continue
+                if key not in seen_people_roles:
+                    seen_people_roles.add(key)
+                    people_with_roles.append((pair[0], pair[1]))
+
+            for name, title in people_with_roles[:8]:
                 person, created = self._add_entity_if_missing(
                     knowledge_graph,
                     'person',
@@ -3534,6 +3653,16 @@ class ComplaintDenoiser:
                 if person and any(token in title for token in ('manager', 'director', 'officer', 'landlord', 'owner', 'supervisor', 'agent')):
                     _link_claim_to_entity(claim_entity, person, 'has_decision_maker', 0.62)
                     _append_claim_signal(claim_entity, 'decision_makers', f"{name} ({title})")
+
+            for key, claim_attr in (
+                ('hearing_request_dates', 'hearing_request_dates'),
+                ('response_dates', 'response_dates'),
+                ('adverse_action_dates', 'adverse_action_dates'),
+                ('protected_activity_dates', 'protected_activity_dates'),
+                ('decision_dates', 'decision_dates'),
+            ):
+                for date_token in (contextual_dates.get(key) or [])[:4]:
+                    _append_claim_signal(claim_entity, claim_attr, date_token)
 
             if has_causation_signal or has_sequence_signal:
                 causation_fact, created = self._add_entity_if_missing(
@@ -3562,8 +3691,15 @@ class ComplaintDenoiser:
                 or 'document_type' in extraction_targets
                 or gap_type in {'missing_claim_element', 'missing_proof_leads', 'missing_written_notice'}
                 or expected_update_kind in {'proof_lead', 'documentary_support'}
+                or 'policy_document' in expected_modalities
+                or 'policy_document' in weak_modalities
             )
-            should_force_file = should_force_policy or 'document_owner' in extraction_targets
+            should_force_file = (
+                should_force_policy
+                or 'document_owner' in extraction_targets
+                or 'file_evidence' in expected_modalities
+                or 'file_evidence' in weak_modalities
+            )
             if policy_signal and should_force_policy:
                 _upsert_structured_evidence(
                     claim_entity,
@@ -3664,6 +3800,11 @@ class ComplaintDenoiser:
         def _actor_critic_gap_confidence() -> float:
             if not _answer_is_substantive(answer_text):
                 return 0.0
+            claim_type_hint = normalize_claim_type(
+                str(context.get('claim_type') or context.get('claim_name') or '').strip()
+            )
+            weak_claim_focus = claim_type_hint in {'housing_discrimination', 'hacc_research_engine'}
+            weak_modality_focus = bool({'policy_document', 'file_evidence'}.intersection(weak_modalities))
             target_checks = {
                 'exact_dates': bool(extracted_dates),
                 'event_order': bool(has_sequence_signal),
@@ -3676,6 +3817,9 @@ class ComplaintDenoiser:
                 'document_type': bool(document_mentions),
                 'document_date': bool(extracted_dates),
                 'document_owner': bool(named_title_people or named_role_people or org_candidates),
+                'hearing_request_timing': bool(contextual_dates.get('hearing_request_dates')),
+                'response_dates': bool(contextual_dates.get('response_dates') or response_timing_phrases),
+                'staff_names_titles': bool(staff_signal),
             }
             requested_targets = set(extraction_targets)
             if not requested_targets and target_element_id:
@@ -3695,12 +3839,18 @@ class ComplaintDenoiser:
                 1.0 if (policy_signal or file_signal) else 0.0,
                 1.0 if (has_sequence_signal or has_causation_signal) else 0.0,
                 1.0 if (extracted_dates or response_timing_phrases) else 0.0,
+                1.0 if deterministic_fields_updated else 0.0,
+                1.0 if (contextual_dates.get('response_dates') or contextual_dates.get('hearing_request_dates')) else 0.0,
             ]
             critic_score = sum(critic_components) / float(len(critic_components))
             weighted = (
                 float(self.actor_weight or 1.0) * float(actor_score)
                 + float(self.critic_weight or 1.0) * float(critic_score)
             ) / max(float(self.actor_weight or 1.0) + float(self.critic_weight or 1.0), 1e-6)
+            if weak_claim_focus and bool(deterministic_fields_updated):
+                weighted = min(1.0, weighted + 0.07)
+            if weak_modality_focus and bool(policy_signal or file_signal):
+                weighted = min(1.0, weighted + 0.05)
             return max(0.0, min(1.0, weighted))
 
         def _context_gap_is_closed() -> bool:
@@ -3728,6 +3878,7 @@ class ComplaintDenoiser:
                     if field_name in deterministic_fields_updated or _field_has_value(field_name):
                         matched_fields += 1
                 coverage = matched_fields / max(len(required_fields), 1)
+                newly_captured_required = bool(deterministic_fields_updated.intersection(set(required_fields)))
                 strict_gaps = {
                     'missing_staff_identity',
                     'missing_staff_title',
@@ -3739,9 +3890,9 @@ class ComplaintDenoiser:
                     'retaliation_missing_sequencing_dates',
                 }
                 if gap_type in strict_gaps:
-                    return coverage >= 1.0
-                # For non-strict gaps, require at least one concrete newly captured field.
-                return bool(deterministic_fields_updated.intersection(set(required_fields))) and coverage >= 0.5
+                    return coverage >= 1.0 and newly_captured_required
+                # Require a concrete field capture in this turn before considering the gap closed.
+                return newly_captured_required and coverage >= 0.5
 
             if not gap_type:
                 return bool(_has_structured_signal() or question_type in {'requirement', 'evidence', 'timeline', 'responsible_party', 'relationship'})

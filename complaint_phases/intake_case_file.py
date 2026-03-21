@@ -1115,6 +1115,39 @@ def _derive_retrieval_path(lead_type: str) -> str:
         return "witness_follow_up"
     if "photo" in normalized or "image" in normalized:
         return "complainant_device_gallery"
+
+
+def merge_preserved_temporal_issue_registry(
+    current_registry: List[Dict[str, Any]],
+    previous_registry: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Preserve resolved temporal issue entries as historical records across refreshes."""
+    merged_registry = [
+        _coerce_dict(issue)
+        for issue in current_registry
+        if isinstance(issue, dict)
+    ]
+    current_issue_ids = {
+        _normalize_text(issue.get("issue_id") or "")
+        for issue in merged_registry
+        if _normalize_text(issue.get("issue_id") or "")
+    }
+
+    for issue in previous_registry if isinstance(previous_registry, list) else []:
+        issue_dict = _coerce_dict(issue)
+        issue_id = _normalize_text(issue_dict.get("issue_id") or "")
+        issue_status = _normalize_text(
+            issue_dict.get("current_resolution_status") or issue_dict.get("status") or ""
+        ).lower()
+        if not issue_id or issue_id in current_issue_ids or issue_status != "resolved":
+            continue
+        preserved_issue = dict(issue_dict)
+        preserved_issue["status"] = "resolved"
+        preserved_issue["current_resolution_status"] = "resolved"
+        merged_registry.append(preserved_issue)
+        current_issue_ids.add(issue_id)
+
+    return merged_registry
     return "complainant_possession"
 
 
@@ -1993,6 +2026,7 @@ def refresh_intake_sections(intake_case_file: Dict[str, Any], knowledge_graph) -
 def refresh_intake_case_file(intake_case_file: Dict[str, Any], knowledge_graph, *, append_snapshot: bool = False) -> Dict[str, Any]:
     """Refresh derived intake sections, open items, and summary snapshots."""
     case_file = _coerce_dict(intake_case_file)
+    previous_temporal_issue_registry = _coerce_list(case_file.get("temporal_issue_registry"))
     case_file["canonical_facts"] = _enrich_canonical_facts_with_relative_anchor_dates([
         _normalize_canonical_fact_record(record)
         for record in _coerce_list(case_file.get("canonical_facts"))
@@ -2017,9 +2051,12 @@ def refresh_intake_case_file(intake_case_file: Dict[str, Any], knowledge_graph, 
         _coerce_list(case_file.get("canonical_facts")),
         _coerce_list(case_file.get("timeline_relations")),
     )
-    case_file["temporal_issue_registry"] = build_temporal_issue_registry(
-        _coerce_list(case_file.get("canonical_facts")),
-        _coerce_list(case_file.get("contradiction_queue")),
+    case_file["temporal_issue_registry"] = merge_preserved_temporal_issue_registry(
+        build_temporal_issue_registry(
+            _coerce_list(case_file.get("canonical_facts")),
+            _coerce_list(case_file.get("contradiction_queue")),
+        ),
+        previous_temporal_issue_registry,
     )
     case_file["proof_leads"] = _link_proof_leads_to_timeline_anchors(
         _coerce_list(case_file.get("proof_leads")),
