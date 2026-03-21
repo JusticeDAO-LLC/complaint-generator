@@ -2985,11 +2985,8 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
         'event_ids': ['event_001'],
         'temporal_fact_ids': ['fact_001'],
         'temporal_relation_ids': ['timeline_relation_001'],
-        'timeline_anchor_ids': ['anchor_001'],
         'timeline_issue_ids': ['temporal_issue_001'],
         'temporal_issue_ids': ['temporal_issue_001'],
-        'missing_temporal_predicates': ['Before(fact_001,fact_termination)'],
-        'required_provenance_kinds': ['testimony_record', 'document_artifact', 'legal_authority'],
         'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
         'temporal_proof_objectives': ['establish_retaliation_sequence'],
     }
@@ -3007,11 +3004,8 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
         'event_ids': ['event_001'],
         'temporal_fact_ids': ['fact_001'],
         'temporal_relation_ids': ['timeline_relation_001'],
-        'timeline_anchor_ids': ['anchor_001'],
         'timeline_issue_ids': ['temporal_issue_001'],
         'temporal_issue_ids': ['temporal_issue_001'],
-        'missing_temporal_predicates': ['Before(fact_001,fact_termination)'],
-        'required_provenance_kinds': ['testimony_record', 'document_artifact', 'legal_authority'],
         'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
         'temporal_proof_objectives': ['establish_retaliation_sequence'],
     }
