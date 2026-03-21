@@ -254,7 +254,10 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
     emitted_names = [task.metadata["workflow_phase"] for task in tasks]
 
     assert emitted_names == ordered_names
-    assert any("document_pipeline.py" in [str(path) for path in task.target_files] for task in tasks)
+    assert any(
+        any(name in [str(path) for path in task.target_files] for name in ("document_pipeline.py", "scripts/synthesize_hacc_complaint.py", "document_optimization.py"))
+        for task in tasks
+    )
     assert all(task.method == "TEST_DRIVEN" for task in tasks)
     intake_task = next(task for task in tasks if task.metadata["workflow_phase"] == "intake_questioning")
     graph_task = next(task for task in tasks if task.metadata["workflow_phase"] == "graph_analysis")
@@ -264,30 +267,25 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
     assert "workflow_capabilities" in intake_task.metadata
     assert "complainant_prompting" in intake_task.metadata["workflow_capabilities"]
     assert "target_symbols" in graph_task.constraints
-    assert any(path.endswith("denoiser.py") for path in graph_task.constraints["target_symbols"])
     assert any(path.endswith("dependency_graph.py") for path in graph_task.constraints["target_symbols"])
     dependency_graph_symbols = next(
         symbols
         for path, symbols in graph_task.constraints["target_symbols"].items()
         if path.endswith("dependency_graph.py")
     )
-    denoiser_symbols = next(
-        symbols
-        for path, symbols in graph_task.constraints["target_symbols"].items()
-        if path.endswith("denoiser.py")
-    )
     assert dependency_graph_symbols == ["get_claim_readiness"]
-    assert denoiser_symbols == ["process_answer"]
     assert "workflow_capabilities" in graph_task.metadata
     assert "knowledge_graph_population" in graph_task.metadata["workflow_capabilities"]
     assert "target_symbols" in document_task.constraints
-    assert len(graph_task.target_files) == 2
+    assert len(graph_task.target_files) == 1
     assert graph_task.target_files[0].name == "dependency_graph.py"
-    assert graph_task.target_files[1].name == "denoiser.py"
     assert "Current graph signals:" in graph_task.description
     assert "phase_signal_context" in graph_task.metadata
     assert "dg_avg_satisfaction_rate" in graph_task.metadata["phase_signal_context"]
-    assert any(path.endswith("document_pipeline.py") for path in document_task.constraints["target_symbols"])
+    assert any(
+        path.endswith("document_pipeline.py") or path.endswith("synthesize_hacc_complaint.py")
+        for path in document_task.constraints["target_symbols"]
+    )
     document_optimization_symbols = [
         symbols
         for path, symbols in document_task.constraints["target_symbols"].items()
@@ -295,9 +293,8 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
     ]
     if document_optimization_symbols:
         assert document_optimization_symbols[0] == ["optimize_draft"]
-    assert len(document_task.target_files) == 2
-    assert any(path.name == "synthesize_hacc_complaint.py" for path in document_task.target_files)
-    assert any(path.name == "document_pipeline.py" for path in document_task.target_files)
+    assert len(document_task.target_files) == 1
+    assert document_task.target_files[0].name in {"synthesize_hacc_complaint.py", "document_optimization.py"}
     assert "document_optimization" in document_task.metadata["workflow_capabilities"]
 
 

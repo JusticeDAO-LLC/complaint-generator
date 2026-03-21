@@ -813,6 +813,11 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "Packet proof readiness:" in content
     assert "Packet unresolved without path:" in content
     assert "Packet unresolved chronology issues:" in content
+    assert "Chronology history issues:" in content
+    assert "Chronology history unresolved:" in content
+    assert "Chronology history resolved:" in content
+    assert "Chronology history statuses:" in content
+    assert "Chronology history issue ids:" in content
     assert "Packet chronology issue ids:" in content
     assert "Packet completion ready:" in content
     assert "Packet temporal facts:" in content

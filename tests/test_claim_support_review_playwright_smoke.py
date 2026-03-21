@@ -210,6 +210,13 @@ def _build_hook_backed_browser_mediator(db_path: str):
             "warnings": ["Some timeline facts only express relative ordering and still need anchoring."],
             "partial_order_ready": False,
         },
+        "temporal_issue_registry_summary": {
+            "count": 2,
+            "unresolved_count": 1,
+            "resolved_count": 1,
+            "status_counts": {"open": 1, "resolved": 1},
+            "issue_ids": ["timeline-gap-001", "timeline-gap-closed-001"],
+        },
         "harm_profile": {
             "count": 1,
             "categories": ["economic"],
@@ -340,6 +347,13 @@ def _build_hook_backed_browser_mediator(db_path: str):
                 "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.": 1,
             },
             "temporal_resolution_status_counts": {"still_open": 1},
+        },
+        "temporal_issue_registry_summary": {
+            "count": 2,
+            "unresolved_count": 1,
+            "resolved_count": 1,
+            "status_counts": {"open": 1, "resolved": 1},
+            "issue_ids": ["timeline-gap-001", "timeline-gap-closed-001"],
         },
     }
 
@@ -2560,6 +2574,10 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "packet review escalations: 0.50" in packet_summary
                 assert "packet escalations: 1" in packet_summary
                 assert "packet unresolved without path: 1" in packet_summary
+                assert "chronology history issues: 2" in packet_summary
+                assert "chronology history unresolved: 1" in packet_summary
+                assert "chronology history resolved: 1" in packet_summary
+                assert "chronology history statuses: Open=1, Resolved=1" in packet_summary
                 assert "packet proof readiness: 0.23" in packet_summary
                 assert "packet completion ready: no" in packet_summary
                 assert "packet temporal facts: 2" in packet_summary
@@ -4368,6 +4386,13 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
                     },
                     "temporal_resolution_status_counts": {"awaiting_complainant_record": 1},
                 },
+                "temporal_issue_registry_summary": {
+                    "count": 2,
+                    "unresolved_count": 1,
+                    "resolved_count": 1,
+                    "status_counts": {"open": 1, "resolved": 1},
+                    "issue_ids": ["timeline-gap-001", "timeline-gap-closed-001"],
+                },
                 "alignment_task_update_history": [
                     {
                         "task_id": "retaliation:claims_for_relief:resolve_support_conflicts",
@@ -4501,6 +4526,11 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
             assert "Alignment chronology status: Partial=1" in trace_evidence
             assert "Alignment chronology blockers: Retaliation timeline lacks a clear ordering between protected activity and termination.=1" in trace_evidence
             assert "Alignment chronology handoffs: Awaiting Complainant Record=1" in trace_evidence
+            assert "Chronology history issues: 2" in trace_evidence
+            assert "Chronology history unresolved: 1" in trace_evidence
+            assert "Chronology history resolved: 1" in trace_evidence
+            assert "Chronology history statuses: Open=1, Resolved=1" in trace_evidence
+            assert "Chronology history issue ids: timeline-gap-001, timeline-gap-closed-001" in trace_evidence
             assert "Packet blocking covered: 0.50" in trace_evidence
             assert "Packet credible support: 0.50" in trace_evidence
             assert "Packet draft ready: 0.00" in trace_evidence

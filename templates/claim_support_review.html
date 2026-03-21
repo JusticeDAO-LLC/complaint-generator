@@ -3500,6 +3500,9 @@
             const packetStatusCounts = claimSupportPacketSummary.status_counts && typeof claimSupportPacketSummary.status_counts === 'object'
                 ? claimSupportPacketSummary.status_counts
                 : {};
+            const temporalIssueRegistrySummary = intakeCaseSummary.temporal_issue_registry_summary && typeof intakeCaseSummary.temporal_issue_registry_summary === 'object'
+                ? intakeCaseSummary.temporal_issue_registry_summary
+                : {};
             const packetChips = [];
             if (claimSupportPacketSummary.claim_count !== undefined) {
                 packetChips.push(`<span class="chip">claims: ${Number(claimSupportPacketSummary.claim_count || 0)}</span>`);
@@ -3536,6 +3539,25 @@
             }
             if (claimSupportPacketSummary.claim_support_unresolved_temporal_issue_count !== undefined) {
                 packetChips.push(`<span class="chip">packet unresolved chronology issues: ${Number(claimSupportPacketSummary.claim_support_unresolved_temporal_issue_count || 0)}</span>`);
+            }
+            if (temporalIssueRegistrySummary.count !== undefined) {
+                packetChips.push(`<span class="chip">chronology history issues: ${Number(temporalIssueRegistrySummary.count || 0)}</span>`);
+            }
+            if (temporalIssueRegistrySummary.unresolved_count !== undefined) {
+                packetChips.push(`<span class="chip">chronology history unresolved: ${Number(temporalIssueRegistrySummary.unresolved_count || 0)}</span>`);
+            }
+            if (temporalIssueRegistrySummary.resolved_count !== undefined) {
+                packetChips.push(`<span class="chip">chronology history resolved: ${Number(temporalIssueRegistrySummary.resolved_count || 0)}</span>`);
+            }
+            const chronologyHistoryStatusLine = formatSummaryCountLine(temporalIssueRegistrySummary.status_counts);
+            if (chronologyHistoryStatusLine) {
+                packetChips.push(`<span class="chip">chronology history statuses: ${chronologyHistoryStatusLine}</span>`);
+            }
+            const chronologyHistoryIssueIds = Array.isArray(temporalIssueRegistrySummary.issue_ids)
+                ? temporalIssueRegistrySummary.issue_ids.filter((item) => String(item || '').trim())
+                : [];
+            if (chronologyHistoryIssueIds.length) {
+                packetChips.push(`<span class="chip">chronology history issue ids: ${chronologyHistoryIssueIds.join(', ')}</span>`);
             }
             const packetUnresolvedTemporalIssueIds = Array.isArray(claimSupportPacketSummary.claim_support_unresolved_temporal_issue_ids)
                 ? claimSupportPacketSummary.claim_support_unresolved_temporal_issue_ids.filter((item) => String(item || '').trim())

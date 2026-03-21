@@ -974,9 +974,9 @@ class Optimizer:
                         seen.add(path.name)
                         selected.append(path)
                         break
-                if len(selected) >= 2:
+                if len(selected) >= 1:
                     break
-            return selected or target_paths[:2]
+            return selected or target_paths[:1]
 
         if str(phase_name) == "document_generation":
             targeting_summary = dict(report.document_evidence_targeting_summary or {})
@@ -1016,9 +1016,9 @@ class Optimizer:
                         seen.add(path.name)
                         selected.append(path)
                         break
-                if len(selected) >= 2:
+                if len(selected) >= 1:
                     break
-            return selected or target_paths[:2]
+            return selected or target_paths[:1]
 
         if str(phase_name) == "intake_questioning":
             if int(report.num_sessions_analyzed or 0) == 0:
@@ -1060,9 +1060,9 @@ class Optimizer:
                         seen.add(path.name)
                         selected.append(path)
                         break
-                if len(selected) >= 2:
+                if len(selected) >= 1:
                     break
-            return selected or target_paths[:2]
+            return selected or target_paths[:1]
 
         return target_paths
 
