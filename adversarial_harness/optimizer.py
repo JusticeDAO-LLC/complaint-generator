@@ -141,6 +141,7 @@ class OptimizationReport:
             'document_workflow_execution_summary': self.document_workflow_execution_summary or {},
             'document_execution_drift_summary': self.document_execution_drift_summary or {},
             'document_grounding_improvement_summary': self.document_grounding_improvement_summary or {},
+            'document_grounding_lane_outcome_summary': self.document_grounding_lane_outcome_summary or {},
             'cross_phase_findings': list(self.cross_phase_findings or []),
             'workflow_action_queue': list(self.workflow_action_queue or []),
         }
@@ -3071,6 +3072,15 @@ class Optimizer:
         elif bool(document_grounding_improvement_summary.get("improved_session_count")):
             recommendations.append(
                 "Grounding recovery prompts are improving fact-backed ratios in at least some sessions. Preserve and expand those recovery flows."
+            )
+        recommended_future_support_kind = str(
+            (document_grounding_lane_outcome_summary or {}).get("recommended_future_support_kind") or ""
+        ).strip()
+        if recommended_future_support_kind:
+            recommendations.append(
+                "Grounding improvement is strongest when using "
+                + recommended_future_support_kind
+                + " support. Prefer that lane first for similar grounding-recovery cycles."
             )
         first_executed_claim_element = str(
             (document_workflow_execution_summary or {}).get("first_targeted_claim_element") or ""

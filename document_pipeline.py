@@ -1323,6 +1323,16 @@ class FormalComplaintDocumentBuilder:
                 else {}
             )
         )
+        document_grounding_lane_outcome_summary = (
+            workflow_optimization_guidance.get("document_grounding_lane_outcome_summary")
+            if isinstance(workflow_optimization_guidance.get("document_grounding_lane_outcome_summary"), dict)
+            else (
+                document_optimization.get("document_grounding_lane_outcome_summary")
+                if isinstance(document_optimization, dict)
+                and isinstance(document_optimization.get("document_grounding_lane_outcome_summary"), dict)
+                else {}
+            )
+        )
         filing_checklist = self._build_filing_checklist(drafting_readiness)
         self._annotate_filing_checklist_review_links(
             filing_checklist=filing_checklist,
@@ -1342,6 +1352,8 @@ class FormalComplaintDocumentBuilder:
             draft["document_execution_drift_summary"] = dict(document_execution_drift_summary)
         if document_grounding_improvement_summary:
             draft["document_grounding_improvement_summary"] = dict(document_grounding_improvement_summary)
+        if document_grounding_lane_outcome_summary:
+            draft["document_grounding_lane_outcome_summary"] = dict(document_grounding_lane_outcome_summary)
         if document_drafting_next_action:
             draft["document_drafting_next_action"] = dict(document_drafting_next_action)
         if isinstance(draft.get("document_provenance_summary"), dict) and draft.get("document_provenance_summary"):
@@ -1386,6 +1398,7 @@ class FormalComplaintDocumentBuilder:
             "document_workflow_execution_summary": dict(document_workflow_execution_summary),
             "document_execution_drift_summary": dict(document_execution_drift_summary),
             "document_grounding_improvement_summary": dict(document_grounding_improvement_summary),
+            "document_grounding_lane_outcome_summary": dict(document_grounding_lane_outcome_summary),
             "document_drafting_next_action": dict(document_drafting_next_action),
             "document_provenance_summary": (
                 dict(draft.get("document_provenance_summary") or {})

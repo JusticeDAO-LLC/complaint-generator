@@ -4,6 +4,7 @@ from document_optimization import (
     AgenticDocumentOptimizer,
     _build_document_execution_drift_summary,
     _build_document_grounding_improvement_summary,
+    _build_document_grounding_lane_outcome_summary,
     _build_workflow_targeting_summary,
 )
 
@@ -380,6 +381,27 @@ def test_build_document_grounding_improvement_summary_detects_improvement():
     assert summary["improved_flag"] is True
     assert summary["low_grounding_resolved_flag"] is True
     assert summary["recovery_attempted_flag"] is True
+    assert summary["targeted_claim_elements"] == ["protected_activity"]
+
+
+def test_build_document_grounding_lane_outcome_summary_tracks_attempted_lane():
+    summary = _build_document_grounding_lane_outcome_summary(
+        document_grounding_improvement_summary={
+            "fact_backed_ratio_delta": 0.35,
+            "preferred_support_kinds": ["testimony"],
+            "targeted_claim_elements": ["protected_activity"],
+            "improved_flag": True,
+            "regressed_flag": False,
+            "stalled_flag": False,
+        },
+        document_workflow_execution_summary={
+            "first_preferred_support_kind": "testimony",
+        },
+    )
+
+    assert summary["attempted_support_kind"] == "testimony"
+    assert summary["outcome_status"] == "improved"
+    assert summary["recommended_future_support_kind"] == "testimony"
     assert summary["targeted_claim_elements"] == ["protected_activity"]
 
 

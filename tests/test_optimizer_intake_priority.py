@@ -629,6 +629,16 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
                     "recovery_attempted_flag": True,
                     "targeted_claim_elements": ["protected_activity"],
                 },
+                "document_grounding_lane_outcome_summary": {
+                    "attempted_support_kind": "testimony",
+                    "outcome_status": "improved",
+                    "fact_backed_ratio_delta": 0.2444,
+                    "targeted_claim_elements": ["protected_activity"],
+                    "recommended_future_support_kind": "testimony",
+                    "improved_flag": True,
+                    "regressed_flag": False,
+                    "stalled_flag": False,
+                },
             },
             "adversarial_intake_priority_summary": {
                 "expected_objectives": ["timeline"],
@@ -647,6 +657,8 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
     assert report.document_provenance_summary["avg_fact_backed_ratio"] == 0.3889
     assert report.document_grounding_improvement_summary["improved_session_count"] == 1
     assert report.document_grounding_improvement_summary["avg_fact_backed_ratio_delta"] == 0.2444
+    assert report.document_grounding_lane_outcome_summary["recommended_future_support_kind"] == "testimony"
+    assert report.document_grounding_lane_outcome_summary["support_kind_stats"]["testimony"]["improved_count"] == 1
     assert report.document_execution_drift_summary["drift_flag"] is True
     assert report.document_execution_drift_summary["top_targeted_claim_element"] == "protected_activity"
     assert report.document_evidence_targeting_summary["claim_element_counts"] == {"protected_activity": 1}
@@ -661,6 +673,7 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
     assert any("acting on the highest-priority targeted claim element first" in recommendation for recommendation in report.recommendations)
     assert any("Draft grounding is weak" in recommendation for recommendation in report.recommendations)
     assert any("Grounding recovery prompts are improving fact-backed ratios" in recommendation for recommendation in report.recommendations)
+    assert any("Grounding improvement is strongest when using testimony support" in recommendation for recommendation in report.recommendations)
 
     tasks, _ = optimizer.build_phase_patch_tasks(
         [result],
@@ -685,6 +698,7 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
     assert document_task.metadata["document_evidence_targeting_summary"]["count"] == 1
     assert document_task.metadata["document_provenance_summary"]["low_grounding_flag"] is True
     assert document_task.metadata["document_grounding_improvement_summary"]["improved_flag"] is True
+    assert document_task.metadata["document_grounding_lane_outcome_summary"]["recommended_future_support_kind"] == "testimony"
     assert document_task.metadata["document_workflow_execution_summary"]["first_targeted_claim_element"] == "causation"
     assert document_task.metadata["document_execution_drift_summary"]["drift_flag"] is True
     assert document_task.metadata["report_summary"]["document_evidence_targeting_summary"]["claim_element_counts"] == {
@@ -710,6 +724,7 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
     assert payload["shared_context"]["document_evidence_targeting_summary"]["count"] == 1
     assert payload["shared_context"]["document_provenance_summary"]["low_grounding_flag"] is True
     assert payload["shared_context"]["document_grounding_improvement_summary"]["improved_flag"] is True
+    assert payload["shared_context"]["document_grounding_lane_outcome_summary"]["recommended_future_support_kind"] == "testimony"
     assert payload["shared_context"]["document_workflow_execution_summary"]["first_targeted_claim_element"] == "causation"
     assert payload["shared_context"]["document_execution_drift_summary"]["drift_flag"] is True
     assert bundle_report.document_evidence_targeting_summary["claim_element_counts"] == {"protected_activity": 1}

@@ -302,6 +302,57 @@ def _build_document_grounding_improvement_summary(
     }
 
 
+def _build_document_grounding_lane_outcome_summary(
+    *,
+    document_grounding_improvement_summary: Any,
+    document_workflow_execution_summary: Any,
+) -> Dict[str, Any]:
+    improvement_summary = (
+        document_grounding_improvement_summary
+        if isinstance(document_grounding_improvement_summary, dict)
+        else {}
+    )
+    execution_summary = (
+        document_workflow_execution_summary
+        if isinstance(document_workflow_execution_summary, dict)
+        else {}
+    )
+    if not improvement_summary and not execution_summary:
+        return {}
+
+    preferred_support_kinds = (
+        improvement_summary.get("preferred_support_kinds")
+        if isinstance(improvement_summary.get("preferred_support_kinds"), list)
+        else []
+    )
+    attempted_support_kind = str(
+        execution_summary.get("first_preferred_support_kind")
+        or (preferred_support_kinds[0] if preferred_support_kinds else "")
+        or ""
+    ).strip()
+    targeted_claim_elements = _unique_preserving_order(
+        str(item).strip()
+        for item in (improvement_summary.get("targeted_claim_elements") or [])
+        if str(item).strip()
+    )
+    if bool(improvement_summary.get("improved_flag")):
+        outcome_status = "improved"
+    elif bool(improvement_summary.get("regressed_flag")):
+        outcome_status = "regressed"
+    else:
+        outcome_status = "stalled"
+    return {
+        "attempted_support_kind": attempted_support_kind,
+        "outcome_status": outcome_status,
+        "fact_backed_ratio_delta": float(improvement_summary.get("fact_backed_ratio_delta") or 0.0),
+        "targeted_claim_elements": targeted_claim_elements,
+        "recommended_future_support_kind": attempted_support_kind if outcome_status == "improved" else "",
+        "improved_flag": bool(improvement_summary.get("improved_flag")),
+        "regressed_flag": bool(improvement_summary.get("regressed_flag")),
+        "stalled_flag": bool(improvement_summary.get("stalled_flag")),
+    }
+
+
 def _sorted_count_items(values: Any) -> List[Tuple[str, int]]:
     return [
         (str(name), int(count or 0))
@@ -1461,6 +1512,10 @@ class AgenticDocumentOptimizer:
             final_document_provenance_summary=final_document_provenance_summary,
             workflow_optimization_guidance=workflow_optimization_guidance,
         )
+        document_grounding_lane_outcome_summary = _build_document_grounding_lane_outcome_summary(
+            document_grounding_improvement_summary=document_grounding_improvement_summary,
+            document_workflow_execution_summary=document_workflow_execution_summary,
+        )
         if workflow_targeting_summary:
             workflow_optimization_guidance["workflow_targeting_summary"] = dict(workflow_targeting_summary)
         if document_workflow_execution_summary:
@@ -1474,6 +1529,10 @@ class AgenticDocumentOptimizer:
         if document_grounding_improvement_summary:
             workflow_optimization_guidance["document_grounding_improvement_summary"] = dict(
                 document_grounding_improvement_summary
+            )
+        if document_grounding_lane_outcome_summary:
+            workflow_optimization_guidance["document_grounding_lane_outcome_summary"] = dict(
+                document_grounding_lane_outcome_summary
             )
         trace_storage = self._store_trace(
             {
@@ -1499,6 +1558,7 @@ class AgenticDocumentOptimizer:
                 "document_workflow_execution_summary": document_workflow_execution_summary,
                 "document_execution_drift_summary": document_execution_drift_summary,
                 "document_grounding_improvement_summary": document_grounding_improvement_summary,
+                "document_grounding_lane_outcome_summary": document_grounding_lane_outcome_summary,
                 "support_context": support_context,
                 "drafting_readiness": readiness_for_critic,
                 "initial_review": initial_review,
@@ -1554,6 +1614,7 @@ class AgenticDocumentOptimizer:
             "document_workflow_execution_summary": document_workflow_execution_summary,
             "document_execution_drift_summary": document_execution_drift_summary,
             "document_grounding_improvement_summary": document_grounding_improvement_summary,
+            "document_grounding_lane_outcome_summary": document_grounding_lane_outcome_summary,
             "packet_projection": dict(support_context.get("packet_projection") or {}),
             "section_history": [
                 {

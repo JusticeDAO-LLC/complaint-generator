@@ -7,7 +7,7 @@ from applications.review_ui import create_review_dashboard_app, create_review_su
 
 
 try:
-    import multipart  # type: ignore  # noqa: F401
+    import python_multipart  # type: ignore  # noqa: F401
     HAS_MULTIPART = True
 except ModuleNotFoundError:
     HAS_MULTIPART = False
