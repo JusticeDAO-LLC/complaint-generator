@@ -2683,17 +2683,8 @@ class FormalComplaintDocumentBuilder:
             lines.extend([
                 "",
                 f"COUNT {_roman(index)} - {claim.get('count_title', claim.get('claim_type', 'Claim'))}",
-                "Legal Standard:",
             ])
-            lines.extend(self._bulletize_lines(claim.get("legal_standards", [])))
-            incorporated_clause = self._format_incorporated_reference_clause(
-                claim.get("allegation_references", []),
-                claim.get("supporting_exhibits", []),
-            )
-            if incorporated_clause:
-                lines.append(incorporated_clause)
-            lines.append("Claim-Specific Support:")
-            lines.extend(self._bulletize_lines(claim.get("supporting_facts", [])))
+            lines.extend(self._build_claim_render_lines(claim))
             missing = self._normalize_text_lines(claim.get("missing_elements", []))
             if missing:
                 lines.append("Open Support Gaps:")
@@ -2771,6 +2762,107 @@ class FormalComplaintDocumentBuilder:
             lines.extend(str(line) for line in _coerce_list(affidavit.get("notary_block")) if str(line or "").strip())
         lines.extend(["", *self._build_signature_section_lines(signature_block, forum_type)])
         return "\n".join(line for line in lines if line is not None)
+
+    def _build_claim_render_lines(self, claim: Dict[str, Any]) -> List[str]:
+        if not isinstance(claim, dict):
+            return []
+        rendered: List[str] = []
+        incorporated_clause = self._format_incorporated_reference_clause(
+            claim.get("allegation_references", []),
+            claim.get("supporting_exhibits", []),
+        )
+        if incorporated_clause:
+            rendered.append(incorporated_clause)
+
+        legal_standards = self._normalize_text_lines(claim.get("legal_standards", []))
+        supporting_facts = self._normalize_text_lines(claim.get("supporting_facts", []))
+
+        standard_paragraph = self._compose_count_paragraph(
+            legal_standards[:3],
+            lead_in="Plaintiff alleges that",
+        )
+        if standard_paragraph:
+            rendered.append(standard_paragraph)
+
+        authority_paragraph = self._compose_count_paragraph(
+            legal_standards[3:],
+            lead_in="This claim is further supported by",
+        )
+        if authority_paragraph:
+            rendered.append(authority_paragraph)
+
+        support_paragraph = self._compose_count_paragraph(
+            supporting_facts,
+            lead_in="In support of this count, Plaintiff alleges that",
+        )
+        if support_paragraph:
+            rendered.append(support_paragraph)
+        return rendered
+
+    def _compose_count_paragraph(self, lines: List[str], *, lead_in: str) -> str:
+        normalized = [str(line or "").strip().rstrip(".") for line in lines if str(line or "").strip()]
+        if not normalized:
+            return ""
+        cleaned: List[str] = []
+        for index, line in enumerate(normalized):
+            line = self._normalize_count_paragraph_fragment(
+                line,
+                index=index,
+                lead_in=lead_in,
+            )
+            cleaned.append(line)
+        joined = _join_chronology_segments(cleaned)
+        return f"{lead_in} {joined}." if joined else ""
+
+    def _normalize_count_paragraph_fragment(
+        self,
+        line: str,
+        *,
+        index: int,
+        lead_in: str,
+    ) -> str:
+        fragment = str(line or "").strip().rstrip(".")
+        if not fragment:
+            return ""
+        lowered_fragment = fragment.lower()
+        lowered_lead_in = lead_in.lower()
+        if index == 0 and lowered_fragment.startswith(lowered_lead_in + " "):
+            fragment = fragment[len(lead_in):].strip()
+            lowered_fragment = fragment.lower()
+
+        prefix_replacements = (
+            ("plaintiff alleges that ", ""),
+            ("plaintiff further alleges that ", ""),
+            ("plaintiff seeks relief for ", "the requested relief addresses "),
+        )
+        for prefix, replacement in prefix_replacements:
+            if lowered_fragment.startswith(prefix):
+                fragment = replacement + fragment[len(prefix):]
+                lowered_fragment = fragment.lower()
+                break
+
+        if index > 0:
+            if fragment.startswith("Plaintiff "):
+                fragment = "plaintiff " + fragment[len("Plaintiff "):]
+            elif fragment.startswith("Defendant "):
+                fragment = "defendant " + fragment[len("Defendant "):]
+            elif fragment.startswith("HACC's "):
+                fragment = "HACC's " + fragment[len("HACC's "):]
+            elif fragment.startswith("HACC "):
+                fragment = "HACC " + fragment[len("HACC "):]
+            elif fragment.startswith("24 C.F.R."):
+                fragment = fragment
+            elif fragment.startswith("On "):
+                fragment = "on " + fragment[len("On "):]
+            elif fragment and fragment[0].isupper():
+                fragment = fragment[0].lower() + fragment[1:]
+
+        if ": " in fragment and lead_in.startswith("This claim is further supported by"):
+            head, tail = fragment.split(": ", 1)
+            if head and tail:
+                fragment = f"{head} {tail[0].lower() + tail[1:]}" if tail[:1].isupper() else f"{head} {tail}"
+
+        return fragment
 
     def _normalize_text_lines(self, values: Any) -> List[str]:
         normalized = []
@@ -4148,6 +4240,24 @@ class FormalComplaintDocumentBuilder:
                     enriched.append(dict(entry))
                     seen_keys.add(candidate_key)
                 event_entry = dict(entry)
+                break
+        has_grievance_request = any(
+            "grievance request" in str(entry.get("text") or "").lower()
+            or ("submitted" in str(entry.get("text") or "").lower() and "grievance" in str(entry.get("text") or "").lower())
+            for entry in enriched
+            if isinstance(entry, dict)
+        )
+        if not has_grievance_request:
+            for entry in source_entries:
+                if not isinstance(entry, dict) or not _coerce_list(entry.get("fact_ids")):
+                    continue
+                text = str(entry.get("text") or "").lower()
+                if "grievance request" not in text and not ("submitted" in text and "grievance" in text):
+                    continue
+                candidate_key = _entry_key(entry)
+                if candidate_key not in seen_keys:
+                    enriched.append(dict(entry))
+                    seen_keys.add(candidate_key)
                 break
         return enriched
 
@@ -5794,11 +5904,15 @@ class FormalComplaintDocumentBuilder:
         for entry in ordered_entries:
             text = str(entry.get("text") or "").strip()
             lowered = text.lower()
+            source_kind = str(entry.get("source_kind") or "").strip().lower()
             if lowered.startswith("element supported: required notice and review process"):
                 if has_notice_requirement and has_review_requirement:
                     continue
             if "informal review for denial of assistance" in lowered:
                 if has_authority_notice_review:
+                    continue
+            if source_kind == "uploaded_evidence_preview":
+                if "chronology" in lowered or "denial notice and review" in lowered:
                     continue
             pruned.append(entry)
         return self._merge_claim_support_policy_entries(pruned)
@@ -5833,7 +5947,7 @@ class FormalComplaintDocumentBuilder:
             None,
         )
         if not (notice_entry and review_entry and authority_entry):
-            return ordered_entries
+            return self._merge_housing_policy_entries(ordered_entries)
 
         merged_entry = {
             "text": (
@@ -5878,6 +5992,70 @@ class FormalComplaintDocumentBuilder:
                 "notice to the applicant requires" in text
                 or "scheduling an informal review requires" in text
                 or "requires written notice and an opportunity for informal review" in text
+            ):
+                if not merged_inserted:
+                    merged_entries.append(merged_entry)
+                    merged_inserted = True
+                continue
+            merged_entries.append(entry)
+        return merged_entries
+
+    def _merge_housing_policy_entries(self, entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        ordered_entries = [dict(entry) for entry in entries if isinstance(entry, dict)]
+        if not ordered_entries:
+            return []
+
+        notice_entry = next(
+            (
+                entry
+                for entry in ordered_entries
+                if "notice to the applicant requires" in str(entry.get("text") or "").lower()
+            ),
+            None,
+        )
+        review_entry = next(
+            (
+                entry
+                for entry in ordered_entries
+                if "scheduling an informal review requires" in str(entry.get("text") or "").lower()
+            ),
+            None,
+        )
+        if not (notice_entry and review_entry):
+            return ordered_entries
+
+        merged_entry = {
+            "text": (
+                "HACC's written-notice and informal-review policy support Plaintiff's claim that HACC "
+                "wrongfully denied or maintained the denial of housing assistance without the process "
+                f"required before enforcement of that adverse action ({self._merge_support_exhibit_labels(notice_entry, review_entry)})."
+            ),
+            "fact_ids": _normalize_identifier_list(
+                list(notice_entry.get("fact_ids") or []) + list(review_entry.get("fact_ids") or [])
+            ),
+            "source_artifact_ids": _normalize_identifier_list(
+                list(notice_entry.get("source_artifact_ids") or []) + list(review_entry.get("source_artifact_ids") or [])
+            ),
+            "claim_types": _normalize_identifier_list(
+                list(notice_entry.get("claim_types") or []) + list(review_entry.get("claim_types") or [])
+            ),
+            "claim_element_ids": _normalize_identifier_list(
+                list(notice_entry.get("claim_element_ids") or []) + list(review_entry.get("claim_element_ids") or [])
+            ),
+            "support_trace_ids": _normalize_identifier_list(
+                list(notice_entry.get("support_trace_ids") or []) + list(review_entry.get("support_trace_ids") or [])
+            ),
+            "source_kind": "claim_support_merged",
+            "exhibit_label": self._merge_support_exhibit_labels(notice_entry, review_entry),
+        }
+
+        merged_entries: List[Dict[str, Any]] = []
+        merged_inserted = False
+        for entry in ordered_entries:
+            text = str(entry.get("text") or "").lower()
+            if (
+                "notice to the applicant requires" in text
+                or "scheduling an informal review requires" in text
             ):
                 if not merged_inserted:
                     merged_entries.append(merged_entry)

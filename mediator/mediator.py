@@ -5680,6 +5680,7 @@ class Mediator:
 		materiality: str | None = None,
 		corroboration_priority: str | None = None,
 		fact_participants: Dict[str, Any] | None = None,
+		event_support_refs: List[str] | None = None,
 		intake_question_intent: Dict[str, Any] | None = None,
 	) -> Dict[str, Any]:
 		canonical_facts = intake_case_file.setdefault('canonical_facts', [])
@@ -5707,6 +5708,9 @@ class Mediator:
 				existing['materiality'] = materiality
 			if corroboration_priority:
 				existing['corroboration_priority'] = corroboration_priority
+			existing['event_support_refs'] = list(
+				dict.fromkeys(list(existing.get('event_support_refs', []) or []) + list(event_support_refs or []))
+			)
 			existing['intake_question_intent'] = self._merge_intake_question_intent(
 				existing.get('intake_question_intent'),
 				intake_question_intent,
@@ -5731,11 +5735,38 @@ class Mediator:
 			'corroboration_priority': corroboration_priority or self._question_corroboration_priority(question_type),
 			'materiality': materiality or self._question_materiality(question_type),
 			'fact_participants': fact_participants if isinstance(fact_participants, dict) else {},
+			'event_support_refs': list(event_support_refs or []),
 			'contradiction_group_id': None,
 			'intake_question_intent': self._merge_intake_question_intent({}, intake_question_intent),
 		}
 		canonical_facts.append(fact_record)
 		return fact_record
+
+	def _build_authored_event_support_refs(
+		self,
+		*,
+		fact_id: str,
+		question_type: str,
+		intake_question_intent: Dict[str, Any] | None = None,
+	) -> List[str]:
+		refs: List[str] = []
+		for candidate in (
+			f'fact:{fact_id}' if fact_id else '',
+			f'question_type:{question_type}' if question_type else '',
+			f'objective:{str((intake_question_intent or {}).get("question_objective") or "").strip()}'
+			if str((intake_question_intent or {}).get('question_objective') or '').strip()
+			else '',
+			f'claim_type:{str((intake_question_intent or {}).get("target_claim_type") or "").strip()}'
+			if str((intake_question_intent or {}).get('target_claim_type') or '').strip()
+			else '',
+			f'element:{str((intake_question_intent or {}).get("target_element_id") or "").strip()}'
+			if str((intake_question_intent or {}).get('target_element_id') or '').strip()
+			else '',
+		):
+			normalized_candidate = str(candidate or '').strip()
+			if normalized_candidate and normalized_candidate not in refs:
+				refs.append(normalized_candidate)
+		return refs
 
 	def _append_proof_lead(
 		self,
@@ -5897,6 +5928,37 @@ class Mediator:
 				fact.setdefault('event_label', str(fact.get('text') or '').strip())
 
 		timeline_anchors = intake_case_file_module.build_timeline_anchors(canonical_facts)
+		anchor_ids_by_fact_id: Dict[str, List[str]] = {}
+		for anchor in timeline_anchors:
+			if not isinstance(anchor, dict):
+				continue
+			fact_id = str(anchor.get('fact_id') or '').strip()
+			anchor_id = str(anchor.get('anchor_id') or '').strip()
+			if not fact_id or not anchor_id:
+				continue
+			anchor_ids_by_fact_id.setdefault(fact_id, [])
+			if anchor_id not in anchor_ids_by_fact_id[fact_id]:
+				anchor_ids_by_fact_id[fact_id].append(anchor_id)
+		for fact in canonical_facts:
+			if not isinstance(fact, dict):
+				continue
+			fact_id = str(fact.get('fact_id') or '').strip()
+			if not fact_id:
+				continue
+			fact['event_id'] = str(fact.get('event_id') or fact_id).strip() or fact_id
+			anchor_ids = list(anchor_ids_by_fact_id.get(fact_id, []))
+			if anchor_ids:
+				fact['timeline_anchor_ids'] = anchor_ids
+			event_support_refs = [
+				str(item).strip()
+				for item in list(fact.get('event_support_refs') or [])
+				if str(item or '').strip()
+			]
+			for derived_ref in [f'fact:{fact_id}', *[f'anchor:{anchor_id}' for anchor_id in anchor_ids]]:
+				if derived_ref not in event_support_refs:
+					event_support_refs.append(derived_ref)
+			if event_support_refs:
+				fact['event_support_refs'] = event_support_refs
 		timeline_relations = intake_case_file_module.build_timeline_relations(canonical_facts)
 		temporal_fact_registry = intake_case_file_module.build_temporal_fact_registry(canonical_facts, timeline_anchors)
 		intake_case_file['timeline_anchors'] = timeline_anchors
@@ -5952,6 +6014,16 @@ class Mediator:
 				materiality='high',
 				corroboration_priority='high',
 				fact_participants=fact_participants,
+				event_support_refs=self._build_authored_event_support_refs(
+					fact_id='',
+					question_type=question_type,
+					intake_question_intent=intake_question_intent,
+				),
+				intake_question_intent=intake_question_intent,
+			)
+			created_fact['event_support_refs'] = self._build_authored_event_support_refs(
+				fact_id=str(created_fact.get('fact_id') or '').strip(),
+				question_type=question_type,
 				intake_question_intent=intake_question_intent,
 			)
 			for existing_fact in existing_timeline_facts:

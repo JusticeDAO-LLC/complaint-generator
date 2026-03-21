@@ -884,3 +884,119 @@ def test_due_process_claim_support_entries_prune_redundant_abstract_rows():
         in text
         for text in texts
     )
+
+
+def test_housing_claim_support_entries_prune_preview_style_duplicates():
+    builder = FormalComplaintDocumentBuilder(_HousingProcessMediator())
+
+    draft = builder.build_draft(
+        user_id="housing-process-user",
+        court_name="United States District Court",
+        district="Northern District of California",
+        county=None,
+        division=None,
+        court_header_override=None,
+        case_number=None,
+        lead_case_number=None,
+        related_case_number=None,
+        assigned_judge=None,
+        courtroom=None,
+        title_override=None,
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Housing Authority of the County of Contra Costa"],
+        requested_relief=None,
+        jury_demand=None,
+        jury_demand_text=None,
+        signer_name=None,
+        signer_title=None,
+        signer_firm=None,
+        signer_bar_number=None,
+        signer_contact=None,
+        additional_signers=None,
+        declarant_name=None,
+        service_method=None,
+        service_recipients=None,
+        service_recipient_details=None,
+        signature_date=None,
+        verification_date=None,
+        service_date=None,
+        affidavit_title=None,
+        affidavit_intro=None,
+        affidavit_facts=None,
+        affidavit_supporting_exhibits=None,
+        affidavit_include_complaint_exhibits=None,
+        affidavit_venue_lines=None,
+        affidavit_jurat=None,
+        affidavit_notary_block=None,
+    )
+
+    housing_claim = next(
+        claim for claim in draft["claims_for_relief"] if claim.get("claim_type") == "housing_discrimination"
+    )
+    texts = [entry["text"] for entry in housing_claim["supporting_fact_entries"]]
+
+    assert not any("HACC denial notice and review chronology" in text for text in texts)
+    assert any("On March 3, 2026, HACC sent Plaintiff a written denial notice" in text for text in texts)
+    assert any(
+        "HACC's written-notice and informal-review policy support Plaintiff's claim that HACC wrongfully denied or maintained the denial of housing assistance"
+        in text
+        for text in texts
+    )
+    assert not any("Notice to the Applicant requires prompt written notice" in text for text in texts)
+    assert not any("Scheduling an Informal Review requires a written request for review" in text for text in texts)
+
+
+def test_rendered_draft_uses_compact_count_paragraphs():
+    builder = FormalComplaintDocumentBuilder(_HousingProcessMediator())
+
+    draft = builder.build_draft(
+        user_id="housing-process-user",
+        court_name="United States District Court",
+        district="Northern District of California",
+        county=None,
+        division=None,
+        court_header_override=None,
+        case_number=None,
+        lead_case_number=None,
+        related_case_number=None,
+        assigned_judge=None,
+        courtroom=None,
+        title_override=None,
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Housing Authority of the County of Contra Costa"],
+        requested_relief=None,
+        jury_demand=None,
+        jury_demand_text=None,
+        signer_name=None,
+        signer_title=None,
+        signer_firm=None,
+        signer_bar_number=None,
+        signer_contact=None,
+        additional_signers=None,
+        declarant_name=None,
+        service_method=None,
+        service_recipients=None,
+        service_recipient_details=None,
+        signature_date=None,
+        verification_date=None,
+        service_date=None,
+        affidavit_title=None,
+        affidavit_intro=None,
+        affidavit_facts=None,
+        affidavit_supporting_exhibits=None,
+        affidavit_include_complaint_exhibits=None,
+        affidavit_venue_lines=None,
+        affidavit_jurat=None,
+        affidavit_notary_block=None,
+    )
+
+    draft_text = draft["draft_text"]
+    claims_section = draft_text[draft_text.index("CLAIMS FOR RELIEF"):draft_text.index("REQUESTED RELIEF")]
+    assert "Legal Standard:" not in draft_text
+    assert "Claim-Specific Support:" not in draft_text
+    assert "Plaintiff alleges that Before enforcing a final adverse housing decision" in claims_section
+    assert "Plaintiff alleges that Plaintiff alleges that" not in claims_section
+    assert "defendant failed to provide those required procedural protections" in claims_section
+    assert "In support of this count, Plaintiff alleges that On March 3, 2026, HACC sent Plaintiff a written denial notice" in claims_section
+    assert "Informal review for denial of assistance requires written notice" in claims_section
+    assert "hACC" not in claims_section

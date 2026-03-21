@@ -572,10 +572,24 @@ class TestMediatorThreePhaseIntegration:
             if str(fact.get('fact_type') or '').strip().lower() == 'timeline'
             and 'March 1, 2025' in str(fact.get('text') or '')
         )
+        first_event = next(
+            item
+            for item in first_refresh_payload['event_ledger']
+            if str(item.get('fact_id') or item.get('event_id') or '').strip() == str(first_timeline_fact.get('fact_id') or '').strip()
+        )
 
         assert first_timeline_fact['temporal_context']['start_date'] == '2025-03-01'
+        assert first_timeline_fact['event_id'] == first_timeline_fact['fact_id']
         assert first_refresh_payload['timeline_anchors']
+        assert first_timeline_fact['timeline_anchor_ids'] == [first_refresh_payload['timeline_anchors'][0]['anchor_id']]
+        assert f"fact:{first_timeline_fact['fact_id']}" in first_timeline_fact['event_support_refs']
+        assert 'question_type:timeline' in first_timeline_fact['event_support_refs']
         assert first_refresh_payload['event_ledger']
+        assert first_event['event_id'] == first_timeline_fact['fact_id']
+        assert first_event['timeline_anchor_ids'] == [first_refresh_payload['timeline_anchors'][0]['anchor_id']]
+        assert f"anchor:{first_refresh_payload['timeline_anchors'][0]['anchor_id']}" in first_event['event_support_refs']
+        assert first_event['source_kind'] == 'complainant_answer'
+        assert first_event['source_ref'] == 'timeline'
         assert any(item.get('temporal_status') == 'anchored' for item in first_refresh_payload['temporal_fact_registry'])
         assert second_refresh_payload['timeline_relations']
         assert second_refresh_payload['temporal_relation_registry']

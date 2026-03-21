@@ -419,6 +419,9 @@ class PhaseManager:
         temporal_rule_status_counts: Dict[str, int] = {}
         temporal_rule_blocking_reason_counts: Dict[str, int] = {}
         temporal_resolution_status_counts: Dict[str, int] = {}
+        temporal_missing_anchor_task_count = 0
+        temporal_missing_predicate_count = 0
+        temporal_required_provenance_kind_count = 0
         for task in alignment_tasks if isinstance(alignment_tasks, list) else []:
             if not isinstance(task, dict):
                 continue
@@ -457,6 +460,22 @@ class PhaseManager:
             if resolution_status:
                 temporal_resolution_status_counts[resolution_status] = (
                     temporal_resolution_status_counts.get(resolution_status, 0) + 1
+                )
+            support_status = str(task.get('support_status') or '').strip().lower()
+            if (
+                resolution_status not in _EVIDENCE_RESOLVED_STATUSES
+                and support_status in {'unsupported', 'partially_supported', 'contradicted'}
+            ):
+                anchor_ids = self._normalize_temporal_task_values(
+                    task.get('anchor_ids') or task.get('timeline_anchor_ids')
+                )
+                if not anchor_ids:
+                    temporal_missing_anchor_task_count += 1
+                temporal_missing_predicate_count += len(
+                    self._normalize_temporal_task_values(task.get('missing_temporal_predicates'))
+                )
+                temporal_required_provenance_kind_count += len(
+                    self._normalize_temporal_task_values(task.get('required_provenance_kinds'))
                 )
 
         total_claims = 0
@@ -525,9 +544,12 @@ class PhaseManager:
         unresolved_temporal_issue_ids = self._build_unresolved_temporal_issue_ids(data)
         unresolved_temporal_issue_count = len(unresolved_temporal_issue_ids)
         chronology_penalty = min(
-            0.15,
+            0.2,
             (unresolved_temporal_issue_count * 0.03)
-            + (temporal_gap_task_count * 0.02),
+            + (temporal_gap_task_count * 0.02)
+            + (temporal_missing_anchor_task_count * 0.02)
+            + (temporal_missing_predicate_count * 0.015)
+            + (temporal_required_provenance_kind_count * 0.005),
         )
         proof_readiness_score = round(
             max(
@@ -549,6 +571,9 @@ class PhaseManager:
             and blocking_contradictions == 0
             and unresolved_without_review_path_count == 0
             and not unresolved_temporal_issue_ids
+            and temporal_missing_anchor_task_count == 0
+            and temporal_missing_predicate_count == 0
+            and temporal_required_provenance_kind_count == 0
         )
 
         return {
@@ -569,12 +594,23 @@ class PhaseManager:
             'claim_support_unresolved_temporal_issue_ids': unresolved_temporal_issue_ids,
             'temporal_gap_task_count': temporal_gap_task_count,
             'temporal_gap_targeted_task_count': temporal_gap_targeted_task_count,
+            'temporal_missing_anchor_task_count': temporal_missing_anchor_task_count,
+            'temporal_missing_predicate_count': temporal_missing_predicate_count,
+            'temporal_required_provenance_kind_count': temporal_required_provenance_kind_count,
             'temporal_rule_status_counts': temporal_rule_status_counts,
             'temporal_rule_blocking_reason_counts': temporal_rule_blocking_reason_counts,
             'temporal_resolution_status_counts': temporal_resolution_status_counts,
             'proof_readiness_score': proof_readiness_score,
             'evidence_completion_ready': evidence_completion_ready,
         }
+
+    def _normalize_temporal_task_values(self, values: Any) -> List[str]:
+        normalized_values: List[str] = []
+        for value in values if isinstance(values, list) else []:
+            normalized = str(value or '').strip()
+            if normalized and normalized not in normalized_values:
+                normalized_values.append(normalized)
+        return normalized_values
 
     def _normalize_evidence_escalation_status(self, value: Any) -> str:
         return str(value or '').strip().lower()
@@ -924,12 +960,20 @@ class PhaseManager:
             unresolved_alignment_tasks = self._get_actionable_alignment_tasks(data)
             unresolved_without_review_path_count = int(data.get('claim_support_unresolved_without_review_path_count', 0) or 0)
             unresolved_temporal_issue_count = int(data.get('claim_support_unresolved_temporal_issue_count', 0) or 0)
+            temporal_missing_anchor_task_count = int(data.get('temporal_missing_anchor_task_count', 0) or 0)
+            temporal_missing_predicate_count = int(data.get('temporal_missing_predicate_count', 0) or 0)
+            temporal_required_provenance_kind_count = int(
+                data.get('temporal_required_provenance_kind_count', 0) or 0
+            )
             return (
                 total_elements > 0
                 and explicit_status_count == total_elements
                 and blocking_contradictions == 0
                 and unresolved_without_review_path_count == 0
                 and unresolved_temporal_issue_count == 0
+                and temporal_missing_anchor_task_count == 0
+                and temporal_missing_predicate_count == 0
+                and temporal_required_provenance_kind_count == 0
                 and not unresolved_alignment_tasks
             )
 

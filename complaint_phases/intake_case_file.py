@@ -585,9 +585,17 @@ def _normalize_canonical_fact_record(record: Any) -> Dict[str, Any]:
     normalized_text = _normalize_text(fact.get("text") or "")
     fact_type = _normalize_text(fact.get("fact_type") or "general").lower() or "general"
     existing_temporal_context = _coerce_dict(fact.get("temporal_context"))
+    reusable_temporal_raw_text = ""
+    if (
+        existing_temporal_context.get("start_date")
+        or existing_temporal_context.get("end_date")
+        or existing_temporal_context.get("relative_markers")
+        or existing_temporal_context.get("matched_text")
+    ):
+        reusable_temporal_raw_text = _normalize_text(existing_temporal_context.get("raw_text") or "")
     raw_event_date_or_range = _normalize_text(
         fact.get("event_date_or_range")
-        or existing_temporal_context.get("raw_text")
+        or reusable_temporal_raw_text
         or ""
     ) or None
     temporal_context = _build_temporal_context(
@@ -618,6 +626,7 @@ def _normalize_canonical_fact_record(record: Any) -> Dict[str, Any]:
         "text": normalized_text,
         "fact_type": fact_type,
         "event_date_or_range": raw_event_date_or_range,
+        "event_id": _normalize_text(fact.get("event_id") or "") or None,
         "actor_ids": list(fact.get("actor_ids") or []),
         "target_ids": list(fact.get("target_ids") or []),
         "claim_types": list(fact.get("claim_types") or []),
@@ -626,6 +635,8 @@ def _normalize_canonical_fact_record(record: Any) -> Dict[str, Any]:
         "fact_participants": _coerce_dict(fact.get("fact_participants")),
         "event_label": _normalize_text(fact.get("event_label") or normalized_text) or None,
         "predicate_family": _normalize_text(fact.get("predicate_family") or fact_type).lower() or fact_type,
+        "timeline_anchor_ids": _unique_normalized_strings(fact.get("timeline_anchor_ids") or []),
+        "event_support_refs": _unique_normalized_strings(fact.get("event_support_refs") or []),
         "source_artifact_ids": source_artifact_ids,
         "testimony_record_ids": testimony_record_ids,
         "source_span_refs": _coerce_provenance_refs(fact.get("source_span_refs")),
@@ -633,6 +644,8 @@ def _normalize_canonical_fact_record(record: Any) -> Dict[str, Any]:
         "validation_status": _normalize_text(
             fact.get("validation_status") or fact.get("status") or "accepted"
         ).lower() or "accepted",
+        "source_kind": _normalize_text(fact.get("source_kind") or "") or None,
+        "source_ref": _normalize_text(fact.get("source_ref") or "") or None,
         "temporal_context": temporal_context,
     }
 
@@ -691,13 +704,75 @@ def _link_proof_leads_to_timeline_anchors(
     return linked_leads
 
 
+def _is_actionable_undated_timeline_fact(fact: Dict[str, Any]) -> bool:
+    text_value = _normalize_text(fact.get("text") or "")
+    lowered = text_value.lower()
+    predicate_family = _normalize_text(fact.get("predicate_family") or "").lower()
+    if not text_value:
+        return False
+    meta_prefixes = (
+        "my understanding",
+        "from what i understand",
+        "i understand",
+        "i also understand",
+        "i am asking for",
+        "i want hacc to",
+        "key facts that still need",
+        "the exact dates of",
+        "the names/titles of",
+        "what written notice",
+        "the specific adverse action",
+        "the final remedy timeline",
+    )
+    if any(lowered.startswith(prefix) for prefix in meta_prefixes):
+        return False
+    if any(token in lowered for token in ("policy", "24 cfr", "must get notice", "should be given", "supposed to")):
+        return False
+    actionable_families = {
+        "protected_activity",
+        "adverse_action",
+        "hearing_process",
+        "notice_chain",
+        "response_timeline",
+        "decision_timeline",
+        "causation",
+    }
+    if predicate_family in actionable_families:
+        return True
+    event_tokens = (
+        "requested",
+        "received",
+        "responded",
+        "replied",
+        "denied",
+        "terminated",
+        "evicted",
+        "complained",
+        "reported",
+        "appealed",
+        "filed",
+        "submitted",
+        "told me",
+        "sent me",
+        "communicated",
+    )
+    return any(token in lowered for token in event_tokens)
+
+
 def _timeline_capable_facts(canonical_facts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     timeline_facts: List[Dict[str, Any]] = []
     for record in canonical_facts if isinstance(canonical_facts, list) else []:
         fact = _normalize_canonical_fact_record(record)
         temporal_context = _coerce_dict(fact.get("temporal_context"))
         if (
-            fact.get("fact_type") == "timeline"
+            (
+                fact.get("fact_type") == "timeline"
+                and (
+                    temporal_context.get("start_date")
+                    or temporal_context.get("relative_markers")
+                    or _is_actionable_undated_timeline_fact(fact)
+                )
+            )
             or temporal_context.get("start_date")
             or temporal_context.get("relative_markers")
         ):
@@ -813,6 +888,10 @@ def build_temporal_fact_registry(
                 "is_range": bool(temporal_context.get("is_range", False)),
                 "relative_markers": _unique_normalized_strings(temporal_context.get("relative_markers") or []),
                 "timeline_anchor_ids": list(anchor_ids_by_fact_id.get(fact_id, [])),
+                "event_support_refs": _unique_normalized_strings(
+                    list(fact.get("event_support_refs") or [])
+                    + ([f"fact:{fact_id}"] if fact_id else [])
+                ),
                 "temporal_context": temporal_context,
                 "temporal_status": temporal_status,
                 "source_artifact_ids": _unique_normalized_strings(fact.get("source_artifact_ids") or []),
@@ -1673,12 +1752,20 @@ def build_timeline_anchors(canonical_facts: List[Dict[str, Any]]) -> List[Dict[s
         normalized_fact = _normalize_canonical_fact_record(fact)
         fact_type = _normalize_text(normalized_fact.get("fact_type") or "").lower()
         event_date = _normalize_text(normalized_fact.get("event_date_or_range") or "")
+        temporal_context = _coerce_dict(normalized_fact.get("temporal_context"))
+        if (
+            fact_type == "timeline"
+            and not event_date
+            and not temporal_context.get("start_date")
+            and not temporal_context.get("relative_markers")
+            and not _is_actionable_undated_timeline_fact(normalized_fact)
+        ):
+            continue
         if fact_type != "timeline" and not event_date:
             continue
         anchor_text = event_date or _normalize_text(fact.get("text") or "")
         if not anchor_text:
             continue
-        temporal_context = _coerce_dict(normalized_fact.get("temporal_context"))
         start_date = temporal_context.get("start_date")
         end_date = temporal_context.get("end_date")
         key = (

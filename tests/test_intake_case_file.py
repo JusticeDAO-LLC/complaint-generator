@@ -452,6 +452,50 @@ def test_refresh_intake_case_file_preserves_quantified_relative_markers_in_tempo
     assert "two weeks after" in issue["summary"]
 
 
+def test_refresh_intake_case_file_skips_policy_and_checklist_timeline_noise_in_temporal_registry():
+    intake_case_file = {
+        "candidate_claims": [],
+        "intake_sections": {},
+        "canonical_facts": [
+            {
+                "fact_id": "fact_policy",
+                "text": "From what I understand, the Administrative Plan says residents must get notice of the ability to request an informal hearing, including under 24 CFR 982.555.",
+                "fact_type": "timeline",
+                "predicate_family": "hearing_process",
+            },
+            {
+                "fact_id": "fact_checklist",
+                "text": "The exact dates of my complaint, HACC notices, my hearing/review request, and any denial or termination decision.",
+                "fact_type": "timeline",
+                "predicate_family": "timeline",
+            },
+            {
+                "fact_id": "fact_event",
+                "text": "I requested a hearing and received no response.",
+                "fact_type": "timeline",
+                "predicate_family": "hearing_process",
+            },
+        ],
+        "proof_leads": [],
+        "timeline_anchors": [],
+        "harm_profile": {},
+        "remedy_profile": {},
+        "contradiction_queue": [],
+        "open_items": [],
+        "summary_snapshots": [],
+        "complainant_summary_confirmation": {},
+        "source_complaint_text": "",
+    }
+
+    refreshed = refresh_intake_case_file(intake_case_file, None)
+
+    fact_ids = {item["fact_id"] for item in refreshed["timeline_anchors"]}
+    assert "fact_event" in fact_ids
+    assert "fact_policy" not in fact_ids
+    assert "fact_checklist" not in fact_ids
+    assert [issue["fact_ids"] for issue in refreshed["temporal_issue_registry"]] == [["fact_event"]]
+
+
 def test_knowledge_graph_builder_extracts_quantified_relative_event_dates():
     builder = KnowledgeGraphBuilder()
     graph = builder.build_from_text("Two weeks after I complained to HR, my employer terminated me.")
