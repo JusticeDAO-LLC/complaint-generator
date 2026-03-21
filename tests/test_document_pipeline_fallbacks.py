@@ -227,3 +227,24 @@ def test_factual_allegations_use_complaint_style_missing_detail_language():
     assert any("occurred in close sequence" in item for item in allegations)
     assert all("the complaint should state" not in item.lower() for item in allegations)
     assert all("should be identified with exact dates" not in item.lower() for item in allegations)
+
+
+def test_factual_allegations_synthesize_policy_violation_allegations_from_notice_and_review_text():
+    builder = FormalComplaintDocumentBuilder(_ExplodingMediator())
+
+    allegations = builder._build_factual_allegations(
+        summary_of_facts=[
+            "HACC policy describes scheduling and procedures for informal review.",
+            "Notice to the Applicant requires prompt written notice of a decision denying assistance.",
+        ],
+        claims_for_relief=[],
+    )
+
+    assert any(
+        "without providing the prompt written notice required for a decision denying assistance" in item
+        for item in allegations
+    )
+    assert any(
+        "failed to provide the informal review, grievance, or appeal process" in item
+        for item in allegations
+    )

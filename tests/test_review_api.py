@@ -2589,6 +2589,7 @@ def test_claim_support_review_payload_includes_confirmed_handoff_metadata():
         "summary": "Document generation should wait until evidence review and packet blockers are reduced further.",
         "recommended_actions": [
             "Reduce unresolved packet blockers and confirm the evidence packet before generating a formal complaint.",
+            "Resolve outstanding chronology gap tasks and temporal issue blockers before generating a formal complaint.",
         ],
         "chip_labels": [
             "workflow phase: Document Generation",
@@ -2604,7 +2605,9 @@ def test_claim_support_review_payload_includes_confirmed_handoff_metadata():
         "signals": {
             "recommended_next_action": "",
             "proof_readiness_score": 0.0,
+            "chronology_blocked": True,
             "unresolved_temporal_issue_count": 0,
+            "temporal_gap_task_count": 1,
             "unresolved_without_review_path_count": 0,
         },
     }
@@ -2621,7 +2624,7 @@ def test_claim_support_review_payload_includes_confirmed_handoff_metadata():
         ],
         "notes": [
             "Document generation should wait until evidence review and packet blockers are reduced further.",
-            "Recommended actions: Reduce unresolved packet blockers and confirm the evidence packet before generating a formal complaint.",
+            "Recommended actions: Reduce unresolved packet blockers and confirm the evidence packet before generating a formal complaint. | Resolve outstanding chronology gap tasks and temporal issue blockers before generating a formal complaint.",
         ],
         "buttons": [
             {

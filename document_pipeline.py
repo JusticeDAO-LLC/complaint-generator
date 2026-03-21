@@ -3440,6 +3440,35 @@ class FormalComplaintDocumentBuilder:
             )
         return fallbacks
 
+    def _build_policy_process_allegations(self, allegations: List[str]) -> List[str]:
+        if not allegations:
+            return []
+        combined = " ".join(str(item or "") for item in allegations)
+        lowered = combined.lower()
+        references_notice = "written notice" in lowered or "notice to the applicant" in lowered or "notice" in lowered
+        references_review = any(token in lowered for token in ("informal review", "grievance", "appeal", "hearing"))
+        references_hacc = "hacc" in lowered
+        actor_label = "HACC" if references_hacc else "Defendant"
+
+        synthesized: List[str] = []
+        if references_notice and not any(
+            "without providing the prompt written notice required" in str(item).lower()
+            for item in allegations
+        ):
+            synthesized.append(
+                f"Plaintiff alleges that {actor_label} took or maintained the challenged adverse housing action without providing the prompt written notice required for a decision denying assistance."
+            )
+        if references_review and not any(
+            "failed to provide the informal review" in str(item).lower()
+            or "failed to provide the grievance" in str(item).lower()
+            or "failed to provide the appeal" in str(item).lower()
+            for item in allegations
+        ):
+            synthesized.append(
+                f"Plaintiff further alleges that {actor_label} failed to provide the informal review, grievance, or appeal process that should have accompanied the challenged action."
+            )
+        return synthesized
+
     def _build_factual_allegations(
         self,
         *,
@@ -3479,6 +3508,7 @@ class FormalComplaintDocumentBuilder:
                     return self._prune_near_duplicate_allegations(allegations)
 
         pruned = self._prune_near_duplicate_allegations(allegations)
+        pruned.extend(self._build_policy_process_allegations(pruned))
         pruned.extend(self._build_missing_detail_allegations(pruned))
         pruned = self._prune_near_duplicate_allegations(pruned)
         return pruned[:24] or ["Additional factual development is required before filing."]
