@@ -604,6 +604,14 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
                     "fact_backed_ratio": 0.4444,
                     "low_grounding_flag": True,
                 },
+                "document_grounding_improvement_summary": {
+                    "initial_fact_backed_ratio": 0.2,
+                    "final_fact_backed_ratio": 0.4444,
+                    "fact_backed_ratio_delta": 0.2444,
+                    "improved_flag": True,
+                    "recovery_attempted_flag": True,
+                    "targeted_claim_elements": ["protected_activity"],
+                },
             },
             "adversarial_intake_priority_summary": {
                 "expected_objectives": ["timeline"],
@@ -620,6 +628,8 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
     assert report.document_workflow_execution_summary["first_targeted_claim_element"] == "causation"
     assert report.document_provenance_summary["low_grounding_flag"] is True
     assert report.document_provenance_summary["avg_fact_backed_ratio"] == 0.3889
+    assert report.document_grounding_improvement_summary["improved_session_count"] == 1
+    assert report.document_grounding_improvement_summary["avg_fact_backed_ratio_delta"] == 0.2444
     assert report.document_execution_drift_summary["drift_flag"] is True
     assert report.document_execution_drift_summary["top_targeted_claim_element"] == "protected_activity"
     assert report.document_evidence_targeting_summary["claim_element_counts"] == {"protected_activity": 1}
@@ -628,10 +638,12 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
     assert report.phase_scorecards["document_generation"]["execution_drift_summary"]["drift_flag"] is True
     assert report.phase_scorecards["document_generation"]["document_low_grounding_flag"] is True
     assert report.phase_scorecards["document_generation"]["document_fact_backed_ratio"] == 0.3889
+    assert report.phase_scorecards["document_generation"]["document_grounding_improved_flag"] is True
     assert report.phase_scorecards["document_generation"]["first_executed_claim_element"] == "causation"
     assert any("protected_activity" in recommendation for recommendation in report.recommendations)
     assert any("acting on the highest-priority targeted claim element first" in recommendation for recommendation in report.recommendations)
     assert any("Draft grounding is weak" in recommendation for recommendation in report.recommendations)
+    assert any("Grounding recovery prompts are improving fact-backed ratios" in recommendation for recommendation in report.recommendations)
 
     tasks, _ = optimizer.build_phase_patch_tasks(
         [result],
@@ -655,12 +667,14 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
     ]
     assert document_task.metadata["document_evidence_targeting_summary"]["count"] == 1
     assert document_task.metadata["document_provenance_summary"]["low_grounding_flag"] is True
+    assert document_task.metadata["document_grounding_improvement_summary"]["improved_flag"] is True
     assert document_task.metadata["document_workflow_execution_summary"]["first_targeted_claim_element"] == "causation"
     assert document_task.metadata["document_execution_drift_summary"]["drift_flag"] is True
     assert document_task.metadata["report_summary"]["document_evidence_targeting_summary"]["claim_element_counts"] == {
         "protected_activity": 1,
     }
     assert document_task.metadata["report_summary"]["document_provenance_summary"]["avg_fact_backed_ratio"] == 0.3889
+    assert document_task.metadata["report_summary"]["document_grounding_improvement_summary"]["avg_fact_backed_ratio_delta"] == 0.2444
     assert document_task.metadata["report_summary"]["document_workflow_execution_summary"]["first_targeted_claim_element"] == "causation"
     assert document_task.metadata["report_summary"]["document_execution_drift_summary"]["drift_flag"] is True
 
@@ -678,6 +692,7 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
     payload = bundle.to_dict()
     assert payload["shared_context"]["document_evidence_targeting_summary"]["count"] == 1
     assert payload["shared_context"]["document_provenance_summary"]["low_grounding_flag"] is True
+    assert payload["shared_context"]["document_grounding_improvement_summary"]["improved_flag"] is True
     assert payload["shared_context"]["document_workflow_execution_summary"]["first_targeted_claim_element"] == "causation"
     assert payload["shared_context"]["document_execution_drift_summary"]["drift_flag"] is True
     assert bundle_report.document_evidence_targeting_summary["claim_element_counts"] == {"protected_activity": 1}

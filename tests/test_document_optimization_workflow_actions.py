@@ -3,6 +3,7 @@ from unittest.mock import Mock
 from document_optimization import (
     AgenticDocumentOptimizer,
     _build_document_execution_drift_summary,
+    _build_document_grounding_improvement_summary,
     _build_workflow_targeting_summary,
 )
 
@@ -350,3 +351,33 @@ def test_build_document_execution_drift_summary_detects_mismatch():
     assert summary["top_targeted_claim_element"] == "protected_activity"
     assert summary["first_executed_claim_element"] == "causation"
     assert summary["first_focus_section"] == "claims_for_relief"
+
+
+def test_build_document_grounding_improvement_summary_detects_improvement():
+    summary = _build_document_grounding_improvement_summary(
+        initial_document_provenance_summary={
+            "fact_backed_ratio": 0.2,
+            "low_grounding_flag": True,
+        },
+        final_document_provenance_summary={
+            "fact_backed_ratio": 0.55,
+            "low_grounding_flag": False,
+        },
+        workflow_optimization_guidance={
+            "evidence_workflow_action_queue": [
+                {
+                    "action_code": "recover_document_grounding",
+                    "claim_element_id": "protected_activity",
+                    "preferred_support_kind": "authority",
+                }
+            ]
+        },
+    )
+
+    assert summary["initial_fact_backed_ratio"] == 0.2
+    assert summary["final_fact_backed_ratio"] == 0.55
+    assert summary["fact_backed_ratio_delta"] == 0.35
+    assert summary["improved_flag"] is True
+    assert summary["low_grounding_resolved_flag"] is True
+    assert summary["recovery_attempted_flag"] is True
+    assert summary["targeted_claim_elements"] == ["protected_activity"]

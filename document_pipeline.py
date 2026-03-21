@@ -1606,6 +1606,7 @@ class FormalComplaintDocumentBuilder:
         title = title_override or generated_complaint.get("title") or self._derive_title(plaintiffs, defendants)
         exhibits = self._collect_exhibits(user_id=user_id, claim_types=claim_types, support_claims=support_claims)
         fact_entries = self._build_summary_fact_entries(
+            user_id=user_id,
             generated_complaint=generated_complaint,
             classification=classification,
             state=state,
@@ -2971,8 +2972,10 @@ class FormalComplaintDocumentBuilder:
             return False
         if re.match(r"^(as to [^,]+, )?(title\s+[ivxlcdm0-9]+\b|\d+\s+u\.s\.c\.|\d+\s+c\.f\.r\.|[a-z]{2,6}\.\s+gov\.\s+code\b)", lowered):
             return False
+        if len(text) > 360:
+            return False
         if not re.search(
-            r"\b(was|were|is|are|reported|complained|terminated|fired|retaliated|denied|refused|told|informed|notified|requested|sought|experienced|suffered|lost|made|engaged|opposed|filed|sent|emailed|wrote|received|occurred|happened|subjected|demoted|suspended|disciplined|reduced)\b",
+            r"\b(was|were|is|are|reported|complained|terminated|fired|retaliated|denied|refused|told|informed|notified|requested|sought|experienced|suffered|lost|made|engaged|opposed|filed|sent|emailed|wrote|received|occurred|happened|subjected|demoted|suspended|disciplined|reduced|requires|required|must|states|describes|shows|reflects|discusses|provides)\b",
             lowered,
         ):
             return False
@@ -2992,6 +2995,78 @@ class FormalComplaintDocumentBuilder:
                 expanded.append(sentence)
         unique = _unique_preserving_order(expanded)
         return unique[:limit] if limit is not None else unique
+
+    def _extract_uploaded_evidence_text_candidates(self, value: Any, *, limit: int = 3) -> List[str]:
+        text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+        if not text.strip():
+            return []
+        cleaned_source = re.sub(r"\[(.*?)\]\([^)]+\)", r"\1", text)
+        cleaned_source = re.sub(r"`{1,3}", "", cleaned_source)
+        cleaned_source = re.sub(r"\*\*(.*?)\*\*", r"\1", cleaned_source)
+        cleaned_source = re.sub(r"__(.*?)__", r"\1", cleaned_source)
+        cleaned_source = cleaned_source.replace("•", "\n")
+        raw_segments = re.split(r"\n+|(?<=[.!?])\s+", cleaned_source)
+        priority_markers = (
+            "hacc",
+            "hearing",
+            "appeal",
+            "notice",
+            "grievance",
+            "review",
+            "request",
+            "retaliat",
+            "adverse",
+            "deny",
+            "denial",
+            "termination",
+            "voucher",
+            "discrimin",
+            "accommodation",
+            "tenant",
+            "policy",
+        )
+        ignored_prefixes = (
+            "source:",
+            "usage:",
+            "use for:",
+            "solution:",
+            "issue:",
+            "quick start",
+            "integration pattern",
+            "file structure",
+            "python ",
+            "from ",
+            "import ",
+            "def ",
+            "class ",
+            "return ",
+            "print(",
+        )
+
+        scored_segments: List[tuple[int, str]] = []
+        seen = set()
+        for segment in raw_segments:
+            candidate = re.sub(r"\s+", " ", str(segment or "")).strip(" -*#>\t")
+            if len(candidate) < 24 or len(candidate) > 360:
+                continue
+            lowered = candidate.lower()
+            if lowered.startswith(ignored_prefixes):
+                continue
+            if candidate.count("{") + candidate.count("}") >= 2 or candidate.count("=") >= 3:
+                continue
+            if "```" in candidate or "::" in candidate:
+                continue
+            marker_hits = sum(1 for marker in priority_markers if marker in lowered)
+            if marker_hits <= 0:
+                continue
+            key = candidate.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            scored_segments.append((marker_hits, candidate))
+
+        scored_segments.sort(key=lambda item: (-item[0], len(item[1])))
+        return [candidate for _, candidate in scored_segments[:limit]]
 
     def _synthesize_narrative_allegations(self, allegations: List[str]) -> List[str]:
         cleaned = [str(item).strip() for item in allegations if str(item).strip()]
@@ -4446,6 +4521,7 @@ class FormalComplaintDocumentBuilder:
     def _build_summary_fact_entries(
         self,
         *,
+        user_id: str = "",
         generated_complaint: Dict[str, Any],
         classification: Dict[str, Any],
         state: Any,
@@ -4484,6 +4560,8 @@ class FormalComplaintDocumentBuilder:
                     "source_ref": str(fact.get("source_ref") or fact.get("fact_id") or "").strip() or None,
                 }
             )
+
+        entries.extend(self._collect_uploaded_evidence_fact_entries(user_id=user_id, limit=8))
 
         for allegation in _coerce_list(generated_complaint.get("factual_allegations")):
             for text in _extract_text_candidates(allegation):
@@ -4547,6 +4625,116 @@ class FormalComplaintDocumentBuilder:
             if len(normalized) >= 12:
                 break
         return normalized or [{"text": "Additional factual development is required before filing.", "source_kind": "fallback"}]
+
+    def _collect_uploaded_evidence_fact_entries(
+        self,
+        *,
+        user_id: str,
+        claim_type: Optional[str] = None,
+        limit: int = 8,
+    ) -> List[Dict[str, Any]]:
+        evidence_records = _safe_call(self.mediator, "get_user_evidence", user_id=user_id) or []
+        normalized_claim_type = str(claim_type or "").strip().lower()
+        entries: List[Dict[str, Any]] = []
+
+        for record in _coerce_list(evidence_records):
+            if not isinstance(record, dict):
+                continue
+            record_claim_type = str(record.get("claim_type") or "").strip().lower()
+            if normalized_claim_type and record_claim_type and record_claim_type != normalized_claim_type:
+                continue
+
+            metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+            evidence_id = record.get("id")
+            source_artifact_ids = _normalize_identifier_list(
+                [record.get("cid"), evidence_id]
+                + list(record.get("source_artifact_ids") or [])
+                + ([record.get("source_artifact_id")] if record.get("source_artifact_id") else [])
+            )
+            claim_types = _normalize_identifier_list([record.get("claim_type")] if record.get("claim_type") else [])
+            fact_rows = _safe_call(self.mediator, "get_evidence_facts", evidence_id=evidence_id) or []
+
+            for row in _coerce_list(fact_rows):
+                if not isinstance(row, dict):
+                    continue
+                for text in _extract_text_candidates(row):
+                    for fragment in self._extract_uploaded_evidence_text_candidates(text, limit=3):
+                        cleaned = re.sub(r"\s+", " ", str(fragment or "").strip())
+                        if len(cleaned) < 12:
+                            continue
+                        entries.append(
+                            {
+                                "text": cleaned,
+                                "fact_ids": _normalize_identifier_list([row.get("fact_id")] + list(row.get("fact_ids") or [])),
+                                "source_artifact_ids": source_artifact_ids,
+                                "claim_types": claim_types,
+                                "claim_element_ids": _normalize_identifier_list(
+                                    [row.get("claim_element_id"), row.get("element_id")] + list(row.get("element_tags") or [])
+                                ),
+                                "support_trace_ids": _normalize_identifier_list(
+                                    [
+                                        trace.get("source_ref")
+                                        for trace in _coerce_list(row.get("support_traces"))
+                                        if isinstance(trace, dict) and trace.get("source_ref")
+                                    ]
+                                ),
+                                "source_kind": "uploaded_evidence_fact",
+                                "source_ref": str(row.get("source_ref") or record.get("cid") or evidence_id or "").strip() or None,
+                            }
+                        )
+
+            preview_texts = _extract_text_candidates(
+                {
+                    "parsed_text_preview": record.get("parsed_text_preview"),
+                    "description": record.get("description"),
+                    "summary": metadata.get("summary") if isinstance(metadata, dict) else "",
+                }
+            )
+            for text in preview_texts:
+                for fragment in self._extract_uploaded_evidence_text_candidates(text, limit=2):
+                    cleaned = re.sub(r"\s+", " ", str(fragment or "").strip())
+                    if len(cleaned) < 12:
+                        continue
+                    entries.append(
+                        {
+                            "text": cleaned,
+                            "fact_ids": [],
+                            "source_artifact_ids": source_artifact_ids,
+                            "claim_types": claim_types,
+                            "claim_element_ids": [],
+                            "support_trace_ids": [],
+                            "source_kind": "uploaded_evidence_preview",
+                            "source_ref": str(record.get("cid") or evidence_id or "").strip() or None,
+                        }
+                    )
+
+        normalized: List[Dict[str, Any]] = []
+        seen = set()
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            text = re.sub(r"\s+", " ", str(entry.get("text") or "").strip())
+            if len(text) < 12 or self._is_generic_claim_support_text(text):
+                continue
+            key = text.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(
+                {
+                    "text": text,
+                    "fact_ids": _normalize_identifier_list(entry.get("fact_ids") or []),
+                    "source_artifact_ids": _normalize_identifier_list(entry.get("source_artifact_ids") or []),
+                    "claim_types": _normalize_identifier_list(entry.get("claim_types") or []),
+                    "claim_element_ids": _normalize_identifier_list(entry.get("claim_element_ids") or []),
+                    "support_trace_ids": _normalize_identifier_list(entry.get("support_trace_ids") or []),
+                    "source_kind": str(entry.get("source_kind") or "").strip() or "uploaded_evidence_fact",
+                    "source_ref": str(entry.get("source_ref") or "").strip() or None,
+                }
+            )
+            if len(normalized) >= limit:
+                break
+        return normalized
 
     def _build_claims_for_relief(
         self,
@@ -4745,6 +4933,19 @@ class FormalComplaintDocumentBuilder:
                                 "source_ref": str(link.get("source_ref") or link.get("fact_id") or "").strip() or None,
                             }
                         )
+
+        evidence_entries = self._collect_uploaded_evidence_fact_entries(
+            user_id=user_id,
+            claim_type=claim_type,
+            limit=6,
+        )
+        for entry in evidence_entries:
+            if not isinstance(entry, dict):
+                continue
+            text = str(entry.get("text") or "").strip()
+            if text:
+                facts.append(text)
+            entries.append(dict(entry))
 
         normalized = []
         for item in _unique_preserving_order(facts):

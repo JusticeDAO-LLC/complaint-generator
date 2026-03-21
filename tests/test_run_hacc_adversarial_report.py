@@ -294,6 +294,12 @@ def test_runtime_optimization_guidance_preserves_document_evidence_targeting_sum
                 "top_targeted_claim_element": "causation",
                 "first_executed_claim_element": "protected_activity",
             },
+            "document_grounding_improvement_summary": {
+                "initial_fact_backed_ratio": 0.2,
+                "final_fact_backed_ratio": 0.5,
+                "fact_backed_ratio_delta": 0.3,
+                "improved_flag": True,
+            },
             "workflow_action_queue": [
                 {"phase_name": "graph_analysis", "action": "Collect chronology support."}
             ],
@@ -313,3 +319,5 @@ def test_runtime_optimization_guidance_preserves_document_evidence_targeting_sum
     assert guidance["document_workflow_execution_summary"]["first_focus_section"] == "claims_for_relief"
     assert guidance["document_execution_drift_summary"]["drift_flag"] is True
     assert guidance["document_execution_drift_summary"]["top_targeted_claim_element"] == "causation"
+    assert guidance["document_grounding_improvement_summary"]["improved_flag"] is True
+    assert guidance["document_grounding_improvement_summary"]["fact_backed_ratio_delta"] == 0.3

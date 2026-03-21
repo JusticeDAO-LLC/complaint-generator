@@ -6,6 +6,45 @@ class _ExplodingMediator:
         raise AttributeError("'NoneType' object has no attribute 'get_entities_by_type'")
 
 
+class _EvidenceFactMediator:
+    def __init__(self):
+        self.phase_manager = None
+        self.state = type(
+            "_State",
+            (),
+            {
+                "legal_classification": {},
+                "applicable_statutes": [],
+                "summary_judgment_requirements": {},
+                "inquiries": [],
+                "complaint": None,
+                "original_complaint": None,
+            },
+        )()
+
+    def get_user_evidence(self, *, user_id):
+        assert user_id == "evidence-user"
+        return [
+            {
+                "id": 101,
+                "cid": "bafy-evidence-1",
+                "claim_type": "housing_discrimination",
+                "description": "Adverse action notice",
+                "parsed_text_preview": "HACC issued a written denial notice after the grievance request.",
+                "metadata": {"summary": "Repository-grounded HACC policy and notice record."},
+            }
+        ]
+
+    def get_evidence_facts(self, *, evidence_id):
+        assert evidence_id == 101
+        return [
+            {
+                "fact_id": "fact-1",
+                "text": "On March 3, 2026, HACC sent Plaintiff a written denial notice after Plaintiff requested a grievance hearing.",
+            }
+        ]
+
+
 def test_build_draft_falls_back_to_legacy_builder_when_canonical_generation_crashes(monkeypatch):
     builder = FormalComplaintDocumentBuilder(_ExplodingMediator())
     legacy_calls = {}
@@ -67,3 +106,38 @@ def test_build_draft_falls_back_to_legacy_builder_when_canonical_generation_cras
     assert draft["title"] == "Fallback complaint"
     assert draft["draft_text"] == "Fallback complaint draft."
     assert legacy_calls["user_id"] == "fallback-user"
+
+
+def test_summary_fact_entries_include_uploaded_evidence_facts_when_intake_facts_are_missing():
+    builder = FormalComplaintDocumentBuilder(_EvidenceFactMediator())
+
+    entries = builder._build_summary_fact_entries(
+        user_id="evidence-user",
+        generated_complaint={},
+        classification={},
+        state=builder.mediator.state,
+    )
+
+    texts = [entry["text"] for entry in entries]
+
+    assert any("On March 3, 2026, HACC sent Plaintiff a written denial notice" in text for text in texts)
+    assert not texts[0].startswith("Additional factual development is required before filing")
+
+
+def test_uploaded_evidence_text_candidates_extract_complaint_usable_fragments():
+    builder = FormalComplaintDocumentBuilder(_ExplodingMediator())
+
+    fragments = builder._extract_uploaded_evidence_text_candidates(
+        """
+        ## HACC Policy
+        Use for: implementation notes only
+        HACC policy requires written notice before an informal hearing.
+        from parser import example
+        HACC must respond to a grievance request and provide appeal rights.
+        """,
+        limit=4,
+    )
+
+    assert "HACC policy requires written notice before an informal hearing." in fragments
+    assert "HACC must respond to a grievance request and provide appeal rights." in fragments
+    assert all("from parser import example" not in fragment for fragment in fragments)

@@ -2174,6 +2174,7 @@ class Optimizer:
                         "graph_element_targeting_summary": dict(report.graph_element_targeting_summary or {}),
                         "document_evidence_targeting_summary": dict(report.document_evidence_targeting_summary or {}),
                         "document_provenance_summary": dict(report.document_provenance_summary or {}),
+                        "document_grounding_improvement_summary": dict(report.document_grounding_improvement_summary or {}),
                         "document_workflow_execution_summary": dict(report.document_workflow_execution_summary or {}),
                         "document_execution_drift_summary": dict(report.document_execution_drift_summary or {}),
                         "report_summary": {
@@ -2190,6 +2191,7 @@ class Optimizer:
                             "graph_element_targeting_summary": dict(report.graph_element_targeting_summary or {}),
                             "document_evidence_targeting_summary": dict(report.document_evidence_targeting_summary or {}),
                             "document_provenance_summary": dict(report.document_provenance_summary or {}),
+                            "document_grounding_improvement_summary": dict(report.document_grounding_improvement_summary or {}),
                             "document_workflow_execution_summary": dict(report.document_workflow_execution_summary or {}),
                             "document_execution_drift_summary": dict(report.document_execution_drift_summary or {}),
                             "cross_phase_findings": list(report.cross_phase_findings or []),
@@ -2257,6 +2259,7 @@ class Optimizer:
             "graph_element_targeting_summary": dict(report.graph_element_targeting_summary or {}),
             "document_evidence_targeting_summary": dict(report.document_evidence_targeting_summary or {}),
             "document_provenance_summary": dict(report.document_provenance_summary or {}),
+            "document_grounding_improvement_summary": dict(report.document_grounding_improvement_summary or {}),
             "document_workflow_execution_summary": dict(report.document_workflow_execution_summary or {}),
             "document_execution_drift_summary": dict(report.document_execution_drift_summary or {}),
             "cross_phase_findings": list(report.cross_phase_findings or []),
@@ -2962,6 +2965,25 @@ class Optimizer:
                     else ""
                 ),
             )
+        if bool(document_grounding_improvement_summary.get("recovery_attempted_session_count")) and not bool(
+            document_grounding_improvement_summary.get("improved_session_count")
+        ):
+            recommendations.append(
+                "Grounding recovery prompts are being attempted without improving fact-backed ratios. Tighten recovery prompts and the support lanes they request."
+            )
+            priority_improvements.insert(
+                0,
+                "Improve document grounding recovery prompts"
+                + (
+                    f": avg delta {float(document_grounding_improvement_summary.get('avg_fact_backed_ratio_delta') or 0.0):.2f}"
+                    if document_grounding_improvement_summary.get("avg_fact_backed_ratio_delta") is not None
+                    else ""
+                ),
+            )
+        elif bool(document_grounding_improvement_summary.get("improved_session_count")):
+            recommendations.append(
+                "Grounding recovery prompts are improving fact-backed ratios in at least some sessions. Preserve and expand those recovery flows."
+            )
         first_executed_claim_element = str(
             (document_workflow_execution_summary or {}).get("first_targeted_claim_element") or ""
         ).strip()
@@ -3130,6 +3152,7 @@ class Optimizer:
             graph_element_targeting_summary=graph_element_targeting_summary,
             document_evidence_targeting_summary=document_evidence_targeting_summary,
             document_provenance_summary=document_provenance_summary,
+            document_grounding_improvement_summary=document_grounding_improvement_summary,
             document_workflow_execution_summary=document_workflow_execution_summary,
             document_execution_drift_summary=document_execution_drift_summary,
             cross_phase_findings=[],
@@ -3145,6 +3168,7 @@ class Optimizer:
             graph_element_targeting_summary=graph_element_targeting_summary,
             document_evidence_targeting_summary=document_evidence_targeting_summary,
             document_provenance_summary=document_provenance_summary,
+            document_grounding_improvement_summary=document_grounding_improvement_summary,
             document_workflow_execution_summary=document_workflow_execution_summary,
             document_execution_drift_summary=document_execution_drift_summary,
         )

@@ -519,6 +519,7 @@ def build_intake_status_summary(
     next_action = raw_status.get("next_action")
     next_action = next_action if isinstance(next_action, dict) else {}
     document_execution_drift_summary = raw_status.get("document_execution_drift_summary")
+    document_grounding_improvement_summary = raw_status.get("document_grounding_improvement_summary")
     document_provenance_summary = raw_status.get("document_provenance_summary")
     evidence_workflow_action_queue = raw_status.get("evidence_workflow_action_queue")
     alignment_evidence_tasks = raw_status.get("alignment_evidence_tasks")
@@ -591,6 +592,8 @@ def build_intake_status_summary(
     }
     if document_grounding_recovery_action:
         summary["document_grounding_recovery_action"] = document_grounding_recovery_action
+    if isinstance(document_grounding_improvement_summary, dict) and document_grounding_improvement_summary:
+        summary["document_grounding_improvement_summary"] = dict(document_grounding_improvement_summary)
     if include_iteration_count:
         try:
             summary["iteration_count"] = int(raw_status.get("iteration_count"))
@@ -651,6 +654,7 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
     workflow_targeting_summary = raw_status.get("workflow_targeting_summary")
     document_workflow_execution_summary = raw_status.get("document_workflow_execution_summary")
     document_execution_drift_summary = raw_status.get("document_execution_drift_summary")
+    document_grounding_improvement_summary = raw_status.get("document_grounding_improvement_summary")
     document_provenance_summary = raw_status.get("document_provenance_summary")
     raw_document_drafting_next_action = raw_status.get("document_drafting_next_action")
     raw_document_grounding_recovery_action = raw_status.get("document_grounding_recovery_action")
@@ -842,6 +846,11 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
         "document_execution_drift_summary": (
             document_execution_drift_summary
             if isinstance(document_execution_drift_summary, dict)
+            else {}
+        ),
+        "document_grounding_improvement_summary": (
+            document_grounding_improvement_summary
+            if isinstance(document_grounding_improvement_summary, dict)
             else {}
         ),
         "document_drafting_next_action": document_drafting_next_action,

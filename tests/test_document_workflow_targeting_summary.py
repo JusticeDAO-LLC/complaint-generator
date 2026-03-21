@@ -28,6 +28,12 @@ def test_runtime_workflow_guidance_preserves_workflow_targeting_summary():
             "top_targeted_claim_element": "protected_activity",
             "first_executed_claim_element": "causation",
         },
+        "document_grounding_improvement_summary": {
+            "initial_fact_backed_ratio": 0.2,
+            "final_fact_backed_ratio": 0.45,
+            "fact_backed_ratio_delta": 0.25,
+            "improved_flag": True,
+        },
         "document_drafting_next_action": {
             "action": "realign_document_drafting",
             "focus_section": "claims_for_relief",
@@ -62,6 +68,12 @@ def test_runtime_workflow_guidance_preserves_workflow_targeting_summary():
                 "top_targeted_claim_element": "protected_activity",
                 "first_executed_claim_element": "protected_activity",
             },
+            "document_grounding_improvement_summary": {
+                "initial_fact_backed_ratio": 0.25,
+                "final_fact_backed_ratio": 0.5,
+                "fact_backed_ratio_delta": 0.25,
+                "improved_flag": True,
+            },
         },
     )
 
@@ -69,6 +81,7 @@ def test_runtime_workflow_guidance_preserves_workflow_targeting_summary():
     assert guidance["workflow_targeting_summary"]["phase_counts"]["document_generation"] == 1
     assert guidance["document_workflow_execution_summary"]["iteration_count"] == 2
     assert guidance["document_execution_drift_summary"]["drift_flag"] is False
+    assert guidance["document_grounding_improvement_summary"]["improved_flag"] is True
     assert guidance["document_drafting_next_action"]["action"] == "realign_document_drafting"
     assert guidance["document_drafting_next_action"]["focus_section"] == "claims_for_relief"
 
@@ -93,6 +106,12 @@ def test_build_package_carries_workflow_targeting_summary_into_draft_and_payload
             "drift_flag": True,
             "top_targeted_claim_element": "protected_activity",
             "first_executed_claim_element": "causation",
+        },
+        "document_grounding_improvement_summary": {
+            "initial_fact_backed_ratio": 0.2,
+            "final_fact_backed_ratio": 0.55,
+            "fact_backed_ratio_delta": 0.35,
+            "improved_flag": True,
         },
         "evidence_workflow_action_queue": [],
         "evidence_workflow_action_summary": {},
@@ -125,6 +144,9 @@ def test_build_package_carries_workflow_targeting_summary_into_draft_and_payload
     assert result["document_execution_drift_summary"]["drift_flag"] is True
     assert result["draft"]["document_execution_drift_summary"] == result["document_execution_drift_summary"]
     assert result["workflow_optimization_guidance"]["document_execution_drift_summary"] == result["document_execution_drift_summary"]
+    assert result["document_grounding_improvement_summary"]["improved_flag"] is True
+    assert result["draft"]["document_grounding_improvement_summary"] == result["document_grounding_improvement_summary"]
+    assert result["workflow_optimization_guidance"]["document_grounding_improvement_summary"] == result["document_grounding_improvement_summary"]
     assert result["workflow_optimization_guidance"]["workflow_action_queue"][0]["action"] == (
         "Realign drafting to the top targeted claim element before further revisions."
     )
