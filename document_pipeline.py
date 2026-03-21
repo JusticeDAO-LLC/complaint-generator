@@ -1816,9 +1816,14 @@ class FormalComplaintDocumentBuilder:
             },
         )
         optimized_draft = report.get("draft") or dict(draft)
+        original_claim_index = {
+            str(claim.get("claim_type") or "").strip().lower(): claim
+            for claim in _coerce_list(draft.get("claims_for_relief"))
+            if isinstance(claim, dict) and str(claim.get("claim_type") or "").strip()
+        }
         optimized_draft["summary_of_facts"] = self._normalize_text_lines(optimized_draft.get("summary_of_facts", []))
         optimized_draft["summary_of_fact_entries"] = self._align_entries_to_lines(
-            optimized_draft.get("summary_of_fact_entries"),
+            optimized_draft.get("summary_of_fact_entries") or draft.get("summary_of_fact_entries"),
             optimized_draft.get("summary_of_facts", []),
         )
         optimized_draft["factual_allegations"] = self._expand_allegation_sources(
@@ -1826,12 +1831,15 @@ class FormalComplaintDocumentBuilder:
             limit=24,
         ) or self._expand_allegation_sources(draft.get("factual_allegations", []), limit=24)
         optimized_draft["factual_allegation_entries"] = self._align_entries_to_lines(
-            optimized_draft.get("factual_allegation_entries"),
+            optimized_draft.get("factual_allegation_entries") or draft.get("factual_allegation_entries"),
             optimized_draft.get("factual_allegations", []),
         )
         for claim in _coerce_list(optimized_draft.get("claims_for_relief")):
             if not isinstance(claim, dict):
                 continue
+            original_claim = original_claim_index.get(str(claim.get("claim_type") or "").strip().lower(), {})
+            if not claim.get("supporting_fact_entries") and isinstance(original_claim, dict):
+                claim["supporting_fact_entries"] = deepcopy(original_claim.get("supporting_fact_entries") or [])
             claim["supporting_facts"] = self._expand_allegation_sources(
                 claim.get("supporting_facts", []),
                 limit=10,
